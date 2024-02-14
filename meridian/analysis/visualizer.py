@@ -270,7 +270,7 @@ class ModelDiagnostics:
 
     Raises:
       NotFittedModelError: if the model hasn't been fitted.
-      MCMCSamplingNotConvergingError: if the MCMC sampling did not converge.
+      MCMCSamplingError: if the MCMC sampling did not converge.
     """
     if not hasattr(self._meridian.inference_data, c.POSTERIOR):
       raise model.NotFittedModelError(
