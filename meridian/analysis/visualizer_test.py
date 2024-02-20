@@ -834,7 +834,9 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(
         self.media_effects.response_curves_data.confidence_level, 0.9
     )
-    self.media_effects.update_response_curves(0.8)
+    self.media_effects.update_response_curves(
+        confidence_level=0.8, by_reach=False
+    )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=0.8,
@@ -852,7 +854,7 @@ class MediaEffectsTest(parameterized.TestCase):
         selected_times=times,
     )
     media_effects.update_response_curves(
-        confidence_level=0.9, selected_times=None
+        confidence_level=0.9, selected_times=None, by_reach=False
     )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
@@ -861,7 +863,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     times_2 = ["2023-02-01", "2023-06-30"]
     media_effects.update_response_curves(
-        confidence_level=0.9, selected_times=times_2
+        confidence_level=0.9, selected_times=times_2, by_reach=False
     )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),

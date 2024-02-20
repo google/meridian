@@ -828,8 +828,9 @@ class MediaEffects:
 
   def update_response_curves(
       self,
-      confidence_level: float | None = None,
+      confidence_level: float | None = 0.9,
       selected_times: Sequence[str] | None = None,
+      by_reach: bool = True,
   ):
     """Updates the confidence level for response curve credible intervals.
 
@@ -838,6 +839,9 @@ class MediaEffects:
         credible intervals, represented as a value between zero and one.
       selected_times: Optional list containing a subset of times to include. By
         default, all time periods are included.
+      by_reach: For the channel w/ reach and frequency, return the response
+        curves by reach given fixed frequency if true; return the response
+        curves by frequency given fixed reach if false.
     """
     self._confidence_level = confidence_level or self._confidence_level
     self._selected_times = selected_times
@@ -845,6 +849,7 @@ class MediaEffects:
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=confidence_level,
         selected_times=selected_times,
+        by_reach=by_reach,
     )
     self._hill_curves_dataframe = self._analyzer.hill_curves(
         confidence_level=confidence_level

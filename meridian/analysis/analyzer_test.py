@@ -1644,7 +1644,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     type(self.meridian_media_only).inference_data = mock.PropertyMock(
         return_value=self.inference_data_media_only
     )
-    response_curve_data = self.analyzer_media_only.response_curves()
+    response_curve_data = self.analyzer_media_only.response_curves(
+        by_reach=False
+    )
     self.assertEqual(
         list(response_curve_data.coords.keys()),
         [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
@@ -1713,7 +1715,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           aggregate_times=True,
       )
     spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
-    response_curve_roi = self.analyzer_media_only.response_curves().roi
+    response_curve_roi = self.analyzer_media_only.response_curves(
+        by_reach=False
+    ).roi
     self.assertNotAllEqual(
         incimpact / spend_einsum[:, :, None], response_curve_roi
     )
@@ -1722,7 +1726,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     type(self.meridian_media_and_rf).inference_data = mock.PropertyMock(
         return_value=self.inference_data_media_and_rf
     )
-    response_curve_data = self.analyzer_media_and_rf.response_curves()
+    response_curve_data = self.analyzer_media_and_rf.response_curves(
+        by_reach=False
+    )
     response_data_spend = response_curve_data.spend.values
 
     media_summary_spend = self.analyzer_media_and_rf.media_summary_metrics(
@@ -1737,7 +1743,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     type(self.meridian_rf_only).inference_data = mock.PropertyMock(
         return_value=self.inference_data_rf_only
     )
-    response_curve_data = self.analyzer_rf_only.response_curves()
+    response_curve_data = self.analyzer_rf_only.response_curves(by_reach=False)
     response_data_spend = response_curve_data.spend.values
 
     media_summary_spend = self.analyzer_rf_only.media_summary_metrics(
