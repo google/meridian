@@ -1152,7 +1152,7 @@ class Analyzer:
       selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
-      by_reach: bool = False,
+      by_reach: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> tf.Tensor | None:
     """Calculates Marginal ROI prior or posterior distribution.
@@ -1449,7 +1449,7 @@ class Analyzer:
   def media_summary_metrics(
       self,
       confidence_level: float,
-      marginal_roi_by_reach: bool = False,
+      marginal_roi_by_reach: bool = True,
       marginal_roi_incremental_increase: float = 0.01,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | None = None,
@@ -2034,7 +2034,7 @@ class Analyzer:
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | None = None,
-      by_reach: bool = False,
+      by_reach: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Method to generate Response Curves XArray Dataset.
@@ -2580,11 +2580,13 @@ class Analyzer:
   ) -> xr.Dataset:
     mroi_prior = self.marginal_roi(
         use_posterior=False,
+        by_reach=marginal_roi_by_reach,
         incremental_increase=marginal_roi_incremental_increase,
         **roi_kwargs,
     )
     mroi_posterior = self.marginal_roi(
         use_posterior=True,
+        by_reach=marginal_roi_by_reach,
         incremental_increase=marginal_roi_incremental_increase,
         **roi_kwargs,
     )

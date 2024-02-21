@@ -948,6 +948,7 @@ class BudgetOptimizer:
             new_rf_spend=new_rf_spend,
             selected_times=selected_times,
             batch_size=batch_size,
+            by_reach=True,
         ),
         axis=(0, 1),
     )

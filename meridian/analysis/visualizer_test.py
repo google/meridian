@@ -834,11 +834,14 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(
         self.media_effects.response_curves_data.confidence_level, 0.9
     )
-    self.media_effects.update_response_curves(0.8)
+    self.media_effects.update_response_curves(
+        confidence_level=0.8, by_reach=False
+    )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=0.8,
         selected_times=None,
+        by_reach=False,
     )
 
   def test_media_effects_plot_response_curves_update_selected_times(self):
@@ -852,21 +855,23 @@ class MediaEffectsTest(parameterized.TestCase):
         selected_times=times,
     )
     media_effects.update_response_curves(
-        confidence_level=0.9, selected_times=None
+        confidence_level=0.9, selected_times=None, by_reach=False
     )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=0.9,
         selected_times=None,
+        by_reach=False,
     )
     times_2 = ["2023-02-01", "2023-06-30"]
     media_effects.update_response_curves(
-        confidence_level=0.9, selected_times=times_2
+        confidence_level=0.9, selected_times=times_2, by_reach=False
     )
     self.mock_response_curves_method.assert_called_with(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=0.9,
         selected_times=times_2,
+        by_reach=False,
     )
 
   def test_media_effects_plot_response_curves_plot_include_ci(self):
@@ -1313,9 +1318,11 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(
         self.media_summary.media_summary_metrics.confidence_level, 0.9
     )
-    self.media_summary.update_media_summary_metrics(0.8)
+    self.media_summary.update_media_summary_metrics(
+        confidence_level=0.8, marginal_roi_by_reach=False
+    )
     self.mock_analyzer_method.assert_called_with(
-        confidence_level=0.8, selected_times=None
+        confidence_level=0.8, selected_times=None, marginal_roi_by_reach=False
     )
 
   def test_media_summary_update_selected_times(self):
@@ -1323,9 +1330,11 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(
         self.media_summary.media_summary_metrics.confidence_level, 0.9
     )
-    self.media_summary.update_media_summary_metrics(selected_times=times)
+    self.media_summary.update_media_summary_metrics(
+        selected_times=times, marginal_roi_by_reach=False
+    )
     self.mock_analyzer_method.assert_called_with(
-        confidence_level=0.9, selected_times=times
+        confidence_level=0.9, selected_times=times, marginal_roi_by_reach=False
     )
 
   def test_media_summary_plot_roi_no_ci_plots_bar_chart(self):

@@ -712,7 +712,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               [572.5, 1291.739, 411.2, 664.9, 369.8]
               ),
           expected_spend=np.array([249.0, 404.0, 201.0, 399.0, 299.0]),
-          expected_mroi=np.array([1.231, 1.519, 1.156, 0.603, 0.435]),
+          expected_mroi=np.array([1.231, 1.519, 1.156, 1.666, 1.237]),
           use_optimal_frequency=False,
       ),
   )
