@@ -262,6 +262,11 @@ class ModelDiagnostics:
   def plot_rhat_boxplot(self) -> alt.Chart:
     """Plots the R-hat box plot.
 
+    There is a single R-hat value for each model parameter. The box plot
+    summarizes the distribution of R-hat values across indices. For example, the
+    box corresponding to beta_gm summarizes the distribution of R-hat values
+    across both the geo index g and the channel index m.
+
     The r-hat is not defined for any parameters that have deterministic priors,
     so these parameters will not be shown on the boxplot.
 
