@@ -436,6 +436,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         np.sum(expected_spend),
     )
 
+  def test_spend_ratio(self):
+    self.budget_optimizer_media_and_rf.optimize()
+    np.testing.assert_array_equal(
+        self.budget_optimizer_media_and_rf._spend_ratio, [1, 1, 1, 1, 1]
+    )
+
   def test_hist_spend_with_imputed_cpm(self):
     self.enter_context(
         mock.patch.object(
@@ -1386,6 +1392,13 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.enter_context(
         mock.patch.object(
             optimizer.BudgetOptimizer,
+            'nonoptimized_data_with_optimal_freq',
+            new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
             'optimized_data',
             new=property(lambda unused_self: _SAMPLE_OPTIMIZED_DATA),
         )
@@ -1394,6 +1407,7 @@ class OptimizerPlotsTest(absltest.TestCase):
         np.array([0.7, 0.5, 0.7]),
         np.array([1.3]),
     )
+    self.budget_optimizer._spend_ratio = np.array([1.0, 1.0, 1.0])
     spend_multiplier = np.arange(0, 2, 0.01)
     self.mock_response_curves = self.enter_context(
         mock.patch.object(
@@ -1695,17 +1709,38 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
     # Check that the current and optimal points for each channel are included.
     self.assertEqual(
-        set(df[c.SPEND_LEVEL]),
+        set(df[c.SPEND_LEVEL].dropna()),
         {
             summary_text.OPTIMIZED_SPEND_LABEL,
-            summary_text.CURRENT_SPEND_LABEL,
-            pd.NA,
+            summary_text.NONOPTIMIZED_SPEND_LABEL,
         },
     )
     self.assertLen(
         df[df[c.SPEND_LEVEL] == summary_text.OPTIMIZED_SPEND_LABEL], 3
     )
-    self.assertLen(df[df[c.SPEND_LEVEL] == summary_text.CURRENT_SPEND_LABEL], 3)
+    self.assertLen(
+        df[df[c.SPEND_LEVEL] == summary_text.NONOPTIMIZED_SPEND_LABEL], 3
+    )
+    self.assertContainsSubset(
+        self.budget_optimizer._spend_bounds[0], df[c.LOWER_BOUND]
+    )
+    self.assertContainsSubset(
+        self.budget_optimizer._spend_bounds[1], df[c.UPPER_BOUND]
+    )
+
+  def test_plot_response_curves_modified_bounds(self):
+    self.budget_optimizer._spend_bounds = (
+        np.array([0.7]),
+        np.array([1.2, 1.3, 1.4]),
+    )
+    plot = self.budget_optimizer.plot_response_curves()
+    df = plot.data
+    self.assertContainsSubset(
+        self.budget_optimizer._spend_bounds[0], df[c.LOWER_BOUND]
+    )
+    self.assertContainsSubset(
+        self.budget_optimizer._spend_bounds[1], df[c.UPPER_BOUND]
+    )
 
   def test_plot_response_curves_invalid_n_channels(self):
     with self.assertRaisesWithLiteralMatch(
@@ -1731,6 +1766,7 @@ class OptimizerPlotsTest(absltest.TestCase):
 
   def test_plot_response_curves_upper_limit(self):
     self.budget_optimizer._spend_bounds = (np.array([0]), np.array([2]))
+    self.budget_optimizer._spend_ratio = np.array([1.0, 1.0, 1.0])
     self.budget_optimizer.plot_response_curves()
     self.mock_response_curves.assert_called_once()
     _, mock_kwargs = self.mock_response_curves.call_args
@@ -1903,6 +1939,13 @@ class OptimizerOutputTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             optimizer.BudgetOptimizer,
+            'nonoptimized_data_with_optimal_freq',
+            new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
             'optimized_data',
             new=property(lambda unused_self: _SAMPLE_OPTIMIZED_DATA),
         )
@@ -1912,6 +1955,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         np.array([0.7]),
         np.array([1.3]),
     )
+    self.budget_optimizer._spend_ratio = np.array([1.0, 1.0, 1.0])
     self.mock_spend_delta = self.enter_context(
         mock.patch.object(
             optimizer.BudgetOptimizer,
@@ -2173,7 +2217,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         header_values,
         [
             summary_text.CHANNEL_LABEL,
-            summary_text.CURRENT_SPEND_LABEL,
+            summary_text.NONOPTIMIZED_SPEND_LABEL,
             summary_text.OPTIMIZED_SPEND_LABEL,
         ],
     )

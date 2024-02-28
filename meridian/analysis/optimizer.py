@@ -121,13 +121,18 @@ class BudgetOptimizer:
     self._analyzer = analyzer.Analyzer(self._meridian)
     self._template_env = formatter.create_template_env()
     self._nonoptimized_data = None
+    self._nonoptimized_data_with_optimal_freq = None
     self._optimized_data = None
     self._spend_bounds = None
     self._use_optimal_frequency = True
+    self._spend_ratio = None
 
   @property
   def nonoptimized_data(self) -> xr.Dataset:
     """Dataset holding the non-optimized budget metrics.
+
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact) are based on historical frequency.
 
     The dataset contains the following:
 
@@ -148,8 +153,36 @@ class BudgetOptimizer:
     return self._nonoptimized_data
 
   @property
+  def nonoptimized_data_with_optimal_freq(self) -> xr.Dataset:
+    """Dataset holding the non-optimized budget metrics.
+
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact) are based on optimal frequency.
+
+    The dataset contains the following:
+
+      - Coordinates: `channel`
+      - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`,
+        `incremental_impact`
+      - Attributes: `budget`, `profit`, `total_incremental_impact`, `total_roi`
+
+    Raises:
+      OptimizationNotRunError: Occurs when the optimization has not been run.
+      The `nonoptimized_data` is only available after running the optimization
+      because certain data points are dependent on the optimization parameters.
+    """
+    if self._nonoptimized_data_with_optimal_freq is None:
+      raise OptimizationNotRunError(
+          'Non-optimized data is only available after running optimize().'
+      )
+    return self._nonoptimized_data_with_optimal_freq
+
+  @property
   def optimized_data(self) -> xr.Dataset:
     """Dataset holding the optimized budget metrics.
+
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact) are based on optimal frequency.
 
     The dataset contains the following:
 
@@ -243,6 +276,7 @@ class BudgetOptimizer:
     round_factor = _get_round_factor(budget, gtol)
     step_size = 10 ** (-round_factor)
     rounded_spend = np.round(spend, round_factor).astype(int)
+    self._spend_ratio = spend / hist_spend
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
@@ -293,8 +327,15 @@ class BudgetOptimizer:
         selected_times=selected_time_dims,
         batch_size=batch_size,
     )
+    self._nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
+        hist_spend=hist_spend,
+        spend=rounded_spend,
+        selected_times=selected_time_dims,
+        optimal_frequency=optimal_frequency,
+        batch_size=batch_size,
+    )
     self._optimized_data = self._create_budget_dataset(
-        hist_spend=spend,
+        hist_spend=hist_spend,
         spend=optimal_spend,
         selected_times=selected_time_dims,
         optimal_frequency=optimal_frequency,
@@ -623,7 +664,7 @@ class BudgetOptimizer:
       self, n_top_channels: int | None
   ) -> pd.DataFrame:
     """Calculates the response curve data, specific to the optimization."""
-    if self._spend_bounds is None:
+    if self._spend_bounds is None or self._spend_ratio is None:
       raise OptimizationNotRunError(
           'Optimization response curves are only available after running the'
           ' optimization.'
@@ -633,14 +674,14 @@ class BudgetOptimizer:
         (self.optimized_data.start_date, self.optimized_data.end_date)
     )
     lower_bound = (
-        self._spend_bounds[0].repeat(len(channels))
+        self._spend_bounds[0].repeat(len(channels))*self._spend_ratio
         if len(self._spend_bounds[0]) == 1
-        else self._spend_bounds[0]
+        else self._spend_bounds[0]*self._spend_ratio
     )
     upper_bound = (
-        self._spend_bounds[1].repeat(len(channels))
+        self._spend_bounds[1].repeat(len(channels))*self._spend_ratio
         if len(self._spend_bounds[1]) == 1
-        else self._spend_bounds[1]
+        else self._spend_bounds[1]*self._spend_ratio
     )
     spend_constraints_df = pd.DataFrame({
         c.CHANNEL: channels,
@@ -672,12 +713,15 @@ class BudgetOptimizer:
         )
         .reset_index()
     )
-    response_curves_df[c.SPEND_LEVEL] = np.where(
-        response_curves_df[c.SPEND_MULTIPLIER] == 1.0,
-        summary_text.CURRENT_SPEND_LABEL,
-        pd.NA,
+    current_points_df = (
+        self.nonoptimized_data_with_optimal_freq[
+            [c.SPEND, c.INCREMENTAL_IMPACT]
+        ]
+        .to_dataframe()
+        .reset_index()
+        .rename(columns={c.INCREMENTAL_IMPACT: c.MEAN})
     )
-
+    current_points_df[c.SPEND_LEVEL] = summary_text.NONOPTIMIZED_SPEND_LABEL
     optimal_points_df = (
         self.optimized_data[[c.SPEND, c.INCREMENTAL_IMPACT]]
         .to_dataframe()
@@ -686,7 +730,9 @@ class BudgetOptimizer:
     )
     optimal_points_df[c.SPEND_LEVEL] = summary_text.OPTIMIZED_SPEND_LABEL
 
-    concat_df = pd.concat([response_curves_df, optimal_points_df])
+    concat_df = pd.concat(
+        [response_curves_df, optimal_points_df, current_points_df]
+    )
     merged_df = concat_df.merge(spend_constraints_df, on=c.CHANNEL)
     if n_top_channels:
       top_channels = self._get_top_channels_by_spend(n_top_channels)
@@ -1428,7 +1474,7 @@ class BudgetOptimizer:
         title=summary_text.SPEND_ALLOCATION_CHART_TITLE,
         column_headers=[
             summary_text.CHANNEL_LABEL,
-            summary_text.CURRENT_SPEND_LABEL,
+            summary_text.NONOPTIMIZED_SPEND_LABEL,
             summary_text.OPTIMIZED_SPEND_LABEL,
         ],
         row_values=self._create_budget_allocation_table().values.tolist(),
