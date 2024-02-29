@@ -499,7 +499,7 @@ class InputDataLoaderTest(parameterized.TestCase):
             "Target name 'revenue' from the mapping is none of the target"
             " coordinate names ('geo', 'time', 'media_time',"
             " 'control_variable', 'media_channel', 'rf_channel') or array names"
-            " ('kpi', 'revenue_per_kpi', 'controls', 'population', 'media',"
+            " ('kpi', 'controls', 'population', 'revenue_per_kpi', 'media',"
             " 'media_spend', 'reach', 'frequency', 'rf_spend')."
         ),
     ):

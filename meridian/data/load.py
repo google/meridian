@@ -275,6 +275,11 @@ class XrDatasetDataLoader(InputDataLoader):
 
   def load(self) -> input_data.InputData:
     """Returns an InputData object containing the data from the dataset."""
+    revenue_per_kpi = (
+        self.dataset.revenue_per_kpi
+        if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys()
+        else None
+    )
     media = (
         self.dataset.media
         if constants.MEDIA in self.dataset.data_vars.keys()
@@ -303,7 +308,7 @@ class XrDatasetDataLoader(InputDataLoader):
     return input_data.InputData(
         kpi=self.dataset.kpi,
         kpi_type=self.kpi_type,
-        revenue_per_kpi=self.dataset.revenue_per_kpi,
+        revenue_per_kpi=revenue_per_kpi,
         controls=self.dataset.controls,
         population=self.dataset.population,
         media=media,
@@ -595,7 +600,6 @@ class DataFrameDataLoader(InputDataLoader):
 
   def _validate_nas(self):
     """Validates that the only NAs are in the lagged-media period."""
-
     # Check if there are no NAs in media.
     if self.coord_to_columns.media is not None:
       if self.df[self.coord_to_columns.media].isna().any(axis=None):
@@ -613,10 +617,11 @@ class DataFrameDataLoader(InputDataLoader):
     na_columns = []
     coords = [
         constants.KPI,
-        constants.REVENUE_PER_KPI,
         constants.CONTROLS,
         constants.POPULATION,
     ]
+    if self.coord_to_columns.revenue_per_kpi is not None:
+      coords.append(constants.REVENUE_PER_KPI)
     if self.coord_to_columns.media_spend is not None:
       coords.append(constants.MEDIA_SPEND)
     if self.coord_to_columns.rf_spend is not None:
@@ -683,14 +688,6 @@ class DataFrameDataLoader(InputDataLoader):
         .to_frame()
         .to_xarray()
     )
-    revenue_per_kpi_xr = (
-        df_indexed[self.coord_to_columns.revenue_per_kpi]
-        .dropna()
-        .rename(constants.REVENUE_PER_KPI)
-        .rename_axis([constants.GEO, constants.TIME])
-        .to_frame()
-        .to_xarray()
-    )
     population_xr = (
         df_indexed[self.coord_to_columns.population]
         .groupby(geo_column_name)
@@ -710,9 +707,18 @@ class DataFrameDataLoader(InputDataLoader):
         .to_frame()
         .to_xarray()
     )
-    dataset = xr.combine_by_coords(
-        [kpi_xr, revenue_per_kpi_xr, population_xr, controls_xr]
-    )
+    dataset = xr.combine_by_coords([kpi_xr, population_xr, controls_xr])
+
+    if self.coord_to_columns.revenue_per_kpi is not None:
+      revenue_per_kpi_xr = (
+          df_indexed[self.coord_to_columns.revenue_per_kpi]
+          .dropna()
+          .rename(constants.REVENUE_PER_KPI)
+          .rename_axis([constants.GEO, constants.TIME])
+          .to_frame()
+          .to_xarray()
+      )
+      dataset = xr.combine_by_coords([dataset, revenue_per_kpi_xr])
 
     if self.coord_to_columns.media is not None:
       media_xr = (

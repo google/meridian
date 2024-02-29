@@ -273,9 +273,9 @@ class InputData:
     """Verifies that the names of the data arrays are correct."""
     arrays = [
         self.kpi,
-        self.revenue_per_kpi,
         self.controls,
         self.population,
+        self.revenue_per_kpi,
         self.media,
         self.media_spend,
         self.reach,
@@ -416,10 +416,11 @@ class InputData:
     """Returns data as a single xarray.Dataset object."""
     data = [
         self.kpi,
-        self.revenue_per_kpi,
         self.controls,
         self.population,
     ]
+    if self.revenue_per_kpi is not None:
+      data.append(self.revenue_per_kpi)
     if self.media is not None:
       data.append(self.media)
       data.append(self.media_spend)
