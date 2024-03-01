@@ -847,7 +847,7 @@ class Analyzer:
         beta_grf=beta_grf,
     )
     incremental_impact = (
-        self._inverse_impact(transformed_impact, use_kpi)
+        self._inverse_impact(transformed_impact, use_kpi=use_kpi)
         if inverse_transform_impact
         else transformed_impact
     )
@@ -1233,6 +1233,7 @@ class Analyzer:
       dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1241,7 +1242,7 @@ class Analyzer:
     }
     incremental_revenue_kwargs = {
         "inverse_transform_impact": True,
-        "use_kpi": False,
+        "use_kpi": use_kpi,
         "use_posterior": use_posterior,
         "batch_size": batch_size,
     }
@@ -1269,8 +1270,7 @@ class Analyzer:
     )
     incremental_revenue_kwargs.update(incremented_tensors)
     incremental_impact_with_multiplier = self.incremental_impact(
-        **dim_kwargs,
-        **incremental_revenue_kwargs,
+        **dim_kwargs, **incremental_revenue_kwargs
     )
     numerator = incremental_impact_with_multiplier - incremental_revenue
     roi_spend = roi_tensors.total_spend() * incremental_increase
@@ -1331,7 +1331,7 @@ class Analyzer:
       dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     """
-
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1340,7 +1340,7 @@ class Analyzer:
     }
     incremental_impact_kwargs = {
         "inverse_transform_impact": True,
-        "use_kpi": False,
+        "use_kpi": use_kpi,
         "use_posterior": use_posterior,
         "batch_size": batch_size,
     }
@@ -1467,8 +1467,9 @@ class Analyzer:
       A dataset with the expected, baseline, and actual impact metrics.
     """
     mmm = self._meridian
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     expected_tensor = self.expected_impact(
-        aggregate_geos=False, aggregate_times=False
+        aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi
     )
     baseline_tensor = self.expected_impact(
         new_media=tf.zeros_like(mmm.media) if mmm.media is not None else None,
@@ -1478,6 +1479,7 @@ class Analyzer:
         else None,
         aggregate_geos=False,
         aggregate_times=False,
+        use_kpi=use_kpi,
     )
     expected = np.stack(
         [
@@ -1495,10 +1497,10 @@ class Analyzer:
         ],
         axis=-1,
     )
-    if mmm.revenue_per_kpi is not None:
-      actual = mmm.kpi * mmm.revenue_per_kpi
-    else:
+    if use_kpi:
       actual = mmm.kpi
+    else:
+      actual = mmm.kpi * mmm.revenue_per_kpi
 
     coords = {
         constants.GEO: ([constants.GEO], mmm.input_data.geo.data),
@@ -1527,11 +1529,12 @@ class Analyzer:
       self, use_posterior: bool, **roi_kwargs
   ):
     """Aggregates the incremental impact for MediaSummary metrics."""
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     expected_impact = self.expected_impact(
-        use_posterior=use_posterior, **roi_kwargs
+        use_posterior=use_posterior, **roi_kwargs, use_kpi=use_kpi
     )
     incremental_impact_m = self.incremental_impact(
-        use_posterior=use_posterior, **roi_kwargs
+        use_posterior=use_posterior, **roi_kwargs, use_kpi=use_kpi
     )
     new_media = (
         tf.zeros_like(self._meridian.media)
@@ -1554,6 +1557,7 @@ class Analyzer:
         new_reach=new_reach,
         new_frequency=new_frequency,
         **roi_kwargs,
+        use_kpi=use_kpi,
     )
     return tf.concat(
         [incremental_impact_m, incremental_impact_total[..., None]],
@@ -1604,6 +1608,7 @@ class Analyzer:
       `pct_of_spend`, `CPM`, `incremental_impact`, `pct_of_contribution`, `roi`,
       `effectiveness`, `mroi`.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1655,10 +1660,10 @@ class Analyzer:
         use_posterior=True, **roi_kwargs
     )
     expected_impact_prior = self.expected_impact(
-        use_posterior=False, **roi_kwargs
+        use_posterior=False, **roi_kwargs, use_kpi=use_kpi
     )
     expected_impact_posterior = self.expected_impact(
-        use_posterior=True, **roi_kwargs
+        use_posterior=True, **roi_kwargs, use_kpi=use_kpi
     )
 
     xr_dims = (
@@ -1765,14 +1770,18 @@ class Analyzer:
       roi *= np.nan
       mroi *= np.nan
       effectiveness *= np.nan
-    return xr.merge([
+    data = [
         spend_data,
         incremental_impact,
         pct_of_contribution,
         roi,
         effectiveness,
         mroi,
-    ])
+    ]
+    if use_kpi:
+      data.remove(roi)
+      data.remove(mroi)
+    return xr.merge(data)
 
   def optimal_freq(
       self,
@@ -1924,6 +1933,7 @@ class Analyzer:
       is split into `Train`, `Test`, and `All Data` subsections, and the three
       metrics are computed for each.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -1955,7 +1965,10 @@ class Analyzer:
         **dims_kwargs,
     ).numpy()
     expected = np.mean(
-        self.expected_impact(batch_size=batch_size, **dims_kwargs), (0, 1)
+        self.expected_impact(
+            batch_size=batch_size, **dims_kwargs, use_kpi=use_kpi
+        ),
+        (0, 1),
     )
     rsquared, mape, wmape = self._predictive_accuracy_helper(actual, expected)
     rsquared_national, mape_national, wmape_national = (
@@ -2142,7 +2155,6 @@ class Analyzer:
               constants.COL_IDX_BAD_RHAT: col_idx,
           })
       )
-
     return pd.DataFrame(r_hat_summary)
 
   def response_curves(
@@ -2191,6 +2203,7 @@ class Analyzer:
         An XArray Dataset containing the data needed to visualize
         response curves.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -2237,10 +2250,10 @@ class Analyzer:
       incimpact_temp = self.incremental_impact(
           use_posterior=use_posterior,
           inverse_transform_impact=True,
-          use_kpi=False,
           batch_size=batch_size,
           **tensor_kwargs,
           **dim_kwargs,
+          use_kpi=use_kpi,
       )
       incremental_impact[i, :, 0] = np.mean(incimpact_temp, (0, 1))
       incremental_impact[i, :, 1] = np.quantile(
@@ -2715,6 +2728,7 @@ class Analyzer:
       spend_with_total: tf.Tensor,
       **roi_kwargs,
   ) -> xr.Dataset:
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     mroi_prior = self.marginal_roi(
         use_posterior=False,
         by_reach=marginal_roi_by_reach,
@@ -2740,6 +2754,7 @@ class Analyzer:
             use_posterior=False,
             **incremented_tensors,
             **roi_kwargs,
+            use_kpi=use_kpi,
         )
         - expected_revenue_prior
     ) / (marginal_roi_incremental_increase * spend_with_total[..., -1])
@@ -2748,6 +2763,7 @@ class Analyzer:
             use_posterior=True,
             **incremented_tensors,
             **roi_kwargs,
+            use_kpi=use_kpi,
         )
         - expected_revenue_posterior
     ) / (marginal_roi_incremental_increase * spend_with_total[..., -1])

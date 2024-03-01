@@ -1579,32 +1579,6 @@ class MediaSummary:
         else c.KPI.upper()
     )
     df = self._transform_contribution_spend_metrics()
-    roi_marker = (
-        alt.Chart()
-        .mark_tick(
-            color=c.GREEN_700,
-            thickness=4,
-            cornerRadius=c.CORNER_RADIUS,
-            size=c.PADDING_20,
-            tooltip=True,
-        )
-        .encode(
-            tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
-            y=alt.Y('roi_scaled:Q', title='%'),
-        )
-    )
-    roi_text = (
-        alt.Chart()
-        .mark_text(
-            dy=-15,
-            fontSize=c.AXIS_FONT_SIZE,
-            color=c.GREY_900,
-        )
-        .encode(
-            text=alt.Text(f'{c.ROI}:Q', format='.1f'),
-            y='roi_scaled:Q',
-        )
-    )
     domain = [
         f'% {impact.title() if impact == c.REVENUE else impact}',
         '% Spend',
@@ -1650,6 +1624,32 @@ class MediaSummary:
     if self._meridian.input_data.revenue_per_kpi is None:
       layer = alt.layer(spend_impact, data=df)
     else:
+      roi_marker = (
+          alt.Chart()
+          .mark_tick(
+              color=c.GREEN_700,
+              thickness=4,
+              cornerRadius=c.CORNER_RADIUS,
+              size=c.PADDING_20,
+              tooltip=True,
+          )
+          .encode(
+              tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
+              y=alt.Y('roi_scaled:Q', title='%'),
+          )
+      )
+      roi_text = (
+          alt.Chart()
+          .mark_text(
+              dy=-15,
+              fontSize=c.AXIS_FONT_SIZE,
+              color=c.GREY_900,
+          )
+          .encode(
+              text=alt.Text(f'{c.ROI}:Q', format='.1f'),
+              y='roi_scaled:Q',
+          )
+      )
       layer = alt.layer(spend_impact, roi_marker, roi_text, data=df)
 
     # To group the impact and spend bar plot with the ROI markers, facet the
@@ -2006,7 +2006,6 @@ class MediaSummary:
       impact = summary_text.REVENUE_LABEL
     else:
       impact = summary_text.KPI_LABEL
-    roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
     total_media_impact = (
         self.media_summary_metrics[c.INCREMENTAL_IMPACT]
         .sel(
@@ -2035,10 +2034,13 @@ class MediaSummary:
     spend_pct_df['label'] = '% Spend'
 
     pct_df = pd.concat([impact_pct_df, spend_pct_df])
-    plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
-
-    scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
-    plot_df['roi_scaled'] = plot_df[c.ROI] * scale_factor
+    if self._meridian.input_data.revenue_per_kpi is not None:
+      roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
+      plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
+      scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
+      plot_df['roi_scaled'] = plot_df[c.ROI] * scale_factor
+    else:
+      plot_df = pct_df
 
     return plot_df
 

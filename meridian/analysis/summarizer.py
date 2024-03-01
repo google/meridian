@@ -246,9 +246,11 @@ class Summarizer:
             national_table[c.EVALUATION_SET_VAR] == eval_set
         ]
         row_values = [
-            '{:.2f}'.format(float(sliced_table_by_eval_set[c.R_SQUARED])),
-            '{:.0%}'.format(float(sliced_table_by_eval_set[c.MAPE])),
-            '{:.0%}'.format(float(sliced_table_by_eval_set[c.WMAPE])),
+            '{:.2f}'.format(
+                float(sliced_table_by_eval_set[c.R_SQUARED].iloc[0])
+            ),
+            '{:.0%}'.format(float(sliced_table_by_eval_set[c.MAPE].iloc[0])),
+            '{:.0%}'.format(float(sliced_table_by_eval_set[c.WMAPE].iloc[0])),
         ]
         return row_values
 
@@ -264,9 +266,9 @@ class Summarizer:
     else:  # No holdout_id present, so metrics are taken from 'All Data'.
       row_values = [[
           summary_text.ALL_DATA_LABEL,
-          '{:.2f}'.format(float(national_table[c.R_SQUARED])),
-          '{:.0%}'.format(float(national_table[c.MAPE])),
-          '{:.0%}'.format(float(national_table[c.WMAPE])),
+          '{:.2f}'.format(float(national_table[c.R_SQUARED].iloc[0])),
+          '{:.0%}'.format(float(national_table[c.MAPE].iloc[0])),
+          '{:.0%}'.format(float(national_table[c.WMAPE].iloc[0])),
       ]]
 
     return formatter.TableSpec(
@@ -298,13 +300,11 @@ class Summarizer:
     lead_channels = self._get_sorted_posterior_mean_metrics_df(
         media_summary, [c.INCREMENTAL_IMPACT]
     )[c.CHANNEL][:2]
-    roi_df = self._get_sorted_posterior_mean_metrics_df(media_summary, [c.ROI])
-
     spend_impact_chart = formatter.ChartSpec(
         id=summary_text.SPEND_IMPACT_CHART_ID,
         description=summary_text.SPEND_IMPACT_CHART_DESCRIPTION.format(
             impact=impact
-        ),
+        ) if impact == c.REVENUE else '',
         chart_json=media_summary.plot_spend_vs_contribution().to_json(),
     )
     impact_contribution_chart = formatter.ChartSpec(
@@ -314,22 +314,41 @@ class Summarizer:
         ),
         chart_json=media_summary.plot_contribution_pie_chart().to_json(),
     )
-    insights = summary_text.IMPACT_CONTRIB_INSIGHTS_FORMAT.format(
-        impact=impact,
-        lead_channels=' and '.join(lead_channels),
-        lead_roi_channel=roi_df[c.CHANNEL][0],
-        lead_roi_ratio=roi_df[c.ROI][0],
-    )
-    if impact == c.KPI:
-      impact_contrib_card_spec = KPI_CONTRIB_CARD_SPEC
-    else:
+    if impact == c.REVENUE:
+      roi_df = self._get_sorted_posterior_mean_metrics_df(
+          media_summary, [c.ROI]
+      )
+      insights = summary_text.IMPACT_CONTRIB_INSIGHTS_FORMAT.format(
+          impact=impact,
+          lead_channels=' and '.join(lead_channels),
+          lead_roi_channel=roi_df[c.CHANNEL][0],
+          lead_roi_ratio=roi_df[c.ROI][0],
+      )
       impact_contrib_card_spec = REVENUE_CONTRIB_CARD_SPEC
-    return formatter.create_card_html(
-        template_env,
-        impact_contrib_card_spec,
-        insights,
-        [channel_drivers_chart, spend_impact_chart, impact_contribution_chart],
-    )
+      card_string = formatter.create_card_html(
+          template_env=template_env,
+          card_spec=impact_contrib_card_spec,
+          insights=insights,
+          chart_specs=[
+              channel_drivers_chart,
+              spend_impact_chart,
+              impact_contribution_chart,
+          ],
+      )
+      return card_string
+    else:
+      impact_contrib_card_spec = KPI_CONTRIB_CARD_SPEC
+      card_string = formatter.create_card_html(
+          template_env=template_env,
+          card_spec=impact_contrib_card_spec,
+          insights='',
+          chart_specs=[
+              channel_drivers_chart,
+              spend_impact_chart,
+              impact_contribution_chart,
+          ],
+      )
+      return card_string
 
   def _get_sorted_posterior_mean_metrics_df(
       self,

@@ -24,9 +24,11 @@ from meridian.analysis import analyzer
 from meridian.analysis import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 import xarray as xr
 
 
@@ -101,6 +103,19 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def setUpClass(cls):
     super(AnalyzerTest, cls).setUpClass()
 
+    # Input data resulting in KPI computation.
+    cls.input_data_media_and_rf_kpi = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    # Input data resulting in revenue computation.
     cls.input_data_media_and_rf = (
         data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=_N_GEOS,
@@ -113,20 +128,86 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         )
     )
     model_spec = spec.ModelSpec(max_lag=15)
+    custom_model_spec = spec.ModelSpec(
+        prior=prior_distribution.PriorDistribution(
+            knot_values=tfp.distributions.Normal(
+                0.0, 5.0, name=constants.KNOT_VALUES
+            ),
+            roi_m=tfp.distributions.LogNormal(0.2, 0.8, name=constants.ROI_M),
+            roi_rf=tfp.distributions.LogNormal(0.2, 0.8, name=constants.ROI_RF),
+        )
+    )
+    cls.meridian_media_and_rf_kpi = model.Meridian(
+        input_data=cls.input_data_media_and_rf_kpi, model_spec=custom_model_spec
+    )
     cls.meridian_media_and_rf = model.Meridian(
         input_data=cls.input_data_media_and_rf, model_spec=model_spec
     )
-
+    cls.analyzer_media_and_rf_kpi = analyzer.Analyzer(
+        cls.meridian_media_and_rf_kpi
+    )
     cls.analyzer_media_and_rf = analyzer.Analyzer(cls.meridian_media_and_rf)
 
     cls.inference_data_media_and_rf = _build_inference_data(
         _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
         _TEST_SAMPLE_POSTERIOR_MEDIA_AND_RF_PATH,
     )
-
     model.Meridian.inference_data = mock.PropertyMock(
         return_value=cls.inference_data_media_and_rf
     )
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_media_summary_metrics(self):
+    media_summary = self.analyzer_media_and_rf_kpi.media_summary_metrics(
+        confidence_level=0.9,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self.assertLen(media_summary.data_vars, 8)
+    self.assertNotIn(constants.ROI, media_summary.data_vars)
+    self.assertNotIn(constants.MROI, media_summary.data_vars)
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_response_curves(self):
+    mock_incremental_impact = self.enter_context(
+        mock.patch.object(
+            self.analyzer_media_and_rf_kpi,
+            "incremental_impact",
+            return_value=tf.ones((
+                _N_CHAINS,
+                _N_DRAWS,
+                _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+            )),
+        )
+    )
+    self.analyzer_media_and_rf_kpi.response_curves()
+    _, mock_kwargs = mock_incremental_impact.call_args
+    self.assertEqual(mock_kwargs["use_kpi"], True)
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_vs_actual(self):
+    expected_vs_actual = self.analyzer_media_and_rf_kpi.expected_vs_actual_data(
+        confidence_level=0.9
+    )
+    self.assertAllClose(
+        list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
+        list(self.meridian_media_and_rf_kpi.kpi[:5]),
+        atol=1e-3,
+    )
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_impact(self):
+    impact_kpi = self.analyzer_media_and_rf.expected_impact(use_kpi=True)
+    impact_revenue = self.analyzer_media_and_rf.expected_impact(use_kpi=False)
+    self.assertNotAllClose(
+        list(impact_kpi[:5]),
+        list(impact_revenue[:5]),
+        atol=1e-3,
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`use_kpi` must be True when `revenue_per_kpi` is not defined.",
+    ):
+      self.analyzer_media_and_rf_kpi.expected_impact()
 
   def test_expected_impact_wrong_controls_raises_exception(self):
     with self.assertRaisesRegex(

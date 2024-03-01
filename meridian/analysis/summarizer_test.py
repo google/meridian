@@ -413,6 +413,20 @@ class SummarizerTest(parameterized.TestCase):
 
     self.assertEqual(set(expected_chart_tuples), set(charts))
 
+  def test_insights_missing_impact_contribution_card_no_revenue_per_kpi(self):
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        self.summarizer_kpi,
+    )
+    cards_node = test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.IMPACT_CONTRIB_CARD_ID},
+    )
+    insights_text = test_utils.get_child_element(
+        cards_node, 'card-insights/p', {'class': 'insights-text'}
+    ).text
+    self.assertEqual(insights_text, '\n  \n')
+
   def test_roi_section_missing_no_revenue_per_kpi(self):
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         summarizer_impact=self.summarizer_kpi,
@@ -740,7 +754,6 @@ class SummarizerTest(parameterized.TestCase):
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         self.summarizer_revenue,
     )
-
     card = test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
