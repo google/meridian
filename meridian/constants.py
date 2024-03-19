@@ -132,6 +132,8 @@ MEDIA_EFFECTS_DISTRIBUTIONS = frozenset(
 
 # Model spec variables.
 PRIOR = 'prior'
+DEFAULT_PRIOR = 'default_prior'
+CUSTOM_PRIOR = 'custom_prior'
 MEDIA_EFFECTS_DIST = 'media_effects_dist'
 HILL_BEFORE_ADSTOCK = 'hill_before_adstock'
 ADSTOCK_MEMORY_OPTIMIZED = 'adstock_memory_optimized'
