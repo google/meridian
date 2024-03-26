@@ -440,7 +440,7 @@ class DataFrameDataLoader(InputDataLoader):
 
   data_loader = DataFrameDataLoader(
       df=df,
-      coords_to_columns=coords_to_columns,
+      coord_to_columns=coord_to_columns,
       kpi_type='non-revenue',
       media_to_channel=media_to_channel,
       media_spend_to_channel=media_spend_to_channel,
