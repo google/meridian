@@ -292,6 +292,32 @@ class PriorDistributionTest(parameterized.TestCase):
     # Validate sigma.
     self.assertEqual(broadcast_distribution.sigma.batch_shape, (sigma_shape,))
 
+  def test_broadcast_custom_slope_m_raises_warning(self):
+    distribution = prior_distribution.PriorDistribution(
+        slope_m=tfp.distributions.LogNormal(0.7, 0.4, name=c.SLOPE_M)
+    )
+    with warnings.catch_warnings(record=True) as warns:
+      # Cause all warnings to always be triggered.
+      warnings.simplefilter('always')
+      distribution.broadcast(
+          n_geos=_N_GEOS_NATIONAL,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          sigma_shape=_N_GEOS_NATIONAL,
+          n_knots=_N_KNOTS,
+          is_national=False,
+      )
+      self.assertLen(warns, 1)
+      for w in warns:
+        self.assertTrue(issubclass(w.category, UserWarning))
+        self.assertIn(
+            'Changing the prior for `slope_m` may lead to convex Hill curves.'
+            ' This may lead to poor MCMC convergence and budget optimization'
+            ' may no longer produce a global optimum.',
+            str(w.message),
+        )
+
   @parameterized.named_parameters(
       dict(
           testcase_name='with_deteremenistic(0)',
@@ -359,7 +385,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_knots=_N_KNOTS,
           is_national=True,
       )
-      assert len(warns) == number_of_warnings
+      self.assertLen(warns, number_of_warnings)
       for w in warns:
         self.assertTrue(issubclass(w.category, UserWarning))
         self.assertIn(

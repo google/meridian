@@ -32,7 +32,7 @@ dependencies = [
   "joblib",
   "numpy",
   "pandas >= 1.5.3, < 2",
-  "scipy == 1.11.1",
+  "scipy == 1.9.3",
   "tensorflow >= 2.15, < 2.16",
   "tensorflow-probability >= 0.23, < 0.24",
   "xarray",

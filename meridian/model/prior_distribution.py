@@ -237,17 +237,10 @@ class PriorDistribution:
       ),
   )
 
-  def has_deterministic_param(
-      self, param: tfp.distributions.Distribution
-  ) -> bool:
-    return hasattr(self, param) and isinstance(
-        getattr(self, param).distribution, tfp.distributions.Deterministic
-    )
-
   def __setstate__(self, state):
     # Override to support pickling.
     def _unpack_distribution_params(
-        params: MutableMapping[str, Any]
+        params: MutableMapping[str, Any],
     ) -> tfp.distributions.Distribution:
       if constants.DISTRIBUTION in params:
         params[constants.DISTRIBUTION] = _unpack_distribution_params(
@@ -281,6 +274,13 @@ class PriorDistribution:
       state[attribute] = _pack_distribution_params(value)
 
     return state
+
+  def has_deterministic_param(
+      self, param: tfp.distributions.Distribution
+  ) -> bool:
+    return hasattr(self, param) and isinstance(
+        getattr(self, param).distribution, tfp.distributions.Deterministic
+    )
 
   def broadcast(
       self,
@@ -364,6 +364,15 @@ class PriorDistribution:
     ec_rf = tfp.distributions.BatchBroadcast(
         self.ec_rf, n_rf_channels, name=constants.EC_RF
     )
+    if (
+        not isinstance(self.slope_m, tfp.distributions.Deterministic)
+        or self.slope_m.loc != 1.0
+    ):
+      warnings.warn(
+          'Changing the prior for `slope_m` may lead to convex Hill curves.'
+          ' This may lead to poor MCMC convergence and budget optimization'
+          ' may no longer produce a global optimum.'
+      )
     slope_m = tfp.distributions.BatchBroadcast(
         self.slope_m, n_media_channels, name=constants.SLOPE_M
     )
