@@ -469,17 +469,18 @@ class Analyzer:
     """Filters and/or aggregates geo and time dimensions of a tensor.
 
     Args:
-      tensor: Tensor with dimensions `[..., n_geos, n_times]` or `[..., n_geos,
-        n_times, n_channels]`.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included. The selected geos should match those in
-        `InputData.geo`.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included. The selected times should match
-        those in `InputData.time`.
-      aggregate_geos: Boolean. If `True`, the tensor is summed over all geos.
-      aggregate_times: Boolean. If `True`, the tensor is summed over all time
-        periods.
+      <code>tensor</code>: Tensor with dimensions <code>[..., n_geos, n_times]
+      </code> or <code>[..., n_geos, n_times, n_channels]</code>.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included. The selected geos should
+        match those in <code>InputData.geo</code>.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included. The selected times
+        should match those in <code>InputData.time</code>.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, the tensor is
+        summed over all geos.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, the tensor is
+        summed over all time periods.
 
     Returns:
       A tensor with filtered and/or aggregated geo and time dimensions.
@@ -565,50 +566,57 @@ class Analyzer:
     allowed with this method because of the additional complexites this
     introduces:
 
-    1.  Corresponding price (revenue per kpi) data would also be needed.
+    1.  Corresponding price (revenue per KPI) data would also be needed.
     2.  If the model contains weekly effect parameters, then some method is
         needed to estimate or predict these effects for time periods outside of
         the training data window.
 
     Args:
-      use_posterior: Boolean. If `True`, then the expected impact posterior
-        distribution is calculated. Otherwise, the prior distribution is
-        calculated.
-      new_media: Optional tensor with dimensions matching media.
-      new_reach: Optional tensor with dimensions matching reach.
-      new_frequency: Optional tensor with dimensions matching frequency.
-      new_controls: Optional tensor with dimensions matching controls.
-      selected_geos: Optional list of containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list of containing a subset of dates to include.
-        By default, all time periods are included.
-      aggregate_geos: Boolean. If `True`, the expected impact is summed over all
-        regions.
-      aggregate_times: Boolean. If `True`, the expected impact is summed over
-        all time periods.
-      inverse_transform_impact: Boolean. If `True`, returns the expected impact
-        in the original KPI or revenue (depending on what is passed to
-        `use_kpi`), as it was passed to `InputData`. If False, returns the
-        impact after transformation by `KpiTransformer`, reflecting how its
+      <code>use_posterior</code>: Boolean. If <code>True</code>, then the
+        expected impact posterior distribution is calculated. Otherwise, the
+        prior distribution is calculated.
+      <code>new_media</code>: Optional tensor with dimensions matching media.
+      <code>new_reach</code>: Optional tensor with dimensions matching reach.
+      <code>new_frequency</code>: Optional tensor with dimensions matching
+        frequency.
+      <code>new_controls</code>: Optional tensor with dimensions matching
+        controls.
+      <code>selected_geos</code>: Optional list of containing a subset of geos
+        to include. By default, all geos are included.
+      <code>selected_times</code>: Optional list of containing a subset of dates
+        to include. By default, all time periods are included.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, the expected
+        impact is summed over all regions.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, the expected
+        impact is summed over all time periods.
+      <code>inverse_transform_impact</code>: Boolean. If <code>True</code>,
+        returns the expected impact in the original KPI or revenue (depending on
+        what is passed to <code>use_kpi</code>), as it was passed to
+      <code>InputData</code>. If <code>False</code>, returns the impact after
+        transformation by <code>KpiTransformer</code>, reflecting how it is
         represented within the model.
-      use_kpi: Boolean. If `True`, the expected KPI is calculated. If `False`,
-        the expected revenue `(kpi * revenue_per_kpi)` is calculated. Only used
-        if `inverse_transform_impact=True`. `use_kpi` must be `True` when
-        `revenue_per_kpi` is not defined.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>use_kpi</code>: Boolean. If <code>True</code>, the expected KPI is
+        calculated. If <code>False</code>, the expected revenue
+        <code>(kpi * revenue_per_kpi)</code> is calculated. Only used if
+        <code>inverse_transform_impact=True</code>. <code>use_kpi</code> must be
+        <code>True</code> when <code>revenue_per_kpi</code> is not defined.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
       Tensor of expected impact (either KPI or revenue, depending on the
-      `use_kpi` argument) with dimensions `(n_chains, n_draws, n_geos,
-      n_times)`. The `n_geos` and `n_times` dimensions is dropped if
-      `aggregate_geos=True` or `aggregate_time=True`, respectively.
+      <code>use_kpi</code> argument, with dimensions <code>(n_chains, n_draws,
+      n_geos, n_times)</code>. The <code>n_geos</code> and <code>n_times</code>
+      dimensions are dropped if <code>aggregate_geos=True</code> or
+      <code>aggregate_time=True</code>, respectively.
     Raises:
-      NotFittedModelError: if `sample_posterior()` (for `use_posterior=True`)
-        or `sample_prior()` (for `use_posterior=False`) has not been called
-        prior to calling this method.
+      <code>NotFittedModelError</code>: If <code>sample_posterior()</code>
+        (for <code>use_posterior=True</code>) or <code>sample_prior()</code>
+        (for <code>use_posterior=False</code>) has not been called prior to
+        calling this method.
     """
     self._check_revenue_data_exists(use_kpi)
     if self._meridian.is_national:
@@ -904,8 +912,8 @@ class Analyzer:
     current Meridian implementation, that could potentially be dropped in the
     future:
 
-    1.  additivity of media effects (no interactions).
-    2.  additive changes on the model KPI scale correspond to additive
+    1.  Additivity of media effects (no interactions).
+    2.  Additive changes on the model KPI scale correspond to additive
         changes on the original KPI scale. In other words, the intercept and
         control effects do not influence the media effects. This assumption
         currently holds because the impact transformation only involves
@@ -913,55 +921,62 @@ class Analyzer:
 
     In principle, the incremental impact can be calculated
     with other time dimensions (such as future predictions), but this is not
-    allowed with this method because of the additional complexites
+    allowed with this method because of the additional complexities
     this introduces:
 
-    1.  corresponding price (revenue per KPI) data is also needed
-    2.  if the model contains weekly effect parameters, then some method is
+    1.  Corresponding price (revenue per KPI) data is also needed
+    2.  If the model contains weekly effect parameters, then some method is
         needed to estimate or predict these effects for time periods outside of
         the training data window.
 
     Args:
-      use_posterior: Boolean. If `True`, then the incremental impact posterior
-        distribution is calculated. Otherwise, the prior distribution is
-        calculated.
-      new_media: Optional tensor with dimensions matching media.
-      new_reach: Optional tensor with dimensions matching reach.
-      new_frequency: Optional tensor with dimensions matching frequency.
-      selected_geos: Optional list of containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list of containing a subset of dates to include.
-        By default, all time periods are included.
-      aggregate_geos: Boolean. If `True`, then incremental impact is summed over
-        all regions.
-      aggregate_times: Boolean. If `True`, then incremental impact is summed
-        over all time periods.
-      inverse_transform_impact: Boolean. If `True`, returns the expected impact
-        in the original KPI or revenue (depending on what is passed to
-        `use_kpi`), as it was passed to `InputData`. If False, returns the
-        impact after transformation by `KpiTransformer`, reflecting how its
+      <code>use_posterior</code>: Boolean. If <code>True</code>, then the
+        incremental impact posterior distribution is calculated. Otherwise, the
+        prior distribution is calculated.
+      <code>new_media</code>: Optional tensor with dimensions matching media.
+      <code>new_reach</code>: Optional tensor with dimensions matching reach.
+      <code>new_frequency</code>: Optional tensor with dimensions matching
+        frequency.
+      <code>selected_geos</code>: Optional list of containing a subset of geos
+        to include. By default, all geos are included.
+      <code>selected_times</code>: Optional list of containing a subset of dates
+        to include. By default, all time periods are included.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, then
+        incremental impact is summed over all regions.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, then
+        incremental impact is summed over all time periods.
+      <code>inverse_transform_impact</code>: Boolean. If <code>True</code>,
+        returns the expected impact in the original KPI or revenue (depending on
+        what is passed to <code>use_kpi</code>), as it was passed to
+        <code>InputData</code>. If <code>False</code>, returns the impact after
+        transformation by <code>KpiTransformer</code>, reflecting how it's
         represented within the model.
-      use_kpi: Boolean. If `True`, the incremental KPI is calculated. If
-        `False`, incremental revenue (`KPI * revenue_per_kpi`) is calculated.
-        Only used if `inverse_transform_impact=True`. `use_kpi` must be `True`
-        when `revenue_per_kpi` is not defined.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>use_kpi</code>: Boolean. If <code>True</code>, the incremental KPI
+        is calculated. If <code>False</code>, incremental revenue (<code>KPI *
+        revenue_per_kpi<code>) is calculated. Only used if
+        <code>inverse_transform_impact=True</code>. <code>use_kpi</code> must be
+        <code>True</code> when <code>revenue_per_kpi</code> is not defined.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
       Tensor of incremental impact (either KPI or revenue, depending on
-      `use_kpi` argument) with dimensions `(n_chains, n_draws, n_geos,
-      n_times, n_channels)` where `n_channels` is the total number of media and
-      RF channels. The `n_geos` and `n_times` dimensions are dropped if
-      `aggregate_geos=True` or `aggregate_times=True`, respectively.
+      <code>use_kpi</code> argument) with dimensions <code>(n_chains, n_draws,
+      n_geos, n_times, n_channels)</code> where <code>n_channels</code> is the
+      total number of media and RF channels. The <code>n_geos</code> and
+      <code>n_times</code> dimensions are dropped if
+      <code>aggregate_geos=True</code> or <code>aggregate_times=True</code>,
+      respectively.
     Raises:
-      NotFittedModelError: If `sample_posterior()` (for `use_posterior=True`)
-        or `sample_prior()` (for `use_posterior=False`) has not been called
-        prior to calling this method.
-      ValueError: If `new_media` arguments does not have the same tensor shape
-        as media.
+      <code>NotFittedModelError</code>: If <code>sample_posterior()</code> (for
+        <code>use_posterior=True</code>) or <code>sample_prior()</code> (for
+        <code>use_posterior=False</code>) has not been called prior to calling
+        this method.
+      <code>ValueError</code>: If <code>new_media</code> arguments does not have
+        the same tensor shape as media.
     """
     self._check_revenue_data_exists(use_kpi)
     if self._meridian.is_national:
@@ -1203,48 +1218,56 @@ class Analyzer:
     channel's total spend.
 
     Args:
-      incremental_increase: Small fraction by which each channel's spend is
-        increased when calculating its mROI numerator. The mROI denominator is
-        this fraction of the channel's total spend. Only used if marginal is
-        `True`.
-      use_posterior: If `True` then the posterior distribution is calculated.
-        Otherwise, the prior distribution is calculated.
-      new_media: Optional. Media data with the same shape as
-        `meridian.input_data.media`. Used to compute ROI for alternative media
-        data. Default uses `meridian.input_data.media`.
-      new_media_spend: Optional. Media spend data with the same shape as
-        `meridian.input_data.spend`. Used to compute ROI for alternative
-        `media_spend` data. Default uses `meridian.input_data.media_spend`.
-      new_reach: Optional. Reach data with the same shape as
-        `meridian.input_data.reach`. Used to compute ROI for alternative reach
-        data. Default uses `meridian.input_data.reach`.
-      new_frequency: Optional. Frequency data with the same shape as
-        `meridian.input_data.frequency`. Used to compute ROI for alternative
-        frequency data. Default uses `meridian.input_data.frequency`.
-      new_rf_spend: Optional. RF Spend data with the same shape as
-        `meridian.input_data.rf_spend`. Used to compute ROI for alternative
-        `rf_spend` data. Default uses `meridian.input_data.rf_spend`.
-      selected_geos: Optional. Contains a subset of geos to include. By default,
-        all geos are included.
-      selected_times: Optional. Contains a subset of times to include. By
-        default, all time periods are included.
-      aggregate_geos: If `True`, the expected revenue is summed over all of the
-        regions.
-      aggregate_times: If `True`, the expected revenue is summed over all of
-        time periods.
-      by_reach: Used for a channel with reach and frequency. If `True`, returns
-        the mROI by reach for a given fixed frequency. If `False`, returns the
-        mROI by frequency for a given fixed reach.
-      batch_size: Maximum draws per chain in each batch. The calculation is run
-        in batches to avoid memory exhaustion. If a memory error occurs, try
-        reducing `batch_size`. The calculation will generally be faster with
-        larger `batch_size` values.
+      <code>incremental_increase</code>: Small fraction by which each channel's
+        spend is increased when calculating its mROI numerator. The mROI
+        denominator is this fraction of the channel's total spend. Only used if
+        marginal is <code>True</code>.
+      <code>use_posterior</code>: If <code>True</code> then the posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      <code>new_media</code>: Optional. Media data with the same shape as
+        <code>meridian.input_data.media</code>. Used to compute ROI for
+        alternative media data. Default uses <code>meridian.input_data.media
+        </code>.
+      <code>new_media_spend</code>: Optional. Media spend data with the same
+        shape as <code>meridian.input_data.spend</code>. Used to compute ROI for
+        alternative <code>media_spend</code> data. Default uses
+        <code>meridian.input_data.media_spend</code>.
+      <code>new_reach</code>: Optional. Reach data with the same shape as
+        <code>meridian.input_data.reach</code>. Used to compute ROI for
+        alternative reach data. Default uses <code>meridian.input_data.reach
+        </code>.
+      <code>new_frequency</code>: Optional. Frequency data with the same shape
+        as <code>meridian.input_data.frequency</code>. Used to compute ROI for
+        alternative frequency data. Default uses <code>meridian.input_data.
+        frequency</code>.
+      <code>new_rf_spend</code>: Optional. RF Spend data with the same shape as
+        <code>meridian.input_data.rf_spend</code>. Used to compute ROI for
+        alternative <code>rf_spend</code> data. Default uses <code>meridian.
+        input_data.rf_spend</code>.
+      <code>selected_geos</code>: Optional. Contains a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional. Contains a subset of times to
+        include. By default, all time periods are included.
+      <code>aggregate_geos</code>: If <code>True</code>, the expected revenue is
+        summed over all of the regions.
+      <code>aggregate_times</code>: If <code>True</code>, the expected revenue
+        is summed over all of time periods.
+      <code>by_reach</code>: Used for a channel with reach and frequency. If
+        <code>True</code>, returns the mROI by reach for a given fixed
+        frequency. If <code>False</code>, returns the mROI by frequency for a
+        given fixed reach.
+      <code>batch_size</code>: Maximum draws per chain in each batch. The
+        calculation is run in batches to avoid memory exhaustion. If a memory
+        error occurs, try reducing <code>batch_size</code>. The calculation will
+        generally be faster with larger <code>batch_size</code> values.
 
     Returns:
-      Tensor of mROI values with dimensions `(n_chains, n_draws, n_geos,
-      n_times, (n_media_channels + n_rf_channels))`. The `n_geos` and `n_times`
-      dimensions are dropped if `aggregate_geos=True` or
-      `aggregate_times=True`, respectively.
+      Tensor of mROI values with dimensions <code>(n_chains, n_draws, n_geos,
+      n_times, (n_media_channels + n_rf_channels))</code>. The
+      <code>n_geos</code> and <code>n_times</code> dimensions are dropped if
+      <code>aggregate_geos=True</code> or <code>aggregate_times=True</code>,
+      respectively.
     """
     self._validate_roi_functionality()
     dim_kwargs = {
@@ -1317,32 +1340,37 @@ class Analyzer:
     channel.
 
     Args:
-      use_posterior: Boolean. If `True` then the posterior distribution is
-        calculated. Otherwise, the prior distribution is calculated.
-      new_media: Optional tensor with media. Used to compute ROI.
-      new_media_spend: Optional tensor with `media_spend` to be used to compute
-        ROI.
-      new_reach: Optional tensor with reach. Used to compute ROI.
-      new_frequency: Optional tensor with frequency. Used to compute ROI.
-      new_rf_spend: Optional tensor with rf_spend to be used to compute ROI.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
-      aggregate_geos: Boolean. If `True`, the expected revenue is summed over
-        all of the regions.
-      aggregate_times: Boolean. If `True`, the expected revenue is summed over
-        all of the time periods.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>use_posterior</code>: Boolean. If <code>True</code> then the
+        posterior distribution is calculated. Otherwise, the prior distribution
+        is calculated.
+      <code>new_media</code>: Optional tensor with media. Used to compute ROI.
+      new_media_spend: Optional tensor with <code>media_spend</code> to be used
+        to compute ROI.
+      <code>new_reach</code>: Optional tensor with reach. Used to compute ROI.
+      <code>new_frequency</code>: Optional tensor with frequency. Used to
+        compute ROI.
+      <code>new_rf_spend</code>: Optional tensor with <code>rf_spend</code> to
+        be used to compute ROI.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, the expected
+        revenue is summed over all of the regions.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, the expected
+        revenue is summed over all of the time periods.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
-      Tensor of ROI values with dimensions `(n_chains, n_draws, n_geos, n_times,
-      n_media_channels, n_rf_channels)`. The `n_geos` and `n_times`
-      dimensions are dropped if `aggregate_geos=True` or
-      `aggregate_times=True`, respectively.
+      Tensor of ROI values with dimensions <code>(n_chains, n_draws, n_geos,
+      n_times, n_media_channels, n_rf_channels)</code>. The <code>n_geos</code>
+      and <code>n_times</code> dimensions are dropped if
+      <code>aggregate_geos=True</code> or <code>aggregate_times=True</code>,
+      respectively.
     """
     self._validate_roi_functionality()
     dim_kwargs = {
@@ -1403,32 +1431,37 @@ class Analyzer:
     leaving all other channels' spend unchanged.
 
     Args:
-      use_posterior: Boolean. If `True` then the posterior distribution is
-        calculated. Otherwise, the prior distribution is calculated.
-      new_media: Optional tensor with media. Used to compute CPIK.
-      new_media_spend: Optional tensor with `media_spend` to be used to compute
-        CPIK.
-      new_reach: Optional tensor with reach. Used to compute CPIK.
-      new_frequency: Optional tensor with frequency. Used to compute CPIK.
-      new_rf_spend: Optional tensor with rf_spend to be used to compute CPIK.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
-      aggregate_geos: Boolean. If `True`, the expected KPI is summed over all of
-        the regions.
-      aggregate_times: Boolean. If `True`, the expected KPI is summed over all
-        of the time periods.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>use_posterior</code>: Boolean. If <code>True</code> then the
+        posterior distribution is calculated. Otherwise, the prior distribution
+        is calculated.
+      <code>new_media</code>: Optional tensor with media. Used to compute CPIK.
+      <code>new_media_spend</code>: Optional tensor with <code>media_spend
+        </code> to be used to compute CPIK.
+      <code>new_reach</code>: Optional tensor with reach. Used to compute CPIK.
+      <code>new_frequency</code>: Optional tensor with frequency. Used to
+        compute CPIK.
+      <code>new_rf_spend</code>: Optional tensor with <code>rf_spend</code> to
+        be used to compute CPIK.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, the expected
+        KPI is summed over all of the regions.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, the expected
+        KPI is summed over all of the time periods.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+      <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
-      Tensor of CPIK values with dimensions `(n_chains, n_draws, n_geos,
-      n_times, n_media_channels, n_rf_channels)`. The `n_geos` and `n_times`
-      dimensions are dropped if `aggregate_geos=True` or
-      `aggregate_times=True`, respectively.
+      Tensor of CPIK values with dimensions <code>(n_chains, n_draws, n_geos,
+      n_times, n_media_channels, n_rf_channels)</code>. The <code>n_geos</code>
+      and <code>n_times</code> dimensions are dropped if
+      <code<aggregate_geos=True</code> or <code>aggregate_times=True</code>,
+      respectively.
     """
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -1473,8 +1506,9 @@ class Analyzer:
     """Calculates the data for the expected versus actual impact over time.
 
     Args:
-      confidence_level: Confidence level for expected impact credible intervals,
-        represented as a value between zero and one. Default: `0.9`.
+      <code>confidence_level</code>: Confidence level for expected impact
+        credible intervals, represented as a value between zero and one.
+        Default: <code>0.9</code>.
 
     Returns:
       A dataset with the expected, baseline, and actual impact metrics.
@@ -1591,35 +1625,40 @@ class Analyzer:
     """Returns media summary metrics.
 
     Args:
-      confidence_level: Confidence level for media summary metrics credible
-        intervals, represented as a value between zero and one.
-      marginal_roi_by_reach: Boolean. Marginal ROI (mROI) is defined as the
-        return on the next dollar spent. If this argument is `True`, the
-        assumption is that the next dollar spent only impacts reach, holding
-        frequency constant. If this argument is `False`, the assumption is that
-        the next dollar spent only impacts frequency, holding reach constant.
-      marginal_roi_incremental_increase: Small fraction by which each channel's
-        spend is increased when calculating its mROI numerator. The mROI
-        denominator is this fraction of the channel's total spend.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
-      aggregate_geos: Boolean. If `True`, the expected impact is summed over all
-        of the regions.
-      aggregate_times: Boolean. If `True`, the expected impact is summed over
-        all of the time periods.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>confidence_level</code>: Confidence level for media summary metrics
+        credible intervals, represented as a value between zero and one.
+      <code>marginal_roi_by_reach</code>: Boolean. Marginal ROI (mROI) is
+        defined as the return on the next dollar spent. If this argument is
+        <code>True</code>, the assumption is that the next dollar spent only
+        impacts reach, holding frequency constant. If this argument is
+        <code>False</code>, the assumption is that the next dollar spent only
+        impacts frequency, holding reach constant.
+      <code>marginal_roi_incremental_increase</code>: Small fraction by which
+        each channel's spend is increased when calculating its mROI numerator.
+        The mROI denominator is this fraction of the channel's total spend.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
+      <code>aggregate_geos</code>: Boolean. If <code>True</code>, the expected
+        impact is summed over all of the regions.
+      <code>aggregate_times</code>: Boolean. If <code>True</code>, the expected
+        impact is summed over all of the time periods.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
-      An `xr.Dataset` with coordinates: `channel`, `metric` (`mean`, `ci_high`,
-      `ci_low`), `distribution` (prior, posterior) and contains the following
-      data variables: `impressions`, `pct_of_impressions`, `spend`,
-      `pct_of_spend`, `CPM`, `incremental_impact`, `pct_of_contribution`, `roi`,
-      `effectiveness`, `mroi`.
+      An `xr.Dataset` with coordinates: <code>channel</code>,
+      <code>metric</code> (<code>mean</code>, <code>ci_high</code>,
+      <code>ci_low</code>), <code>distribution</code> (prior, posterior) and
+      contains the following data variables: <code>impressions</code>,
+      <code>pct_of_impressions</code>, <code>spend</code>,
+      <code>pct_of_spend</code>, <code>CPM</code>,
+      <code>incremental_impact</code>, <code>pct_of_contribution</code>,
+      <code>roi</code>, <code>effectiveness</code>, <code>mroi</code>.
     """
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
@@ -1827,41 +1866,45 @@ class Analyzer:
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI/CPIK.
 
-    In the case that `revenue_per_kpi` is not known and ROI is not available,
+    When `revenue_per_kpi` is not known and ROI is not available,
     the optimal frequency is calculated using cost per incremental KPI instead.
 
     For this optimization, frequency is restricted to be constant across all
     geographic regions and time periods. Reach is calculated for each
     geographic area and time period such that the number of impressions
-    remains unchanged as frequency varies. Merdian solves for the frequency at
+    remains unchanged as frequency varies. Meridian solves for the frequency at
     which posterior mean ROI or CPIK is maximized.
 
     Args:
-      freq_grid: List of frequency values. The ROI/CPIK of each channel is
-        calculated for each frequency value in the list. By default, the list
-        includes numbers from `1.0` to the maximum frequency in increments of
-        `0.1`.
-      confidence_level: Confidence level for prior and posterior credible
-        intervals, represented as a value between zero and one.
-      use_posterior: Boolean. If `True`, posterior optimal frequencies are
-        generated. If `False`, prior optimal frequencies are generated.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
+      <code>freq_grid</code>: List of frequency values. The ROI/CPIK of each
+        channel is calculated for each frequency value in the list. By default,
+        the list includes numbers from <code>1.0</code> to the maximum frequency
+        in increments of <code>0.1</code>.
+      <code>confidence_level</code>: Confidence level for prior and posterior
+        credible intervals, represented as a value between zero and one.
+      <code>use_posterior</code>: Boolean. If <code>True</code>, posterior
+        optimal frequencies are generated. If <code>False</code>, prior optimal
+        frequencies are generated.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
 
     Returns:
-      An xarray Dataset containing two variables: `optimal_frequency` and
-        `roi_by_frequency` or `cpik_by_frequency`. `optimal_frequency` is the
-        frequency that optimizes the posterior mean of ROI or CPIK.
-        `roi_by_frequency` is the ROI for each frequency value while
-        `cpik_by_frequency` is the CPIK fro each frequency value.
+      An xarray Dataset containing two variables: <code>optimal_frequency</code>
+        and <code>roi_by_frequency</code> or <code>cpik_by_frequency</code>.
+        <code>optimal_frequency</code> is the frequency that optimizes the
+        posterior mean of ROI or CPIK. <code>roi_by_frequency</code> is the ROI
+        for each frequency value while <code>cpik_by_frequency</code> is the
+        CPIK fro each frequency value.
 
     Raises:
-      NotFittedModelError: If `sample_posterior()` (for `use_posterior=True`)
-        or `sample_prior()` (for `use_posterior=False`) has not been called
-        prior to calling this method.
-      ValueError: If there are no channels with reach and frequency data.
+      <code>NotFittedModelError</code>: If <code>sample_posterior()</code> (for
+        <code>use_posterior=True</code>) or <code>sample_prior()</code> (for
+        <code>use_posterior=False</code>) has not been called prior to calling
+        this method.
+      <code>ValueError</code>: If there are no channels with reach and frequency
+        data.
     """
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
     if self._meridian.n_rf_channels == 0:
@@ -1973,22 +2016,26 @@ class Analyzer:
     `wMAPE` are also calculated for the `Train` and `Test` subsets.
 
     Args:
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list containing a subset of dates to include. By
-        default, all time periods are included.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. By default, `batch_size` is `100`. The calculation is run in
-        batches to avoid memory exhaustion. If a memory error occurs, try
-        reducing `batch_size`. The calculation will generally be faster with
-        larger `batch_size` values.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list containing a subset of dates to
+        include. By default, all time periods are included.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. By default, <code>batch_size</code> is <code>100</code>.
+        The calculation is run in batches to avoid memory exhaustion. If a
+        memory error occurs, try reducing <code>batch_size</code>. The
+        calculation will generally be faster with larger <code>batch_size</code>
+        values.
 
     Returns:
-      An xarray Dataset containing the computed `R_Squared`, `MAPE`, and `wMAPE`
-      values, with coordinates `metric`, `geo_granularity`, `evaluation_set`,
-      and accompanying data variable `value`. If `holdout_id` exists, the data
-      is split into `'Train'`, `'Test'`, and `'All Data'` subsections, and the
-      three metrics are computed for each.
+      An xarray Dataset containing the computed <code>R_Squared</code>,
+      <code>MAPE</code>, and <code>wMAPE</code> values, with coordinates
+      <code>metric</code>, <code>geo_granularity</code>,
+      <code>evaluation_set</code>, and accompanying data variable
+      <code>value</code>. If <code>holdout_id</code> exists, the data is split
+      into <code>'Train'</code>, <code>'Test'</code>, and
+      <code>'All Data'</code> subsections, and the three metrics are computed
+      for each.
     """
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
     if self._meridian.is_national:
@@ -2141,45 +2188,46 @@ class Analyzer:
   def r_hat_summary(self, bad_r_hat_threshold: float = 1.2) -> pd.DataFrame:
     """Computes a summary of the R-hat values for each parameter in the model.
 
-    Calculates the Gelman & Rubin (1992) potential scale reduction for chain
-    convergence, commonly referred to as R-hat. It is a convergence diagnostic
-    measure that measures the degree to which variance (of the means) between
-    chains exceeds what you would expect if the chains were identically
-    distributed. Values close to 1.0 indicate convergence. R-hat < 1.2 indicates
-    approximate convergence and is a reasonable threshold for many problems
-    (Brooks & Gelman, 1998).
-
-    References:
-      Andrew Gelman and Donald B. Rubin. Inference from Iterative Simulation
-        Using Multiple Sequences. Statistical Science, 7(4):457-472, 1992.
-      Stephen P. Brooks and Andrew Gelman. General Methods for Monitoring
-        Convergence of Iterative Simulations. Journal of Computational and
-        Graphical Statistics, 7(4), 1998.
+    Calculates the [Gelman & Rubin (1992)]
+    (http://www.stat.columbia.edu/%7Egelman/research/published/itsim.pdf)
+    potential scale reduction for chain convergence, commonly referred to as
+    R-hat. It is a convergence diagnostic measure that measures the degree to
+    which variance (of the means) between chains exceeds what you would expect
+    if the chains were identically distributed. Values close to 1.0 indicate
+    convergence. R-hat < 1.2 indicates approximate convergence and is a
+    reasonable threshold for many problems ([Brooks & Gelman, 1998]
+    (https://www2.stat.duke.edu/%7Escs/Courses/Stat376/Papers/ConvergeDiagnostics/BrooksGelman.pdf)).
 
     Args:
-      bad_r_hat_threshold: The threshold for determining which R-hat values are
-        considered bad.
+      <code>bad_r_hat_threshold</code>: The threshold for determining which
+        R-hat values are considered bad.
 
     Returns:
       A DataFrame with the following columns:
 
-      *   `n_params`: The number of respective parameters in the model.
-      *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `n_params`: The number of respective parameters in the model.
-      *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `max_rhat`: The maximum R-hat value for the respective parameter.
-      *   `percent_bad_rhat`: The percentage of R-hat values for the respective
-          parameter that are greater than `bad_r_hat_threshold`.
-      *   `row_idx_bad_rhat`: The row indices of the R-hat values that are
-          greater than `bad_r_hat_threshold`.
-      *   `col_idx_bad_rhat`: The column indices of the R-hat values that are
-          greater than `bad_r_hat_threshold`.
+      *   <code>n_params</code>: The number of respective parameters in the
+            model.
+      *   <code>avg_rhat</code>: The average R-hat value for the respective
+            parameter.
+      *   <code>n_params</code>: The number of respective parameters in the
+            model.
+      *   <code>avg_rhat</code>: The average R-hat value for the respective
+            parameter.
+      *   <code>max_rhat</code>: The maximum R-hat value for the respective
+            parameter.
+      *   <code>percent_bad_rhat</code>: The percentage of R-hat values for the
+            respective
+          parameter that are greater than <code>bad_r_hat_threshold</code>.
+      *   <code>row_idx_bad_rhat</code>: The row indices of the R-hat values
+            that are greater than <code>bad_r_hat_threshold</code>.
+      *   <code>col_idx_bad_rhat</code>: The column indices of the R-hat values
+            that are greater than <code>bad_r_hat_threshold</code>.
 
     Raises:
-      NotFittedModelError: If `self.sample_posterior()` is not called before
-        calling this method.
-      ValueError: If the number of dimensions of the R-hat array for a parameter
-        is not `1` or `2`.
+      <code>NotFittedModelError</code>: If <code>self.sample_posterior()</code>
+        is not called before calling this method.
+      <code>ValueError</code>: If the number of dimensions of the R-hat array
+        for a parameter is not <code>1</code> or <code>2</code>.
     """
     r_hat = self._get_r_hat()
 
@@ -2233,27 +2281,30 @@ class Analyzer:
     curve is calculated.
 
     Args:
-      spend_multipliers: List of multipliers. Each channel's total spend is
-        multiplied by these factors to obtain the values at which the curve is
-        calculated for that channel.
-      confidence_level: Confidence level for prior and posterior credible
-        intervals, represented as a value between zero and one.
-      use_posterior: Boolean. If `True`, posterior response curves are
-        generated. If `False`, prior response curves are generated.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included.
-      selected_times: Optional list of containing a subset of time dimensions to
-        include. By default, all time periods are included. Time dimension
-        strings and integers must align with the `Meridian.n_times`.
-      by_reach: Boolean. For channels with reach and frequency. If `True`, plots
-        the response curve by reach. If `False`, plots the response curve by
-        frequency.
-      use_optimal_frequency: If `True`, uses the optimal frequency to plot the
-        response curves. Defaults to `False`.
-      batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion. If
-        a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+      <code>spend_multipliers</code>: List of multipliers. Each channel's total
+        spend is multiplied by these factors to obtain the values at which the
+        curve is calculated for that channel.
+      <code>confidence_level</code>: Confidence level for prior and posterior
+        credible intervals, represented as a value between zero and one.
+      <code>use_posterior</code>: Boolean. If <code>True</code>, posterior
+        response curves are generated. If <code>False</code>, prior response
+        curves are generated.
+      <code>selected_geos</code>: Optional list containing a subset of geos to
+        include. By default, all geos are included.
+      <code>selected_times</code>: Optional list of containing a subset of time
+        dimensions to include. By default, all time periods are included. Time
+        dimension strings and integers must align with the
+        <code>Meridian.n_times</code>.
+      <code>by_reach</code>: Boolean. For channels with reach and frequency. If
+        <code>True</code>, plots the response curve by reach. If
+        <code>False</code>, plots the response curve by frequency.
+      <code>use_optimal_frequency</code>: If <code>True</code>, uses the optimal
+        frequency to plot the response curves. Defaults to <code>False</code>.
+      <code>batch_size</code>: Integer representing the maximum draws per chain
+        in each batch. The calculation is run in batches to avoid memory
+        exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
         An xarray Dataset containing the data needed to visualize response
@@ -2364,12 +2415,13 @@ class Analyzer:
     """Calculates adstock decay for media and reach and frequency channels.
 
     Args:
-      confidence_level: Confidence level for prior and posterior credible
-        intervals, represented as a value between zero and one.
+      <code>confidence_level</code>: Confidence level for prior and posterior
+      credible intervals, represented as a value between zero and one.
 
     Returns:
-      Pandas DataFrame containing the channel, `time_units`, distribution,
-      `ci_hi`, `ci_lo`, and `mean` for the Adstock function.
+      Pandas DataFrame containing the channel, <code>time_units</code>,
+      distribution, <code>ci_hi</code>, <code>ci_lo</code>, and
+      <code>mean</code> for the Adstock function.
     """
     if (
         constants.PRIOR not in self._meridian.inference_data.groups()
@@ -2699,33 +2751,38 @@ class Analyzer:
     """Estimates Hill curve tables used for plotting each channel's curves.
 
     Args:
-      confidence_level: Confidence level for prior and posterior credible
-        intervals, represented as a value between zero and one. Default is
-        `0.9`.
-      n_bins: Number of equal-width bins to include in the histogram for the
-        plotting. Default is `25`.
+      <code>confidence_level</code>: Confidence level for prior and posterior
+        credible intervals, represented as a value between zero and one. Default
+        is <code>0.9</code>.
+      <code>n_bins</code>: Number of equal width bins to include in the
+        histogram for the plotting. Default is <code>25</code>.
 
     Returns:
-      Hill Curves pd.DataFrame with columns:
+      Hill curves pd.DataFrame with columns:
 
-      *   `channel`: `media` or `rf` channel name.
-      *   `media_units`: Media (for `media` channels) or average frequency (for
-          `rf` channels) units.
-      *   `distribution`: Indication of `posterior` or `prior` draw.
-      *   `ci_hi`: Upper bound of the credible interval of the value of the Hill
-          function.
-      *   `ci_lo`: Lower bound of the credible interval of the value of the Hill
-          function.
-      *   `mean`: Point-wise mean of the value of the Hill function per draw.
-      *   `channel_type`: Indication of a `media` or `rf` channel.
-      *   `scaled_count_histogram`: Scaled count of media units or average
-          frequencies within the bin.
-      *   `count_histogram`: True count value of media units or average
-          frequencies within the bin.
-      *   `start_interval_histogram`: Media unit or average frequency starting
-          point for a histogram bin.
-      *   `end_interval_histogram`: Media unit or average frequency ending point
-          for a histogram bin.
+      *   <code>channel</code>: <code>media</code> or <code>rf</code> channel
+            name.
+      *   <code>media_units</code>: Media (for <code>media</code> channels) or
+            average frequency (for
+          <code>rf</code> channels) units.
+      *   <code>distribution</code>: Indication of <code>posterior</code> or
+            <code>prior</code> draw.
+      *   <code>ci_hi</code>: Upper bound of the credible interval of the value
+            of the Hill function.
+      *   <code>ci_lo</code>: Lower bound of the credible interval of the value
+            of the Hill function.
+      *   <code>mean</code>: Point-wise mean of the value of the Hill function
+            per draw.
+      *   <code>channel_type</code>: Indication of a <code>media</code> or
+            <code>rf</code> channel.
+      *   <code>scaled_count_histogram</code>: Scaled count of media units or
+            average frequencies within the bin.
+      *   <code>count_histogram</code>: True count value of media units or
+            average frequencies within the bin.
+      *   <code>start_interval_histogram</code>: Media unit or average frequency
+            starting. point for a histogram bin.
+      *   <code>end_interval_histogram</code>: Media unit or average frequency
+            ending point for a histogram bin.
     """
     if (
         constants.PRIOR not in self._meridian.inference_data.groups()

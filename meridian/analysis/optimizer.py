@@ -238,49 +238,55 @@ class BudgetOptimizer:
     """Finds the optimal budget allocation that maximizes impact.
 
     Args:
-      selected_times: Tuple containing the start and end time dimensions for the
-        duration to run the optimization on. Time dimensions should align with
-        the Meridian time dimensions. By default, all times periods are used.
-      fixed_budget: Boolean indicating whether it's a fixed budget optimization
-        or flexible budget optimization. Defaults to `True`. If `False`, must
-        specify either `target_roi` or `target_mroi`.
-      budget: Number indicating the total budget for the fixed budget scenario.
-        Defaults to the historical budget.
-      pct_of_spend: Numeric list of size `n_total_channels` containing the
-        percentage allocation for spend for all media and RF channels. The order
-        must match `InputData.media` with values between 0-1, summing to 1. By
-        default, the historical allocation is used. Budget and allocation are
-        used in conjunction to determine the non-optimized media-level spend,
-        which is used to calculate the non-optimized performance metrics (for
-        example, ROI) and construct the feasible range of media-level spend with
-        the spend constraints.
-      spend_constraint_lower: Numeric list of size `n_total_channels` or float
-        (same constraint for all channels) indicating the lower bound of
-        media-level spend. The lower bound of media-level spend is `(1 -
-        spend_constraint_lower) * budget * allocation)`. The value must be
-        between 0-1. Defaults to `0.3` for fixed budget and `1` for flexible.
-      spend_constraint_upper: Numeric list of size `n_total_channels` or float
-        (same constraint for all channels) indicating the upper bound of
-        media-level spend. The upper bound of media-level spend is `(1 +
-        spend_constraint_upper) * budget * allocation)`. Defaults to `0.3` for
-        fixed budget and `1` for flexible.
-      target_roi: Float indicating the target ROI constraint. Only used for
-        flexible budget scenarios. The budget is constrained to when the ROI of
-        the total spend hits `target_roi`.
-      target_mroi: Float indicating the target marginal ROI constraint. Only
+      <code>selected_times</code>: Tuple containing the start and end time
+        dimensions for the duration to run the optimization on. Time dimensions
+        should align with the Meridian time dimensions. By default, all times
+        periods are used.
+      <code>fixed_budget</code>: Boolean indicating whether it's a fixed budget
+        optimization or flexible budget optimization. Defaults to
+        <code>True</code>. If <code>False</code>, must specify either
+        <code>target_roi</code> or <code>target_mroi</code>.
+      <code>budget</code>: Number indicating the total budget for the fixed
+        budget scenario. Defaults to the historical budget.
+      <code>pct_of_spend</code>: Numeric list of size <code>n_total_channels
+        </code> containing the percentage allocation for spend for all media and
+        RF channels. The order must match <code>InputData.media</code> with
+        values between 0-1, summing to 1. By default, the historical allocation
+        is used. Budget and allocation are used in conjunction to determine the
+        non-optimized media-level spend, which is used to calculate the
+        non-optimized performance metrics (for example, ROI) and construct the
+        feasible range of media-level spend with the spend constraints.
+      <code>spend_constraint_lower</code>: Numeric list of size
+        <code>n_total_channels</code> or float (same constraint for all
+        channels) indicating the lower bound of media-level spend. The lower
+        bound of media-level spend is <code>(1 - spend_constraint_lower) *
+        budget * allocation)<code>. The value must be between 0-1. Defaults to
+        <code>0.3</code> for fixed budget and <code>1</code> for flexible.
+      <code>spend_constraint_upper</code>: Numeric list of size
+        <code>n_total_channels</code> or float (same constraint for all
+        channels) indicating the upper bound of
+        media-level spend. The upper bound of media-level spend is <code>(1 +
+        spend_constraint_upper) * budget * allocation)</code>. Defaults
+        <code>0.3</code> for fixed budget and <code>1</code> for flexible.
+      <code>target_roi</code>: Float indicating the target ROI constraint. Only
         used for flexible budget scenarios. The budget is constrained to when
-        the marginal ROI of the total spend hits `target_mroi`.
-      gtol: Float indicating the acceptable relative error for the budget used
-        in the grid setup. The budget will be rounded by 10*n, where `n` is the
-        smallest integer such that (budget - rounded_budget) is less than or
-        equal to (budget * gtol). `gtol` must be less than 1.
-      use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
-        trained Meridian model for optimization. If `False`, uses historical
-        frequency.
-      batch_size: Maximum draws per chain in each batch. The calculation is run
-        in batches to avoid memory exhaustion. If a memory error occurs, try
-        reducing `batch_size`. The calculation will generally be faster with
-        larger `batch_size` values.
+        the ROI of the total spend hits <code>target_roi</code>.
+      <code>target_mroi</code>: Float indicating the target marginal ROI
+        constraint. Only used for flexible budget scenarios. The budget is
+        constrained to when the marginal ROI of the total spend hits
+        <code>target_mroi</code>.
+      <code>gtol</code>: Float indicating the acceptable relative error for the
+        budget used in the grid setup. The budget will be rounded by 10*n, where
+        <code>n</code> is the smallest integer such that (budget -
+        rounded_budget) is less than or equal to (budget * gtol).
+        <code>gtol</code> must be less than 1.
+      <code>use_optimal_frequency</code>: If <code>True</code>, uses
+        <code>optimal_frequency</code> calculated by trained Meridian model for
+        optimization. If <code>False</code>, uses historical frequency.
+      <code>batch_size</code>: Maximum draws per chain in each batch. The
+        calculation is run in batches to avoid memory exhaustion. If a memory
+        error occurs, try reducing <code>batch_size</code>. The calculation will
+        generally be faster with larger <code>batch_size</code> values.
     """
     if not hasattr(self._meridian.inference_data, c.POSTERIOR):
       raise model.NotFittedModelError(
@@ -491,8 +497,8 @@ class BudgetOptimizer:
     """Plots a pie chart showing the spend allocated for each channel.
 
     Args:
-      optimized: If `True`, shows the optimized spend. If `False`, shows the
-        non-optimized spend.
+      <code>optimized</code>: If <code>True</code>, shows the optimized spend.
+        If <code>False</code>, shows the non-optimized spend.
 
     Returns:
       An Altair pie chart showing the spend by channel.
@@ -586,8 +592,8 @@ class BudgetOptimizer:
     """Plots the response curves, with spend constraints, for each channel.
 
     Args:
-      n_top_channels: Optional number of top channels by spend to include. By
-        default, all geos are included.
+      <code>n_top_channels</code>: Optional number of top channels by spend to
+        include. By default, all geos are included.
 
     Returns:
       An Altair plot showing the response curves with optimization details.

@@ -92,28 +92,34 @@ class ModelDiagnostics:
     """Displays the predictive accuracy of the DataFrame.
 
     Args:
-      selected_geos: Optional list of a subset of geo dimensions to include. By
-        default, all geos are included. Geos should match the geo dimension
-        names from `meridian.InputData`. Set either `selected_geos` or
-        `n_top_largest_geos`, do not set both.
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times must match the time
-        dimensions from `meridian.InputData`.
-      column_var: Optional string that indicates whether to pivot the table by
-        `metric`, `geo_granularity` or `evaluation_set`. By default,
-        `column_var=None` indicates that the `metric`, `geo_granularity` and
-        `value` (along with `evaluation_set` when `holdout_id` isn't `None`)
-        columns are displayed in the returning unpivoted DataFrame.
-      batch_size: Integer representing the number of maximum draws per chain in
-        each batch. The calculation is run in batches to avoid memory
-        exhaustion. If a memory error occurs, try reducing `batch_size`. The
-        calculation will generally be faster with larger `batch_size` values.
+      <code>selected_geos</code>: Optional list of a subset of geo dimensions to
+        include. By default, all geos are included. Geos should match the geo
+        dimension names from <code>meridian.InputData</code>. Set either
+        <code>selected_geos</code> or <code>n_top_largest_geos</code>, do not
+        set both.
+      <code>selected_times</code>: Optional list of a subset of time dimensions
+        to include. By default, all times are included. Times must match the
+        time dimensions from <code>meridian.InputData</code>.
+      <code>column_var</code>: Optional string that indicates whether to pivot
+        the table by <code>metric</code>, <code>geo_granularity</code> or
+        <code>evaluation_set</code>. By default, <code>column_var = None</code>
+        indicates that the <code>metric</code>, <code>geo_granularity</code>,
+        and <code>value</code> (along with <code>evaluation_set</code> when
+        <code>holdout_id</code> isn't <code>None</code>) columns are displayed
+        in the returning unpivoted DataFrame.
+      <code>batch_size</code>: Integer representing the number of maximum draws
+        per chain in each batch. The calculation is run in batches to avoid
+        memory exhaustion. If a memory error occurs, try reducing
+        <code>batch_size</code>. The calculation will generally be faster with
+        larger <code>batch_size</code> values.
 
     Returns:
-      A DataFrame containing the computed `R_Squared`, `MAPE` and `wMAPE`
-      values. If `holdout_id` exists, the data is split into `Train`, `Test`,
-      and `All Data` subsections, and `evaluation_set` is included as a column
-      in the transformation from Dataset to DataFrame.
+      A DataFrame containing the computed <code>R_Squared</code>,
+      <code>MAPE</code>, and <code>wMAPE</code> values. If
+      <code>holdout_id</code> exists, the data is split into <code>Train</code>,
+      <code>Test</code>, and <code>All Data</code> subsections, and
+      <code>evaluation_set</code> is included as a column in the transformation
+      from Dataset to DataFrame.
     """
     selected_geos_frozenset = (
         frozenset(selected_geos) if selected_geos else None
@@ -154,21 +160,22 @@ class ModelDiagnostics:
     """Plots prior and posterior distributions for a model parameter.
 
     Args:
-      parameter: Model parameter name to plot. By default, the ROI parameter is
-        shown if a name is not specified.
-      num_geos: Number of largest geos by population to show in the plots for
-        the geo-level parameters. By default, only the top three largest geos
-        are shown.
-      selected_times: List of specific time periods to plot for time-level
-        parameters. These times must match the time periods from the data. By
-        default, the first three time periods are plotted.
+      <code>parameter</code>: Model parameter name to plot. By default, the ROI
+        parameter is shown if a name is not specified.
+      <code>num_geos</code>: Number of largest geos by population to show in the
+        plots for the geo-level parameters. By default, only the top three
+        largest geos are shown.
+      <code>selected_times</code>: List of specific time periods to plot for
+        time-level parameters. These times must match the time periods from the
+        data. By default, the first three time periods are plotted.
 
     Returns:
       An Altair plot showing the parameter distributions.
 
     Raises:
-      NotFittedModelError: The model hasn't been fitted.
-      ValueError: A `parameter` is not a Meridian model parameter.
+      <code>NotFittedModelError</code>: The model hasn't been fitted.
+      <code>ValueError</code>: A <code>parameter</code> is not a Meridian model
+        parameter.
     """
     if not (
         hasattr(self._meridian.inference_data, c.PRIOR)
@@ -281,8 +288,8 @@ class ModelDiagnostics:
       An Altair plot showing the r-hat boxplot per parameter.
 
     Raises:
-      NotFittedModelError: The model hasn't been fitted.
-      MCMCSamplingError: The MCMC sampling did not converge.
+      <code>NotFittedModelError</code>: The model hasn't been fitted.
+      <code>MCMCSamplingError</code>: The MCMC sampling did not converge.
     """
     if not hasattr(self._meridian.inference_data, c.POSTERIOR):
       raise model.NotFittedModelError(
@@ -350,9 +357,11 @@ class ModelFit:
     """Initializes the dataset based on the model and confidence level.
 
     Args:
-      meridian: Media mix model with the raw data from the model fitting.
-      confidence_level: Confidence level for expected impact credible intervals
-        represented as a value between zero and one. Default is `0.9`.
+      <code>meridian</code>: Media mix model with the raw data from the model
+        fitting.
+      <code>confidence_level</code>: Confidence level for expected impact
+        credible intervals represented as a value between zero and one. Default
+        is <code>0.9</code>.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
@@ -366,8 +375,10 @@ class ModelFit:
 
     The dataset contains the following:
 
-    - **Coordinates:** `geo`, `time`, `metric` (`mean`, `ci_hi`, `ci_lo`)
-    - **Data variables:** `expected`, `baseline`, `actual` (impact)
+    - **Coordinates:** <code>geo</code>, <code>time</code>, <code>metric</code>
+      (<code>mean</code>, <code>ci_hi</code>, <code>ci_lo</code>)
+    - **Data variables:** <code>expected</code>, <code>baseline</code>,
+      <code>actual</code> (impact)
     """
     return self._model_fit_data
 
@@ -388,23 +399,26 @@ class ModelFit:
     """Plots the expected versus actual impact over time.
 
     Args:
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times should match the time
-        dimensions from `meridian.InputData`.
-      selected_geos: Optional list of a subset of geo dimensions to include. By
-        default, all geos are included. Geos should match the geo dimension
-        names from `meridian.InputData`. Set either `selected_geos` or
-        `n_top_largest_geos`, do not set both.
-      n_top_largest_geos: Optional number of largest geos by population to
-        include. By default, all geos are included. Set either `selected_geos`
-        or `n_top_largest_geos`, do not set both.
-      show_geo_level: If `True`, plots at the geo-level instead of one
-        national level plot. Only available if `selected_geos` or
-        `n_top_largest_geos` is provided.
-      include_baseline: If `True`, shows the expected baseline impact without
-        any media execution.
-      include_ci: If `True`, shows the credible intervals for the expected
-        impact.
+      <code>selected_times</code>: Optional list of a subset of time dimensions
+        to include. By default, all times are included. Times should match the
+        time dimensions from <code>meridian.InputData</code>.
+      <code>selected_geos</code>: Optional list of a subset of geo dimensions to
+        include. By default, all geos are included. Geos should match the geo
+        dimension names from <code>meridian.InputData</code>. Set either
+        <code>selected_geos</code> or <code>n_top_largest_geos</code>, do not
+        set both.
+      <code>n_top_largest_geos</code>: Optional number of largest geos by
+        population to include. By default, all geos are included. Set either
+        <code>selected_geos</code> or <code>n_top_largest_geos</code>, do not
+        set both.
+      <code>show_geo_level</code>: If <code>True</code>, plots at the geo-level
+        instead of one national level plot. Only available if
+        <code>selected_geos</code> or <code>n_top_largest_geos</code> is
+        provided.
+      <code>include_baseline</code>: If <code>True</code>, shows the expected
+        baseline impact without any media execution.
+      <code>include_ci</code>: If <code>True</code>, shows the credible
+        intervals for the expected impact.
 
     Returns:
       An Altair plot showing the model fit.
@@ -621,9 +635,10 @@ class ReachAndFrequency:
     """Initializes the reach and frequency dataset for the model data.
 
     Args:
-      meridian: Media mix model with the raw data from the model fitting.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
+      <code>meridian</code>: Media mix model with the raw data from the model
+        fitting.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
@@ -637,10 +652,12 @@ class ReachAndFrequency:
     """Dataset holding the calculated optimal reach and frequency metrics.
 
     The dataset contains the following:
-    Coordinates:
-      frequency, rf_channel, metric (mean, ci_hi, ci_lo)
-    Data variables:
-      roi or cpik, optimal_frequency
+
+    * **Coordinates:** <code>frequency</code>, <code>rf_channel</code>,
+      <code>metric</code> (<code>mean</code>, <code>ci_hi</code>,
+      <code>ci_lo</code>)
+    * **Data variables:** <code>roi</code> or <code>cpik</code>,
+      <code>optimal_frequency</code>
     """
     return self._optimal_frequency_data
 
@@ -650,8 +667,8 @@ class ReachAndFrequency:
     """Updates the selected times for optimal reach and frequency data.
 
     Args:
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
+      <code>selected_times</code>: Optional list containing a subset of times to
+        include. By default, all time periods are included.
     """
     self._selected_times = selected_times
     self._optimal_frequency_data = self._analyzer.optimal_freq(
@@ -711,7 +728,7 @@ class ReachAndFrequency:
     """Plots the optimal frequency curves for selected channels.
 
     Args:
-      selected_channels: Optional list of RF channels to plot.
+      <code>selected_channels</code>: Optional list of RF channels to plot.
 
     Returns:
       A faceted Altair plot showing a curve of the optimal frequency for the
