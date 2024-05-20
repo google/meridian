@@ -1833,7 +1833,7 @@ class Analyzer:
     For this optimization, frequency is restricted to be constant across all
     geographic regions and time periods. Reach is calculated for each
     geographic area and time period such that the number of impressions
-    remains unchanged as frequency varies. Merdian solves for the frequency at
+    remains unchanged as frequency varies. Meridian solves for the frequency at
     which posterior mean ROI or CPIK is maximized.
 
     Args:
