@@ -65,27 +65,27 @@ def _get_tau_g(
   """Computes `tau_g` from `tau_g_excl_baseline`.
 
   This function computes `tau_g` by inserting a column of zeros at the
-  `baseline_geo` position in `tau_g_excl_baseline`. It does not handle batch
-  dimensions, so it is only intended for use during prior and posterior
-  sampling.
+  `baseline_geo` position in `tau_g_excl_baseline`.
 
   Args:
-    tau_g_excl_baseline: A tensor of length `n_geos - 1` for the user-defined
-      dimensions of the `tau_g` parameter distribution.
+    tau_g_excl_baseline: A tensor of shape `[..., n_geos - 1]` for the
+      user-defined dimensions of the `tau_g` parameter distribution.
     baseline_geo_idx: The index of the baseline geo to be set to zero.
 
   Returns:
-    A tensor of length `n_geos` with the final distribution of the `tau_g`
+    A tensor of shape `[..., n_geos]` with the final distribution of the `tau_g`
     parameter with zero at position `baseline_geo_idx` and matching
     `tau_g_excl_baseline` elsewhere.
   """
+  rank = len(tau_g_excl_baseline.shape)
+  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else 1
   tau_g = tf.concat(
       [
-          tau_g_excl_baseline[:baseline_geo_idx],
-          tf.zeros(1, dtype=tau_g_excl_baseline.dtype),
-          tau_g_excl_baseline[baseline_geo_idx:],
+          tau_g_excl_baseline[..., :baseline_geo_idx],
+          tf.zeros(shape, dtype=tau_g_excl_baseline.dtype),
+          tau_g_excl_baseline[..., baseline_geo_idx:],
       ],
-      axis=0,
+      axis=rank - 1,
   )
   return tfp.distributions.Deterministic(tau_g, name="tau_g")
 
@@ -686,8 +686,8 @@ class Meridian:
       roi_m: tf.Tensor,
       slope_m: tf.Tensor,
       media_transformed: tf.Tensor,
-  ) -> tf.float32:
-    """Returns a value to be used in `beta_m`."""
+  ) -> tf.Tensor:
+    """Returns a tensor to be used in `beta_m`."""
     inc_revenue_m = roi_m * tf.reduce_sum(
         self.media_spend - self._media_spend_counterfactual,
         range(self.media_spend.ndim - 1),  # pytype: disable=attribute-error  # always-use-property-annotation
@@ -705,7 +705,7 @@ class Meridian:
     if self.input_data.revenue_per_kpi is None:
       revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
     media_contrib_gm = tf.einsum(
-        "gtm,g,,gt->gm",
+        "...gtm,g,,gt->...gm",
         media_transformed - media_counterfactual_transformed,
         self.population,
         self.kpi_transformer._population_scaled_stdev,  # pylint: disable=protected-access
@@ -713,18 +713,20 @@ class Meridian:
     )
 
     if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-      media_contrib_m = tf.einsum("gm->m", media_contrib_gm)
+      media_contrib_m = tf.einsum("...gm->...m", media_contrib_gm)
       random_effect_m = tf.einsum(
-          "m,gm,gm->m", eta_m, beta_gm_dev, media_contrib_gm
+          "...m,...gm,...gm->...m", eta_m, beta_gm_dev, media_contrib_gm
       )
       return (inc_revenue_m - random_effect_m) / media_contrib_m
     else:
       # For log_normal, beta_m and eta_m are not mean & std.
       # The parameterization is beta_gm ~ exp(beta_m + eta_m * N(0, 1)).
       random_effect_m = tf.einsum(
-          "gm,gm->m", tf.math.exp(beta_gm_dev * eta_m), media_contrib_gm
+          "...gm,...gm->...m",
+          tf.math.exp(beta_gm_dev * eta_m[..., tf.newaxis, :]),
+          media_contrib_gm,
       )
-      return tf.math.log(inc_revenue_m) - tf.math.log(random_effect_m)
+    return tf.math.log(inc_revenue_m) - tf.math.log(random_effect_m)
 
   def _get_roi_prior_beta_rf_value(
       self,
@@ -735,9 +737,8 @@ class Meridian:
       roi_rf: tf.Tensor,
       slope_rf: tf.Tensor,
       rf_transformed: tf.Tensor,
-  ) -> tf.float32:
-    """Returns a value to be used in `beta_rf`."""
-
+  ) -> tf.Tensor:
+    """Returns a tensor to be used in `beta_rf`."""
     inc_revenue_rf = roi_rf * tf.reduce_sum(
         self.rf_spend - self._rf_spend_counterfactual,
         range(self.rf_spend.ndim - 1),  # pytype: disable=attribute-error  # always-use-property-annotation
@@ -755,25 +756,26 @@ class Meridian:
     revenue_per_kpi = self.revenue_per_kpi
     if self.input_data.revenue_per_kpi is None:
       revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
+
     media_contrib_grf = tf.einsum(
-        "gtm,g,,gt->gm",
+        "...gtm,g,,gt->...gm",
         rf_transformed - rf_counterfactual_transformed,
         self.population,
         self.kpi_transformer._population_scaled_stdev,  # pylint: disable=protected-access
         revenue_per_kpi,
     )
     if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-      media_contrib_rf = tf.einsum("gm->m", media_contrib_grf)
+      media_contrib_rf = tf.einsum("...gm->...m", media_contrib_grf)
       random_effect_rf = tf.einsum(
-          "m,gm,gm->m", eta_rf, beta_grf_dev, media_contrib_grf
+          "...m,...gm,...gm->...m", eta_rf, beta_grf_dev, media_contrib_grf
       )
       return (inc_revenue_rf - random_effect_rf) / media_contrib_rf
     else:
       # For log_normal, beta_rf and eta_rf are not mean & std.
       # The parameterization is beta_grf ~ exp(beta_rf + eta_rf * N(0, 1)).
       random_effect_rf = tf.einsum(
-          "gm,gm->m",
-          tf.math.exp(beta_grf_dev * eta_rf),
+          "...gm,...gm->...m",
+          tf.math.exp(beta_grf_dev * eta_rf[..., tf.newaxis, :]),
           media_contrib_grf,
       )
       return tf.math.log(inc_revenue_rf) - tf.math.log(random_effect_rf)
@@ -981,23 +983,193 @@ class Meridian:
         for param, dims in inference_dims.items()
     }
 
-  @tf.function(autograph=False, jit_compile=True)
+  def _sample_media_priors(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Draws samples from the prior distributions of the media variables.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of media parameter names to a tensor of shape [n_draws, n_geos,
+      n_media_channels] or [n_draws, n_media_channels] containing the
+      samples.
+    """
+    prior = self._prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+    media_vars = {
+        constants.ALPHA_M: prior.alpha_m.sample(**sample_kwargs),
+        constants.EC_M: prior.ec_m.sample(**sample_kwargs),
+        constants.ETA_M: prior.eta_m.sample(**sample_kwargs),
+        constants.ROI_M: prior.roi_m.sample(**sample_kwargs),
+        constants.SLOPE_M: prior.slope_m.sample(**sample_kwargs),
+    }
+    beta_gm_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_media_channels],
+        name=constants.BETA_GM_DEV,
+    ).sample(**sample_kwargs)
+    media_transformed = self.adstock_hill_media(
+        media=self.media_scaled,
+        alpha=media_vars[constants.ALPHA_M],
+        ec=media_vars[constants.EC_M],
+        slope=media_vars[constants.SLOPE_M],
+    )
+
+    if self.model_spec.use_roi_prior:
+      beta_m_value = self._get_roi_prior_beta_m_value(
+          beta_gm_dev=beta_gm_dev,
+          media_transformed=media_transformed,
+          **media_vars,
+      )
+      media_vars[constants.BETA_M] = tfp.distributions.Deterministic(
+          beta_m_value, name=constants.BETA_M
+      ).sample()
+    else:
+      media_vars[constants.BETA_M] = prior.beta_m.sample(**sample_kwargs)
+
+    beta_gm_value = (
+        media_vars[constants.BETA_M][..., tf.newaxis, :]
+        + media_vars[constants.ETA_M][..., tf.newaxis, :] * beta_gm_dev
+    )
+    if self.media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL:
+      beta_gm_value = tf.math.exp(beta_gm_value)
+    media_vars[constants.BETA_GM] = tfp.distributions.Deterministic(
+        beta_gm_value, name=constants.BETA_GM
+    ).sample()
+
+    return media_vars
+
+  def _sample_rf_priors(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Draws samples from the prior distributions of the RF variables.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of RF parameter names to a tensor of shape [n_draws, n_geos,
+      n_rf_channels] or [n_draws, n_rf_channels] containing the samples.
+    """
+    prior = self._prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+    rf_vars = {
+        constants.ALPHA_RF: prior.alpha_rf.sample(**sample_kwargs),
+        constants.EC_RF: prior.ec_rf.sample(**sample_kwargs),
+        constants.ETA_RF: prior.eta_rf.sample(**sample_kwargs),
+        constants.ROI_RF: prior.roi_rf.sample(**sample_kwargs),
+        constants.SLOPE_RF: prior.slope_rf.sample(**sample_kwargs),
+    }
+    beta_grf_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_rf_channels],
+        name=constants.BETA_GRF_DEV,
+    ).sample(**sample_kwargs)
+    rf_transformed = self.adstock_hill_rf(
+        reach=self.reach_scaled,
+        frequency=self.frequency,
+        alpha=rf_vars[constants.ALPHA_RF],
+        ec=rf_vars[constants.EC_RF],
+        slope=rf_vars[constants.SLOPE_RF],
+    )
+
+    if self.model_spec.use_roi_prior:
+      beta_rf_value = self._get_roi_prior_beta_rf_value(
+          beta_grf_dev=beta_grf_dev,
+          rf_transformed=rf_transformed,
+          **rf_vars,
+      )
+      rf_vars[constants.BETA_RF] = tfp.distributions.Deterministic(
+          beta_rf_value,
+          name=constants.BETA_RF,
+      ).sample()
+    else:
+      rf_vars[constants.BETA_RF] = prior.beta_rf.sample(**sample_kwargs)
+
+    beta_grf_value = (
+        rf_vars[constants.BETA_RF][..., tf.newaxis, :]
+        + rf_vars[constants.ETA_RF][..., tf.newaxis, :] * beta_grf_dev
+    )
+    if self.media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL:
+      beta_grf_value = tf.math.exp(beta_grf_value)
+    rf_vars[constants.BETA_GRF] = tfp.distributions.Deterministic(
+        beta_grf_value, name=constants.BETA_GRF
+    ).sample()
+
+    return rf_vars
+
   def _sample_prior_fn(
       self,
       n_draws: int,
-      seed: Sequence[int] | None = None,
-  ) -> tfp.distributions.Distribution:
-    return (
-        self._get_joint_dist()
-        .sample_unpinned(
-            [1, n_draws],
-            seed=seed,
-        )
-        ._asdict()
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Returns a mapping of prior parameters to tensors of the samples."""
+    # For stateful sampling, the random seed must be set to ensure that any
+    # random numbers that are generated are deterministic.
+    if seed is not None:
+      tf.keras.utils.set_random_seed(1)
+    prior = self._prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
+    tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(**sample_kwargs)
+    base_vars = {
+        constants.KNOT_VALUES: prior.knot_values.sample(**sample_kwargs),
+        constants.GAMMA_C: prior.gamma_c.sample(**sample_kwargs),
+        constants.XI_C: prior.xi_c.sample(**sample_kwargs),
+        constants.SIGMA: prior.sigma.sample(**sample_kwargs),
+        constants.TAU_G: _get_tau_g(
+            tau_g_excl_baseline=tau_g_excl_baseline,
+            baseline_geo_idx=self._baseline_geo_idx,
+        ).sample(),
+    }
+    base_vars[constants.TAU_T] = tfp.distributions.Deterministic(
+        tf.einsum(
+            "...k,kt->...t",
+            base_vars[constants.KNOT_VALUES],
+            tf.convert_to_tensor(self._weights),
+        ),
+        name=constants.TAU_T,
+    ).sample()
+
+    gamma_gc_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_controls],
+        name=constants.GAMMA_GC_DEV,
+    ).sample(**sample_kwargs)
+    base_vars[constants.GAMMA_GC] = tfp.distributions.Deterministic(
+        base_vars[constants.GAMMA_C][..., tf.newaxis, :]
+        + base_vars[constants.XI_C][..., tf.newaxis, :] * gamma_gc_dev,
+        name=constants.GAMMA_GC,
+    ).sample()
+
+    media_vars = (
+        self._sample_media_priors(n_draws, seed)
+        if self.media is not None
+        else {}
+    )
+    rf_vars = (
+        self._sample_rf_priors(n_draws, seed) if self.reach is not None else {}
     )
 
-  def sample_prior(self, n_draws: int, seed: Sequence[int] | None = None):
-    """Runs Markov Chain Monte Carlo (MCMC) sampling of prior distributions.
+    return base_vars | media_vars | rf_vars
+
+  def sample_prior(self, n_draws: int, seed: int | None = None):
+    """Draws samples from the prior distributions.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
@@ -1005,12 +1177,7 @@ class Meridian:
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
     """
-    prior_draws_sampled = self._sample_prior_fn(n_draws, seed=seed)
-    prior_draws = {
-        k: v
-        for k, v in prior_draws_sampled.items()
-        if k not in constants.IGNORED_PRIOR_PARAMETERS
-    }
+    prior_draws = self._sample_prior_fn(n_draws, seed=seed)
     # Create Arviz InferenceData for prior draws.
     prior_coords = self._create_inference_data_coords(1, n_draws)
     prior_dims = self._create_inference_data_dims()

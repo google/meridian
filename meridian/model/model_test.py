@@ -1717,12 +1717,12 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         input_data=self.short_input_data_with_media_and_rf,
         model_spec=model_spec,
     )
-    meridian.sample_prior(n_draws=self._N_DRAWS, seed=[1, 1])
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
     meridian2 = model.Meridian(
         input_data=self.short_input_data_with_media_and_rf,
         model_spec=model_spec,
     )
-    meridian2.sample_prior(n_draws=self._N_DRAWS, seed=[1, 1])
+    meridian2.sample_prior(n_draws=self._N_DRAWS, seed=1)
     self.assertEqual(
         meridian.inference_data.prior, meridian2.inference_data.prior
     )
@@ -1733,12 +1733,12 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         input_data=self.short_input_data_with_media_and_rf,
         model_spec=model_spec,
     )
-    meridian.sample_prior(n_draws=self._N_DRAWS, seed=[1, 1])
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
     meridian2 = model.Meridian(
         input_data=self.short_input_data_with_media_and_rf,
         model_spec=model_spec,
     )
-    meridian2.sample_prior(n_draws=self._N_DRAWS, seed=[2, 2])
+    meridian2.sample_prior(n_draws=self._N_DRAWS, seed=2)
 
     self.assertNotEqual(
         meridian.inference_data.prior, meridian2.inference_data.prior

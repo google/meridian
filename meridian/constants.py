@@ -256,6 +256,8 @@ TARGET_LOG_PROBABILITY_ARVIZ = 'lp'
 DIVERGING = 'diverging'
 ACCEPT_RATIO = 'accept_ratio'
 N_STEPS = 'n_steps'
+SAMPLE_SHAPE = 'sample_shape'
+SEED = 'seed'
 
 SAMPLE_STATS_METRICS = immutabledict.immutabledict({
     STEP_SIZE: STEP_SIZE,
