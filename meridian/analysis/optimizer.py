@@ -903,7 +903,7 @@ class BudgetOptimizer:
       spend_constraint_upper: _SpendConstraint | None = None,
       target_roi: float | None = None,
       target_mroi: float | None = None,
-      gtol: float = 0.0001,
+      gtol: float = 0.001,
       use_optimal_frequency: bool = True,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
