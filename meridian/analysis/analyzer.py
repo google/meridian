@@ -156,7 +156,7 @@ def _mean_and_ci(
   Args:
     prior: A tensor with the prior data for the metric.
     posterior: A tensor with the posterior data for the metric.
-    metric_name: The name of the input metric for the compuations.
+    metric_name: The name of the input metric for the computations.
     xr_dims: A list of dimensions for the output dataset.
     xr_coords: A dictionary with the coordinates for the output dataset.
     confidence_level: The threshold for computing the confidence intervals.
@@ -185,7 +185,7 @@ class Analyzer:
   @tf.function(jit_compile=True)
   def _get_kpi_means(
       self,
-      tau_t: tf.Tensor,
+      mu_t: tf.Tensor,
       tau_g: tf.Tensor,
       gamma_gc: tf.Tensor | None,
       controls_scaled: tf.Tensor,
@@ -204,7 +204,7 @@ class Analyzer:
     """Computes batched KPI means on the unit scale.
 
     Args:
-      tau_t: tau_t distribution from inference data.
+      mu_t: mu_t distribution from inference data.
       tau_g: tau_g distribution from inference data.
       gamma_gc: gamma_gc distribution from inference data.
       controls_scaled: ControlTransformer scaled controls tensor.
@@ -231,7 +231,7 @@ class Analyzer:
     Returns:
       Tensor representing adstock/hill-transformed media.
     """
-    tau_gt = tf.expand_dims(tau_g, -1) + tf.expand_dims(tau_t, -2)
+    tau_gt = tf.expand_dims(tau_g, -1) + tf.expand_dims(mu_t, -2)
     combined_media_transformed, combined_beta = (
         self._get_transformed_media_and_beta(
             media=media_scaled,
@@ -688,7 +688,7 @@ class Analyzer:
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = [
-        constants.TAU_T,
+        constants.MU_T,
         constants.TAU_G,
         constants.GAMMA_GC,
     ] + self._get_adstock_hill_param_names()

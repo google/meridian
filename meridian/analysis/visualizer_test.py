@@ -170,14 +170,14 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     self.assertEqual(list(df.columns), expected_columns)
 
   def test_transform_predictive_accuracy_incorrect_column_var(self):
-    incorrect_var = c.TAU_T
+    incorrect_var = c.MU_T
     with self.assertRaisesRegex(
         ValueError,
         f"The DataFrame cannot be pivoted by {incorrect_var} as it does not"
         " exist in the DataFrame.",
     ):
       self.model_diagnostics.predictive_accuracy_table(
-          column_var=c.TAU_T,
+          column_var=c.MU_T,
       )
 
   def test_distribution_pre_fitting_raises_exception(self):
@@ -220,7 +220,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         " model.",
     ):
       self.model_diagnostics.plot_prior_and_posterior_distribution(
-          c.TAU_T, selected_times=["Jan 1, 2023"]
+          c.MU_T, selected_times=["Jan 1, 2023"]
       )
 
   def test_distribution_correct_config(self):
@@ -300,22 +300,22 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     self.input_data.get_n_top_largest_geos.assert_called_with(4)
 
   def test_distribution_default_time_dim(self):
-    plot = self.model_diagnostics.plot_prior_and_posterior_distribution(c.TAU_T)
+    plot = self.model_diagnostics.plot_prior_and_posterior_distribution(c.MU_T)
 
     self.assertEqual(
         list(plot.data.columns),
-        [c.TIME, c.TAU_T, c.DISTRIBUTION],
+        [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
     self.assertEqual(plot.data[c.TIME].nunique(), 3)
 
   def test_distribution_selected_time_dim(self):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(
-        c.TAU_T, selected_times=["2021-02-22", "2021-03-01"]
+        c.MU_T, selected_times=["2021-02-22", "2021-03-01"]
     )
 
     self.assertEqual(
         list(plot.data.columns),
-        [c.TIME, c.TAU_T, c.DISTRIBUTION],
+        [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
     self.assertEqual(plot.data[c.TIME].nunique(), 2)
 
