@@ -1408,7 +1408,7 @@ class MediaSummary:
 
     data_vars = self.media_summary_metrics.data_vars
     digits = {k: 1 if min(abs(df[k])) < 1 else 0 for k in list(data_vars)}
-    digits[c.EFFECTIVENESS] = 2
+    digits[c.EFFECTIVENESS] = 6
     for k, v in digits.items():
       df[k] = df[k].apply(f'{{0:,.{v}f}}'.format)
 
