@@ -1968,12 +1968,25 @@ class Analyzer:
         default, all time periods are included.
 
     Returns:
-      An xarray Dataset containing the following variables: `optimal_frequency`,
-        `roi_by_frequency` or `cpik_by_frequency`, `optimal_incremental_impact`,
-        `optimal_effectiveness` and `optimal_pct_of_contribution`.
-        `optimal_frequency` is the frequency that optimizes the posterior mean
-        of ROI or CPIK. `roi_by_frequency` is the ROI for each frequency value
-        while `cpik_by_frequency` is the CPIK fro each frequency value.
+      An xarray Dataset containing the following variables:
+        - `optimal_frequency` is the frequency that optimizes the posterior mean
+        of ROI or CPIK.
+        - `roi` is the ROI for each frequency value when revenue_per_kpi is
+        available.
+        - `cpik` is the CPIK for each frequency value when revenue_per_kpi is
+        not available.
+        - `optimal_incremental_impact` is the incremental impact based on the
+        optimal frequency.
+        - `optimal_effectiveness` is the effectiveness based on the optimal
+        frequency.
+        - `optimal_pct_of_contribution` is the contribution percentage based on
+        the optimal frequency.
+        - `optimal_roi` is the ROI based on the optimal frequency.
+        - `optimal_mroi_by_reach` is the marginal ROI with a small change in
+        reach and fixed frequency at the optimal frequency.
+        - `optimal_mroi_by_frequency` is the marginal ROI with a small change
+        around the optimal frequency and fixed reach.
+        - `optimal_cpik` is the CPIK based on the optimal frequency.
 
     Raises:
       NotFittedModelError: If `sample_posterior()` (for `use_posterior=True`)
@@ -2040,7 +2053,8 @@ class Analyzer:
     )
     metric_name = constants.ROI if use_roi else constants.CPIK
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
-    media_summary = self.media_summary_metrics(
+    media_summary_by_reach = self.media_summary_metrics(
+        marginal_roi_by_reach=True,
         confidence_level=confidence_level,
         selected_geos=selected_geos,
         selected_times=selected_times,
@@ -2049,31 +2063,60 @@ class Analyzer:
         constants.CHANNEL: rf_channel_values,
         constants.DISTRIBUTION: dist_type,
     })
+    media_summary_by_frequency = self.media_summary_metrics(
+        marginal_roi_by_reach=False,
+        confidence_level=confidence_level,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        optimal_frequency=optimal_frequency,
+    ).sel({
+        constants.CHANNEL: rf_channel_values,
+        constants.DISTRIBUTION: dist_type,
+    })
+    data_vars = {
+        metric_name: (
+            [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
+            metric,
+        ),
+        constants.OPTIMAL_FREQUENCY: (
+            [constants.RF_CHANNEL],
+            optimal_frequency,
+        ),
+        constants.OPTIMAL_INCREMENTAL_IMPACT: (
+            [constants.RF_CHANNEL, constants.METRIC],
+            media_summary_by_reach.incremental_impact.data,
+        ),
+        constants.OPTIMAL_EFFECTIVENESS: (
+            [constants.RF_CHANNEL, constants.METRIC],
+            media_summary_by_reach.effectiveness.data,
+        ),
+        constants.OPTIMAL_PCT_OF_CONTRIBUTION: (
+            [constants.RF_CHANNEL, constants.METRIC],
+            media_summary_by_reach.pct_of_contribution.data,
+        ),
+    }
+
+    if use_roi:
+      data_vars[constants.OPTIMAL_ROI] = (
+          (constants.RF_CHANNEL, constants.METRIC),
+          media_summary_by_reach.roi.data,
+      )
+      data_vars[constants.OPTIMAL_MROI_BY_REACH] = (
+          (constants.RF_CHANNEL, constants.METRIC),
+          media_summary_by_reach.mroi.data,
+      )
+      data_vars[constants.OPTIMAL_MROI_BY_FREQUENCY] = (
+          (constants.RF_CHANNEL, constants.METRIC),
+          media_summary_by_frequency.mroi.data,
+      )
+    else:
+      data_vars[constants.OPTIMAL_CPIK] = (
+          (constants.RF_CHANNEL, constants.METRIC),
+          media_summary_by_reach.cpik.data,
+      )
 
     return xr.Dataset(
-        data_vars={
-            metric_name: (
-                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
-                metric,
-            ),
-            constants.OPTIMAL_FREQUENCY: (
-                [constants.RF_CHANNEL],
-                optimal_frequency,
-            ),
-            constants.OPTIMAL_INCREMENTAL_IMPACT: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                media_summary.incremental_impact.data,
-            ),
-            constants.OPTIMAL_EFFECTIVENESS: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                media_summary.effectiveness.data,
-            ),
-            constants.OPTIMAL_PCT_OF_CONTRIBUTION: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                media_summary.pct_of_contribution.data,
-            ),
-            # TODO(b/346381974): Add optimal ROI,mROI or CPIK.
-        },
+        data_vars=data_vars,
         coords={
             constants.FREQUENCY: ([constants.FREQUENCY], freq_grid),
             constants.RF_CHANNEL: ([constants.RF_CHANNEL], rf_channel_values),

@@ -774,6 +774,18 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
                 [constants.RF_CHANNEL, constants.METRIC],
                 [[2.27, 0.36, 7.77], [1.83, 0.41, 4.92]],
             ),
+            constants.OPTIMAL_ROI: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[1.65, 0.26, 5.65], [1.26, 0.28, 3.38]],
+            ),
+            constants.OPTIMAL_MROI_BY_REACH: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[1.65, 0.26, 5.65], [1.26, 0.28, 3.38]],
+            ),
+            constants.OPTIMAL_MROI_BY_FREQUENCY: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.60, 0.10, 2.09], [0.44, 0.06, 1.29]],
+            ),
         },
         attrs={
             constants.CONFIDENCE_LEVEL: 0.9,
@@ -802,6 +814,21 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     xr.testing.assert_allclose(
         actual.optimal_pct_of_contribution,
         expected.optimal_pct_of_contribution,
+        atol=0.01,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_roi,
+        expected.optimal_roi,
+        atol=0.01,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_mroi_by_reach,
+        expected.optimal_mroi_by_reach,
+        atol=0.01,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_mroi_by_frequency,
+        expected.optimal_mroi_by_frequency,
         atol=0.01,
     )
     self.assertEqual(actual.confidence_level, 0.9)
@@ -1965,6 +1992,18 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
                 [constants.RF_CHANNEL, constants.METRIC],
                 [[0.0028, 0.0004, 0.0090], [0.0148, 0.0014, 0.0233]],
             ),
+            constants.OPTIMAL_ROI: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.87, 0.14, 2.75], [4.28, 0.40, 6.72]],
+            ),
+            constants.OPTIMAL_MROI_BY_REACH: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.87, 0.14, 2.75], [4.28, 0.41, 6.72]],
+            ),
+            constants.OPTIMAL_MROI_BY_FREQUENCY: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.36, 0.03, 1.50], [0.72, 0.13, 1.27]],
+            ),
         },
         attrs={
             constants.CONFIDENCE_LEVEL: 0.9,
@@ -1994,6 +2033,21 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         actual.optimal_pct_of_contribution,
         expected.optimal_pct_of_contribution,
         atol=0.0001,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_roi,
+        expected.optimal_roi,
+        atol=0.01,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_mroi_by_reach,
+        expected.optimal_mroi_by_reach,
+        atol=0.01,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_mroi_by_frequency,
+        expected.optimal_mroi_by_frequency,
+        atol=0.01,
     )
     self.assertEqual(actual.confidence_level, 0.9)
     self.assertEqual(actual.use_posterior, expected.use_posterior)
@@ -2261,6 +2315,88 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
       ds = self.analyzer_kpi.optimal_freq()
       mock_cpik.assert_called()
       self.assertIn(constants.CPIK, list(ds.data_vars.keys()))
+
+  def test_optimal_frequency_data_with_cpik_correct(self):
+    actual = self.analyzer_kpi.optimal_freq(
+        freq_grid=[1.0, 2.0, 3.0],
+        confidence_level=0.9,
+        use_posterior=True,
+    )
+    expected = xr.Dataset(
+        coords={
+            constants.FREQUENCY: ([constants.FREQUENCY], [1.0, 2.0, 3.0]),
+            constants.RF_CHANNEL: (
+                [constants.RF_CHANNEL],
+                ["rf_ch_0", "rf_ch_1"],
+            ),
+            constants.METRIC: (
+                [constants.METRIC],
+                [constants.MEAN, constants.CI_LO, constants.CI_HI],
+            ),
+        },
+        data_vars={
+            constants.CPIK: (
+                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
+                [  # rf_ch_0.           # rf_ch_1
+                    [[5.52, 1.47, 17.52], [8.90, 0.57, 30.99]],  # freq=1.0
+                    [[2.74, 1.26, 6.11], [4.64, 0.50, 15.93]],  # freq=2.0
+                    [[2.58, 1.06, 5.10], [5.14, 0.45, 19.67]],  # freq=3.0
+                ],
+            ),
+            constants.OPTIMAL_FREQUENCY: ([constants.RF_CHANNEL], [3.0, 2.0]),
+            constants.OPTIMAL_INCREMENTAL_IMPACT: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[89.7, 36.3, 177.42], [161.1, 14.3, 507.6]],
+            ),
+            constants.OPTIMAL_EFFECTIVENESS: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.00004, 0.00002, 0.00008], [0.00011, 0.00001, 0.00035]],
+            ),
+            constants.OPTIMAL_PCT_OF_CONTRIBUTION: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[0.7357, 0.2980, 1.4553], [1.3210, 0.1176, 4.1635]],
+            ),
+            constants.OPTIMAL_CPIK: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [[4.02, 1.60, 7.74], [8.16, 0.71, 31.43]],
+            ),
+        },
+        attrs={
+            constants.CONFIDENCE_LEVEL: 0.9,
+            "use_posterior": True,
+        },
+    )
+
+    xr.testing.assert_allclose(actual, expected, atol=0.1)
+    xr.testing.assert_allclose(actual.frequency, expected.frequency, atol=0.1)
+    xr.testing.assert_allclose(actual.rf_channel, expected.rf_channel, atol=0.1)
+    xr.testing.assert_allclose(actual.metric, expected.metric, atol=0.1)
+    xr.testing.assert_allclose(actual.cpik, expected.cpik, atol=0.1)
+    xr.testing.assert_allclose(
+        actual.optimal_frequency, expected.optimal_frequency, atol=0.1
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_incremental_impact,
+        expected.optimal_incremental_impact,
+        atol=0.1,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_effectiveness,
+        expected.optimal_effectiveness,
+        atol=0.00001,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_pct_of_contribution,
+        expected.optimal_pct_of_contribution,
+        atol=0.0001,
+    )
+    xr.testing.assert_allclose(
+        actual.optimal_cpik,
+        expected.optimal_cpik,
+        atol=0.01,
+    )
+    self.assertEqual(actual.confidence_level, 0.9)
+    self.assertEqual(actual.use_posterior, expected.use_posterior)
 
   def test_optimal_frequency_min_cpik_at_opt_freq(self):
     ds = self.analyzer_kpi.optimal_freq()
