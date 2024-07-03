@@ -25,6 +25,7 @@ from meridian.analysis import analyzer
 from meridian.analysis import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+from meridian.model import model_data
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
@@ -148,7 +149,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_controls.shape must match controls.shape",
     ):
       self.analyzer_media_and_rf.expected_impact(
-          new_controls=self.meridian_media_and_rf.population,
+          new_controls=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_expected_impact_wrong_media_raises_exception(self):
@@ -157,7 +158,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_media.shape must match media.shape",
     ):
       self.analyzer_media_and_rf.expected_impact(
-          new_media=self.meridian_media_and_rf.population,
+          new_media=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_expected_impact_wrong_reach_raises_exception(self):
@@ -166,7 +167,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_reach.shape must match reach.shape",
     ):
       self.analyzer_media_and_rf.expected_impact(
-          new_reach=self.meridian_media_and_rf.population,
+          new_reach=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_expected_impact_wrong_frequency_raises_exception(self):
@@ -175,7 +176,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_frequency.shape must match frequency.shape",
     ):
       self.analyzer_media_and_rf.expected_impact(
-          new_frequency=self.meridian_media_and_rf.population,
+          new_frequency=self.meridian_media_and_rf.model_data.population,
       )
 
   @parameterized.product(
@@ -219,7 +220,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_media.shape must match media.shape",
     ):
       self.analyzer_media_and_rf.incremental_impact(
-          new_media=self.meridian_media_and_rf.population,
+          new_media=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_incremental_impact_wrong_reach_raises_exception(self):
@@ -228,7 +229,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_reach.shape must match reach.shape",
     ):
       self.analyzer_media_and_rf.incremental_impact(
-          new_reach=self.meridian_media_and_rf.population,
+          new_reach=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_incremental_impact_wrong_frequency_raises_exception(self):
@@ -237,7 +238,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_frequency.shape must match frequency.shape",
     ):
       self.analyzer_media_and_rf.incremental_impact(
-          new_frequency=self.meridian_media_and_rf.population,
+          new_frequency=self.meridian_media_and_rf.model_data.population,
       )
 
   @parameterized.product(
@@ -398,7 +399,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_media.shape must match media.shape",
     ):
       self.analyzer_media_and_rf.roi(
-          new_media=self.meridian_media_and_rf.population,
+          new_media=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_roi_wrong_media_spend_raises_exception(self):
@@ -407,7 +408,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_media_spend.shape: (5,) must match either (3,) or (5, 49, 3).",
     ):
       self.analyzer_media_and_rf.roi(
-          new_media_spend=self.meridian_media_and_rf.population,
+          new_media_spend=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_roi_wrong_reach_raises_exception(self):
@@ -416,7 +417,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_reach.shape must match reach.shape",
     ):
       self.analyzer_media_and_rf.roi(
-          new_reach=self.meridian_media_and_rf.population,
+          new_reach=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_roi_wrong_frequency_raises_exception(self):
@@ -425,7 +426,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_frequency.shape must match frequency.shape",
     ):
       self.analyzer_media_and_rf.roi(
-          new_frequency=self.meridian_media_and_rf.population,
+          new_frequency=self.meridian_media_and_rf.model_data.population,
       )
 
   def test_roi_wrong_rf_spend_raises_exception(self):
@@ -434,7 +435,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "new_rf_spend.shape: (5,) must match either (2,) or (5, 49, 2).",
     ):
       self.analyzer_media_and_rf.roi(
-          new_rf_spend=self.meridian_media_and_rf.population,
+          new_rf_spend=self.meridian_media_and_rf.model_data.population,
       )
 
   @parameterized.product(
@@ -475,7 +476,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     roi = self.analyzer_media_and_rf.roi()
     total_spend = (
         self.analyzer_media_and_rf.filter_and_aggregate_geos_and_times(
-            self.meridian_media_and_rf.total_spend
+            self.meridian_media_and_rf.model_data.total_spend
         )
     )
     expected_roi = self.analyzer_media_and_rf.incremental_impact() / total_spend
@@ -519,7 +520,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     cpik = self.analyzer_media_and_rf.cpik()
     total_spend = (
         self.analyzer_media_and_rf.filter_and_aggregate_geos_and_times(
-            self.meridian_media_and_rf.total_spend
+            self.meridian_media_and_rf.model_data.total_spend
         )
     )
     expected_cpik = total_spend / self.analyzer_media_and_rf.incremental_impact(
@@ -843,7 +844,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     )
 
   @mock.patch.object(
-      model.Meridian, "is_national", new=property(lambda unused_self: True)
+      model_data.ModelData,
+      "is_national",
+      new=property(lambda unused_self: True),
   )
   def test_predictive_accuracy_national(self):
     predictive_accuracy_dataset = (
@@ -904,8 +907,8 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       )
 
   def test_predictive_accuracy_with_holdout_id_table_properties_correct(self):
-    n_geos = self.meridian_media_and_rf.n_geos
-    n_times = self.meridian_media_and_rf.n_times
+    n_geos = self.meridian_media_and_rf.model_data.n_geos
+    n_times = self.meridian_media_and_rf.model_data.n_times
     holdout_id = np.full([n_geos, n_times], False)
     for i in range(n_geos):
       holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
@@ -1507,14 +1510,15 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
   def test_roi_media_only_default_returns_correct_value(self):
     roi = self.analyzer_media_only.roi()
     total_spend = self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-        self.meridian_media_only.media_tensors.media_spend
+        self.meridian_media_only.model_data.media_tensors.media_spend
     )
     expected_roi = self.analyzer_media_only.incremental_impact() / total_spend
     self.assertAllClose(expected_roi, roi)
 
   def test_roi_zero_media_returns_zero(self):
     new_media = tf.zeros_like(
-        self.meridian_media_only.media_tensors.media, dtype=tf.float32
+        self.meridian_media_only.model_data.media_tensors.media,
+        dtype=tf.float32,
     )
     roi = self.analyzer_media_only.roi(new_media=new_media)
     self.assertAllClose(
@@ -1875,7 +1879,7 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
   def test_roi_rf_only_default_returns_correct_value(self):
     roi = self.analyzer_rf_only.roi()
     total_spend = self.analyzer_rf_only.filter_and_aggregate_geos_and_times(
-        self.meridian_rf_only.rf_tensors.rf_spend
+        self.meridian_rf_only.model_data.rf_tensors.rf_spend
     )
     expeted_roi = self.analyzer_rf_only.incremental_impact() / total_spend
     self.assertAllClose(expeted_roi, roi)
@@ -1999,22 +2003,14 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(actual.use_posterior, expected.use_posterior)
 
   def test_optimal_frequency_freq_grid(self):
-    max_freq = np.max(
-        np.array(self.analyzer_rf_only._meridian.rf_tensors.frequency)
-    )
+    mdata = self.analyzer_rf_only._meridian.model_data
+    max_freq = np.max(np.array(mdata.rf_tensors.frequency))
     freq_grid = list(np.arange(1, max_freq, 0.1))
-    roi = np.zeros(
-        (len(freq_grid), self.analyzer_rf_only._meridian.n_rf_channels, 3)
-    )
+    roi = np.zeros((len(freq_grid), mdata.n_rf_channels, 3))
     for i, freq in enumerate(freq_grid):
-      new_frequency = (
-          tf.ones_like(self.analyzer_rf_only._meridian.rf_tensors.frequency)
-          * freq
-      )
+      new_frequency = tf.ones_like(mdata.rf_tensors.frequency) * freq
       new_reach = (
-          self.analyzer_rf_only._meridian.rf_tensors.frequency
-          * self.analyzer_rf_only._meridian.rf_tensors.reach
-          / new_frequency
+          mdata.rf_tensors.frequency * mdata.rf_tensors.reach / new_frequency
       )
       dim_kwargs = {
           "selected_geos": None,
@@ -2027,7 +2023,7 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
           new_frequency=new_frequency,
           use_posterior=True,
           **dim_kwargs,
-      )[..., -self.analyzer_rf_only._meridian.n_rf_channels :]
+      )[..., -mdata.n_rf_channels :]
       roi[i, :, 0] = np.mean(roi_temp, (0, 1))
       roi[i, :, 1] = np.quantile(roi_temp, (1 - 0.9) / 2, (0, 1))
       roi[i, :, 2] = np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
@@ -2179,7 +2175,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertAllClose(
         list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
-        list(self.meridian_kpi.kpi[:5]),
+        list(self.meridian_kpi.model_data.kpi[:5]),
         atol=1e-3,
     )
 

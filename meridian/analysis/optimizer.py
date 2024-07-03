@@ -319,7 +319,7 @@ class BudgetOptimizer:
     step_size = 10 ** (-round_factor)
     rounded_spend = np.round(spend, round_factor).astype(int)
     self._spend_ratio = spend / hist_spend
-    if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
+    if self._meridian.model_data.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
               selected_times=selected_time_dims
@@ -917,8 +917,8 @@ class BudgetOptimizer:
     }
     all_media = tf.convert_to_tensor(
         self._meridian.input_data.get_all_media_and_rf(), dtype=tf.float32
-    )[:, -self._meridian.n_times :, :]
-    all_spend = self._meridian.total_spend
+    )[:, -self._meridian.model_data.n_times :, :]
+    all_spend = self._meridian.model_data.total_spend
 
     if all_spend.ndim == 3:
       return self._analyzer.filter_and_aggregate_geos_and_times(
@@ -1028,41 +1028,39 @@ class BudgetOptimizer:
       Tuple of tf.tensors (new_media, new_media_spend, new_reach, new_frequency,
       new_rf_spend).
     """
-    if self._meridian.n_media_channels > 0:
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
+    if mdata.n_media_channels > 0:
       new_media = (
           tf.math.divide_no_nan(
-              spend[: self._meridian.n_media_channels],
-              hist_spend[: self._meridian.n_media_channels],
+              spend[: mdata.n_media_channels],
+              hist_spend[: mdata.n_media_channels],
           )
-          * self._meridian.media_tensors.media
+          * media_tensors.media
       )
-      new_media_spend = tf.convert_to_tensor(
-          spend[: self._meridian.n_media_channels]
-      )
+      new_media_spend = tf.convert_to_tensor(spend[: mdata.n_media_channels])
     else:
       new_media = None
       new_media_spend = None
-    if self._meridian.n_rf_channels > 0:
-      rf_media = (
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency
-      )
+    if mdata.n_rf_channels > 0:
+      rf_media = rf_tensors.reach * rf_tensors.frequency
       new_rf_media = (
           tf.math.divide_no_nan(
-              spend[-self._meridian.n_rf_channels :],
-              hist_spend[-self._meridian.n_rf_channels :],
+              spend[-mdata.n_rf_channels :],
+              hist_spend[-mdata.n_rf_channels :],
           )
           * rf_media
       )
       frequency = (
-          self._meridian.rf_tensors.frequency
+          rf_tensors.frequency
           if optimal_frequency is None
           else optimal_frequency
       )
       new_reach = tf.math.divide_no_nan(new_rf_media, frequency)
       new_frequency = tf.math.divide_no_nan(new_rf_media, new_reach)
-      new_rf_spend = tf.convert_to_tensor(
-          spend[-self._meridian.n_rf_channels :]
-      )
+      new_rf_spend = tf.convert_to_tensor(spend[-mdata.n_rf_channels :])
     else:
       new_reach = None
       new_frequency = None
@@ -1088,7 +1086,7 @@ class BudgetOptimizer:
             hist_spend, spend, optimal_frequency
         )
     )
-    use_kpi = self._meridian.revenue_per_kpi is None
+    use_kpi = self._meridian.model_data.revenue_per_kpi is None
     incremental_impact = self._analyzer.incremental_impact(
         new_media=new_media,
         new_reach=new_reach,
@@ -1254,38 +1252,36 @@ class BudgetOptimizer:
         reducing `batch_size`. The calculation will generally be faster with
         larger `batch_size` values.
     """
-    if self._meridian.n_media_channels > 0:
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
+    if mdata.n_media_channels > 0:
       new_media = (
-          multipliers_grid[i, : self._meridian.n_media_channels]
-          * self._meridian.media_tensors.media
+          multipliers_grid[i, : mdata.n_media_channels] * media_tensors.media
       )
     else:
       new_media = None
 
-    if self._meridian.n_rf_channels == 0:
+    if mdata.n_rf_channels == 0:
       new_frequency = None
       new_reach = None
     elif optimal_frequency is not None:
-      new_frequency = (
-          tf.ones_like(self._meridian.rf_tensors.frequency) * optimal_frequency
-      )
+      new_frequency = tf.ones_like(rf_tensors.frequency) * optimal_frequency
       new_reach = tf.math.divide_no_nan(
-          multipliers_grid[i, -self._meridian.n_rf_channels :]
-          * self._meridian.rf_tensors.reach
-          * self._meridian.rf_tensors.frequency,
+          multipliers_grid[i, -mdata.n_rf_channels :]
+          * rf_tensors.reach
+          * rf_tensors.frequency,
           new_frequency,
       )
     else:
-      new_frequency = self._meridian.rf_tensors.frequency
-      new_reach = (
-          multipliers_grid[i, -self._meridian.n_rf_channels :]
-          * self._meridian.rf_tensors.reach
-      )
+      new_frequency = rf_tensors.frequency
+      new_reach = multipliers_grid[i, -mdata.n_rf_channels :] * rf_tensors.reach
 
     # incremental_impact returns a three dimensional tensor with dims
     # (n_chains x n_draws x n_total_channels). Incremental_impact_grid requires
     # incremental impact by channel.
-    use_kpi = self._meridian.revenue_per_kpi is None
+    use_kpi = mdata.revenue_per_kpi is None
     incremental_impact_grid[i, :] = np.mean(
         self._analyzer.incremental_impact(
             new_media=new_media,
@@ -1374,16 +1370,15 @@ class BudgetOptimizer:
     # np.unravel_index(np.nanargmax(iROAS_grid), iROAS_grid.shape). Therefore
     # we use the following code to fix it, and ensure incremental_impact/spend
     # is always same for RF channels.
-    if self._meridian.n_rf_channels > 0:
+    n_rf_channels = self._meridian.model_data.n_rf_channels
+    if n_rf_channels > 0:
       rf_incremental_impact_max = np.nanmax(
-          incremental_impact_grid[:, -self._meridian.n_rf_channels :], axis=0
+          incremental_impact_grid[:, -n_rf_channels:], axis=0
       )
-      rf_spend_max = np.nanmax(
-          spend_grid[:, -self._meridian.n_rf_channels :], axis=0
-      )
+      rf_spend_max = np.nanmax(spend_grid[:, -n_rf_channels:], axis=0)
       rf_roi = tf.math.divide_no_nan(rf_incremental_impact_max, rf_spend_max)
-      incremental_impact_grid[:, -self._meridian.n_rf_channels :] = (
-          rf_roi * spend_grid[:, -self._meridian.n_rf_channels :]
+      incremental_impact_grid[:, -n_rf_channels:] = (
+          rf_roi * spend_grid[:, -n_rf_channels:]
       )
     return (spend_grid, incremental_impact_grid)
 

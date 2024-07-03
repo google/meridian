@@ -180,13 +180,12 @@ class Summarizer:
         self._meridian, selected_times=selected_times
     )
     media_effects = visualizer.MediaEffects(self._meridian)
-    reach_frequency = (
-        visualizer.ReachAndFrequency(
-            self._meridian, selected_times=selected_times
-        )
-        if self._meridian.n_rf_channels > 0
-        else None
-    )
+    if self._meridian.model_data.n_rf_channels > 0:
+      reach_frequency = visualizer.ReachAndFrequency(
+          self._meridian, selected_times=selected_times
+      )
+    else:
+      reach_frequency = None
     cards = [
         self._create_model_fit_card_html(
             template_env, selected_times=selected_times
@@ -456,7 +455,7 @@ class Summarizer:
         impact=impact
     )
     if reach_frequency is not None:
-      assert self._meridian.n_rf_channels > 0
+      assert self._meridian.model_data.n_rf_channels > 0
       optimal_rf = self._select_optimal_rf_data(media_summary, reach_frequency)
       channel_name = optimal_rf[c.RF_CHANNEL].values.item()
       opt_freq = '{:.1f}'.format(optimal_rf.values.item())

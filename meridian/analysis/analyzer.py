@@ -184,7 +184,7 @@ class Analyzer:
     # Make the meridian object ready for methods in this analyzer that create
     # tf.function computation graphs: it should be frozen for no more internal
     # states mutation before those graphs execute.
-    self._meridian.populate_cached_properties()
+    self._meridian.model_data.populate_cached_properties()
 
   @tf.function(jit_compile=True)
   def _get_kpi_means(
@@ -262,14 +262,14 @@ class Analyzer:
 
   def _check_revenue_data_exists(self, use_kpi: bool = False) -> None:
     """Raise an error if `use_kpi` is False but revenue data does not exist."""
-    if not use_kpi and self._meridian.revenue_per_kpi is None:
+    if not use_kpi and self._meridian.model_data.revenue_per_kpi is None:
       raise ValueError(
           "`use_kpi` must be True when `revenue_per_kpi` is not defined."
       )
 
   def _validate_roi_functionality(self) -> None:
     """Validates whether ROI metrics can be computed."""
-    if self._meridian.revenue_per_kpi is None:
+    if self._meridian.model_data.revenue_per_kpi is None:
       raise ValueError(
           "ROI-related metrics can't be computed when `revenue_per_kpi` is not"
           " defined."
@@ -301,13 +301,13 @@ class Analyzer:
       prior = self._meridian.inference_data.prior.alpha_m.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_m.values,
-          (-1, self._meridian.n_media_channels),
+          (-1, self._meridian.model_data.n_media_channels),
       )
     else:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
-          (-1, self._meridian.n_rf_channels),
+          (-1, self._meridian.model_data.n_rf_channels),
       )
 
     decayed_effect_prior = (
@@ -364,31 +364,24 @@ class Analyzer:
     Returns:
       dictionary containing optional media, reach, and frequency data tensors.
     """
+    media_tensors = self._meridian.model_data.media_tensors
+    rf_tensors = self._meridian.model_data.rf_tensors
     adstock_tensors = {}
 
-    if (
-        new_media is None
-        or self._meridian.media_tensors.media_transformer is None
-    ):
-      media_scaled = self._meridian.media_tensors.media_scaled
+    if new_media is None or media_tensors.media_transformer is None:
+      media_scaled = media_tensors.media_scaled
     else:
-      media_scaled = self._meridian.media_tensors.media_transformer.forward(
-          new_media
-      )
+      media_scaled = media_tensors.media_transformer.forward(new_media)
     adstock_tensors["media_scaled"] = media_scaled
 
-    if new_reach is None or self._meridian.rf_tensors.reach_transformer is None:
-      reach_scaled = self._meridian.rf_tensors.reach_scaled
+    if new_reach is None or rf_tensors.reach_transformer is None:
+      reach_scaled = rf_tensors.reach_scaled
     else:
-      reach_scaled = self._meridian.rf_tensors.reach_transformer.forward(
-          new_reach
-      )
+      reach_scaled = rf_tensors.reach_transformer.forward(new_reach)
     adstock_tensors["reach_scaled"] = reach_scaled
 
     adstock_tensors["frequency"] = (
-        new_frequency
-        if new_frequency is not None
-        else self._meridian.rf_tensors.frequency
+        new_frequency if new_frequency is not None else rf_tensors.frequency
     )
     return adstock_tensors
 
@@ -399,15 +392,18 @@ class Analyzer:
       A list containing available media and rf parameters names in inference
       data.
     """
+    media_tensors = self._meridian.model_data.media_tensors
+    rf_tensors = self._meridian.model_data.rf_tensors
     params = []
-    if self._meridian.media_tensors.media is not None:
+
+    if media_tensors.media is not None:
       params.extend([
           constants.EC_M,
           constants.SLOPE_M,
           constants.ALPHA_M,
           constants.BETA_GM,
       ])
-    if self._meridian.rf_tensors.reach is not None:
+    if rf_tensors.reach is not None:
       params.extend([
           constants.EC_RF,
           constants.SLOPE_RF,
@@ -518,16 +514,18 @@ class Analyzer:
     Returns:
       A tensor with filtered and/or aggregated geo and time dimensions.
     """
-    mmm = self._meridian
+    mdata = self._meridian.model_data
     if tensor.shape[-3:] in (
-        tf.TensorShape([mmm.n_geos, mmm.n_times, mmm.n_media_channels]),
-        tf.TensorShape([mmm.n_geos, mmm.n_times, mmm.n_rf_channels]),
-        tf.TensorShape(
-            [mmm.n_geos, mmm.n_times, mmm.n_media_channels + mmm.n_rf_channels]
-        ),
+        tf.TensorShape([mdata.n_geos, mdata.n_times, mdata.n_media_channels]),
+        tf.TensorShape([mdata.n_geos, mdata.n_times, mdata.n_rf_channels]),
+        tf.TensorShape([
+            mdata.n_geos,
+            mdata.n_times,
+            mdata.n_media_channels + mdata.n_rf_channels,
+        ]),
     ):
       has_media_dim = True
-    elif tensor.shape[-2:] == tf.TensorShape([mmm.n_geos, mmm.n_times]):
+    elif tensor.shape[-2:] == tf.TensorShape([mdata.n_geos, mdata.n_times]):
       has_media_dim = False
     else:
       raise ValueError(
@@ -536,7 +534,7 @@ class Analyzer:
       )
 
     if selected_geos and any(
-        geo not in mmm.input_data.geo for geo in selected_geos
+        geo not in self._meridian.input_data.geo for geo in selected_geos
     ):
       raise ValueError(
           "`selected_geos` must match the geo dimension names from "
@@ -544,7 +542,7 @@ class Analyzer:
       )
 
     if selected_times and any(
-        time not in mmm.input_data.time for time in selected_times
+        time not in self._meridian.input_data.time for time in selected_times
     ):
       raise ValueError(
           "`selected_times` must match the time dimension names from "
@@ -552,12 +550,12 @@ class Analyzer:
       )
 
     if selected_geos:
-      geo_mask = [x in selected_geos for x in mmm.input_data.geo]
+      geo_mask = [x in selected_geos for x in self._meridian.input_data.geo]
       tensor = tf.boolean_mask(
           tensor, geo_mask, axis=tensor.ndim - 2 - has_media_dim
       )
     if selected_times:
-      time_mask = [x in selected_times for x in mmm.input_data.time]
+      time_mask = [x in selected_times for x in self._meridian.input_data.time]
       tensor = tf.boolean_mask(
           tensor, time_mask, axis=tensor.ndim - 1 - has_media_dim
       )
@@ -644,8 +642,12 @@ class Analyzer:
         or `sample_prior()` (for `use_posterior=False`) has not been called
         prior to calling this method.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     self._check_revenue_data_exists(use_kpi)
-    if self._meridian.is_national:
+    if mdata.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
@@ -657,18 +659,14 @@ class Analyzer:
           " `expected_impact()`."
       )
     _check_shape_matches(
-        new_controls, "new_controls", self._meridian.controls, "controls"
+        new_controls, "new_controls", mdata.controls, "controls"
     )
-    _check_shape_matches(
-        new_media, "new_media", self._meridian.media_tensors.media, "media"
-    )
-    _check_shape_matches(
-        new_reach, "new_reach", self._meridian.rf_tensors.reach, "reach"
-    )
+    _check_shape_matches(new_media, "new_media", media_tensors.media, "media")
+    _check_shape_matches(new_reach, "new_reach", rf_tensors.reach, "reach")
     _check_shape_matches(
         new_frequency,
         "new_frequency",
-        self._meridian.rf_tensors.frequency,
+        rf_tensors.frequency,
         "frequency",
     )
 
@@ -681,15 +679,13 @@ class Analyzer:
         new_media, new_reach, new_frequency
     )
     tensor_kwargs["controls_scaled"] = (
-        self._meridian.controls_scaled
+        mdata.controls_scaled
         if new_controls is None
-        else self._meridian.controls_transformer.forward(new_controls)
+        else mdata.controls_transformer.forward(new_controls)
     )
     n_draws = params.draw.size
     n_chains = params.chain.size
-    impact_means = tf.zeros(
-        (n_chains, 0, self._meridian.n_geos, self._meridian.n_times)
-    )
+    impact_means = tf.zeros((n_chains, 0, mdata.n_geos, mdata.n_times))
     batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = [
         constants.TAU_T,
@@ -711,9 +707,9 @@ class Analyzer:
       )
     impact_means = tf.concat([impact_means, *impact_means_temps], axis=1)
     if inverse_transform_impact:
-      impact_means = self._meridian.kpi_transformer.inverse(impact_means)
+      impact_means = mdata.kpi_transformer.inverse(impact_means)
       if not use_kpi:
-        impact_means *= self._meridian.revenue_per_kpi
+        impact_means *= mdata.revenue_per_kpi
 
     return self.filter_and_aggregate_geos_and_times(
         impact_means,
@@ -805,17 +801,17 @@ class Analyzer:
        Tensor of incremental impact returned in terms of revenue or KPI.
     """
     self._check_revenue_data_exists(use_kpi)
-    t1 = self._meridian.kpi_transformer.inverse(
+    t1 = self._meridian.model_data.kpi_transformer.inverse(
         tf.einsum("...m->m...", modeled_incremental_impact)
     )
-    t2 = self._meridian.kpi_transformer.inverse(tf.zeros_like(t1))
+    t2 = self._meridian.model_data.kpi_transformer.inverse(tf.zeros_like(t1))
     kpi = tf.einsum("m...->...m", t1 - t2)
 
     if use_kpi:
       return kpi
     return tf.einsum(
         "gt,...gtm->...gtm",
-        self._meridian.revenue_per_kpi,
+        self._meridian.model_data.revenue_per_kpi,
         kpi,
     )
 
@@ -1004,8 +1000,12 @@ class Analyzer:
       ValueError: If `new_media` arguments does not have the same tensor shape
         as media.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     self._check_revenue_data_exists(use_kpi)
-    if self._meridian.is_national:
+    if mdata.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
@@ -1017,16 +1017,12 @@ class Analyzer:
           f"sample_{dist_type}() must be called prior to calling this method."
       )
 
-    _check_shape_matches(
-        new_media, "new_media", self._meridian.media_tensors.media, "media"
-    )
-    _check_shape_matches(
-        new_reach, "new_reach", self._meridian.rf_tensors.reach, "reach"
-    )
+    _check_shape_matches(new_media, "new_media", media_tensors.media, "media")
+    _check_shape_matches(new_reach, "new_reach", rf_tensors.reach, "reach")
     _check_shape_matches(
         new_frequency,
         "new_frequency",
-        self._meridian.rf_tensors.frequency,
+        rf_tensors.frequency,
         "frequency",
     )
 
@@ -1127,15 +1123,18 @@ class Analyzer:
       PerformanceData object containing the media, rf, and spend data for
         profitability calculations.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
 
-    if self._meridian.is_national:
+    if mdata.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
       )
     if selected_geos is not None or not aggregate_geos:
       if (
-          self._meridian.media_tensors.media_spend is not None
+          media_tensors.media_spend is not None
           and not self._meridian.input_data.media_spend_has_geo_dimension
       ):
         raise ValueError(
@@ -1143,7 +1142,7 @@ class Analyzer:
             " does not have geo dimension."
         )
       if (
-          self._meridian.rf_tensors.rf_spend is not None
+          rf_tensors.rf_spend is not None
           and not self._meridian.input_data.rf_spend_has_geo_dimension
       ):
         raise ValueError(
@@ -1153,7 +1152,7 @@ class Analyzer:
 
     if selected_times is not None or not aggregate_times:
       if (
-          self._meridian.media_tensors.media_spend is not None
+          media_tensors.media_spend is not None
           and not self._meridian.input_data.media_spend_has_time_dimension
       ):
         raise ValueError(
@@ -1161,7 +1160,7 @@ class Analyzer:
             " data does not have time dimension."
         )
       if (
-          self._meridian.rf_tensors.rf_spend is not None
+          rf_tensors.rf_spend is not None
           and not self._meridian.input_data.rf_spend_has_time_dimension
       ):
         raise ValueError(
@@ -1172,66 +1171,56 @@ class Analyzer:
     _check_shape_matches(
         new_media,
         constants.NEW_MEDIA,
-        self._meridian.media_tensors.media,
+        media_tensors.media,
         constants.MEDIA,
     )
     _check_spend_shape_matches(
         new_media_spend,
         constants.NEW_MEDIA_SPEND,
         (
-            tf.TensorShape((self._meridian.n_media_channels)),
+            tf.TensorShape((mdata.n_media_channels)),
             tf.TensorShape((
-                self._meridian.n_geos,
-                self._meridian.n_times,
-                self._meridian.n_media_channels,
+                mdata.n_geos,
+                mdata.n_times,
+                mdata.n_media_channels,
             )),
         ),
     )
     _check_shape_matches(
         new_reach,
         constants.NEW_REACH,
-        self._meridian.rf_tensors.reach,
+        rf_tensors.reach,
         constants.REACH,
     )
     _check_shape_matches(
         new_frequency,
         constants.NEW_FREQUENCY,
-        self._meridian.rf_tensors.frequency,
+        rf_tensors.frequency,
         constants.FREQUENCY,
     )
     _check_spend_shape_matches(
         new_rf_spend,
         constants.NEW_RF_SPEND,
         (
-            tf.TensorShape((self._meridian.n_rf_channels)),
+            tf.TensorShape((mdata.n_rf_channels)),
             tf.TensorShape((
-                self._meridian.n_geos,
-                self._meridian.n_times,
-                self._meridian.n_rf_channels,
+                mdata.n_geos,
+                mdata.n_times,
+                mdata.n_rf_channels,
             )),
         ),
     )
 
-    media = (
-        self._meridian.media_tensors.media if new_media is None else new_media
-    )
-    reach = self._meridian.rf_tensors.reach if new_reach is None else new_reach
-    frequency = (
-        self._meridian.rf_tensors.frequency
-        if new_frequency is None
-        else new_frequency
-    )
+    media = media_tensors.media if new_media is None else new_media
+    reach = rf_tensors.reach if new_reach is None else new_reach
+    frequency = rf_tensors.frequency if new_frequency is None else new_frequency
 
     media_spend = (
-        self._meridian.media_tensors.media_spend
+        media_tensors.media_spend
         if new_media_spend is None
         else new_media_spend
     )
-    rf_spend = (
-        self._meridian.rf_tensors.rf_spend
-        if new_rf_spend is None
-        else new_rf_spend
-    )
+    rf_spend = rf_tensors.rf_spend if new_rf_spend is None else new_rf_spend
 
     return self.PerformanceData(
         media=media,
@@ -1581,7 +1570,10 @@ class Analyzer:
     Returns:
       A dataset with the expected, baseline, and actual impact metrics.
     """
-    mmm = self._meridian
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
     can_split_by_holdout = self._can_split_by_holdout_id(split_by_holdout_id)
     expected_impact = self.expected_impact(
@@ -1592,14 +1584,14 @@ class Analyzer:
     )
 
     baseline_expected_impact = self.expected_impact(
-        new_media=tf.zeros_like(mmm.media_tensors.media)
-        if mmm.media_tensors.media is not None
+        new_media=tf.zeros_like(media_tensors.media)
+        if media_tensors.media is not None
         else None,
-        new_reach=tf.zeros_like(mmm.rf_tensors.reach)
-        if mmm.rf_tensors.reach is not None
+        new_reach=tf.zeros_like(rf_tensors.reach)
+        if rf_tensors.reach is not None
         else None,
-        new_frequency=tf.zeros_like(mmm.rf_tensors.frequency)
-        if mmm.rf_tensors.frequency is not None
+        new_frequency=tf.zeros_like(rf_tensors.frequency)
+        if rf_tensors.frequency is not None
         else None,
         aggregate_geos=False,
         aggregate_times=False,
@@ -1608,11 +1600,11 @@ class Analyzer:
     baseline = self._calculate_mean_and_ci_by_dataset(
         baseline_expected_impact, confidence_level, can_split_by_holdout
     )
-    actual = mmm.kpi if use_kpi else mmm.kpi * mmm.revenue_per_kpi
+    actual = mdata.kpi if use_kpi else mdata.kpi * mdata.revenue_per_kpi
 
     coords = {
-        constants.GEO: ([constants.GEO], mmm.input_data.geo.data),
-        constants.TIME: ([constants.TIME], mmm.input_data.time.data),
+        constants.GEO: ([constants.GEO], self._meridian.input_data.geo.data),
+        constants.TIME: ([constants.TIME], self._meridian.input_data.time.data),
         constants.METRIC: (
             [constants.METRIC],
             [constants.MEAN, constants.CI_LO, constants.CI_HI],
@@ -1651,6 +1643,10 @@ class Analyzer:
       self, use_posterior: bool, use_kpi: bool | None = None, **roi_kwargs
   ):
     """Aggregates the incremental impact for MediaSummary metrics."""
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
     expected_impact = self.expected_impact(
         use_posterior=use_posterior, use_kpi=use_kpi, **roi_kwargs
@@ -1659,18 +1655,18 @@ class Analyzer:
         use_posterior=use_posterior, use_kpi=use_kpi, **roi_kwargs
     )
     new_media = (
-        tf.zeros_like(self._meridian.media_tensors.media)
-        if self._meridian.media_tensors.media is not None
+        tf.zeros_like(media_tensors.media)
+        if media_tensors.media is not None
         else None
     )
     new_reach = (
-        tf.zeros_like(self._meridian.rf_tensors.reach)
-        if self._meridian.rf_tensors.reach is not None
+        tf.zeros_like(rf_tensors.reach)
+        if rf_tensors.reach is not None
         else None
     )
     new_frequency = (
-        tf.zeros_like(self._meridian.rf_tensors.frequency)
-        if self._meridian.rf_tensors.frequency is not None
+        tf.zeros_like(rf_tensors.frequency)
+        if rf_tensors.frequency is not None
         else None
     )
     incremental_impact_total = expected_impact - self.expected_impact(
@@ -1735,6 +1731,10 @@ class Analyzer:
       `pct_of_spend`, `CPM`, `incremental_impact`, `pct_of_contribution`, `roi`,
       `effectiveness`, `mroi`.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -1744,10 +1744,10 @@ class Analyzer:
     }
     roi_kwargs = {"batch_size": batch_size, **dim_kwargs}
     spend_list = []
-    if self._meridian.n_media_channels > 0:
-      spend_list.append(self._meridian.media_tensors.media_spend)
-    if self._meridian.n_rf_channels > 0:
-      spend_list.append(self._meridian.rf_tensors.rf_spend)
+    if mdata.n_media_channels > 0:
+      spend_list.append(media_tensors.media_spend)
+    if mdata.n_rf_channels > 0:
+      spend_list.append(rf_tensors.rf_spend)
     # TODO(b/309655751) Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
         tensor=tf.concat(spend_list, axis=-1), **dim_kwargs
@@ -1759,22 +1759,17 @@ class Analyzer:
 
     impressions_list = []
 
-    if self._meridian.n_media_channels > 0:
-      impressions_list.append(
-          self._meridian.media_tensors.media[:, -self._meridian.n_times :, :]
-      )
+    if mdata.n_media_channels > 0:
+      impressions_list.append(media_tensors.media[:, -mdata.n_times :, :])
 
-    if self._meridian.n_rf_channels > 0:
+    if mdata.n_rf_channels > 0:
       if optimal_frequency is None:
-        new_frequency = self._meridian.rf_tensors.frequency
+        new_frequency = rf_tensors.frequency
       else:
-        new_frequency = (
-            tf.ones_like(self._meridian.rf_tensors.frequency)
-            * optimal_frequency
-        )
+        new_frequency = tf.ones_like(rf_tensors.frequency) * optimal_frequency
       impressions_list.append(
-          self._meridian.rf_tensors.reach[:, -self._meridian.n_times :, :]
-          * new_frequency[:, -self._meridian.n_times :, :]
+          rf_tensors.reach[:, -mdata.n_times :, :]
+          * new_frequency[:, -mdata.n_times :, :]
       )
     aggregated_impressions = self.filter_and_aggregate_geos_and_times(
         tensor=tf.concat(impressions_list, axis=-1), **dim_kwargs
@@ -1985,8 +1980,11 @@ class Analyzer:
         prior to calling this method.
       ValueError: If there are no channels with reach and frequency data.
     """
+    mdata = self._meridian.model_data
+    rf_tensors = mdata.rf_tensors
+
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
-    if self._meridian.n_rf_channels == 0:
+    if mdata.n_rf_channels == 0:
       raise ValueError(
           "Must have at least one channel with reach and frequency data."
       )
@@ -2002,34 +2000,30 @@ class Analyzer:
     }
     use_roi = self._meridian.input_data.revenue_per_kpi is not None
 
-    max_freq = np.max(np.array(self._meridian.rf_tensors.frequency))
+    max_freq = np.max(np.array(rf_tensors.frequency))
     if freq_grid is None:
       freq_grid = np.arange(1, max_freq, 0.1)
     metric = np.zeros(
-        (len(freq_grid), self._meridian.n_rf_channels, 3)
+        (len(freq_grid), mdata.n_rf_channels, 3)
     )  #  Last argument is 3 for the mean, lower and upper confidence intervals.
 
     for i, freq in enumerate(freq_grid):
-      new_frequency = tf.ones_like(self._meridian.rf_tensors.frequency) * freq
-      new_reach = (
-          self._meridian.rf_tensors.frequency
-          * self._meridian.rf_tensors.reach
-          / new_frequency
-      )
+      new_frequency = tf.ones_like(rf_tensors.frequency) * freq
+      new_reach = rf_tensors.frequency * rf_tensors.reach / new_frequency
       if use_roi:
         metric_temp = self.roi(
             new_reach=new_reach,
             new_frequency=new_frequency,
             use_posterior=use_posterior,
             **dim_kwargs,
-        )[..., -self._meridian.n_rf_channels :]
+        )[..., -mdata.n_rf_channels :]
       else:
         metric_temp = self.cpik(
             new_reach=new_reach,
             new_frequency=new_frequency,
             use_posterior=use_posterior,
             **dim_kwargs,
-        )[..., -self._meridian.n_rf_channels :]
+        )[..., -mdata.n_rf_channels :]
       metric[i, :] = get_mean_and_ci(metric_temp, confidence_level)
 
     optimal_freq_idx = (
@@ -2139,8 +2133,10 @@ class Analyzer:
       is split into `'Train'`, `'Test'`, and `'All Data'` subsections, and the
       three metrics are computed for each.
     """
+    mdata = self._meridian.model_data
+
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
-    if self._meridian.is_national:
+    if mdata.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
       )
@@ -2162,10 +2158,10 @@ class Analyzer:
             [constants.GEO, constants.NATIONAL],
         ),
     }
-    if self._meridian.revenue_per_kpi is not None:
-      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
+    if mdata.revenue_per_kpi is not None:
+      input_tensor = mdata.kpi * mdata.revenue_per_kpi
     else:
-      input_tensor = self._meridian.kpi
+      input_tensor = mdata.kpi
     actual = self.filter_and_aggregate_geos_and_times(
         tensor=input_tensor,
         **dims_kwargs,
@@ -2230,7 +2226,7 @@ class Analyzer:
       )
       xr_data = {constants.VALUE: (xr_dims, stacked_total)}
       dataset = xr.Dataset(data_vars=xr_data, coords=xr_coords)
-    if self._meridian.is_national:
+    if mdata.is_national:
       # Remove the geo-level coordinate.
       dataset = dataset.sel(geo_granularity=[constants.NATIONAL])
     return dataset
@@ -2335,7 +2331,9 @@ class Analyzer:
     r_hat_summary = []
     for param in r_hat:
       # Skip if parameter is deterministic according to the prior.
-      if self._meridian.prior_broadcast.has_deterministic_param(param):
+      if self._meridian.model_data.prior_broadcast.has_deterministic_param(
+          param
+      ):
         continue
 
       bad_idx = np.where(r_hat[param] > bad_r_hat_threshold)
@@ -2408,8 +2406,12 @@ class Analyzer:
         An xarray Dataset containing the data needed to visualize response
         curves.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
-    if self._meridian.is_national:
+    if mdata.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
       )
@@ -2419,22 +2421,20 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
-    if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
-      frequency = tf.ones_like(
-          self._meridian.rf_tensors.frequency
-      ) * tf.convert_to_tensor(
+    if mdata.n_rf_channels > 0 and use_optimal_frequency:
+      frequency = tf.ones_like(rf_tensors.frequency) * tf.convert_to_tensor(
           self.optimal_freq(
               selected_geos=selected_geos, selected_times=selected_times
           ).optimal_frequency,
           dtype=tf.float32,
       )
       reach = tf.math.divide_no_nan(
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
+          rf_tensors.reach * rf_tensors.frequency,
           frequency,
       )
     else:
-      frequency = self._meridian.rf_tensors.frequency
-      reach = self._meridian.rf_tensors.reach
+      frequency = rf_tensors.frequency
+      reach = rf_tensors.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
     incremental_impact = np.zeros((
@@ -2449,7 +2449,7 @@ class Analyzer:
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
       tensor_kwargs = _scale_tensors_by_multiplier(
-          self._meridian.media_tensors.media,
+          media_tensors.media,
           reach,
           frequency,
           multiplier=multiplier,
@@ -2467,18 +2467,18 @@ class Analyzer:
           incimpact_temp, confidence_level
       )
 
-    if self._meridian.n_media_channels > 0 and self._meridian.n_rf_channels > 0:
+    if mdata.n_media_channels > 0 and mdata.n_rf_channels > 0:
       spend = tf.concat(
           [
-              self._meridian.media_tensors.media_spend,
-              self._meridian.rf_tensors.rf_spend,
+              media_tensors.media_spend,
+              rf_tensors.rf_spend,
           ],
           axis=-1,
       )
-    elif self._meridian.n_media_channels > 0:
-      spend = self._meridian.media_tensors.media_spend
+    elif mdata.n_media_channels > 0:
+      spend = media_tensors.media_spend
     else:
-      spend = self._meridian.rf_tensors.rf_spend
+      spend = rf_tensors.rf_spend
 
     if tf.rank(spend) == 3:
       spend = self.filter_and_aggregate_geos_and_times(
@@ -2581,7 +2581,9 @@ class Analyzer:
     }
     final_df = pd.DataFrame()
 
-    if self._meridian.n_rf_channels > 0:
+    mdata = self._meridian.model_data
+
+    if mdata.n_rf_channels > 0:
       adstock_df_rf = self._get_adstock_dataframe(
           constants.REACH,
           l_range,
@@ -2590,7 +2592,7 @@ class Analyzer:
           confidence_level,
       )
       final_df = pd.concat([final_df, adstock_df_rf], axis=0)
-    if self._meridian.n_media_channels > 0:
+    if mdata.n_media_channels > 0:
       xr_coords[constants.CHANNEL] = ([constants.CHANNEL], media_channel_values)
       adstock_df_m = self._get_adstock_dataframe(
           constants.MEDIA,
@@ -2634,6 +2636,10 @@ class Analyzer:
       *   `mean`: Point-wise mean of the value of the Hill function per draw.
       *   channel_type: Indication of a `media` or `rf` channel.
     """
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+
     if (
         channel_type == constants.MEDIA
         and self._meridian.input_data.media_channel is not None
@@ -2642,9 +2648,7 @@ class Analyzer:
       slope = constants.SLOPE_M
       linspace = np.linspace(
           0,
-          np.max(
-              np.array(self._meridian.media_tensors.media_scaled), axis=(0, 1)
-          ),
+          np.max(np.array(media_tensors.media_scaled), axis=(0, 1)),
           constants.HILL_NUM_STEPS,
       )
       channels = self._meridian.input_data.media_channel.values
@@ -2656,7 +2660,7 @@ class Analyzer:
       slope = constants.SLOPE_RF
       linspace = np.linspace(
           0,
-          np.max(np.array(self._meridian.rf_tensors.frequency), axis=(0, 1)),
+          np.max(np.array(rf_tensors.frequency), axis=(0, 1)),
           constants.HILL_NUM_STEPS,
       )
       channels = self._meridian.input_data.rf_channel.values
@@ -2731,7 +2735,7 @@ class Analyzer:
     media_units_arr = []
     if channel_type == constants.MEDIA:
       media_transformers = transformers.MediaTransformer(
-          self._meridian.media_tensors.media, self._meridian.population
+          media_tensors.media, mdata.population
       )
       population_scaled_median_m = media_transformers.population_scaled_median_m
       x_range_full_shape = (
@@ -2778,10 +2782,13 @@ class Analyzer:
       distribution of media units per capita for media channels or average
       frequency for RF channels over weeks and geos for the Hill plots.
     """
-    n_geos = self._meridian.n_geos
-    n_media_times = self._meridian.n_media_times
-    n_rf_channels = self._meridian.n_rf_channels
-    n_media_channels = self._meridian.n_media_channels
+    mdata = self._meridian.model_data
+    media_tensors = mdata.media_tensors
+    rf_tensors = mdata.rf_tensors
+    n_geos = mdata.n_geos
+    n_media_times = mdata.n_media_times
+    n_rf_channels = mdata.n_rf_channels
+    n_media_channels = mdata.n_media_channels
 
     (
         channels,
@@ -2794,9 +2801,8 @@ class Analyzer:
 
     # RF.
     if self._meridian.input_data.rf_channel is not None:
-      frequency = (
-          self._meridian.rf_tensors.frequency
-      )  # Shape: (n_geos, n_media_times, n_channels).
+      # Shape: (n_geos, n_media_times, n_channels).
+      frequency = rf_tensors.frequency
       reshaped_frequency = tf.reshape(
           frequency, (n_geos * n_media_times, n_rf_channels)
       )
@@ -2815,10 +2821,10 @@ class Analyzer:
     # Media.
     if self._meridian.input_data.media_channel is not None:
       transformer = transformers.MediaTransformer(
-          self._meridian.media_tensors.media, self._meridian.population
+          media_tensors.media, mdata.population
       )
       scaled = (
-          self._meridian.media_tensors.media_scaled
+          media_tensors.media_scaled
       )  # Shape: (n_geos, n_media_times, n_channels)
       population_scaled_median = transformer.population_scaled_median_m
       scaled_media_units = scaled * population_scaled_median
@@ -2892,13 +2898,13 @@ class Analyzer:
       )
 
     final_dfs = [pd.DataFrame()]
-    if self._meridian.n_media_channels > 0:
+    if self._meridian.model_data.n_media_channels > 0:
       hill_df_media = self._get_hill_curves_dataframe(
           constants.MEDIA, confidence_level
       )
       final_dfs.append(hill_df_media)
 
-    if self._meridian.n_rf_channels > 0:
+    if self._meridian.model_data.n_rf_channels > 0:
       hill_df_rf = self._get_hill_curves_dataframe(
           constants.RF, confidence_level
       )
@@ -2939,6 +2945,7 @@ class Analyzer:
       **roi_kwargs,
   ) -> xr.Dataset:
     self._validate_roi_functionality()
+
     mroi_prior = self.marginal_roi(
         use_posterior=False,
         by_reach=marginal_roi_by_reach,
@@ -2951,10 +2958,13 @@ class Analyzer:
         incremental_increase=marginal_roi_incremental_increase,
         **roi_kwargs,
     )
+
+    media_tensors = self._meridian.model_data.media_tensors
+    rf_tensors = self._meridian.model_data.rf_tensors
     incremented_tensors = _scale_tensors_by_multiplier(
-        media=self._meridian.media_tensors.media,
-        reach=self._meridian.rf_tensors.reach,
-        frequency=self._meridian.rf_tensors.frequency,
+        media=media_tensors.media,
+        reach=rf_tensors.reach,
+        frequency=rf_tensors.frequency,
         multiplier=(1 + marginal_roi_incremental_increase),
         by_reach=marginal_roi_by_reach,
     )

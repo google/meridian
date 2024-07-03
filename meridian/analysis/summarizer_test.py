@@ -28,6 +28,8 @@ from meridian.analysis import test_utils
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+from meridian.model import model_data
+from meridian.model import spec
 import xarray as xr
 
 
@@ -56,6 +58,7 @@ class SummarizerTest(parameterized.TestCase):
     self.revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=2.2
     )
+
     self.mock_meridian_revenue = mock.create_autospec(
         model.Meridian, instance=True, input_data=self.input_data
     )
@@ -157,8 +160,8 @@ class SummarizerTest(parameterized.TestCase):
         channel_prefix='rf_ch', num_channels=2
     )
     self.reach_frequency.optimal_frequency_data = frequency_data
-    self.mock_meridian_revenue.n_rf_channels = 2
-    self.mock_meridian_kpi.n_rf_channels = 2
+    self.mock_meridian_revenue.model_data.n_rf_channels = 2
+    self.mock_meridian_kpi.model_data.n_rf_channels = 2
 
     # Stub `input_data.time` property.
     response = xr.DataArray(
@@ -951,7 +954,7 @@ class SummarizerTest(parameterized.TestCase):
     self.assertIn('to maximize ROI', insights_text.replace('\n', ' '))
 
   def test_response_curves_card_insights_no_rf(self):
-    self.mock_meridian_revenue.n_rf_channels = 0
+    self.mock_meridian_revenue.model_data.n_rf_channels = 0
     reach_frequency = self.reach_frequency
     reach_frequency.optimal_frequency_data = xr.Dataset(
         data_vars={

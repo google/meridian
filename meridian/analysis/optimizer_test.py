@@ -506,10 +506,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
   def test_default_hist_spend_with_time_geo_dims(self):
     expected_spend = np.round(
-        np.sum(self.meridian_media_and_rf.total_spend, axis=(0, 1))
+        np.sum(self.meridian_media_and_rf.model_data.total_spend, axis=(0, 1))
     )
     self.budget_optimizer_media_and_rf.optimize()
-    self.assertEqual(self.meridian_media_and_rf.total_spend.ndim, 3)
+    self.assertEqual(self.meridian_media_and_rf.model_data.total_spend.ndim, 3)
     np.testing.assert_array_equal(
         self.budget_optimizer_media_and_rf.nonoptimized_data.spend,
         expected_spend,
@@ -566,7 +566,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         selected_times=('2021-01-25', '2021-03-08')
     )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
-    self.assertEqual(meridian_media_and_rf.total_spend.ndim, 1)
+    self.assertEqual(meridian_media_and_rf.model_data.total_spend.ndim, 1)
     np.testing.assert_array_equal(
         budget_optimizer_media_and_rf.nonoptimized_data.spend,
         expected_spend,
@@ -584,16 +584,16 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             hist_spend, spend
         )
     )
-    expected_media = (
-        self.meridian_media_and_rf.media_tensors.media
-        * tf.math.divide_no_nan(new_media_spend, hist_spend[:_N_MEDIA_CHANNELS])
+    media_tensors = self.meridian_media_and_rf.model_data.media_tensors
+    rf_tensors = self.meridian_media_and_rf.model_data.rf_tensors
+    expected_media = media_tensors.media * tf.math.divide_no_nan(
+        new_media_spend, hist_spend[:_N_MEDIA_CHANNELS]
     )
     expected_media_spend = spend[:_N_MEDIA_CHANNELS]
-    expected_reach = (
-        self.meridian_media_and_rf.rf_tensors.reach
-        * tf.math.divide_no_nan(new_rf_spend, hist_spend[-_N_RF_CHANNELS:])
+    expected_reach = rf_tensors.reach * tf.math.divide_no_nan(
+        new_rf_spend, hist_spend[-_N_RF_CHANNELS:]
     )
-    expected_frequency = self.meridian_media_and_rf.rf_tensors.frequency
+    expected_frequency = rf_tensors.frequency
     expected_rf_spend = spend[-_N_RF_CHANNELS:]
     np.testing.assert_allclose(new_media, expected_media)
     np.testing.assert_allclose(new_media_spend, expected_media_spend)
@@ -612,15 +612,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             optimal_frequency=optimal_frequency,
         )
     )
-    expected_media = (
-        self.meridian_media_and_rf.media_tensors.media
-        * tf.math.divide_no_nan(new_media_spend, hist_spend[:_N_MEDIA_CHANNELS])
+    media_tensors = self.meridian_media_and_rf.model_data.media_tensors
+    rf_tensors = self.meridian_media_and_rf.model_data.rf_tensors
+    expected_media = media_tensors.media * tf.math.divide_no_nan(
+        new_media_spend, hist_spend[:_N_MEDIA_CHANNELS]
     )
     expected_media_spend = spend[:_N_MEDIA_CHANNELS]
-    rf_media = (
-        self.meridian_media_and_rf.rf_tensors.reach
-        * self.meridian_media_and_rf.rf_tensors.frequency
-    )
+    rf_media = rf_tensors.reach * rf_tensors.frequency
     expected_reach = tf.math.divide_no_nan(
         rf_media
         * tf.math.divide_no_nan(
@@ -630,7 +628,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimal_frequency,
     )
     expected_frequency = (
-        tf.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
+        tf.ones_like(self.meridian_media_and_rf.model_data.rf_tensors.frequency)
         * optimal_frequency
     )
     expected_rf_spend = spend[-_N_RF_CHANNELS:]
@@ -821,7 +819,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_RF_ONLY_SPEND,
         inc_impact=_OPTIMIZED_INCREMENTAL_IMPACT_WITH_CI[-_N_RF_CHANNELS:],
-        mroi=_BUDGET_MROI_WITH_CI[-self.meridian_rf_only.n_rf_channels :],
+        mroi=_BUDGET_MROI_WITH_CI[
+            -self.meridian_rf_only.model_data.n_rf_channels :
+        ],
         channels=self.input_data_rf_only.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
@@ -1024,7 +1024,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _, mock_kwargs = mock_incremental_impact.call_args
     np.testing.assert_allclose(
         mock_kwargs['new_frequency'],
-        self.meridian_media_and_rf.rf_tensors.frequency,
+        self.meridian_media_and_rf.model_data.rf_tensors.frequency,
     )
     np.testing.assert_allclose(spend_grid, expected_spend_grid, equal_nan=True)
     np.testing.assert_allclose(
@@ -1158,7 +1158,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _, mock_kwargs = mock_incremental_impact.call_args
     np.testing.assert_allclose(
         mock_kwargs['new_frequency'],
-        self.meridian_media_and_rf.rf_tensors.frequency,
+        self.meridian_media_and_rf.model_data.rf_tensors.frequency,
     )
     np.testing.assert_allclose(spend_grid, expected_spend_grid, equal_nan=True)
     np.testing.assert_allclose(
@@ -1218,7 +1218,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         ],
     )
     new_frequency = (
-        tf.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
+        tf.ones_like(self.meridian_media_and_rf.model_data.rf_tensors.frequency)
         * optimal_frequency
     )
     mock_incremental_impact.assert_called_with(
@@ -1354,7 +1354,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         ],
     )
     new_frequency = (
-        tf.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
+        tf.ones_like(self.meridian_media_and_rf.model_data.rf_tensors.frequency)
         * optimal_frequency
     )
     mock_incremental_impact.assert_called_with(
