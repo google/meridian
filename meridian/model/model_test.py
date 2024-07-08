@@ -1351,7 +1351,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     derived_params = [
         constants.BETA_GM,
         constants.GAMMA_GC,
-        constants.TAU_T,
+        constants.MU_T,
         constants.TAU_G,
     ]
     prior_distribution_params = [
@@ -1406,7 +1406,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     beta_m = par[constants.BETA_GM][0, :, :]
     y_means = (
         par[constants.TAU_G][0, :, None]
-        + par[constants.TAU_T][0, None, :]
+        + par[constants.MU_T][0, None, :]
         + tf.einsum("gtm,gm->gt", transformed_media, beta_m)
         + tf.einsum(
             "gtc,gc->gt",
@@ -1478,7 +1478,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     derived_params = [
         constants.BETA_GRF,
         constants.GAMMA_GC,
-        constants.TAU_T,
+        constants.MU_T,
         constants.TAU_G,
     ]
     prior_distribution_params = [
@@ -1534,7 +1534,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     beta_rf = par[constants.BETA_GRF][0, :, :]
     y_means = (
         par[constants.TAU_G][0, :, None]
-        + par[constants.TAU_T][0, None, :]
+        + par[constants.MU_T][0, None, :]
         + tf.einsum("gtm,gm->gt", transformed_reach, beta_rf)
         + tf.einsum(
             "gtc,gc->gt",
@@ -1608,7 +1608,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         constants.BETA_GM,
         constants.BETA_GRF,
         constants.GAMMA_GC,
-        constants.TAU_T,
+        constants.MU_T,
         constants.TAU_G,
     ]
     prior_distribution_params = [
@@ -1685,7 +1685,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     )
     y_means = (
         par[constants.TAU_G][0, :, None]
-        + par[constants.TAU_T][0, None, :]
+        + par[constants.MU_T][0, None, :]
         + tf.einsum("gtm,gm->gt", combined_transformed_media, combined_beta)
         + tf.einsum(
             "gtc,gc->gt",

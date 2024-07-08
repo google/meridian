@@ -162,7 +162,7 @@ SIGMA_DIM = 'sigma_dim'
 # Model parameters.
 PARAMETER = 'parameter'
 KNOT_VALUES = 'knot_values'
-TAU_T = 'tau_t'
+MU_T = 'mu_t'
 ROI_M = 'roi_m'
 ROI_RF = 'roi_rf'
 GAMMA_C = 'gamma_c'
@@ -188,7 +188,7 @@ BETA_GRF_DEV = 'beta_grf_dev'
 GAMMA_GC_DEV = 'gamma_gc_dev'
 COMMON_PARAMETER_NAMES = (
     KNOT_VALUES,
-    TAU_T,
+    MU_T,
     GAMMA_C,
     XI_C,
     SIGMA,
@@ -220,7 +220,7 @@ RF_PARAMETERS = (ETA_RF, BETA_RF, ALPHA_RF, EC_RF, SLOPE_RF, ROI_RF)
 CONTROL_PARAMETERS = (GAMMA_C, XI_C)
 SIGMA_PARAMETERS = (SIGMA,)
 GEO_PARAMETERS = (TAU_G,)
-TIME_PARAMETERS = (TAU_T,)
+TIME_PARAMETERS = (MU_T,)
 GEO_MEDIA_PARAMETERS = (BETA_GM,)
 GEO_RF_PARAMETERS = (BETA_GRF,)
 GEO_CONTROL_PARAMETERS = (GAMMA_GC,)
@@ -235,7 +235,7 @@ IGNORED_PRIOR_PARAMETERS = (
 # Inference data dimensions.
 INFERENCE_DIMS = immutabledict.immutabledict(
     {
-        TAU_T: (TIME,),
+        MU_T: (TIME,),
         KNOT_VALUES: (KNOTS,),
         TAU_G: (GEO,),
         BETA_GM: (GEO, MEDIA_CHANNEL),
