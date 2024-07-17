@@ -885,7 +885,6 @@ class Meridian:
         alpha_m = yield prior_broadcast.alpha_m
         ec_m = yield prior_broadcast.ec_m
         eta_m = yield prior_broadcast.eta_m
-        roi_m = yield prior_broadcast.roi_m
         slope_m = yield prior_broadcast.slope_m
         beta_gm_dev = yield tfp.distributions.Sample(
             tfp.distributions.Normal(0, 1),
@@ -899,6 +898,7 @@ class Meridian:
             slope=slope_m,
         )
         if model_spec.use_roi_prior:
+          roi_m = yield prior_broadcast.roi_m
           beta_m_value = get_roi_prior_beta_m_value_fn(
               alpha_m,
               beta_gm_dev,
@@ -932,7 +932,6 @@ class Meridian:
         alpha_rf = yield prior_broadcast.alpha_rf
         ec_rf = yield prior_broadcast.ec_rf
         eta_rf = yield prior_broadcast.eta_rf
-        roi_rf = yield prior_broadcast.roi_rf
         slope_rf = yield prior_broadcast.slope_rf
         beta_grf_dev = yield tfp.distributions.Sample(
             tfp.distributions.Normal(0, 1),
@@ -948,6 +947,7 @@ class Meridian:
         )
 
         if model_spec.use_roi_prior:
+          roi_rf = yield prior_broadcast.roi_rf
           beta_rf_value = get_roi_prior_beta_rf_value_fn(
               alpha_rf,
               beta_grf_dev,
@@ -1080,7 +1080,6 @@ class Meridian:
         constants.ALPHA_M: prior.alpha_m.sample(**sample_kwargs),
         constants.EC_M: prior.ec_m.sample(**sample_kwargs),
         constants.ETA_M: prior.eta_m.sample(**sample_kwargs),
-        constants.ROI_M: prior.roi_m.sample(**sample_kwargs),
         constants.SLOPE_M: prior.slope_m.sample(**sample_kwargs),
     }
     beta_gm_dev = tfp.distributions.Sample(
@@ -1096,6 +1095,7 @@ class Meridian:
     )
 
     if self.model_spec.use_roi_prior:
+      media_vars[constants.ROI_M] = prior.roi_m.sample(**sample_kwargs)
       beta_m_value = self._get_roi_prior_beta_m_value(
           beta_gm_dev=beta_gm_dev,
           media_transformed=media_transformed,
@@ -1143,7 +1143,6 @@ class Meridian:
         constants.ALPHA_RF: prior.alpha_rf.sample(**sample_kwargs),
         constants.EC_RF: prior.ec_rf.sample(**sample_kwargs),
         constants.ETA_RF: prior.eta_rf.sample(**sample_kwargs),
-        constants.ROI_RF: prior.roi_rf.sample(**sample_kwargs),
         constants.SLOPE_RF: prior.slope_rf.sample(**sample_kwargs),
     }
     beta_grf_dev = tfp.distributions.Sample(
@@ -1160,6 +1159,7 @@ class Meridian:
     )
 
     if self.model_spec.use_roi_prior:
+      rf_vars[constants.ROI_RF] = prior.roi_rf.sample(**sample_kwargs)
       beta_rf_value = self._get_roi_prior_beta_rf_value(
           beta_grf_dev=beta_grf_dev,
           rf_transformed=rf_transformed,

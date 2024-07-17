@@ -1501,10 +1501,10 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         constants.EC_M,
         constants.SLOPE_M,
         constants.SIGMA,
-        constants.ROI_M,
     ]
     if use_roi_prior:
       derived_params.append(constants.BETA_M)
+      prior_distribution_params.append(constants.ROI_M)
     else:
       prior_distribution_params.append(constants.BETA_M)
 
@@ -1628,10 +1628,10 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         constants.EC_RF,
         constants.SLOPE_RF,
         constants.SIGMA,
-        constants.ROI_RF,
     ]
     if use_roi_prior:
       derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.ROI_RF)
     else:
       prior_distribution_params.append(constants.BETA_RF)
 
@@ -1762,12 +1762,12 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         constants.SLOPE_M,
         constants.SLOPE_RF,
         constants.SIGMA,
-        constants.ROI_M,
-        constants.ROI_RF,
     ]
     if use_roi_prior:
       derived_params.append(constants.BETA_M)
       derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.ROI_M)
+      prior_distribution_params.append(constants.ROI_RF)
     else:
       prior_distribution_params.append(constants.BETA_M)
       prior_distribution_params.append(constants.BETA_RF)
