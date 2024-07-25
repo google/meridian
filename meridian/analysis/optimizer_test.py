@@ -316,7 +316,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   def test_incorrect_selected_times_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        '`selected_times` should match the time dimensions from input_data.',
+        '`selected_times` should match the time dimensions from '
+        'meridian.input_data.',
     ):
       self.budget_optimizer_media_and_rf.optimize(
           selected_times=('2020-01-01', '2021-01-01')
@@ -430,6 +431,18 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     ):
       self.budget_optimizer_media_and_rf.optimize(spend_constraint_upper=-0.3)
 
+  def test_accessing_data_raises_exception_before_running_optimize(self):
+    with self.assertRaisesRegex(
+        optimizer.OptimizationNotRunError,
+        'Non-optimized data is only available after running optimize().',
+    ):
+      _ = self.budget_optimizer_media_and_rf.nonoptimized_data
+    with self.assertRaisesRegex(
+        optimizer.OptimizationNotRunError,
+        'Optimized data is only available after running optimize().',
+    ):
+      _ = self.budget_optimizer_media_and_rf.optimized_data
+
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
   def test_default_selected_times_all_times(
       self,
@@ -440,16 +453,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         _N_DRAWS,
         _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
     ))
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
+    self.budget_optimizer_media_and_rf.optimize()
     expected_times = self.input_data_media_and_rf.time.values.tolist()
     self.assertEqual(
-        optimization_results.optimized_data.start_date,
+        self.budget_optimizer_media_and_rf.optimized_data.start_date,
         expected_times[0],
     )
     self.assertEqual(
-        optimization_results.optimized_data.end_date,
+        self.budget_optimizer_media_and_rf.optimized_data.end_date,
         expected_times[-1],
     )
     _, mock_kwargs = mock_incremental_impact.call_args
@@ -462,18 +473,16 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         _N_DRAWS,
         _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
     ))
-
     expected_times = self.input_data_media_and_rf.time.values.tolist()
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         selected_times=(expected_times[0], expected_times[-1])
     )
-
     self.assertEqual(
-        optimization_results.optimized_data.start_date,
+        self.budget_optimizer_media_and_rf.optimized_data.start_date,
         expected_times[0],
     )
     self.assertEqual(
-        optimization_results.optimized_data.end_date,
+        self.budget_optimizer_media_and_rf.optimized_data.end_date,
         expected_times[-1],
     )
     _, mock_kwargs = mock_incremental_impact.call_args
@@ -494,11 +503,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         '2021-06-14',
     ]
     selected_time = ('2021-05-17', '2021-06-14')
-
-    _ = self.budget_optimizer_media_and_rf.optimize(
-        selected_times=selected_time
-    )
-
+    self.budget_optimizer_media_and_rf.optimize(selected_times=selected_time)
     _, mock_kwargs = mock_incremental_impact.call_args
     self.assertEqual(mock_kwargs['selected_times'], selected_time_dims)
 
@@ -523,7 +528,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.budget_optimizer_media_and_rf.optimize(selected_times=selected_time)
     self.assertEqual(
         selected_time_dims,
-        self.budget_optimizer_media_and_rf._meridian.expand_selected_time_dims(
+        self.budget_optimizer_media_and_rf._get_selected_time_dims(
             selected_times=selected_time
         ),
     )
@@ -532,23 +537,21 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     expected_spend = np.round(
         np.sum(self.meridian_media_and_rf.total_spend, axis=(0, 1))
     )
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
+    self.budget_optimizer_media_and_rf.optimize()
     self.assertEqual(self.meridian_media_and_rf.total_spend.ndim, 3)
     np.testing.assert_array_equal(
-        optimization_results.nonoptimized_data.spend,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.spend,
         expected_spend,
     )
     self.assertEqual(
-        optimization_results.nonoptimized_data.budget,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.budget,
         np.sum(expected_spend),
     )
 
   def test_spend_ratio(self):
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
+    self.budget_optimizer_media_and_rf.optimize()
     np.testing.assert_allclose(
-        optimization_results.spend_ratio,
+        self.budget_optimizer_media_and_rf._spend_ratio,
         [1, 1, 1, 1, 1],
         atol=0.01,
     )
@@ -588,17 +591,17 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         meridian_media_and_rf
     )
 
-    optimization_results = budget_optimizer_media_and_rf.optimize(
+    budget_optimizer_media_and_rf.optimize(
         selected_times=('2021-01-25', '2021-03-08')
     )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
     self.assertEqual(meridian_media_and_rf.total_spend.ndim, 1)
     np.testing.assert_array_equal(
-        optimization_results.nonoptimized_data.spend,
+        budget_optimizer_media_and_rf.nonoptimized_data.spend,
         expected_spend,
     )
     self.assertEqual(
-        optimization_results.nonoptimized_data.budget,
+        budget_optimizer_media_and_rf.nonoptimized_data.budget,
         np.sum(expected_spend),
     )
 
@@ -666,6 +669,27 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     np.testing.assert_allclose(new_frequency, expected_frequency)
     np.testing.assert_allclose(new_rf_spend, expected_rf_spend)
 
+  def test_nonoptimized_data_before_optimization_raises_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        optimizer.OptimizationNotRunError,
+        'Non-optimized data is only available after running optimize().',
+    ):
+      _ = self.budget_optimizer_media_and_rf.nonoptimized_data
+
+  def test_optimized_data_before_optimization_raises_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        optimizer.OptimizationNotRunError,
+        'Optimized data is only available after running optimize().',
+    ):
+      _ = self.budget_optimizer_media_and_rf.optimized_data
+
+  def test_optimization_grid_before_optimization_raises_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        optimizer.OptimizationNotRunError,
+        'Optimization grid is only available after running optimize().',
+    ):
+      _ = self.budget_optimizer_media_and_rf.optimization_grid
+
   @mock.patch.object(optimizer.BudgetOptimizer, '_create_grids', autospec=True)
   def test_optimization_grid(self, mock_incremental_impact):
     expected_spend_grid = np.array(
@@ -714,10 +738,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             ),
         },
     )
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
-    actual_data = optimization_results.optimization_grid
+    self.budget_optimizer_media_and_rf.optimize()
+    actual_data = self.budget_optimizer_media_and_rf.optimization_grid
     self.assertEqual(actual_data, expected_data)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -733,9 +755,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         mroi=_BUDGET_MROI_WITH_CI,
         channels=self.input_data_media_and_rf.get_all_channels(),
     )
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
-    actual_data = optimization_results.nonoptimized_data
+    self.budget_optimizer_media_and_rf.optimize()
+    actual_data = self.budget_optimizer_media_and_rf.nonoptimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -753,9 +774,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         mroi=_BUDGET_MROI_WITH_CI[:_N_MEDIA_CHANNELS],
         channels=self.input_data_media_only.get_all_channels(),
     )
-    optimization_results = self.budget_optimizer_media_only.optimize()
-
-    actual_data = optimization_results.nonoptimized_data
+    self.budget_optimizer_media_only.optimize()
+    actual_data = self.budget_optimizer_media_only.nonoptimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -772,9 +792,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         mroi=_BUDGET_MROI_WITH_CI[-_N_RF_CHANNELS:],
         channels=self.input_data_rf_only.get_all_channels(),
     )
-    optimization_results = self.budget_optimizer_rf_only.optimize()
-
-    actual_data = optimization_results.nonoptimized_data
+    self.budget_optimizer_rf_only.optimize()
+    actual_data = self.budget_optimizer_rf_only.nonoptimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -791,13 +810,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
-    actual_data = optimization_results.optimized_data
+    self.budget_optimizer_media_and_rf.optimize()
+    actual_data = self.budget_optimizer_media_and_rf.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
     self.assertEqual(
         actual_data.budget,
-        optimization_results.nonoptimized_data.budget,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.budget,
     )
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -815,14 +833,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_media_only.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
-
-    optimization_results = self.budget_optimizer_media_only.optimize()
-
-    actual_data = optimization_results.optimized_data
+    self.budget_optimizer_media_only.optimize()
+    actual_data = self.budget_optimizer_media_only.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
     self.assertEqual(
         actual_data.budget,
-        optimization_results.nonoptimized_data.budget,
+        self.budget_optimizer_media_only.nonoptimized_data.budget,
     )
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -838,14 +854,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_rf_only.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
-
-    optimization_results = self.budget_optimizer_rf_only.optimize()
-
-    actual_data = optimization_results.optimized_data
+    self.budget_optimizer_rf_only.optimize()
+    actual_data = self.budget_optimizer_rf_only.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
     self.assertEqual(
         actual_data.budget,
-        optimization_results.nonoptimized_data.budget,
+        self.budget_optimizer_rf_only.nonoptimized_data.budget,
     )
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -860,12 +874,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_MROI: 1},
     )
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         fixed_budget=False, target_mroi=1
     )
-
-    actual_data = optimization_results.optimized_data
+    actual_data = self.budget_optimizer_media_and_rf.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
@@ -880,12 +892,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_ROI: 1},
     )
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         fixed_budget=False, target_roi=1
     )
-
-    actual_data = optimization_results.optimized_data
+    actual_data = self.budget_optimizer_media_and_rf.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @parameterized.named_parameters(
@@ -946,12 +956,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         use_optimal_frequency=use_optimal_frequency
     )
-
-    actual_data = optimization_results.optimized_data
+    actual_data = self.budget_optimizer_media_and_rf.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   def test_get_round_factor_gtol_raise_error(self):
@@ -969,7 +977,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.budget_optimizer_media_and_rf.optimize(budget=-10_000)
 
   def test_get_optimization_bounds_correct(self):
-    (lower_bound, upper_bound, _) = (
+    (lower_bound, upper_bound) = (
         self.budget_optimizer_media_and_rf._get_optimization_bounds(
             spend=np.array([10642.5, 22222.0, 33333.0, 44444.0, 55555.0]),
             spend_constraint_lower=[0.5, 0.4, 0.3, 0.2, 0.1],
@@ -1442,11 +1450,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600, 700, 800, 900])
     spend_bound_upper = np.array([1500, 1400, 1300, 1200, 1100])
     step_size = 200
-
-    selected_times = (
-        self.budget_optimizer_media_and_rf._meridian.expand_selected_time_dims(
-            selected_times=None
-        )
+    selected_times = self.budget_optimizer_media_and_rf._get_selected_time_dims(
+        selected_times=None
     )
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_media_and_rf._create_grids(
@@ -1475,17 +1480,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [[_OPTIMIZED_INCREMENTAL_IMPACT]], tf.float32
     )
     budget = 2000
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         budget=budget, fixed_budget=True
     )
-
     self.assertEqual(
-        optimization_results.nonoptimized_data.budget,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.budget,
         budget,
     )
     self.assertEqual(
-        optimization_results.optimized_data.budget,
+        self.budget_optimizer_media_and_rf.optimized_data.budget,
         budget,
     )
 
@@ -1497,21 +1500,19 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [[_NONOPTIMIZED_INCREMENTAL_IMPACT]], tf.float32
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
-
-    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+    self.budget_optimizer_media_and_rf.optimize(
         pct_of_spend=expected_pct_of_spend, fixed_budget=True
     )
-
-    actual_spend = optimization_results.nonoptimized_data.spend
-    actual_budget = optimization_results.nonoptimized_data.budget
+    actual_spend = self.budget_optimizer_media_and_rf.nonoptimized_data.spend
+    actual_budget = self.budget_optimizer_media_and_rf.nonoptimized_data.budget
     np.testing.assert_almost_equal(
-        optimization_results.nonoptimized_data.pct_of_spend,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.pct_of_spend,
         expected_pct_of_spend,
         decimal=7,
     )
     np.testing.assert_array_equal(
-        optimization_results.nonoptimized_data.budget,
-        optimization_results.optimized_data.budget,
+        self.budget_optimizer_media_and_rf.nonoptimized_data.budget,
+        self.budget_optimizer_media_and_rf.optimized_data.budget,
     )
     np.testing.assert_almost_equal(
         expected_pct_of_spend,
@@ -1567,6 +1568,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _, mock_kwargs = mock_incremental_impact.call_args
     self.assertEqual(mock_kwargs['batch_size'], batch_size)
 
+  def test_optimization_output_before_optimization_raises_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        optimizer.OptimizationNotRunError,
+        'Optimized data is only available after running optimize().',
+    ):
+      self.budget_optimizer_media_and_rf.output_optimization_summary(
+          'test', 'test'
+      )
+
 
 class OptimizerPlotsTest(absltest.TestCase):
 
@@ -1588,23 +1598,33 @@ class OptimizerPlotsTest(absltest.TestCase):
     meridian.input_data.kpi_type = c.REVENUE
     meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
 
-    self.meridian = meridian
     self.budget_optimizer = optimizer.BudgetOptimizer(meridian)
-    self.optimization_results = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer._meridian,
-        analyzer=self.budget_optimizer._analyzer,
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA,
-        _nonoptimized_data_with_optimal_freq=_SAMPLE_NON_OPTIMIZED_DATA,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA,
-        _optimization_grid=mock.MagicMock(),
-        spend_bounds=(
-            np.array([0.7, 0.5, 0.7]),
-            np.array([1.3]),
-        ),
-        spend_ratio=np.array([1.0, 1.0, 1.0]),
-        use_optimal_frequency=False,
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            'nonoptimized_data',
+            new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA),
+        )
     )
-
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            'nonoptimized_data_with_optimal_freq',
+            new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            'optimized_data',
+            new=property(lambda unused_self: _SAMPLE_OPTIMIZED_DATA),
+        )
+    )
+    self.budget_optimizer._spend_bounds = (
+        np.array([0.7, 0.5, 0.7]),
+        np.array([1.3]),
+    )
+    self.budget_optimizer._spend_ratio = np.array([1.0, 1.0, 1.0])
     spend_multiplier = np.arange(0, 2, 0.01)
     self.mock_response_curves = self.enter_context(
         mock.patch.object(
@@ -1617,7 +1637,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_impact_waterfall_chart_data_correct(self):
-    plot = self.optimization_results.plot_incremental_impact_delta()
+    plot = self.budget_optimizer.plot_incremental_impact_delta()
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.INCREMENTAL_IMPACT])
     self.assertEqual(
@@ -1626,7 +1646,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_impact_waterfall_chart_correct_config(self):
-    plot = self.optimization_results.plot_incremental_impact_delta()
+    plot = self.budget_optimizer.plot_incremental_impact_delta()
     config = plot.config.to_dict()
     self.assertEqual(
         config['axis'],
@@ -1643,7 +1663,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(config['view'], {'strokeOpacity': 0})
 
   def test_impact_waterfall_chart_correct_mark(self):
-    plot = self.optimization_results.plot_incremental_impact_delta()
+    plot = self.budget_optimizer.plot_incremental_impact_delta()
     self.assertEqual(
         plot.layer[0].mark.to_dict(),
         {
@@ -1665,7 +1685,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_impact_waterfall_chart_correct_bar_encoding(self):
-    plot = self.optimization_results.plot_incremental_impact_delta()
+    plot = self.budget_optimizer.plot_incremental_impact_delta()
     encoding = plot.layer[0].encoding.to_dict()
     self.assertEqual(
         encoding['color'],
@@ -1716,7 +1736,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_impact_waterfall_chart_correct_text_encoding(self):
-    plot = self.optimization_results.plot_incremental_impact_delta()
+    plot = self.budget_optimizer.plot_incremental_impact_delta()
     encoding = plot.layer[1].encoding.to_dict()
     text = encoding['text']
     self.assertEqual(
@@ -1739,21 +1759,21 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(encoding['y'], {'field': 'text_y', 'type': 'quantitative'})
 
   def test_budget_allocation_optimized_data(self):
-    plot = self.optimization_results.plot_budget_allocation()
+    plot = self.budget_optimizer.plot_budget_allocation()
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.SPEND])
     self.assertEqual(df.channel.size, 3)
     self.assertEqual(list(df.spend), list(_SAMPLE_OPTIMIZED_DATA.spend.values))
 
   def test_budget_allocation_nonoptimized_data(self):
-    plot = self.optimization_results.plot_budget_allocation(optimized=False)
+    plot = self.budget_optimizer.plot_budget_allocation(optimized=False)
     df = plot.data
     self.assertEqual(
         list(df.spend), list(_SAMPLE_NON_OPTIMIZED_DATA.spend.values)
     )
 
   def test_budget_allocation_correct_encoding(self):
-    plot = self.optimization_results.plot_budget_allocation()
+    plot = self.budget_optimizer.plot_budget_allocation()
     encoding = plot.encoding.to_dict()
     config = plot.config.to_dict()
     mark = plot.mark.to_dict()
@@ -1778,7 +1798,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(plot.title.text, summary_text.SPEND_ALLOCATION_CHART_TITLE)
 
   def test_plot_spend_delta_correct_data(self):
-    plot = self.optimization_results.plot_spend_delta()
+    plot = self.budget_optimizer.plot_spend_delta()
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.SPEND])
     self.assertEqual(
@@ -1791,7 +1811,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_spend_delta_correct_config(self):
-    plot = self.optimization_results.plot_spend_delta()
+    plot = self.budget_optimizer.plot_spend_delta()
     axis_config = plot.config.axis.to_dict()
     view_config = plot.config.view.to_dict()
 
@@ -1801,7 +1821,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(plot.height, 400)
 
   def test_plot_spend_delta_correct_mark(self):
-    plot = self.optimization_results.plot_spend_delta()
+    plot = self.budget_optimizer.plot_spend_delta()
     bar_mark = plot.layer[0].mark.to_dict()
     text_mark = plot.layer[1].mark.to_dict()
     self.assertEqual(
@@ -1825,7 +1845,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_spend_delta_correct_bar_encoding(self):
-    plot = self.optimization_results.plot_spend_delta()
+    plot = self.budget_optimizer.plot_spend_delta()
     encoding = plot.layer[0].encoding.to_dict()
     self.assertEqual(
         encoding['color'],
@@ -1865,7 +1885,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(plot.title.text, summary_text.SPEND_DELTA_CHART_TITLE)
 
   def test_plot_spend_delta_correct_text_encoding(self):
-    plot = self.optimization_results.plot_spend_delta()
+    plot = self.budget_optimizer.plot_spend_delta()
     encoding = plot.layer[1].encoding.to_dict()
     text_encoding = encoding['text']
     self.assertEqual(text_encoding, {'field': 'text_value', 'type': 'nominal'})
@@ -1882,7 +1902,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_response_curves_correct_data(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     df = plot.data
     self.mock_response_curves.assert_called_once()
     _, mock_kwargs = self.mock_response_curves.call_args
@@ -1919,35 +1939,24 @@ class OptimizerPlotsTest(absltest.TestCase):
         df[df[c.SPEND_LEVEL] == summary_text.NONOPTIMIZED_SPEND_LABEL], 3
     )
     self.assertContainsSubset(
-        self.optimization_results.spend_bounds[0], df[c.LOWER_BOUND]
+        self.budget_optimizer._spend_bounds[0], df[c.LOWER_BOUND]
     )
     self.assertContainsSubset(
-        self.optimization_results.spend_bounds[1], df[c.UPPER_BOUND]
+        self.budget_optimizer._spend_bounds[1], df[c.UPPER_BOUND]
     )
 
   def test_plot_response_curves_modified_bounds(self):
-    original = self.optimization_results
-    optimization_results = optimizer.OptimizationResults(
-        meridian=original.meridian,
-        analyzer=original.analyzer,
-        use_optimal_frequency=original.use_optimal_frequency,
-        spend_ratio=original.spend_ratio,
-        spend_bounds=(
-            np.array([0.7]),
-            np.array([1.2, 1.3, 1.4]),
-        ),
-        _nonoptimized_data=original.nonoptimized_data,
-        _optimized_data=original.optimized_data,
-        _nonoptimized_data_with_optimal_freq=original.nonoptimized_data_with_optimal_freq,
-        _optimization_grid=original.optimization_grid,
+    self.budget_optimizer._spend_bounds = (
+        np.array([0.7]),
+        np.array([1.2, 1.3, 1.4]),
     )
-    plot = optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     df = plot.data
     self.assertContainsSubset(
-        optimization_results.spend_bounds[0], df[c.LOWER_BOUND]
+        self.budget_optimizer._spend_bounds[0], df[c.LOWER_BOUND]
     )
     self.assertContainsSubset(
-        optimization_results.spend_bounds[1], df[c.UPPER_BOUND]
+        self.budget_optimizer._spend_bounds[1], df[c.UPPER_BOUND]
     )
 
   def test_plot_response_curves_invalid_n_channels(self):
@@ -1956,42 +1965,26 @@ class OptimizerPlotsTest(absltest.TestCase):
         'Top number of channels (5) by spend must be less than the total'
         ' number of channels (3)',
     ):
-      self.optimization_results.plot_response_curves(5)
+      self.budget_optimizer.plot_response_curves(5)
 
   def test_plot_response_curves_correct_selected_times(self):
-    expected_times = (
-        self.optimization_results.optimized_data.start_date,
-        self.optimization_results.optimized_data.end_date,
+    expected_times = analysis_test_utils.generate_selected_times(
+        '2020-01-05', 26
     )
-    self.optimization_results.plot_response_curves()
+    self.budget_optimizer.plot_response_curves()
     self.mock_response_curves.assert_called_once()
-    mock_args, _ = self.meridian.expand_selected_time_dims.call_args
-    self.assertEqual(mock_args[0], expected_times)
+    _, mock_kwargs = self.mock_response_curves.call_args
+    self.assertEqual(mock_kwargs['selected_times'], expected_times)
 
   def test_plot_response_curves_n_top_channels(self):
-    plot = self.optimization_results.plot_response_curves(2)
+    plot = self.budget_optimizer.plot_response_curves(2)
     channels = list(plot.data.channel.unique())
     self.assertEqual(channels, ['channel 2', 'channel 0'])
 
   def test_plot_response_curves_upper_limit(self):
-    original = self.optimization_results
-    optimization_results = optimizer.OptimizationResults(
-        meridian=original.meridian,
-        analyzer=original.analyzer,
-        use_optimal_frequency=original.use_optimal_frequency,
-        spend_ratio=np.array([1.0, 1.0, 1.0]),
-        spend_bounds=(
-            np.array([0]),
-            np.array([2]),
-        ),
-        _nonoptimized_data=original.nonoptimized_data,
-        _optimized_data=original.optimized_data,
-        _nonoptimized_data_with_optimal_freq=original.nonoptimized_data_with_optimal_freq,
-        _optimization_grid=original.optimization_grid,
-    )
-
-    optimization_results.plot_response_curves()
-
+    self.budget_optimizer._spend_bounds = (np.array([0]), np.array([2]))
+    self.budget_optimizer._spend_ratio = np.array([1.0, 1.0, 1.0])
+    self.budget_optimizer.plot_response_curves()
     self.mock_response_curves.assert_called_once()
     _, mock_kwargs = self.mock_response_curves.call_args
     # Check that the spend multiplier max is the upper limit of the upper spend
@@ -2001,11 +1994,11 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(mock_kwargs['by_reach'], True)
 
   def test_plot_response_curves_correct_config(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     self.assertEqual(plot.config.axis.to_dict(), formatter.TEXT_CONFIG)
 
   def test_plot_response_curves_correct_facet_properties(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     self.assertEqual(
         plot.facet.to_dict(),
         {'field': c.CHANNEL, 'title': None, 'type': 'nominal', 'sort': None},
@@ -2016,7 +2009,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(plot.resolve.scale.y, 'independent')
 
   def test_plot_response_curves_correct_encoding(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     base_encoding = {
         'color': {'field': c.CHANNEL, 'legend': None, 'type': 'nominal'},
         'x': {
@@ -2064,7 +2057,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_response_curves_below_constraint_line_properties(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     below_constraint_line = plot.spec.layer[0]
     self.assertEqual(
         below_constraint_line.mark.to_dict(),
@@ -2081,7 +2074,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_response_curves_constraint_and_above_line_properties(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     constraint_and_above_line = plot.spec.layer[1]
     self.assertEqual(constraint_and_above_line.mark, 'line')
     self.assertEqual(
@@ -2106,7 +2099,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
 
   def test_plot_response_curves_points_properties(self):
-    plot = self.optimization_results.plot_response_curves()
+    plot = self.budget_optimizer.plot_response_curves()
     points = plot.spec.layer[2]
     self.assertEqual(
         points.mark.to_dict(),
@@ -2153,87 +2146,56 @@ class OptimizerOutputTest(parameterized.TestCase):
         meridian_kpi_output
     )
 
-    self.optimization_results = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer._meridian,
-        analyzer=self.budget_optimizer._analyzer,
-        use_optimal_frequency=True,
-        spend_ratio=np.array([1.0, 1.0, 1.0]),
-        spend_bounds=(np.array([0.7]), np.array([1.3])),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA,
-        _nonoptimized_data_with_optimal_freq=mock.MagicMock(),
-        _optimization_grid=mock.MagicMock(),
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            'nonoptimized_data',
+            new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA),
+        )
     )
-
-    self.optimization_results_kpi_output = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer_kpi_output._meridian,
-        analyzer=self.budget_optimizer_kpi_output._analyzer,
-        use_optimal_frequency=True,
-        spend_ratio=np.array([1.0, 1.0, 1.0]),
-        spend_bounds=(np.array([0.7]), np.array([1.3])),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA_KPI,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA_KPI,
-        _nonoptimized_data_with_optimal_freq=mock.MagicMock(),
-        _optimization_grid=mock.MagicMock(),
+    self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            'optimized_data',
+            new=property(lambda unused_self: _SAMPLE_OPTIMIZED_DATA),
+        )
     )
-
+    self.budget_optimizer._spend_bounds = (np.array([0.7]), np.array([1.3]))
+    self.budget_optimizer_kpi_output._spend_bounds = (
+        np.array([0.7]),
+        np.array([1.3]),
+    )
     self.mock_spend_delta = self.enter_context(
         mock.patch.object(
-            optimizer.OptimizationResults,
+            optimizer.BudgetOptimizer,
             'plot_spend_delta',
             return_value=self._mock_chart(),
         )
     )
     self.mock_budget_allocation = self.enter_context(
         mock.patch.object(
-            optimizer.OptimizationResults,
+            optimizer.BudgetOptimizer,
             'plot_budget_allocation',
             return_value=self._mock_chart(),
         )
     )
     self.mock_impact_delta = self.enter_context(
         mock.patch.object(
-            optimizer.OptimizationResults,
+            optimizer.BudgetOptimizer,
             'plot_incremental_impact_delta',
             return_value=self._mock_chart(),
         )
     )
     self.mock_response_curves = self.enter_context(
         mock.patch.object(
-            optimizer.OptimizationResults,
+            optimizer.BudgetOptimizer,
             'plot_response_curves',
             return_value=self._mock_chart(),
         )
     )
 
-  def _mock_chart(self) -> alt.Chart:
-    return alt.Chart(pd.DataFrame()).mark_point()
-
-  def _get_output_summary_html_dom(
-      self, optimization_results: optimizer.OptimizationResults
-  ) -> ET.Element:
-    outfile_path = tempfile.mkdtemp() + '/optimization'
-    outfile_name = 'optimization.html'
-    fpath = os.path.join(outfile_path, outfile_name)
-
-    try:
-      optimization_results.output_optimization_summary(
-          outfile_name, outfile_path
-      )
-      with open(fpath, 'r') as f:
-        written_html_dom = ET.parse(f)
-    finally:
-      os.remove(fpath)
-      os.removedirs(outfile_path)
-
-    root = written_html_dom.getroot()
-    self.assertEqual(root.tag, 'html')
-    return root
-
   def test_output_html_title(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     title = summary_html_dom.find('head/title')
 
     self.assertIsNotNone(title)
@@ -2242,9 +2204,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     self.assertEqual(title_text.strip(), summary_text.OPTIMIZATION_TITLE)
 
   def test_output_header_section(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     header_div = analysis_test_utils.get_child_element(
         summary_html_dom, 'body/div', {'class': 'header'}
     )
@@ -2262,9 +2222,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_chips(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     chips_node = summary_html_dom.find('body/chips')
     self.assertIsNotNone(chips_node)
     chip_nodes = chips_node.findall('chip')
@@ -2278,9 +2236,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_scenario_plan_card_text(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2309,19 +2265,11 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_scenario_plan_card_custom_spend_constraint_upper(self):
-    original = self.optimization_results
-    optimization_results = optimizer.OptimizationResults(
-        meridian=original.meridian,
-        analyzer=original.analyzer,
-        use_optimal_frequency=original.use_optimal_frequency,
-        spend_ratio=original.spend_ratio,
-        spend_bounds=(np.array([0.7, 0.6, 0.7, 0.6, 0.7]), np.array([1.3])),
-        _nonoptimized_data=original.nonoptimized_data,
-        _optimized_data=original.optimized_data,
-        _nonoptimized_data_with_optimal_freq=original.nonoptimized_data_with_optimal_freq,
-        _optimization_grid=original.optimization_grid,
+    self.budget_optimizer._spend_bounds = (
+        np.array([0.7, 0.6, 0.7, 0.6, 0.7]),
+        np.array([1.3]),
     )
-    summary_html_dom = self._get_output_summary_html_dom(optimization_results)
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2341,20 +2289,11 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_scenario_plan_card_custom_spend_constraint_lower(self):
-    original = self.optimization_results
-    optimization_results = optimizer.OptimizationResults(
-        meridian=original.meridian,
-        analyzer=original.analyzer,
-        use_optimal_frequency=original.use_optimal_frequency,
-        spend_ratio=original.spend_ratio,
-        spend_bounds=(np.array([0.7]), np.array([1.3, 1.4, 1.3, 1.4, 1.3])),
-        _nonoptimized_data=original.nonoptimized_data,
-        _optimized_data=original.optimized_data,
-        _nonoptimized_data_with_optimal_freq=original.nonoptimized_data_with_optimal_freq,
-        _optimization_grid=original.optimization_grid,
+    self.budget_optimizer._spend_bounds = (
+        np.array([0.7]),
+        np.array([1.3, 1.4, 1.3, 1.4, 1.3]),
     )
-
-    summary_html_dom = self._get_output_summary_html_dom(optimization_results)
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2373,9 +2312,19 @@ class OptimizerOutputTest(parameterized.TestCase):
         ),
     )
 
+  @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      'nonoptimized_data',
+      new=property(lambda unused_self: _SAMPLE_NON_OPTIMIZED_DATA_KPI),
+  )
+  @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      'optimized_data',
+      new=property(lambda unused_self: _SAMPLE_OPTIMIZED_DATA_KPI),
+  )
   def test_output_scenario_card_use_cpik_no_revenue_per_kpi(self):
     summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results_kpi_output
+        self.budget_optimizer_kpi_output
     )
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
@@ -2408,7 +2357,7 @@ class OptimizerOutputTest(parameterized.TestCase):
   @parameterized.named_parameters(
       ('current_budget', 0, summary_text.CURRENT_BUDGET_LABEL, '$600', None),
       (
-          'optimization_results',
+          'optimized_budget',
           1,
           summary_text.OPTIMIZED_BUDGET_LABEL,
           '$600',
@@ -2434,9 +2383,7 @@ class OptimizerOutputTest(parameterized.TestCase):
   def test_output_scenario_plan_card_stats_text(
       self, index, expected_title, expected_stat, expected_delta
   ):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2460,9 +2407,7 @@ class OptimizerOutputTest(parameterized.TestCase):
       self.assertEqual(delta.strip(), expected_delta)
 
   def test_output_budget_allocation_card_text(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2485,9 +2430,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_budget_allocation_charts(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     self.mock_spend_delta.assert_called_once()
     self.mock_budget_allocation.assert_called_once()
     self.mock_impact_delta.assert_called_once()
@@ -2521,9 +2464,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_budget_allocation_table(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2565,9 +2506,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     self.assertEqual(row3, ['channel 1', '17%', '23%'])
 
   def test_output_response_curves_card_text(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     card = analysis_test_utils.get_child_element(
         summary_html_dom,
         'body/cards/card',
@@ -2594,9 +2533,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_response_curves_chart(self):
-    summary_html_dom = self._get_output_summary_html_dom(
-        self.optimization_results
-    )
+    summary_html_dom = self._get_output_summary_html_dom(self.budget_optimizer)
     self.mock_response_curves.assert_called_once_with(n_top_channels=3)
 
     card = analysis_test_utils.get_child_element(
@@ -2607,6 +2544,28 @@ class OptimizerOutputTest(parameterized.TestCase):
 
     charts = card.findall('charts/chart')
     self.assertLen(charts, 1)
+
+  def _mock_chart(self) -> alt.Chart:
+    return alt.Chart(pd.DataFrame()).mark_point()
+
+  def _get_output_summary_html_dom(
+      self, budget_optimizer: optimizer.BudgetOptimizer
+  ) -> ET.Element:
+    outfile_path = tempfile.mkdtemp() + '/optimization'
+    outfile_name = 'optimization.html'
+    fpath = os.path.join(outfile_path, outfile_name)
+
+    try:
+      budget_optimizer.output_optimization_summary(outfile_name, outfile_path)
+      with open(fpath, 'r') as f:
+        written_html_dom = ET.parse(f)
+    finally:
+      os.remove(fpath)
+      os.removedirs(outfile_path)
+
+    root = written_html_dom.getroot()
+    self.assertEqual(root.tag, 'html')
+    return root
 
 
 class OptimizerHelperTest(parameterized.TestCase):
