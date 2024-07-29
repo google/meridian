@@ -346,35 +346,6 @@ class Meridian:
         is_national=self.is_national,
     )
 
-  def expand_selected_time_dims(
-      self, selected_times: tuple[str, str] | None
-  ) -> Sequence[str] | None:
-    """Validates and returns the time dimensions based on the selected times.
-
-    Args:
-      selected_times: Tuple of the start and end times. If None, all time
-        dimensions are returned.
-
-    Returns:
-      DataArray of the time dimensions.
-    """
-    all_times = self.input_data.time.sortby(constants.TIME)
-    all_times_list = all_times.values.tolist()
-    all_times_range = (min(all_times_list), max(all_times_list))
-    if not selected_times or selected_times == all_times_range:
-      return None
-
-    if any(selected_time not in all_times for selected_time in selected_times):
-      raise ValueError(
-          "`selected_times` should match the time dimensions from input_data."
-      )
-
-    start_index = np.where(all_times == selected_times[0])[0]
-    end_index = np.where(all_times == selected_times[1])[0]
-    start = selected_times[0] if start_index < end_index else selected_times[1]
-    end = selected_times[1] if start_index < end_index else selected_times[0]
-    return all_times.sel(time=slice(start, end)).values.tolist()
-
   def _validate_data_dependent_model_spec(self):
     """Validates that the data dependent model specs have correct shapes."""
 
