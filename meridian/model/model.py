@@ -1257,7 +1257,7 @@ class Meridian:
     Throws:
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
         a list of integers as `n_chains` to sample chains serially (see
-        https://developers.google.com/meridian/docs/advanced-modeling/additional-considerations#gpu-oom-error).
+        https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
     seed = tfp.random.sanitize_seed(seed) if seed else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
@@ -1286,7 +1286,7 @@ class Meridian:
         raise MCMCOOMError(
             "ERROR: Out of memory. Try reducing `n_keep` or pass a list of"
             " integers as `n_chains` to sample chains serially (see"
-            " https://developers.google.com/meridian/docs/advanced-modeling/additional-considerations#gpu-oom-error)"
+            " https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error)"
         ) from error
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
