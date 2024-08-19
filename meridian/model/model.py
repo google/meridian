@@ -600,6 +600,7 @@ class Meridian:
       alpha: tf.Tensor,
       ec: tf.Tensor,
       slope: tf.Tensor,
+      n_times_output: int | None = None,
   ) -> tf.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
 
@@ -611,15 +612,26 @@ class Meridian:
       alpha: Uniform distribution for Adstock and Hill calculations.
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
+      n_times_output: Number of time periods to output. This argument is
+        optional when the number of time periods in `media` equals
+        `self.n_media_times`, in which case `n_times_output` defaults to
+        `self.n_times`.
 
     Returns:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
+    if n_times_output is None and (media.shape[1] == self.n_media_times):
+      n_times_output = self.n_times
+    elif n_times_output is None:
+      raise ValueError(
+          "n_times_output is required. This argument is only optional when "
+          "`media` has a number of time periods equal to `self.n_media_times`."
+      )
     adstock_transformer = adstock_hill.AdstockTransformer(
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
-        n_times_output=self.n_times,
+        n_times_output=n_times_output,
     )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
@@ -643,6 +655,7 @@ class Meridian:
       alpha: tf.Tensor,
       ec: tf.Tensor,
       slope: tf.Tensor,
+      n_times_output: int | None = None,
   ) -> tf.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
 
@@ -654,11 +667,22 @@ class Meridian:
       alpha: Uniform distribution for Adstock and Hill calculations.
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
+      n_times_output: Number of time periods to output. This argument is
+        optional when the number of time periods in `reach` equals
+        `self.n_media_times`, in which case `n_times_output` defaults to
+        `self.n_times`.
 
     Returns:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
+    if n_times_output is None and (reach.shape[1] == self.n_media_times):
+      n_times_output = self.n_times
+    elif n_times_output is None:
+      raise ValueError(
+          "n_times_output is required. This argument is only optional when "
+          "`reach` has a number of time periods equal to `self.n_media_times`."
+      )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
         slope=slope,
@@ -666,7 +690,7 @@ class Meridian:
     adstock_transformer = adstock_hill.AdstockTransformer(
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
-        n_times_output=self.n_times,
+        n_times_output=n_times_output,
     )
     adj_frequency = hill_transformer.forward(frequency)
     rf_out = adstock_transformer.forward(reach * adj_frequency)

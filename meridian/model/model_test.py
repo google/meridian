@@ -1335,6 +1335,46 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
           model_spec=spec.ModelSpec(baseline_geo=baseline_geo),
       ).baseline_geo_idx
 
+  def test_adstock_hill_media_missing_required_n_times_output(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "n_times_output is required. This argument is only optional when"
+        " `media` has a number of time periods equal to `self.n_media_times`.",
+    ):
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_only,
+          model_spec=spec.ModelSpec(),
+      )
+      meridian.adstock_hill_media(
+          media=meridian.media_tensors.media[:, :-8, :],
+          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+      )
+
+  def test_adstock_hill_media_n_times_output(self):
+    with mock.patch.object(
+        adstock_hill, "AdstockTransformer", autosepc=True
+    ) as mock_adstock_cls:
+      mock_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_only.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_only,
+          model_spec=spec.ModelSpec(),
+      )
+      meridian.adstock_hill_media(
+          media=meridian.media_tensors.media,
+          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=np.ones(shape=(self._N_MEDIA_CHANNELS)),
+          n_times_output=8,
+      )
+
+      calls = mock_adstock_cls.call_args_list
+      _, mock_kwargs = calls[0]
+      self.assertEqual(mock_kwargs["n_times_output"], 8)
+
   # TODO(b/349416835) Move this test to a higher-level public API unit test.
   @parameterized.named_parameters(
       dict(
@@ -1391,6 +1431,48 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
 
     mocks_called_names = [mc[0] for mc in manager.mock_calls]
     self.assertEqual(mocks_called_names, expected_called_names)
+
+  def test_adstock_hill_rf_missing_required_n_times_output(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "n_times_output is required. This argument is only optional when"
+        " `reach` has a number of time periods equal to `self.n_media_times`.",
+    ):
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_and_rf,
+          model_spec=spec.ModelSpec(),
+      )
+      meridian.adstock_hill_rf(
+          reach=meridian.rf_tensors.reach[:, :-8, :],
+          frequency=meridian.rf_tensors.frequency,
+          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+      )
+
+  def test_adstock_hill_rf_n_times_output(self):
+    with mock.patch.object(
+        adstock_hill, "AdstockTransformer", autosepc=True
+    ) as mock_adstock_cls:
+      mock_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_and_rf.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_and_rf,
+          model_spec=spec.ModelSpec(),
+      )
+      meridian.adstock_hill_rf(
+          reach=meridian.rf_tensors.reach,
+          frequency=meridian.rf_tensors.frequency,
+          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          n_times_output=8,
+      )
+
+      calls = mock_adstock_cls.call_args_list
+      _, mock_kwargs = calls[0]
+      self.assertEqual(mock_kwargs["n_times_output"], 8)
 
   # TODO(b/349416835) Move this test to a higher-level public API unit test.
   def test_adstock_hill_rf(

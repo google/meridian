@@ -222,32 +222,90 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       )
     self.assertEqual(outcome.shape, expected_shape)
 
-  def test_incremental_impact_wrong_media_raises_exception(self):
+  @parameterized.named_parameters(
+      (
+          "wrong_media_dims",
+          {"new_media": tf.ones((5, 1))},
+          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_reach_dims",
+          {"new_reach": tf.ones((5, 1))},
+          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_frequency_dims",
+          {"new_frequency": tf.ones((5, 1))},
+          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_revenue_per_kpi_dims",
+          {"new_revenue_per_kpi": tf.ones((5))},
+          "new_revenue_per_kpi must have 2 dimension(s). Found 1 dimension(s).",
+      ),
+  )
+  def test_incremental_impact_wrong_media_param_dims_raises_exception(
+      self,
+      new_param: dict[str, tf.Tensor],
+      expected_error_message: str,
+  ):
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
+      self.analyzer_media_and_rf.incremental_impact(**new_param)
+
+  @parameterized.named_parameters(
+      ("missing_media", "new_media"),
+      ("missing_reach", "new_reach"),
+      ("missing_frequency", "new_frequency"),
+      ("missing_revenue_per_kpi", "new_revenue_per_kpi"),
+  )
+  def test_incremental_impact_missing_new_param_raises_exception(
+      self, missing_param: str
+  ):
+    kwargs = {
+        "new_media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        "new_reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "new_frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "new_revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+    }
     with self.assertRaisesRegex(
         ValueError,
-        "new_media.shape must match media.shape",
+        "If new_media, new_reach, new_frequency, or new_revenue_per_kpi is "
+        "provided with a different number of time periods than in "
+        "`InputData`, then all of them must be provided with the same "
+        "number of time periods.",
+    ):
+      kwargs.pop(missing_param)
+      self.analyzer_media_and_rf.incremental_impact(**kwargs)
+
+  def test_incremental_impact_new_params_diff_time_dims_raises_exception(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "new_revenue_per_kpi must have the same number of time periods as the "
+        "other media tensor arguments.",
     ):
       self.analyzer_media_and_rf.incremental_impact(
-          new_media=self.meridian_media_and_rf.population,
+          new_media=tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+          new_reach=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+          new_frequency=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+          new_revenue_per_kpi=tf.ones((_N_GEOS, 8)),
       )
 
-  def test_incremental_impact_wrong_reach_raises_exception(self):
+  def test_incremental_impact_wrong_new_param_n_geos_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "new_reach.shape must match reach.shape",
+        "new_media is expected to have 5 geos. Found 4 geos.",
     ):
-      self.analyzer_media_and_rf.incremental_impact(
-          new_reach=self.meridian_media_and_rf.population,
-      )
+      shape = (_N_GEOS - 1, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)
+      self.analyzer_media_and_rf.incremental_impact(new_media=tf.ones(shape))
 
-  def test_incremental_impact_wrong_frequency_raises_exception(self):
+  def test_incremental_impact_wrong_n_channels_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "new_frequency.shape must match frequency.shape",
+        "new_reach is expected to have third dimension of size 2. Actual size "
+        "is 1.",
     ):
-      self.analyzer_media_and_rf.incremental_impact(
-          new_frequency=self.meridian_media_and_rf.population,
-      )
+      shape = (_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1)
+      self.analyzer_media_and_rf.incremental_impact(new_reach=tf.ones(shape))
 
   def test_incremental_impact_wrong_kpi_transformation(self):
     with self.assertRaisesRegex(
@@ -263,7 +321,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       aggregate_geos=[False, True],
       aggregate_times=[False, True],
       selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      selected_times=[
+          None,
+          ["2021-04-19", "2021-09-13", "2021-12-13"],
+          [False] * (_N_TIMES - 3) + [True] * 3,
+      ],
   )
   def test_incremental_impact_media_and_rf_returns_correct_shape(
       self,
@@ -286,9 +348,14 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
       )
     if not aggregate_times:
-      expected_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
+      if selected_times is not None:
+        if all(isinstance(time, bool) for time in selected_times):
+          n_times = sum(selected_times)
+        else:
+          n_times = len(selected_times)
+      else:
+        n_times = _N_TIMES
+      expected_shape += (n_times,)
     expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
     self.assertEqual(impact.shape, expected_shape)
 
@@ -319,6 +386,28 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         impact,
         tf.convert_to_tensor(expected_outcome),
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  # The purpose of this test is to prevent accidental logic change.
+  def test_incremental_impact_media_and_rf_new_params(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    impact = self.analyzer_media_and_rf.incremental_impact(
+        new_media=self.meridian_media_and_rf.media_tensors.media[..., -10:, :],
+        new_reach=self.meridian_media_and_rf.rf_tensors.reach[..., -10:, :],
+        new_frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -10:, :
+        ],
+        new_revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -10:
+        ],
+    )
+    self.assertAllClose(
+        impact,
+        tf.convert_to_tensor(test_utils.INC_IMPACT_MEDIA_AND_RF_NEW_PARAMS),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -1384,18 +1473,62 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         )
     )
 
-  def test_filter_and_aggregate_geos_and_times_incorrect_tensor_shape(self):
-    with self.assertRaisesWithLiteralMatch(
+  def test_filter_and_aggregate_geos_and_times_incorrect_n_dim(self):
+    with self.assertRaisesRegex(
         ValueError,
-        "The tensor must have shape [..., n_geos, n_times, n_channels] or"
-        " [..., n_geos, n_times].",
+        "The tensor must have at least 3 dimensions if `has_media_dim=True` or"
+        " at least 2 dimensions if `has_media_dim=False`.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           tf.convert_to_tensor(self.input_data_media_only.population),
+          flexible_time_dim=True,
+          has_media_dim=False,
+      )
+
+  @parameterized.named_parameters(
+      (
+          "not_flexible_time_dim",
+          False,
+          True,
+          (
+              "The tensor must have shape [..., n_geos, n_times, n_channels] or"
+              " [..., n_geos, n_times] if `flexible_time_dim=False`."
+          ),
+      ),
+      (
+          "flexible_time_dim_w_media",
+          True,
+          True,
+          (
+              "If `has_media_dim=True`, the tensor must have shape"
+              " `[..., n_geos, n_times, n_channels]`, where the time dimension"
+              " is flexible."
+          ),
+      ),
+      (
+          "flexible_time_dim_wo_media",
+          True,
+          False,
+          (
+              "If `has_media_dim=False`, the tensor must have shape"
+              " `[..., n_geos, n_times]`, where the time dimension is flexible."
+          ),
+      ),
+  )
+  def test_filter_and_aggregate_geos_and_times_incorrect_tensor_shape(
+      self, flexible_time_dim: bool, has_media_dim: bool, error_message: str
+  ):
+    with self.assertRaisesWithLiteralMatch(ValueError, error_message):
+      self.analyzer_media_only.filter_and_aggregate_geos_and_times(
+          tf.convert_to_tensor(
+              self.input_data_media_only.media_spend[..., :-1, :-1]
+          ),
+          flexible_time_dim=flexible_time_dim,
+          has_media_dim=has_media_dim,
       )
 
   def test_filter_and_aggregate_geos_and_times_incorrect_geos(self):
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
         "`selected_geos` must match the geo dimension names from "
         "meridian.InputData.",
@@ -1405,8 +1538,8 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
           selected_geos=["random_geo"],
       )
 
-  def test_filter_and_aggregate_geos_and_times_incorrect_times(self):
-    with self.assertRaisesWithLiteralMatch(
+  def test_filter_and_aggregate_geos_and_times_incorrect_time_dim_names(self):
+    with self.assertRaisesRegex(
         ValueError,
         "`selected_times` must match the time dimension names from "
         "meridian.InputData.",
@@ -1416,9 +1549,36 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
           selected_times=["random_time"],
       )
 
+  def test_filter_and_aggregate_geos_and_times_incorrect_time_bool(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must have the same number of time periods as "
+        "`tensor`.",
+    ):
+      self.analyzer_media_only.filter_and_aggregate_geos_and_times(
+          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          selected_times=[True] + [False] * (_N_MEDIA_TIMES - 1),
+      )
+
+  def test_filter_and_aggregate_geos_and_times_incorrect_selected_times_type(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must be a list of strings or a list of booleans.",
+    ):
+      self.analyzer_media_only.filter_and_aggregate_geos_and_times(
+          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          selected_times=["random_time", False, True],
+      )
+
   @parameterized.product(
       selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      selected_times=[
+          None,
+          ["2021-04-19", "2021-09-13", "2021-12-13"],
+          [False] * (_N_TIMES - 3) + [True] * 3,
+      ],
       aggregate_geos=[False, True],
       aggregate_times=[False, True],
   )
@@ -1445,9 +1605,14 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
           (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
       )
     if not aggregate_times:
-      expected_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
+      if selected_times is not None:
+        if all(isinstance(time, bool) for time in selected_times):
+          n_times = sum(selected_times)
+        else:
+          n_times = len(selected_times)
+      else:
+        n_times = _N_TIMES
+      expected_shape += (n_times,)
     expected_shape += (_N_MEDIA_CHANNELS,)
     self.assertEqual(modified_tensor.shape, expected_shape)
 
@@ -2462,7 +2627,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(mock_kwargs["use_kpi"], True)
 
   def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_outcome(self):
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
         "`use_kpi` must be True when `revenue_per_kpi` is not defined.",
     ):

@@ -87,15 +87,42 @@ def _warn_if_geo_arg_in_kwargs(**kwargs):
       )
 
 
+def _check_n_dims(tensor: tf.Tensor, name: str, n_dims: int):
+  """Raises an error if the tensor has the wrong number of dimensions."""
+  if tensor.ndim != n_dims:
+    raise ValueError(
+        f"{name} must have {n_dims} dimension(s). Found"
+        f" {tensor.ndim} dimension(s)."
+    )
+
+
 def _check_shape_matches(
     t1: tf.Tensor | None = None,
     t1_name: str = "",
     t2: tf.Tensor | None = None,
     t2_name: str = "",
+    t2_shape: tf.TensorShape | None = None,
 ):
-  """Raises an error if dimensions of 2 tensors don't match."""
+  """Raises an error if dimensions of a tensor don't match the correct shape."""
   if t1 is not None and t2 is not None and t1.shape != t2.shape:
     raise ValueError(f"{t1_name}.shape must match {t2_name}.shape.")
+  if t1 is not None and t2_shape is not None and t1.shape != t2_shape:
+    _check_n_dims(t1, t1_name, t2_shape.rank)
+    if t1.shape[0] != t2_shape[0]:
+      raise ValueError(
+          f"{t1_name} is expected to have {t2_shape[0]} geos. "
+          f"Found {t1.shape[0]} geos."
+      )
+    if t1.shape[1] != t2_shape[1]:
+      raise ValueError(
+          f"{t1_name} must have the same number of time periods as the "
+          "other media tensor arguments."
+      )
+    if t1.ndim == 3 and t1.shape[2] != t2_shape[2]:
+      raise ValueError(
+          f"{t1_name} is expected to have third dimension of size "
+          f"{t2_shape[2]}. Actual size is {t1.shape[2]}."
+      )
 
 
 def _check_spend_shape_matches(
@@ -208,6 +235,9 @@ class Analyzer:
       beta_grf: tf.Tensor | None = None,
   ) -> tf.Tensor:
     """Computes batched KPI means on the unit scale.
+
+    Note that the output array has the same number of time periods as the media
+    data (lagged time periods are included).
 
     Args:
       mu_t: mu_t distribution from inference data.
@@ -432,6 +462,7 @@ class Analyzer:
       slope_rf: tf.Tensor | None = None,
       beta_gm: tf.Tensor | None = None,
       beta_grf: tf.Tensor | None = None,
+      n_times_output: int | None = None,
   ) -> tuple[tf.Tensor | None, tf.Tensor | None]:
     """Function for transforming media using adstock and hill functions.
 
@@ -458,6 +489,9 @@ class Analyzer:
         `media`.
       beta_grf: Optional parameter from inference data. Used in conjunction with
         `reach` and `frequency`.
+      n_times_output: Optional number of time periods to output. Defaults to the
+        corresponding argument defaults for `adstock_hill_media` and
+        `adstock_hill_rf`.
 
     Returns:
       A tuple `(combined_media_transformed, combined_beta)`.
@@ -468,6 +502,7 @@ class Analyzer:
           alpha=alpha_m,
           ec=ec_m,
           slope=slope_m,
+          n_times_output=n_times_output,
       )
     else:
       media_transformed = None
@@ -478,6 +513,7 @@ class Analyzer:
           alpha=alpha_rf,
           ec=ec_rf,
           slope=slope_rf,
+          n_times_output=n_times_output,
       )
     else:
       rf_transformed = None
@@ -499,9 +535,11 @@ class Analyzer:
       self,
       tensor: tf.Tensor,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
+      flexible_time_dim: bool = False,
+      has_media_dim: bool = True,
   ) -> tf.Tensor:
     """Filters and/or aggregates geo and time dimensions of a tensor.
 
@@ -511,59 +549,105 @@ class Analyzer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included. The selected times should match
-        those in `InputData.time`.
+      selected_times: Optional list of times to include. This can either be a
+        string list containing a subset of time dims from `InputData.time` or a
+        boolean list with length equal to the time dimension of the tensor. By
+        default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the tensor is summed over all geos.
       aggregate_times: Boolean. If `True`, the tensor is summed over all time
         periods.
+      flexible_time_dim: Boolean. If `True`, the time dimension of the tensor is
+        not required to match the number of time periods in `InputData.time`. In
+        this case, if using `selected_times`, it must be a boolean list with
+        length equal to the time dimension of the tensor.
+      has_media_dim: Boolean. Only used if `flexible_time_dim=True`. Otherwise,
+        this is assumed based on the tensor dimensions. If `True`, the tensor is
+        assumed to have a media dimension following the time dimension. If
+        `False`, the last dimension of the tensor is assumed to be the time
+        dimension.
 
     Returns:
       A tensor with filtered and/or aggregated geo and time dimensions.
     """
     mmm = self._meridian
-    if tensor.shape[-3:] in (
-        tf.TensorShape([mmm.n_geos, mmm.n_times, mmm.n_media_channels]),
-        tf.TensorShape([mmm.n_geos, mmm.n_times, mmm.n_rf_channels]),
-        tf.TensorShape(
-            [mmm.n_geos, mmm.n_times, mmm.n_media_channels + mmm.n_rf_channels]
-        ),
-    ):
-      has_media_dim = True
-    elif tensor.shape[-2:] == tf.TensorShape([mmm.n_geos, mmm.n_times]):
-      has_media_dim = False
+
+    # Validate the tensor shape and determine if it has a media dimension.
+    if flexible_time_dim:
+      n_dim = tensor.ndim
+      if (has_media_dim and n_dim < 3) or (not has_media_dim and n_dim < 2):
+        raise ValueError(
+            "The tensor must have at least 3 dimensions if `has_media_dim=True`"
+            " or at least 2 dimensions if `has_media_dim=False`."
+        )
+      n_times = tensor.shape[-2] if has_media_dim else tensor.shape[-1]
     else:
-      raise ValueError(
-          "The tensor must have shape [..., n_geos, n_times, n_channels] or"
-          " [..., n_geos, n_times]."
-      )
+      n_times = mmm.n_times
+    n_channels = [
+        mmm.n_media_channels,
+        mmm.n_rf_channels,
+        mmm.n_media_channels + mmm.n_rf_channels,
+    ]
+    expected_shapes_w_media = [
+        tf.TensorShape(shape)
+        for shape in itertools.product([mmm.n_geos], [n_times], n_channels)
+    ]
+    expected_shape_wo_media = tf.TensorShape([mmm.n_geos, n_times])
+    if not flexible_time_dim:
+      if tensor.shape[-3:] in expected_shapes_w_media:
+        has_media_dim = True
+      elif tensor.shape[-2:] == expected_shape_wo_media:
+        has_media_dim = False
+      else:
+        raise ValueError(
+            "The tensor must have shape [..., n_geos, n_times, n_channels] or"
+            " [..., n_geos, n_times] if `flexible_time_dim=False`."
+        )
+    else:
+      if has_media_dim and tensor.shape[-3:] not in expected_shapes_w_media:
+        raise ValueError(
+            "If `has_media_dim=True`, the tensor must have shape "
+            "`[..., n_geos, n_times, n_channels]`, where the time dimension is "
+            "flexible."
+        )
+      elif not has_media_dim and tensor.shape[-2:] != expected_shape_wo_media:
+        raise ValueError(
+            "If `has_media_dim=False`, the tensor must have shape "
+            "`[..., n_geos, n_times]`, where the time dimension is flexible."
+        )
+    geo_dim = tensor.ndim - 2 - has_media_dim
+    time_dim = tensor.ndim - 1 - has_media_dim
 
-    if selected_geos and any(
-        geo not in mmm.input_data.geo for geo in selected_geos
-    ):
-      raise ValueError(
-          "`selected_geos` must match the geo dimension names from "
-          "meridian.InputData."
-      )
-
-    if selected_times and any(
-        time not in mmm.input_data.time for time in selected_times
-    ):
-      raise ValueError(
-          "`selected_times` must match the time dimension names from "
-          "meridian.InputData."
-      )
-
+    # Validate the selected geo and time dimensions and create a mask.
     if selected_geos:
+      if any(geo not in mmm.input_data.geo for geo in selected_geos):
+        raise ValueError(
+            "`selected_geos` must match the geo dimension names from "
+            "meridian.InputData."
+        )
       geo_mask = [x in selected_geos for x in mmm.input_data.geo]
-      tensor = tf.boolean_mask(
-          tensor, geo_mask, axis=tensor.ndim - 2 - has_media_dim
-      )
+      tensor = tf.boolean_mask(tensor, geo_mask, axis=geo_dim)
+
     if selected_times:
-      time_mask = [x in selected_times for x in mmm.input_data.time]
-      tensor = tf.boolean_mask(
-          tensor, time_mask, axis=tensor.ndim - 1 - has_media_dim
-      )
+      if all(isinstance(time, bool) for time in selected_times):
+        if len(selected_times) != tensor.shape[time_dim]:
+          raise ValueError(
+              "`selected_times` must have the same number of time periods as "
+              "`tensor`."
+          )
+        tensor = tf.boolean_mask(tensor, selected_times, axis=time_dim)
+      elif all(isinstance(time, str) for time in selected_times):
+        if any(time not in mmm.input_data.time for time in selected_times):
+          raise ValueError(
+              "`selected_times` must match the time dimension names from "
+              "meridian.InputData."
+          )
+        time_mask = [x in selected_times for x in mmm.input_data.time]
+        tensor = tf.boolean_mask(tensor, time_mask, axis=time_dim)
+      else:
+        raise ValueError(
+            "`selected_times` must be a list of strings or a list of booleans."
+        )
+
     tensor_dims = "...gt" + "m" * has_media_dim
     output_dims = (
         "g" * (not aggregate_geos)
@@ -751,7 +835,7 @@ class Analyzer:
           "use_kpi=False is only supported when inverse_transform_outcome=True."
       )
 
-  def _get_modeled_incremental_kpi(
+  def _get_incremental_kpi(
       self,
       media_scaled: tf.Tensor | None,
       reach_scaled: tf.Tensor | None,
@@ -765,7 +849,7 @@ class Analyzer:
       beta_gm: tf.Tensor | None = None,
       beta_grf: tf.Tensor | None = None,
   ) -> tf.Tensor:
-    """Function to compute modeled incremental KPI on the unit scale.
+    """Computes incremental KPI distribution on the unit scale.
 
     Args:
       media_scaled: Optional scaled media tensor.
@@ -789,8 +873,17 @@ class Analyzer:
         `reach` and `frequency`.
 
     Returns:
-      Tensor of incremental impact modeled from parameter distributions.
+      Tensor of incremental KPI distribution.
     """
+    n_media_times = self._meridian.n_media_times
+    if media_scaled is not None:
+      n_times = media_scaled.shape[1]
+      n_times_output = n_times if n_times != n_media_times else None
+    elif reach_scaled is not None:
+      n_times = reach_scaled.shape[1]
+      n_times_output = n_times if n_times != n_media_times else None
+    else:
+      raise ValueError("Both media_scaled and reach_scaled cannot be None.")
     combined_media_transformed, combined_beta = (
         self._get_transformed_media_and_beta(
             media=media_scaled,
@@ -804,6 +897,7 @@ class Analyzer:
             slope_rf=slope_rf,
             beta_gm=beta_gm,
             beta_grf=beta_grf,
+            n_times_output=n_times_output,
         )
     )
     return tf.einsum(
@@ -813,9 +907,12 @@ class Analyzer:
     )
 
   def _inverse_impact(
-      self, modeled_incremental_impact: tf.Tensor, use_kpi: bool
+      self,
+      modeled_incremental_impact: tf.Tensor,
+      use_kpi: bool,
+      revenue_per_kpi: tf.Tensor | None,
   ) -> tf.Tensor:
-    """Function to inverse incremental impact (revenue or KPI).
+    """Inverses incremental impact (revenue or KPI).
 
     This method assumes that additive changes on the model kpi scale
     correspond to additive changes on the original kpi scale. In other
@@ -828,11 +925,15 @@ class Analyzer:
         incremental revenue `(KPI * revenue_per_kpi)` is calculated. Only used
         if `inverse_transform_outcome=True`. `use_kpi` must be True when
         `revenue_per_kpi` is not defined.
+      revenue_per_kpi: Optional tensor of revenue per kpi. Uses
+        `revenue_per_kpi` from `InputData` if None.
 
     Returns:
        Tensor of incremental impact returned in terms of revenue or KPI.
     """
     self._check_revenue_data_exists(use_kpi)
+    if revenue_per_kpi is None:
+      revenue_per_kpi = self._meridian.revenue_per_kpi
     t1 = self._meridian.kpi_transformer.inverse(
         tf.einsum("...m->m...", modeled_incremental_impact)
     )
@@ -841,11 +942,7 @@ class Analyzer:
 
     if use_kpi:
       return kpi
-    return tf.einsum(
-        "gt,...gtm->...gtm",
-        self._meridian.revenue_per_kpi,
-        kpi,
-    )
+    return tf.einsum("gt,...gtm->...gtm", revenue_per_kpi, kpi)
 
   @tf.function(jit_compile=True)
   def _incremental_impact_impl(
@@ -853,6 +950,7 @@ class Analyzer:
       media_scaled: tf.Tensor | None,
       reach_scaled: tf.Tensor | None,
       frequency: tf.Tensor | None,
+      revenue_per_kpi: tf.Tensor | None = None,
       alpha_m: tf.Tensor | None = None,
       alpha_rf: tf.Tensor | None = None,
       ec_m: tf.Tensor | None = None,
@@ -864,7 +962,7 @@ class Analyzer:
       inverse_transform_impact: bool | None = None,
       use_kpi: bool | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
   ) -> tf.Tensor:
@@ -872,11 +970,15 @@ class Analyzer:
 
     Args:
       media_scaled: `media` data scaled by the per-geo median, normalized by the
-        geo population. Shape (n_geos x n_media_times x n_media_channels).
+        geo population. Shape (n_geos x T x n_media_channels), for any time
+        dimension T.
       reach_scaled: `reach` data scaled by the per-geo median, normalized by the
-        geo population. Shape (n_geos x n_media_times x n_rf_channels).
-      frequency: Contains frequency data with shape(n_geos x n_media_times x
-        n_rf_channels).
+        geo population. Shape (n_geos x T x n_rf_channels), for any time
+        dimension T.
+      frequency: Contains frequency data with shape(n_geos x T x n_rf_channels),
+        for any time dimension T.
+      revenue_per_kpi: Contains revenue per kpi data with shape (n_geos x T),
+        for any time dimension T.
       alpha_m: media_channel specific alpha parameter for adstock calculations.
         Used in conjunction with `media`.
       alpha_rf: rf_channel specific alpha parameter for adstock calculations.
@@ -904,7 +1006,9 @@ class Analyzer:
         `revenue_per_kpi` is not defined.
       selected_geos: Contains a subset of geos to include. By default, all geos
         are included.
-      selected_times: Contains a subset of dates to include. By default, all
+      selected_times: An optional string list containing a subset of
+        `InputData.time` to include or a boolean list with length equal to the
+        number of time periods in `new_media` (if provided). By default, all
         time periods are included.
       aggregate_geos: If True, then incremental impact is summed over all
         regions.
@@ -912,10 +1016,10 @@ class Analyzer:
         periods.
 
     Returns:
-      Tensor of incremental impact modeled from parameter distributions.
+      Tensor containing the incremental impact distribution.
     """
     self._check_revenue_data_exists(use_kpi)
-    transformed_impact = self._get_modeled_incremental_kpi(
+    transformed_impact = self._get_incremental_kpi(
         media_scaled=media_scaled,
         reach_scaled=reach_scaled,
         frequency=frequency,
@@ -928,17 +1032,20 @@ class Analyzer:
         beta_gm=beta_gm,
         beta_grf=beta_grf,
     )
-    incremental_impact = (
-        self._inverse_impact(transformed_impact, use_kpi=use_kpi)
-        if inverse_transform_impact
-        else transformed_impact
-    )
+    if inverse_transform_impact:
+      incremental_impact = self._inverse_impact(
+          transformed_impact, use_kpi=use_kpi, revenue_per_kpi=revenue_per_kpi
+      )
+    else:
+      incremental_impact = transformed_impact
     return self.filter_and_aggregate_geos_and_times(
         tensor=incremental_impact,
         selected_geos=selected_geos,
         selected_times=selected_times,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
+        flexible_time_dim=True,
+        has_media_dim=True,
     )
 
   def incremental_impact(
@@ -947,8 +1054,9 @@ class Analyzer:
       new_media: tf.Tensor | None = None,
       new_reach: tf.Tensor | None = None,
       new_frequency: tf.Tensor | None = None,
+      new_revenue_per_kpi: tf.Tensor | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       inverse_transform_impact: bool = True,
@@ -957,17 +1065,20 @@ class Analyzer:
   ) -> tf.Tensor:
     """Calculates either the posterior or prior incremental impact.
 
-    This calculates the incremental impact for each posterior or prior parameter
-    draw. Incremental impact is defined as `E(Impact|Media, Controls)` minus
-    `E(Impact|Media_0, Controls)`, where `Media_0` means that media execution
-    for a given channel is set to zero and all other media are set to the values
-    that the Meridian object was initialized with. This is the case for all geos
-    and time periods, including lag periods. Impact refers to either
+    This calculates the media impact of each media channel for each posterior or
+    prior parameter draw. Incremental impact is defined as
+    `E(Impact|Media, Controls)` minus `E(Impact|Media_0, Controls)`, where
+    `Media_0` means that media execution for a given channel is set to zero and
+    all other media are set to the values that the Meridian object was
+    initialized with. This is the case for all geos and time periods, including
+    lag periods. For channels with reach and frequency data, the
+    frequency is held fixed while the reach is scaled. Impact refers to either
     `revenue` if `use_kpi=False`, or `kpi` if `use_kpi=True`. When
     `revenue_per_kpi` is not defined, `use_kpi` cannot be False.
 
-    By default, this calculates incremental impact conditional on the media
-    and control values that the Meridian object was initialized with.
+    By default, "Media" represents the media values that the Meridian object was
+    initialized with, but this can be overridden by the `new_media`,
+    `new_reach`, and `new_frequency` arguments.
 
     The calculation in this method depends on two key assumptions made in the
     Meridian implementation:
@@ -979,27 +1090,27 @@ class Analyzer:
         currently holds because the impact transformation only involves
         centering and scaling, for example, no log transformations.
 
-    In principle, the incremental impact can be calculated
-    with other time dimensions (such as future predictions), but this is not
-    allowed with this method because of the additional complexities
-    this introduces:
-
-    1.  Corresponding price (revenue per KPI) data is also needed.
-    2.  If the model contains weekly effect parameters, then some method is
-        needed to estimate or predict these effects for time periods outside of
-        the training data window.
-
     Args:
       use_posterior: Boolean. If `True`, then the incremental impact posterior
         distribution is calculated. Otherwise, the prior distribution is
         calculated.
-      new_media: Optional tensor with dimensions matching media.
-      new_reach: Optional tensor with dimensions matching reach.
-      new_frequency: Optional tensor with dimensions matching frequency.
-      selected_geos: Optional list of containing a subset of geos to include. By
+      new_media: Optional tensor with geo and channel dimensions matching media.
+        Required if any other `new_XXX` data is provided with a different number
+        of time periods than the media input data.
+      new_reach: Optional tensor with geo and channel dimensions matching reach.
+        Required if any other `new_XXX` data is provided with a different number
+        of time periods than the media input data.
+      new_frequency: Optional tensor with geo and channel dimensions matching
+        frequency. Required if any other `new_XXX` data is provided with a
+        different number of time periods than the media input data.
+      new_revenue_per_kpi: Optional tensor with the geo dimension matching
+        revenue_per_kpi. Required if any other `new_XXX` data is provided with a
+        different number of time periods than the media input data.
+      selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of dates to include.
-        By default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        `new_media`, if provided. By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, then incremental impact is summed over
         all regions.
       aggregate_times: Boolean. If `True`, then incremental impact is summed
@@ -1011,8 +1122,8 @@ class Analyzer:
         represented within the model.
       use_kpi: Boolean. If `use_kpi = True`, the expected KPI is calculated;
         otherwise the expected revenue `(kpi * revenue_per_kpi)` is calculated.
-        It is required that `use_kpi = True` if `revenue_per_kpi` is not defined
-        or if `inverse_transform_impact = False`.
+        It is required that `use_kpi = True` if `revenue_per_kpi` data is not
+        available or if `inverse_transform_impact = False`.
       batch_size: Integer representing the maximum draws per chain in each
         batch. The calculation is run in batches to avoid memory exhaustion. If
         a memory error occurs, try reducing `batch_size`. The calculation will
@@ -1045,25 +1156,63 @@ class Analyzer:
           f"sample_{dist_type}() must be called prior to calling this method."
       )
 
+    # Ascertain new_n_media_times based on the input data.
+    new_media_params = [new_media, new_reach, new_frequency]
+    new_data = next((d for d in new_media_params if d is not None), None)
+    if new_data is not None:
+      # (geo, time, channel)
+      _check_n_dims(new_data, "New media params", 3)
+      new_n_media_times = new_data.shape[-2]
+      use_flexible_time = new_n_media_times != self._meridian.n_media_times
+    elif new_revenue_per_kpi is not None:
+      # (geo, time)
+      _check_n_dims(new_revenue_per_kpi, "new_revenue_per_kpi", 2)
+      new_n_media_times = new_revenue_per_kpi.shape[-1]
+      use_flexible_time = new_n_media_times != self._meridian.n_times
+    else:
+      new_n_media_times = self._meridian.n_media_times
+      use_flexible_time = False
+
+    # Validate the new parameters.
+    new_params = new_media_params + ([] if use_kpi else [new_revenue_per_kpi])
+    if use_flexible_time and any(param is None for param in new_params):
+      raise ValueError(
+          "If new_media, new_reach, new_frequency, or new_revenue_per_kpi is "
+          "provided with a different number of time periods than in "
+          "`InputData`, then all of them must be provided with the same "
+          "number of time periods."
+      )
+    new_shape = (self._meridian.n_geos, new_n_media_times)
     _check_shape_matches(
-        new_media, "new_media", self._meridian.media_tensors.media, "media"
+        new_media,
+        "new_media",
+        t2_shape=tf.TensorShape(new_shape + (self._meridian.n_media_channels,)),
     )
     _check_shape_matches(
-        new_reach, "new_reach", self._meridian.rf_tensors.reach, "reach"
+        new_reach,
+        "new_reach",
+        t2_shape=tf.TensorShape(new_shape + (self._meridian.n_rf_channels,)),
     )
     _check_shape_matches(
         new_frequency,
         "new_frequency",
-        self._meridian.rf_tensors.frequency,
-        "frequency",
+        t2_shape=tf.TensorShape(new_shape + (self._meridian.n_rf_channels,)),
     )
+    if not use_kpi:
+      _check_shape_matches(
+          new_revenue_per_kpi,
+          "new_revenue_per_kpi",
+          t2_shape=tf.TensorShape(new_shape)
+          if use_flexible_time
+          else tf.TensorShape([self._meridian.n_geos, self._meridian.n_times]),
+      )
 
+    # Calculate incremental impact in batches.
     params = (
         self._meridian.inference_data.posterior
         if use_posterior
         else self._meridian.inference_data.prior
     )
-
     tensor_kwargs = self._get_adstock_hill_tensors(
         new_media, new_reach, new_frequency
     )
@@ -1086,6 +1235,7 @@ class Analyzer:
           aggregate_times=aggregate_times,
           inverse_transform_impact=inverse_transform_impact,
           use_kpi=use_kpi,
+          revenue_per_kpi=new_revenue_per_kpi,
       )
     return tf.concat(incremental_impact_temps, axis=1)
 
