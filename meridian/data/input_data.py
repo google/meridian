@@ -24,6 +24,7 @@ import warnings
 
 from meridian import constants
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 
@@ -181,6 +182,11 @@ class InputData:
   def time(self) -> xr.DataArray:
     """Returns the time dimension."""
     return self.kpi[constants.TIME]
+
+  @property
+  def time_datetime_index(self) -> pd.DatetimeIndex:
+    """Returns the time dimension coordinates as `datetime64` array values."""
+    return pd.to_datetime(self.time)
 
   @property
   def media_time(self) -> xr.DataArray:

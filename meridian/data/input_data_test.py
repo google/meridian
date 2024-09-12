@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants
@@ -450,6 +452,26 @@ class InputDataTest(parameterized.TestCase):
     xr.testing.assert_equal(
         data.control_variable,
         self.not_lagged_controls[constants.CONTROL_VARIABLE],
+    )
+
+  def test_properties_time_datetime_index(self):
+    data = input_data.InputData(
+        controls=self.not_lagged_controls,
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.not_lagged_media,
+        media_spend=self.media_spend,
+        reach=self.not_lagged_reach,
+        frequency=self.not_lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+
+    expected_datetime_index = [np.datetime64(t) for t in data.time.values]
+
+    self.assertEqual(
+        list(data.time_datetime_index.values), expected_datetime_index
     )
 
   @parameterized.named_parameters(
