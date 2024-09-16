@@ -20,11 +20,18 @@ The `InputData` class is used to store all the input data to the model.
 from collections import abc
 import dataclasses
 import datetime as dt
+import functools
 import warnings
 
 from meridian import constants
+from meridian.data import time_coordinates as tc
 import numpy as np
 import xarray as xr
+
+
+__all__ = [
+    "InputData",
+]
 
 
 def _check_dim_collection(
@@ -182,6 +189,11 @@ class InputData:
     """Returns the time dimension."""
     return self.kpi[constants.TIME]
 
+  @functools.cached_property
+  def time_coordinates(self) -> tc.TimeCoordinates:
+    """Returns the time dimension coordinates."""
+    return tc.TimeCoordinates.from_dates(self.time)
+
   @property
   def media_time(self) -> xr.DataArray:
     """Returns the media time dimension."""
@@ -189,6 +201,11 @@ class InputData:
       return self.media[constants.MEDIA_TIME]
     else:
       return self.reach[constants.MEDIA_TIME]
+
+  @functools.cached_property
+  def media_time_coordinates(self) -> tc.TimeCoordinates:
+    """Returns the media time dimension coordinates."""
+    return tc.TimeCoordinates.from_dates(self.media_time)
 
   @property
   def media_channel(self) -> xr.DataArray | None:

@@ -16,3 +16,4 @@
 
 from meridian.data import input_data
 from meridian.data import load
+from meridian.data import time_coordinates

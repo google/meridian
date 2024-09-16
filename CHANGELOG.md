@@ -29,6 +29,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
   This allows, among other things, to project impact for future media values.
 * For `"All Channels"` media summary metrics: `effectiveness` and `mroi` data
   variables are now masked out (`math.nan`).
+* Introduce a `data.TimeCoordinates` construct.
+* `InputData` now has `[media_]*time_coordinates` properties.
+* Pin numpy dependency to ">= 1.26, < 2".
 
 ## [0.6.0] - 2024-08-20
 

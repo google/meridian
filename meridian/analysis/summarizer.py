@@ -15,7 +15,6 @@
 """Summarization module that creates a 2-page HTML report."""
 
 from collections.abc import Sequence
-import datetime as dt
 import functools
 import os
 
@@ -24,6 +23,7 @@ from meridian import constants as c
 from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
+from meridian.data import time_coordinates as tc
 from meridian.model import model
 import pandas as pd
 import xarray as xr
@@ -80,8 +80,8 @@ class Summarizer:
       self,
       filename: str,
       filepath: str,
-      start_date: str | None = None,
-      end_date: str | None = None,
+      start_date: tc.Date | None = None,
+      end_date: tc.Date | None = None,
   ):
     """Generates and saves the HTML results summary output.
 
@@ -93,44 +93,35 @@ class Summarizer:
     """
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
-      f.write(
-          self._gen_model_results_summary(
-              (
-                  dt.datetime.strptime(start_date, c.DATE_FORMAT)
-                  if start_date
-                  else None
-              ),
-              (
-                  dt.datetime.strptime(end_date, c.DATE_FORMAT)
-                  if end_date
-                  else None
-              ),
-          )
-      )
+      f.write(self._gen_model_results_summary(start_date, end_date))
 
   def _gen_model_results_summary(
       self,
-      start_date: dt.datetime | None = None,
-      end_date: dt.datetime | None = None,
+      start_date: tc.Date | None = None,
+      end_date: tc.Date | None = None,
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
-    start_date = start_date or min(self._meridian.kpi_time_values)
-    end_date = end_date or max(self._meridian.kpi_time_values)
+    all_dates = self._meridian.input_data.time_coordinates.all_dates
+    start_date = (
+        tc.normalize_date(start_date)
+        if start_date is not None
+        else min(all_dates)
+    )
+    end_date = (
+        tc.normalize_date(end_date) if end_date is not None else max(all_dates)
+    )
 
-    if start_date not in self._meridian.kpi_time_values:
+    if start_date not in all_dates:
       raise ValueError(
-          f'start_date ({start_date.strftime(c.DATE_FORMAT)}) must be'
-          ' in the time coordinates!'
+          f'start_date ({start_date}) must be in the time coordinates!'
       )
-    if end_date not in self._meridian.kpi_time_values:
+    if end_date not in all_dates:
       raise ValueError(
-          f'end_date ({end_date.strftime(c.DATE_FORMAT)}) must be'
-          ' in the time coordinates!'
+          f'end_date ({end_date}) must be in the time coordinates!'
       )
     if start_date > end_date:
       raise ValueError(
-          f'start_date ({start_date.strftime(c.DATE_FORMAT)}) must be before'
-          f' end_date ({end_date.strftime(c.DATE_FORMAT)})!'
+          f'start_date ({start_date}) must be before end_date ({end_date})!'
       )
 
     selected_times = self._meridian.expand_selected_time_dims(

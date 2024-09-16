@@ -384,8 +384,16 @@ class InputDataTest(parameterized.TestCase):
 
     xr.testing.assert_equal(data.geo, self.not_lagged_kpi[constants.GEO])
     xr.testing.assert_equal(data.time, self.not_lagged_kpi[constants.TIME])
+    self.assertEqual(
+        data.time_coordinates.all_dates_str,
+        [t for t in self.not_lagged_kpi[constants.TIME]],
+    )
     xr.testing.assert_equal(
         data.media_time, self.not_lagged_media[constants.MEDIA_TIME]
+    )
+    self.assertEqual(
+        data.media_time_coordinates.all_dates_str,
+        [t for t in self.not_lagged_media[constants.MEDIA_TIME]],
     )
     xr.testing.assert_equal(
         data.media_channel, self.not_lagged_media[constants.MEDIA_CHANNEL]

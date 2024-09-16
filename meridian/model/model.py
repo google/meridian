@@ -15,14 +15,15 @@
 """Meridian module for the geo-level Bayesian hierarchical media mix model."""
 
 from collections.abc import Mapping, Sequence
-import datetime as dt
 import functools
 import os
 import warnings
+
 import arviz as az
 import joblib
 from meridian import constants
 from meridian.data import input_data as data
+from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
 from meridian.model import knots
 from meridian.model import media
@@ -126,8 +127,6 @@ class Meridian:
       or not (multiple geos).
     knot_info: A `KnotInfo` derived from input data and model spec.
     kpi: A tensor constructed from `input_data.kpi`.
-    kpi_time_values: A list of `datetime` objects corresponding to the time
-      dimension values in the KPI data array.
     revenue_per_kpi: A tensor constructed from `input_data.revenue_per_kpi`. If
       `input_data.revenue_per_kpi` is None, then this is also None.
     controls: A tensor constructed from `input_data.controls`.
@@ -196,20 +195,6 @@ class Meridian:
   @functools.cached_property
   def kpi(self) -> tf.Tensor:
     return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float32)
-
-  @functools.cached_property
-  def kpi_time_values(self) -> list[dt.datetime]:
-    """The KPI data array's `time` coordinates as `datetime` objects."""
-    time_dims = [
-        dt.datetime.strptime(value, constants.DATE_FORMAT)
-        for value in self.input_data.time.values
-    ]
-    # Assume that the time dimension values in the input data were sorted.
-    if not all(
-        time_dims[i] <= time_dims[i + 1] for i in range(len(time_dims) - 1)
-    ):
-      raise ValueError("The input data's `time` coordinates are not sorted.")
-    return time_dims
 
   @functools.cached_property
   def revenue_per_kpi(self) -> tf.Tensor | None:
@@ -377,8 +362,8 @@ class Meridian:
 
   def expand_selected_time_dims(
       self,
-      start_date: dt.datetime | str | None = None,
-      end_date: dt.datetime | str | None = None,
+      start_date: tc.Date | None = None,
+      end_date: tc.Date | None = None,
   ) -> list[str] | None:
     """Validates and returns time dimension values based on the selected times.
 
@@ -400,47 +385,12 @@ class Meridian:
       ValueError if `start_date` or `end_date` is not in the input data time
       dimensions.
     """
-    if start_date is None and end_date is None:
+    expanded = self.input_data.time_coordinates.expand_selected_time_dims(
+        start_date=start_date, end_date=end_date
+    )
+    if expanded is None:
       return None
-
-    if start_date is None:
-      start_date = min(self.kpi_time_values)
-    else:
-      if isinstance(start_date, str):
-        start_date = dt.datetime.strptime(start_date, constants.DATE_FORMAT)
-      if start_date not in self.kpi_time_values:
-        raise ValueError(
-            f"start_date ({start_date.strftime(constants.DATE_FORMAT)}) must be"
-            " in the time coordinates!"
-        )
-
-    if end_date is None:
-      end_date = max(self.kpi_time_values)
-    else:
-      if isinstance(end_date, str):
-        end_date = dt.datetime.strptime(end_date, constants.DATE_FORMAT)
-      if end_date not in self.kpi_time_values:
-        raise ValueError(
-            f"end_date ({end_date.strftime(constants.DATE_FORMAT)}) must be"
-            " in the time coordinates!"
-        )
-
-    if start_date > end_date:
-      raise ValueError(
-          f"start_date ({start_date.strftime(constants.DATE_FORMAT)}) must be"
-          " less than or equal to end_date"
-          f" ({end_date.strftime(constants.DATE_FORMAT)})!"
-      )
-
-    if start_date == min(self.kpi_time_values) and end_date == max(
-        self.kpi_time_values
-    ):
-      return None
-
-    selected_times = [
-        date for date in self.kpi_time_values if start_date <= date <= end_date
-    ]
-    return [time.strftime(constants.DATE_FORMAT) for time in selected_times]
+    return [date.strftime(constants.DATE_FORMAT) for date in expanded]
 
   def _validate_data_dependent_model_spec(self):
     """Validates that the data dependent model specs have correct shapes."""
