@@ -27,6 +27,7 @@ from meridian.analysis import summary_text
 from meridian.analysis import test_utils
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.data import time_coordinates as tc
 from meridian.model import model
 import xarray as xr
 
@@ -170,7 +171,9 @@ class SummarizerTest(parameterized.TestCase):
     )
     for mock_meridian in (self.mock_meridian_revenue, self.mock_meridian_kpi):
       mock_meridian.input_data.time = response[c.TIME]
-      mock_meridian.kpi_time_values = _TIME_COORDS
+      mock_meridian.input_data.time_coordinates = tc.TimeCoordinates.from_dates(
+          response[c.TIME]
+      )
       mock_meridian.expand_selected_time_dims.return_value = (
           _TIME_COORDS_STRINGS
       )
@@ -460,11 +463,12 @@ class SummarizerTest(parameterized.TestCase):
       )
 
       self.mock_meridian_revenue.expand_selected_time_dims.assert_called_once_with(
-          start_date=dt.datetime(2022, 6, 4), end_date=dt.datetime(2022, 8, 27)
+          start_date=dt.datetime(2022, 6, 4).date(),
+          end_date=dt.datetime(2022, 8, 27).date(),
       )
 
       plot.assert_called_with(
-          selected_times=[
+          selected_dates=[
               '2022-06-04',
               '2022-06-11',
               '2022-06-18',
@@ -653,7 +657,7 @@ class SummarizerTest(parameterized.TestCase):
 
     self.media_summary_class.assert_called_with(
         self.mock_meridian_revenue,
-        selected_times=[
+        selected_dates=[
             '2022-06-04',
             '2022-06-11',
             '2022-06-18',
@@ -697,7 +701,7 @@ class SummarizerTest(parameterized.TestCase):
       self.media_effects_class.assert_called_with(self.mock_meridian_revenue)
       plot.assert_called_with(
           confidence_level=0.9,
-          selected_times=frozenset([
+          selected_dates=frozenset([
               '2022-06-04',
               '2022-06-11',
               '2022-06-18',
@@ -735,7 +739,7 @@ class SummarizerTest(parameterized.TestCase):
 
     self.reach_frequency_class.assert_called_with(
         self.mock_meridian_revenue,
-        selected_times=[
+        selected_dates=[
             '2022-06-04',
             '2022-06-11',
             '2022-06-18',
@@ -954,7 +958,7 @@ class SummarizerTest(parameterized.TestCase):
 
       plot.assert_called_with(
           confidence_level=0.9,
-          selected_times=frozenset(
+          selected_dates=frozenset(
               self.summarizer_revenue._meridian.input_data.time.values
           ),
           plot_separately=False,

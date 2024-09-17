@@ -51,19 +51,19 @@ class ModelDiagnostics:
   def _predictive_accuracy_dataset(
       self,
       selected_geos: frozenset[str] | None = None,
-      selected_times: frozenset[str] | None = None,
+      selected_dates: frozenset[str] | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Displays the predictive accuracy Dataset.
 
     Args:
-      selected_geos: Optional list of a subset of geo dimensions to include. By
-        default, all geos are included. Geos should match the geo dimension
-        names from meridian.InputData. Only set one of `selected_geos` and
-        `n_top_largest_geos`.
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times should match the time
-        dimensions from meridian.InputData.
+      selected_geos: Optional list of a subset of geo dimension coordinate
+        values to include. By default, all geos are included. Geos should match
+        the geo dimension names from meridian.InputData. Only set one of
+        `selected_geos` and `n_top_largest_geos`.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to include. By default, all times are included. Times should
+        match the time coordinate values in `meridian.InputData`.
       batch_size: Integer representing max draws per chain in each batch. The
         calculation is run in batches to avoid memory exhaustion. If a memory
         error occurs, try reducing `batch_size`. The calculation will generally
@@ -73,32 +73,32 @@ class ModelDiagnostics:
       A Dataset displaying the predictive accuracy metrics.
     """
     selected_geos_list = list(sorted(selected_geos)) if selected_geos else None
-    selected_times_list = (
-        list(sorted(selected_times)) if selected_times else None
+    selected_dates_list = (
+        list(sorted(selected_dates)) if selected_dates else None
     )
     return self._analyzer.predictive_accuracy(
         selected_geos=selected_geos_list,
-        selected_times=selected_times_list,
+        selected_dates=selected_dates_list,
         batch_size=batch_size,
     )
 
   def predictive_accuracy_table(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       column_var: str | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> pd.DataFrame:
     """Displays the predictive accuracy of the DataFrame.
 
     Args:
-      selected_geos: Optional list of a subset of geo dimensions to include. By
-        default, all geos are included. Geos should match the geo dimension
-        names from `meridian.InputData`. Set either `selected_geos` or
-        `n_top_largest_geos`, do not set both.
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times must match the time dimensions
-        from `meridian.InputData`.
+      selected_geos: Optional list of a subset of geo dimension coordinate
+        values to include. By default, all geos are included. Geos should match
+        the geo dimension names from `meridian.InputData`. Set either
+        `selected_geos` or `n_top_largest_geos`, do not set both.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to include. By default, all times are included. Times must match
+        the time dimensions from `meridian.InputData`.
       column_var: Optional string that indicates whether to pivot the table by
         `metric`, `geo_granularity` or `evaluation_set`. By default,
         `column_var=None` indicates that the `metric`, `geo_granularity` and
@@ -118,11 +118,11 @@ class ModelDiagnostics:
     selected_geos_frozenset = (
         frozenset(selected_geos) if selected_geos else None
     )
-    selected_times_frozenset = (
-        frozenset(selected_times) if selected_times else None
+    selected_dates_frozenset = (
+        frozenset(selected_dates) if selected_dates else None
     )
     predictive_accuracy_dataset = self._predictive_accuracy_dataset(
-        selected_geos_frozenset, selected_times_frozenset, batch_size
+        selected_geos_frozenset, selected_dates_frozenset, batch_size
     )
     df = predictive_accuracy_dataset.to_dataframe().reset_index()
     if not column_var:
@@ -149,7 +149,7 @@ class ModelDiagnostics:
       self,
       parameter: str = 'roi_m',
       num_geos: int = 3,
-      selected_times: list[str] | None = None,
+      selected_dates: list[str] | None = None,
   ) -> alt.Chart | alt.FacetChart:
     """Plots prior and posterior distributions for a model parameter.
 
@@ -159,7 +159,7 @@ class ModelDiagnostics:
       num_geos: Number of largest geos by population to show in the plots for
         the geo-level parameters. By default, only the top three largest geos
         are shown.
-      selected_times: List of specific time periods to plot for time-level
+      selected_dates: List of specific time periods to plot for time-level
         parameters. These times must match the time periods from the data. By
         default, the first three time periods are plotted.
 
@@ -189,15 +189,15 @@ class ModelDiagnostics:
           ' parameters.'
       )
 
-    if selected_times:
+    if selected_dates:
       param_data = self._meridian.inference_data.posterior[parameter]
       if not (hasattr(param_data, c.TIME)):
         raise ValueError(
-            '`selected_times` can only be used if the parameter has a time'
+            '`selected_dates` can only be used if the parameter has a time'
             f" dimension. The selected param '{parameter}' does not have a time"
             ' dimension.'
         )
-      if any(time not in param_data.time for time in selected_times):
+      if any(time not in param_data.time for time in selected_dates):
         raise ValueError(
             'The selected times must match the time dimensions in the Meridian'
             ' model.'
@@ -228,8 +228,8 @@ class ModelDiagnostics:
     if c.TIME in prior_posterior_df.columns:
       default_num_times = 3
       times = (
-          selected_times
-          if selected_times
+          selected_dates
+          if selected_dates
           else prior_dat[c.TIME][:default_num_times].values
       )
       prior_posterior_df = prior_posterior_df[
@@ -378,7 +378,7 @@ class ModelFit:
 
   def plot_model_fit(
       self,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       selected_geos: Sequence[str] | None = None,
       n_top_largest_geos: int | None = None,
       show_geo_level: bool = False,
@@ -388,13 +388,13 @@ class ModelFit:
     """Plots the expected versus actual impact over time.
 
     Args:
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times should match the time
-        dimensions from `meridian.InputData`.
-      selected_geos: Optional list of a subset of geo dimensions to include. By
-        default, all geos are included. Geos should match the geo dimension
-        names from `meridian.InputData`. Set either `selected_geos` or
-        `n_top_largest_geos`, do not set both.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to include. By default, all times are included. Times should
+        match the time dimensions from `meridian.InputData`.
+      selected_geos: Optional list of a subset of geo dimension coordinate
+        values to include. By default, all geos are included. Geos should match
+        the geo dimension names from `meridian.InputData`. Set either
+        `selected_geos` or `n_top_largest_geos`, do not set both.
       n_top_largest_geos: Optional number of largest geos by population to
         include. By default, all geos are included. Set either `selected_geos`
         or `n_top_largest_geos`, do not set both.
@@ -414,7 +414,7 @@ class ModelFit:
         if self._meridian.input_data.revenue_per_kpi is not None
         else c.KPI.upper()
     )
-    self._validate_times_to_plot(selected_times)
+    self._validate_times_to_plot(selected_dates)
     self._validate_geos_to_plot(
         selected_geos, n_top_largest_geos, show_geo_level
     )
@@ -425,7 +425,7 @@ class ModelFit:
       )
 
     model_fit_df = self._transform_data_to_dataframe(
-        selected_times, selected_geos, show_geo_level, include_baseline
+        selected_dates, selected_geos, show_geo_level, include_baseline
     )
 
     # Specify custom colors to use to plot each metric category.
@@ -500,13 +500,13 @@ class ModelFit:
     )
 
   def _validate_times_to_plot(
-      self, selected_times: Sequence[str] | None = None
+      self, selected_dates: Sequence[str] | None = None
   ):
     """Validates the time dimensions."""
     time_dims = self.model_fit_data.time
-    if selected_times and any(time not in time_dims for time in selected_times):
+    if selected_dates and any(time not in time_dims for time in selected_dates):
       raise ValueError(
-          '`selected_times` should match the time dimensions from '
+          '`selected_dates` should match the time dimensions from '
           'meridian.InputData.'
       )
 
@@ -519,9 +519,10 @@ class ModelFit:
     """Validates the parameters related to the geo-level filtering for plotting.
 
     Args:
-      selected_geos: Optional list of a subset of geo dimensions to include.
-        Geos should match the geo dimension names from meridian.InputData. Only
-        one of `selected_geos` and `n_top_largest_geos` can be specified.
+      selected_geos: Optional list of a subset of geo dimension coordinate
+        values to include. Geos should match the geo dimension names from
+        meridian.InputData. Only one of `selected_geos` and `n_top_largest_geos`
+        can be specified.
       n_top_largest_geos: Optional number of largest geos by population to
         include. Only one of `selected_geos` and `n_top_largest_geos` can be
         specified.
@@ -554,7 +555,7 @@ class ModelFit:
 
   def _transform_data_to_dataframe(
       self,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       selected_geos: Sequence[str] | None = None,
       show_geo_level: bool = False,
       include_baseline: bool = True,
@@ -562,8 +563,10 @@ class ModelFit:
     """Transforms the model fit data to a dataframe modified for plotting.
 
     Args:
-      selected_times: Optional list of a subset of time dimensions to filter by.
-      selected_geos: Optional list of a subset of geo dimensions to filter by.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to filter by.
+      selected_geos: Optional list of a subset of geo dimension coordinate
+        values to filter by.
       show_geo_level: If False, aggregates the geo-level data to national level.
       include_baseline: If False, removes the expected baseline impact without
         any media execution.
@@ -571,7 +574,7 @@ class ModelFit:
     Returns:
       A data frame filtered based on the specifications.
     """
-    times = selected_times or self.model_fit_data.time
+    times = selected_dates or self.model_fit_data.time
     geos = selected_geos or self.model_fit_data.geo
     model_fit_df = (
         self.model_fit_data.sel(time=times, geo=geos)
@@ -616,20 +619,20 @@ class ReachAndFrequency:
   def __init__(
       self,
       meridian: model.Meridian,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
   ):
     """Initializes the reach and frequency dataset for the model data.
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
-      selected_times: Optional list containing a subset of times to include. By
+      selected_dates: Optional list containing a subset of times to include. By
         default, all time periods are included.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
-    self._selected_times = selected_times
+    self._selected_dates = selected_dates
     self._optimal_frequency_data = self._analyzer.optimal_freq(
-        selected_times=selected_times
+        selected_dates=selected_dates
     )
 
   @property
@@ -644,18 +647,18 @@ class ReachAndFrequency:
     """
     return self._optimal_frequency_data
 
-  def update_optimal_reach_and_frequency_selected_times(
-      self, selected_times: Sequence[str] | None = None
+  def update_optimal_reach_and_frequency_selected_dates(
+      self, selected_dates: Sequence[str] | None = None
   ):
     """Updates the selected times for optimal reach and frequency data.
 
     Args:
-      selected_times: Optional list containing a subset of times to include. By
+      selected_dates: Optional list containing a subset of times to include. By
         default, all time periods are included.
     """
-    self._selected_times = selected_times
+    self._selected_dates = selected_dates
     self._optimal_frequency_data = self._analyzer.optimal_freq(
-        selected_times=selected_times
+        selected_dates=selected_dates
     )
 
   def _transform_optimal_frequency_metrics(
@@ -839,7 +842,7 @@ class MediaEffects:
   def response_curves_data(
       self,
       confidence_level: float = 0.9,
-      selected_times: frozenset[str] | None = None,
+      selected_dates: frozenset[str] | None = None,
       by_reach: bool = True,
   ) -> xr.Dataset:
     """Dataset holding the calculated response curves data.
@@ -853,9 +856,9 @@ class MediaEffects:
     Args:
       confidence_level: Confidence level for modeled response credible
         intervals, represented as a value between zero and one. Default is 0.9.
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times should match the time
-        dimensions from `meridian.InputData`.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to include. By default, all times are included. Times should
+        match the time dimensions from `meridian.InputData`.
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
@@ -863,11 +866,11 @@ class MediaEffects:
     Returns:
       A Dataset displaying the response curves data.
     """
-    selected_times_list = list(selected_times) if selected_times else None
+    selected_dates_list = list(selected_dates) if selected_dates else None
     return self._analyzer.response_curves(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=confidence_level,
-        selected_times=selected_times_list,
+        selected_dates=selected_dates_list,
         by_reach=by_reach,
     )
 
@@ -911,7 +914,7 @@ class MediaEffects:
   def plot_response_curves(
       self,
       confidence_level: float = 0.9,
-      selected_times: frozenset[str] | None = None,
+      selected_dates: frozenset[str] | None = None,
       by_reach: bool = True,
       plot_separately: bool = True,
       include_ci: bool = True,
@@ -928,7 +931,7 @@ class MediaEffects:
     Args:
       confidence_level: Confidence level to update to for the response curve
         credible intervals, represented as a value between zero and one.
-      selected_times: Optional list containing a subset of times to include. By
+      selected_dates: Optional list containing a subset of times to include. By
         default, all time periods are included.
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
@@ -966,7 +969,7 @@ class MediaEffects:
     response_curves_df = self._transform_response_curve_metrics(
         num_channels_displayed,
         confidence_level=confidence_level,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         by_reach=by_reach,
     )
     if self._meridian.input_data.revenue_per_kpi is not None:
@@ -1267,7 +1270,7 @@ class MediaEffects:
   def _transform_response_curve_metrics(
       self,
       num_channels: int | None = None,
-      selected_times: frozenset[str] | None = None,
+      selected_dates: frozenset[str] | None = None,
       confidence_level: float = 0.9,
       by_reach: bool = True,
   ) -> pd.DataFrame:
@@ -1276,9 +1279,9 @@ class MediaEffects:
     Args:
       num_channels: Optional number of top channels by spend to include. By
         default, all channels are included.
-      selected_times: Optional list of a subset of time dimensions to include.
-        By default, all times are included. Times should match the time
-        dimensions from `meridian.InputData`.
+      selected_dates: Optional list of a subset of time dimension coordinate
+        values to include. By default, all times are included. Times should
+        match the time dimensions from `meridian.InputData`.
       confidence_level: Confidence level to update to for the response curve
         credible intervals, represented as a value between zero and one.
       by_reach: For the channel w/ reach and frequency, return the response
@@ -1292,7 +1295,7 @@ class MediaEffects:
     """
     data = self.response_curves_data(
         confidence_level=confidence_level,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         by_reach=by_reach,
     )
     list_sorted_channels_cost = list(
@@ -1338,7 +1341,7 @@ class MediaSummary:
       self,
       meridian: model.Meridian,
       confidence_level: float = 0.9,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
   ):
     """Initializes the media summary metrics based on the model data and params.
@@ -1347,7 +1350,7 @@ class MediaSummary:
       meridian: Media mix model with the raw data from the model fitting.
       confidence_level: Confidence level for media summary metrics credible
         intervals, represented as a value between zero and one.
-      selected_times: Optional list containing a subset of times to include. By
+      selected_dates: Optional list containing a subset of times to include. By
         default, all time periods are included.
       marginal_roi_by_reach: Boolean. Marginal ROI is defined as the return on
         the next dollar spent.  If this argument is True, then we assume the
@@ -1358,11 +1361,11 @@ class MediaSummary:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
     self._confidence_level = confidence_level
-    self._selected_times = selected_times
+    self._selected_dates = selected_dates
     self._marginal_roi_by_reach = marginal_roi_by_reach
     self._media_summary_metrics = self._analyzer.media_summary_metrics(
         confidence_level=confidence_level,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         marginal_roi_by_reach=marginal_roi_by_reach,
     )
 
@@ -1450,7 +1453,7 @@ class MediaSummary:
   def update_media_summary_metrics(
       self,
       confidence_level: float | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
   ):
     """Runs the computation for the media summary metrics with new parameters.
@@ -1459,7 +1462,7 @@ class MediaSummary:
       confidence_level: Confidence level to update to for the media summary
         metrics credible intervals, represented as a value between zero and one.
         If `None`, the current confidence level is used.
-      selected_times: Optional list containing a subset of times to include. If
+      selected_dates: Optional list containing a subset of times to include. If
         `None`, all time periods are included.
       marginal_roi_by_reach: Boolean. Marginal ROI is defined as the return on
         the next dollar spent.  If `True`, then the assumptions is the next
@@ -1468,11 +1471,11 @@ class MediaSummary:
         reach constant.
     """
     self._confidence_level = confidence_level or self._confidence_level
-    self._selected_times = selected_times
+    self._selected_dates = selected_dates
     self._marginal_roi_by_reach = marginal_roi_by_reach
     self._media_summary_metrics = self._analyzer.media_summary_metrics(
         confidence_level=self._confidence_level,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         marginal_roi_by_reach=marginal_roi_by_reach,
     )
 

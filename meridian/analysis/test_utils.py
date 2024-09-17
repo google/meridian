@@ -1111,7 +1111,7 @@ def get_table_row_values(
   return row_values
 
 
-def generate_selected_times(start: str, periods: int) -> Sequence[str]:
+def generate_selected_dates(start: str, periods: int) -> Sequence[str]:
   return pd.date_range(start, freq="W-SUN", periods=periods).format(
       formatter=lambda x: x.strftime("%Y-%m-%d")
   )

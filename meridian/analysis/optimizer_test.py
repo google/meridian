@@ -505,7 +505,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.budget_optimizer_media_and_rf.optimize(spend_constraint_upper=-0.3)
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
-  def test_default_selected_times_all_times(
+  def test_default_selected_dates_all_times(
       self,
       mock_incremental_impact,
   ):
@@ -527,10 +527,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         expected_times[-1],
     )
     _, mock_kwargs = mock_incremental_impact.call_args
-    self.assertIsNone(mock_kwargs['selected_times'])
+    self.assertIsNone(mock_kwargs['selected_dates'])
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
-  def test_selected_times_all_times(self, mock_incremental_impact):
+  def test_selected_dates_all_times(self, mock_incremental_impact):
     mock_incremental_impact.return_value = tf.ones((
         _N_CHAINS,
         _N_DRAWS,
@@ -539,7 +539,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     expected_times = self.input_data_media_and_rf.time.values.tolist()
     optimization_results = self.budget_optimizer_media_and_rf.optimize(
-        selected_times=None
+        selected_dates=None
     )
 
     self.assertEqual(
@@ -551,16 +551,16 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         expected_times[-1],
     )
     _, mock_kwargs = mock_incremental_impact.call_args
-    self.assertIsNone(mock_kwargs['selected_times'])
+    self.assertIsNone(mock_kwargs['selected_dates'])
 
   @mock.patch.object(analyzer.Analyzer, 'incremental_impact', autospec=True)
-  def test_selected_times_used_correctly(self, mock_incremental_impact):
+  def test_selected_dates_used_correctly(self, mock_incremental_impact):
     mock_incremental_impact.return_value = tf.ones((
         _N_CHAINS,
         _N_DRAWS,
         _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
     ))
-    selected_time_dims = [
+    selected_dates = [
         '2021-05-17',
         '2021-05-24',
         '2021-05-31',
@@ -570,11 +570,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     selected_time = ('2021-05-17', '2021-06-14')
 
     _ = self.budget_optimizer_media_and_rf.optimize(
-        selected_times=selected_time
+        selected_dates=selected_time
     )
 
     _, mock_kwargs = mock_incremental_impact.call_args
-    self.assertEqual(mock_kwargs['selected_times'], selected_time_dims)
+    self.assertEqual(mock_kwargs['selected_dates'], selected_dates)
 
   def test_default_hist_spend_with_time_geo_dims(self):
     expected_spend = np.round(
@@ -637,7 +637,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
     optimization_results = budget_optimizer_media_and_rf.optimize(
-        selected_times=('2021-01-25', '2021-03-08')
+        selected_dates=('2021-01-25', '2021-03-08')
     )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
     self.assertEqual(meridian_media_and_rf.total_spend.ndim, 1)
@@ -1214,14 +1214,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600, 700, 800, 900])
     spend_bound_upper = np.array([1500, 1400, 1300, 1200, 1100])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_media_and_rf._create_grids(
             spend=spend,
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
         )
     )
     expected_spend_grid = np.array(
@@ -1249,7 +1249,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         use_kpi=False,
         batch_size=c.DEFAULT_BATCH_SIZE,
     )
@@ -1283,14 +1283,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600, 700])
     spend_bound_upper = np.array([1500, 1400, 1300])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_media_only._create_grids(
             spend=spend,
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
         )
     )
     expected_spend_grid = np.array(
@@ -1318,7 +1318,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=None,
         new_frequency=None,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
     )
@@ -1350,14 +1350,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600])
     spend_bound_upper = np.array([1500, 1400])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_rf_only._create_grids(
             spend=spend,
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
         )
     )
     expected_spend_grid = np.array(
@@ -1385,7 +1385,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=None,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
     )
@@ -1420,7 +1420,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600, 700, 800, 900])
     spend_bound_upper = np.array([1500, 1400, 1300, 1200, 1100])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     optimal_frequency = xr.DataArray(data=[2.5, 3.1])
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_media_and_rf._create_grids(
@@ -1428,7 +1428,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
             optimal_frequency=optimal_frequency,
         )
     )
@@ -1461,7 +1461,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
     )
@@ -1492,7 +1492,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600, 700])
     spend_bound_upper = np.array([1500, 1400, 1300])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     optimal_frequency = xr.DataArray(data=[2.5, 3.1])
 
     (spend_grid, incremental_impact_grid) = (
@@ -1501,7 +1501,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
             optimal_frequency=optimal_frequency,
         )
     )
@@ -1530,7 +1530,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=None,
         new_frequency=None,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
     )
@@ -1558,7 +1558,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_lower = np.array([500, 600])
     spend_bound_upper = np.array([1500, 1400])
     step_size = 200
-    selected_times = ('2021-01-25', '2021-02-01')
+    selected_dates = ('2021-01-25', '2021-02-01')
     optimal_frequency = xr.DataArray(data=[2.5, 3.1])
     (spend_grid, incremental_impact_grid) = (
         self.budget_optimizer_rf_only._create_grids(
@@ -1566,7 +1566,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
             optimal_frequency=optimal_frequency,
         )
     )
@@ -1599,7 +1599,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         new_media=None,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
     )
@@ -1656,7 +1656,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_bound_upper = np.array([1500, 1400, 1300, 1200, 1100])
     step_size = 200
 
-    selected_times = (
+    selected_dates = (
         self.budget_optimizer_media_and_rf._meridian.expand_selected_time_dims()
     )
     (spend_grid, incremental_impact_grid) = (
@@ -1665,7 +1665,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             spend_bound_lower=spend_bound_lower,
             spend_bound_upper=spend_bound_upper,
             step_size=step_size,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
         )
     )
     optimal_spend = self.budget_optimizer_media_and_rf._grid_search(
@@ -1784,7 +1784,7 @@ class OptimizerPlotsTest(absltest.TestCase):
   def setUp(self):
     super(OptimizerPlotsTest, self).setUp()
     mock_data = mock.create_autospec(input_data.InputData, instance=True)
-    mock_time = analysis_test_utils.generate_selected_times('2020-01-05', 52)
+    mock_time = analysis_test_utils.generate_selected_dates('2020-01-05', 52)
     type(mock_data).time = mock.PropertyMock(
         return_value=xr.DataArray(data=mock_time, coords=dict(time=mock_time))
     )
@@ -2200,7 +2200,7 @@ class OptimizerPlotsTest(absltest.TestCase):
     ):
       self.optimization_results.plot_response_curves(5)
 
-  def test_plot_response_curves_correct_selected_times(self):
+  def test_plot_response_curves_correct_selected_dates(self):
     self.optimization_results.plot_response_curves()
     self.mock_response_curves.assert_called_once()
     _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
@@ -3104,7 +3104,7 @@ class OptimizerKPITest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=None,
+        selected_dates=None,
         use_kpi=True,
         batch_size=c.DEFAULT_BATCH_SIZE,
     )
@@ -3128,7 +3128,7 @@ class OptimizerKPITest(parameterized.TestCase):
         new_media=mock.ANY,
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
-        selected_times=None,
+        selected_dates=None,
         use_kpi=True,
         batch_size=c.DEFAULT_BATCH_SIZE,
     )
@@ -3136,7 +3136,7 @@ class OptimizerKPITest(parameterized.TestCase):
   def test_roi_and_mroi_not_existing_no_revenue_per_kpi_budget_dataset(self):
     hist_spend = np.array([1000, 1000, 1000, 1000, 1000])
     rounded_spend = np.array([0.1, 0.1, 0.1, 0.1, 0.1])
-    selected_time_dims = [
+    selected_dates = [
         '2021-05-17',
         '2021-05-24',
         '2021-05-31',
@@ -3147,7 +3147,7 @@ class OptimizerKPITest(parameterized.TestCase):
         self.budget_optimizer_media_and_rf_kpi._create_budget_dataset(
             hist_spend=hist_spend,
             spend=rounded_spend,
-            selected_times=selected_time_dims,
+            selected_dates=selected_dates,
             batch_size=c.DEFAULT_BATCH_SIZE,
         )
     )

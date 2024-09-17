@@ -81,11 +81,11 @@ class ModelDiagnosticsTest(parameterized.TestCase):
   def test_predictive_accuracy_selected_geos_times_called_correctly(self):
     self.model_diagnostics.predictive_accuracy_table(
         selected_geos=["geo 1", "geo 2"],
-        selected_times=["2021-02-22", "2021-03-01"],
+        selected_dates=["2021-02-22", "2021-03-01"],
     )
     self.mock_analyzer_method.assert_called_with(
         selected_geos=["geo 1", "geo 2"],
-        selected_times=["2021-02-22", "2021-03-01"],
+        selected_dates=["2021-02-22", "2021-03-01"],
         batch_size=100,
     )
 
@@ -202,25 +202,25 @@ class ModelDiagnosticsTest(parameterized.TestCase):
           "incorrect_parameter"
       )
 
-  def test_distribution_selected_times_no_time_dim_param_raises_exception(self):
+  def test_distribution_selected_dates_no_time_dim_param_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "`selected_times` can only be used if the parameter has a time"
+        "`selected_dates` can only be used if the parameter has a time"
         " dimension. The selected param 'tau_g' does not have a time"
         " dimension.",
     ):
       self.model_diagnostics.plot_prior_and_posterior_distribution(
-          c.TAU_G, selected_times=["2021-02-22", "2021-03-01"]
+          c.TAU_G, selected_dates=["2021-02-22", "2021-03-01"]
       )
 
-  def test_distribution_incorrect_selected_times_raises_exception(self):
+  def test_distribution_incorrect_selected_dates_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
         "The selected times must match the time dimensions in the Meridian"
         " model.",
     ):
       self.model_diagnostics.plot_prior_and_posterior_distribution(
-          c.MU_T, selected_times=["Jan 1, 2023"]
+          c.MU_T, selected_dates=["Jan 1, 2023"]
       )
 
   def test_distribution_correct_config(self):
@@ -310,7 +310,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
 
   def test_distribution_selected_time_dim(self):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(
-        c.MU_T, selected_times=["2021-02-22", "2021-03-01"]
+        c.MU_T, selected_dates=["2021-02-22", "2021-03-01"]
     )
 
     self.assertEqual(
@@ -486,14 +486,14 @@ class ModelFitTest(absltest.TestCase):
         summary_text.REVENUE_LABEL,
     )
 
-  def test_model_fit_incorrect_selected_times_raises_error(self):
+  def test_model_fit_incorrect_selected_dates_raises_error(self):
     with self.assertRaisesRegex(
         ValueError,
-        "`selected_times` should match the time dimensions from"
+        "`selected_dates` should match the time dimensions from"
         " meridian.InputData.",
     ):
       self.model_fit_kpi_type_revenue.plot_model_fit(
-          selected_times=["2000-01-01"]
+          selected_dates=["2000-01-01"]
       )
 
   def test_model_fit_show_geo_no_geo_specified_raises_error(self):
@@ -539,9 +539,9 @@ class ModelFitTest(absltest.TestCase):
     self.model_fit_kpi_type_revenue.update_confidence_level(0.8)
     self.mock_analyzer_method.assert_called_with(confidence_level=0.8)
 
-  def test_model_fit_plots_selected_times(self):
+  def test_model_fit_plots_selected_dates(self):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
-    plot = self.model_fit_kpi_type_revenue.plot_model_fit(selected_times=times)
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(selected_dates=times)
     self.assertListEqual(list(plot.data.time.unique()), times)
 
   def test_model_fit_national_level_aggregates_all_geos(self):
@@ -697,21 +697,21 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     )
     cls.reach_and_frequency = visualizer.ReachAndFrequency(cls.meridian)
 
-  def test_reach_and_frequency_plot_optimal_freq_update_selected_times(self):
+  def test_reach_and_frequency_plot_optimal_freq_update_selected_dates(self):
     times1 = ["2023-01-01", "2023-04-21"]
     reach_and_frequency = visualizer.ReachAndFrequency(
-        self.meridian, selected_times=times1
+        self.meridian, selected_dates=times1
     )
-    self.mock_optimal_freq_method.assert_called_with(selected_times=times1)
-    reach_and_frequency.update_optimal_reach_and_frequency_selected_times(
-        selected_times=None
+    self.mock_optimal_freq_method.assert_called_with(selected_dates=times1)
+    reach_and_frequency.update_optimal_reach_and_frequency_selected_dates(
+        selected_dates=None
     )
-    self.mock_optimal_freq_method.assert_called_with(selected_times=None)
+    self.mock_optimal_freq_method.assert_called_with(selected_dates=None)
     times2 = ["2023-02-01", "2023-06-30"]
-    reach_and_frequency.update_optimal_reach_and_frequency_selected_times(
-        selected_times=times2
+    reach_and_frequency.update_optimal_reach_and_frequency_selected_dates(
+        selected_dates=times2
     )
-    self.mock_optimal_freq_method.assert_called_with(selected_times=times2)
+    self.mock_optimal_freq_method.assert_called_with(selected_dates=times2)
 
   def test_reach_and_frequency_plot_optimal_freq_correct_line(self):
     plot = self.reach_and_frequency.plot_optimal_frequency()
@@ -922,16 +922,14 @@ class MediaEffectsTest(parameterized.TestCase):
     revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=2.2
     )
-    cls.input_data_1 = (
-        data_test_utils.sample_input_data_revenue(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            seed=0,
-        )
+    cls.input_data_1 = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
     )
     cls.input_data_2 = (
         data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
@@ -1045,10 +1043,10 @@ class MediaEffectsTest(parameterized.TestCase):
 
   def test_media_effects_caching_done_correctly(self):
     self.media_effects_kpi_type_revenue.response_curves_data(
-        selected_times=frozenset(["2021-02-22", "2021-03-01"])
+        selected_dates=frozenset(["2021-02-22", "2021-03-01"])
     )
     self.media_effects_kpi_type_revenue.response_curves_data(
-        selected_times=frozenset(["2021-02-22", "2021-03-01"])
+        selected_dates=frozenset(["2021-02-22", "2021-03-01"])
     )  # Should be retrieved from cache instead of calling Analyzer's method.
     self.mock_response_curves_method.assert_called_once()
     self.media_effects_kpi_type_revenue.adstock_decay_dataframe(
@@ -1715,20 +1713,20 @@ class MediaSummaryTest(parameterized.TestCase):
         confidence_level=0.8, marginal_roi_by_reach=False
     )
     self.mock_analyzer_method.assert_called_with(
-        confidence_level=0.8, selected_times=None, marginal_roi_by_reach=False
+        confidence_level=0.8, selected_dates=None, marginal_roi_by_reach=False
     )
 
-  def test_media_summary_update_selected_times(self):
-    times = ["2023-01-01", "2023-01-08", "2023-01-15"]
+  def test_media_summary_update_selected_dates(self):
+    dates = ["2023-01-01", "2023-01-08", "2023-01-15"]
     self.assertEqual(
         self.media_summary_revenue.media_summary_metrics.confidence_level,
         0.9,
     )
     self.media_summary_revenue.update_media_summary_metrics(
-        selected_times=times, marginal_roi_by_reach=False
+        selected_dates=dates, marginal_roi_by_reach=False
     )
     self.mock_analyzer_method.assert_called_with(
-        confidence_level=0.9, selected_times=times, marginal_roi_by_reach=False
+        confidence_level=0.9, selected_dates=dates, marginal_roi_by_reach=False
     )
 
   def test_media_summary_plot_roi_no_ci_plots_bar_chart(self):

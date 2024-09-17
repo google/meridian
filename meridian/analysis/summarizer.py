@@ -15,7 +15,6 @@
 """Summarization module that creates a 2-page HTML report."""
 
 from collections.abc import Sequence
-import datetime as dt
 import functools
 import os
 
@@ -24,6 +23,7 @@ from meridian import constants as c
 from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
+from meridian.data import time_coordinates as tc
 from meridian.model import model
 import pandas as pd
 import xarray as xr
@@ -80,60 +80,52 @@ class Summarizer:
       self,
       filename: str,
       filepath: str,
-      start_date: str | None = None,
-      end_date: str | None = None,
+      start_date: tc.Date | None = None,
+      end_date: tc.Date | None = None,
   ):
     """Generates and saves the HTML results summary output.
 
     Args:
       filename: The filename for the generated HTML output.
       filepath: The path to the directory where the file will be saved.
-      start_date: Optional start date selector, in _yyyy-mm-dd_ format.
-      end_date: Optional end date selector, in _yyyy-mm-dd_ format.
+      start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
+        format.
+      end_date: Optional end date selector, *exclusive* in _yyyy-mm-dd_ format.
     """
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
-      f.write(
-          self._gen_model_results_summary(
-              (
-                  dt.datetime.strptime(start_date, c.DATE_FORMAT)
-                  if start_date
-                  else None
-              ),
-              (
-                  dt.datetime.strptime(end_date, c.DATE_FORMAT)
-                  if end_date
-                  else None
-              ),
-          )
-      )
+      f.write(self._gen_model_results_summary(start_date, end_date))
 
   def _gen_model_results_summary(
       self,
-      start_date: dt.datetime | None = None,
-      end_date: dt.datetime | None = None,
+      start_date: tc.Date | None = None,
+      end_date: tc.Date | None = None,
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
-    start_date = start_date or min(self._meridian.kpi_time_values)
-    end_date = end_date or max(self._meridian.kpi_time_values)
+    all_dates = self._meridian.input_data.time_coordinates.all_dates
+    start_date = (
+        tc.normalize_date(start_date)
+        if start_date is not None
+        else min(all_dates)
+    )
+    end_date = (
+        tc.normalize_date(end_date) if end_date is not None else max(all_dates)
+    )
 
-    if start_date not in self._meridian.kpi_time_values:
+    if start_date not in all_dates:
       raise ValueError(
-          f'start_date ({start_date.strftime(c.DATE_FORMAT)}) must be'
-          ' in the time coordinates!'
+          f'start_date ({start_date}) must be in the time coordinates!'
       )
-    if end_date not in self._meridian.kpi_time_values:
+    if end_date not in all_dates:
       raise ValueError(
-          f'end_date ({end_date.strftime(c.DATE_FORMAT)}) must be'
-          ' in the time coordinates!'
+          f'end_date ({end_date}) must be in the time coordinates!'
       )
     if start_date > end_date:
       raise ValueError(
-          f'start_date ({start_date.strftime(c.DATE_FORMAT)}) must be before'
-          f' end_date ({end_date.strftime(c.DATE_FORMAT)})!'
+          f'start_date ({start_date}) must be before end_date ({end_date})!'
       )
 
-    selected_times = self._meridian.expand_selected_time_dims(
+    selected_dates = self._meridian.expand_selected_time_dims(
         start_date, end_date
     )
 
@@ -146,7 +138,7 @@ class Summarizer:
     html_template = template_env.get_template('summary.html.jinja')
     cards_htmls = self._create_cards_htmls(
         template_env,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
     )
 
     return html_template.render(
@@ -156,23 +148,23 @@ class Summarizer:
   def _create_cards_htmls(
       self,
       template_env: jinja2.Environment,
-      selected_times: Sequence[str] | None,
+      selected_dates: Sequence[str] | None,
   ) -> Sequence[str]:
     """Creates the HTML snippets for cards in the summary page."""
     media_summary = visualizer.MediaSummary(
-        self._meridian, selected_times=selected_times
+        self._meridian, selected_dates=selected_dates
     )
     media_effects = visualizer.MediaEffects(self._meridian)
     reach_frequency = (
         visualizer.ReachAndFrequency(
-            self._meridian, selected_times=selected_times
+            self._meridian, selected_dates=selected_dates
         )
         if self._meridian.n_rf_channels > 0
         else None
     )
     cards = [
         self._create_model_fit_card_html(
-            template_env, selected_times=selected_times
+            template_env, selected_dates=selected_dates
         ),
         self._create_impact_contrib_card_html(template_env, media_summary),
         self._create_performance_breakdown_card_html(
@@ -180,7 +172,7 @@ class Summarizer:
         ),
         self._create_response_curves_card_html(
             template_env=template_env,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
             media_summary=media_summary,
             media_effects=media_effects,
             reach_frequency=reach_frequency,
@@ -411,7 +403,7 @@ class Summarizer:
   def _create_response_curves_card_html(
       self,
       template_env: jinja2.Environment,
-      selected_times: Sequence[str] | None,
+      selected_dates: Sequence[str] | None,
       media_summary: visualizer.MediaSummary,
       media_effects: visualizer.MediaEffects,
       reach_frequency: visualizer.ReachAndFrequency | None,
@@ -427,8 +419,8 @@ class Summarizer:
             ),
             chart_json=media_effects.plot_response_curves(
                 confidence_level=0.9,
-                selected_times=(
-                    frozenset(selected_times) if selected_times else None
+                selected_dates=(
+                    frozenset(selected_dates) if selected_dates else None
                 ),
                 plot_separately=False,
                 include_ci=False,
@@ -489,11 +481,12 @@ class Summarizer:
     """Selects and returns the `optimal_frequency` DataArray--if any.
 
     The `optimal_frequency` data is a subset of the Dataset property
-    `optimal_frequency_data` of visualizer.ReachAndFrequency.
+    `optimal_frequency_data` of `visualizer.ReachAndFrequency`.
 
     Assumes that there is at least 1 RF channel in the model, else ValueError.
+
     Returns:
-      DataArray of the optimal_frequency data for the channel with the highest
+      DataArray of the `optimal_frequency` data for the channel with the highest
       spend value (per MediaSummary).
     """
     # Select the optimal frequency channel with the most spend.

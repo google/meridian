@@ -27,6 +27,7 @@ from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import formatter
 from meridian.analysis import summary_text
+from meridian.data import time_coordinates as tc
 from meridian.model import model
 import numpy as np
 import pandas as pd
@@ -514,7 +515,7 @@ class OptimizationResults:
 
     1. `spend_multiplier` matches the discrete optimization grid, considering
        the grid step size and any channel-level constraint bounds.
-    2. `selected_times`, `by_reach`, and `use_optimal_frequency` match the
+    2. `selected_dates`, `by_reach`, and `use_optimal_frequency` match the
        values set in `BudgetOptimizer.optimize()`.
 
     Returns:
@@ -523,7 +524,7 @@ class OptimizationResults:
       returned this result.
     """
     channels = self.optimized_data.channel.values
-    selected_times = self.meridian.expand_selected_time_dims(
+    selected_dates = self.meridian.expand_selected_time_dims(
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
     )
@@ -538,12 +539,12 @@ class OptimizationResults:
     # max upper spend constraint + padding.
     upper_limit = max(max(upper_bound) + c.SPEND_CONSTRAINT_PADDING, 2)
     spend_multiplier = np.arange(0, upper_limit, c.RESPONSE_CURVE_STEP_SIZE)
-    # WARN: If `selected_times` is not None (i.e. a subset time range), this
+    # WARN: If `selected_dates` is not None (i.e. a subset time range), this
     # response curve computation might take a significant amount of time.
     return self.analyzer.response_curves(
         spend_multipliers=spend_multiplier,
         use_posterior=self.use_posterior,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         by_reach=True,
         use_optimal_frequency=self.use_optimal_frequency,
     )
@@ -876,7 +877,7 @@ class BudgetOptimizer:
   def optimize(
       self,
       use_posterior: bool = True,
-      selected_times: tuple[str, str] | None = None,
+      selected_dates: tc.DateInterval | None = None,
       fixed_budget: bool = True,
       budget: float | None = None,
       pct_of_spend: Sequence[float] | None = None,
@@ -895,9 +896,11 @@ class BudgetOptimizer:
       use_posterior: Boolean. If `True`, then the budget is optimized based on
         the posterior distribution of the model. Otherwise, the prior
         distribution is used.
-      selected_times: Tuple containing the start and end time dimensions for the
-        duration to run the optimization on. Time dimensions should align with
-        the Meridian time dimensions. By default, all times periods are used.
+      selected_dates: Tuple containing the start and end time dimension
+        coordinate values representing the time interval `[start_date,
+        end_date)` for the duration to run the optimization on. Selected time
+        values should align with the Meridian time dimension coordinates in the
+        underlying model. By default, all times periods are used.
       fixed_budget: Boolean indicating whether it's a fixed budget optimization
         or flexible budget optimization. Defaults to `True`. If `False`, must
         specify either `target_roi` or `target_mroi`.
@@ -950,8 +953,8 @@ class BudgetOptimizer:
           'Running budget optimization scenarios requires fitting the model.'
       )
     self._validate_budget(fixed_budget, budget, target_roi, target_mroi)
-    if selected_times is not None:
-      start_date, end_date = selected_times
+    if selected_dates is not None:
+      start_date, end_date = selected_dates
       selected_time_dims = self._meridian.expand_selected_time_dims(
           start_date=start_date,
           end_date=end_date,
@@ -970,7 +973,7 @@ class BudgetOptimizer:
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
-              use_posterior=use_posterior, selected_times=selected_time_dims
+              use_posterior=use_posterior, selected_dates=selected_time_dims
           ).optimal_frequency,
           dtype=tf.float32,
       )
@@ -991,7 +994,7 @@ class BudgetOptimizer:
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
         step_size=step_size,
-        selected_times=selected_time_dims,
+        selected_dates=selected_time_dims,
         use_posterior=use_posterior,
         optimal_frequency=optimal_frequency,
         batch_size=batch_size,
@@ -1017,7 +1020,7 @@ class BudgetOptimizer:
         use_posterior=use_posterior,
         hist_spend=hist_spend,
         spend=rounded_spend,
-        selected_times=selected_time_dims,
+        selected_dates=selected_time_dims,
         confidence_level=confidence_level,
         batch_size=batch_size,
     )
@@ -1025,7 +1028,7 @@ class BudgetOptimizer:
         use_posterior=use_posterior,
         hist_spend=hist_spend,
         spend=rounded_spend,
-        selected_times=selected_time_dims,
+        selected_dates=selected_time_dims,
         optimal_frequency=optimal_frequency,
         confidence_level=confidence_level,
         batch_size=batch_size,
@@ -1034,7 +1037,7 @@ class BudgetOptimizer:
         use_posterior=use_posterior,
         hist_spend=hist_spend,
         spend=optimal_spend,
-        selected_times=selected_time_dims,
+        selected_dates=selected_time_dims,
         optimal_frequency=optimal_frequency,
         attrs=constraints,
         confidence_level=confidence_level,
@@ -1139,11 +1142,11 @@ class BudgetOptimizer:
             'flexible budget optimization.'
         )
 
-  def _get_hist_spend(self, selected_times: Sequence[str]) -> np.ndarray:
+  def _get_hist_spend(self, selected_dates: Sequence[str]) -> np.ndarray:
     """Gets the historical spend for all channels based on the time period."""
     dim_kwargs = {
         'selected_geos': None,
-        'selected_times': selected_times,
+        'selected_dates': selected_dates,
         'aggregate_geos': True,
         'aggregate_times': True,
     }
@@ -1307,7 +1310,7 @@ class BudgetOptimizer:
       hist_spend: np.ndarray,
       spend: np.ndarray,
       use_posterior: bool = True,
-      selected_times: Sequence[str] | None = None,
+      selected_dates: Sequence[str] | None = None,
       optimal_frequency: Sequence[float] | None = None,
       attrs: Mapping[str, Any] | None = None,
       confidence_level: float = 0.9,
@@ -1332,7 +1335,7 @@ class BudgetOptimizer:
         new_media=new_media,
         new_reach=new_reach,
         new_frequency=new_frequency,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         use_kpi=use_kpi,
         batch_size=batch_size,
     )
@@ -1351,7 +1354,7 @@ class BudgetOptimizer:
         new_media=new_media,
         new_reach=new_reach,
         new_frequency=new_frequency,
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         use_kpi=use_kpi,
         batch_size=batch_size,
     )
@@ -1364,7 +1367,7 @@ class BudgetOptimizer:
     )
 
     aggregated_impressions = self._analyzer.get_aggregated_impressions(
-        selected_times=selected_times,
+        selected_dates=selected_dates,
         selected_geos=None,
         aggregate_times=True,
         aggregate_geos=True,
@@ -1394,8 +1397,8 @@ class BudgetOptimizer:
         ),
     }
     attributes = {
-        c.START_DATE: min(selected_times) if selected_times else all_times[0],
-        c.END_DATE: max(selected_times) if selected_times else all_times[-1],
+        c.START_DATE: min(selected_dates) if selected_dates else all_times[0],
+        c.END_DATE: max(selected_dates) if selected_dates else all_times[-1],
         c.BUDGET: budget,
         c.PROFIT: total_incremental_impact - budget,
         c.TOTAL_INCREMENTAL_IMPACT: total_incremental_impact,
@@ -1425,7 +1428,7 @@ class BudgetOptimizer:
               new_frequency=new_frequency,
               new_media_spend=new_media_spend,
               new_rf_spend=new_rf_spend,
-              selected_times=selected_times,
+              selected_dates=selected_dates,
               batch_size=batch_size,
               by_reach=True,
           ),
@@ -1504,7 +1507,7 @@ class BudgetOptimizer:
       i: int,
       incremental_impact_grid: np.ndarray,
       multipliers_grid: tf.Tensor,
-      selected_times: Sequence[str],
+      selected_dates: Sequence[str],
       use_posterior: bool = True,
       optimal_frequency: xr.DataArray | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
@@ -1518,7 +1521,7 @@ class BudgetOptimizer:
         number of columns is equal to the number of total channels, containing
         incremental impact by channel.
       multipliers_grid: A grid derived from spend.
-      selected_times: Sequence of strings representing the time dimensions in
+      selected_dates: Sequence of strings representing the time dimensions in
         `meridian.input_data.time` to use for optimization.
       use_posterior: Boolean. If `True`, then the incremental impact is derived
         from the posterior distribution of the model. Otherwise, the prior
@@ -1571,7 +1574,7 @@ class BudgetOptimizer:
             new_media=new_media,
             new_reach=new_reach,
             new_frequency=new_frequency,
-            selected_times=selected_times,
+            selected_dates=selected_dates,
             use_kpi=use_kpi,
             batch_size=batch_size,
         ),
@@ -1585,7 +1588,7 @@ class BudgetOptimizer:
       spend_bound_lower: np.ndarray,
       spend_bound_upper: np.ndarray,
       step_size: int,
-      selected_times: Sequence[str],
+      selected_dates: Sequence[str],
       use_posterior: bool = True,
       optimal_frequency: xr.DataArray | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
@@ -1600,7 +1603,7 @@ class BudgetOptimizer:
         the upper constraint spend for each channel.
       step_size: Integer indicating the step size, or interval, between values
         in the spend grid. All media channels have the same step size.
-      selected_times: Sequence of strings representing the time dimensions in
+      selected_dates: Sequence of strings representing the time dimensions in
         `meridian.input_data.time` to use for optimization.
       use_posterior: Boolean. If `True`, then the incremental impact is derived
         from the posterior distribution of the model. Otherwise, the prior
@@ -1647,7 +1650,7 @@ class BudgetOptimizer:
           i,
           incremental_impact_grid,
           multipliers_grid,
-          selected_times,
+          selected_dates,
           use_posterior,
           optimal_frequency,
           batch_size=batch_size,

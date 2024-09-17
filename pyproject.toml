@@ -30,7 +30,7 @@ dependencies = [
   "altair >= 4.2.0, < 5",
   "immutabledict",
   "joblib",
-  "numpy",
+  "numpy >= 1.26, < 2",
   "pandas >= 1.5.3, < 2",
   "scipy >= 1.12.0, < 1.13",
   "tensorflow >= 2.15, < 2.16",

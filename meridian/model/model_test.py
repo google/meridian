@@ -16,10 +16,10 @@
 
 import collections
 from collections.abc import Collection, Sequence
-import datetime as dt
 import os
 from unittest import mock
 import warnings
+
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -651,123 +651,6 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNotNone(meridian.inference_data)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
-
-  def test_kpi_time_values(self):
-    meridian = model.Meridian(input_data=self.input_data_with_media_only)
-    self.assertEqual(
-        meridian.kpi_time_values,
-        [
-            dt.datetime.strptime(time, constants.DATE_FORMAT)
-            for time in self.input_data_with_media_only.time.values
-        ],
-    )
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="start_and_end",
-          start_date=dt.datetime(2021, 2, 15),
-          end_date=dt.datetime(2021, 3, 15),
-          expected_time_dims=[
-              "2021-02-15",
-              "2021-02-22",
-              "2021-03-01",
-              "2021-03-08",
-              "2021-03-15",
-          ],
-      ),
-      dict(
-          testcase_name="start_only",
-          start_date=dt.datetime(2021, 2, 8),
-          end_date=None,
-          expected_time_dims=[
-              "2021-02-08",
-              "2021-02-15",
-              "2021-02-22",
-              "2021-03-01",
-              "2021-03-08",
-              "2021-03-15",
-              "2021-03-22",
-              "2021-03-29",
-          ],
-      ),
-      dict(
-          testcase_name="end_only",
-          start_date=None,
-          end_date=dt.datetime(2021, 3, 15),
-          expected_time_dims=[
-              "2021-01-25",
-              "2021-02-01",
-              "2021-02-08",
-              "2021-02-15",
-              "2021-02-22",
-              "2021-03-01",
-              "2021-03-08",
-              "2021-03-15",
-          ],
-      ),
-      dict(
-          testcase_name="none",
-          start_date=None,
-          end_date=None,
-          expected_time_dims=None,
-      ),
-      dict(
-          testcase_name="start_and_end_are_entire_range",
-          start_date=dt.datetime(2021, 1, 25),
-          end_date=dt.datetime(2021, 3, 29),
-          expected_time_dims=None,
-      ),
-  )
-  def test_expand_selected_time_dims(
-      self, start_date, end_date, expected_time_dims
-  ):
-    # input_data here has a start date hardcoded at _SAMPLE_START_DATE, with
-    # subsequent dates incremented weekly.
-    input_data = test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=self._N_GEOS,
-        n_times=10,
-        n_media_times=13,
-        n_controls=self._N_CONTROLS,
-        n_media_channels=self._N_MEDIA_CHANNELS,
-        seed=0,
-    )
-    meridian = model.Meridian(input_data=input_data)
-    self.assertEqual(
-        meridian.expand_selected_time_dims(start_date, end_date),
-        expected_time_dims,
-    )
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="start_not_in_data",
-          start_date=dt.datetime(2020, 1, 11),
-          end_date=dt.datetime(2020, 1, 11),
-      ),
-      dict(
-          testcase_name="end_not_in_data",
-          start_date=dt.datetime(2020, 1, 1),
-          end_date=dt.datetime(2020, 1, 11),
-      ),
-      dict(
-          testcase_name="start_after_end",
-          start_date=dt.datetime(2020, 1, 11),
-          end_date=dt.datetime(2020, 1, 1),
-      ),
-  )
-  def test_expand_selected_time_dims_fails(self, start_date, end_date):
-    # input_data here has a start date hardcoded at _SAMPLE_START_DATE, with
-    # subsequent dates incremented weekly.
-    input_data = test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=self._N_GEOS,
-        n_times=10,
-        n_media_times=13,
-        n_controls=self._N_CONTROLS,
-        n_media_channels=self._N_MEDIA_CHANNELS,
-        seed=0,
-    )
-    meridian = model.Meridian(input_data=input_data)
-    with self.assertRaises(ValueError):
-      meridian.expand_selected_time_dims(start_date, end_date)
 
   @parameterized.named_parameters(
       dict(
