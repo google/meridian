@@ -115,7 +115,7 @@ RESPONSE_CURVES_CARD_TITLE = 'Response curves'
 RESPONSE_CURVES_INSIGHTS_FORMAT = """Your response curves depict the
 relationship between marketing spend and the resulting incremental {impact}."""
 OPTIMAL_FREQUENCY_INSIGHTS_FORMAT = """Your optimal weekly frequency for
-{rf_channel} is {opt_freq} to {maximize_impact}."""
+{rf_channel} is {opt_freq} to maximize ROI."""
 
 RESPONSE_CURVES_CHART_ID = 'response-curves-chart'
 RESPONSE_CURVES_CHART_TITLE = (
@@ -128,12 +128,12 @@ period."""
 
 OPTIMAL_FREQUENCY_CHART_ID = 'optimal-frequency-chart'
 OPTIMAL_FREQUENCY_CHART_TITLE = '{metric} by weekly average frequency'
-OPTIMAL_FREQ_CHART_DESCRIPTION_FORMAT = """Note: Optimal frequency is the
-recommended average weekly impressions per user (# impressions / # reached
-users) that {maximizes_performance}. When multiple channels have reach and
-frequency data, only the channel with the highest spend will be displayed. The
-same chart can be viewed for all other channels as described in "Optimize
-frequency" in the User Guide."""
+OPTIMAL_FREQ_CHART_DESCRIPTION = """Note: Optimal frequency is the recommended
+average weekly impressions per user (# impressions / # reached users) that
+maximizes ROI. When multiple channels have reach and frequency data, only the
+channel with the highest spend will be displayed. The same chart can be viewed
+for all other channels as described in "Optimize frequency" in the User
+Guide."""
 
 
 # Budget optimization texts.

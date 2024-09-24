@@ -437,25 +437,12 @@ class Summarizer:
       optimal_rf = self._select_optimal_rf_data(media_summary, reach_frequency)
       channel_name = optimal_rf[c.RF_CHANNEL].values.item()
       opt_freq = '{:.1f}'.format(optimal_rf.values.item())
-      maximize_impact = (
-          'maximize ROI'
-          if self._meridian.input_data.revenue_per_kpi is not None
-          else 'minimize CPIK'
-      )
-      maximizes_performance = (
-          'maximizes ROI'
-          if self._meridian.input_data.revenue_per_kpi is not None
-          else 'minimizes CPIK'
-      )
-      description = summary_text.OPTIMAL_FREQ_CHART_DESCRIPTION_FORMAT.format(
-          maximizes_performance=maximizes_performance,
-      )
+      description = summary_text.OPTIMAL_FREQ_CHART_DESCRIPTION
       insights = ' '.join([
           insights,
           summary_text.OPTIMAL_FREQUENCY_INSIGHTS_FORMAT.format(
               rf_channel=channel_name,
               opt_freq=opt_freq,
-              maximize_impact=maximize_impact,
           ),
       ])
 

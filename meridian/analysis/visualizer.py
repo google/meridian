@@ -640,7 +640,7 @@ class ReachAndFrequency:
 
     * Coordinates: `frequency`, `rf_channel`, `metric` (`mean`, `ci_hi`,
       `ci_lo`)
-    * Data variables: `roi` or `cpik`, `optimal_frequency`
+    * Data variables: `roi`, `optimal_frequency`
     """
     return self._optimal_frequency_data
 
@@ -664,11 +664,11 @@ class ReachAndFrequency:
     """Transforms the RF metrics for the optimal frequency plot.
 
     Args:
-      selected_channels: Optional list of channels to include. If None, all rf
+      selected_channels: Optional list of channels to include. If None, all RF
         channels are included.
 
     Returns:
-      A DataFrame containing the weekly average frequency, mean ROI or CPIK, and
+      A DataFrame containing the weekly average frequency, mean ROI, and
       singularly valued optimal frequency per given channel.
     """
     selected_channels = (
@@ -676,32 +676,26 @@ class ReachAndFrequency:
         if selected_channels
         else self.optimal_frequency_data.rf_channel.values
     )
-    use_roi = self._meridian.input_data.revenue_per_kpi is not None
-    metric_name = c.ROI if use_roi else c.CPIK
 
     performance_by_frequency_df = (
-        self.optimal_frequency_data[[metric_name]]
+        self.optimal_frequency_data[[c.ROI]]
         .sel(rf_channel=selected_channels)
         .to_dataframe()
         .reset_index()
         .pivot(
             index=[c.RF_CHANNEL, c.FREQUENCY],
             columns=c.METRIC,
-            values=metric_name,
+            values=c.ROI,
         )
         .reset_index()
+        .rename(columns={c.MEAN: c.ROI})
     )
-    performance_by_frequency_df.rename(
-        columns={c.MEAN: metric_name}, inplace=True
-    )
-
     optimal_freq_df = (
         self.optimal_frequency_data[[c.OPTIMAL_FREQUENCY]]
         .sel(rf_channel=selected_channels)
         .to_dataframe()
         .reset_index()
     )
-
     return performance_by_frequency_df.merge(optimal_freq_df, on=c.RF_CHANNEL)
 
   def plot_optimal_frequency(
@@ -1364,6 +1358,7 @@ class MediaSummary:
         confidence_level=confidence_level,
         selected_times=selected_times,
         marginal_roi_by_reach=marginal_roi_by_reach,
+        use_kpi=self._meridian.input_data.revenue_per_kpi is None,
     )
 
   @property
