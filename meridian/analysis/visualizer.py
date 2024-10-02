@@ -269,6 +269,14 @@ class ModelDiagnostics:
   def plot_rhat_boxplot(self) -> alt.Chart:
     """Plots the R-hat box plot.
 
+    Visual summary of the Gelman & Rubin (1992) potential scale reduction for
+    chain convergence, commonly referred to as R-hat. It is a convergence
+    diagnostic measure that measures the degree to which variance (of the means)
+    between chains exceeds what you would expect if the chains were identically
+    distributed. Values close to 1.0 indicate convergence. R-hat < 1.2 indicates
+    approximate convergence and is a reasonable threshold for many problems
+    (Brooks & Gelman, 1998).
+
     There is a single R-hat value for each model parameter. The box plot
     summarizes the distribution of R-hat values across indices. For example, the
     box corresponding to `beta_gm` summarizes the distribution of R-hat values
@@ -276,6 +284,13 @@ class ModelDiagnostics:
 
     The R-hat is not defined for any parameters that have deterministic priors,
     so these parameters are not shown on the boxplot.
+
+    References:
+      Andrew Gelman and Donald B. Rubin. Inference from Iterative Simulation
+        Using Multiple Sequences. Statistical Science, 7(4):457-472, 1992.
+      Stephen P. Brooks and Andrew Gelman. General Methods for Monitoring
+        Convergence of Iterative Simulations. Journal of Computational and
+        Graphical Statistics, 7(4), 1998.
 
     Returns:
       An Altair plot showing the R-hat boxplot per parameter.

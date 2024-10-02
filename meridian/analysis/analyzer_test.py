@@ -1197,10 +1197,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(actual.confidence_level, expected.confidence_level)
     self.assertEqual(actual.use_posterior, expected.use_posterior)
 
-  def test_r_hat_media_and_rf_correct(self):
-    r_hat = self.analyzer_media_and_rf.get_r_hat()
+  def test_rhat_media_and_rf_correct(self):
+    rhat = self.analyzer_media_and_rf.get_rhat()
     self.assertSetEqual(
-        set(r_hat.keys()),
+        set(rhat.keys()),
         set(
             constants.COMMON_PARAMETER_NAMES
             + constants.MEDIA_PARAMETER_NAMES
@@ -1208,11 +1208,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         ),
     )
 
-  def test_r_hat_summary_media_and_rf_correct(self):
-    r_hat_summary = self.analyzer_media_and_rf.r_hat_summary()
-    self.assertEqual(r_hat_summary.shape, (20, 7))
+  def test_rhat_summary_media_and_rf_correct(self):
+    rhat_summary = self.analyzer_media_and_rf.rhat_summary()
+    self.assertEqual(rhat_summary.shape, (20, 7))
     self.assertSetEqual(
-        set(r_hat_summary.param),
+        set(rhat_summary.param),
         set(
             constants.COMMON_PARAMETER_NAMES
             + constants.MEDIA_PARAMETER_NAMES
@@ -2213,18 +2213,18 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_only.optimal_freq()
 
-  def test_r_hat_media_only_correct(self):
-    r_hat = self.analyzer_media_only.get_r_hat()
+  def test_rhat_media_only_correct(self):
+    rhat = self.analyzer_media_only.get_rhat()
     self.assertSetEqual(
-        set(r_hat.keys()),
+        set(rhat.keys()),
         set(constants.COMMON_PARAMETER_NAMES + constants.MEDIA_PARAMETER_NAMES),
     )
 
-  def test_r_hat_summary_media_only_correct(self):
-    r_hat_summary = self.analyzer_media_only.r_hat_summary()
-    self.assertEqual(r_hat_summary.shape, (13, 7))
+  def test_rhat_summary_media_only_correct(self):
+    rhat_summary = self.analyzer_media_only.rhat_summary()
+    self.assertEqual(rhat_summary.shape, (13, 7))
     self.assertSetEqual(
-        set(r_hat_summary.param),
+        set(rhat_summary.param),
         set(constants.COMMON_PARAMETER_NAMES + constants.MEDIA_PARAMETER_NAMES)
         - set([constants.SLOPE_M]),
     )
@@ -2878,18 +2878,18 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
           roi[i, :, 2], np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
       )
 
-  def test_r_hat_rf_only_correct(self):
-    r_hat = self.analyzer_rf_only.get_r_hat()
+  def test_rhat_rf_only_correct(self):
+    rhat = self.analyzer_rf_only.get_rhat()
     self.assertSetEqual(
-        set(r_hat.keys()),
+        set(rhat.keys()),
         set(constants.COMMON_PARAMETER_NAMES + constants.RF_PARAMETER_NAMES),
     )
 
-  def test_r_hat_summary_rf_only_correct(self):
-    r_hat_summary = self.analyzer_rf_only.r_hat_summary()
-    self.assertEqual(r_hat_summary.shape, (14, 7))
+  def test_rhat_summary_rf_only_correct(self):
+    rhat_summary = self.analyzer_rf_only.rhat_summary()
+    self.assertEqual(rhat_summary.shape, (14, 7))
     self.assertSetEqual(
-        set(r_hat_summary.param),
+        set(rhat_summary.param),
         set(constants.COMMON_PARAMETER_NAMES + constants.RF_PARAMETER_NAMES),
     )
 
@@ -3300,7 +3300,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
 
 class AnalyzerNotFittedTest(absltest.TestCase):
 
-  def test_r_hat_summary_media_and_rf_pre_fitting_raises_exception(self):
+  def test_rhat_summary_media_and_rf_pre_fitting_raises_exception(self):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
     type(not_fitted_mmm).inference_data = mock.PropertyMock(
         return_value=az.InferenceData()
@@ -3310,7 +3310,7 @@ class AnalyzerNotFittedTest(absltest.TestCase):
         model.NotFittedModelError,
         "sample_posterior() must be called prior to calling this method.",
     ):
-      not_fitted_analyzer.r_hat_summary()
+      not_fitted_analyzer.rhat_summary()
 
 
 if __name__ == "__main__":

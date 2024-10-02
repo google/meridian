@@ -3128,7 +3128,7 @@ class Analyzer:
     wmape = _calc_weighted_mape(expected_eval_set, actual_eval_set)
     return [rsquared, mape, wmape]
 
-  def get_r_hat(self) -> Mapping[str, tf.Tensor]:
+  def get_rhat(self) -> Mapping[str, tf.Tensor]:
     """Computes the R-hat values for each parameter in the model.
 
     Returns:
@@ -3149,16 +3149,16 @@ class Analyzer:
       perm = [1, 0] + list(range(2, n_dim))
       return tf.transpose(x, perm)
 
-    r_hat = tfp.mcmc.potential_scale_reduction({
+    rhat = tfp.mcmc.potential_scale_reduction({
         k: _transpose_first_two_dims(v)
         for k, v in self._meridian.inference_data.posterior.data_vars.items()
     })
-    return r_hat
+    return rhat
 
-  def r_hat_summary(self, bad_r_hat_threshold: float = 1.2) -> pd.DataFrame:
+  def rhat_summary(self, bad_rhat_threshold: float = 1.2) -> pd.DataFrame:
     """Computes a summary of the R-hat values for each parameter in the model.
 
-    Calculates the Gelman & Rubin (1992) potential scale reduction for chain
+    Summarizes the Gelman & Rubin (1992) potential scale reduction for chain
     convergence, commonly referred to as R-hat. It is a convergence diagnostic
     measure that measures the degree to which variance (of the means) between
     chains exceeds what you would expect if the chains were identically
@@ -3174,7 +3174,7 @@ class Analyzer:
         Graphical Statistics, 7(4), 1998.
 
     Args:
-      bad_r_hat_threshold: The threshold for determining which R-hat values are
+      bad_rhat_threshold: The threshold for determining which R-hat values are
         considered bad.
 
     Returns:
@@ -3186,11 +3186,11 @@ class Analyzer:
       *   `avg_rhat`: The average R-hat value for the respective parameter.
       *   `max_rhat`: The maximum R-hat value for the respective parameter.
       *   `percent_bad_rhat`: The percentage of R-hat values for the respective
-          parameter that are greater than `bad_r_hat_threshold`.
+          parameter that are greater than `bad_rhat_threshold`.
       *   `row_idx_bad_rhat`: The row indices of the R-hat values that are
-          greater than `bad_r_hat_threshold`.
+          greater than `bad_rhat_threshold`.
       *   `col_idx_bad_rhat`: The column indices of the R-hat values that are
-          greater than `bad_r_hat_threshold`.
+          greater than `bad_rhat_threshold`.
 
     Raises:
       NotFittedModelError: If `self.sample_posterior()` is not called before
@@ -3198,15 +3198,15 @@ class Analyzer:
       ValueError: If the number of dimensions of the R-hat array for a parameter
         is not `1` or `2`.
     """
-    r_hat = self.get_r_hat()
+    rhat = self.get_rhat()
 
-    r_hat_summary = []
-    for param in r_hat:
+    rhat_summary = []
+    for param in rhat:
       # Skip if parameter is deterministic according to the prior.
       if self._meridian.prior_broadcast.has_deterministic_param(param):
         continue
 
-      bad_idx = np.where(r_hat[param] > bad_r_hat_threshold)
+      bad_idx = np.where(rhat[param] > bad_rhat_threshold)
       if len(bad_idx) == 2:
         row_idx, col_idx = bad_idx
       elif len(bad_idx) == 1:
@@ -3215,20 +3215,20 @@ class Analyzer:
       else:
         raise ValueError(f"Unexpected dimension for parameter {param}.")
 
-      r_hat_summary.append(
+      rhat_summary.append(
           pd.Series({
               constants.PARAM: param,
-              constants.N_PARAMS: np.prod(r_hat[param].shape),
-              constants.AVG_RHAT: np.nanmean(r_hat[param]),
-              constants.MAX_RHAT: np.nanmax(r_hat[param]),
+              constants.N_PARAMS: np.prod(rhat[param].shape),
+              constants.AVG_RHAT: np.nanmean(rhat[param]),
+              constants.MAX_RHAT: np.nanmax(rhat[param]),
               constants.PERCENT_BAD_RHAT: np.nanmean(
-                  r_hat[param] > bad_r_hat_threshold
+                  rhat[param] > bad_rhat_threshold
               ),
               constants.ROW_IDX_BAD_RHAT: row_idx,
               constants.COL_IDX_BAD_RHAT: col_idx,
           })
       )
-    return pd.DataFrame(r_hat_summary)
+    return pd.DataFrame(rhat_summary)
 
   def response_curves(
       self,
