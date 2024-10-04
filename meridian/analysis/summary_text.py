@@ -61,22 +61,17 @@ CONTRIBUTION_CHART_TITLE = 'Contribution by baseline and marketing channels'
 IMPACT_CONTRIBUTION_CHART_DESCRIPTION = """Note: This is a percentage breakdown
 of all your {impact}."""
 
-ROI_BREAKDOWN_CARD_ID = 'roi-breakdown'
-ROI_BREAKDOWN_CARD_TITLE = 'Return on investment'
-ROI_BREAKDOWN_INSIGHTS_FORMAT = """Your return on investment (ROI) helps you
-understand how your marketing activities impacted your business objectives.
+PERFORMANCE_BREAKDOWN_CARD_ID = 'performance-breakdown'
+PERFORMANCE_BREAKDOWN_CARD_TITLE = 'Return on investment'
+PERFORMANCE_BREAKDOWN_INSIGHTS_FORMAT = """Your return on investment (ROI) helps
+you understand how your marketing activities impacted your business objectives.
 {lead_roi_channel} drove the highest ROI at {lead_roi_ratio:.1f}. For every $1
 you spent on {lead_roi_channel}, you saw ${lead_roi_ratio:.2f} in revenue.
 {lead_effectiveness_channel} had the highest effectiveness, which is your
 incremental revenue per media unit. {lead_mroi_channel} had the highest marginal
-ROI at {lead_mroi_channel_value:.2f}."""
-
-CPIK_BREAKDOWN_CARD_ID = 'cpik-breakdown'
-CPIK_BREAKDOWN_CARD_TITLE = 'Cost per incremental KPI'
-CPIK_BREAKDOWN_INSIGHTS_FORMAT = """Your cost per incremental KPI (CPIK) helps
-you understand how your marketing activities impacted your business objectives.
-{lead_cpik_channel} drove the lowest CPIK at ${lead_cpik_ratio:.2f}. For every
-KPI unit, you spent ${lead_cpik_ratio:.2f}."""
+ROI at {lead_mroi_channel_value:.2f}. {lead_cpik_channel} drove the lowest CPIK
+at ${lead_cpik_ratio:.2f}. For every KPI unit, you spent ${lead_cpik_ratio:.2f}.
+"""
 
 ROI_EFFECTIVENESS_CHART_ID = 'roi-effectiveness-chart'
 ROI_EFFECTIVENESS_CHART_TITLE = 'ROI vs. effectiveness'
@@ -105,10 +100,9 @@ ROI_CHANNEL_CHART_TITLE_FORMAT = 'ROI by channel {ci}'
 
 CPIK_CHANNEL_CHART_ID = 'cpik-channel-chart'
 CPIK_CHANNEL_CHART_TITLE_FORMAT = 'CPIK by channel {ci}'
-CPIK_CHANNEL_CHART_DESCRIPTION = """Note: the mean of CPIK is calculated by
-averaging the posterior samples of spend per incremental KPI, which differs from
-the value obtained by dividing the spend by the mean of the posterior samples of
-incremental KPI."""
+CPIK_CHANNEL_CHART_DESCRIPTION = """Note: CPIK (cost per incremental KPI) point
+estimate is determined by the posterior median, whereas ROI point estimate is
+determined by the posterior mean."""
 
 RESPONSE_CURVES_CARD_ID = 'response-curves'
 RESPONSE_CURVES_CARD_TITLE = 'Response curves'

@@ -1520,43 +1520,24 @@ class MediaSummaryTest(parameterized.TestCase):
     )
 
   def test_media_summary_plot_spend_vs_contribution_different_scenarios(self):
-    # Verifies each of the three kpi_type and revenue_per_kpi scenarios have
-    # the correct labels associated with them.
-    plot_revenue_revenue_label = (
-        self.media_summary_revenue.plot_spend_vs_contribution()
-    )
-    plot_non_revenue_revenue_label = (
-        self.media_summary_revenue_2.plot_spend_vs_contribution()
+    plot_revenue = self.media_summary_revenue.plot_spend_vs_contribution()
+    plot_kpi = self.media_summary_kpi.plot_spend_vs_contribution()
+    self.assertEqual(
+        plot_revenue.title.text,
+        summary_text.SPEND_IMPACT_CHART_TITLE.format(impact=c.REVENUE),
     )
     self.assertEqual(
-        plot_revenue_revenue_label.spec.layer[0].encoding.color.scale.domain,
+        plot_kpi.title.text,
+        summary_text.SPEND_IMPACT_CHART_TITLE.format(impact=c.KPI.upper()),
+    )
+    self.assertEqual(
+        plot_revenue.spec.layer[0].encoding.color.scale.domain,
         ["% Revenue", "% Spend", "Return on Investment"],
     )
     self.assertEqual(
-        plot_non_revenue_revenue_label.spec.layer[
-            0
-        ].encoding.color.scale.domain,
-        ["% Revenue", "% Spend", "Return on Investment"],
+        plot_kpi.spec.layer[0].encoding.color.scale.domain,
+        ["% KPI", "% Spend", "Return on Investment"],
     )
-    plot_spend_vs_contribution = (
-        self.media_summary_kpi.plot_spend_vs_contribution()
-    )
-    self.assertLen(plot_spend_vs_contribution.spec.layer, 1)
-    self.assertEqual(
-        plot_spend_vs_contribution.spec.layer[0].mark.cornerRadiusEnd, 2
-    )
-    self.assertEqual(
-        plot_spend_vs_contribution.spec.layer[0].mark.tooltip, True
-    )
-    self.assertEqual(
-        plot_spend_vs_contribution.spec.layer[0].encoding.color.scale.domain,
-        [f"% {c.KPI.upper()}", "% Spend"],
-    )
-    self.assertEqual(
-        plot_spend_vs_contribution.spec.layer[0].encoding.color.scale.range,
-        [c.BLUE_400, c.BLUE_200],
-    )
-    self.assertEqual(plot_spend_vs_contribution.spec.layer[0].mark.type, "bar")
 
   def test_media_summary_media_summary_metrics_property(self):
     self.assertEqual(
@@ -1736,14 +1717,6 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.layer[3].mark.baseline, "bottom")
     self.assertEqual(plot.layer[3].mark.dy, -5)
     self.assertEqual(plot.layer[3].mark.type, "text")
-
-  def test_media_summary_revenue_plot_cpik_not_available(self):
-    with self.assertRaisesWithLiteralMatch(
-        TypeError,
-        "CPIK metrics are only available when `revenue_per_kpi` is unknown."
-        " Please use `plot_roi_bar_chart()` instead.",
-    ):
-      self.media_summary_revenue.plot_cpik()
 
   def test_media_summary_plot_cpik_no_ci_plots_bar_chart(self):
     plot = self.media_summary_kpi.plot_cpik(include_ci=False)

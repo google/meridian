@@ -33,8 +33,7 @@ __all__ = [
     'Summarizer',
     'MODEL_FIT_CARD_SPEC',
     'CHANNEL_CONTRIB_CARD_SPEC',
-    'ROI_BREAKDOWN_CARD_SPEC',
-    'CPIK_BREAKDOWN_CARD_SEPC',
+    'PERFORMANCE_BREAKDOWN_CARD_SPEC',
     'RESPONSE_CURVES_CARD_SPEC',
 ]
 
@@ -47,13 +46,9 @@ CHANNEL_CONTRIB_CARD_SPEC = formatter.CardSpec(
     id=summary_text.CHANNEL_CONTRIB_CARD_ID,
     title=summary_text.CHANNEL_CONTRIB_CARD_TITLE,
 )
-ROI_BREAKDOWN_CARD_SPEC = formatter.CardSpec(
-    id=summary_text.ROI_BREAKDOWN_CARD_ID,
-    title=summary_text.ROI_BREAKDOWN_CARD_TITLE,
-)
-CPIK_BREAKDOWN_CARD_SEPC = formatter.CardSpec(
-    id=summary_text.CPIK_BREAKDOWN_CARD_ID,
-    title=summary_text.CPIK_BREAKDOWN_CARD_TITLE,
+PERFORMANCE_BREAKDOWN_CARD_SPEC = formatter.CardSpec(
+    id=summary_text.PERFORMANCE_BREAKDOWN_CARD_ID,
+    title=summary_text.PERFORMANCE_BREAKDOWN_CARD_TITLE,
 )
 RESPONSE_CURVES_CARD_SPEC = formatter.CardSpec(
     id=summary_text.RESPONSE_CURVES_CARD_ID,
@@ -343,19 +338,7 @@ class Summarizer:
       template_env: jinja2.Environment,
       media_summary: visualizer.MediaSummary,
   ) -> str:
-    """Creates the HTML snippet for the ROI or CPIK Breakdown card."""
-    impact = self._kpi_or_revenue()
-    if impact == c.REVENUE:
-      return self._create_roi_breakdown_card_html(template_env, media_summary)
-    else:
-      return self._create_cpik_breakdown_card_html(template_env, media_summary)
-
-  def _create_roi_breakdown_card_html(
-      self,
-      template_env: jinja2.Environment,
-      media_summary: visualizer.MediaSummary,
-  ) -> str:
-    """Creates the HTML snippet for the ROI Breakdown card."""
+    """Creates the HTML snippet for the ROI and CPIK Breakdown card."""
     roi_effectiveness_chart = formatter.ChartSpec(
         id=summary_text.ROI_EFFECTIVENESS_CHART_ID,
         description=summary_text.ROI_EFFECTIVENESS_CHART_DESCRIPTION,
@@ -370,6 +353,11 @@ class Summarizer:
         id=summary_text.ROI_CHANNEL_CHART_ID,
         chart_json=media_summary.plot_roi_bar_chart().to_json(),
     )
+    cpik_channel_chart = formatter.ChartSpec(
+        id=summary_text.CPIK_CHANNEL_CHART_ID,
+        chart_json=media_summary.plot_cpik().to_json(),
+        description=summary_text.CPIK_CHANNEL_CHART_DESCRIPTION,
+    )
     roi_df = self._get_sorted_posterior_mean_metrics_df(media_summary, [c.ROI])
     effectiveness_df = self._get_sorted_posterior_mean_metrics_df(
         media_summary, [c.EFFECTIVENESS]
@@ -377,43 +365,28 @@ class Summarizer:
     mroi_df = self._get_sorted_posterior_mean_metrics_df(
         media_summary, [c.MROI]
     )
+    cpik_df = self._get_sorted_posterior_median_metrics_df(
+        media_summary, [c.CPIK], ascending=True
+    )
     insights = summary_text.ROI_BREAKDOWN_INSIGHTS_FORMAT.format(
         lead_roi_channel=roi_df[c.CHANNEL][0].title(),
         lead_roi_ratio=roi_df[c.ROI][0],
         lead_effectiveness_channel=effectiveness_df[c.CHANNEL][0].title(),
         lead_mroi_channel=mroi_df[c.CHANNEL][0].title(),
         lead_mroi_channel_value=mroi_df[c.MROI][0],
+        lead_cpik_channel=cpik_df[c.CHANNEL][0].title(),
+        lead_cpik_ratio=cpik_df[c.CPIK][0],
     )
     return formatter.create_card_html(
         template_env,
-        ROI_BREAKDOWN_CARD_SPEC,
+        PERFORMANCE_BREAKDOWN_CARD_SPEC,
         insights,
-        [roi_effectiveness_chart, roi_marginal_chart, roi_channel_chart],
-    )
-
-  def _create_cpik_breakdown_card_html(
-      self,
-      template_env: jinja2.Environment,
-      media_summary: visualizer.MediaSummary,
-  ) -> str:
-    """Creates the HTML snippet for the CPIK Breakdown card."""
-    cpik_channel_chart = formatter.ChartSpec(
-        id=summary_text.CPIK_CHANNEL_CHART_ID,
-        chart_json=media_summary.plot_cpik().to_json(),
-        description=summary_text.CPIK_CHANNEL_CHART_DESCRIPTION,
-    )
-    df = self._get_sorted_posterior_median_metrics_df(
-        media_summary, [c.CPIK], ascending=True
-    )
-    insights = summary_text.CPIK_BREAKDOWN_INSIGHTS_FORMAT.format(
-        lead_cpik_channel=df[c.CHANNEL][0].title(),
-        lead_cpik_ratio=df[c.CPIK][0],
-    )
-    return formatter.create_card_html(
-        template_env,
-        CPIK_BREAKDOWN_CARD_SEPC,
-        insights,
-        [cpik_channel_chart],
+        [
+            roi_effectiveness_chart,
+            roi_marginal_chart,
+            roi_channel_chart,
+            cpik_channel_chart,
+        ],
     )
 
   def _create_response_curves_card_html(

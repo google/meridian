@@ -1638,9 +1638,8 @@ class MediaSummary:
     ]
     title = summary_text.SPEND_IMPACT_CHART_TITLE.format(impact=impact)
     colors = [c.BLUE_400, c.BLUE_200]
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      domain.append('Return on Investment')
-      colors.append(c.GREEN_700)
+    domain.append('Return on Investment')
+    colors.append(c.GREEN_700)
     spend_impact = (
         alt.Chart()
         .mark_bar(cornerRadiusEnd=2, tooltip=True)
@@ -1672,37 +1671,33 @@ class MediaSummary:
             ),
         )
     )
-    # Remove ROI markers and text when `revenue_per_kpi` does not exist.
-    if self._meridian.input_data.revenue_per_kpi is None:
-      layer = alt.layer(spend_impact, data=df)
-    else:
-      roi_marker = (
-          alt.Chart()
-          .mark_tick(
-              color=c.GREEN_700,
-              thickness=4,
-              cornerRadius=c.CORNER_RADIUS,
-              size=c.PADDING_20,
-              tooltip=True,
-          )
-          .encode(
-              tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
-              y=alt.Y(f'{c.ROI_SCALED}:Q', title='%'),
-          )
-      )
-      roi_text = (
-          alt.Chart()
-          .mark_text(
-              dy=-15,
-              fontSize=c.AXIS_FONT_SIZE,
-              color=c.GREY_900,
-          )
-          .encode(
-              text=alt.Text(f'{c.ROI}:Q', format='.1f'),
-              y=f'{c.ROI_SCALED}:Q',
-          )
-      )
-      layer = alt.layer(spend_impact, roi_marker, roi_text, data=df)
+    roi_marker = (
+        alt.Chart()
+        .mark_tick(
+            color=c.GREEN_700,
+            thickness=4,
+            cornerRadius=c.CORNER_RADIUS,
+            size=c.PADDING_20,
+            tooltip=True,
+        )
+        .encode(
+            tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
+            y=alt.Y(f'{c.ROI_SCALED}:Q', title='%'),
+        )
+    )
+    roi_text = (
+        alt.Chart()
+        .mark_text(
+            dy=-15,
+            fontSize=c.AXIS_FONT_SIZE,
+            color=c.GREY_900,
+        )
+        .encode(
+            text=alt.Text(f'{c.ROI}:Q', format='.1f'),
+            y=f'{c.ROI_SCALED}:Q',
+        )
+    )
+    layer = alt.layer(spend_impact, roi_marker, roi_text, data=df)
 
     # To group the impact and spend bar plot with the ROI markers, facet the
     # layered plot by channel. This creates separate plots per channel.
@@ -1736,11 +1731,6 @@ class MediaSummary:
     Returns:
       An Altair plot showing the ROI per channel.
     """
-    if self._meridian.input_data.revenue_per_kpi is None:
-      raise TypeError(
-          'Not able to plot ROI-related metrics as `revenue_per_kpi` is'
-          ' unknown.'
-      )
     if include_ci:
       ci = int(self._confidence_level * 100)
       title = summary_text.ROI_CHANNEL_CHART_TITLE_FORMAT.format(
@@ -1761,11 +1751,6 @@ class MediaSummary:
     Returns:
       An Altair plot showing the CPIK per channel.
     """
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      raise TypeError(
-          'CPIK metrics are only available when `revenue_per_kpi` is unknown.'
-          ' Please use `plot_roi_bar_chart()` instead.'
-      )
     if include_ci:
       ci = int(self._confidence_level * 100)
       title = summary_text.CPIK_CHANNEL_CHART_TITLE_FORMAT.format(
@@ -1796,11 +1781,6 @@ class MediaSummary:
     Returns:
       An Altair plot showing the ROI and effectiveness per channel.
     """
-    if self._meridian.input_data.revenue_per_kpi is None:
-      raise TypeError(
-          'Not able to plot ROI-related metrics as `revenue_per_kpi` is'
-          ' unknown.'
-      )
     return self._plot_roi_bubble_chart(
         metric=c.EFFECTIVENESS,
         metric_title='Effectiveness',
@@ -1831,11 +1811,6 @@ class MediaSummary:
     Returns:
       An Altair plot showing the ROI and mROI per channel.
     """
-    if self._meridian.input_data.revenue_per_kpi is None:
-      raise TypeError(
-          'Not able to plot ROI-related metrics as `revenue_per_kpi` is'
-          ' unknown.'
-      )
     return self._plot_roi_bubble_chart(
         metric=c.MROI,
         metric_title='Marginal ROI',
@@ -2121,13 +2096,10 @@ class MediaSummary:
     spend_pct_df['label'] = '% Spend'
 
     pct_df = pd.concat([impact_pct_df, spend_pct_df])
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
-      plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
-      scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
-      plot_df[c.ROI_SCALED] = plot_df[c.ROI] * scale_factor
-    else:
-      plot_df = pct_df
+    roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
+    plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
+    scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
+    plot_df[c.ROI_SCALED] = plot_df[c.ROI] * scale_factor
 
     return plot_df
 
