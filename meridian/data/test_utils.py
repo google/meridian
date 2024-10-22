@@ -17,6 +17,7 @@
 from collections.abc import Sequence
 import dataclasses
 import datetime
+from typing import Sequence
 import immutabledict
 from meridian import constants as c
 from meridian.data import input_data
@@ -509,8 +510,11 @@ def random_media_da(
     n_media_channels: int,
     seed: int = 0,
     date_format: str = c.DATE_FORMAT,
-    explicit_time_index=None,
+    explicit_time_index: Sequence[str] | None = None,
     explicit_media_channel_names: Sequence[str] | None = None,
+    array_name: str = 'media',
+    channel_variable_name: str = 'media_channel',
+    channel_prefix: str = 'ch_',
 ) -> xr.DataArray:
   """Generates a sample `media` DataArray.
 
@@ -524,6 +528,9 @@ def random_media_da(
     explicit_time_index: If given, ignore `date_format` and use this as is
     explicit_media_channel_names: If given, ignore `n_media_channels` and use
       this as is
+    array_name: The name of the array to be created
+    channel_variable_name: The name of the channel variable
+    channel_prefix: The prefix of the channel names
 
   Returns:
     A DataArray containing random data.
@@ -552,17 +559,43 @@ def random_media_da(
   media_channels = (
       explicit_media_channel_names
       if explicit_media_channel_names is not None
-      else _sample_names(prefix='ch_', n_names=n_media_channels)
+      else _sample_names(prefix=channel_prefix, n_names=n_media_channels)
   )
   return xr.DataArray(
       media,
-      dims=['geo', 'media_time', 'media_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': media_time,
-          'media_channel': media_channels,
+          channel_variable_name: media_channels,
       },
-      name='media',
+      name=array_name,
+  )
+
+
+def random_organic_media_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_media_channels: int,
+    seed: int = 0,
+    date_format: str = c.DATE_FORMAT,
+    explicit_time_index: Sequence[str] | None = None,
+    explicit_media_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_media` DataArray."""
+  return random_media_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_media_channels=n_organic_media_channels,
+      seed=seed,
+      date_format=date_format,
+      explicit_time_index=explicit_time_index,
+      explicit_media_channel_names=explicit_media_channel_names,
+      array_name='organic_media',
+      channel_variable_name='organic_media_channel',
+      channel_prefix='organic_media_',
   )
 
 
@@ -639,7 +672,7 @@ def random_controls_da(
     n_controls: int,
     seed: int = 0,
     date_format: str = c.DATE_FORMAT,
-    explicit_time_index=None,
+    explicit_time_index: Sequence[str] | None = None,
 ) -> xr.DataArray:
   """Generates a sample `controls` DataArray.
 
@@ -771,6 +804,9 @@ def random_reach_da(
     n_rf_channels: int,
     seed: int = 0,
     explicit_rf_channel_names: Sequence[str] | None = None,
+    array_name: str = 'reach',
+    channel_variable_name: str = 'rf_channel',
+    channel_prefix: str = 'rf_ch_',
 ) -> xr.DataArray:
   """Generates a sample `reach` DataArray."""
 
@@ -791,19 +827,41 @@ def random_reach_da(
   channels = (
       explicit_rf_channel_names
       if explicit_rf_channel_names is not None
-      else _sample_names(prefix='rf_ch_', n_names=n_rf_channels)
+      else _sample_names(prefix=channel_prefix, n_names=n_rf_channels)
   )
   return xr.DataArray(
       reach,
-      dims=['geo', 'media_time', 'rf_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': _sample_times(
               n_times=n_media_times, start_date=start_date
           ),
-          'rf_channel': channels,
+          channel_variable_name: channels,
       },
-      name='reach',
+      name=array_name,
+  )
+
+
+def random_organic_reach_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_rf_channels: int,
+    seed: int = 0,
+    explicit_organic_rf_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_reach` DataArray."""
+  return random_reach_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_rf_channels=n_organic_rf_channels,
+      seed=seed,
+      explicit_rf_channel_names=explicit_organic_rf_channel_names,
+      array_name='organic_reach',
+      channel_variable_name='organic_rf_channel',
+      channel_prefix='organic_rf_ch_',
   )
 
 
@@ -813,6 +871,10 @@ def random_frequency_da(
     n_media_times: int,
     n_rf_channels: int,
     seed: int = 0,
+    explicit_rf_channel_names: Sequence[str] | None = None,
+    array_name: str = 'frequency',
+    channel_variable_name: str = 'rf_channel',
+    channel_prefix: str = 'rf_ch_',
 ) -> xr.DataArray:
   """Generates a sample `frequency` DataArray."""
 
@@ -826,17 +888,45 @@ def random_frequency_da(
       np.random.normal(3, 5, size=(n_geos, n_media_times, n_rf_channels))
   )
 
+  channels = (
+      explicit_rf_channel_names
+      if explicit_rf_channel_names is not None
+      else _sample_names(prefix=channel_prefix, n_names=n_rf_channels)
+  )
+
   return xr.DataArray(
       frequency,
-      dims=['geo', 'media_time', 'rf_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': _sample_times(
               n_times=n_media_times, start_date=start_date
           ),
-          'rf_channel': _sample_names(prefix='rf_ch_', n_names=n_rf_channels),
+          channel_variable_name: channels,
       },
-      name='frequency',
+      name=array_name,
+  )
+
+
+def random_organic_frequency_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_rf_channels: int,
+    seed: int = 0,
+    explicit_organic_rf_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_frequency` DataArray."""
+  return random_frequency_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_rf_channels=n_organic_rf_channels,
+      seed=seed,
+      explicit_rf_channel_names=explicit_organic_rf_channel_names,
+      array_name='organic_frequency',
+      channel_variable_name='organic_rf_channel',
+      channel_prefix='organic_rf_ch_',
   )
 
 
@@ -885,6 +975,57 @@ def random_rf_spend_nd_da(
       dims=dims,
       coords=coords,
       name='rf_spend',
+  )
+
+
+def random_non_media_treatments_da(
+    media: xr.DataArray,
+    n_geos: int,
+    n_times: int,
+    n_non_media_channels: int,
+    seed: int = 0,
+    date_format: str = c.DATE_FORMAT,
+    explicit_time_index: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `non_media_treatments` DataArray.
+
+  Args:
+    media: The media data array
+    n_geos: Number of geos
+    n_times: Number of time periods
+    n_non_media_channels: Number of non media channels
+    seed: Random seed used by `np.random.seed()`
+    date_format: The date format to use for time coordinate labels
+    explicit_time_index: If given, ignore `date_format` and use this as is
+
+  Returns:
+    A DataArray containing random non-media variable.
+  """
+
+  np.random.seed(seed)
+
+  non_media_channel = abs(np.random.normal(2, 1, size=(n_geos, n_times, 1)))
+  media_common = media[:, (len(media.coords['media_time']) - n_times) :, :]
+  non_media_treatments = np.random.normal(
+      0.8 * media_common.mean(axis=2, keepdims=True),
+      non_media_channel,
+      size=(n_geos, n_times, n_non_media_channels),
+  )
+  return xr.DataArray(
+      non_media_treatments,
+      dims=['geo', 'time', 'non_media_channel'],
+      coords={
+          'geo': _sample_names(prefix='geo_', n_names=n_geos),
+          'time': (
+              _sample_times(n_times=n_times, date_format=date_format)
+              if explicit_time_index is None
+              else explicit_time_index
+          ),
+          'non_media_channel': _sample_names(
+              prefix='non_media_', n_names=n_non_media_channels
+          ),
+      },
+      name='non_media_treatments',
   )
 
 

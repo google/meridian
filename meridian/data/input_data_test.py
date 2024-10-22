@@ -1132,5 +1132,106 @@ class InputDataTest(parameterized.TestCase):
     self.assertTrue(spend in total_spend for spend in self.media_spend)
 
 
+class NonpaidInputDataTest(parameterized.TestCase):
+  """Tests for non-paid InputData."""
+
+  def setUp(self):
+    super().setUp()
+
+    self.n_times = 149
+    self.n_lagged_media_times = 152
+    self.n_geos = 10
+    self.n_media_channels = 6
+    self.n_controls = 3
+
+    self.n_non_media_channels = 2
+    self.n_organic_media_channels = 4
+    self.n_organic_rf_channels = 1
+
+    self.lagged_media = test_utils.random_media_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_media_channels=self.n_media_channels,
+    )
+    self.media_spend = test_utils.random_media_spend_nd_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_channels=self.n_media_channels,
+    )
+    self.controls = test_utils.random_controls_da(
+        media=self.lagged_media,
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_controls=self.n_controls,
+    )
+    self.kpi = test_utils.random_kpi_da(
+        media=self.lagged_media,
+        controls=self.controls,
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_channels=self.n_media_channels,
+        n_controls=self.n_controls,
+    )
+    self.non_media_treatments = test_utils.random_non_media_treatments_da(
+        media=self.lagged_media,
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_non_media_channels=self.n_non_media_channels,
+    )
+    self.lagged_organic_media = test_utils.random_organic_media_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_organic_media_channels=self.n_organic_media_channels,
+    )
+    self.lagged_organic_reach = test_utils.random_organic_reach_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_organic_rf_channels=self.n_organic_rf_channels,
+    )
+    self.lagged_organic_frequency = test_utils.random_organic_frequency_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_organic_rf_channels=self.n_organic_rf_channels,
+    )
+    self.revenue_per_kpi = test_utils.constant_revenue_per_kpi(
+        n_geos=self.n_geos, n_times=self.n_times, value=2.2
+    )
+    self.population = test_utils.random_population(n_geos=self.n_geos)
+
+  def test_construct_non_media_from_random_dataarrays_lagged(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    xr.testing.assert_equal(data.kpi, self.kpi)
+    xr.testing.assert_equal(data.revenue_per_kpi, self.revenue_per_kpi)
+    xr.testing.assert_equal(
+        data.non_media_treatments, self.non_media_treatments
+    )
+    xr.testing.assert_equal(data.media, self.lagged_media)
+    xr.testing.assert_equal(data.media_spend, self.media_spend)
+    xr.testing.assert_equal(data.organic_media, self.lagged_organic_media)
+    xr.testing.assert_equal(data.organic_reach, self.lagged_organic_reach)
+    xr.testing.assert_equal(
+        data.organic_frequency, self.lagged_organic_frequency
+    )
+    xr.testing.assert_equal(data.controls, self.controls)
+    xr.testing.assert_equal(data.population, self.population)
+
+
 if __name__ == "__main__":
   absltest.main()
