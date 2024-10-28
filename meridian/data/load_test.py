@@ -699,8 +699,11 @@ class InputDataLoaderTest(parameterized.TestCase):
         (
             "Target name 'revenue' from the mapping is none of the target"
             " coordinate names ('geo', 'time', 'media_time',"
-            " 'control_variable', 'media_channel', 'rf_channel') or array names"
-            " ('kpi', 'controls', 'population', 'revenue_per_kpi', 'media',"
+            " 'control_variable', 'organic_media_channel',"
+            " 'organic_rf_channel', 'non_media_channel', 'media_channel',"
+            " 'rf_channel') or array names ('kpi', 'controls', 'population',"
+            " 'revenue_per_kpi', 'organic_media', 'organic_reach',"
+            " 'organic_frequency', 'non_media_treatments', 'media',"
             " 'media_spend', 'reach', 'frequency', 'rf_spend')."
         ),
     ):
@@ -1825,6 +1828,383 @@ class InputDataLoaderTest(parameterized.TestCase):
     xr.testing.assert_allclose(data.frequency, dataset[constants.FREQUENCY])
     xr.testing.assert_allclose(data.rf_spend, dataset[constants.RF_SPEND])
     self.assertIsNone(data.revenue_per_kpi)
+
+
+class InputDataLoaderTest(parameterized.TestCase):
+  _N_GEOS = 5
+  _N_TIMES = 200
+  _N_MEDIA_TIMES = 203
+  _N_CONTROLS = 2
+  _N_MEDIA_CHANNELS = 3
+  _N_RF_CHANNELS = 2
+  _N_NON_MEDIA_CHANNELS = 2
+  _N_ORGANIC_MEDIA_CHANNELS = 4
+  _N_ORGANIC_RF_CHANNELS = 1
+
+  def setUp(self):
+    super().setUp()
+
+    self._correct_media_to_channel = {
+        f'media_{x}': f'ch_{x}' for x in range(self._N_MEDIA_CHANNELS)
+    }
+    self._correct_media_spend_to_channel = {
+        f'media_spend_{x}': f'ch_{x}' for x in range(self._N_MEDIA_CHANNELS)
+    }
+    self._correct_reach_to_channel = {
+        f'reach_{x}': f'rf_ch_{x}' for x in range(self._N_RF_CHANNELS)
+    }
+    self._correct_frequency_to_channel = {
+        f'frequency_{x}': f'rf_ch_{x}' for x in range(self._N_RF_CHANNELS)
+    }
+    self._correct_rf_spend_to_channel = {
+        f'rf_spend_{x}': f'rf_ch_{x}' for x in range(self._N_RF_CHANNELS)
+    }
+    self._correct_organic_reach_to_channel = {
+        f'organic_reach_{x}': f'organic_rf_ch_{x}'
+        for x in range(self._N_ORGANIC_RF_CHANNELS)
+    }
+    self._correct_organic_frequency_to_channel = {
+        f'organic_frequency_{x}': f'organic_rf_ch_{x}'
+        for x in range(self._N_ORGANIC_RF_CHANNELS)
+    }
+
+    self._correct_coord_to_columns_with_non_media = (
+        test_utils.sample_coord_to_columns(
+            n_controls=self._N_CONTROLS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+        )
+    )
+
+  def test_xr_dataset_data_loader_loads_non_media(self):
+    dataset = test_utils.random_dataset(
+        n_geos=self._N_GEOS,
+        n_times=self._N_TIMES,
+        n_media_times=self._N_MEDIA_TIMES,
+        n_media_channels=self._N_MEDIA_CHANNELS,
+        n_controls=self._N_CONTROLS,
+        n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+    )
+    loader = load.XrDatasetDataLoader(dataset, kpi_type=constants.NON_REVENUE)
+
+    data = loader.load()
+
+    xr.testing.assert_equal(data.kpi, dataset[constants.KPI])
+    xr.testing.assert_equal(
+        data.revenue_per_kpi, dataset[constants.REVENUE_PER_KPI]
+    )
+    xr.testing.assert_equal(data.controls, dataset[constants.CONTROLS])
+    xr.testing.assert_equal(data.population, dataset[constants.POPULATION])
+    xr.testing.assert_equal(data.media, dataset[constants.MEDIA])
+    xr.testing.assert_equal(data.media_spend, dataset[constants.MEDIA_SPEND])
+    xr.testing.assert_equal(
+        data.non_media_treatments, dataset[constants.NON_MEDIA_TREATMENTS]
+    )
+    xr.testing.assert_equal(
+        data.organic_media, dataset[constants.ORGANIC_MEDIA]
+    )
+    xr.testing.assert_equal(
+        data.organic_reach, dataset[constants.ORGANIC_REACH]
+    )
+    xr.testing.assert_equal(
+        data.organic_frequency, dataset[constants.ORGANIC_FREQUENCY]
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='not_lagged',
+          n_geos=_N_GEOS,
+          n_times=_N_TIMES,
+          n_media_times=_N_TIMES,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+      dict(
+          testcase_name='lagged',
+          n_geos=_N_GEOS,
+          n_times=_N_TIMES,
+          n_media_times=_N_MEDIA_TIMES,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+  )
+  def test_dataframe_data_loader_loads_random_dataset_with_non_media(
+      self,
+      n_geos,
+      n_times,
+      n_media_times,
+      n_media_channels,
+      n_rf_channels,
+      n_controls,
+      n_non_media_channels,
+      n_organic_media_channels,
+      n_organic_rf_channels,
+  ):
+    dataset = test_utils.random_dataset(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_media_channels=n_media_channels,
+        n_rf_channels=n_rf_channels,
+        n_controls=n_controls,
+        n_non_media_channels=n_non_media_channels,
+        n_organic_media_channels=n_organic_media_channels,
+        n_organic_rf_channels=n_organic_rf_channels,
+    )
+    df = test_utils.dataset_to_dataframe(
+        dataset,
+        controls_column_names=test_utils._sample_names('control_', n_controls),
+        media_column_names=test_utils._sample_names('media_', n_media_channels),
+        media_spend_column_names=test_utils._sample_names(
+            'media_spend_', n_media_channels
+        ),
+        reach_column_names=test_utils._sample_names('reach_', n_rf_channels),
+        frequency_column_names=test_utils._sample_names(
+            'frequency_', n_rf_channels
+        ),
+        rf_spend_column_names=test_utils._sample_names(
+            'rf_spend_', n_rf_channels
+        ),
+        non_media_column_names=test_utils._sample_names(
+            'non_media_', n_non_media_channels
+        ),
+        organic_media_column_names=test_utils._sample_names(
+            'organic_media_', n_organic_media_channels
+        ),
+        organic_reach_column_names=test_utils._sample_names(
+            'organic_reach_', n_organic_rf_channels
+        ),
+        organic_frequency_column_names=test_utils._sample_names(
+            'organic_frequency_', n_organic_rf_channels
+        ),
+    )
+
+    coord_to_columns = test_utils.sample_coord_to_columns(
+        n_controls=n_controls,
+        n_media_channels=n_media_channels,
+        n_rf_channels=n_rf_channels,
+        n_non_media_channels=n_non_media_channels,
+        n_organic_media_channels=n_organic_media_channels,
+        n_organic_rf_channels=n_organic_rf_channels,
+    )
+
+    media_to_channel = {
+        f'media_{x}': f'ch_{x}' for x in range(n_media_channels)
+    }
+    media_spend_to_channel = {
+        f'media_spend_{x}': f'ch_{x}' for x in range(n_media_channels)
+    }
+    reach_to_channel = {
+        f'reach_{x}': f'rf_ch_{x}' for x in range(n_rf_channels)
+    }
+    frequency_to_channel = {
+        f'frequency_{x}': f'rf_ch_{x}' for x in range(n_rf_channels)
+    }
+    rf_spend_to_channel = {
+        f'rf_spend_{x}': f'rf_ch_{x}' for x in range(n_rf_channels)
+    }
+    organic_reach_to_channel = {
+        f'organic_reach_{x}': f'organic_rf_ch_{x}'
+        for x in range(n_organic_rf_channels)
+    }
+    organic_frequency_to_channel = {
+        f'organic_frequency_{x}': f'organic_rf_ch_{x}'
+        for x in range(n_organic_rf_channels)
+    }
+
+    loader = load.DataFrameDataLoader(
+        df=df,
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel=media_to_channel,
+        media_spend_to_channel=media_spend_to_channel,
+        reach_to_channel=reach_to_channel,
+        frequency_to_channel=frequency_to_channel,
+        rf_spend_to_channel=rf_spend_to_channel,
+        organic_reach_to_channel=organic_reach_to_channel,
+        organic_frequency_to_channel=organic_frequency_to_channel,
+    )
+
+    data = loader.load()
+
+    xr.testing.assert_equal(data.kpi, dataset[constants.KPI])
+    xr.testing.assert_equal(
+        data.revenue_per_kpi, dataset[constants.REVENUE_PER_KPI]
+    )
+    xr.testing.assert_equal(data.controls, dataset[constants.CONTROLS])
+    xr.testing.assert_equal(data.population, dataset[constants.POPULATION])
+    xr.testing.assert_equal(data.media, dataset[constants.MEDIA])
+    xr.testing.assert_equal(data.media_spend, dataset[constants.MEDIA_SPEND])
+    xr.testing.assert_equal(data.reach, dataset[constants.REACH])
+    xr.testing.assert_equal(data.frequency, dataset[constants.FREQUENCY])
+    xr.testing.assert_equal(data.rf_spend, dataset[constants.RF_SPEND])
+    xr.testing.assert_equal(
+        data.non_media_treatments, dataset[constants.NON_MEDIA_TREATMENTS]
+    )
+    xr.testing.assert_equal(
+        data.organic_media, dataset[constants.ORGANIC_MEDIA]
+    )
+    xr.testing.assert_equal(
+        data.organic_reach, dataset[constants.ORGANIC_REACH]
+    )
+    xr.testing.assert_equal(
+        data.organic_frequency, dataset[constants.ORGANIC_FREQUENCY]
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='sample_data_with_organic_and_non_media',
+          file_name='sample_data_with_organic_and_non_media.csv',
+          n_media_times=_N_TIMES,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+      dict(
+          testcase_name='lagged_sample_data_with_organic_and_non_media',
+          file_name='lagged_sample_data_with_organic_and_non_media.csv',
+          n_media_times=_N_MEDIA_TIMES,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+  )
+  def test_csv_data_loader_loads_all_arrays(
+      self,
+      file_name: str,
+      n_media_times: int,
+      n_media_channels: int,
+      n_rf_channels: int,
+      n_non_media_channels: int,
+      n_organic_media_channels: int,
+      n_organic_rf_channels: int,
+  ):
+    """Tests loading data from csv.
+
+    CSV files were generated using `random_dataset()` function with `seed=0`. In
+    this test, the same dataset is generated and compared to the data read from
+    the CSV file.
+    """
+    csv_file = os.path.join(os.path.dirname(__file__), 'sample', file_name)
+    coord_to_columns = self._correct_coord_to_columns_with_non_media
+    media_to_channel = (
+        self._correct_media_to_channel if n_media_channels else None
+    )
+    media_spend_to_channel = (
+        self._correct_media_spend_to_channel if n_media_channels else None
+    )
+    reach_to_channel = self._correct_reach_to_channel if n_rf_channels else None
+    frequency_to_channel = (
+        self._correct_frequency_to_channel if n_rf_channels else None
+    )
+    rf_spend_to_channel = (
+        self._correct_rf_spend_to_channel if n_rf_channels else None
+    )
+    organic_reach_to_channel = (
+        self._correct_organic_reach_to_channel
+        if n_organic_rf_channels
+        else None
+    )
+    organic_frequency_to_channel = (
+        self._correct_organic_frequency_to_channel
+        if n_organic_rf_channels
+        else None
+    )
+    loader = load.CsvDataLoader(
+        csv_path=csv_file,
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel=media_to_channel,
+        media_spend_to_channel=media_spend_to_channel,
+        reach_to_channel=reach_to_channel,
+        frequency_to_channel=frequency_to_channel,
+        rf_spend_to_channel=rf_spend_to_channel,
+        organic_reach_to_channel=organic_reach_to_channel,
+        organic_frequency_to_channel=organic_frequency_to_channel,
+    )
+
+    data = loader.load()
+
+    dataset = test_utils.random_dataset(
+        n_geos=self._N_GEOS,
+        n_times=self._N_TIMES,
+        n_media_times=n_media_times,
+        n_media_channels=n_media_channels,
+        n_rf_channels=n_rf_channels,
+        n_controls=self._N_CONTROLS,
+        n_non_media_channels=n_non_media_channels,
+        n_organic_media_channels=n_organic_media_channels,
+        n_organic_rf_channels=n_organic_rf_channels,
+        seed=0,
+    )
+
+    xr.testing.assert_allclose(data.kpi, dataset[constants.KPI])
+    xr.testing.assert_allclose(
+        data.revenue_per_kpi, dataset[constants.REVENUE_PER_KPI]
+    )
+    xr.testing.assert_allclose(data.controls, dataset[constants.CONTROLS])
+    xr.testing.assert_allclose(data.population, dataset[constants.POPULATION])
+    if n_media_channels:
+      xr.testing.assert_allclose(data.media, dataset[constants.MEDIA])
+      xr.testing.assert_allclose(
+          data.media_spend, dataset[constants.MEDIA_SPEND]
+      )
+    else:
+      self.assertIsNone(data.media)
+      self.assertIsNone(data.media_spend)
+    if n_rf_channels:
+      xr.testing.assert_allclose(data.reach, dataset[constants.REACH])
+      xr.testing.assert_allclose(data.frequency, dataset[constants.FREQUENCY])
+      xr.testing.assert_allclose(data.rf_spend, dataset[constants.RF_SPEND])
+    else:
+      self.assertIsNone(data.reach)
+      self.assertIsNone(data.frequency)
+      self.assertIsNone(data.rf_spend)
+
+    if n_non_media_channels:
+      xr.testing.assert_allclose(
+          data.non_media_treatments, dataset[constants.NON_MEDIA_TREATMENTS]
+      )
+    else:
+      self.assertIsNone(data.non_media_treatments)
+
+    if n_organic_media_channels:
+      xr.testing.assert_allclose(
+          data.organic_media, dataset[constants.ORGANIC_MEDIA]
+      )
+    else:
+      self.assertIsNone(data.organic_media)
+
+    if n_organic_rf_channels:
+      xr.testing.assert_allclose(
+          data.organic_reach, dataset[constants.ORGANIC_REACH]
+      )
+    else:
+      self.assertIsNone(data.organic_reach)
+
+    if n_organic_rf_channels:
+      xr.testing.assert_allclose(
+          data.organic_frequency, dataset[constants.ORGANIC_FREQUENCY]
+      )
+    else:
+      self.assertIsNone(data.organic_frequency)
 
 
 if __name__ == '__main__':
