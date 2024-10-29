@@ -62,6 +62,10 @@ POPULATION = 'population'
 REACH = 'reach'
 FREQUENCY = 'frequency'
 RF_SPEND = 'rf_spend'
+ORGANIC_MEDIA = 'organic_media'
+ORGANIC_REACH = 'organic_reach'
+ORGANIC_FREQUENCY = 'organic_frequency'
+NON_MEDIA_TREATMENTS = 'non_media_treatments'
 REVENUE = 'revenue'
 NON_REVENUE = 'non_revenue'
 REQUIRED_INPUT_DATA_ARRAY_NAMES = (
@@ -69,7 +73,13 @@ REQUIRED_INPUT_DATA_ARRAY_NAMES = (
     CONTROLS,
     POPULATION,
 )
-OPTIONAL_INPUT_DATA_ARRAY_NAMES = (REVENUE_PER_KPI,)
+OPTIONAL_INPUT_DATA_ARRAY_NAMES = (
+    REVENUE_PER_KPI,
+    ORGANIC_MEDIA,
+    ORGANIC_REACH,
+    ORGANIC_FREQUENCY,
+    NON_MEDIA_TREATMENTS,
+)
 MEDIA_INPUT_DATA_ARRAY_NAMES = (
     MEDIA,
     MEDIA_SPEND,
@@ -99,6 +109,9 @@ MEDIA_CHANNEL = 'media_channel'
 RF_CHANNEL = 'rf_channel'
 CHANNEL = 'channel'
 RF = 'rf'
+ORGANIC_MEDIA_CHANNEL = 'organic_media_channel'
+ORGANIC_RF_CHANNEL = 'organic_rf_channel'
+NON_MEDIA_CHANNEL = 'non_media_channel'
 CONTROL_VARIABLE = 'control_variable'
 REQUIRED_INPUT_DATA_COORD_NAMES = (
     GEO,
@@ -106,10 +119,16 @@ REQUIRED_INPUT_DATA_COORD_NAMES = (
     MEDIA_TIME,
     CONTROL_VARIABLE,
 )
+NON_PAID_MEDIA_INPUT_DATA_COORD_NAMES = (
+    ORGANIC_MEDIA_CHANNEL,
+    ORGANIC_RF_CHANNEL,
+    NON_MEDIA_CHANNEL,
+)
 MEDIA_INPUT_DATA_COORD_NAMES = (MEDIA_CHANNEL,)
 RF_INPUT_DATA_COORD_NAMES = (RF_CHANNEL,)
 POSSIBLE_INPUT_DATA_COORD_NAMES = (
     REQUIRED_INPUT_DATA_COORD_NAMES
+    + NON_PAID_MEDIA_INPUT_DATA_COORD_NAMES
     + MEDIA_INPUT_DATA_COORD_NAMES
     + RF_INPUT_DATA_COORD_NAMES
 )
@@ -168,7 +187,9 @@ MU_T = 'mu_t'
 ROI_M = 'roi_m'
 ROI_RF = 'roi_rf'
 GAMMA_C = 'gamma_c'
+GAMMA_N = 'gamma_n'
 XI_C = 'xi_c'
+XI_N = 'xi_n'
 ALPHA_M = 'alpha_m'
 ALPHA_RF = 'alpha_rf'
 EC_M = 'ec_m'
@@ -181,13 +202,29 @@ BETA_M = 'beta_m'
 BETA_RF = 'beta_rf'
 BETA_GM = 'beta_gm'
 BETA_GRF = 'beta_grf'
+BETA_OM = 'beta_om'
+BETA_ORF = 'beta_orf'
+ETA_OM = 'eta_om'
+ETA_ORF = 'eta_orf'
+ALPHA_OM = 'alpha_om'
+ALPHA_ORF = 'alpha_orf'
+EC_OM = 'ec_om'
+EC_ORF = 'ec_orf'
+SLOPE_OM = 'slope_om'
+SLOPE_ORF = 'slope_orf'
+BETA_GOM = 'beta_gom'
+BETA_GORF = 'beta_gorf'
 SIGMA = 'sigma'
 TAU_G = 'tau_g'
 TAU_G_EXCL_BASELINE = 'tau_g_excl_baseline'
 GAMMA_GC = 'gamma_gc'
+GAMMA_GN = 'gamma_gn'
 BETA_GM_DEV = 'beta_gm_dev'
 BETA_GRF_DEV = 'beta_grf_dev'
+BETA_GOM_DEV = 'beta_gom_dev'
+BETA_GORF_DEV = 'beta_gorf_dev'
 GAMMA_GC_DEV = 'gamma_gc_dev'
+GAMMA_GN_DEV = 'gamma_gn_dev'
 COMMON_PARAMETER_NAMES = (
     KNOT_VALUES,
     MU_T,
@@ -215,6 +252,27 @@ RF_PARAMETER_NAMES = (
     BETA_RF,
     BETA_GRF,
 )
+ORGANIC_MEDIA_PARAMETERS = (
+    BETA_OM,
+    ETA_OM,
+    ALPHA_OM,
+    EC_OM,
+    SLOPE_OM,
+)
+
+ORGANIC_RF_PARAMETERS = (
+    BETA_ORF,
+    ETA_ORF,
+    ALPHA_ORF,
+    EC_ORF,
+    SLOPE_ORF,
+)
+
+NON_MEDIA_PARAMETERS = (
+    GAMMA_N,
+    XI_N,
+    GAMMA_GN,
+)
 
 KNOTS_PARAMETERS = (KNOT_VALUES,)
 MEDIA_PARAMETERS = (ETA_M, BETA_M, ALPHA_M, EC_M, SLOPE_M, ROI_M)
@@ -226,10 +284,14 @@ TIME_PARAMETERS = (MU_T,)
 GEO_MEDIA_PARAMETERS = (BETA_GM,)
 GEO_RF_PARAMETERS = (BETA_GRF,)
 GEO_CONTROL_PARAMETERS = (GAMMA_GC,)
-IGNORED_PRIOR_PARAMETERS = (
+GEO_NON_MEDIA_PARAMETERS = (GAMMA_GN,)
+UNSAVED_PARAMETERS = (
     BETA_GM_DEV,
     BETA_GRF_DEV,
+    BETA_GOM_DEV,
+    BETA_GORF_DEV,
     GAMMA_GC_DEV,
+    GAMMA_GN_DEV,
     TAU_G_EXCL_BASELINE,
 )
 
@@ -242,11 +304,17 @@ INFERENCE_DIMS = immutabledict.immutabledict(
         TAU_G: (GEO,),
         BETA_GM: (GEO, MEDIA_CHANNEL),
         BETA_GRF: (GEO, RF_CHANNEL),
+        BETA_GOM: (GEO, ORGANIC_MEDIA_CHANNEL),
+        BETA_GORF: (GEO, ORGANIC_RF_CHANNEL),
         GAMMA_GC: (GEO, CONTROL_VARIABLE),
+        GAMMA_GN: (GEO, NON_MEDIA_CHANNEL),
     }
     | {param: (CONTROL_VARIABLE,) for param in CONTROL_PARAMETERS}
+    | {param: (NON_MEDIA_CHANNEL,) for param in NON_MEDIA_PARAMETERS}
     | {param: (MEDIA_CHANNEL,) for param in MEDIA_PARAMETERS}
     | {param: (RF_CHANNEL,) for param in RF_PARAMETERS}
+    | {param: (ORGANIC_MEDIA_CHANNEL,) for param in ORGANIC_MEDIA_PARAMETERS}
+    | {param: (ORGANIC_RF_CHANNEL,) for param in ORGANIC_RF_PARAMETERS}
 )
 
 IGNORED_TRACE_METRICS = ('variance_scaling',)

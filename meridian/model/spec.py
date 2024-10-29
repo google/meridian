@@ -112,6 +112,10 @@ class ModelSpec:
       `(n_controls,)` indicating the control variables for which the control
       value will be scaled by population. If `None`, no control variables are
       scaled by population. Default: `None`.
+    non_media_population_scaling_id: An optional boolean tensor of dimension
+      `(n_non_media_channels,)` indicating the non-media variables for which the
+      non-media value will be scaled by population. If `None`, then no non-media
+      variables are scaled by population. Default: `None`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -128,6 +132,7 @@ class ModelSpec:
   baseline_geo: int | str | None = None
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
+  non_media_population_scaling_id: np.ndarray | None = None
 
   def __post_init__(self):
     # Validate media_effects_dist.

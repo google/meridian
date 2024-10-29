@@ -16,6 +16,7 @@ from collections.abc import MutableMapping
 import copy
 from typing import Any
 import warnings
+import xml
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants as c
@@ -27,6 +28,9 @@ _N_GEOS = 10
 _N_GEOS_NATIONAL = 1
 _N_MEDIA_CHANNELS = 6
 _N_RF_CHANNELS = 4
+_N_ORGANIC_MEDIA_CHANNELS = 4
+_N_ORGANIC_RF_CHANNELS = 1
+_N_NON_MEDIA_CHANNELS = 2
 _N_CONTROLS = 3
 _N_KNOTS = 5
 
@@ -43,12 +47,20 @@ class PriorDistributionTest(parameterized.TestCase):
         ),
         c.BETA_M: tfp.distributions.HalfNormal(5.0, name=c.BETA_M),
         c.BETA_RF: tfp.distributions.HalfNormal(5.0, name=c.BETA_RF),
+        c.BETA_OM: tfp.distributions.HalfNormal(5.0, name=c.BETA_OM),
+        c.BETA_ORF: tfp.distributions.HalfNormal(5.0, name=c.BETA_ORF),
         c.ETA_M: tfp.distributions.HalfNormal(1.0, name=c.ETA_M),
         c.ETA_RF: tfp.distributions.HalfNormal(1.0, name=c.ETA_RF),
+        c.ETA_OM: tfp.distributions.HalfNormal(1.0, name=c.ETA_OM),
+        c.ETA_ORF: tfp.distributions.HalfNormal(1.0, name=c.ETA_ORF),
         c.GAMMA_C: tfp.distributions.Normal(0.0, 5.0, name=c.GAMMA_C),
+        c.GAMMA_N: tfp.distributions.Normal(0.0, 5.0, name=c.GAMMA_N),
         c.XI_C: tfp.distributions.HalfNormal(5.0, name=c.XI_C),
+        c.XI_N: tfp.distributions.HalfNormal(5.0, name=c.XI_N),
         c.ALPHA_M: tfp.distributions.Uniform(0.0, 1.0, name=c.ALPHA_M),
         c.ALPHA_RF: tfp.distributions.Uniform(0.0, 1.0, name=c.ALPHA_RF),
+        c.ALPHA_OM: tfp.distributions.Uniform(0.0, 1.0, name=c.ALPHA_OM),
+        c.ALPHA_ORF: tfp.distributions.Uniform(0.0, 1.0, name=c.ALPHA_ORF),
         c.EC_M: tfp.distributions.TruncatedNormal(
             0.8, 0.8, 0.1, 10, name=c.EC_M
         ),
@@ -57,8 +69,18 @@ class PriorDistributionTest(parameterized.TestCase):
             tfp.bijectors.Shift(0.1),
             name=c.EC_RF,
         ),
+        c.EC_OM: tfp.distributions.TruncatedNormal(
+            0.8, 0.8, 0.1, 10, name=c.EC_OM
+        ),
+        c.EC_ORF: tfp.distributions.TransformedDistribution(
+            tfp.distributions.LogNormal(0.7, 0.4),
+            tfp.bijectors.Shift(0.1),
+            name=c.EC_ORF,
+        ),
         c.SLOPE_M: tfp.distributions.Deterministic(1.0, name=c.SLOPE_M),
         c.SLOPE_RF: tfp.distributions.LogNormal(0.7, 0.4, name=c.SLOPE_RF),
+        c.SLOPE_OM: tfp.distributions.Deterministic(1.0, name=c.SLOPE_OM),
+        c.SLOPE_ORF: tfp.distributions.LogNormal(0.7, 0.4, name=c.SLOPE_ORF),
         c.SIGMA: tfp.distributions.HalfNormal(5.0, name=c.SIGMA),
         c.ROI_M: tfp.distributions.LogNormal(0.2, 0.9, name=c.ROI_M),
         c.ROI_RF: tfp.distributions.LogNormal(0.2, 0.9, name=c.ROI_RF),
@@ -68,7 +90,10 @@ class PriorDistributionTest(parameterized.TestCase):
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
         sigma_shape=_N_GEOS,
         n_knots=_N_KNOTS,
         is_national=False,
@@ -124,7 +149,22 @@ class PriorDistributionTest(parameterized.TestCase):
         distribution.alpha_rf, self.sample_distributions[c.ALPHA_RF]
     )
     self.assert_distribution_params_are_equal(
+        distribution.alpha_om, self.sample_distributions[c.ALPHA_OM]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.alpha_orf, self.sample_distributions[c.ALPHA_ORF]
+    )
+    self.assert_distribution_params_are_equal(
         distribution.ec_m, self.sample_distributions[c.EC_M]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.ec_rf, self.sample_distributions[c.EC_RF]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.ec_om, self.sample_distributions[c.EC_OM]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.ec_orf, self.sample_distributions[c.EC_ORF]
     )
     self.assert_distribution_params_are_equal(
         distribution.beta_m, self.sample_distributions[c.BETA_M]
@@ -133,25 +173,46 @@ class PriorDistributionTest(parameterized.TestCase):
         distribution.beta_rf, self.sample_distributions[c.BETA_RF]
     )
     self.assert_distribution_params_are_equal(
+        distribution.beta_om, self.sample_distributions[c.BETA_OM]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.beta_orf, self.sample_distributions[c.BETA_ORF]
+    )
+    self.assert_distribution_params_are_equal(
         distribution.eta_m, self.sample_distributions[c.ETA_M]
     )
     self.assert_distribution_params_are_equal(
         distribution.eta_rf, self.sample_distributions[c.ETA_RF]
     )
     self.assert_distribution_params_are_equal(
+        distribution.eta_om, self.sample_distributions[c.ETA_OM]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.eta_orf, self.sample_distributions[c.ETA_ORF]
+    )
+    self.assert_distribution_params_are_equal(
         distribution.gamma_c, self.sample_distributions[c.GAMMA_C]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.gamma_n, self.sample_distributions[c.GAMMA_N]
     )
     self.assert_distribution_params_are_equal(
         distribution.xi_c, self.sample_distributions[c.XI_C]
     )
     self.assert_distribution_params_are_equal(
-        distribution.ec_rf, self.sample_distributions[c.EC_RF]
+        distribution.xi_n, self.sample_distributions[c.XI_N]
     )
     self.assert_distribution_params_are_equal(
         distribution.slope_m, self.sample_distributions[c.SLOPE_M]
     )
     self.assert_distribution_params_are_equal(
         distribution.slope_rf, self.sample_distributions[c.SLOPE_RF]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.slope_om, self.sample_distributions[c.SLOPE_OM]
+    )
+    self.assert_distribution_params_are_equal(
+        distribution.slope_orf, self.sample_distributions[c.SLOPE_ORF]
     )
     self.assert_distribution_params_are_equal(
         distribution.sigma, self.sample_distributions[c.SIGMA]
@@ -165,7 +226,7 @@ class PriorDistributionTest(parameterized.TestCase):
 
   def test_has_deterministic_param_broadcasted_distribution_correct(self):
     for d in self.sample_distributions:
-      is_deterministic_param = d == c.SLOPE_M
+      is_deterministic_param = (d in (c.SLOPE_M, c.SLOPE_OM))
       self.assertEqual(
           self.sample_broadcast.has_deterministic_param(d),
           is_deterministic_param,
@@ -177,7 +238,10 @@ class PriorDistributionTest(parameterized.TestCase):
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
         sigma_shape=_N_GEOS,
         n_knots=_N_KNOTS,
         is_national=False,
@@ -191,16 +255,28 @@ class PriorDistributionTest(parameterized.TestCase):
         distribution.tau_g_excl_baseline,
         distribution.alpha_m,
         distribution.alpha_rf,
+        distribution.alpha_om,
+        distribution.alpha_orf,
         distribution.ec_m,
         distribution.ec_rf,
+        distribution.ec_om,
+        distribution.ec_orf,
         distribution.beta_m,
         distribution.beta_rf,
+        distribution.beta_om,
+        distribution.beta_orf,
         distribution.eta_m,
         distribution.eta_rf,
+        distribution.eta_om,
+        distribution.eta_orf,
         distribution.gamma_c,
+        distribution.gamma_n,
         distribution.xi_c,
+        distribution.xi_n,
         distribution.slope_m,
         distribution.slope_rf,
+        distribution.slope_om,
+        distribution.slope_orf,
         distribution.sigma,
         distribution.roi_m,
         distribution.roi_rf,
@@ -211,16 +287,28 @@ class PriorDistributionTest(parameterized.TestCase):
         broadcast_distribution.tau_g_excl_baseline.parameters[c.DISTRIBUTION],
         broadcast_distribution.alpha_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.alpha_rf.parameters[c.DISTRIBUTION],
+        broadcast_distribution.alpha_om.parameters[c.DISTRIBUTION],
+        broadcast_distribution.alpha_orf.parameters[c.DISTRIBUTION],
         broadcast_distribution.ec_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.ec_rf.parameters[c.DISTRIBUTION],
+        broadcast_distribution.ec_om.parameters[c.DISTRIBUTION],
+        broadcast_distribution.ec_orf.parameters[c.DISTRIBUTION],
         broadcast_distribution.beta_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.beta_rf.parameters[c.DISTRIBUTION],
+        broadcast_distribution.beta_om.parameters[c.DISTRIBUTION],
+        broadcast_distribution.beta_orf.parameters[c.DISTRIBUTION],
         broadcast_distribution.eta_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.eta_rf.parameters[c.DISTRIBUTION],
+        broadcast_distribution.eta_om.parameters[c.DISTRIBUTION],
+        broadcast_distribution.eta_orf.parameters[c.DISTRIBUTION],
         broadcast_distribution.gamma_c.parameters[c.DISTRIBUTION],
+        broadcast_distribution.gamma_n.parameters[c.DISTRIBUTION],
         broadcast_distribution.xi_c.parameters[c.DISTRIBUTION],
+        broadcast_distribution.xi_n.parameters[c.DISTRIBUTION],
         broadcast_distribution.slope_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.slope_rf.parameters[c.DISTRIBUTION],
+        broadcast_distribution.slope_om.parameters[c.DISTRIBUTION],
+        broadcast_distribution.slope_orf.parameters[c.DISTRIBUTION],
         broadcast_distribution.sigma.parameters[c.DISTRIBUTION],
         broadcast_distribution.roi_m.parameters[c.DISTRIBUTION],
         broadcast_distribution.roi_rf.parameters[c.DISTRIBUTION],
@@ -248,7 +336,10 @@ class PriorDistributionTest(parameterized.TestCase):
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
         sigma_shape=sigma_shape,
         n_knots=_N_KNOTS,
         is_national=False,
@@ -271,6 +362,7 @@ class PriorDistributionTest(parameterized.TestCase):
     n_media_channels_distributions_list = [
         broadcast_distribution.beta_m,
         broadcast_distribution.eta_m,
+        broadcast_distribution.ec_m,
         broadcast_distribution.alpha_m,
         broadcast_distribution.slope_m,
         broadcast_distribution.roi_m,
@@ -290,6 +382,28 @@ class PriorDistributionTest(parameterized.TestCase):
     for broad in n_rf_channels_distributions_list:
       self.assertEqual(broad.batch_shape, (_N_RF_CHANNELS,))
 
+    # Validate `n_organic_media_channels` shape distributions.
+    n_organic_media_channels_distribution_list = [
+        broadcast_distribution.beta_om,
+        broadcast_distribution.eta_om,
+        broadcast_distribution.alpha_om,
+        broadcast_distribution.ec_om,
+        broadcast_distribution.slope_om,
+    ]
+    for broad in n_organic_media_channels_distribution_list:
+      self.assertEqual(broad.batch_shape, (_N_ORGANIC_MEDIA_CHANNELS,))
+
+    # Validate `n_organic_rf_channels` shape distributions.
+    n_organic_rf_channels_distribution_list = [
+        broadcast_distribution.beta_orf,
+        broadcast_distribution.eta_orf,
+        broadcast_distribution.alpha_orf,
+        broadcast_distribution.ec_orf,
+        broadcast_distribution.slope_orf,
+    ]
+    for broad in n_organic_rf_channels_distribution_list:
+      self.assertEqual(broad.batch_shape, (_N_ORGANIC_RF_CHANNELS,))
+
     # Validate `n_controls` shape distributions.
     n_controls_distributions_list = [
         broadcast_distribution.gamma_c,
@@ -298,6 +412,15 @@ class PriorDistributionTest(parameterized.TestCase):
 
     for broad in n_controls_distributions_list:
       self.assertEqual(broad.batch_shape, (_N_CONTROLS,))
+
+    # Validate `n_non_media_channels` shape distributions.
+    n_non_media_distributions_list = [
+        broadcast_distribution.gamma_n,
+        broadcast_distribution.xi_n,
+    ]
+
+    for broad in n_non_media_distributions_list:
+      self.assertEqual(broad.batch_shape, (_N_NON_MEDIA_CHANNELS,))
 
     # Validate sigma.
     self.assertEqual(broadcast_distribution.sigma.batch_shape, (sigma_shape,))
@@ -335,7 +458,10 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=0,
+          n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=0,
           sigma_shape=_N_GEOS_NATIONAL,
           n_knots=_N_KNOTS,
           is_national=False,
@@ -416,7 +542,10 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=0,
+          n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=0,
           sigma_shape=_N_GEOS_NATIONAL,
           n_knots=_N_KNOTS,
           is_national=False,
@@ -488,7 +617,146 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=0,
+          n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=0,
+          sigma_shape=_N_GEOS_NATIONAL,
+          n_knots=_N_KNOTS,
+          is_national=False,
+          set_roi_prior=False,
+          kpi=1.0,
+          total_spend=np.array([]),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='alpha_om',
+          distribution=prior_distribution.PriorDistribution(
+              alpha_om=tfp.distributions.Uniform(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_OM
+              )
+          ),
+      ),
+      dict(
+          testcase_name='ec_om',
+          distribution=prior_distribution.PriorDistribution(
+              ec_om=tfp.distributions.Deterministic(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_OM
+              )
+          ),
+      ),
+      dict(
+          testcase_name='slope_om',
+          distribution=prior_distribution.PriorDistribution(
+              slope_om=tfp.distributions.Deterministic(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_OM
+              )
+          ),
+      ),
+      dict(
+          testcase_name='eta_om',
+          distribution=prior_distribution.PriorDistribution(
+              eta_om=tfp.distributions.HalfNormal(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_OM
+              )
+          ),
+      ),
+      dict(
+          testcase_name='beta_om',
+          distribution=prior_distribution.PriorDistribution(
+              beta_om=tfp.distributions.HalfNormal(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_OM
+              )
+          ),
+      ),
+  )
+  def test_custom_priors_dont_match_organic_media_channels(
+      self, distribution: prior_distribution.PriorDistribution
+  ):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'Custom priors must have length equal to the number of organic media'
+        " channels, representing a custom prior for each channel. If you can't"
+        ' determine a custom prior, consider using the default prior for that'
+        ' channel.',
+    ):
+      distribution.broadcast(
+          n_geos=_N_GEOS_NATIONAL,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          sigma_shape=_N_GEOS_NATIONAL,
+          n_knots=_N_KNOTS,
+          is_national=False,
+          set_roi_prior=False,
+          kpi=1.0,
+          total_spend=np.array([]),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='alpha_orf',
+          distribution=prior_distribution.PriorDistribution(
+              alpha_orf=tfp.distributions.Uniform(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_ORF
+              )
+          ),
+      ),
+      dict(
+          testcase_name='ec_orf',
+          distribution=prior_distribution.PriorDistribution(
+              ec_orf=tfp.distributions.Deterministic(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_ORF
+              )
+          ),
+      ),
+      dict(
+          testcase_name='slope_orf',
+          distribution=prior_distribution.PriorDistribution(
+              slope_orf=tfp.distributions.Deterministic(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_ORF
+              )
+          ),
+      ),
+      dict(
+          testcase_name='eta_orf',
+          distribution=prior_distribution.PriorDistribution(
+              eta_orf=tfp.distributions.HalfNormal(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_ORF
+              )
+          ),
+      ),
+      dict(
+          testcase_name='beta_orf',
+          distribution=prior_distribution.PriorDistribution(
+              beta_orf=tfp.distributions.HalfNormal(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_ORF
+              )
+          ),
+      ),
+  )
+  def test_custom_priors_dont_match_organic_rf_channels(
+      self, distribution: prior_distribution.PriorDistribution
+  ):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'Custom priors must have length equal to the number of organic RF'
+        " channels, representing a custom prior for each channel. If you can't"
+        ' determine a custom prior, consider using the default prior for that'
+        ' channel.',
+    ):
+      distribution.broadcast(
+          n_geos=_N_GEOS_NATIONAL,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
           sigma_shape=_N_GEOS_NATIONAL,
           n_knots=_N_KNOTS,
           is_national=False,
@@ -529,7 +797,54 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=0,
+          n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=0,
+          sigma_shape=_N_GEOS_NATIONAL,
+          n_knots=_N_KNOTS,
+          is_national=False,
+          set_roi_prior=False,
+          kpi=1.0,
+          total_spend=np.array([]),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='gamma_n',
+          distribution=prior_distribution.PriorDistribution(
+              gamma_n=tfp.distributions.LogNormal(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.GAMMA_N
+              )
+          ),
+      ),
+      dict(
+          testcase_name='xi_n',
+          distribution=prior_distribution.PriorDistribution(
+              xi_n=tfp.distributions.Uniform(
+                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.XI_N
+              )
+          ),
+      ),
+  )
+  def test_custom_priors_dont_match_non_media(
+      self, distribution: prior_distribution.PriorDistribution
+  ):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'Custom priors must have length equal to the number of non-media'
+        ' channels, representing a custom prior for each channel.'
+        " If you can't determine a custom prior, consider using the default"
+        ' prior for that channel.',
+    ):
+      distribution.broadcast(
+          n_geos=_N_GEOS_NATIONAL,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
           sigma_shape=_N_GEOS_NATIONAL,
           n_knots=_N_KNOTS,
           is_national=False,
@@ -546,7 +861,10 @@ class PriorDistributionTest(parameterized.TestCase):
           ),
           eta_m=tfp.distributions.Deterministic(0, name=c.ETA_M),
           eta_rf=tfp.distributions.Deterministic(0, name=c.ETA_RF),
+          eta_om=tfp.distributions.Deterministic(0, name=c.ETA_OM),
+          eta_orf=tfp.distributions.Deterministic(0, name=c.ETA_ORF),
           xi_c=tfp.distributions.Deterministic(0, name=c.XI_C),
+          xi_n=tfp.distributions.Deterministic(0, name=c.XI_N),
           number_of_warnings=0,
       ),
       dict(
@@ -556,16 +874,22 @@ class PriorDistributionTest(parameterized.TestCase):
           ),
           eta_m=tfp.distributions.Deterministic(1, name=c.ETA_M),
           eta_rf=tfp.distributions.Deterministic(1, name=c.ETA_RF),
+          eta_om=tfp.distributions.Deterministic(1, name=c.ETA_OM),
+          eta_orf=tfp.distributions.Deterministic(1, name=c.ETA_ORF),
           xi_c=tfp.distributions.Deterministic(1, name=c.XI_C),
-          number_of_warnings=4,
+          xi_n=tfp.distributions.Deterministic(1, name=c.XI_N),
+          number_of_warnings=7,
       ),
       dict(
           testcase_name='with_non_deteremenistic_defaults',
           tau_g_excl_baseline=None,
           eta_m=None,
           eta_rf=None,
+          eta_om=None,
+          eta_orf=None,
           xi_c=None,
-          number_of_warnings=4,
+          xi_n=None,
+          number_of_warnings=7,
       ),
   )
   def test_broadcast_national_distribution(
@@ -573,7 +897,10 @@ class PriorDistributionTest(parameterized.TestCase):
       tau_g_excl_baseline: tfp.distributions.Distribution,
       eta_m: tfp.distributions.Distribution,
       eta_rf: tfp.distributions.Distribution,
+      eta_om: tfp.distributions.Distribution,
+      eta_orf: tfp.distributions.Distribution,
       xi_c: tfp.distributions.Distribution,
+      xi_n: tfp.distributions.Distribution,
       number_of_warnings: int,
   ):
     tau_g_excl_baseline = (
@@ -583,14 +910,20 @@ class PriorDistributionTest(parameterized.TestCase):
     )
     eta_m = self.sample_distributions[c.ETA_M] if not eta_m else eta_m
     eta_rf = self.sample_distributions[c.ETA_RF] if not eta_rf else eta_rf
+    eta_om = self.sample_distributions[c.ETA_OM] if not eta_om else eta_om
+    eta_orf = self.sample_distributions[c.ETA_ORF] if not eta_orf else eta_orf
     xi_c = self.sample_distributions[c.XI_C] if not xi_c else xi_c
+    xi_n = self.sample_distributions[c.XI_N] if not xi_n else xi_n
 
     # Create prior distribution with given parameters.
     distribution = prior_distribution.PriorDistribution(
         tau_g_excl_baseline=tau_g_excl_baseline,
         eta_m=eta_m,
         eta_rf=eta_rf,
+        eta_om=eta_om,
+        eta_orf=eta_orf,
         xi_c=xi_c,
+        xi_n=xi_n,
     )
 
     with warnings.catch_warnings(record=True) as warns:
@@ -600,7 +933,10 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
           sigma_shape=_N_GEOS_NATIONAL,
           n_knots=_N_KNOTS,
           is_national=True,
@@ -643,11 +979,32 @@ class PriorDistributionTest(parameterized.TestCase):
         broadcast_distribution.eta_rf.parameters[c.DISTRIBUTION].loc, 0
     )
     self.assertIsInstance(
+        broadcast_distribution.eta_om.parameters[c.DISTRIBUTION],
+        tfp.distributions.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.eta_om.parameters[c.DISTRIBUTION].loc, 0
+    )
+    self.assertIsInstance(
+        broadcast_distribution.eta_orf.parameters[c.DISTRIBUTION],
+        tfp.distributions.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.eta_orf.parameters[c.DISTRIBUTION].loc, 0
+    )
+    self.assertIsInstance(
         broadcast_distribution.xi_c.parameters[c.DISTRIBUTION],
         tfp.distributions.Deterministic,
     )
     self.assertEqual(
         broadcast_distribution.xi_c.parameters[c.DISTRIBUTION].loc, 0
+    )
+    self.assertIsInstance(
+        broadcast_distribution.xi_n.parameters[c.DISTRIBUTION],
+        tfp.distributions.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.xi_n.parameters[c.DISTRIBUTION].loc, 0
     )
 
     # Validate `knot_values` distributions.
@@ -685,9 +1042,39 @@ class PriorDistributionTest(parameterized.TestCase):
     for broad in n_rf_channels_distributions_list:
       self.assertEqual(broad.batch_shape, (_N_RF_CHANNELS,))
 
+    # Validate `n_organic_media_channels` shape distributions.
+    n_organic_media_channels_distributions_list = [
+        broadcast_distribution.beta_om,
+        broadcast_distribution.alpha_om,
+        broadcast_distribution.ec_om,
+        broadcast_distribution.eta_om,
+        broadcast_distribution.slope_om,
+    ]
+    for broad in n_organic_media_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (_N_ORGANIC_MEDIA_CHANNELS,))
+
+    # Validate `n_organic_rf_channels` shape distributions.
+    n_organic_rf_channels_distributions_list = [
+        broadcast_distribution.beta_orf,
+        broadcast_distribution.alpha_orf,
+        broadcast_distribution.ec_orf,
+        broadcast_distribution.eta_orf,
+        broadcast_distribution.slope_orf,
+    ]
+    for broad in n_organic_rf_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (_N_ORGANIC_RF_CHANNELS,))
+
     # Validate `n_controls` shape distributions.
     self.assertEqual(broadcast_distribution.gamma_c.batch_shape, (_N_CONTROLS,))
     self.assertEqual(broadcast_distribution.xi_c.batch_shape, (_N_CONTROLS,))
+
+    # Validate `n_non_media_channels` shape distributions.
+    self.assertEqual(
+        broadcast_distribution.gamma_n.batch_shape, (_N_NON_MEDIA_CHANNELS,)
+    )
+    self.assertEqual(
+        broadcast_distribution.xi_n.batch_shape, (_N_NON_MEDIA_CHANNELS,)
+    )
 
     # Validate sigma.
     self.assertEqual(
@@ -738,7 +1125,10 @@ class PriorDistributionTest(parameterized.TestCase):
           n_geos=_N_GEOS,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=0,
+          n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
+          n_non_media_channels=0,
           sigma_shape=_N_GEOS,
           n_knots=_N_KNOTS,
           is_national=False,
@@ -800,16 +1190,28 @@ class PriorDistributionTest(parameterized.TestCase):
       (c.TAU_G_EXCL_BASELINE, c.TAU_G_EXCL_BASELINE),
       (c.BETA_M, c.BETA_M),
       (c.BETA_RF, c.BETA_RF),
+      (c.BETA_OM, c.BETA_OM),
+      (c.BETA_ORF, c.BETA_ORF),
       (c.ETA_M, c.ETA_M),
       (c.ETA_RF, c.ETA_RF),
+      (c.ETA_OM, c.ETA_OM),
+      (c.ETA_ORF, c.ETA_ORF),
       (c.GAMMA_C, c.GAMMA_C),
+      (c.GAMMA_N, c.GAMMA_N),
       (c.XI_C, c.XI_C),
+      (c.XI_N, c.XI_N),
       (c.ALPHA_M, c.ALPHA_M),
       (c.ALPHA_RF, c.ALPHA_RF),
+      (c.ALPHA_OM, c.ALPHA_OM),
+      (c.ALPHA_ORF, c.ALPHA_ORF),
       (c.EC_M, c.EC_M),
       (c.EC_RF, c.EC_RF),
+      (c.EC_OM, c.EC_OM),
+      (c.EC_ORF, c.EC_ORF),
       (c.SLOPE_M, c.SLOPE_M),
       (c.SLOPE_RF, c.SLOPE_RF),
+      (c.SLOPE_OM, c.SLOPE_OM),
+      (c.SLOPE_ORF, c.SLOPE_ORF),
       (c.SIGMA, c.SIGMA),
       (c.ROI_M, c.ROI_M),
       (c.ROI_RF, c.ROI_RF),
@@ -830,16 +1232,28 @@ class PriorDistributionTest(parameterized.TestCase):
         ),
         c.BETA_M: _distribution_info(self.sample_broadcast.beta_m),
         c.BETA_RF: _distribution_info(self.sample_broadcast.beta_rf),
+        c.BETA_OM: _distribution_info(self.sample_broadcast.beta_om),
+        c.BETA_ORF: _distribution_info(self.sample_broadcast.beta_orf),
         c.ETA_M: _distribution_info(self.sample_broadcast.eta_m),
         c.ETA_RF: _distribution_info(self.sample_broadcast.eta_rf),
+        c.ETA_OM: _distribution_info(self.sample_broadcast.eta_om),
+        c.ETA_ORF: _distribution_info(self.sample_broadcast.eta_orf),
         c.GAMMA_C: _distribution_info(self.sample_broadcast.gamma_c),
+        c.GAMMA_N: _distribution_info(self.sample_broadcast.gamma_n),
         c.XI_C: _distribution_info(self.sample_broadcast.xi_c),
+        c.XI_N: _distribution_info(self.sample_broadcast.xi_n),
         c.ALPHA_M: _distribution_info(self.sample_broadcast.alpha_m),
         c.ALPHA_RF: _distribution_info(self.sample_broadcast.alpha_rf),
+        c.ALPHA_OM: _distribution_info(self.sample_broadcast.alpha_om),
+        c.ALPHA_ORF: _distribution_info(self.sample_broadcast.alpha_orf),
         c.EC_M: _distribution_info(self.sample_broadcast.ec_m),
         c.EC_RF: _distribution_info(self.sample_broadcast.ec_rf),
+        c.EC_OM: _distribution_info(self.sample_broadcast.ec_om),
+        c.EC_ORF: _distribution_info(self.sample_broadcast.ec_orf),
         c.SLOPE_M: _distribution_info(self.sample_broadcast.slope_m),
         c.SLOPE_RF: _distribution_info(self.sample_broadcast.slope_rf),
+        c.SLOPE_OM: _distribution_info(self.sample_broadcast.slope_om),
+        c.SLOPE_ORF: _distribution_info(self.sample_broadcast.slope_orf),
         c.SIGMA: _distribution_info(self.sample_broadcast.sigma),
         c.ROI_M: _distribution_info(self.sample_broadcast.roi_m),
         c.ROI_RF: _distribution_info(self.sample_broadcast.roi_rf),
@@ -855,7 +1269,10 @@ class PriorDistributionTest(parameterized.TestCase):
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
         sigma_shape=_N_GEOS,
         n_knots=_N_KNOTS,
         is_national=False,

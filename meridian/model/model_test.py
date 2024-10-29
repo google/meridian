@@ -579,7 +579,9 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
               media_effects_dist=constants.MEDIA_EFFECTS_NORMAL
           ),
       ).prior_broadcast
-      self.assertLen(warns, 4)
+      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
+      # xi_c, eta_om, eta_orf, xi_n)
+      self.assertLen(warns, 7)
       for w in warns:
         self.assertTrue(issubclass(w.category, UserWarning))
         self.assertIn(
@@ -595,8 +597,9 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
           input_data=self.national_input_data_media_only,
           model_spec=spec.ModelSpec(unique_sigma_for_each_geo=True),
       ).prior_broadcast
-      self.assertLen(w, 6)
-      # 4 warnings from the broadcasting + 2 from model spec.
+      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
+      # xi_c, eta_om, eta_orf, xi_n) + 2 from model spec.
+      self.assertLen(w, 9)
       self.assertTrue(
           any(
               "In a nationally aggregated model, the `media_effects_dist` will"
@@ -2466,6 +2469,656 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
     ):
       model.load_mmm("this/path/does/not/exist")
+
+
+class NonPaidModelTest(tf.test.TestCase, parameterized.TestCase):
+
+  # Data dimensions for sample input.
+  _N_CHAINS = 2
+  _N_ADAPT = 2
+  _N_BURNIN = 5
+  _N_KEEP = 10
+  _N_DRAWS = 10
+  _N_GEOS = 5
+  _N_GEOS_NATIONAL = 1
+  _N_TIMES = 200
+  _N_TIMES_SHORT = 49
+  _N_MEDIA_TIMES = 203
+  _N_MEDIA_TIMES_SHORT = 52
+  _N_MEDIA_CHANNELS = 3
+  _N_RF_CHANNELS = 2
+  _N_ORGANIC_MEDIA_CHANNELS = 4
+  _N_ORGANIC_RF_CHANNELS = 1
+  _N_CONTROLS = 2
+  _N_NON_MEDIA_CHANNELS = 2
+
+  def setUp(self):
+    super().setUp()
+
+    self.national_input_data_non_media_and_organic = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS_NATIONAL,
+            n_times=self._N_TIMES,
+            n_media_times=self._N_MEDIA_TIMES,
+            n_controls=self._N_CONTROLS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+
+    self.input_data_non_media_and_organic = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS,
+            n_times=self._N_TIMES,
+            n_media_times=self._N_MEDIA_TIMES,
+            n_controls=self._N_CONTROLS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    self.short_input_data_non_media_and_organic = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS,
+            n_times=self._N_TIMES_SHORT,
+            n_media_times=self._N_MEDIA_TIMES_SHORT,
+            n_controls=self._N_CONTROLS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    self.short_input_data_non_media = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS,
+            n_times=self._N_TIMES_SHORT,
+            n_media_times=self._N_MEDIA_TIMES_SHORT,
+            n_controls=self._N_CONTROLS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_organic_media_channels=0,
+            n_organic_rf_channels=0,
+            seed=0,
+        )
+    )
+
+  def test_init_with_wrong_non_media_population_scaling_id_shape_fails(self):
+    model_spec = spec.ModelSpec(
+        non_media_population_scaling_id=np.ones((7), dtype=bool)
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of `non_media_population_scaling_id` (7,) is different from"
+        " `(n_non_media_channels,) = (2,)`.",
+    ):
+      model.Meridian(
+          input_data=self.input_data_non_media_and_organic,
+          model_spec=model_spec,
+      )
+
+  def test_base_geo_properties(self):
+    meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
+    self.assertEqual(meridian.n_geos, self._N_GEOS)
+    self.assertEqual(meridian.n_controls, self._N_CONTROLS)
+    self.assertEqual(meridian.n_non_media_channels, self._N_NON_MEDIA_CHANNELS)
+    self.assertEqual(meridian.n_times, self._N_TIMES)
+    self.assertEqual(meridian.n_media_times, self._N_MEDIA_TIMES)
+    self.assertFalse(meridian.is_national)
+    self.assertIsNotNone(meridian.prior_broadcast)
+    self.assertIsNotNone(meridian.inference_data)
+    self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
+    self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
+
+  def test_base_national_properties(self):
+    meridian = model.Meridian(
+        input_data=self.national_input_data_non_media_and_organic
+    )
+    self.assertEqual(meridian.n_geos, self._N_GEOS_NATIONAL)
+    self.assertEqual(meridian.n_controls, self._N_CONTROLS)
+    self.assertEqual(meridian.n_non_media_channels, self._N_NON_MEDIA_CHANNELS)
+    self.assertEqual(meridian.n_times, self._N_TIMES)
+    self.assertEqual(meridian.n_media_times, self._N_MEDIA_TIMES)
+    self.assertTrue(meridian.is_national)
+    self.assertIsNotNone(meridian.prior_broadcast)
+    self.assertIsNotNone(meridian.inference_data)
+    self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
+    self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_non_media_and_organic",
+          input_data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_media_channels=_N_MEDIA_CHANNELS,
+              n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="rf_non_media_and_organic",
+          input_data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_rf_channels=_N_RF_CHANNELS,
+              n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="media_rf_non_media_and_organic",
+          input_data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_media_channels=_N_MEDIA_CHANNELS,
+              n_rf_channels=_N_RF_CHANNELS,
+              n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_input_data_tensor_properties(self, input_data):
+    meridian = model.Meridian(input_data=input_data)
+    self.assertAllEqual(
+        tf.convert_to_tensor(input_data.kpi, dtype=tf.float32),
+        meridian.kpi,
+    )
+    self.assertAllEqual(
+        tf.convert_to_tensor(input_data.revenue_per_kpi, dtype=tf.float32),
+        meridian.revenue_per_kpi,
+    )
+    self.assertAllEqual(
+        tf.convert_to_tensor(input_data.controls, dtype=tf.float32),
+        meridian.controls,
+    )
+    self.assertAllEqual(
+        tf.convert_to_tensor(input_data.non_media_treatments, dtype=tf.float32),
+        meridian.non_media_treatments,
+    )
+    self.assertAllEqual(
+        tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+        meridian.population,
+    )
+    if input_data.media is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.media, dtype=tf.float32),
+          meridian.media_tensors.media,
+      )
+    if input_data.media_spend is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.media_spend, dtype=tf.float32),
+          meridian.media_tensors.media_spend,
+      )
+    if input_data.reach is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.reach, dtype=tf.float32),
+          meridian.rf_tensors.reach,
+      )
+    if input_data.frequency is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.frequency, dtype=tf.float32),
+          meridian.rf_tensors.frequency,
+      )
+    if input_data.rf_spend is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32),
+          meridian.rf_tensors.rf_spend,
+      )
+    if input_data.organic_media is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.organic_media, dtype=tf.float32),
+          meridian.organic_media_tensors.organic_media,
+      )
+    if input_data.organic_reach is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.organic_reach, dtype=tf.float32),
+          meridian.organic_rf_tensors.organic_reach,
+      )
+    if input_data.organic_frequency is not None:
+      self.assertAllEqual(
+          tf.convert_to_tensor(input_data.organic_frequency, dtype=tf.float32),
+          meridian.organic_rf_tensors.organic_frequency,
+      )
+    if input_data.media_spend is not None and input_data.rf_spend is not None:
+      self.assertAllClose(
+          tf.concat(
+              [
+                  tf.convert_to_tensor(
+                      input_data.media_spend, dtype=tf.float32
+                  ),
+                  tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32),
+              ],
+              axis=-1,
+          ),
+          meridian.total_spend,
+      )
+    elif input_data.media_spend is not None:
+      self.assertAllClose(
+          tf.convert_to_tensor(input_data.media_spend, dtype=tf.float32),
+          meridian.total_spend,
+      )
+    else:
+      self.assertAllClose(
+          tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32),
+          meridian.total_spend,
+      )
+
+  def test_broadcast_prior_distribution_is_called_in_meridian_init(self):
+    meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
+    # Validate `tau_g_excl_baseline` distribution.
+    self.assertEqual(
+        meridian.prior_broadcast.tau_g_excl_baseline.batch_shape,
+        (meridian.n_geos - 1,),
+    )
+
+    # Validate `n_knots` shape distributions.
+    self.assertEqual(
+        meridian.prior_broadcast.knot_values.batch_shape,
+        (meridian.knot_info.n_knots,),
+    )
+
+    # Validate `n_media_channels` shape distributions.
+    n_media_channels_distributions_list = [
+        meridian.prior_broadcast.beta_m,
+        meridian.prior_broadcast.eta_m,
+        meridian.prior_broadcast.alpha_m,
+        meridian.prior_broadcast.ec_m,
+        meridian.prior_broadcast.slope_m,
+        meridian.prior_broadcast.roi_m,
+    ]
+    for broad in n_media_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_media_channels,))
+
+    # Validate `n_rf_channels` shape distributions.
+    n_rf_channels_distributions_list = [
+        meridian.prior_broadcast.beta_rf,
+        meridian.prior_broadcast.eta_rf,
+        meridian.prior_broadcast.alpha_rf,
+        meridian.prior_broadcast.ec_rf,
+        meridian.prior_broadcast.slope_rf,
+        meridian.prior_broadcast.roi_rf,
+    ]
+    for broad in n_rf_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_rf_channels,))
+
+    # Validate `n_organic_media_channels` shape distributions.
+    n_organic_media_channels_distributions_list = [
+        meridian.prior_broadcast.beta_om,
+        meridian.prior_broadcast.eta_om,
+        meridian.prior_broadcast.alpha_om,
+        meridian.prior_broadcast.ec_om,
+        meridian.prior_broadcast.slope_om,
+    ]
+    for broad in n_organic_media_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_organic_media_channels,))
+
+    # Validate `n_organic_rf_channels` shape distributions.
+    n_organic_rf_channels_distributions_list = [
+        meridian.prior_broadcast.beta_orf,
+        meridian.prior_broadcast.eta_orf,
+        meridian.prior_broadcast.alpha_orf,
+        meridian.prior_broadcast.ec_orf,
+        meridian.prior_broadcast.slope_orf,
+    ]
+    for broad in n_organic_rf_channels_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_organic_rf_channels,))
+
+    # Validate `n_controls` shape distributions.
+    n_controls_distributions_list = [
+        meridian.prior_broadcast.gamma_c,
+        meridian.prior_broadcast.xi_c,
+    ]
+    for broad in n_controls_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_controls,))
+
+    # Validate `n_non_media_channels` shape distributions.
+    n_non_media_distributions_list = [
+        meridian.prior_broadcast.gamma_n,
+        meridian.prior_broadcast.xi_n,
+    ]
+    for broad in n_non_media_distributions_list:
+      self.assertEqual(broad.batch_shape, (meridian.n_non_media_channels,))
+
+    # Validate sigma.
+    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, (1,))
+
+  def test_scaled_data_shape(self):
+    meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
+    self.assertAllEqual(
+        meridian.controls_scaled.shape,
+        self.input_data_non_media_and_organic.controls.shape,
+        msg=(
+            "Shape of `_controls_scaled` does not match the shape of `controls`"
+            " from the input data."
+        ),
+    )
+    self.assertIsNotNone(meridian.non_media_treatments_scaled)
+    self.assertIsNotNone(self.input_data_non_media_and_organic.non_media_treatments)
+    # pytype: disable=attribute-error
+    self.assertAllEqual(
+        meridian.non_media_treatments_scaled.shape,
+        self.input_data_non_media_and_organic.non_media_treatments.shape,
+        msg=(
+            "Shape of `_non_media_treatments_scaled` does not match the shape of"
+            " `non_media_treatments` from the input data."
+        ),
+    )
+    # pytype: enable=attribute-error
+    self.assertAllEqual(
+        meridian.kpi_scaled.shape,
+        self.input_data_non_media_and_organic.kpi.shape,
+        msg=(
+            "Shape of `_kpi_scaled` does not match the shape of"
+            " `kpi` from the input data."
+        ),
+    )
+
+  def test_population_scaled_non_media_transformer_set(self):
+    model_spec = spec.ModelSpec(
+        non_media_population_scaling_id=tf.convert_to_tensor([
+            True
+            for _ in self.input_data_non_media_and_organic.non_media_channel
+        ])
+    )
+    meridian = model.Meridian(
+        input_data=self.input_data_non_media_and_organic, model_spec=model_spec
+    )
+    self.assertIsNotNone(meridian.non_media_transformer)
+    # pytype: disable=attribute-error
+    self.assertIsNotNone(
+        meridian.non_media_transformer._population_scaling_factors,
+        msg=(
+            "`_population_scaling_factors` not set for the non-media"
+            " transformer."
+        ),
+    )
+    self.assertAllEqual(
+        meridian.non_media_transformer._population_scaling_factors.shape,
+        [
+            len(self.input_data_non_media_and_organic.geo),
+            len(self.input_data_non_media_and_organic.non_media_channel),
+        ],
+        msg=(
+            "Shape of `non_media_transformer._population_scaling_factors` does"
+            " not match (`n_geos`, `n_non_media_channels`)."
+        ),
+    )
+    # pytype: enable=attribute-error
+
+  def test_scaled_data_inverse_is_identity(self):
+    meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
+
+    # With the default tolerance of eps * 10 the test fails due to rounding
+    # errors.
+    atol = np.finfo(np.float32).eps * 100
+    self.assertAllClose(
+        meridian.controls_transformer.inverse(meridian.controls_scaled),
+        self.input_data_non_media_and_organic.controls,
+        atol=atol,
+    )
+    self.assertIsNotNone(meridian.non_media_transformer)
+    # pytype: disable=attribute-error
+    self.assertAllClose(
+        meridian.non_media_transformer.inverse(meridian.non_media_treatments_scaled),
+        self.input_data_non_media_and_organic.non_media_treatments,
+        atol=atol,
+    )
+    # pytype: enable=attribute-error
+    self.assertAllClose(
+        meridian.kpi_transformer.inverse(meridian.kpi_scaled),
+        self.input_data_non_media_and_organic.kpi,
+        atol=atol,
+    )
+
+  def test_get_joint_dist_zeros(self):
+    model_spec = spec.ModelSpec(
+        prior=prior_distribution.PriorDistribution(
+            knot_values=tfp.distributions.Deterministic(0),
+            tau_g_excl_baseline=tfp.distributions.Deterministic(0),
+            beta_m=tfp.distributions.Deterministic(0),
+            beta_rf=tfp.distributions.Deterministic(0),
+            beta_om=tfp.distributions.Deterministic(0),
+            beta_orf=tfp.distributions.Deterministic(0),
+            eta_m=tfp.distributions.Deterministic(0),
+            eta_rf=tfp.distributions.Deterministic(0),
+            eta_om=tfp.distributions.Deterministic(0),
+            eta_orf=tfp.distributions.Deterministic(0),
+            gamma_c=tfp.distributions.Deterministic(0),
+            xi_c=tfp.distributions.Deterministic(0),
+            gamma_n=tfp.distributions.Deterministic(0),
+            xi_n=tfp.distributions.Deterministic(0),
+            alpha_m=tfp.distributions.Deterministic(0),
+            alpha_rf=tfp.distributions.Deterministic(0),
+            alpha_om=tfp.distributions.Deterministic(0),
+            alpha_orf=tfp.distributions.Deterministic(0),
+            ec_m=tfp.distributions.Deterministic(0),
+            ec_rf=tfp.distributions.Deterministic(0),
+            ec_om=tfp.distributions.Deterministic(0),
+            ec_orf=tfp.distributions.Deterministic(0),
+            slope_m=tfp.distributions.Deterministic(0),
+            slope_rf=tfp.distributions.Deterministic(0),
+            slope_om=tfp.distributions.Deterministic(0),
+            slope_orf=tfp.distributions.Deterministic(0),
+            sigma=tfp.distributions.Deterministic(0),
+            roi_m=tfp.distributions.Deterministic(0),
+            roi_rf=tfp.distributions.Deterministic(0),
+        ),
+    )
+    meridian = model.Meridian(
+        input_data=self.short_input_data_non_media,
+        model_spec=model_spec,
+    )
+    sample = meridian._get_joint_dist_unpinned().sample(self._N_DRAWS)
+    self.assertAllEqual(
+        sample.y,
+        tf.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
+    )
+
+  @parameterized.product(
+      use_roi_prior=[False, True],
+      media_effects_dist=[
+          constants.MEDIA_EFFECTS_NORMAL,
+          constants.MEDIA_EFFECTS_LOG_NORMAL,
+      ],
+  )
+  def test_get_joint_dist_with_log_prob_non_media(
+      self, use_roi_prior: bool, media_effects_dist: str
+  ):
+    model_spec = spec.ModelSpec(
+        use_roi_prior=use_roi_prior, media_effects_dist=media_effects_dist
+    )
+    meridian = model.Meridian(
+        model_spec=model_spec,
+        input_data=self.short_input_data_non_media_and_organic,
+    )
+
+    # Take a single draw of all parameters from the prior distribution.
+    par_structtuple = meridian._get_joint_dist_unpinned().sample(1)
+    par = par_structtuple._asdict()
+
+    # Note that "y" is a draw from the prior predictive (transformed) impact
+    # distribution. We drop it because "y" is already "pinned" in
+    # meridian._get_joint_dist() and is not actually a parameter.
+    del par["y"]
+
+    # Note that the actual (transformed) impact data is "pinned" as "y".
+    log_prob_parts_structtuple = meridian._get_joint_dist().log_prob_parts(par)
+    log_prob_parts = {
+        k: v._asdict() for k, v in log_prob_parts_structtuple._asdict().items()
+    }
+
+    derived_params = [
+        constants.BETA_GM,
+        constants.BETA_GRF,
+        constants.BETA_GOM,
+        constants.BETA_GORF,
+        constants.GAMMA_GC,
+        constants.GAMMA_GN,
+        constants.MU_T,
+        constants.TAU_G,
+    ]
+    prior_distribution_params = [
+        constants.KNOT_VALUES,
+        constants.BETA_OM,
+        constants.BETA_ORF,
+        constants.ETA_M,
+        constants.ETA_RF,
+        constants.ETA_OM,
+        constants.ETA_ORF,
+        constants.GAMMA_C,
+        constants.XI_C,
+        constants.GAMMA_N,
+        constants.XI_N,
+        constants.ALPHA_M,
+        constants.ALPHA_RF,
+        constants.ALPHA_OM,
+        constants.ALPHA_ORF,
+        constants.EC_M,
+        constants.EC_RF,
+        constants.EC_OM,
+        constants.EC_ORF,
+        constants.SLOPE_M,
+        constants.SLOPE_RF,
+        constants.SLOPE_OM,
+        constants.SLOPE_ORF,
+        constants.SIGMA,
+    ]
+    if use_roi_prior:
+      derived_params.append(constants.BETA_M)
+      derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.ROI_M)
+      prior_distribution_params.append(constants.ROI_RF)
+    else:
+      prior_distribution_params.append(constants.BETA_M)
+      prior_distribution_params.append(constants.BETA_RF)
+
+    # Parameters that are derived from other parameters via Deterministic()
+    # should have zero contribution to log_prob.
+    for parname in derived_params:
+      self.assertAllEqual(log_prob_parts["unpinned"][parname][0], 0)
+
+    prior_distribution_logprobs = {}
+    for parname in prior_distribution_params:
+      prior_distribution_logprobs[parname] = tf.reduce_sum(
+          getattr(meridian.prior_broadcast, parname).log_prob(par[parname])
+      )
+      self.assertAllClose(
+          prior_distribution_logprobs[parname],
+          log_prob_parts["unpinned"][parname][0],
+      )
+
+    coef_params = [
+        constants.BETA_GM_DEV,
+        constants.BETA_GRF_DEV,
+        constants.BETA_GOM_DEV,
+        constants.BETA_GORF_DEV,
+        constants.GAMMA_GC_DEV,
+        constants.GAMMA_GN_DEV,
+    ]
+    coef_logprobs = {}
+    for parname in coef_params:
+      coef_logprobs[parname] = tf.reduce_sum(
+          tfp.distributions.Normal(0, 1).log_prob(par[parname])
+      )
+      self.assertAllClose(
+          coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
+      )
+    transformed_media = meridian.adstock_hill_media(
+        media=meridian.media_tensors.media_scaled,
+        alpha=par[constants.ALPHA_M],
+        ec=par[constants.EC_M],
+        slope=par[constants.SLOPE_M],
+    )[0, :, :, :]
+    transformed_reach = meridian.adstock_hill_rf(
+        reach=meridian.rf_tensors.reach_scaled,
+        frequency=meridian.rf_tensors.frequency,
+        alpha=par[constants.ALPHA_RF],
+        ec=par[constants.EC_RF],
+        slope=par[constants.SLOPE_RF],
+    )[0, :, :, :]
+    transformed_organic_media = meridian.adstock_hill_media(
+        media=meridian.organic_media_tensors.organic_media_scaled,
+        alpha=par[constants.ALPHA_OM],
+        ec=par[constants.EC_OM],
+        slope=par[constants.SLOPE_OM],
+    )[0, :, :, :]
+    transformed_organic_reach = meridian.adstock_hill_rf(
+        reach=meridian.organic_rf_tensors.organic_reach_scaled,
+        frequency=meridian.organic_rf_tensors.organic_frequency,
+        alpha=par[constants.ALPHA_ORF],
+        ec=par[constants.EC_ORF],
+        slope=par[constants.SLOPE_ORF],
+    )[0, :, :, :]
+    combined_transformed_media = tf.concat(
+        [
+            transformed_media,
+            transformed_reach,
+            transformed_organic_media,
+            transformed_organic_reach,
+        ],
+        axis=-1,
+    )
+
+    combined_beta = tf.concat(
+        [
+            par[constants.BETA_GM][0, :, :],
+            par[constants.BETA_GRF][0, :, :],
+            par[constants.BETA_GOM][0, :, :],
+            par[constants.BETA_GORF][0, :, :],
+        ],
+        axis=-1,
+    )
+    y_means = (
+        par[constants.TAU_G][0, :, None]
+        + par[constants.MU_T][0, None, :]
+        + tf.einsum("gtm,gm->gt", combined_transformed_media, combined_beta)
+        + tf.einsum(
+            "gtc,gc->gt",
+            meridian.controls_scaled,
+            par[constants.GAMMA_GC][0, :, :],
+        )
+        + tf.einsum(
+            "gtn,gn->gt",
+            meridian.non_media_treatments_scaled,
+            par[constants.GAMMA_GN][0, :, :],
+        )
+    )
+    y_means_logprob = tf.reduce_sum(
+        tfp.distributions.Normal(y_means, par[constants.SIGMA]).log_prob(
+            meridian.kpi_scaled
+        )
+    )
+    self.assertAllClose(y_means_logprob, log_prob_parts["pinned"]["y"][0])
+
+    tau_g_logprob = tf.reduce_sum(
+        getattr(
+            meridian.prior_broadcast, constants.TAU_G_EXCL_BASELINE
+        ).log_prob(par[constants.TAU_G_EXCL_BASELINE])
+    )
+    self.assertAllClose(
+        tau_g_logprob,
+        log_prob_parts["unpinned"][constants.TAU_G_EXCL_BASELINE][0],
+    )
+
+    posterior_unnormalized_logprob = (
+        sum(prior_distribution_logprobs.values())
+        + sum(coef_logprobs.values())
+        + y_means_logprob
+        + tau_g_logprob
+    )
+    self.assertAllClose(
+        posterior_unnormalized_logprob,
+        meridian._get_joint_dist().log_prob(par)[0],
+        rtol=1e-3,
+    )
 
 
 if __name__ == "__main__":

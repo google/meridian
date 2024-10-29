@@ -66,6 +66,30 @@ _INPUT_DATA_WITH_RF_ONLY = mock.MagicMock(
     rf_spend=_SPEND,
     population=np.array([1, 2]),
 )
+_INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA = mock.MagicMock(
+    reach=None,
+    frequency=None,
+    rf_spend=None,
+    organic_reach=None,
+    organic_frequency=None,
+    time=["2021-01-01", "2021-01-08", "2021-01-15"],
+    media=_MEDIA,
+    media_spend=_SPEND,
+    organic_media=_MEDIA,
+    population=np.array([1, 2]),
+)
+_INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF = mock.MagicMock(
+    reach=None,
+    frequency=None,
+    rf_spend=None,
+    organic_media=None,
+    time=["2021-01-01", "2021-01-08", "2021-01-15"],
+    media=_MEDIA,
+    media_spend=_SPEND,
+    organic_reach=_MEDIA,
+    organic_frequency=_MEDIA,
+    population=np.array([1, 2]),
+)
 
 
 class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
@@ -138,6 +162,55 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     )
 
 
+class OrganicMediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # Return unchanged organic media values.
+    self.enter_context(
+        mock.patch.object(
+            transformers.MediaTransformer,
+            "forward",
+            return_value=_INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
+        )
+    )
+
+  def test_no_organic_media_values(self):
+    organic_media_tensors = media.build_organic_media_tensors(
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF
+    )
+
+    self.assertIsNone(organic_media_tensors.organic_media)
+    self.assertIsNone(organic_media_tensors.organic_media_transformer)
+    self.assertIsNone(organic_media_tensors.organic_media_scaled)
+    self.assertIsNone(organic_media_tensors.organic_media_counterfactual)
+    self.assertIsNone(organic_media_tensors.organic_media_counterfactual_scaled)
+
+  def test_organic_media_tensors(self):
+    expected_counterfactual = tf.zeros_like(_MEDIA_COUNTERFACTUAL)
+    organic_media_tensors = media.build_organic_media_tensors(
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA
+    )
+
+    self.assertAllClose(
+        organic_media_tensors.organic_media,
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
+    )
+    self.assertIsNotNone(organic_media_tensors.organic_media_transformer)
+    self.assertAllClose(
+        organic_media_tensors.organic_media_scaled,
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
+    )
+    self.assertAllClose(
+        organic_media_tensors.organic_media_counterfactual,
+        expected_counterfactual,
+    )
+    self.assertAllClose(
+        organic_media_tensors.organic_media_counterfactual_scaled,
+        expected_counterfactual,
+    )
+
+
 class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -205,6 +278,59 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertAllClose(
         rf_tensors.rf_spend_counterfactual, expected_spend_counterfactual
+    )
+
+
+class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # Return unchanged reach values.
+    self.enter_context(
+        mock.patch.object(
+            transformers.MediaTransformer,
+            "forward",
+            return_value=_INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
+        )
+    )
+
+  def test_no_organic_rf_values(self):
+    organic_rf_tensors = media.build_organic_rf_tensors(
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA,
+    )
+
+    self.assertIsNone(organic_rf_tensors.organic_reach)
+    self.assertIsNone(organic_rf_tensors.organic_frequency)
+    self.assertIsNone(organic_rf_tensors.organic_reach_transformer)
+    self.assertIsNone(organic_rf_tensors.organic_reach_scaled)
+    self.assertIsNone(organic_rf_tensors.organic_reach_counterfactual)
+    self.assertIsNone(organic_rf_tensors.organic_reach_counterfactual_scaled)
+
+  def test_organic_rf_tensors(self):
+    expected_counterfactual = tf.zeros_like(_MEDIA_COUNTERFACTUAL)
+    organic_rf_tensors = media.build_organic_rf_tensors(
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF,
+    )
+
+    self.assertAllClose(
+        organic_rf_tensors.organic_reach,
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
+    )
+    self.assertAllClose(
+        organic_rf_tensors.organic_frequency,
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_frequency,
+    )
+    self.assertIsNotNone(organic_rf_tensors.organic_reach_transformer)
+    self.assertAllClose(
+        organic_rf_tensors.organic_reach_scaled,
+        _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
+    )
+    self.assertAllClose(
+        organic_rf_tensors.organic_reach_counterfactual, expected_counterfactual
+    )
+    self.assertAllClose(
+        organic_rf_tensors.organic_reach_counterfactual_scaled,
+        expected_counterfactual,
     )
 
 

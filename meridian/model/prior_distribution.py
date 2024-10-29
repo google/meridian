@@ -51,25 +51,37 @@ class PriorDistribution:
 
   The parameter batch shapes are as follows:
 
-  | Parameter             | Batch shape        |
-  |-----------------------|--------------------|
-  | `knot_values`         | `n_knots`          |
-  | `tau_g_excl_baseline` | `n_geos - 1`       |
-  | `beta_m`              | `n_media_channels` |
-  | `beta_rf`             | `n_rf_channels`    |
-  | `eta_m`               | `n_media_channels` |
-  | `eta_rf`              | `n_rf_channels`    |
-  | `gamma_c`             | `n_controls`       |
-  | `xi_c`                | `n_controls`       |
-  | `alpha_m`             | `n_media_channels` |
-  | `alpha_rf`            | `n_rf_channels`    |
-  | `ec_m`                | `n_media_channels` |
-  | `ec_rf`               | `n_rf_channels`    |
-  | `slope_m`             | `n_media_channels` |
-  | `slope_rf`            | `n_rf_channels`    |
-  | `sigma`               | (σ)                |
-  | `roi_m`               | `n_media_channels` |
-  | `roi_rf`              | `n_rf_channels`    |
+  | Parameter             | Batch shape                |
+  |-----------------------|----------------------------|
+  | `knot_values`         | `n_knots`                  |
+  | `tau_g_excl_baseline` | `n_geos - 1`               |
+  | `beta_m`              | `n_media_channels`         |
+  | `beta_rf`             | `n_rf_channels`            |
+  | `beta_om`             | `n_organic_media_channels` |
+  | `beta_orf`            | `n_organic_rf_channels`    |
+  | `eta_m`               | `n_media_channels`         |
+  | `eta_rf`              | `n_rf_channels`            |
+  | `eta_om`              | `n_organic_media_channels` |
+  | `eta_orf`             | `n_organic_rf_channels`    |
+  | `gamma_c`             | `n_controls`               |
+  | `gamma_n`             | `n_non_media_channels`     |
+  | `xi_c`                | `n_controls`               |
+  | `xi_n`                | `n_non_media_channels`     |
+  | `alpha_m`             | `n_media_channels`         |
+  | `alpha_rf`            | `n_rf_channels`            |
+  | `alpha_om`            | `n_organic_media_channels` |
+  | `alpha_orf`           | `n_organic_rf_channels`    |
+  | `ec_m`                | `n_media_channels`         |
+  | `ec_rf`               | `n_rf_channels`            |
+  | `ec_om`               | `n_organic_media_channels` |
+  | `ec_orf`              | `n_organic_rf_channels`    |
+  | `slope_m`             | `n_media_channels`         |
+  | `slope_rf`            | `n_rf_channels`            |
+  | `slope_om`            | `n_organic_media_channels` |
+  | `slope_orf`           | `n_organic_rf_channels`    |
+  | `sigma`               | (σ)                        |
+  | `roi_m`               | `n_media_channels`         |
+  | `roi_rf`              | `n_rf_channels`            |
 
   (σ) `n_geos` if `unique_sigma_for_each_geo`, otherwise this is `1`
 
@@ -100,6 +112,22 @@ class PriorDistribution:
       log-transformed, `Normal` distribution. Meridian ignores this distribution
       if `use_roi_prior` is `True` and uses the `roi_m` prior instead. Default
       distribution is `HalfNormal(5.0)`.
+    beta_om: Prior distribution on a parameter for the hierarchical distribution
+      of geo-level media effects for organic media channels (`beta_gom`). When
+      `media_effects_dist` is set to `'normal'`, it is the hierarchical mean.
+      When `media_effects_dist` is set to `'log_normal'`, it is the hierarchical
+      parameter for the mean of the underlying, log-transformed, `Normal`
+      distribution. Meridian ignores this distribution if `use_roi_prior` is
+      `True` and uses the `roi_om` prior instead. Default distribution is
+      `HalfNormal(5.0)`.
+    beta_orf: Prior distribution on a parameter for the hierarchical
+      distribution of geo-level media effects for organic reach and frequency
+      media channels (`beta_gorf`). When `media_effects_dist` is set to
+      `'normal'`, it is the hierarchical mean. When `media_effects_dist` is set
+      to `'log_normal'`, it is the hierarchical parameter for the mean of the
+      underlying, log-transformed, `Normal` distribution. Meridian ignores this
+      distribution if `use_roi_prior` is `True` and uses the `roi_orf` prior
+      instead. Default distribution is `HalfNormal(5.0)`.
     eta_m: Prior distribution on a parameter for the hierarchical distribution
       of geo-level media effects for impression media channels (`beta_gm`). When
       `media_effects_dist` is set to `'normal'`, it is the hierarchical standard
@@ -114,25 +142,59 @@ class PriorDistribution:
       hierarchical parameter for the standard deviation of the underlying,
       log-transformed, `Normal` distribution. Default distribution is
       `HalfNormal(1.0)`.
+    eta_om: Prior distribution on a parameter for the hierarchical distribution
+      of geo-level media effects for organic media channels (`beta_gom`). When
+      `media_effects_dist` is set to `'normal'`, it is the hierarchical standard
+      deviation. When `media_effects_dist` is set to `'log_normal'` it is the
+      hierarchical parameter for the standard deviation of the underlying,
+      log-transformed, `Normal` distribution. Default distribution is
+      `HalfNormal(1.0)`.
+    eta_orf: Prior distribution on a parameter for the hierarchical distribution
+      of geo-level media effects for organic RF media channels (`beta_gorf`).
+      When `media_effects_dist` is set to `'normal'`, it is the hierarchical
+      standard deviation. When `media_effects_dist` is set to `'log_normal'` it
+      is the hierarchical parameter for the standard deviation of the
+      underlying, log-transformed, `Normal` distribution. Default distribution
+      is `HalfNormal(1.0)`.
     gamma_c: Prior distribution on the hierarchical mean of `gamma_gc` which is
       the coefficient on control `c` for geo `g`. Hierarchy is defined over
       geos. Default distribution is `Normal(0.0, 5.0)`.
+    gamma_n: Prior distribution on the hierarchical mean of `rho_gn` which is
+      the coefficient on non-media channel `n` for geo `g`. Hierarchy is defined
+      over geos. Default distribution is `Normal(0.0, 5.0)`.
     xi_c: Prior distribution on the hierarchical standard deviation of
       `gamma_gc` which is the coefficient on control `c` for geo `g`. Hierarchy
+      is defined over geos. Default distribution is `HalfNormal(5.0)`.
+    xi_n: Prior distribution on the hierarchical standard deviation of `rho_gn`
+      which is the coefficient on non-media channel `n` for geo `g`. Hierarchy
       is defined over geos. Default distribution is `HalfNormal(5.0)`.
     alpha_m: Prior distribution on the `geometric decay` Adstock parameter for
       media input. Default distribution is `Uniform(0.0, 1.0)`.
     alpha_rf: Prior distribution on the `geometric decay` Adstock parameter for
       RF input. Default distribution is `Uniform(0.0, 1.0)`.
+    alpha_om: Prior distribution on the `geometric decay` Adstock parameter for
+      organic media input. Default distribution is `Uniform(0.0, 1.0)`.
+    alpha_orf: Prior distribution on the `geometric decay` Adstock parameter for
+      organic RF input. Default distribution is `Uniform(0.0, 1.0)`.
     ec_m: Prior distribution on the `half-saturation` Hill parameter for media
       input. Default distribution is `TruncatedNormal(0.8, 0.8, 0.1, 10)`.
     ec_rf: Prior distribution on the `half-saturation` Hill parameter for RF
       input. Default distribution is `TransformedDistribution(LogNormal(0.7,
       0.4), Shift(0.1))`.
+    ec_om: Prior distribution on the `half-saturation` Hill parameter for
+      organic media input. Default distribution is `TruncatedNormal(0.8, 0.8,
+      0.1, 10)`.
+    ec_orf: Prior distribution on the `half-saturation` Hill parameter for
+      organic RF input. Default distribution is `TransformedDistribution(
+      LogNormal(0.7, 0.4), Shift(0.1))`.
     slope_m: Prior distribution on the `slope` Hill parameter for media input.
       Default distribution is `Deterministic(1.0)`.
     slope_rf: Prior distribution on the `slope` Hill parameter for RF input.
       Default distribution is `LogNormal(0.7, 0.4)`.
+    slope_om: Prior distribution on the `slope` Hill parameter for organic media
+      input. Default distribution is `Deterministic(1.0)`.
+    slope_orf: Prior distribution on the `slope` Hill parameter for organic RF
+      input. Default distribution is `LogNormal(0.7, 0.4)`.
     sigma: Prior distribution on the standard deviation of noise. Default
       distribution is `HalfNormal(5.0)`.
     roi_m: Prior distribution on the hierarchical ROI in media input. Meridian
@@ -177,6 +239,16 @@ class PriorDistribution:
           5.0, name=constants.BETA_RF
       ),
   )
+  beta_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.HalfNormal(
+          5.0, name=constants.BETA_OM
+      ),
+  )
+  beta_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.HalfNormal(
+          5.0, name=constants.BETA_ORF
+      ),
+  )
   eta_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
           1.0, name=constants.ETA_M
@@ -187,14 +259,34 @@ class PriorDistribution:
           1.0, name=constants.ETA_RF
       ),
   )
+  eta_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.HalfNormal(
+          1.0, name=constants.ETA_OM
+      ),
+  )
+  eta_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.HalfNormal(
+          1.0, name=constants.ETA_ORF
+      ),
+  )
   gamma_c: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Normal(
           0.0, 5.0, name=constants.GAMMA_C
       ),
   )
+  gamma_n: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Normal(
+          0.0, 5.0, name=constants.GAMMA_N
+      ),
+  )
   xi_c: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
           5.0, name=constants.XI_C
+      ),
+  )
+  xi_n: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.HalfNormal(
+          5.0, name=constants.XI_N
       ),
   )
   alpha_m: tfp.distributions.Distribution = dataclasses.field(
@@ -205,6 +297,16 @@ class PriorDistribution:
   alpha_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Uniform(
           0.0, 1.0, name=constants.ALPHA_RF
+      ),
+  )
+  alpha_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, 1.0, name=constants.ALPHA_OM
+      ),
+  )
+  alpha_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, 1.0, name=constants.ALPHA_ORF
       ),
   )
   ec_m: tfp.distributions.Distribution = dataclasses.field(
@@ -219,6 +321,18 @@ class PriorDistribution:
           name=constants.EC_RF,
       ),
   )
+  ec_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.TruncatedNormal(
+          0.8, 0.8, 0.1, 10, name=constants.EC_OM
+      ),
+  )
+  ec_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.TransformedDistribution(
+          tfp.distributions.LogNormal(0.7, 0.4),
+          tfp.bijectors.Shift(0.1),
+          name=constants.EC_ORF,
+      ),
+  )
   slope_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Deterministic(
           1.0, name=constants.SLOPE_M
@@ -227,6 +341,16 @@ class PriorDistribution:
   slope_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
           0.7, 0.4, name=constants.SLOPE_RF
+      ),
+  )
+  slope_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Deterministic(
+          1.0, name=constants.SLOPE_OM
+      ),
+  )
+  slope_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.LogNormal(
+          0.7, 0.4, name=constants.SLOPE_ORF
       ),
   )
   sigma: tfp.distributions.Distribution = dataclasses.field(
@@ -295,7 +419,10 @@ class PriorDistribution:
       n_geos: int,
       n_media_channels: int,
       n_rf_channels: int,
+      n_organic_media_channels: int,
+      n_organic_rf_channels: int,
       n_controls: int,
+      n_non_media_channels: int,
       sigma_shape: int,
       n_knots: int,
       is_national: bool,
@@ -309,7 +436,11 @@ class PriorDistribution:
       n_geos: Number of geos.
       n_media_channels: Number of media channels used.
       n_rf_channels: Number of reach and frequency channels used.
+      n_organic_media_channels: Number of organic media channels used.
+      n_organic_rf_channels: Number of organic reach and frequency channels
+        used.
       n_controls: Number of controls used.
+      n_non_media_channels: Number of non-media channels used.
       sigma_shape: A number describing the shape of the sigma parameter. It's
         either `1` (if `sigma_for_each_geo=False`) or `n_geos` (if
         `sigma_for_each_geo=True`). For more information, see `ModelSpec`.
@@ -351,6 +482,46 @@ class PriorDistribution:
     _validate_media_custom_priors(self.eta_m)
     _validate_media_custom_priors(self.beta_m)
 
+    def _validate_organic_media_custom_priors(
+        param: tfp.distributions.Distribution,
+    ) -> None:
+      if (
+          param.batch_shape.as_list()
+          and n_organic_media_channels != param.batch_shape[0]
+      ):
+        raise ValueError(
+            'Custom priors must have length equal to the number of organic'
+            ' media channels, representing a custom prior for each channel. If'
+            " you can't determine a custom prior, consider using the default"
+            ' prior for that channel.'
+        )
+
+    _validate_organic_media_custom_priors(self.alpha_om)
+    _validate_organic_media_custom_priors(self.ec_om)
+    _validate_organic_media_custom_priors(self.slope_om)
+    _validate_organic_media_custom_priors(self.eta_om)
+    _validate_organic_media_custom_priors(self.beta_om)
+
+    def _validate_organic_rf_custom_priors(
+        param: tfp.distributions.Distribution,
+    ) -> None:
+      if (
+          param.batch_shape.as_list()
+          and n_organic_rf_channels != param.batch_shape[0]
+      ):
+        raise ValueError(
+            'Custom priors must have length equal to the number of organic RF'
+            ' channels, representing a custom prior for each channel. If you'
+            " can't determine a custom prior, consider using the default prior"
+            ' for that channel.'
+        )
+
+    _validate_organic_rf_custom_priors(self.alpha_orf)
+    _validate_organic_rf_custom_priors(self.ec_orf)
+    _validate_organic_rf_custom_priors(self.slope_orf)
+    _validate_organic_rf_custom_priors(self.eta_orf)
+    _validate_organic_rf_custom_priors(self.beta_orf)
+
     def _validate_rf_custom_priors(
         param: tfp.distributions.Distribution,
     ) -> None:
@@ -386,6 +557,23 @@ class PriorDistribution:
     _validate_control_custom_priors(self.gamma_c)
     _validate_control_custom_priors(self.xi_c)
 
+    def _validate_non_media_custom_priors(
+        param: tfp.distributions.Distribution,
+    ) -> None:
+      if (
+          param.batch_shape.as_list()
+          and n_non_media_channels != param.batch_shape[0]
+      ):
+        raise ValueError(
+            'Custom priors must have length equal to the number of non-media'
+            ' channels, representing a custom prior for each channel.'
+            " If you can't determine a custom prior, consider using the default"
+            ' prior for that channel.'
+        )
+
+    _validate_non_media_custom_priors(self.gamma_n)
+    _validate_non_media_custom_priors(self.xi_n)
+
     knot_values = tfp.distributions.BatchBroadcast(
         self.knot_values,
         n_knots,
@@ -406,17 +594,35 @@ class PriorDistribution:
     beta_rf = tfp.distributions.BatchBroadcast(
         self.beta_rf, n_rf_channels, name=constants.BETA_RF
     )
+    beta_om = tfp.distributions.BatchBroadcast(
+        self.beta_om, n_organic_media_channels, name=constants.BETA_OM
+    )
+    beta_orf = tfp.distributions.BatchBroadcast(
+        self.beta_orf, n_organic_rf_channels, name=constants.BETA_ORF
+    )
     if is_national:
       eta_m_converted = _convert_to_deterministic_0_distribution(self.eta_m)
       eta_rf_converted = _convert_to_deterministic_0_distribution(self.eta_rf)
+      eta_om_converted = _convert_to_deterministic_0_distribution(self.eta_om)
+      eta_orf_converted = _convert_to_deterministic_0_distribution(self.eta_orf)
     else:
       eta_m_converted = self.eta_m
       eta_rf_converted = self.eta_rf
+      eta_om_converted = self.eta_om
+      eta_orf_converted = self.eta_orf
     eta_m = tfp.distributions.BatchBroadcast(
         eta_m_converted, n_media_channels, name=constants.ETA_M
     )
     eta_rf = tfp.distributions.BatchBroadcast(
         eta_rf_converted, n_rf_channels, name=constants.ETA_RF
+    )
+    eta_om = tfp.distributions.BatchBroadcast(
+        eta_om_converted,
+        n_organic_media_channels,
+        name=constants.ETA_OM,
+    )
+    eta_orf = tfp.distributions.BatchBroadcast(
+        eta_orf_converted, n_organic_rf_channels, name=constants.ETA_ORF
     )
     gamma_c = tfp.distributions.BatchBroadcast(
         self.gamma_c, n_controls, name=constants.GAMMA_C
@@ -428,17 +634,39 @@ class PriorDistribution:
     xi_c = tfp.distributions.BatchBroadcast(
         xi_c_converted, n_controls, name=constants.XI_C
     )
+    gamma_n = tfp.distributions.BatchBroadcast(
+        self.gamma_n, n_non_media_channels, name=constants.GAMMA_N
+    )
+    if is_national:
+      xi_n_converted = _convert_to_deterministic_0_distribution(self.xi_n)
+    else:
+      xi_n_converted = self.xi_n
+    xi_n = tfp.distributions.BatchBroadcast(
+        xi_n_converted, n_non_media_channels, name=constants.XI_N
+    )
     alpha_m = tfp.distributions.BatchBroadcast(
         self.alpha_m, n_media_channels, name=constants.ALPHA_M
     )
     alpha_rf = tfp.distributions.BatchBroadcast(
         self.alpha_rf, n_rf_channels, name=constants.ALPHA_RF
     )
+    alpha_om = tfp.distributions.BatchBroadcast(
+        self.alpha_om, n_organic_media_channels, name=constants.ALPHA_OM
+    )
+    alpha_orf = tfp.distributions.BatchBroadcast(
+        self.alpha_orf, n_organic_rf_channels, name=constants.ALPHA_ORF
+    )
     ec_m = tfp.distributions.BatchBroadcast(
         self.ec_m, n_media_channels, name=constants.EC_M
     )
     ec_rf = tfp.distributions.BatchBroadcast(
         self.ec_rf, n_rf_channels, name=constants.EC_RF
+    )
+    ec_om = tfp.distributions.BatchBroadcast(
+        self.ec_om, n_organic_media_channels, name=constants.EC_OM
+    )
+    ec_orf = tfp.distributions.BatchBroadcast(
+        self.ec_orf, n_organic_rf_channels, name=constants.EC_ORF
     )
     if (
         not isinstance(self.slope_m, tfp.distributions.Deterministic)
@@ -458,6 +686,25 @@ class PriorDistribution:
     )
     slope_rf = tfp.distributions.BatchBroadcast(
         self.slope_rf, n_rf_channels, name=constants.SLOPE_RF
+    )
+    if (
+        not isinstance(self.slope_om, tfp.distributions.Deterministic)
+        or (np.isscalar(self.slope_om.loc.numpy()) and self.slope_om.loc != 1.0)
+        or (
+            self.slope_om.batch_shape.as_list()
+            and any(x != 1.0 for x in self.slope_om.loc)
+        )
+    ):
+      warnings.warn(
+          'Changing the prior for `slope_om` may lead to convex Hill curves.'
+          ' This may lead to poor MCMC convergence and budget optimization'
+          ' may no longer produce a global optimum.'
+      )
+    slope_om = tfp.distributions.BatchBroadcast(
+        self.slope_om, n_organic_media_channels, name=constants.SLOPE_OM
+    )
+    slope_orf = tfp.distributions.BatchBroadcast(
+        self.slope_orf, n_organic_rf_channels, name=constants.SLOPE_ORF
     )
     sigma = tfp.distributions.BatchBroadcast(
         self.sigma, sigma_shape, name=constants.SIGMA
@@ -509,16 +756,28 @@ class PriorDistribution:
         tau_g_excl_baseline=tau_g_excl_baseline,
         beta_m=beta_m,
         beta_rf=beta_rf,
+        beta_om=beta_om,
+        beta_orf=beta_orf,
         eta_m=eta_m,
         eta_rf=eta_rf,
+        eta_om=eta_om,
+        eta_orf=eta_orf,
         gamma_c=gamma_c,
+        gamma_n=gamma_n,
         xi_c=xi_c,
+        xi_n=xi_n,
         alpha_m=alpha_m,
         alpha_rf=alpha_rf,
+        alpha_om=alpha_om,
+        alpha_orf=alpha_orf,
         ec_m=ec_m,
         ec_rf=ec_rf,
+        ec_om=ec_om,
+        ec_orf=ec_orf,
         slope_m=slope_m,
         slope_rf=slope_rf,
+        slope_om=slope_om,
+        slope_orf=slope_orf,
         sigma=sigma,
         roi_m=roi_m,
         roi_rf=roi_rf,

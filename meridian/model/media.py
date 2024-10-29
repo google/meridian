@@ -24,8 +24,12 @@ import tensorflow as tf
 __all__ = [
     "MediaTensors",
     "RfTensors",
+    "OrganicMediaTensors",
+    "OrganicRfTensors",
     "build_media_tensors",
     "build_rf_tensors",
+    "build_organic_media_tensors",
+    "build_organic_rf_tensors",
 ]
 
 
@@ -104,6 +108,57 @@ def build_media_tensors(
 
 
 @dataclasses.dataclass(frozen=True)
+class OrganicMediaTensors:
+  """Container for organic media tensors.
+
+  Attributes:
+    organic_media: A tensor constructed from `InputData.organic_media`.
+    organic_media_transformer: A `MediaTransformer` to scale media tensors using
+      the model's organic media data.
+    organic_media_scaled: The organic media tensor normalized by population and
+      by the median value.
+    organic_media_counterfactual: A tensor containing the organic media
+      counterfactual values.
+    organic_media_counterfactual_scaled: A tensor containing the organic media
+      counterfactual scaled values.
+  """
+
+  organic_media: tf.Tensor | None = None
+  organic_media_transformer: transformers.MediaTransformer | None = None
+  organic_media_scaled: tf.Tensor | None = None
+  organic_media_counterfactual: tf.Tensor | None = None
+  organic_media_counterfactual_scaled: tf.Tensor | None = None
+
+
+def build_organic_media_tensors(
+    input_data: data.InputData,
+) -> OrganicMediaTensors:
+  """Derives a OrganicMediaTensors container from values in given input data."""
+  if input_data.organic_media is None:
+    return OrganicMediaTensors()
+
+  # Derive and set media tensors from media values in the input data.
+  organic_media = tf.convert_to_tensor(
+      input_data.organic_media, dtype=tf.float32
+  )
+  organic_media_transformer = transformers.MediaTransformer(
+      organic_media,
+      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+  )
+  organic_media_scaled = organic_media_transformer.forward(organic_media)
+  organic_media_counterfactual = tf.zeros_like(organic_media)
+  organic_media_counterfactual_scaled = tf.zeros_like(organic_media_scaled)
+
+  return OrganicMediaTensors(
+      organic_media=organic_media,
+      organic_media_transformer=organic_media_transformer,
+      organic_media_scaled=organic_media_scaled,
+      organic_media_counterfactual=organic_media_counterfactual,
+      organic_media_counterfactual_scaled=organic_media_counterfactual_scaled,
+  )
+
+
+@dataclasses.dataclass(frozen=True)
 class RfTensors:
   """Container for Reach and Frequency (RF) media values tensors.
 
@@ -141,7 +196,7 @@ def build_rf_tensors(
     input_data: data.InputData,
     model_spec: spec.ModelSpec,
 ) -> RfTensors:
-  """Derives an RfMediaTensors container from RF media values in given input."""
+  """Derives an RfTensors container from RF media values in given input."""
   if input_data.reach is None:
     return RfTensors()
 
@@ -179,4 +234,60 @@ def build_rf_tensors(
       reach_counterfactual=reach_counterfactual,
       reach_counterfactual_scaled=reach_counterfactual_scaled,
       rf_spend_counterfactual=rf_spend_counterfactual,
+  )
+
+
+@dataclasses.dataclass(frozen=True)
+class OrganicRfTensors:
+  """Container for Reach and Frequency (RF) organic media values tensors.
+
+  Attributes:
+    organic_reach: A tensor constructed from `InputData.organic_reach`.
+    organic_frequency: A tensor constructed from `InputData.organic_frequency`.
+    organic_reach_transformer: A `MediaTransformer` to scale organic RF tensors
+      using the model's organic RF data.
+    organic_reach_scaled: An organic reach tensor normalized by population and
+      by the median value.
+    organic_reach_counterfactual: An organic reach tensor with media
+      counterfactual values.
+    organic_reach_counterfactual_scaled: An organic reach tensor with media
+      counterfactual scaled values.
+  """
+
+  organic_reach: tf.Tensor | None = None
+  organic_frequency: tf.Tensor | None = None
+  organic_reach_transformer: transformers.MediaTransformer | None = None
+  organic_reach_scaled: tf.Tensor | None = None
+  organic_reach_counterfactual: tf.Tensor | None = None
+  organic_reach_counterfactual_scaled: tf.Tensor | None = None
+
+
+def build_organic_rf_tensors(
+    input_data: data.InputData,
+) -> OrganicRfTensors:
+  """Derives an OrganicRfTensors container from values in given input."""
+  if input_data.organic_reach is None:
+    return OrganicRfTensors()
+
+  organic_reach = tf.convert_to_tensor(
+      input_data.organic_reach, dtype=tf.float32
+  )
+  organic_frequency = tf.convert_to_tensor(
+      input_data.organic_frequency, dtype=tf.float32
+  )
+  organic_reach_transformer = transformers.MediaTransformer(
+      organic_reach,
+      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+  )
+  organic_reach_scaled = organic_reach_transformer.forward(organic_reach)
+  organic_reach_counterfactual = tf.zeros_like(organic_reach)
+  organic_reach_counterfactual_scaled = tf.zeros_like(organic_reach_scaled)
+
+  return OrganicRfTensors(
+      organic_reach=organic_reach,
+      organic_frequency=organic_frequency,
+      organic_reach_transformer=organic_reach_transformer,
+      organic_reach_scaled=organic_reach_scaled,
+      organic_reach_counterfactual=organic_reach_counterfactual,
+      organic_reach_counterfactual_scaled=organic_reach_counterfactual_scaled,
   )

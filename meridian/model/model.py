@@ -118,9 +118,13 @@ class Meridian:
     n_geos: Number of geos in the data.
     n_media_channels: Number of media channels in the data.
     n_rf_channels: Number of reach and frequency (RF) channels in the data.
+    n_organic_media_channels: Number of organic media channels in the data.
+    n_organic_rf_channels: Number of organic reach and frequency (RF) channels
+      in the data.
     all_channel_names: Names of the all media channels (including R&F, if any)
       in the data, in coordinate order.
     n_controls: Number of control variables in the data.
+    n_non_media_channels: Number of non-media treatment channels in the data.
     n_times: Number of time periods in the KPI or spend data.
     n_media_times: Number of time periods in the media data.
     is_national: A boolean indicating whether the data is national (single geo)
@@ -130,17 +134,26 @@ class Meridian:
     revenue_per_kpi: A tensor constructed from `input_data.revenue_per_kpi`. If
       `input_data.revenue_per_kpi` is None, then this is also None.
     controls: A tensor constructed from `input_data.controls`.
+    non_media_treatments: A tensor constructed from
+      `input_data.non_media_treatments`.
     population: A tensor constructed from `input_data.population`.
     media_tensors: A collection of media tensors derived from `input_data`.
     rf_tensors: A collection of Reach & Frequency (RF) media tensors.
+    organic_media_tensors: A collection of organic media tensors.
+    organic_rf_tensors: A collection of organic Reach & Frequency (RF) media
+      tensors.
     total_spend: A tensor containing total spend, including
       `media_tensors.media_spend` and `rf_tensors.rf_spend`.
     controls_transformer: A `ControlsTransformer` to scale controls tensors
       using the model's controls data.
+    non_media_transformer: A `CenteringAndScalingTransformer` to scale non-media
+      treatmenttensors using the model's non-media treatment data.
     kpi_transformer: A `KpiTransformer` to scale KPI tensors using the model's
       KPI data.
     controls_scaled: The controls tensor normalized by population and by the
       median value.
+    non_media_treatments_scaled: The non-media treatment tensor normalized by
+      population and by the median value.
     kpi_scaled: The KPI tensor normalized by population and by the median value.
     media_effects_dist: A string to specify the distribution of media random
       effects across geos.
@@ -193,6 +206,14 @@ class Meridian:
     return media.build_rf_tensors(self.input_data, self.model_spec)
 
   @functools.cached_property
+  def organic_media_tensors(self) -> media.OrganicMediaTensors:
+    return media.build_organic_media_tensors(self.input_data)
+
+  @functools.cached_property
+  def organic_rf_tensors(self) -> media.OrganicRfTensors:
+    return media.build_organic_rf_tensors(self.input_data)
+
+  @functools.cached_property
   def kpi(self) -> tf.Tensor:
     return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float32)
 
@@ -207,6 +228,14 @@ class Meridian:
   @functools.cached_property
   def controls(self) -> tf.Tensor:
     return tf.convert_to_tensor(self.input_data.controls, dtype=tf.float32)
+
+  @functools.cached_property
+  def non_media_treatments(self) -> tf.Tensor | None:
+    if self.input_data.non_media_treatments is None:
+      return None
+    return tf.convert_to_tensor(
+        self.input_data.non_media_treatments, dtype=tf.float32
+    )
 
   @functools.cached_property
   def population(self) -> tf.Tensor:
@@ -235,6 +264,18 @@ class Meridian:
     return len(self.input_data.rf_channel)
 
   @property
+  def n_organic_media_channels(self) -> int:
+    if self.input_data.organic_media_channel is None:
+      return 0
+    return len(self.input_data.organic_media_channel)
+
+  @property
+  def n_organic_rf_channels(self) -> int:
+    if self.input_data.organic_rf_channel is None:
+      return 0
+    return len(self.input_data.organic_rf_channel)
+
+  @property
   def all_channel_names(self) -> list[str] | None:
     """Returns all media (and RF) channel names in the data."""
     if (
@@ -247,6 +288,12 @@ class Meridian:
   @property
   def n_controls(self) -> int:
     return len(self.input_data.control_variable)
+
+  @property
+  def n_non_media_channels(self) -> int:
+    if self.input_data.non_media_channel is None:
+      return 0
+    return len(self.input_data.non_media_channel)
 
   @property
   def n_times(self) -> int:
@@ -284,12 +331,38 @@ class Meridian:
     )
 
   @functools.cached_property
+  def non_media_transformer(
+      self,
+  ) -> transformers.CenteringAndScalingTransformer | None:
+    if self.non_media_treatments is None:
+      return None
+    if self.model_spec.non_media_population_scaling_id is not None:
+      non_media_population_scaling_id = tf.convert_to_tensor(
+          self.model_spec.non_media_population_scaling_id, dtype=bool
+      )
+    else:
+      non_media_population_scaling_id = None
+
+    return transformers.CenteringAndScalingTransformer(
+        tensor=self.non_media_treatments,
+        population=self.population,
+        population_scaling_id=non_media_population_scaling_id,
+    )
+
+  @functools.cached_property
   def kpi_transformer(self) -> transformers.KpiTransformer:
     return transformers.KpiTransformer(self.kpi, self.population)
 
   @functools.cached_property
   def controls_scaled(self) -> tf.Tensor:
     return self.controls_transformer.forward(self.controls)
+
+  @functools.cached_property
+  def non_media_treatments_scaled(self) -> tf.Tensor | None:
+    if self.non_media_transformer is not None:
+      return self.non_media_transformer.forward(self.non_media_treatments)  # pytype: disable=attribute-error
+    else:
+      return None
 
   @functools.cached_property
   def kpi_scaled(self) -> tf.Tensor:
@@ -369,7 +442,10 @@ class Meridian:
         n_geos=self.n_geos,
         n_media_channels=self.n_media_channels,
         n_rf_channels=self.n_rf_channels,
+        n_organic_media_channels=self.n_organic_media_channels,
+        n_organic_rf_channels=self.n_organic_rf_channels,
         n_controls=self.n_controls,
+        n_non_media_channels=self.n_non_media_channels,
         sigma_shape=sigma_shape,
         n_knots=self.knot_info.n_knots,
         is_national=self.is_national,
@@ -474,6 +550,17 @@ class Meridian:
           f" from `(n_controls,) = ({self.n_controls},)`."
       )
 
+    if self.model_spec.non_media_population_scaling_id is not None and (
+        self.model_spec.non_media_population_scaling_id.shape
+        != (self.n_non_media_channels,)
+    ):
+      raise ValueError(
+          "The shape of `non_media_population_scaling_id`"
+          f" {self.model_spec.non_media_population_scaling_id.shape} is"
+          " different from `(n_non_media_channels,) ="
+          f" ({self.n_non_media_channels},)`."
+      )
+
   def _validate_geo_invariants(self):
     """Validates non-national model invariants."""
     if self.is_national:
@@ -484,6 +571,14 @@ class Meridian:
         constants.CONTROLS,
         self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
     )
+    if self.input_data.non_media_treatments is not None:
+      self._check_if_no_geo_variation(
+          self.non_media_treatments_scaled,
+          constants.NON_MEDIA_TREATMENTS,
+          self.input_data.non_media_treatments.coords[
+              constants.NON_MEDIA_CHANNEL
+          ].values,
+      )
     if self.input_data.media is not None:
       self._check_if_no_geo_variation(
           self.media_tensors.media_scaled,
@@ -495,6 +590,22 @@ class Meridian:
           self.rf_tensors.reach_scaled,
           constants.REACH,
           self.input_data.reach.coords[constants.RF_CHANNEL].values,
+      )
+    if self.input_data.organic_media is not None:
+      self._check_if_no_geo_variation(
+          self.organic_media_tensors.organic_media_scaled,
+          "organic_media",
+          self.input_data.organic_media.coords[
+              constants.ORGANIC_MEDIA_CHANNEL
+          ].values,
+      )
+    if self.input_data.organic_reach is not None:
+      self._check_if_no_geo_variation(
+          self.organic_rf_tensors.organic_reach_scaled,
+          "organic_reach",
+          self.input_data.organic_reach.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values,
       )
 
   def _check_if_no_geo_variation(
@@ -839,11 +950,17 @@ class Meridian:
     n_times = self.n_times
     n_media_channels = self.n_media_channels
     n_rf_channels = self.n_rf_channels
+    n_organic_media_channels = self.n_organic_media_channels
+    n_organic_rf_channels = self.n_organic_rf_channels
     n_controls = self.n_controls
+    n_non_media_channels = self.n_non_media_channels
     holdout_id = self.holdout_id
     media_tensors = self.media_tensors
     rf_tensors = self.rf_tensors
+    organic_media_tensors = self.organic_media_tensors
+    organic_rf_tensors = self.organic_rf_tensors
     controls_scaled = self.controls_scaled
+    non_media_treatments_scaled = self.non_media_treatments_scaled
     media_effects_dist = self.media_effects_dist
     model_spec = self.model_spec
     adstock_hill_media_fn = self.adstock_hill_media
@@ -918,12 +1035,12 @@ class Meridian:
         else:
           beta_m = yield prior_broadcast.beta_m
 
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-          beta_gm_value = beta_m + eta_m * beta_gm_dev
-        else:
-          # MEDIA_EFFECTS_LOG_NORMAL
-          beta_gm_value = tf.math.exp(beta_m + eta_m * beta_gm_dev)
-
+        beta_eta_combined = beta_m + eta_m * beta_gm_dev
+        beta_gm_value = (
+            beta_eta_combined
+            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+            else tf.math.exp(beta_eta_combined)
+        )
         beta_gm = yield tfp.distributions.Deterministic(
             beta_gm_value, name=constants.BETA_GM
         )
@@ -968,12 +1085,12 @@ class Meridian:
         else:
           beta_rf = yield prior_broadcast.beta_rf
 
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-          beta_grf_value = beta_rf + eta_rf * beta_grf_dev
-        else:
-          # MEDIA_EFFECTS_LOG_NORMAL
-          beta_grf_value = tf.math.exp(beta_rf + eta_rf * beta_grf_dev)
-
+        beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
+        beta_grf_value = (
+            beta_eta_combined
+            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+            else tf.math.exp(beta_eta_combined)
+        )
         beta_grf = yield tfp.distributions.Deterministic(
             beta_grf_value, name=constants.BETA_GRF
         )
@@ -981,6 +1098,72 @@ class Meridian:
             [combined_media_transformed, rf_transformed], axis=-1
         )
         combined_beta = tf.concat([combined_beta, beta_grf], axis=-1)
+
+      if organic_media_tensors.organic_media is not None:
+        alpha_om = yield prior_broadcast.alpha_om
+        ec_om = yield prior_broadcast.ec_om
+        eta_om = yield prior_broadcast.eta_om
+        slope_om = yield prior_broadcast.slope_om
+        beta_gom_dev = yield tfp.distributions.Sample(
+            tfp.distributions.Normal(0, 1),
+            [n_geos, n_organic_media_channels],
+            name=constants.BETA_GOM_DEV,
+        )
+        organic_media_transformed = adstock_hill_media_fn(
+            media=organic_media_tensors.organic_media_scaled,
+            alpha=alpha_om,
+            ec=ec_om,
+            slope=slope_om,
+        )
+        beta_om = yield prior_broadcast.beta_om
+
+        beta_eta_combined = beta_om + eta_om * beta_gom_dev
+        beta_gom_value = (
+            beta_eta_combined
+            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+            else tf.math.exp(beta_eta_combined)
+        )
+        beta_gom = yield tfp.distributions.Deterministic(
+            beta_gom_value, name=constants.BETA_GOM
+        )
+        combined_media_transformed = tf.concat(
+            [combined_media_transformed, organic_media_transformed], axis=-1
+        )
+        combined_beta = tf.concat([combined_beta, beta_gom], axis=-1)
+
+      if organic_rf_tensors.organic_reach is not None:
+        alpha_orf = yield prior_broadcast.alpha_orf
+        ec_orf = yield prior_broadcast.ec_orf
+        eta_orf = yield prior_broadcast.eta_orf
+        slope_orf = yield prior_broadcast.slope_orf
+        beta_gorf_dev = yield tfp.distributions.Sample(
+            tfp.distributions.Normal(0, 1),
+            [n_geos, n_organic_rf_channels],
+            name=constants.BETA_GORF_DEV,
+        )
+        organic_rf_transformed = adstock_hill_rf_fn(
+            reach=organic_rf_tensors.organic_reach_scaled,
+            frequency=organic_rf_tensors.organic_frequency,
+            alpha=alpha_orf,
+            ec=ec_orf,
+            slope=slope_orf,
+        )
+
+        beta_orf = yield prior_broadcast.beta_orf
+
+        beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
+        beta_gorf_value = (
+            beta_eta_combined
+            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+            else tf.math.exp(beta_eta_combined)
+        )
+        beta_gorf = yield tfp.distributions.Deterministic(
+            beta_gorf_value, name=constants.BETA_GORF
+        )
+        combined_media_transformed = tf.concat(
+            [combined_media_transformed, organic_rf_transformed], axis=-1
+        )
+        combined_beta = tf.concat([combined_beta, beta_gorf], axis=-1)
 
       sigma_gt = tf.transpose(tf.broadcast_to(sigma, [n_times, n_geos]))
       gamma_gc_dev = yield tfp.distributions.Sample(
@@ -991,11 +1174,29 @@ class Meridian:
       gamma_gc = yield tfp.distributions.Deterministic(
           gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
       )
-      y_pred = (
+      y_pred_combined_media = (
           tau_gt
           + tf.einsum("gtm,gm->gt", combined_media_transformed, combined_beta)
           + tf.einsum("gtc,gc->gt", controls_scaled, gamma_gc)
       )
+
+      if self.non_media_treatments is not None:
+        gamma_n = yield prior_broadcast.gamma_n
+        xi_n = yield prior_broadcast.xi_n
+        gamma_gn_dev = yield tfp.distributions.Sample(
+            tfp.distributions.Normal(0, 1),
+            [n_geos, n_non_media_channels],
+            name=constants.GAMMA_GN_DEV,
+        )
+        gamma_gn = yield tfp.distributions.Deterministic(
+            gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
+        )
+        y_pred = y_pred_combined_media + tf.einsum(
+            "gtn,gn->gt", non_media_treatments_scaled, gamma_gn
+        )
+      else:
+        y_pred = y_pred_combined_media
+
       # If there are any holdout observations, the holdout KPI values will
       # be replaced with zeros using `experimental_pin`. For these
       # observations, we set the posterior mean equal to zero and standard
@@ -1035,6 +1236,21 @@ class Meridian:
         if self.input_data.rf_channel is not None
         else np.array([])
     )
+    organic_media_channel_values = (
+        self.input_data.organic_media_channel
+        if self.input_data.organic_media_channel is not None
+        else np.array([])
+    )
+    organic_rf_channel_values = (
+        self.input_data.organic_rf_channel
+        if self.input_data.organic_rf_channel is not None
+        else np.array([])
+    )
+    non_media_channel_values = (
+        self.input_data.non_media_channel
+        if self.input_data.non_media_channel is not None
+        else np.array([])
+    )
     return {
         constants.CHAIN: np.arange(n_chains),
         constants.DRAW: np.arange(n_draws),
@@ -1043,8 +1259,11 @@ class Meridian:
         constants.MEDIA_TIME: self.input_data.media_time,
         constants.KNOTS: np.arange(self.knot_info.n_knots),
         constants.CONTROL_VARIABLE: self.input_data.control_variable,
+        constants.NON_MEDIA_CHANNEL: non_media_channel_values,
         constants.MEDIA_CHANNEL: media_channel_values,
         constants.RF_CHANNEL: rf_channel_values,
+        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_values,
+        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_values,
     }
 
   def _create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
@@ -1111,12 +1330,15 @@ class Meridian:
     else:
       media_vars[constants.BETA_M] = prior.beta_m.sample(**sample_kwargs)
 
-    beta_gm_value = (
+    beta_eta_combined = (
         media_vars[constants.BETA_M][..., tf.newaxis, :]
         + media_vars[constants.ETA_M][..., tf.newaxis, :] * beta_gm_dev
     )
-    if self.media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL:
-      beta_gm_value = tf.math.exp(beta_gm_value)
+    beta_gm_value = (
+        beta_eta_combined
+        if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else tf.math.exp(beta_eta_combined)
+    )
     media_vars[constants.BETA_GM] = tfp.distributions.Deterministic(
         beta_gm_value, name=constants.BETA_GM
     ).sample()
@@ -1176,17 +1398,164 @@ class Meridian:
     else:
       rf_vars[constants.BETA_RF] = prior.beta_rf.sample(**sample_kwargs)
 
-    beta_grf_value = (
+    beta_eta_combined = (
         rf_vars[constants.BETA_RF][..., tf.newaxis, :]
         + rf_vars[constants.ETA_RF][..., tf.newaxis, :] * beta_grf_dev
     )
-    if self.media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL:
-      beta_grf_value = tf.math.exp(beta_grf_value)
+    beta_grf_value = (
+        beta_eta_combined
+        if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else tf.math.exp(beta_eta_combined)
+    )
     rf_vars[constants.BETA_GRF] = tfp.distributions.Deterministic(
         beta_grf_value, name=constants.BETA_GRF
     ).sample()
 
     return rf_vars
+
+  def _sample_organic_media_priors(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Draws samples from the prior distributions of organic media variables.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of organic media parameter names to a tensor of shape [n_draws,
+      n_geos, n_organic_media_channels] or [n_draws, n_organic_media_channels]
+      containing the samples.
+    """
+    prior = self.prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+    organic_media_vars = {
+        constants.ALPHA_OM: prior.alpha_om.sample(**sample_kwargs),
+        constants.EC_OM: prior.ec_om.sample(**sample_kwargs),
+        constants.ETA_OM: prior.eta_om.sample(**sample_kwargs),
+        constants.SLOPE_OM: prior.slope_om.sample(**sample_kwargs),
+    }
+    beta_gom_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_organic_media_channels],
+        name=constants.BETA_GOM_DEV,
+    ).sample(**sample_kwargs)
+
+    organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
+        **sample_kwargs
+    )
+
+    beta_eta_combined = (
+        organic_media_vars[constants.BETA_OM][..., tf.newaxis, :]
+        + organic_media_vars[constants.ETA_OM][..., tf.newaxis, :]
+        * beta_gom_dev
+    )
+    beta_gom_value = (
+        beta_eta_combined
+        if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else tf.math.exp(beta_eta_combined)
+    )
+    organic_media_vars[constants.BETA_GOM] = tfp.distributions.Deterministic(
+        beta_gom_value, name=constants.BETA_GOM
+    ).sample()
+
+    return organic_media_vars
+
+  def _sample_organic_rf_priors(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Draws samples from the prior distributions of the organic RF variables.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of organic RF parameter names to a tensor of shape [n_draws,
+      n_geos, n_organic_rf_channels] or [n_draws, n_organic_rf_channels]
+      containing the samples.
+    """
+    prior = self.prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+    organic_rf_vars = {
+        constants.ALPHA_ORF: prior.alpha_orf.sample(**sample_kwargs),
+        constants.EC_ORF: prior.ec_orf.sample(**sample_kwargs),
+        constants.ETA_ORF: prior.eta_orf.sample(**sample_kwargs),
+        constants.SLOPE_ORF: prior.slope_orf.sample(**sample_kwargs),
+    }
+    beta_gorf_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_organic_rf_channels],
+        name=constants.BETA_GORF_DEV,
+    ).sample(**sample_kwargs)
+
+    organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(**sample_kwargs)
+
+    beta_eta_combined = (
+        organic_rf_vars[constants.BETA_ORF][..., tf.newaxis, :]
+        + organic_rf_vars[constants.ETA_ORF][..., tf.newaxis, :] * beta_gorf_dev
+    )
+    beta_gorf_value = (
+        beta_eta_combined
+        if self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else tf.math.exp(beta_eta_combined)
+    )
+    organic_rf_vars[constants.BETA_GORF] = tfp.distributions.Deterministic(
+        beta_gorf_value, name=constants.BETA_GORF
+    ).sample()
+
+    return organic_rf_vars
+
+  def _sample_non_media_treatments_priors(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ) -> Mapping[str, tf.Tensor]:
+    """Draws from the prior distributions of the non-media treatment variables.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of non-media treatment parameter names to a tensor of shape
+      [n_draws,
+      n_geos, n_non_media_channels] or [n_draws, n_non_media_channels]
+      containing the samples.
+    """
+    prior = self.prior_broadcast
+    sample_shape = [1, n_draws]
+    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+    non_media_treatments_vars = {
+        constants.GAMMA_N: prior.gamma_n.sample(**sample_kwargs),
+        constants.XI_N: prior.xi_n.sample(**sample_kwargs),
+    }
+    gamma_gn_dev = tfp.distributions.Sample(
+        tfp.distributions.Normal(0, 1),
+        [self.n_geos, self.n_non_media_channels],
+        name=constants.GAMMA_GN_DEV,
+    ).sample(**sample_kwargs)
+    non_media_treatments_vars[constants.GAMMA_GN] = (
+        tfp.distributions.Deterministic(
+            non_media_treatments_vars[constants.GAMMA_N][..., tf.newaxis, :]
+            + non_media_treatments_vars[constants.XI_N][..., tf.newaxis, :]
+            * gamma_gn_dev,
+            name=constants.GAMMA_GN,
+        ).sample()
+    )
+    return non_media_treatments_vars
 
   def _sample_prior_fn(
       self,
@@ -1243,8 +1612,30 @@ class Meridian:
         if self.rf_tensors.reach is not None
         else {}
     )
+    organic_media_vars = (
+        self._sample_organic_media_priors(n_draws, seed)
+        if self.organic_media_tensors.organic_media is not None
+        else {}
+    )
+    organic_rf_vars = (
+        self._sample_organic_rf_priors(n_draws, seed)
+        if self.organic_rf_tensors.organic_reach is not None
+        else {}
+    )
+    non_media_treatments_vars = (
+        self._sample_non_media_treatments_priors(n_draws, seed)
+        if self.non_media_treatments_scaled is not None
+        else {}
+    )
 
-    return base_vars | media_vars | rf_vars
+    return (
+        base_vars
+        | media_vars
+        | rf_vars
+        | organic_media_vars
+        | organic_rf_vars
+        | non_media_treatments_vars
+    )
 
   def sample_prior(self, n_draws: int, seed: int | None = None):
     """Draws samples from the prior distributions.
@@ -1374,7 +1765,7 @@ class Meridian:
             tf.concat([state[k] for state in states], axis=1)[n_burnin:, ...],
         )
         for k in states[0].keys()
-        if k not in constants.IGNORED_PRIOR_PARAMETERS
+        if k not in constants.UNSAVED_PARAMETERS
     }
     # Create Arviz InferenceData for posterior draws.
     posterior_coords = self._create_inference_data_coords(total_chains, n_keep)

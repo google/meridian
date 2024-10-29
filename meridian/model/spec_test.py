@@ -37,6 +37,7 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertIsNone(model_spec.baseline_geo)
     self.assertIsNone(model_spec.holdout_id)
     self.assertIsNone(model_spec.control_population_scaling_id)
+    self.assertIsNone(model_spec.non_media_population_scaling_id)
 
   @parameterized.named_parameters(
       ("log_normal", "log_normal"),

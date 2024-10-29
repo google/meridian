@@ -159,6 +159,60 @@ class InputData:
       `rf_spend` will be `None`. `reach`, `frequency`, and `rf_spend` must
       contain the same number of media channels in the same order. If any of
       these arguments is passed, then the others are not optional.
+    organic_media: An optional `DataArray` of dimensions `(n_geos,
+      n_media_times, n_organic_media_channels)` containing non-negative organic
+      media values. Organic media variables are media activities that have no
+      direct cost. These may include impressions from newsletters, a blog post,
+      social media activity or email campaigns but it can be any metric, such as
+      clicks. `n_media_times` ≥ `n_times` is required, and the final `n_times`
+      time periods must align with the time window of `kpi` and `controls`. Due
+      to lagged effects, we recommend that the time window for organic media
+      includes up to `max_lag` additional periods prior to this window. If
+      `n_organic_media_times` < `n_times` + `max_lag`, the model effectively
+      imputes organic media history. If `n_organic_media_times` > `n_times` +
+      `max_lag`, then only the final `n_times` + `max_lag` periods are used to
+      fit the model.
+    organic_reach: An optional `DataArray` of dimensions `(n_geos,
+      n_media_times, n_organic_rf_channels)` containing non-negative organic
+      reach values. It is required that `n_media_times` ≥ `n_times`, and the
+      final `n_times` time periods must align with the time window of `kpi` and
+      `controls`. The time window must include the time window of the `kpi` and
+      `controls` data, but it is optional to include lagged time periods prior
+      to the time window of the `kpi` and `controls` data. If lagged reach is
+      not included, or if the lagged reach includes fewer than `max_lag` time
+      periods, then the model calculates Adstock assuming that reach execution
+      is zero prior to the first observed time period. We recommend including
+      `n_times` + `max_lag` time periods, unless the value of `max_lag` is
+      prohibitively large. If no organic reach and frequency data is used, then
+      `organic_reach` and `organic_frequency` will be `None`. `organic_reach`,
+      and `organic_frequency` must contain the same number of channels in the
+      same order. If any of these arguments is passed, then the other is not
+      optional.
+    organic_frequency: An optional `DataArray` of dimensions `(n_geos,
+      n_media_times, n_organic_rf_channels)` containing non-negative organic
+      frequency values. It is required that `n_media_times` ≥ `n_times`, and the
+      final `n_times` time periods must align with the time window of `kpi` and
+      `controls`. The time window must include the time window of the `kpi` and
+      `controls` data, but it is optional to include lagged time periods prior
+      to the time window of the `kpi` and `controls` data. If lagged frequency
+      is not included, or if the lagged frequency includes fewer than `max_lag`
+      time periods, then the model calculates Adstock assuming that frequency
+      execution is zero prior to the first observed time period. We recommend
+      including `n_times` + `max_lag` time periods, unless the value of
+      `max_lag` is prohibitively large. If no organic reach and frequency data
+      is used, then `organic_frequency` will be `None`. `organic_reach` and
+      `organic_frequency` must contain the same number of channels in the same
+      order. If any of these arguments is passed, then the other is not
+      optional.
+    non_media_treatments: An optional DataArray of dimensions `(n_geos, n_times,
+      n_non_media_channels)` containing non-media treatment variables values.
+      Non-media treatment variables are marketing activities taken by the
+      advertiser not directly related to media. They have no direct marketing
+      cost associated with them but unlike organic media variables there are no
+      Adstock and Hill effects. They differ from control variables as they are
+      considered to be intervenable and hence are treatment variables under the
+      causal model. Some examples include running a promotion, the price of a
+      product and a change in a product's packaging and/or design.
   """
 
   kpi: xr.DataArray
@@ -171,6 +225,10 @@ class InputData:
   reach: xr.DataArray | None = None
   frequency: xr.DataArray | None = None
   rf_spend: xr.DataArray | None = None
+  organic_media: xr.DataArray | None = None
+  organic_reach: xr.DataArray | None = None
+  organic_frequency: xr.DataArray | None = None
+  non_media_treatments: xr.DataArray | None = None
 
   def __post_init__(self):
     self._validate_kpi()
@@ -222,6 +280,30 @@ class InputData:
     """Returns the RF channel dimension."""
     if self.reach is not None:
       return self.reach[constants.RF_CHANNEL]
+    else:
+      return None
+
+  @property
+  def organic_media_channel(self) -> xr.DataArray | None:
+    """Returns the organic media channel dimension."""
+    if self.organic_media is not None:
+      return self.organic_media[constants.ORGANIC_MEDIA_CHANNEL]
+    else:
+      return None
+
+  @property
+  def organic_rf_channel(self) -> xr.DataArray | None:
+    """Returns the organic RF channel dimension."""
+    if self.organic_reach is not None:
+      return self.organic_reach[constants.ORGANIC_RF_CHANNEL]
+    else:
+      return None
+
+  @property
+  def non_media_channel(self) -> xr.DataArray | None:
+    """Returns the non-media treatments channel dimension."""
+    if self.non_media_treatments is not None:
+      return self.non_media_treatments[constants.NON_MEDIA_CHANNEL]
     else:
       return None
 
@@ -312,6 +394,10 @@ class InputData:
         self.controls,
         self.population,
         self.revenue_per_kpi,
+        self.organic_media,
+        self.organic_reach,
+        self.organic_frequency,
+        self.non_media_treatments,
         self.media,
         self.media_spend,
         self.reach,
@@ -361,6 +447,26 @@ class InputData:
             [constants.GEO, constants.RF_CHANNEL],
         ],
     )
+    _check_dim_collection(
+        self.organic_media,
+        [[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_MEDIA_CHANNEL,
+        ]],
+    )
+    _check_dim_collection(
+        self.organic_reach,
+        [[constants.GEO, constants.MEDIA_TIME, constants.ORGANIC_RF_CHANNEL]],
+    )
+    _check_dim_collection(
+        self.organic_frequency,
+        [[constants.GEO, constants.MEDIA_TIME, constants.ORGANIC_RF_CHANNEL]],
+    )
+    _check_dim_collection(
+        self.non_media_treatments,
+        [[constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL]],
+    )
 
     _check_dim_match(
         constants.GEO,
@@ -372,15 +478,31 @@ class InputData:
             self.population,
             self.reach,
             self.frequency,
+            self.organic_media,
+            self.organic_reach,
+            self.organic_frequency,
+            self.non_media_treatments,
         ],
     )
     _check_dim_match(
-        constants.TIME, [self.kpi, self.revenue_per_kpi, self.controls]
+        constants.TIME,
+        [
+            self.kpi,
+            self.revenue_per_kpi,
+            self.controls,
+            self.non_media_treatments,
+        ],
     )
     _check_dim_match(constants.MEDIA_CHANNEL, [self.media, self.media_spend])
     _check_dim_match(
         constants.RF_CHANNEL, [self.reach, self.frequency, self.rf_spend]
     )
+    _check_dim_match(constants.ORGANIC_MEDIA_CHANNEL, [self.organic_media])
+    _check_dim_match(
+        constants.ORGANIC_RF_CHANNEL,
+        [self.organic_reach, self.organic_frequency],
+    )
+    _check_dim_match(constants.NON_MEDIA_CHANNEL, [self.non_media_treatments])
     _check_dim_match(constants.CONTROL_VARIABLE, [self.controls])
 
   def _validate_media_channels(self):
@@ -401,6 +523,9 @@ class InputData:
     self._validate_time(self.media)
     self._validate_time(self.reach)
     self._validate_time(self.frequency)
+    self._validate_time(self.organic_media)
+    self._validate_time(self.organic_reach)
+    self._validate_time(self.organic_frequency)
 
     # Time coordinates must be evenly spaced.
     try:
@@ -441,6 +566,10 @@ class InputData:
     self._validate_time_coord_format(self.reach)
     self._validate_time_coord_format(self.frequency)
     self._validate_time_coord_format(self.rf_spend)
+    self._validate_time_coord_format(self.organic_media)
+    self._validate_time_coord_format(self.organic_reach)
+    self._validate_time_coord_format(self.organic_frequency)
+    self._validate_time_coord_format(self.non_media_treatments)
 
   def _validate_time_coord_format(self, array: xr.DataArray | None):
     """Validates the `time` dimensions format of the selected DataArray.
@@ -492,6 +621,13 @@ class InputData:
       data.append(self.reach)
       data.append(self.frequency)
       data.append(self.rf_spend)
+    if self.organic_media is not None:
+      data.append(self.organic_media)
+    if self.organic_reach is not None:
+      data.append(self.organic_reach)
+      data.append(self.organic_frequency)
+    if self.non_media_treatments is not None:
+      data.append(self.non_media_treatments)
 
     return xr.combine_by_coords(data)
 

@@ -17,6 +17,7 @@
 from collections.abc import Sequence
 import dataclasses
 import datetime
+from typing import Sequence
 import immutabledict
 from meridian import constants as c
 from meridian.data import input_data
@@ -509,8 +510,11 @@ def random_media_da(
     n_media_channels: int,
     seed: int = 0,
     date_format: str = c.DATE_FORMAT,
-    explicit_time_index=None,
+    explicit_time_index: Sequence[str] | None = None,
     explicit_media_channel_names: Sequence[str] | None = None,
+    array_name: str = 'media',
+    channel_variable_name: str = 'media_channel',
+    channel_prefix: str = 'ch_',
 ) -> xr.DataArray:
   """Generates a sample `media` DataArray.
 
@@ -524,6 +528,9 @@ def random_media_da(
     explicit_time_index: If given, ignore `date_format` and use this as is
     explicit_media_channel_names: If given, ignore `n_media_channels` and use
       this as is
+    array_name: The name of the array to be created
+    channel_variable_name: The name of the channel variable
+    channel_prefix: The prefix of the channel names
 
   Returns:
     A DataArray containing random data.
@@ -552,17 +559,43 @@ def random_media_da(
   media_channels = (
       explicit_media_channel_names
       if explicit_media_channel_names is not None
-      else _sample_names(prefix='ch_', n_names=n_media_channels)
+      else _sample_names(prefix=channel_prefix, n_names=n_media_channels)
   )
   return xr.DataArray(
       media,
-      dims=['geo', 'media_time', 'media_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': media_time,
-          'media_channel': media_channels,
+          channel_variable_name: media_channels,
       },
-      name='media',
+      name=array_name,
+  )
+
+
+def random_organic_media_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_media_channels: int,
+    seed: int = 0,
+    date_format: str = c.DATE_FORMAT,
+    explicit_time_index: Sequence[str] | None = None,
+    explicit_media_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_media` DataArray."""
+  return random_media_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_media_channels=n_organic_media_channels,
+      seed=seed,
+      date_format=date_format,
+      explicit_time_index=explicit_time_index,
+      explicit_media_channel_names=explicit_media_channel_names,
+      array_name='organic_media',
+      channel_variable_name='organic_media_channel',
+      channel_prefix='organic_media_',
   )
 
 
@@ -639,7 +672,7 @@ def random_controls_da(
     n_controls: int,
     seed: int = 0,
     date_format: str = c.DATE_FORMAT,
-    explicit_time_index=None,
+    explicit_time_index: Sequence[str] | None = None,
 ) -> xr.DataArray:
   """Generates a sample `controls` DataArray.
 
@@ -771,6 +804,9 @@ def random_reach_da(
     n_rf_channels: int,
     seed: int = 0,
     explicit_rf_channel_names: Sequence[str] | None = None,
+    array_name: str = 'reach',
+    channel_variable_name: str = 'rf_channel',
+    channel_prefix: str = 'rf_ch_',
 ) -> xr.DataArray:
   """Generates a sample `reach` DataArray."""
 
@@ -791,19 +827,41 @@ def random_reach_da(
   channels = (
       explicit_rf_channel_names
       if explicit_rf_channel_names is not None
-      else _sample_names(prefix='rf_ch_', n_names=n_rf_channels)
+      else _sample_names(prefix=channel_prefix, n_names=n_rf_channels)
   )
   return xr.DataArray(
       reach,
-      dims=['geo', 'media_time', 'rf_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': _sample_times(
               n_times=n_media_times, start_date=start_date
           ),
-          'rf_channel': channels,
+          channel_variable_name: channels,
       },
-      name='reach',
+      name=array_name,
+  )
+
+
+def random_organic_reach_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_rf_channels: int,
+    seed: int = 0,
+    explicit_organic_rf_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_reach` DataArray."""
+  return random_reach_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_rf_channels=n_organic_rf_channels,
+      seed=seed,
+      explicit_rf_channel_names=explicit_organic_rf_channel_names,
+      array_name='organic_reach',
+      channel_variable_name='organic_rf_channel',
+      channel_prefix='organic_rf_ch_',
   )
 
 
@@ -813,6 +871,10 @@ def random_frequency_da(
     n_media_times: int,
     n_rf_channels: int,
     seed: int = 0,
+    explicit_rf_channel_names: Sequence[str] | None = None,
+    array_name: str = 'frequency',
+    channel_variable_name: str = 'rf_channel',
+    channel_prefix: str = 'rf_ch_',
 ) -> xr.DataArray:
   """Generates a sample `frequency` DataArray."""
 
@@ -826,17 +888,45 @@ def random_frequency_da(
       np.random.normal(3, 5, size=(n_geos, n_media_times, n_rf_channels))
   )
 
+  channels = (
+      explicit_rf_channel_names
+      if explicit_rf_channel_names is not None
+      else _sample_names(prefix=channel_prefix, n_names=n_rf_channels)
+  )
+
   return xr.DataArray(
       frequency,
-      dims=['geo', 'media_time', 'rf_channel'],
+      dims=['geo', 'media_time', channel_variable_name],
       coords={
           'geo': _sample_names(prefix='geo_', n_names=n_geos),
           'media_time': _sample_times(
               n_times=n_media_times, start_date=start_date
           ),
-          'rf_channel': _sample_names(prefix='rf_ch_', n_names=n_rf_channels),
+          channel_variable_name: channels,
       },
-      name='frequency',
+      name=array_name,
+  )
+
+
+def random_organic_frequency_da(
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_organic_rf_channels: int,
+    seed: int = 0,
+    explicit_organic_rf_channel_names: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `organic_frequency` DataArray."""
+  return random_frequency_da(
+      n_geos=n_geos,
+      n_times=n_times,
+      n_media_times=n_media_times,
+      n_rf_channels=n_organic_rf_channels,
+      seed=seed,
+      explicit_rf_channel_names=explicit_organic_rf_channel_names,
+      array_name='organic_frequency',
+      channel_variable_name='organic_rf_channel',
+      channel_prefix='organic_rf_ch_',
   )
 
 
@@ -888,15 +978,69 @@ def random_rf_spend_nd_da(
   )
 
 
+def random_non_media_treatments_da(
+    media: xr.DataArray,
+    n_geos: int,
+    n_times: int,
+    n_non_media_channels: int,
+    seed: int = 0,
+    date_format: str = c.DATE_FORMAT,
+    explicit_time_index: Sequence[str] | None = None,
+) -> xr.DataArray:
+  """Generates a sample `non_media_treatments` DataArray.
+
+  Args:
+    media: The media data array
+    n_geos: Number of geos
+    n_times: Number of time periods
+    n_non_media_channels: Number of non media channels
+    seed: Random seed used by `np.random.seed()`
+    date_format: The date format to use for time coordinate labels
+    explicit_time_index: If given, ignore `date_format` and use this as is
+
+  Returns:
+    A DataArray containing random non-media variable.
+  """
+
+  np.random.seed(seed)
+
+  non_media_channel = abs(np.random.normal(2, 1, size=(n_geos, n_times, 1)))
+  media_common = media[:, (len(media.coords['media_time']) - n_times) :, :]
+  non_media_treatments = np.random.normal(
+      0.8 * media_common.mean(axis=2, keepdims=True),
+      non_media_channel,
+      size=(n_geos, n_times, n_non_media_channels),
+  )
+  return xr.DataArray(
+      non_media_treatments,
+      dims=['geo', 'time', 'non_media_channel'],
+      coords={
+          'geo': _sample_names(prefix='geo_', n_names=n_geos),
+          'time': (
+              _sample_times(n_times=n_times, date_format=date_format)
+              if explicit_time_index is None
+              else explicit_time_index
+          ),
+          'non_media_channel': _sample_names(
+              prefix='non_media_', n_names=n_non_media_channels
+          ),
+      },
+      name='non_media_treatments',
+  )
+
+
 def random_dataset(
-    n_geos,
-    n_times,
-    n_media_times,
-    n_controls,
-    n_media_channels=None,
-    n_rf_channels=None,
+    n_geos: int,
+    n_times: int,
+    n_media_times: int,
+    n_controls: int,
+    n_non_media_channels: int | None = None,
+    n_organic_media_channels: int | None = None,
+    n_organic_rf_channels: int | None = None,
+    n_media_channels: int | None = None,
+    n_rf_channels: int | None = None,
     revenue_per_kpi_value: float | None = 3.14,
-    seed=0,
+    seed: int = 0,
     remove_media_time: bool = False,
 ):
   """Generates a random dataset."""
@@ -958,6 +1102,47 @@ def random_dataset(
       n_controls=n_controls,
       seed=seed,
   )
+  if n_non_media_channels:
+    non_media_treatments = random_non_media_treatments_da(
+        media=media if n_media_channels else reach,
+        n_geos=n_geos,
+        n_times=n_times,
+        n_non_media_channels=n_non_media_channels,
+        seed=seed,
+    )
+  else:
+    non_media_treatments = None
+
+  if n_organic_media_channels:
+    organic_media = random_organic_media_da(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_organic_media_channels=n_organic_media_channels,
+        seed=seed,
+    )
+  else:
+    organic_media = None
+
+  if n_organic_rf_channels:
+    organic_reach = random_organic_reach_da(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_organic_rf_channels=n_organic_rf_channels,
+        seed=seed,
+    )
+    organic_frequency = random_organic_frequency_da(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_organic_rf_channels=n_organic_rf_channels,
+        seed=seed,
+    )
+  else:
+    organic_reach = None
+    organic_frequency = None
+
   kpi = random_kpi_da(
       media=media if n_media_channels else reach,
       controls=controls,
@@ -989,6 +1174,29 @@ def random_dataset(
     dataset = xr.combine_by_coords(
         [dataset, reach_renamed, frequency_renamed, rf_spend]
     )
+  if non_media_treatments is not None:
+    dataset = xr.combine_by_coords([dataset, non_media_treatments])
+  if organic_media is not None:
+    organic_media_renamed = (
+        organic_media.rename({'media_time': 'time'})
+        if remove_media_time
+        else organic_media
+    )
+    dataset = xr.combine_by_coords([dataset, organic_media_renamed])
+  if organic_reach is not None:
+    organic_reach_renamed = (
+        organic_reach.rename({'media_time': 'time'})
+        if remove_media_time
+        else organic_reach
+    )
+    organic_frequency_renamed = (
+        organic_frequency.rename({'media_time': 'time'})
+        if remove_media_time
+        else organic_frequency
+    )
+    dataset = xr.combine_by_coords(
+        [dataset, organic_reach_renamed, organic_frequency_renamed]
+    )
   return dataset
 
 
@@ -1000,6 +1208,10 @@ def dataset_to_dataframe(
     reach_column_names: list[str] | None = None,
     frequency_column_names: list[str] | None = None,
     rf_spend_column_names: list[str] | None = None,
+    non_media_column_names: list[str] | None = None,
+    organic_media_column_names: list[str] | None = None,
+    organic_reach_column_names: list[str] | None = None,
+    organic_frequency_column_names: list[str] | None = None,
 ) -> pd.DataFrame:
   """Converts a dataset into the `pd.DataFrame` format.
 
@@ -1018,10 +1230,20 @@ def dataset_to_dataframe(
       the output DataFrame.
     rf_spend_column_names: A list of desired column names for `rf_spend` data in
       the output DataFrame.
+    non_media_column_names: A list of desired column names for
+      non_media_treatments data in the output DataFrame.
+    organic_media_column_names: A list of desired column names for organic_media
+      data in the output DataFrame.
+    organic_reach_column_names: A list of desired column names for organic_reach
+      data in the output DataFrame.
+    organic_frequency_column_names: A list of desired column names for
+      organic_frequency data in the output DataFrame.
 
   Returns:
     A Pandas DataFrame with columns `geo` and `time` followed by `kpi`,
-    `revenue_per_kpi`, `population`, `media`, `media_spend` and `controls` data.
+    `revenue_per_kpi`, `population`, `controls`, `media`, `media_spend`,
+    `reach`, `frequency`, `rf_spend`, `non_media_treatments`, `organic media`,
+    `organic_reach`, and `organic_frequency` data.
   """
   kpi = dataset[c.KPI].to_dataframe(name=c.KPI)
   revenue_per_kpi = dataset[c.REVENUE_PER_KPI].to_dataframe(
@@ -1033,6 +1255,15 @@ def dataset_to_dataframe(
   controls.columns = controls_column_names
 
   result = kpi.join(revenue_per_kpi).join(population).join(controls)
+
+  if non_media_column_names is not None:
+    non_media_treatments = (
+        dataset[c.NON_MEDIA_TREATMENTS]
+        .to_dataframe(name=c.NON_MEDIA_TREATMENTS)
+        .unstack()
+    )
+    non_media_treatments.columns = non_media_column_names
+    result = result.join(non_media_treatments, how='right')
 
   if media_column_names is not None:
     media = dataset[c.MEDIA].to_dataframe(name=c.MEDIA).unstack()
@@ -1063,6 +1294,30 @@ def dataset_to_dataframe(
         .join(frequency, how='right')
         .join(rf_spend)
     )
+
+  if organic_media_column_names is not None:
+    organic_media = (
+        dataset[c.ORGANIC_MEDIA].to_dataframe(name=c.ORGANIC_MEDIA).unstack()
+    )
+    organic_media.columns = organic_media_column_names
+    organic_media.index.names = [c.GEO, c.TIME]
+    result = result.join(organic_media, how='right')
+
+  if organic_reach_column_names is not None:
+    organic_reach = (
+        dataset[c.ORGANIC_REACH].to_dataframe(name=c.ORGANIC_REACH).unstack()
+    )
+    organic_reach.columns = organic_reach_column_names
+    organic_reach.index.names = [c.GEO, c.TIME]
+
+    organic_frequency = (
+        dataset[c.ORGANIC_FREQUENCY]
+        .to_dataframe(name=c.ORGANIC_FREQUENCY)
+        .unstack()
+    )
+    organic_frequency.columns = organic_frequency_column_names
+    organic_frequency.index.names = [c.GEO, c.TIME]
+    result = result.join(organic_reach, how='right').join(organic_frequency)
 
   return result.reset_index()
 
@@ -1102,6 +1357,9 @@ def sample_coord_to_columns(
     n_controls: int,
     n_media_channels: int | None = None,
     n_rf_channels: int | None = None,
+    n_non_media_channels: int | None = None,
+    n_organic_media_channels: int | None = None,
+    n_organic_rf_channels: int | None = None,
     include_revenue_per_kpi: bool = True,
 ) -> load.CoordToColumns:
   """Returns a sample `coord_to_columns` mapping for testing."""
@@ -1122,6 +1380,25 @@ def sample_coord_to_columns(
     frequency = None
     rf_spend = None
 
+  if n_organic_media_channels is not None:
+    organic_media = _sample_names('organic_media_', n_organic_media_channels)
+  else:
+    organic_media = None
+
+  if n_organic_rf_channels is not None:
+    organic_reach = _sample_names('organic_reach_', n_organic_rf_channels)
+    organic_frequency = _sample_names(
+        'organic_frequency_', n_organic_rf_channels
+    )
+  else:
+    organic_reach = None
+    organic_frequency = None
+
+  if n_non_media_channels is not None:
+    non_media_treatments = _sample_names('non_media_', n_non_media_channels)
+  else:
+    non_media_treatments = None
+
   return load.CoordToColumns(
       geo=c.GEO,
       time=c.TIME,
@@ -1134,6 +1411,10 @@ def sample_coord_to_columns(
       reach=reach,
       frequency=frequency,
       rf_spend=rf_spend,
+      non_media_treatments=non_media_treatments,
+      organic_media=organic_media,
+      organic_reach=organic_reach,
+      organic_frequency=organic_frequency,
   )
 
 
@@ -1158,8 +1439,11 @@ def sample_input_data_revenue(
     n_times: int = 50,
     n_media_times: int = 53,
     n_controls: int = 2,
+    n_non_media_channels: int | None = None,
     n_media_channels: int | None = None,
     n_rf_channels: int | None = None,
+    n_organic_media_channels: int | None = None,
+    n_organic_rf_channels: int | None = None,
     seed: int = 0,
 ):
   """Generates sample InputData for `kpi_type='revenue'`."""
@@ -1168,8 +1452,11 @@ def sample_input_data_revenue(
       n_times=n_times,
       n_media_times=n_media_times,
       n_controls=n_controls,
+      n_non_media_channels=n_non_media_channels,
       n_media_channels=n_media_channels,
       n_rf_channels=n_rf_channels,
+      n_organic_media_channels=n_organic_media_channels,
+      n_organic_rf_channels=n_organic_rf_channels,
       revenue_per_kpi_value=1.0,
       seed=seed,
   )
@@ -1179,11 +1466,19 @@ def sample_input_data_revenue(
       revenue_per_kpi=None,
       population=dataset.population,
       controls=dataset.controls,
+      non_media_treatments=dataset.non_media_treatments
+      if n_non_media_channels
+      else None,
       media=dataset.media if n_media_channels else None,
       media_spend=dataset.media_spend if n_media_channels else None,
       reach=dataset.reach if n_rf_channels else None,
       frequency=dataset.frequency if n_rf_channels else None,
       rf_spend=dataset.rf_spend if n_rf_channels else None,
+      organic_media=dataset.organic_media if n_organic_media_channels else None,
+      organic_reach=dataset.organic_reach if n_organic_rf_channels else None,
+      organic_frequency=dataset.organic_frequency
+      if n_organic_rf_channels
+      else None,
   )
 
 
@@ -1192,8 +1487,11 @@ def sample_input_data_non_revenue_revenue_per_kpi(
     n_times: int = 50,
     n_media_times: int = 53,
     n_controls: int = 2,
+    n_non_media_channels: int | None = None,
     n_media_channels: int | None = None,
     n_rf_channels: int | None = None,
+    n_organic_media_channels: int | None = None,
+    n_organic_rf_channels: int | None = None,
     seed: int = 0,
 ):
   """Generates sample InputData for `non_revenue` KPI w/ revenue_per_kpi."""
@@ -1202,8 +1500,11 @@ def sample_input_data_non_revenue_revenue_per_kpi(
       n_times=n_times,
       n_media_times=n_media_times,
       n_controls=n_controls,
+      n_non_media_channels=n_non_media_channels,
       n_media_channels=n_media_channels,
       n_rf_channels=n_rf_channels,
+      n_organic_media_channels=n_organic_media_channels,
+      n_organic_rf_channels=n_organic_rf_channels,
       seed=seed,
   )
   return input_data.InputData(
@@ -1212,11 +1513,19 @@ def sample_input_data_non_revenue_revenue_per_kpi(
       revenue_per_kpi=dataset.revenue_per_kpi,
       population=dataset.population,
       controls=dataset.controls,
+      non_media_treatments=dataset.non_media_treatments
+      if n_non_media_channels
+      else None,
       media=dataset.media if n_media_channels else None,
       media_spend=dataset.media_spend if n_media_channels else None,
       reach=dataset.reach if n_rf_channels else None,
       frequency=dataset.frequency if n_rf_channels else None,
       rf_spend=dataset.rf_spend if n_rf_channels else None,
+      organic_media=dataset.organic_media if n_organic_media_channels else None,
+      organic_reach=dataset.organic_reach if n_organic_rf_channels else None,
+      organic_frequency=dataset.organic_frequency
+      if n_organic_rf_channels
+      else None,
   )
 
 
@@ -1225,8 +1534,11 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
     n_times: int = 50,
     n_media_times: int = 53,
     n_controls: int = 2,
+    n_non_media_channels: int | None = None,
     n_media_channels: int | None = None,
     n_rf_channels: int | None = None,
+    n_organic_media_channels: int | None = None,
+    n_organic_rf_channels: int | None = None,
     seed: int = 0,
 ):
   """Generates sample InputData for `non_revenue` KPI w/o revenue_per_kpi."""
@@ -1235,8 +1547,11 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
       n_times=n_times,
       n_media_times=n_media_times,
       n_controls=n_controls,
+      n_non_media_channels=n_non_media_channels,
       n_media_channels=n_media_channels,
       n_rf_channels=n_rf_channels,
+      n_organic_media_channels=n_organic_media_channels,
+      n_organic_rf_channels=n_organic_rf_channels,
       seed=seed,
   )
   return input_data.InputData(
@@ -1245,9 +1560,17 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
       revenue_per_kpi=None,
       population=dataset.population,
       controls=dataset.controls,
+      non_media_treatments=dataset.non_media_treatments
+      if n_non_media_channels
+      else None,
       media=dataset.media if n_media_channels else None,
       media_spend=dataset.media_spend if n_media_channels else None,
       reach=dataset.reach if n_rf_channels else None,
       frequency=dataset.frequency if n_rf_channels else None,
       rf_spend=dataset.rf_spend if n_rf_channels else None,
+      organic_media=dataset.organic_media if n_organic_media_channels else None,
+      organic_reach=dataset.organic_reach if n_organic_rf_channels else None,
+      organic_frequency=dataset.organic_frequency
+      if n_organic_rf_channels
+      else None,
   )

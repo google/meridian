@@ -79,8 +79,10 @@ class XrDatasetDataLoader(InputDataLoader):
     """Constructor.
 
     The coordinates of the input dataset should be: `time`, `media_time`,
-    `control_variable`, `geo` (optional for a national model) and either
-    `media_channel`, `rf_channel`, or both.
+    `control_variable`, `geo` (optional for a national model),
+    `non_media_channel` (optional), `organic_media_channel` (optional),
+    `organic_rf_channel` (optional), and
+    either `media_channel`, `rf_channel`, or both.
 
     Coordinate labels for `time` and `media_time` must be formatted in
     `"yyyy-mm-dd"` date format.
@@ -100,6 +102,10 @@ class XrDatasetDataLoader(InputDataLoader):
     *   `frequency`: `(geo, media_time, rf_channel)` - optional
     *   `rf_spend`: `(geo, time, rf_channel)`, `(1, time, rf_channel)`,
         `(geo, 1, rf_channel)`, or `(rf_channel)` - optional
+    *   `non_media_treatments`: `(geo, time, non_media_channel)` - optional
+    *   `organic_media`: `(geo, media_time, organic_media_channel)` - optional
+    *   `organic_reach`: `(geo, media_time, organic_rf_channel)` - optional
+    *   `organic_frequency`: `(geo, media_time, organic_rf_channel)` - optional
 
     In a national model, the dataset should consist of the following arrays of
     the following dimensions. We use `[1,]` to indicate an optional dimension
@@ -116,6 +122,10 @@ class XrDatasetDataLoader(InputDataLoader):
     *   `frequency`: `([1,] media_time, rf_channel)` - optional
     *   `rf_spend`: `([1,] time, rf_channel)` or `([1,], [1,], rf_channel)` -
         optional
+    *   `non_media_treatments`: `([1,] time, non_media_channel)` - optional
+    *   `organic_media`: `([1,] media_time, organic_media_channel)` - optional
+    *   `organic_reach`: `([1,] media_time, organic_rf_channel)` - optional
+    *   `organic_frequency`: `([1,] media_time, organic_rf_channel)` - optional
 
     In a national model, the data will be expanded to include a single geo
     dimension.
@@ -152,11 +162,13 @@ class XrDatasetDataLoader(InputDataLoader):
       name_mapping: An optional dictionary whose keys are the current
         coordinates or array names in the `input` dataset and whose values are
         the desired coordinates (`geo`, `time`, `media_time`, `media_channel`
-        and/or `rf_channel`, `control_variable`) or array names (`kpi`,
+        and/or `rf_channel`, `control_variable`, `non_media_channel`,
+        `organic_media_channel`, `organic_rf_channel`) or array names (`kpi`,
         `revenue_per_kpi`, `media`, `media_spend` and/or `rf_spend`, `controls`,
-        `population`). Mapping must be provided if the names in the `input`
-        dataset are different from the required ones, otherwise errors are
-        thrown.
+        `population`, `non_media_treatments`, `organic_media`, `organic_reach`,
+        `organic_frequency`). Mapping must be provided if the names in the
+        `input` dataset are different from the required ones, otherwise errors
+        are thrown.
     """
     self.kpi_type = kpi_type
     if name_mapping is None:
@@ -321,6 +333,19 @@ class XrDatasetDataLoader(InputDataLoader):
       if self.dataset.frequency.isnull().any(axis=None):
         raise ValueError('NA values found in the frequency array.')
 
+    # Check if there are no NAs in organic media.
+    if constants.ORGANIC_MEDIA in self.dataset.data_vars.keys():
+      if self.dataset.organic_media.isnull().any(axis=None):
+        raise ValueError('NA values found in the organic media array.')
+
+    # Check if there are no NAs in organic reach & frequency.
+    if constants.ORGANIC_REACH in self.dataset.data_vars.keys():
+      if self.dataset.organic_reach.isnull().any(axis=None):
+        raise ValueError('NA values found in the organic reach array.')
+    if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys():
+      if self.dataset.organic_frequency.isnull().any(axis=None):
+        raise ValueError('NA values found in the organic frequency array.')
+
     # Arrays in which NAs are expected in the lagged-media period.
     na_arrays = [
         constants.KPI,
@@ -332,6 +357,14 @@ class XrDatasetDataLoader(InputDataLoader):
     ) | self.dataset[constants.CONTROLS].isnull().any(
         dim=[constants.GEO, constants.CONTROL_VARIABLE]
     )
+
+    if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys():
+      na_arrays.append(constants.NON_MEDIA_TREATMENTS)
+      na_mask |= (
+          self.dataset[constants.NON_MEDIA_TREATMENTS]
+          .isnull()
+          .any(dim=[constants.GEO, constants.NON_MEDIA_CHANNEL])
+      )
 
     if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys():
       na_arrays.append(constants.REVENUE_PER_KPI)
@@ -377,9 +410,9 @@ class XrDatasetDataLoader(InputDataLoader):
     for array in na_arrays:
       if np.any(np.isnan(self.dataset[array].isel(time=~na_mask))):
         raise ValueError(
-            'NA values found in non-media columns outside the lagged-media'
-            f' period {na_period} (continuous window of 100% NA values in all'
-            ' non-media columns).'
+            'NA values found in other than media columns outside the'
+            f' lagged-media period {na_period} (continuous window of 100% NA'
+            ' values in all other than media columns).'
         )
 
     # Create new `time` and `media_time` coordinates.
@@ -399,6 +432,12 @@ class XrDatasetDataLoader(InputDataLoader):
         .dropna(dim=constants.TIME)
         .rename({constants.TIME: new_time})
     )
+    if constants.NON_MEDIA_TREATMENTS in new_dataset.data_vars.keys():
+      new_dataset[constants.NON_MEDIA_TREATMENTS] = (
+          new_dataset[constants.NON_MEDIA_TREATMENTS]
+          .dropna(dim=constants.TIME)
+          .rename({constants.TIME: new_time})
+      )
 
     if constants.REVENUE_PER_KPI in new_dataset.data_vars.keys():
       new_dataset[constants.REVENUE_PER_KPI] = (
@@ -457,6 +496,26 @@ class XrDatasetDataLoader(InputDataLoader):
         if constants.RF_SPEND in self.dataset.data_vars.keys()
         else None
     )
+    non_media_treatments = (
+        self.dataset.non_media_treatments
+        if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys()
+        else None
+    )
+    organic_media = (
+        self.dataset.organic_media
+        if constants.ORGANIC_MEDIA in self.dataset.data_vars.keys()
+        else None
+    )
+    organic_reach = (
+        self.dataset.organic_reach
+        if constants.ORGANIC_REACH in self.dataset.data_vars.keys()
+        else None
+    )
+    organic_frequency = (
+        self.dataset.organic_frequency
+        if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys()
+        else None
+    )
     return input_data.InputData(
         kpi=self.dataset.kpi,
         kpi_type=self.kpi_type,
@@ -468,6 +527,10 @@ class XrDatasetDataLoader(InputDataLoader):
         reach=reach,
         frequency=frequency,
         rf_spend=rf_spend,
+        non_media_treatments=non_media_treatments,
+        organic_media=organic_media,
+        organic_reach=organic_reach,
+        organic_frequency=organic_frequency,
     )
 
 
@@ -494,6 +557,14 @@ class CoordToColumns:
       data.
     rf_spend: List of column names containing `rf_spend` values in the input
       data.
+    non_media_treatments: List of column names containing `non_media_treatments` values in the input
+      data.
+    organic_media: List of column names containing `organic_media` values in the
+      input data.
+    organic_reach: List of column names containing `organic_reach` values in the
+      input data.
+    organic_frequency: List of column names containing `organic_frequency`
+      values in the input data.
   """
 
   controls: Sequence[str]
@@ -509,6 +580,12 @@ class CoordToColumns:
   reach: Sequence[str] | None = None
   frequency: Sequence[str] | None = None
   rf_spend: Sequence[str] | None = None
+  # Non-media treatments data
+  non_media_treatments: Sequence[str] | None = None
+  # Organic media and RF data
+  organic_media: Sequence[str] | None = None
+  organic_reach: Sequence[str] | None = None
+  organic_frequency: Sequence[str] | None = None
 
   def __post_init__(self):
     has_media_fields = self.media and self.media_spend
@@ -533,6 +610,9 @@ class DataFrameDataLoader(InputDataLoader):
   *   `controls` (multiple columns)
   *   (1) `media`, `media_spend` (multiple columns)
   *   (2) `reach`, `frequency`, `rf_spend` (multiple columns)
+  *   `non_media_treatments` (multiple columns, optional)
+  *   `organic_media` (multiple columns, optional)
+  *   `organic_reach`, `organic_frequency` (multiple columns, optional)
 
   The `DataFrame` must include (1) or (2), but doesn't need to include both.
   Also, each media channel must appear in (1) or (2), but not both.
@@ -546,6 +626,9 @@ class DataFrameDataLoader(InputDataLoader):
       `media_spend_to_channel` are required. If `reach` and `frequency` data is
       provided, then `reach_to_channel` and `frequency_to_channel` and
       `rf_spend_to_channel` are required.
+  *   If `organic_reach` and `organic_frequency` data is provided, then
+      `organic_reach_to_channel` and `organic_frequency_to_channel` are
+      required.
 
   Example:
 
@@ -563,6 +646,10 @@ class DataFrameDataLoader(InputDataLoader):
     reach=['reach_yt'],
     frequency=['frequency_yt'],
     rf_spend=['rf_spend_yt'],
+    non_media_treatments=['price', 'discount']
+    organic_media=['organic_impressions_blog'],
+    organic_reach=['organic_reach_newsletter'],
+    organic_frequency=['organic_frequency_newsletter'],
   )
   media_to_channel = {
       'impressions_tv': 'tv',
@@ -575,6 +662,8 @@ class DataFrameDataLoader(InputDataLoader):
   reach_to_channel = {'reach_yt': 'yt'}
   frequency_to_channel = {'frequency_yt': 'yt'}
   rf_spend_to_channel = {'rf_spend_yt': 'yt'}
+  organic_reach_to_channel = {'organic_reach_newsletter': 'newsletter'}
+  organic_frequency_to_channel = {'organic_frequency_newsletter': 'newsletter'}
 
   data_loader = DataFrameDataLoader(
       df=df,
@@ -584,7 +673,9 @@ class DataFrameDataLoader(InputDataLoader):
       media_spend_to_channel=media_spend_to_channel,
       reach_to_channel=reach_to_channel,
       frequency_to_channel=frequency_to_channel,
-      rf_spend_to_channel=rf_spend_to_channel
+      rf_spend_to_channel=rf_spend_to_channel,
+      organic_reach_to_channel=organic_reach_to_channel,
+      organic_frequency_to_channel=organic_frequency_to_channel,
   )
   data = data_loader.load()
   ```
@@ -666,6 +757,27 @@ class DataFrameDataLoader(InputDataLoader):
           'rf_spend_tv': 'tv', 'rf_spend_yt': 'yt', 'rf_spend_fb': 'fb'
       }
       ```
+
+    organic_reach_to_channel: A dictionary whose keys are the actual column names
+      for `organic_reach` data in the dataframe, and the values are the desired
+      channel names. These are the same as for the `organic_frequency` data.
+      Example:
+
+      ```
+      organic_reach_to_channel = {
+          'organic_reach_newsletter': 'newsletter',
+      }
+      ```
+
+    organic_frequency_to_channel: A dictionary whose keys are the actual column
+      names for `organic_frequency` data in the dataframe, and the values are
+      the desired channel names. These are the same as for the `organic_reach`
+      data. Example:
+
+      ```
+      organic_frequency_to_channel = {
+          'organic_frequency_newsletter': 'newsletter',
+      }
   """  # pyformat: disable
 
   df: pd.DataFrame
@@ -676,6 +788,8 @@ class DataFrameDataLoader(InputDataLoader):
   reach_to_channel: Mapping[str, str] | None = None
   frequency_to_channel: Mapping[str, str] | None = None
   rf_spend_to_channel: Mapping[str, str] | None = None
+  organic_reach_to_channel: Mapping[str, str] | None = None
+  organic_frequency_to_channel: Mapping[str, str] | None = None
 
   # If [key] in the following dict exists as an attribute in `coord_to_columns`,
   # then the corresponding attribute must exist in this loader instance.
@@ -685,6 +799,8 @@ class DataFrameDataLoader(InputDataLoader):
       'reach': 'reach_to_channel',
       'frequency': 'frequency_to_channel',
       'rf_spend': 'rf_spend_to_channel',
+      'organic_reach': 'organic_reach_to_channel',
+      'organic_frequency': 'organic_frequency_to_channel',
   })
 
   def __post_init__(self):
@@ -759,7 +875,7 @@ class DataFrameDataLoader(InputDataLoader):
       self.df[population_column_name] = (
           constants.NATIONAL_MODEL_DEFAULT_POPULATION_VALUE
       )
-      self.df.loc[:non_lagged_idx-1, population_column_name] = None
+      self.df.loc[: non_lagged_idx - 1, population_column_name] = None
 
     if geo_column_name not in self.df.columns:
       self.df[geo_column_name] = constants.NATIONAL_MODEL_DEFAULT_GEO_NAME
@@ -819,6 +935,19 @@ class DataFrameDataLoader(InputDataLoader):
       if self.df[self.coord_to_columns.frequency].isna().any(axis=None):
         raise ValueError('NA values found in the frequency columns.')
 
+    # Check if ther are no NAs in organic_media.
+    if self.coord_to_columns.organic_media is not None:
+      if self.df[self.coord_to_columns.organic_media].isna().any(axis=None):
+        raise ValueError('NA values found in the organic_media columns.')
+
+    # Check if there are no NAs in organic_reach & organic_frequency.
+    if self.coord_to_columns.organic_reach is not None:
+      if self.df[self.coord_to_columns.organic_reach].isna().any(axis=None):
+        raise ValueError('NA values found in the organic_reach columns.')
+    if self.coord_to_columns.organic_frequency is not None:
+      if self.df[self.coord_to_columns.organic_frequency].isna().any(axis=None):
+        raise ValueError('NA values found in the organic_frequency columns.')
+
     # Determine columns in which NAs are expected in the lagged-media period.
     na_columns = []
     coords = [
@@ -832,18 +961,22 @@ class DataFrameDataLoader(InputDataLoader):
       coords.append(constants.MEDIA_SPEND)
     if self.coord_to_columns.rf_spend is not None:
       coords.append(constants.RF_SPEND)
+    if self.coord_to_columns.non_media_treatments is not None:
+      coords.append(constants.NON_MEDIA_TREATMENTS)
     for coord in coords:
       columns = getattr(self.coord_to_columns, coord)
       columns = [columns] if isinstance(columns, str) else columns
       na_columns.extend(columns)
 
-    # Dates with at least one non-NA value in non-media columns
+    # Dates with at least one non-NA value in columns different from media,
+    # reach, frequency, organic_media, organic_reach, and organic_frequency.
     time_column_name = self.coord_to_columns.time
     no_na_period = self.df[(~self.df[na_columns].isna()).any(axis=1)][
         time_column_name
     ].unique()
 
-    # Dates with 100% NA values in all non-media columns.
+    # Dates with 100% NA values in all columns different from media, reach,
+    # frequency, organic_media, organic_reach, and organic_frequency.
     na_period = [
         t for t in self.df[time_column_name].unique() if t not in no_na_period
     ]
@@ -860,7 +993,9 @@ class DataFrameDataLoader(InputDataLoader):
           ' from the earliest time period.'
       )
 
-    # Check if for the non-lagged period, there are no NAs in non-media data.
+    # Check if for the non-lagged period, there are no NAs in data different
+    # from media, reach, frequency, organic_media, organic_reach, and
+    # organic_frequency.
     not_lagged_data = self.df.loc[
         self.df[time_column_name].isin(no_na_period),
         na_columns,
@@ -914,6 +1049,19 @@ class DataFrameDataLoader(InputDataLoader):
         .to_xarray()
     )
     dataset = xr.combine_by_coords([kpi_xr, population_xr, controls_xr])
+
+    if self.coord_to_columns.non_media_treatments is not None:
+      non_media_xr = (
+          df_indexed[self.coord_to_columns.non_media_treatments]
+          .stack()
+          .rename(constants.NON_MEDIA_TREATMENTS)
+          .rename_axis(
+              [constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL]
+          )
+          .to_frame()
+          .to_xarray()
+      )
+      dataset = xr.combine_by_coords([dataset, non_media_xr])
 
     if self.coord_to_columns.revenue_per_kpi is not None:
       revenue_per_kpi_xr = (
@@ -1002,6 +1150,60 @@ class DataFrameDataLoader(InputDataLoader):
           [dataset, reach_xr, frequency_xr, rf_spend_xr]
       )
 
+    if self.coord_to_columns.organic_media is not None:
+      organic_media_xr = (
+          df_indexed[self.coord_to_columns.organic_media]
+          .stack()
+          .rename(constants.ORGANIC_MEDIA)
+          .rename_axis([
+              constants.GEO,
+              constants.MEDIA_TIME,
+              constants.ORGANIC_MEDIA_CHANNEL,
+          ])
+          .to_frame()
+          .to_xarray()
+      )
+      dataset = xr.combine_by_coords([dataset, organic_media_xr])
+
+    if self.coord_to_columns.organic_reach is not None:
+      organic_reach_xr = (
+          df_indexed[self.coord_to_columns.organic_reach]
+          .stack()
+          .rename(constants.ORGANIC_REACH)
+          .rename_axis([
+              constants.GEO,
+              constants.MEDIA_TIME,
+              constants.ORGANIC_RF_CHANNEL,
+          ])
+          .to_frame()
+          .to_xarray()
+      )
+      organic_reach_xr.coords[constants.ORGANIC_RF_CHANNEL] = [
+          self.organic_reach_to_channel[x]
+          for x in organic_reach_xr.coords[constants.ORGANIC_RF_CHANNEL].values
+      ]
+      organic_frequency_xr = (
+          df_indexed[self.coord_to_columns.organic_frequency]
+          .stack()
+          .rename(constants.ORGANIC_FREQUENCY)
+          .rename_axis([
+              constants.GEO,
+              constants.MEDIA_TIME,
+              constants.ORGANIC_RF_CHANNEL,
+          ])
+          .to_frame()
+          .to_xarray()
+      )
+      organic_frequency_xr.coords[constants.ORGANIC_RF_CHANNEL] = [
+          self.organic_frequency_to_channel[x]
+          for x in organic_frequency_xr.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values
+      ]
+      dataset = xr.combine_by_coords(
+          [dataset, organic_reach_xr, organic_frequency_xr]
+      )
+
     # Change back to geo names
     self.df[geo_column_name] = self.df[geo_column_name].replace(
         dict(zip(np.arange(len(geo_names)), geo_names))
@@ -1021,6 +1223,9 @@ class CsvDataLoader(InputDataLoader):
   *   `controls` (multiple columns)
   *   (1) `media`, `media_spend` (multiple columns)
   *   (2) `reach`, `frequency`, `rf_spend` (multiple columns)
+  *   `non_media_treatments` (multiple columns, optional)
+  *   `organic_media` (multiple columns, optional)
+  *   `organic_reach`, `organic_frequency` (multiple columns, optional)
 
   The DataFrame must include either (1) or (2), but doesn't need to include
   both.
@@ -1044,6 +1249,8 @@ class CsvDataLoader(InputDataLoader):
       reach_to_channel: Mapping[str, str] | None = None,
       frequency_to_channel: Mapping[str, str] | None = None,
       rf_spend_to_channel: Mapping[str, str] | None = None,
+      organic_reach_to_channel: Mapping[str, str] | None = None,
+      organic_frequency_to_channel: Mapping[str, str] | None = None,
   ):
     """Constructor.
 
@@ -1056,8 +1263,10 @@ class CsvDataLoader(InputDataLoader):
 
         *   There are no gaps in the data.
         *   For up to `max_lag` initial periods there is only media data and
-            empty cells in all the non-media data columns (`kpi`,
-            `revenue_per_kpi`, `media_spend`, `controls`, and `population`).
+            empty cells in all the data columns different from `media`, `reach`,
+            `frequency`, `organic_media`, `organic_reach` and
+            `organic_frequency` (`kpi`, `revenue_per_kpi`, `media_spend`,
+            `rf_spend`, `controls`, `population` and `non_media_treatments`).
 
       coord_to_columns: A `CoordToColumns` object whose fields are the desired
         coordinates of the `InputData` and the values are the current names of
@@ -1071,8 +1280,15 @@ class CsvDataLoader(InputDataLoader):
             revenue_per_kpi='revenue_per_conversions',
             media=['impressions_tv', impressions_yt', 'impressions_search'],
             spend=['spend_tv', 'spend_yt', 'spend_search'],
+            reach=['reach_fb'],
+            frequency=['frequency_fb'],
+            rf_spend=['rf_spend_fb'],
             controls=['control_income'],
-            population='population'
+            population='population',
+            non_media_treatments=['price', 'discount'],
+            organic_media=['organic_impressions_blog'],
+            organic_reach=['organic_reach_newsletter'],
+            organic_frequency=['organic_frequency_newsletter'],
         )
         ```
 
@@ -1132,6 +1348,27 @@ class CsvDataLoader(InputDataLoader):
         }
         ```
 
+      organic_reach_to_channel: A dictionary whose keys are the actual column
+        names for `organic_reach` data in the dataframe and values are the
+        desired channel names, the same as for the `organic_frequency`. Example:
+
+        ```
+        organic_reach_to_channel = {
+            'organic_reach_newsletter': 'newsletter',
+        }
+        ```
+
+      organic_frequency_to_channel: A dictionary whose keys are the actual
+        column names for `organic_frequency` data in the dataframe and values
+        are the desired channel names, the same as for the `organic_reach`
+        data. Example:
+
+        ```
+        organic_frequency_to_channel = {
+            'organic_frequency_newsletter': 'newsletter',
+        }
+        ```
+
     Note: In a national model, `geo` and `population` are optional. If
     `population` is provided, it is reset to a default value of `1.0`.
 
@@ -1150,6 +1387,8 @@ class CsvDataLoader(InputDataLoader):
         reach_to_channel=reach_to_channel,
         frequency_to_channel=frequency_to_channel,
         rf_spend_to_channel=rf_spend_to_channel,
+        organic_reach_to_channel=organic_reach_to_channel,
+        organic_frequency_to_channel=organic_frequency_to_channel,
     )
 
   def load(self) -> input_data.InputData:
