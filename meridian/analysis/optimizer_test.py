@@ -26,7 +26,7 @@ from collections.abc import Mapping
 import math
 import os
 import tempfile
-from typing import Any
+from typing import Any, cast
 from xml.etree import ElementTree as ET
 
 from absl.testing import absltest
@@ -156,18 +156,29 @@ def _create_budget_data(
     pct_contrib: np.ndarray,
     effectiveness: np.ndarray,
     mroi: np.ndarray | None = None,
+    cpik: np.ndarray | None = None,
     channels: np.ndarray | None = None,
     attrs: Mapping[str, Any] | None = None,
-    use_kpi: bool = False,
 ) -> xr.Dataset:
   channels = (
       [f'channel {i}' for i in range(len(spend))]
       if channels is None
       else channels
   )
+  cpik = (
+      cpik
+      if cpik is not None
+      else tf.transpose(spend / tf.transpose(inc_impact))
+  )
   data_vars = {
       c.SPEND: ([c.CHANNEL], spend),
       c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
+      c.ROI: (
+          [c.CHANNEL, c.METRIC],
+          tf.transpose(tf.math.divide_no_nan(tf.transpose(inc_impact), spend)),
+      ),
+      c.MROI: ([c.CHANNEL, c.METRIC], mroi),
+      c.CPIK: ([c.CHANNEL, c.METRIC], cpik),
       c.INCREMENTAL_IMPACT: ([c.CHANNEL, c.METRIC], inc_impact),
       c.PCT_OF_CONTRIBUTION: ([c.CHANNEL, c.METRIC], pct_contrib),
       c.EFFECTIVENESS: ([c.CHANNEL, c.METRIC], effectiveness),
@@ -177,22 +188,11 @@ def _create_budget_data(
       c.END_DATE: '2020-06-28',
       c.BUDGET: sum(spend),
       c.PROFIT: sum(inc_impact[:, 0]) - sum(spend),
+      c.TOTAL_ROI: sum(inc_impact[:, 0]) / sum(spend),
+      c.TOTAL_CPIK: sum(spend) / sum(inc_impact[:, 0]),
       c.TOTAL_INCREMENTAL_IMPACT: sum(inc_impact[:, 0]),
       c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL,
   }
-  if use_kpi:
-    data_vars[c.CPIK] = (
-        [c.CHANNEL, c.METRIC],
-        tf.transpose(spend / tf.transpose(inc_impact)),
-    )
-    attributes[c.TOTAL_CPIK] = sum(spend) / sum(inc_impact[:, 0])
-  else:
-    data_vars[c.ROI] = (
-        [c.CHANNEL, c.METRIC],
-        tf.transpose(tf.math.divide_no_nan(tf.transpose(inc_impact), spend)),
-    )
-    data_vars[c.MROI] = ([c.CHANNEL, c.METRIC], mroi)
-    attributes[c.TOTAL_ROI] = sum(inc_impact[:, 0]) / sum(spend)
   return xr.Dataset(
       data_vars=data_vars,
       coords={
@@ -264,41 +264,6 @@ _SAMPLE_OPTIMIZED_DATA = _create_budget_data(
     mroi=np.array(
         [[1.4, 1.4, 1.4, 1.4], [1.5, 1.5, 1.5, 1.5], [1.6, 1.6, 1.6, 1.6]]
     ),
-    attrs={c.FIXED_BUDGET: True},
-)
-_SAMPLE_NON_OPTIMIZED_DATA_KPI = _create_budget_data(
-    spend=np.array([200, 100, 300]),
-    inc_impact=np.array(
-        [[280, 280, 279, 281], [150, 150, 149, 151], [330, 330, 329, 331]]
-    ),
-    pct_contrib=np.array([
-        [1.48002565, 1.48002565, 0.36243074, 2.66551235],
-        [1.90578914, 1.90578914, 0.75641038, 3.12185835],
-        [0.52090943, 0.52090943, 0.24711426, 0.81274763],
-    ]),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    use_kpi=True,
-)
-_SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
-    spend=np.array([220, 140, 240]),
-    inc_impact=np.array(
-        [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
-    ),
-    pct_contrib=np.array([
-        [0.94532406, 0.94532406, 0.23230099, 1.70155593],
-        [1.64540553, 1.64540553, 0.65481003, 2.69352735],
-        [0.3454003, 0.3454003, 0.16847587, 0.5343038],
-    ]),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    use_kpi=True,
     attrs={c.FIXED_BUDGET: True},
 )
 
@@ -1111,6 +1076,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               [4.5738173, 4.5914817, 1.6026927, 7.524566],
               [6.6658034, 6.5806994, 1.7257135, 11.7819195],
           ]),
+          expected_cpik=np.array([
+              [2.014588, 2.0058842, 0.48478606, 3.5509517],
+              [1.0528584, 1.0574462, 0.41031447, 1.687805],
+              [2.8098052, 2.8149421, 1.3415098, 4.2544556],
+              [0.3714944, 0.36298645, 0.13289629, 0.6239512],
+              [0.33170277, 0.33070716, 0.08487724, 0.579487],
+          ]),
           use_optimal_frequency=True,
       ),
       dict(
@@ -1144,6 +1116,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               [1.1502323, 1.1511508, 0.47801477, 1.8200259],
               [1.5921059, 1.5740317, 0.56248915, 2.6610544],
           ]),
+          expected_cpik=np.array([
+              [2.014588, 2.0058842, 0.48478606, 3.5509517],
+              [1.0979072, 1.1025534, 0.41657582, 1.7717088],
+              [2.8098052, 2.8149421, 1.3415098, 4.2544556],
+              [1.3132117, 1.305907, 0.54943967, 2.0918553],
+              [1.0760998, 1.0721365, 0.3757926, 1.7777934],
+          ]),
           use_optimal_frequency=False,
       ),
   )
@@ -1154,6 +1133,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       expected_effectiveness,
       expected_spend,
       expected_mroi,
+      expected_cpik,
       use_optimal_frequency,
   ):
     expected_data = _create_budget_data(
@@ -1162,6 +1142,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         pct_contrib=expected_pct_contrib,
         effectiveness=expected_effectiveness,
         mroi=expected_mroi,
+        cpik=expected_cpik,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
@@ -2430,8 +2411,8 @@ class OptimizerOutputTest(parameterized.TestCase):
         use_optimal_frequency=True,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(np.array([0.7]), np.array([1.3])),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA_KPI,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA_KPI,
+        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA,
+        _optimized_data=_SAMPLE_OPTIMIZED_DATA,
         _nonoptimized_data_with_optimal_freq=mock.MagicMock(),
         _optimization_grid=mock.MagicMock(),
     )
@@ -3117,6 +3098,10 @@ class OptimizerKPITest(parameterized.TestCase):
         new_reach=mock.ANY,
         new_frequency=mock.ANY,
         selected_times=None,
+        selected_geos=None,
+        aggregate_geos=True,
+        aggregate_times=True,
+        inverse_transform_impact=True,
         use_kpi=True,
         batch_size=c.DEFAULT_BATCH_SIZE,
     )
@@ -3144,38 +3129,6 @@ class OptimizerKPITest(parameterized.TestCase):
         use_kpi=True,
         batch_size=c.DEFAULT_BATCH_SIZE,
     )
-
-  def test_roi_and_mroi_not_existing_no_revenue_per_kpi_budget_dataset(self):
-    hist_spend = np.array([1000, 1000, 1000, 1000, 1000])
-    rounded_spend = np.array([0.1, 0.1, 0.1, 0.1, 0.1])
-    selected_time_dims = [
-        '2021-05-17',
-        '2021-05-24',
-        '2021-05-31',
-        '2021-06-07',
-        '2021-06-14',
-    ]
-    budget_dataset = (
-        self.budget_optimizer_media_and_rf_kpi._create_budget_dataset(
-            hist_spend=hist_spend,
-            spend=rounded_spend,
-            selected_times=selected_time_dims,
-            batch_size=c.DEFAULT_BATCH_SIZE,
-        )
-    )
-    self.assertEqual(
-        list(budget_dataset.data_vars),
-        [
-            c.SPEND,
-            c.PCT_OF_SPEND,
-            c.INCREMENTAL_IMPACT,
-            c.PCT_OF_CONTRIBUTION,
-            c.EFFECTIVENESS,
-            c.CPIK,
-        ],
-    )
-    self.assertIn(c.TOTAL_CPIK, list(budget_dataset.attrs.keys()))
-    self.assertNotIn(c.TOTAL_ROI, list(budget_dataset.attrs.keys()))
 
 
 if __name__ == '__main__':
