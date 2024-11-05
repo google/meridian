@@ -410,6 +410,8 @@ class PriorDistribution:
   def has_deterministic_param(
       self, param: tfp.distributions.Distribution
   ) -> bool:
+    if param == constants.TAU_G:
+      param = constants.TAU_G_EXCL_BASELINE
     return hasattr(self, param) and isinstance(
         getattr(self, param).distribution, tfp.distributions.Deterministic
     )
