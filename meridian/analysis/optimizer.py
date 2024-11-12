@@ -1203,7 +1203,9 @@ class BudgetOptimizer:
   ) -> np.ndarray:
     """Validates and returns the percent of spend."""
     if pct_of_spend is not None:
-      if len(pct_of_spend) != len(self._meridian.input_data.get_all_channels()):
+      if len(pct_of_spend) != len(
+          self._meridian.input_data.get_all_paid_channels()
+      ):
         raise ValueError('Percent of spend must be specified for all channels.')
       if not math.isclose(np.sum(pct_of_spend), 1.0, abs_tol=0.001):
         raise ValueError('Percent of spend must sum to one.')
@@ -1232,7 +1234,8 @@ class BudgetOptimizer:
     const_upper = get_const_array(const_upper)
 
     if any(
-        len(const) not in (1, len(self._meridian.input_data.get_all_channels()))
+        len(const)
+        not in (1, len(self._meridian.input_data.get_all_paid_channels()))
         for const in [const_lower, const_upper]
     ):
       raise ValueError(
@@ -1411,6 +1414,7 @@ class BudgetOptimizer:
         aggregate_times=True,
         aggregate_geos=True,
         optimal_frequency=optimal_frequency,
+        include_non_paid_channels=False,
     )
     effectiveness = incremental_impact / aggregated_impressions
     effectiveness_with_mean_median_and_ci = (

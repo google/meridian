@@ -145,6 +145,9 @@ _N_TIMES = 49
 _N_MEDIA_TIMES = 52
 _N_MEDIA_CHANNELS = 3
 _N_RF_CHANNELS = 2
+_N_ORGANIC_MEDIA_CHANNELS = 4
+_N_ORGANIC_RF_CHANNELS = 1
+_N_NON_MEDIA_CHANNELS = 4
 _N_CONTROLS = 2
 _N_CHAINS = 1
 _N_DRAWS = 1
@@ -356,6 +359,20 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             seed=0,
         )
     )
+    self.input_data_all_channels = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_controls=_N_CONTROLS,
+            seed=0,
+        )
+    )
 
     self.inference_data_media_and_rf = az.InferenceData(
         prior=xr.open_dataset(
@@ -381,6 +398,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             os.path.join(_TEST_DATA_DIR, 'sample_posterior_rf_only.nc')
         ),
     )
+    self.inference_data_all_channels = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_non_paid.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_non_paid.nc')
+        ),
+    )
 
     self.meridian_media_and_rf = model.Meridian(
         input_data=self.input_data_media_and_rf
@@ -389,6 +414,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         input_data=self.input_data_media_only
     )
     self.meridian_rf_only = model.Meridian(input_data=self.input_data_rf_only)
+    self.meridian_all_channels = model.Meridian(
+        input_data=self.input_data_all_channels
+    )
 
     self.budget_optimizer_media_and_rf = optimizer.BudgetOptimizer(
         self.meridian_media_and_rf
@@ -398,6 +426,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     self.budget_optimizer_rf_only = optimizer.BudgetOptimizer(
         self.meridian_rf_only
+    )
+    self.budget_optimizer_all_channels = optimizer.BudgetOptimizer(
+        self.meridian_all_channels
     )
 
     self.enter_context(
@@ -1854,6 +1885,21 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.budget_optimizer_media_and_rf.optimize(batch_size=batch_size)
     _, mock_kwargs = mock_incremental_impact.call_args
     self.assertEqual(mock_kwargs['batch_size'], batch_size)
+
+  def test_optimize_with_non_paid_channels_returns_correct_shape(self):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            'inference_data',
+            new=property(
+                lambda unused_self: self.inference_data_all_channels
+            ),
+        )
+    )
+    optimization_results = self.budget_optimizer_all_channels.optimize()
+    self.assertLen(
+        optimization_results.spend_ratio, _N_MEDIA_CHANNELS + _N_RF_CHANNELS
+    )
 
 
 class OptimizerPlotsTest(absltest.TestCase):

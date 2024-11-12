@@ -699,7 +699,8 @@ class Analyzer:
       )
 
   def _get_causal_param_names(
-      self, include_non_paid_channels: bool = True
+      self,
+      include_non_paid_channels: bool,
   ) -> list[str]:
     """Gets media, RF, non-media, organic media, and organic RF distributions.
 
@@ -878,7 +879,8 @@ class Analyzer:
       n_times = tensor.shape[-2] if has_media_dim else tensor.shape[-1]
     else:
       n_times = mmm.n_times
-    n_channels = [
+    # Allowed subsets of channels: media, RF, media+RF, all channels.
+    allowed_n_channels = [
         mmm.n_media_channels,
         mmm.n_rf_channels,
         mmm.n_media_channels + mmm.n_rf_channels,
@@ -888,9 +890,15 @@ class Analyzer:
         + mmm.n_organic_media_channels
         + mmm.n_organic_rf_channels,
     ]
+    # Allow extra channel if aggregated (All_Channels) value is included.
+    allowed_channel_dim = allowed_n_channels + [
+        c + 1 for c in allowed_n_channels
+    ]
     expected_shapes_w_media = [
         tf.TensorShape(shape)
-        for shape in itertools.product([mmm.n_geos], [n_times], n_channels)
+        for shape in itertools.product(
+            [mmm.n_geos], [n_times], allowed_channel_dim
+        )
     ]
     expected_shape_wo_media = tf.TensorShape([mmm.n_geos, n_times])
     if not flexible_time_dim:
@@ -1126,7 +1134,7 @@ class Analyzer:
         constants.MU_T,
         constants.TAU_G,
         constants.GAMMA_GC,
-    ] + self._get_causal_param_names()
+    ] + self._get_causal_param_names(include_non_paid_channels=True)
     outcome_means_temps = []
     for start_index in batch_starting_indices:
       stop_index = np.min([n_draws, start_index + batch_size])
@@ -1794,7 +1802,9 @@ class Analyzer:
     )
     n_draws = params.draw.size
     batch_starting_indices = np.arange(n_draws, step=batch_size)
-    param_list = self._get_causal_param_names()
+    param_list = self._get_causal_param_names(
+        include_non_paid_channels=include_non_paid_channels
+    )
     incremental_impact_temps = [None] * len(batch_starting_indices)
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -3247,9 +3257,11 @@ class Analyzer:
     if spend is not None and spend.ndim == 3:
       spend = self.filter_and_aggregate_geos_and_times(spend, **dim_kwargs)
 
-    # incremental_impact_tensor has shape (n_chains, n_draws, n_channels).
+    # _counterfactual_metric_dataset() is called only from `optimal_freq()`
+    # and uses only paid channels.
     incremental_impact_tensor = self.incremental_impact(
         new_data=new_data,
+        include_non_paid_channels=False,
         **dim_kwargs,
         **metric_tensor_kwargs,
     )
@@ -3295,6 +3307,7 @@ class Analyzer:
         / self.get_aggregated_impressions(
             **dim_kwargs,
             optimal_frequency=performance_data.frequency,
+            include_non_paid_channels=False,
         ),
         confidence_level=confidence_level,
         include_median=True,
@@ -3323,7 +3336,7 @@ class Analyzer:
         coords={
             constants.CHANNEL: (
                 [constants.CHANNEL],
-                self._meridian.input_data.get_all_channels(),
+                self._meridian.input_data.get_all_paid_channels(),
             ),
             constants.METRIC: (
                 [constants.METRIC],

@@ -3681,12 +3681,12 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(modified_tensor.shape, expected_shape)
 
   @parameterized.product(
-      # (media, rf, non_media_treatments, organic_media, organic_rf)
-      # (3, 0, 0, 0, 0) -> 3
-      # (0, 2, 0, 0, 0) -> 2
-      # (3, 2, 0, 0, 0) -> 5
-      # (3, 2, 4, 4, 1) -> 14
-      num_channels=[1, 4, 6, 7, 8, 9, 10, 11, 12, 13],
+      # (media, rf, non_media_treatments, organic_media, organic_rf[, all])
+      # (3, 0, 0, 0, 0[, 1]) -> 3, 4
+      # (0, 2, 0, 0, 0[, 1]) -> 2, 3
+      # (3, 2, 0, 0, 0[, 1]) -> 5, 6
+      # (3, 2, 4, 4, 1[, 1]) -> 14, 15
+      num_channels=[1, 7, 8, 9, 10, 11, 12, 13],
   )
   def test_filter_and_aggregate_geos_and_times_wrong_channels_fails(
       self,
