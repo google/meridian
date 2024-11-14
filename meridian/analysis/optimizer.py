@@ -101,7 +101,7 @@ class OptimizationResults:
   _optimized_data: xr.Dataset
   _optimization_grid: xr.Dataset
 
-  # TODO(b/352822149): Move this, and the plotting methods, to a summarizer.
+  # TODO: Move this, and the plotting methods, to a summarizer.
   @functools.cached_property
   def template_env(self) -> jinja2.Environment:
     """A shared template environment bound to this optimized budget."""

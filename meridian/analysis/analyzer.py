@@ -2177,7 +2177,7 @@ class Analyzer:
       spend_list.append(self._meridian.media_tensors.media_spend)
     if self._meridian.n_rf_channels > 0:
       spend_list.append(self._meridian.rf_tensors.rf_spend)
-    # TODO(b/309655751) Add support for 1-dimensional spend.
+    # TODO Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
         tensor=tf.concat(spend_list, axis=-1), **dim_kwargs
     )
@@ -2443,7 +2443,7 @@ class Analyzer:
       `ci_low`,`ci_high`),`distribution` (prior, posterior) and contains the
       following data variables: `baseline_impact`, `pct_of_contribution`.
     """
-    # TODO(b/358586608): Change "pct_of_contribution" to a more accurate term.
+    # TODO: Change "pct_of_contribution" to a more accurate term.
 
     use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
@@ -2542,7 +2542,7 @@ class Analyzer:
         baseline_pct_of_contribution,
     ])
 
-  # TODO(b/358071101): This method can be replaced once generalized
+  # TODO: This method can be replaced once generalized
   # `media_summary_metric` is done.
   def _counterfactual_metric_dataset(
       self,
@@ -3773,7 +3773,7 @@ class Analyzer:
       spend_with_total: tf.Tensor,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
-    # TODO(b/304834270): Support calibration_period_bool.
+    # TODO: Support calibration_period_bool.
     return _central_tendency_and_ci_by_prior_and_posterior(
         prior=incremental_revenue_prior / spend_with_total,
         posterior=incremental_revenue_posterior / spend_with_total,

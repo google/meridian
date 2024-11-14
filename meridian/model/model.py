@@ -851,7 +851,7 @@ class Meridian:
     get_roi_prior_beta_m_value_fn = self._get_roi_prior_beta_m_value
     get_roi_prior_beta_rf_value_fn = self._get_roi_prior_beta_rf_value
 
-    # TODO(b/349416835): Extract this coroutine to be unittestable on its own.
+    # TODO: Extract this coroutine to be unittestable on its own.
     # This MCMC sampling technique is complex enough to have its own abstraction
     # and testable API, rather than being embedded as a private method in the
     # Meridian class.

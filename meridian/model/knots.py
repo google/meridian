@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-# TODO(b/322860895): Reimplement with a more readable method.
+# TODO: Reimplement with a more readable method.
 def _find_neighboring_knots_indices(
     times: np.ndarray,
     knot_locations: np.ndarray,

@@ -72,7 +72,7 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> tf.Tensor:
 
 
 class ModelTest(tf.test.TestCase, parameterized.TestCase):
-  # TODO(b/302713435): Update the sample data to span over 1 or 2 year(s).
+  # TODO: Update the sample data to span over 1 or 2 year(s).
   _TEST_DIR = os.path.join(os.path.dirname(__file__), "test_data")
   _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH = os.path.join(
       _TEST_DIR,
@@ -1138,7 +1138,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
       _, mock_kwargs = calls[0]
       self.assertEqual(mock_kwargs["n_times_output"], 8)
 
-  # TODO(b/349416835) Move this test to a higher-level public API unit test.
+  # TODO Move this test to a higher-level public API unit test.
   @parameterized.named_parameters(
       dict(
           testcase_name="adstock_first",
@@ -1237,7 +1237,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
       _, mock_kwargs = calls[0]
       self.assertEqual(mock_kwargs["n_times_output"], 8)
 
-  # TODO(b/349416835) Move this test to a higher-level public API unit test.
+  # TODO Move this test to a higher-level public API unit test.
   def test_adstock_hill_rf(
       self,
   ):
@@ -1569,7 +1569,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         meridian._get_joint_dist().log_prob(par)[0],
     )
 
-  # TODO(b/307543975): Add test for holdout_id.
+  # TODO: Add test for holdout_id.
   @parameterized.product(
       use_roi_prior=[False, True],
       media_effects_dist=[

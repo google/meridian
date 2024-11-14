@@ -321,7 +321,7 @@ _SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
 
 
 class OptimizerAlgorithmTest(parameterized.TestCase):
-  # TODO(b/302713435): Update the sample datasets to span over 1 year.
+  # TODO: Update the sample datasets to span over 1 year.
   def setUp(self):
     super(OptimizerAlgorithmTest, self).setUp()
 
