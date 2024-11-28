@@ -985,7 +985,12 @@ class BudgetOptimizer:
     else:
       selected_time_dims = None
 
-    hist_spend = self._get_hist_spend(selected_time_dims)
+    hist_spend = self._analyzer.get_historical_spend(
+        selected_time_dims,
+        include_media=self._meridian.n_media_channels > 0,
+        include_rf=self._meridian.n_rf_channels > 0,
+    ).data
+
     use_historical_budget = budget is None or round(budget) == round(
         np.sum(hist_spend)
     )
@@ -1170,36 +1175,6 @@ class BudgetOptimizer:
             'Must specify only one of `target_roi` or `target_mroi` for'
             'flexible budget optimization.'
         )
-
-  def _get_hist_spend(self, selected_times: Sequence[str]) -> np.ndarray:
-    """Gets the historical spend for all channels based on the time period."""
-    dim_kwargs = {
-        'selected_geos': None,
-        'selected_times': selected_times,
-        'aggregate_geos': True,
-        'aggregate_times': True,
-    }
-    all_media = tf.convert_to_tensor(
-        self._meridian.input_data.get_all_media_and_rf(), dtype=tf.float32
-    )[:, -self._meridian.n_times :, :]
-    all_spend = self._meridian.total_spend
-
-    if all_spend.ndim == 3:
-      return self._analyzer.filter_and_aggregate_geos_and_times(
-          all_spend,
-          **dim_kwargs,
-      ).numpy()
-    else:
-      # Calculates CPM over all time if spend does not have a time dimension.
-      hist_media = self._analyzer.filter_and_aggregate_geos_and_times(
-          all_media,
-          **dim_kwargs,
-      )
-      imputed_cpmu = tf.math.divide_no_nan(
-          all_spend,
-          np.sum(all_media, (0, 1)),
-      )
-      return (hist_media * imputed_cpmu).numpy()
 
   def _validate_pct_of_spend(
       self, hist_spend: np.ndarray, pct_of_spend: Sequence[float] | None

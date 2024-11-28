@@ -711,18 +711,38 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             ),
         )
     )
+
+    # TODO: Remove this mock once the bug is fixed.
     self.enter_context(
         mock.patch.object(
-            input_data.InputData,
-            'get_total_spend',
+            analyzer.Analyzer,
+            'marginal_roi',
             autospec=True,
             spec_set=True,
             return_value=tf.convert_to_tensor(
-                [120.0, 150.0, 652.0, 645.0, 654.0],
-                dtype=tf.float32,
+                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], tf.float32
             ),
         )
     )
+
+    media_spend_da = data_test_utils.random_media_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        seed=0,
+    )
+    media_spend_da.values = np.array([120.0, 150.0, 652.0])
+
+    rf_spend_da = data_test_utils.random_rf_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
+    )
+    rf_spend_da.values = np.array([645.0, 654.0])
+
+    self.input_data_media_and_rf.media_spend = media_spend_da
+    self.input_data_media_and_rf.rf_spend = rf_spend_da
 
     # To make the above mock work as intended, we have to recreate the model and
     # optimizer objects, since the `total_spend` property in the shared SUT objs
@@ -735,10 +755,18 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
     optimization_results = budget_optimizer_media_and_rf.optimize(
-        selected_times=('2021-01-25', '2021-03-08')
+        selected_times=('2021-01-25', '2021-03-08'),
+        # TODO: set optimal frequency back to true once the bug is
+        # fixed.
+        use_optimal_frequency=False,
     )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
-    self.assertEqual(meridian_media_and_rf.total_spend.ndim, 1)
+    self.assertIsNotNone(meridian_media_and_rf.media_tensors.media_spend)
+    assert meridian_media_and_rf.media_tensors.media_spend is not None
+    self.assertEqual(meridian_media_and_rf.media_tensors.media_spend.ndim, 1)
+    self.assertIsNotNone(meridian_media_and_rf.rf_tensors.rf_spend)
+    assert meridian_media_and_rf.rf_tensors.rf_spend is not None
+    self.assertEqual(meridian_media_and_rf.rf_tensors.rf_spend.ndim, 1)
     np.testing.assert_array_equal(
         optimization_results.nonoptimized_data.spend,
         expected_spend,

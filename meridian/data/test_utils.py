@@ -941,6 +941,18 @@ def random_rf_spend_nd_da(
   depending on the `n_geos`, `n_times` and `n_rf_channels` arguments.
   There are 3 accepted shapes accepted by the `InputData` class:
   `(rf_channel)`, `(geo, time, rf_channel)` and `(geo, rf_channel)`.
+
+  Args:
+    n_geos: Number of geos in the created `rf_spend` array or `None` if the
+      created `rf_spend` should not contain the `geo` dimension.
+    n_times: Number of time periods in the created `rf_spend` array or `None` if
+      the created array should not contain the `time` dimension.
+    n_rf_channels: Number of channels in the created `rf_spend` array.
+    seed: Random seed used by `np.random.seed()`.
+
+  Returns:
+    A DataArray containing the generated `rf_spend` data with the given
+    dimensions.
   """
   np.random.seed(seed)
 
