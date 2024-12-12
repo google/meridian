@@ -220,7 +220,9 @@ class TimeCoordinates:
   ) -> list[datetime.date] | None:
     """Validates and returns time dimension values based on the selected times.
 
-    If both `start_date` and `end_date` are `None`, returns `None`.
+    If both `start_date` and `end_date` are None, returns None. If specified,
+    both `start_date` and `end_date` are inclusive, and must be present in the
+    time coordinates of the input data.
 
     Args:
       start_date: Start date of the selected time period. If `None`, implies the
