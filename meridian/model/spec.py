@@ -68,17 +68,17 @@ class ModelSpec:
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
-    use_roi_prior: (deprecated, use `paid_media_prior_type` instead) A boolean
+    use_roi_prior: (Deprecated, use `paid_media_prior_type` instead) A boolean
       indicating whether to use ROI priors and the prior on `roi_m` in the
       prior. If `False`, then the prior on `beta_m` in the prior is used.
       Default: `True`.
     paid_media_prior_type: A string to specify the prior type for the media
       coefficients. Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. Default:
-      `'roi'`. If `paid_media_prior_type` is 'coefficient'`, then the
+      `'roi'`. If `paid_media_prior_type` is `'coefficient'`, then the
       `PriorContainer.beta_m` and `PriorContainer.beta_rf` attributes are used
       to specify a prior on the coefficient mean parameters (and the
       `PriorContainer.roi_m` and `PriorContainer.roi_rf` attributes will be
-      ignored). If `paid_media_prior_type' is `'roi'` or `'mroi'`, then the
+      ignored). If `paid_media_prior_type` is `'roi'` or `'mroi'`, then the
       `PriorContainer.roi_m` and `PriorContainer.roi_rf` attributes are used to
       specify a prior on the ROI or mROI, respectively (and the
       `PriorContainer.beta_m` and `PriorContainer.beta_rf` attributes will be
