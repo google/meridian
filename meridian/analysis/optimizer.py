@@ -128,9 +128,8 @@ class OptimizationResults:
       - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
         `incremental_outcome`, `effectiveness`
       - Attributes: `start_date`, `end_date`, `budget`, `profit`,
-        `total_incremental_outcome`, `total_roi`, `total_cpik`,
-        `is_revenue_kpi`,
-        `use_historical_budget`
+        `mean_expected_outcome`, `total_incremental_outcome`, `total_roi`,
+        `total_cpik`, `is_revenue_kpi`, `use_historical_budget`
 
     ROI and mROI are only included if `revenue_per_kpi` is known. Otherwise,
     CPIK is used.
@@ -150,8 +149,8 @@ class OptimizationResults:
       - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
         `incremental_outcome`, `effectiveness`
       - Attributes: `start_date`, `end_date`, `budget`, `profit`,
-        `total_incremental_outcome`, `total_roi`, `total_cpik`,
-        `is_revenue_kpi`, `use_historical_budget`
+        `mean_expected_outcome`, `total_incremental_outcome`, `total_roi`,
+        `total_cpik`, `is_revenue_kpi`, `use_historical_budget`
     """
     return self._nonoptimized_data_with_optimal_freq
 
@@ -168,8 +167,8 @@ class OptimizationResults:
       - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
         `incremental_outcome`, `effectiveness`
       - Attributes: `start_date`, `end_date`, `budget`, `profit`,
-        `total_incremental_outcome`, `total_roi`, `total_cpik`, `fixed_budget`,
-        `is_revenue_kpi`, `use_historical_budget`
+        `mean_expected_outcome`, `total_incremental_outcome`, `total_roi`,
+        `total_cpik`, `is_revenue_kpi`, `use_historical_budget`
     """
     return self._optimized_data
 
@@ -1462,6 +1461,7 @@ class BudgetOptimizer:
         c.END_DATE: max(selected_times) if selected_times else all_times[-1],
         c.BUDGET: budget,
         c.PROFIT: total_incremental_outcome - budget,
+        c.MEAN_EXPECTED_OUTCOME: mean_expected_outcome,
         c.TOTAL_INCREMENTAL_OUTCOME: total_incremental_outcome,
         c.TOTAL_ROI: total_incremental_outcome / budget,
         c.TOTAL_CPIK: total_cpik,

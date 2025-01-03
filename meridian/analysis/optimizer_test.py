@@ -155,6 +155,7 @@ _N_DRAWS = 1
 
 def _create_budget_data(
     spend: np.ndarray,
+    mean_expected_outcome: float,
     inc_outcome: np.ndarray,
     pct_contrib: np.ndarray,
     effectiveness: np.ndarray,
@@ -194,6 +195,7 @@ def _create_budget_data(
       c.END_DATE: '2020-06-28',
       c.BUDGET: sum(spend),
       c.PROFIT: sum(inc_outcome[:, 0]) - sum(spend),
+      c.MEAN_EXPECTED_OUTCOME: mean_expected_outcome,
       c.TOTAL_INCREMENTAL_OUTCOME: sum(inc_outcome[:, 0]),
       c.TOTAL_CPIK: sum(spend) / sum(inc_outcome[:, 0]),
       c.TOTAL_ROI: sum(inc_outcome[:, 0]) / sum(spend),
@@ -218,6 +220,11 @@ def _verify_actual_vs_expected_budget_data(
   np.testing.assert_allclose(actual_data.budget, expected_data.budget, atol=0.1)
   np.testing.assert_allclose(actual_data.profit, expected_data.profit, atol=0.1)
   np.testing.assert_allclose(
+      actual_data.mean_expected_outcome,
+      expected_data.mean_expected_outcome,
+      atol=0.1,
+  )
+  np.testing.assert_allclose(
       actual_data.total_incremental_outcome,
       expected_data.total_incremental_outcome,
       atol=0.1,
@@ -240,6 +247,7 @@ _SAMPLE_NON_OPTIMIZED_DATA = _create_budget_data(
     inc_outcome=np.array(
         [[280, 280, 280, 280], [150, 150, 150, 150], [330, 330, 330, 330]]
     ),
+    mean_expected_outcome=_NONOPTIMIZED_EXPECTED_OUTCOME.item(),
     pct_contrib=np.array([
         [1.48002565, 1.48002565, 0.36243074, 2.66551235],
         [1.90578914, 1.90578914, 0.75641038, 3.12185835],
@@ -260,6 +268,7 @@ _SAMPLE_OPTIMIZED_DATA = _create_budget_data(
     inc_outcome=np.array(
         [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
     ),
+    mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
     pct_contrib=np.array([
         [0.94532406, 0.94532406, 0.23230099, 1.70155593],
         [1.64540553, 1.64540553, 0.65481003, 2.69352735],
@@ -283,6 +292,7 @@ _SAMPLE_NON_OPTIMIZED_DATA_KPI = _create_budget_data(
     inc_outcome=np.array(
         [[280, 280, 279, 281], [150, 150, 149, 151], [330, 330, 329, 331]]
     ),
+    mean_expected_outcome=_NONOPTIMIZED_EXPECTED_OUTCOME.item(),
     pct_contrib=np.array([
         [1.48002565, 1.48002565, 0.36243074, 2.66551235],
         [1.90578914, 1.90578914, 0.75641038, 3.12185835],
@@ -303,6 +313,7 @@ _SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
     inc_outcome=np.array(
         [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
     ),
+    mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
     pct_contrib=np.array([
         [0.94532406, 0.94532406, 0.23230099, 1.70155593],
         [1.64540553, 1.64540553, 0.65481003, 2.69352735],
@@ -922,6 +933,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND,
+        mean_expected_outcome=_NONOPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_NONOPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         pct_contrib=_NONOPTIMIZED_PCT_CONTRIB_WITH_CI,
         effectiveness=_NONOPTIMIZED_EFFECTIVENESS_WITH_CI,
@@ -956,6 +968,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[:_N_MEDIA_CHANNELS],
+        mean_expected_outcome=_NONOPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_NONOPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[
             :_N_MEDIA_CHANNELS
         ],
@@ -992,6 +1005,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[-_N_RF_CHANNELS:],
+        mean_expected_outcome=_NONOPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_NONOPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[-_N_RF_CHANNELS:],
         pct_contrib=_NONOPTIMIZED_PCT_CONTRIB_WITH_CI[-_N_RF_CHANNELS:],
         effectiveness=_NONOPTIMIZED_EFFECTIVENESS_WITH_CI[-_N_RF_CHANNELS:],
@@ -1025,6 +1039,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_SPEND,
+        mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         pct_contrib=_OPTIMIZED_PCT_CONTRIB_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
@@ -1064,6 +1079,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_MEDIA_ONLY_SPEND,
+        mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[:_N_MEDIA_CHANNELS],
         pct_contrib=_OPTIMIZED_PCT_CONTRIB_WITH_CI[:_N_MEDIA_CHANNELS],
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI[:_N_MEDIA_CHANNELS],
@@ -1104,6 +1120,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_RF_ONLY_SPEND,
+        mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[-_N_RF_CHANNELS:],
         pct_contrib=_OPTIMIZED_PCT_CONTRIB_WITH_CI[-_N_RF_CHANNELS:],
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI[-_N_RF_CHANNELS:],
@@ -1143,6 +1160,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_TARGET_MROI_SPEND,
+        mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         pct_contrib=_OPTIMIZED_PCT_CONTRIB_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
@@ -1180,6 +1198,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_data = _create_budget_data(
         spend=_TARGET_ROI_SPEND,
+        mean_expected_outcome=_OPTIMIZED_EXPECTED_OUTCOME.item(),
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         pct_contrib=_OPTIMIZED_PCT_CONTRIB_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
@@ -1200,6 +1219,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           testcase_name='optimal_frequency',
           use_optimal_frequency=True,
           expected_spend=np.array([206.0, 276.0, 179.0, 354.0, 374.0]),
+          mean_expected_outcome=24973.031,
           expected_incremental_outcome=np.array([
               [236.0762, 231.97923, 58.01262, 424.9303],
               [410.90778, 402.0758, 163.52602, 672.65576],
@@ -1240,6 +1260,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           testcase_name='historical_frequency',
           use_optimal_frequency=False,
           expected_spend=np.array([206.0, 307.0, 179.0, 323.0, 374.0]),
+          mean_expected_outcome=21864.19,
           expected_incremental_outcome=np.array([
               [236.0762, 231.97923, 58.01262, 424.9303],
               [446.08163, 436.3723, 172.97798, 734.9176],
@@ -1281,6 +1302,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self,
       use_optimal_frequency,
       expected_spend,
+      mean_expected_outcome,
       expected_incremental_outcome,
       expected_pct_contrib,
       expected_effectiveness,
@@ -1289,6 +1311,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     expected_data = _create_budget_data(
         spend=expected_spend,
+        mean_expected_outcome=mean_expected_outcome,
         inc_outcome=expected_incremental_outcome,
         pct_contrib=expected_pct_contrib,
         effectiveness=expected_effectiveness,
