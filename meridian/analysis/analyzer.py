@@ -190,7 +190,7 @@ def _check_n_dims(tensor: tf.Tensor, name: str, n_dims: int):
   """Raises an error if the tensor has the wrong number of dimensions."""
   if tensor.ndim != n_dims:
     raise ValueError(
-        f"{name} must have {n_dims} dimension(s). Found"
+        f"New `{name}` must have {n_dims} dimension(s). Found"
         f" {tensor.ndim} dimension(s)."
     )
 
@@ -221,17 +221,17 @@ def _check_shape_matches(
     _check_n_dims(t1, t1_name, t2_shape.rank)
     if t1.shape[0] != t2_shape[0]:
       raise ValueError(
-          f"{t1_name} is expected to have {t2_shape[0]} geos. "
+          f"New `{t1_name}` is expected to have {t2_shape[0]} geos. "
           f"Found {t1.shape[0]} geos."
       )
     if t1.shape[1] != t2_shape[1]:
       raise ValueError(
-          f"{t1_name} must have the same number of time periods as the "
-          "other media tensor arguments."
+          f"New `{t1_name}` is expected to have {t2_shape[1]} time periods. "
+          f"Found {t1.shape[1]} time periods."
       )
     if t1.ndim == 3 and t1.shape[2] != t2_shape[2]:
       raise ValueError(
-          f"{t1_name} is expected to have third dimension of size "
+          f"New `{t1_name}` is expected to have third dimension of size "
           f"{t2_shape[2]}. Actual size is {t1.shape[2]}."
       )
 
@@ -1698,109 +1698,139 @@ class Analyzer:
           " `incremental_outcome()` method. This has no effect on the output"
           " and will be ignored."
       )
-    new_media_params = [new_data.media, new_data.reach, new_data.frequency]
-    next_data = next((d for d in new_media_params if d is not None), None)
-    if next_data is not None:
-      # (geo, time, channel)
-      _check_n_dims(next_data, "New media params", 3)
-      new_n_media_times = next_data.shape[-2]
-      use_flexible_time = new_n_media_times != mmm.n_media_times
-    elif new_data.revenue_per_kpi is not None:
-      # (geo, time)
-      _check_n_dims(new_data.revenue_per_kpi, "new_revenue_per_kpi", 2)
-      if new_data.revenue_per_kpi.shape[-1] != mmm.n_times:  # pytype: disable=attribute-error
-        use_flexible_time = True
-        new_n_media_times = new_data.revenue_per_kpi.shape[-1]  # pytype: disable=attribute-error
-      else:
-        use_flexible_time = False
-        new_n_media_times = mmm.n_media_times
+
+    new_media_time_vars_names_and_shapes = [
+        (
+            new_data.media,
+            constants.MEDIA,
+            tf.TensorShape(
+                (mmm.n_geos, mmm.n_media_times, mmm.n_media_channels)
+            ),
+        ),
+        (
+            new_data.reach,
+            constants.REACH,
+            tf.TensorShape((mmm.n_geos, mmm.n_media_times, mmm.n_rf_channels)),
+        ),
+        (
+            new_data.frequency,
+            constants.FREQUENCY,
+            tf.TensorShape((mmm.n_geos, mmm.n_media_times, mmm.n_rf_channels)),
+        ),
+        (
+            new_data.organic_media,
+            constants.ORGANIC_MEDIA,
+            tf.TensorShape(
+                (mmm.n_geos, mmm.n_media_times, mmm.n_organic_media_channels)
+            ),
+        ),
+        (
+            new_data.organic_reach,
+            constants.ORGANIC_REACH,
+            tf.TensorShape(
+                (mmm.n_geos, mmm.n_media_times, mmm.n_organic_rf_channels)
+            ),
+        ),
+        (
+            new_data.organic_frequency,
+            constants.ORGANIC_FREQUENCY,
+            tf.TensorShape(
+                (mmm.n_geos, mmm.n_media_times, mmm.n_organic_rf_channels)
+            ),
+        ),
+    ]
+    new_non_media_treatments_names_and_shapes = [
+        (
+            new_data.non_media_treatments,
+            constants.NON_MEDIA_TREATMENTS,
+            tf.TensorShape((mmm.n_geos, mmm.n_times, mmm.n_non_media_channels)),
+        ),
+    ]
+    new_all_vars_names_and_shapes = (
+        new_media_time_vars_names_and_shapes
+        + new_non_media_treatments_names_and_shapes
+    )
+    if (
+        mmm.input_data.kpi_type == constants.NON_REVENUE
+        and not use_kpi
+        and new_data.revenue_per_kpi is not None
+    ):
+      new_all_vars_names_and_shapes.append(
+          (
+              new_data.revenue_per_kpi,
+              constants.REVENUE_PER_KPI,
+              tf.TensorShape((mmm.n_geos, mmm.n_times)),
+          ),
+      )
+
+    # Check if all variables have the correct number of dimensions.
+    for var, name, _ in (
+        new_media_time_vars_names_and_shapes
+        + new_non_media_treatments_names_and_shapes
+    ):
+      if var is not None:
+        _check_n_dims(var, name, 3)
+    if (
+        mmm.input_data.kpi_type == constants.NON_REVENUE
+        and not use_kpi
+        and new_data.revenue_per_kpi is not None
+    ):
+      _check_n_dims(new_data.revenue_per_kpi, constants.REVENUE_PER_KPI, 2)
+
+    # Check if the time dimensions of any new variable has been modified
+    # ("flexible time scenario").
+    if any(
+        var is not None and var.shape != shape
+        for var, _, shape in new_all_vars_names_and_shapes
+    ):
+      for var, name, _ in new_all_vars_names_and_shapes:
+        if var is None:
+          raise ValueError(
+              "If the time dimension of a variable in `new_data` is modified,"
+              f" then all variables must be provided in `new_data`. `{name}` is"
+              " missing."
+          )
+        if var.shape != new_data.media.shape:  # pytype: disable=attribute-error
+          raise ValueError(
+              f"If the time dimension of any variable in `new_data` is"
+              f" modified, then all variables must be provided with the same"
+              f" number of time periods. `new_data.{{name}}` has"
+              f" {{var.shape[1]}} time periods and does not match"
+              f" `new_data.media` which has {{new_data.media.shape[1]}} time"
+              f" periods."
+          )
+      use_flexible_time = True
+      new_n_media_times = new_data.media.shape[1]  # pytype: disable=attribute-error
     else:
-      new_n_media_times = mmm.n_media_times
       use_flexible_time = False
+      new_n_media_times = mmm.n_media_times
 
     # Validate the new parameters.
-    required_new_params = []
-    if mmm.media_tensors.media is not None:
-      required_new_params.append(new_data.media)
-    if mmm.rf_tensors.reach is not None:
-      required_new_params.append(new_data.reach)
-      required_new_params.append(new_data.frequency)
-    if mmm.organic_media_tensors.organic_media is not None:
-      required_new_params.append(new_data.organic_media)
-    if mmm.organic_rf_tensors.organic_reach is not None:
-      required_new_params.append(new_data.organic_reach)
-      required_new_params.append(new_data.organic_frequency)
-    if not use_kpi:
-      required_new_params.append(new_data.revenue_per_kpi)
     if use_flexible_time:
-      if any(param is None for param in required_new_params):
-        raise ValueError(
-            "If new_media, new_reach, new_frequency, new_organic_media,"
-            " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi"
-            " is provided with a different number of time periods than in"
-            " `InputData`, then all new parameters originally in `InputData`"
-            " must be provided with the same number of time periods."
-        )
-      if (selected_times and not _is_bool_list(selected_times)) or (
-          media_selected_times and not _is_bool_list(media_selected_times)
+      if selected_times and (
+          not _is_bool_list(selected_times)
+          or len(selected_times) != new_n_media_times
       ):
         raise ValueError(
-            "If new_media, new_reach, new_frequency, new_organic_media,"
-            " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi"
-            " is provided with a different number of time periods than in"
-            " `InputData`, then `selected_times` and `media_selected_times`"
-            " must be a list of booleans with length equal to the number of"
-            " time periods in the new data."
+            "If `media`, `reach`, `frequency`, `organic_media`,"
+            " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
+            " `revenue_per_kpi` is provided with a different number of time"
+            " periods than in `InputData`, then `selected_times` must be a list"
+            " of booleans with length equal to the number of time periods in"
+            " the new data."
         )
-    new_shape = (mmm.n_geos, new_n_media_times)
-    _check_shape_matches(
-        new_data.media,
-        "new_media",
-        t2_shape=tf.TensorShape(new_shape + (mmm.n_media_channels,)),
-    )
-    _check_shape_matches(
-        new_data.reach,
-        "new_reach",
-        t2_shape=tf.TensorShape(new_shape + (mmm.n_rf_channels,)),
-    )
-    _check_shape_matches(
-        new_data.frequency,
-        "new_frequency",
-        t2_shape=tf.TensorShape(new_shape + (mmm.n_rf_channels,)),
-    )
-    _check_shape_matches(
-        new_data.non_media_treatments,
-        "new_non_media_treatments",
-        self._meridian.non_media_treatments,
-        "non_media_treatments",
-    )
-    _check_shape_matches(
-        new_data.organic_media,
-        "new_organic_media",
-        self._meridian.organic_media_tensors.organic_media,
-        "organic_media",
-    )
-    _check_shape_matches(
-        new_data.organic_reach,
-        "new_organic_reach",
-        self._meridian.organic_rf_tensors.organic_reach,
-        "organic_reach",
-    )
-    _check_shape_matches(
-        new_data.organic_frequency,
-        "new_organic_frequency",
-        self._meridian.organic_rf_tensors.organic_frequency,
-        "organic_frequency",
-    )
-
-    if not use_kpi:
-      _check_shape_matches(
-          new_data.revenue_per_kpi,
-          "new_revenue_per_kpi",
-          t2_shape=tf.TensorShape(new_shape)
-          if use_flexible_time
-          else tf.TensorShape([self._meridian.n_geos, self._meridian.n_times]),
-      )
+      if media_selected_times and (
+          not _is_bool_list(media_selected_times)
+          or len(media_selected_times) != new_n_media_times
+      ):
+        raise ValueError(
+            "If `media`, `reach`, `frequency`, `organic_media`,"
+            " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
+            " `revenue_per_kpi` is provided with a different number of time"
+            " periods than in `InputData`, then `media_selected_times` must be"
+            " a list of booleans with length equal to the number of time"
+            " periods in the new data."
+        )
 
     # Set default values for optional media arguments.
     data_tensors = self._fill_missing_data_tensors(
