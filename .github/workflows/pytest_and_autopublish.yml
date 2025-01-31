@@ -116,6 +116,60 @@ jobs:
         fi
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+  create-tag:
+    name: Create Version Tag
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: ${{ needs.check-version.outputs.new_version != '' }} # Only run if new_version was discovered.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and Push Tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const newTag = 'v${{ needs.check-version.outputs.new_version }}';
+            try {
+              await github.rest.git.createTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: newTag,
+                message: `Release ${newTag}`,
+                object: context.sha,
+                type: 'commit'
+              });
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${newTag}`,
+                sha: context.sha
+              });
+              console.log(`Created and pushed new tag: ${newTag}`);
+            } catch (error) {
+              console.error('Error creating tag:', error);
+              core.setFailed(`Failed to create tag: ${error.message}`);
+            }
+
+  # Compare pyproject version with published version on PyPI.
+  check-pypi-version:
+    name: Check PyPI version
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # See: https://github.com/marketplace/actions/python-project-version-check
+    - name: Check PyPI version
+      uses: maybe-hello-world/pyproject-check-version@v4
+      id: pypi-version-check
+      with:
+        pyproject-path: "./pyproject.toml"
+
+    - name: Check PyPI version output
+      run: |
+        echo "Output: ${{ steps.pypi-version-check.outputs.local_version_is_higher }}"
+        echo "Local version: ${{ steps.pypi-version-check.outputs.local_version }}"
+        echo "Public version: ${{ steps.pypi-version-check.outputs.public_version }}"
+
   publish-to-pypi:
     name: >-
       Publish Python distribution to PyPI
