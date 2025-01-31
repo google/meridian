@@ -318,22 +318,25 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       (
           "wrong_media_dims",
           analyzer.DataTensors(media=tf.ones((5, 1))),
-          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+          "New `media` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_reach_dims",
           analyzer.DataTensors(reach=tf.ones((5, 1))),
-          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_frequency_dims",
           analyzer.DataTensors(frequency=tf.ones((5, 1))),
-          "New media params must have 3 dimension(s). Found 2 dimension(s).",
+          "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_revenue_per_kpi_dims",
           analyzer.DataTensors(revenue_per_kpi=tf.ones((5))),
-          "new_revenue_per_kpi must have 2 dimension(s). Found 1 dimension(s).",
+          (
+              "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
+              " dimension(s)."
+          ),
       ),
   )
   def test_incremental_outcome_wrong_media_param_dims_raises_exception(
@@ -359,13 +362,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
     }
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "If new_media, new_reach, new_frequency, new_organic_media,"
-        " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi is"
-        " provided with a different number of time periods than in `InputData`,"
-        " then all new parameters originally in `InputData` must be provided"
-        " with the same number of time periods.",
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following variables"
+        f" are missing: `['{missing_param}']`.",
     ):
       new_data_dict.pop(missing_param)
       self.analyzer_media_and_rf.incremental_outcome(
@@ -398,12 +399,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_incremental_outcome_flexible_times_selected_times_wrong_type(self):
     with self.assertRaisesRegex(
         ValueError,
-        "If new_media, new_reach, new_frequency, new_organic_media,"
-        " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi is"
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
         " provided with a different number of time periods than in `InputData`,"
-        " then `selected_times` and `media_selected_times` must be a list of"
-        " booleans with length equal to the number of time periods in the new"
-        " data.",
+        " then `selected_times` must be a list of booleans with length equal to"
+        " the number of time periods in the new data.",
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
@@ -420,12 +420,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   ):
     with self.assertRaisesRegex(
         ValueError,
-        "If new_media, new_reach, new_frequency, new_organic_media,"
-        " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi is"
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
         " provided with a different number of time periods than in `InputData`,"
-        " then `selected_times` and `media_selected_times` must be a list of"
-        " booleans with length equal to the number of time periods in the new"
-        " data.",
+        " then `media_selected_times` must be a list of booleans with length"
+        " equal to the number of time periods in the new data.",
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
@@ -470,8 +469,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_incremental_outcome_new_params_diff_time_dims_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "new_revenue_per_kpi must have the same number of time periods as the "
-        "other media tensor arguments.",
+        "If the time dimension of any variable in `new_data` is modified, then"
+        " all variables must be provided with the same number of time periods."
+        " `new_data.revenue_per_kpi` has 8 time periods and does not match"
+        " `new_data.media` which has 10 time periods.",
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
@@ -485,7 +486,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_incremental_outcome_wrong_new_param_n_geos_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "new_media is expected to have 5 geos. Found 4 geos.",
+        "New `media` is expected to have 5 geos. Found 4 geos.",
     ):
       shape = (_N_GEOS - 1, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)
       self.analyzer_media_and_rf.incremental_outcome(
@@ -495,8 +496,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_incremental_outcome_wrong_n_channels_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "new_reach is expected to have third dimension of size 2. Actual size "
-        "is 1.",
+        "New `reach` is expected to have 2 channels. Found 1 channels.",
     ):
       shape = (_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1)
       self.analyzer_media_and_rf.incremental_outcome(
@@ -2496,24 +2496,36 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(outcome.shape, expected_shape)
 
   @parameterized.named_parameters(
-      ("missing_media", "media"),
-      ("missing_revenue_per_kpi", "revenue_per_kpi"),
+      (
+          "missing_media",
+          "media",
+          (
+              "If the time dimension of a variable in `new_data` is modified,"
+              " then all variables must be provided in `new_data`. The"
+              " following variables are missing: `['media']`."
+          ),
+      ),
+      (
+          "missing_revenue_per_kpi",
+          "revenue_per_kpi",
+          (
+              "If the time dimension of a variable in `new_data` is modified,"
+              " then all variables must be provided in `new_data`. The"
+              " following variables are missing: `['revenue_per_kpi']`."
+          ),
+      ),
   )
   def test_incremental_outcome_media_only_missing_new_param_raises_exception(
-      self, missing_param: str
+      self, missing_param: str, error_message: str
   ):
     new_data_dict = {
         "media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
         "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
     }
 
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "If new_media, new_reach, new_frequency, new_organic_media,"
-        " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi is"
-        " provided with a different number of time periods than in `InputData`,"
-        " then all new parameters originally in `InputData` must be provided"
-        " with the same number of time periods.",
+        error_message,
     ):
       new_data_dict.pop(missing_param)
       self.analyzer_media_only.incremental_outcome(
@@ -2997,13 +3009,11 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
     }
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "If new_media, new_reach, new_frequency, new_organic_media,"
-        " new_organic_reach, new_organic_frequency, or new_revenue_per_kpi is"
-        " provided with a different number of time periods than in `InputData`,"
-        " then all new parameters originally in `InputData` must be provided"
-        " with the same number of time periods.",
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following"
+        f" variables are missing: `['{missing_param}']`.",
     ):
       new_data_dict.pop(missing_param)
       self.analyzer_rf_only.incremental_outcome(
@@ -4008,13 +4018,17 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
     )
 
   def test_incremental_outcome_wrong_non_media_raises_exception(self):
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "new_non_media_treatments.shape must match non_media_treatments.shape",
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following variables"
+        " are missing: `['media', 'reach', 'frequency', 'revenue_per_kpi']`.",
     ):
       self.analyzer_non_media.incremental_outcome(
           new_data=analyzer.DataTensors(
-              non_media_treatments=self.meridian_non_media.population
+              non_media_treatments=self.meridian_non_media.non_media_treatments[
+                  :, :2, :
+              ]
           ),
       )
 
@@ -4442,6 +4456,118 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         rtol=1e-2,
         atol=1e-2,
     )
+
+  @parameterized.named_parameters(
+      (
+          "missing_media",
+          "media",
+          (
+              "If the time dimension of a variable in `new_data` is modified,"
+              " then all variables must be provided in `new_data`. The"
+              " following variables are missing: `['media']`."
+          ),
+      ),
+      (
+          "missing_non_media_treatments",
+          "non_media_treatments",
+          (
+              "If the time dimension of a variable in `new_data` is modified,"
+              " then all variables must be provided in `new_data`. The"
+              " following variables are missing: `['non_media_treatments']`."
+          ),
+      ),
+  )
+  def test_incremental_outcome_missing_new_param_flexible_times_raises_exception(
+      self, missing_param: str, expected_error_message: str
+  ):
+    new_data_dict = {
+        "media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "organic_media": tf.ones((_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)),
+        "organic_reach": tf.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
+        "organic_frequency": tf.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
+        "non_media_treatments": tf.ones((_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)),
+        "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+    }
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
+      new_data_dict.pop(missing_param)
+      self.analyzer_non_paid.incremental_outcome(
+          new_data=analyzer.DataTensors(**new_data_dict)
+      )
+
+  @parameterized.named_parameters(
+      (
+          "organic_reach",
+          {
+              "reach": tf.ones((_N_GEOS, _N_RF_CHANNELS)),
+          },
+          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "non_media_treatments",
+          {
+              "non_media_treatments": tf.ones((_N_GEOS,)),
+          },
+          (
+              "New `non_media_treatments` must have 3 dimension(s). Found 1"
+              " dimension(s)."
+          ),
+      ),
+      (
+          "revenue_per_kpi",
+          {
+              "revenue_per_kpi": tf.ones(
+                  (_N_GEOS, _N_TIMES, _N_MEDIA_CHANNELS)
+              ),
+          },
+          (
+              "New `revenue_per_kpi` must have 2 dimension(s). Found 3"
+              " dimension(s)."
+          ),
+      ),
+  )
+  def test_incremental_outcome_wrong_shape_new_param_raises_exception(
+      self,
+      new_data_dict: dict[str, tf.Tensor],
+      expected_error_message: str,
+  ):
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
+      self.analyzer_non_paid.incremental_outcome(
+          new_data=analyzer.DataTensors(**new_data_dict)
+      )
+
+  def test_incremental_outcome_new_param_not_matching_times_raises_exception(
+      self,
+  ):
+    new_data_dict = {
+        "media": tf.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
+        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "organic_media": tf.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_MEDIA_CHANNELS)
+        ),
+        "organic_reach": tf.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
+        ),
+        "organic_frequency": tf.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
+        ),
+        "non_media_treatments": tf.ones(
+            (_N_GEOS, _N_TIMES, _N_NON_MEDIA_CHANNELS)
+        ),
+        "revenue_per_kpi": tf.ones((_N_GEOS, _N_TIMES)),
+    }
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of any variable in `new_data` is modified, then"
+        " all variables must be provided with the same number of time periods."
+        " `new_data.reach` has 10 time periods and does not match"
+        " `new_data.media` which has 52 time periods.",
+    ):
+      self.analyzer_non_paid.incremental_outcome(
+          new_data=analyzer.DataTensors(**new_data_dict)
+      )
 
   @parameterized.product(
       use_posterior=[False, True],
