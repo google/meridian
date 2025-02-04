@@ -3345,6 +3345,7 @@ class OptimizerKPITest(parameterized.TestCase):
         # incremental_outcome() with the following arguments.
         selected_geos=None,
         selected_times=None,
+        media_selected_times=None,
         aggregate_geos=True,
         aggregate_times=True,
         inverse_transform_outcome=True,
