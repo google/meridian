@@ -1002,7 +1002,7 @@ class BudgetOptimizer:
     round_factor = _get_round_factor(budget, gtol)
     step_size = 10 ** (-round_factor)
     rounded_spend = np.round(spend, round_factor).astype(int)
-    spend_ratio = spend / hist_spend
+    spend_ratio = np.where(hist_spend == 0, 0, spend / hist_spend)
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
@@ -1283,16 +1283,14 @@ class BudgetOptimizer:
       new_rf_spend).
     """
     if self._meridian.n_media_channels > 0:
-      new_media = (
+      new_media = tf.where(hist_spend[:self._meridian.n_media_channels] == 0, 0,
           tf.math.divide_no_nan(
               spend[: self._meridian.n_media_channels],
               hist_spend[: self._meridian.n_media_channels],
-          )
-          * self._meridian.media_tensors.media
-      )
-      new_media_spend = tf.convert_to_tensor(
+          )) * self._meridian.media_tensors.media
+      new_media_spend = tf.where(hist_spend[:self._meridian.n_media_channels] == 0, 0, tf.convert_to_tensor(
           spend[: self._meridian.n_media_channels]
-      )
+      ))
     else:
       new_media = None
       new_media_spend = None
@@ -1300,12 +1298,10 @@ class BudgetOptimizer:
       rf_media = (
           self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency
       )
-      new_rf_media = (
-          tf.math.divide_no_nan(
+      new_rf_media = tf.where(hist_spend[-self._meridian.n_rf_channels :] == 0, 0, tf.math.divide_no_nan(
               spend[-self._meridian.n_rf_channels :],
               hist_spend[-self._meridian.n_rf_channels :],
-          )
-          * rf_media
+          ) * rf_media
       )
       frequency = (
           self._meridian.rf_tensors.frequency
@@ -1313,10 +1309,10 @@ class BudgetOptimizer:
           else optimal_frequency
       )
       new_reach = tf.math.divide_no_nan(new_rf_media, frequency)
-      new_frequency = tf.math.divide_no_nan(new_rf_media, new_reach)
-      new_rf_spend = tf.convert_to_tensor(
+      new_frequency = tf.where(hist_spend[-self._meridian.n_rf_channels :] == 0, 0, tf.math.divide_no_nan(new_rf_media, new_reach))
+      new_rf_spend = tf.where(hist_spend[-self._meridian.n_rf_channels :] == 0, 0, tf.convert_to_tensor(
           spend[-self._meridian.n_rf_channels :]
-      )
+      ))
     else:
       new_reach = None
       new_frequency = None
@@ -1451,9 +1447,10 @@ class BudgetOptimizer:
     )
 
     total_spend = np.sum(spend) if np.sum(spend) > 0 else 1
+    spend = tf.where(hist_spend == 0, 0, tf.convert_to_tensor(spend, dtype=tf.float32))
     data_vars = {
         c.SPEND: ([c.CHANNEL], spend),
-        c.PCT_OF_SPEND: ([c.CHANNEL], spend / total_spend),
+        c.PCT_OF_SPEND: ([c.CHANNEL], spend / total_spend if total_spend > 0 else 0),
         c.INCREMENTAL_OUTCOME: (
             [c.CHANNEL, c.METRIC],
             incremental_outcome_with_mean_median_and_ci,
