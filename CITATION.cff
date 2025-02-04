@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Meridian: Marketing Mix Modeling"
+authors:
+  - name: "Google Meridian Marketing Mix Modeling Team"
+year: 2025
+url: "https://github.com/google/meridian"
