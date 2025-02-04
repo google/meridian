@@ -123,7 +123,7 @@ this.
 
 To cite this repository:
 
-```
+```BibTeX
 @software{meridian_github,
   author = {Google Meridian Marketing Mix Modeling Team},
   title = {Meridian: Marketing Mix Modeling},
