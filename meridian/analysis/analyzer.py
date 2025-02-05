@@ -2747,32 +2747,35 @@ class Analyzer:
     """Aggregates the incremental outcome of the media channels.
 
     Args:
-      use_posterior: Boolean. If `True` then the posterior distribution is
-        calculated. Otherwise, the prior distribution is calculated.
-      new_data: Optional `DataTensors` object with optional new tensors:
-        `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, `controls`,
-        `revenue_per_kpi`. If provided, the summary metrics are calculated using
-        the values of the tensors passed in `new_data` and the original values
-        of all the remaining tensors. The new tensors' dimensions must match the
-        dimensions of the corresponding original tensors from
-        `meridian.input_data`. If `None`, the summary metrics are calculated
-        using the original values of all the tensors.
+      use_posterior: Boolean. If `True`, then the incremental outcome posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      new_data: Optional `DataTensors` container with optional tensors: `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
+        `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
+        `None`, the incremental outcome is calculated using the `InputData`
+        provided to the Meridian object. If `new_data` is provided, the
+        incremental outcome is calculated using the new tensors in `new_data`
+        and the original values of the remaining tensors. For example,
+        `incremental_outcome(new_data=DataTensors(media=new_media)` computes the
+        incremental outcome using `new_media` and the original values of
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
+        `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
+        any of the tensors in `new_data` is provided with a different number of
+        time periods than in `InputData`, then all tensors must be provided with
+        the same number of time periods.
       use_kpi: Boolean. If `True`, the summary metrics are calculated using KPI.
         If `False`, the metrics are calculated using revenue.
-      include_non_paid_channels: Boolean. If `True`, non-paid channels (organic
-        media, organic reach and frequency, and non-media treatments) are
-        included in the summary but only the metrics independent of spend are
-        reported. If `False`, only the paid channels (media, reach and
-        frequency) are included but the summary contains also the metrics
-        dependent on spend. Default: `True`.
+      include_non_paid_channels: Boolean. If `True`, then non-media treatments
+        and organic effects are included in the calculation. If `False`, then
+        only the paid media and RF effects are included.
       non_media_baseline_values: Optional list of shape (n_non_media_channels,).
         Each element is either a float (which means that the fixed value will be
         used as baseline for the given channel) or one of the strings "min" or
         "max" (which mean that the global minimum or maximum value will be used
-        as baseline for the values of the given non_media treatment channel). If
-        None, the minimum value is used as baseline for each non_media treatment
-        channel.
+        as baseline for the scaled values of the given non_media treatments
+        channel). If not provided, the minimum value is used as the baseline for
+        each non_media treatments channel.
       **kwargs: kwargs to pass to `incremental_outcome`, which could contain
         selected_geos, selected_times, aggregate_geos, aggregate_times,
         batch_size.
