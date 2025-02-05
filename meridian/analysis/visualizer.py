@@ -1380,6 +1380,7 @@ class MediaSummary:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
+      non_media_baseline_values: Sequence[str | float] | None = None,
   ):
     """Initializes the media summary metrics based on the model data and params.
 
@@ -1394,12 +1395,20 @@ class MediaSummary:
         next dollar spent only impacts reach, holding frequency constant.  If
         this argument is False, we assume the next dollar spent only impacts
         frequency, holding reach constant.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the values of the given non_media treatment channel). If
+        None, the minimum value is used as baseline for each non_media treatment
+        channel.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
     self._confidence_level = confidence_level
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach
+    self._non_media_baseline_values = non_media_baseline_values
 
   @functools.cached_property
   def paid_summary_metrics(self) -> xr.Dataset:
@@ -1438,6 +1447,7 @@ class MediaSummary:
         use_kpi=self._meridian.input_data.revenue_per_kpi is None,
         confidence_level=self._confidence_level,
         include_non_paid_channels=True,
+        non_media_baseline_values=self._non_media_baseline_values,
     )
 
   def summary_table(
@@ -1560,6 +1570,7 @@ class MediaSummary:
       confidence_level: float | None = None,
       selected_times: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
+      non_media_baseline_values: Sequence[str | float] | None = None,
   ):
     """Runs the computation for the media summary metrics with new parameters.
 
@@ -1574,21 +1585,18 @@ class MediaSummary:
         dollar spent only impacts reach, holding frequency constant. If `False`,
         the assumption is the next dollar spent only impacts frequency, holding
         reach constant.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the values of the given non_media treatment channel). If
+        None, the minimum value is used as baseline for each non_media treatment
+        channel.
     """
     self._confidence_level = confidence_level or self._confidence_level
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach
-    self._paid_summary_metrics = self._analyzer.summary_metrics(
-        selected_times=selected_times,
-        marginal_roi_by_reach=marginal_roi_by_reach,
-        confidence_level=self._confidence_level,
-        include_non_paid_channels=False,
-    )
-    self._all_summary_metrics = self._analyzer.summary_metrics(
-        selected_times=selected_times,
-        confidence_level=self._confidence_level,
-        include_non_paid_channels=True,
-    )
+    self._non_media_baseline_values = non_media_baseline_values
 
   def plot_contribution_waterfall_chart(self) -> alt.Chart:
     """Plots a waterfall chart of the contribution share per channel.
