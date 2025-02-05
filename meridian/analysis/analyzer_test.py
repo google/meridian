@@ -4054,6 +4054,73 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
         ),
     )
 
+  def test_summary_metrics_with_non_media_baseline_values(self):
+    # Call summary_metrics with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer_non_media,
+        "compute_incremental_outcome_aggregate",
+        wraps=self.analyzer_non_media.compute_incremental_outcome_aggregate,
+    ) as mock_compute_incremental_outcome_aggregate:
+      self.analyzer_non_media.summary_metrics(
+          include_non_paid_channels=True,
+          non_media_baseline_values=[0.0, "max", 1.0, "min"],
+      )
+
+    # Assert that _compute_incremental_outcome_aggregate was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_compute_incremental_outcome_aggregate.call_count, 2)
+
+    # Both calls with include_non_paid_channels=True and given
+    # non_media_baseline_values
+    for call in mock_compute_incremental_outcome_aggregate.call_args_list:
+      _, kwargs = call
+      self.assertEqual(kwargs["include_non_paid_channels"], True)
+      self.assertEqual(
+          kwargs["non_media_baseline_values"], [0.0, "max", 1.0, "min"]
+      )
+
+  def test_baseline_summary_metrics_with_non_media_baseline_values(self):
+    # Call baseline_summary_metrics with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer_non_media,
+        "_calculate_baseline_expected_outcome",
+        wraps=self.analyzer_non_media._calculate_baseline_expected_outcome,
+    ) as mock_calculate_baseline_expected_outcome:
+      self.analyzer_non_media.baseline_summary_metrics(
+          non_media_baseline_values=[0.0, "max", 1.0, "min"],
+      )
+
+    # Assert that _calculate_baseline_expected_outcome was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 2)
+    for call in mock_calculate_baseline_expected_outcome.call_args_list:
+      _, kwargs = call
+      self.assertEqual(
+          kwargs["non_media_baseline_values"], [0.0, "max", 1.0, "min"]
+      )
+
+  def test_expected_vs_actual_with_non_media_baseline_values(self):
+    # Call expected_vs_actual with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer_non_media,
+        "_calculate_baseline_expected_outcome",
+        wraps=self.analyzer_non_media._calculate_baseline_expected_outcome,
+    ) as mock_calculate_baseline_expected_outcome:
+      self.analyzer_non_media.expected_vs_actual_data(
+          non_media_baseline_values=[0.0, "max", 1.0, "min"],
+      )
+
+    # Assert that _calculate_baseline_expected_outcome was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 1)
+    _, kwargs = mock_calculate_baseline_expected_outcome.call_args
+    self.assertEqual(
+        kwargs["non_media_baseline_values"], [0.0, "max", 1.0, "min"]
+    )
+
 
 class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
 

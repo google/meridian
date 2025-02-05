@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add `non_media_baseline_values` argument to `summary_metrics`,
+  `baseline_summary_metrics` and `expected_vs_actual` methods.
+
 ## [1.0.1] - 2025-02-04
 
 * Bump minimum `pandas` version to 2.2.

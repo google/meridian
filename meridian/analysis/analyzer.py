@@ -2568,6 +2568,7 @@ class Analyzer:
       aggregate_geos: bool = False,
       aggregate_times: bool = False,
       split_by_holdout_id: bool = False,
+      non_media_baseline_values: Sequence[str | float] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the data for the expected versus actual outcome over time.
@@ -2579,6 +2580,13 @@ class Analyzer:
         are summed over all of the time periods.
       split_by_holdout_id: Boolean. If `True` and `holdout_id` exists, the data
         is split into `'Train'`, `'Test'`, and `'All Data'` subsections.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the values of the given non_media treatment channel). If
+        None, the minimum value is used as baseline for each non_media treatment
+        channel.
       confidence_level: Confidence level for expected outcome credible
         intervals, represented as a value between zero and one. Default: `0.9`.
 
@@ -2604,6 +2612,7 @@ class Analyzer:
         aggregate_geos=False,
         aggregate_times=False,
         use_kpi=use_kpi,
+        non_media_baseline_values=non_media_baseline_values,
     )
     baseline = self._mean_and_ci_by_eval_set(
         baseline_expected_outcome,
@@ -2814,6 +2823,7 @@ class Analyzer:
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
       include_non_paid_channels: bool = False,
+      non_media_baseline_values: Sequence[str | float] | None = None,
   ) -> xr.Dataset:
     """Returns summary metrics.
 
@@ -2880,6 +2890,13 @@ class Analyzer:
         reported. If `False`, only the paid channels (media, reach and
         frequency) are included but the summary contains also the metrics
         dependent on spend. Default: `False`.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the values of the given non_media treatment channel). If
+        None, the minimum value is used as baseline for each non_media treatment
+        channel.
 
     Returns:
       An `xr.Dataset` with coordinates: `channel`, `metric` (`mean`, `median`,
@@ -2924,6 +2941,7 @@ class Analyzer:
         new_data=new_data,
         use_kpi=use_kpi,
         include_non_paid_channels=include_non_paid_channels,
+        non_media_baseline_values=non_media_baseline_values,
         **dim_kwargs,
         **batched_kwargs,
     )
@@ -2932,6 +2950,7 @@ class Analyzer:
         new_data=new_data,
         use_kpi=use_kpi,
         include_non_paid_channels=include_non_paid_channels,
+        non_media_baseline_values=non_media_baseline_values,
         **dim_kwargs,
         **batched_kwargs,
     )
@@ -3115,7 +3134,7 @@ class Analyzer:
           **batched_kwargs,
           # Drop mROI metric values in the Dataset's data_vars for the
           # aggregated "All Paid Channels" channel dimension value.
-          # "Marginal ROI"calculation must arbitrarily assume how the
+          # "Marginal ROI" calculation must arbitrarily assume how the
           # "next dollar" of spend is allocated across "All Paid Channels" in
           # this case, which may cause confusion in Meridian model and does not
           # have much practical usefulness, anyway.
@@ -3256,6 +3275,7 @@ class Analyzer:
       selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
+      non_media_baseline_values: Sequence[float | str] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
@@ -3270,6 +3290,13 @@ class Analyzer:
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
         all of the time periods.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the values of the given non_media treatment channel). If
+        None, the minimum value is used as baseline for each non_media treatment
+        channel.
       confidence_level: Confidence level for media summary metrics credible
         intervals, represented as a value between zero and one.
       batch_size: Integer representing the maximum draws per chain in each
@@ -3345,13 +3372,19 @@ class Analyzer:
 
     baseline_expected_outcome_prior = tf.expand_dims(
         self._calculate_baseline_expected_outcome(
-            use_posterior=False, use_kpi=use_kpi, **outcome_kwargs
+            use_posterior=False,
+            use_kpi=use_kpi,
+            non_media_baseline_values=non_media_baseline_values,
+            **outcome_kwargs,
         ),
         axis=-1,
     )
     baseline_expected_outcome_posterior = tf.expand_dims(
         self._calculate_baseline_expected_outcome(
-            use_posterior=True, use_kpi=use_kpi, **outcome_kwargs
+            use_posterior=True,
+            use_kpi=use_kpi,
+            non_media_baseline_values=non_media_baseline_values,
+            **outcome_kwargs,
         ),
         axis=-1,
     )
