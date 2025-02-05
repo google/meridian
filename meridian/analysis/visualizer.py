@@ -1578,17 +1578,6 @@ class MediaSummary:
     self._confidence_level = confidence_level or self._confidence_level
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach
-    self._paid_summary_metrics = self._analyzer.summary_metrics(
-        selected_times=selected_times,
-        marginal_roi_by_reach=marginal_roi_by_reach,
-        confidence_level=self._confidence_level,
-        include_non_paid_channels=False,
-    )
-    self._all_summary_metrics = self._analyzer.summary_metrics(
-        selected_times=selected_times,
-        confidence_level=self._confidence_level,
-        include_non_paid_channels=True,
-    )
 
   def plot_contribution_waterfall_chart(self) -> alt.Chart:
     """Plots a waterfall chart of the contribution share per channel.

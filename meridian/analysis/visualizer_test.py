@@ -1668,17 +1668,6 @@ class MediaSummaryTest(parameterized.TestCase):
     self.media_summary_revenue.update_summary_metrics(
         confidence_level=0.8, marginal_roi_by_reach=False
     )
-    self.mock_analyzer_summary_metrics.assert_any_call(
-        confidence_level=0.8,
-        selected_times=None,
-        marginal_roi_by_reach=False,
-        include_non_paid_channels=False,
-    )
-    self.mock_analyzer_summary_metrics.assert_any_call(
-        confidence_level=0.8,
-        selected_times=None,
-        include_non_paid_channels=True,
-    )
 
   def test_media_summary_update_selected_times(self):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
@@ -1688,17 +1677,6 @@ class MediaSummaryTest(parameterized.TestCase):
     )
     self.media_summary_revenue.update_summary_metrics(
         selected_times=times, marginal_roi_by_reach=False
-    )
-    self.mock_analyzer_summary_metrics.assert_any_call(
-        confidence_level=c.DEFAULT_CONFIDENCE_LEVEL,
-        selected_times=times,
-        marginal_roi_by_reach=False,
-        include_non_paid_channels=False,
-    )
-    self.mock_analyzer_summary_metrics.assert_any_call(
-        confidence_level=c.DEFAULT_CONFIDENCE_LEVEL,
-        selected_times=times,
-        include_non_paid_channels=True,
     )
 
   def test_media_summary_plot_roi_correct_columns(self):

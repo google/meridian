@@ -378,9 +378,9 @@ class InputData:
             "Consider setting custom priors, as kpi_type was specified as"
             " `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the"
             " total media contribution prior will be used with"
-            f" `p_mean={constants.P_MEAN}` and `p_sd={constants.P_SD}` ."
+            f" `p_mean={constants.P_MEAN}` and `p_sd={constants.P_SD}`."
             " Further documentation available at"
-            " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi#set-total-media-contribution-prior",
+            " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior",
             UserWarning,
         )
 

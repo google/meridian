@@ -31,7 +31,7 @@ dependencies = [
   "immutabledict",
   "joblib",
   "numpy >= 1.26, < 2",
-  "pandas >= 1.5.3, < 2",
+  "pandas >= 2.2, < 3",
   "scipy >= 1.12.0, < 1.13",
   "tensorflow >= 2.16, < 2.17",
   "tensorflow-probability >= 0.24, < 0.25",

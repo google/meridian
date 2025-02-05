@@ -48,8 +48,10 @@ jobs:
 
   create-tag:
     needs: check-version
-    # Only run if new_version was discovered.
-    if: needs.check-version.outputs.new_version != ''
+    # Only run if new_version was discovered, and do this only on the main branch.
+    if: >
+      github.ref == 'refs/heads/main'
+      && needs.check-version.outputs.new_version != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write # Allow to create tags
@@ -79,10 +81,15 @@ jobs:
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/publish
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
         with:
-          repository_url: https://upload.pypi.org/legacy/
+          name: python-package-distributions
+          path: dist/
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
 
   publish-to-testpypi:
     name: Publish Python distribution to TestPyPI
@@ -105,7 +112,13 @@ jobs:
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/publish
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
         with:
-          repository_url: https://test.pypi.org/legacy/
+          name: python-package-distributions
+          path: dist/
+      - name: Publish distribution to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          verbose: true

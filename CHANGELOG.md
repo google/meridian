@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-02-04
+
+* Bump minimum `pandas` version to 2.2.
 * Make `compute_incremental_outcome_aggregate` public.
 * Add `new_data` argument to `Analyzer.summary_metrics` method.
 * Add `use_kpi` argument to the `optimize()` method.
@@ -153,6 +156,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * Initial release
 
+<!-- mdlint off(LINK_UNUSED_ID) -->
 [0.2.0]: https://github.com/google/meridian/releases/tag/v0.2.0
 [0.3.0]: https://github.com/google/meridian/releases/tag/v0.3.0
 [0.4.0]: https://github.com/google/meridian/releases/tag/v0.4.0
@@ -172,6 +176,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [0.16.0]: https://github.com/google/meridian/releases/tag/v0.16.0
 [0.17.0]: https://github.com/google/meridian/releases/tag/v0.17.0
 [1.0.0]: https://github.com/google/meridian/releases/tag/v1.0.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.0.0...HEAD
+[1.0.1]: https://github.com/google/meridian/releases/tag/v1.0.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.0.1...HEAD
 
 

@@ -14,7 +14,7 @@ runs:
       uses: actions/github-script@v6
       with:
         script: |
-          const newTag = 'v${{ needs.check-version.outputs.new_version }}';
+          const newTag = 'v${{ inputs.new_version }}';
           try {
             await github.rest.git.createTag({
               owner: context.repo.owner,
