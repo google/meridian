@@ -687,6 +687,14 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         atol=1e-3,
     )
 
+  def test_marginal_roi_media_selected_times_all_false_returns_zero(
+      self,
+  ):
+    no_media_times = self.analyzer_media_and_rf.marginal_roi(
+        media_selected_times=[False] * _N_MEDIA_TIMES
+    )
+    self.assertAllEqual(no_media_times, tf.zeros_like(no_media_times))
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -823,6 +831,14 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           ),
       )
 
+  def test_roi_media_selected_times_all_false_returns_zero(
+      self,
+  ):
+    no_media_times = self.analyzer_media_and_rf.roi(
+        media_selected_times=[False] * _N_MEDIA_TIMES
+    )
+    self.assertAllEqual(no_media_times, tf.zeros_like(no_media_times))
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -861,6 +877,14 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         self.analyzer_media_and_rf.incremental_outcome() / total_spend
     )
     self.assertAllClose(expected_roi, roi)
+
+  def test_cpik_media_selected_times_all_false_returns_zero(
+      self,
+  ):
+    no_media_times = self.analyzer_media_and_rf.cpik(
+        media_selected_times=[False] * _N_MEDIA_TIMES
+    )
+    self.assertAllEqual(no_media_times, tf.zeros_like(no_media_times))
 
   @parameterized.product(
       use_posterior=[False, True],
