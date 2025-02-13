@@ -187,10 +187,9 @@ class OptimizationResults:
 
   def output_optimization_summary(self, filename: str, filepath: str):
     """Generates and saves the HTML optimization summary output."""
-    if self.optimized_data:
-      os.makedirs(filepath, exist_ok=True)
-      with open(os.path.join(filepath, filename), 'w') as f:
-        f.write(self._gen_optimization_summary())
+    os.makedirs(filepath, exist_ok=True)
+    with open(os.path.join(filepath, filename), 'w') as f:
+      f.write(self._gen_optimization_summary())
 
   def plot_incremental_outcome_delta(self) -> alt.Chart:
     """Plots a waterfall chart showing the change in incremental outcome."""
