@@ -588,3 +588,8 @@ END_DATE = 'end_date'
 CARD_INSIGHTS = 'insights'
 CARD_CHARTS = 'charts'
 CARD_STATS = 'stats'
+
+# Constants for protobuf structure
+GEO_INFO = 'geo_info'
+METADATA = 'metadata'
+REACH_FREQUENCY = 'reach_frequency'
