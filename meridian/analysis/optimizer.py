@@ -1655,11 +1655,11 @@ class BudgetOptimizer:
     """Creates spend and incremental outcome grids for optimization algorithm.
 
     Args:
-      spend: np.ndarray with actual spend per media or RF channel.
-      spend_bound_lower: np.ndarray of dimension (`n_total_channels`) containing
-        the lower constraint spend for each channel.
-      spend_bound_upper: np.ndarray of dimension (`n_total_channels`) containing
-        the upper constraint spend for each channel.
+      spend: `np.ndarray` with actual spend per media or RF channel.
+      spend_bound_lower: `np.ndarray` of dimension (`n_total_channels`)
+        containing the lower constraint spend for each channel.
+      spend_bound_upper: `np.ndarray` of dimension (`n_total_channels`)
+        containing the upper constraint spend for each channel.
       step_size: Integer indicating the step size, or interval, between values
         in the spend grid. All media channels have the same step size.
       selected_times: Sequence of strings representing the time dimensions in
@@ -1670,11 +1670,12 @@ class BudgetOptimizer:
       use_kpi: Boolean. If `True`, then the incremental outcome is derived from
         the KPI impact. Otherwise, the incremental outcome is derived from the
         revenue impact.
-      optimal_frequency: xr.DataArray with dimension `n_rf_channels`, containing
-        the optimal frequency per channel, that maximizes posterior mean roi.
-        Value is `None` if the model does not contain reach and frequency data,
-        or if the model does contain reach and frequency data, but historical
-        frequency is used for the optimization scenario.
+      optimal_frequency: `xr.DataArray` with dimension `n_rf_channels`,
+        containing the optimal frequency per channel, that maximizes mean ROI
+        over the corresponding prior/posterior distribution. Value is `None` if
+        the model does not contain reach and frequency data, or if the model
+        does contain reach and frequency data, but historical frequency is used
+        for the optimization scenario.
       batch_size: Max draws per chain in each batch. The calculation is run in
         batches to avoid memory exhaustion. If a memory error occurs, try
         reducing `batch_size`. The calculation will generally be faster with
@@ -1682,11 +1683,11 @@ class BudgetOptimizer:
 
     Returns:
       spend_grid: Discrete two-dimensional grid with the number of rows
-        determined by the `spend_constraints` and `step_size`, and the number of
+        determined by the `spend_bound_**` and `step_size`, and the number of
         columns is equal to the number of total channels, containing spend by
         channel.
       incremental_outcome_grid: Discrete two-dimensional grid with the number of
-        rows determined by the `spend_constraints` and `step_size`, and the
+        rows determined by the `spend_bound_**` and `step_size`, and the
         number of columns is equal to the number of total channels, containing
         incremental outcome by channel.
     """
