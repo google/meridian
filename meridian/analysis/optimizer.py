@@ -46,6 +46,67 @@ _SpendConstraint: TypeAlias = float | Sequence[float]
 
 
 @dataclasses.dataclass(frozen=True)
+class OptimizationGrid:
+  """Optimization grid information.
+
+  Attributes:
+    spend: Numeric list of size `n_total_channels` containing the spend
+      allocation for spend for all media and RF channels. The order must match
+      `InputData.get_all_paid_channels`.
+    spend_bounds: The spend bounds used to scale the non-optimized budget
+      metrics to the optimized budget metrics.
+    use_kpi: Whether using generic KPI or revenue.
+    use_posterior: Whether posterior distributions were used, or prior.
+    use_optimal_frequency: Whether optimal frequency was used.
+    round_factor: The round factor used for the optimization grid.
+    optimal_frequency: Optional xr.DataArray with dimension `n_rf_channels`,
+      containing the optimal frequency per channel. Value is `None` if the model
+      does not contain reach and frequency data, or if the model does contain
+      reach and frequency data, but historical frequency is used for the
+      optimization scenario.
+    selected_times: The time coordinates from the model used in this grid.
+  """
+
+  _grid_dataset: xr.Dataset
+
+  spend: np.ndarray
+  spend_bounds: tuple[np.ndarray, np.ndarray]
+  use_kpi: bool
+  use_posterior: bool
+  use_optimal_frequency: bool
+  round_factor: float
+  optimal_frequency: np.ndarray | None
+  selected_times: list[str] | None
+
+  @property
+  def grid_dataset(self) -> xr.Dataset:
+    """Dataset holding the grid information used for optimization.
+
+    The dataset contains the following:
+
+      - Coordinates:  `grid_spend_index`, `channel`
+      - Data variables: `spend_grid`, `incremental_outcome_grid`
+      - Attributes: `spend_step_size`
+    """
+    return self._grid_dataset
+
+  @property
+  def spend_grid(self) -> np.ndarray:
+    """The spend grid."""
+    return self.grid_dataset.spend_grid
+
+  @property
+  def incremental_outcome_grid(self) -> np.ndarray:
+    """The incremental outcome grid."""
+    return self.grid_dataset.incremental_outcome_grid
+
+  @property
+  def spend_step_size(self) -> float:
+    """The spend step size."""
+    return self.grid_dataset.attrs[c.SPEND_STEP_SIZE]
+
+
+@dataclasses.dataclass(frozen=True)
 class OptimizationResults:
   """The optimized budget allocation.
 
@@ -66,17 +127,9 @@ class OptimizationResults:
   debugging.
 
   Attributes:
-    meridian: The fitted Meridian model that was used to create this budget
-      allocation.
     analyzer: The analyzer bound to the model above.
-    use_posterior: Whether the posterior distribution was used to optimize the
-      budget. If `False`, the prior distribution was used.
-    use_optimal_frequency: Whether optimal frequency was used to optimize the
-      budget.
     spend_ratio: The spend ratio used to scale the non-optimized budget metrics
       to the optimized budget metrics.
-    spend_bounds: The spend bounds used to scale the non-optimized budget
-      metrics to the optimized budget metrics.
     nonoptimized_data: The non-optimized budget metrics (based on historical
       frequency).
     nonoptimized_data_with_optimal_freq: The non-optimized budget metrics based
@@ -85,21 +138,15 @@ class OptimizationResults:
     optimization_grid: The grid information used for optimization.
   """
 
-  meridian: model.Meridian
   # The analyzer bound to the model above.
   analyzer: analyzer.Analyzer
-
-  # The intermediate values used to derive the optimized budget allocation.
-  use_posterior: bool
-  use_optimal_frequency: bool
   spend_ratio: np.ndarray  # spend / historical spend
-  spend_bounds: tuple[np.ndarray, np.ndarray]
 
   # The optimized budget allocation datasets. See: each @property pydocs below.
   _nonoptimized_data: xr.Dataset
   _nonoptimized_data_with_optimal_freq: xr.Dataset
   _optimized_data: xr.Dataset
-  _optimization_grid: xr.Dataset
+  _optimization_grid: OptimizationGrid
 
   # TODO: Move this, and the plotting methods, to a summarizer.
   @functools.cached_property
@@ -174,15 +221,8 @@ class OptimizationResults:
     return self._optimized_data
 
   @property
-  def optimization_grid(self) -> xr.Dataset:
-    """Dataset holding the grid information used for optimization.
-
-    The dataset contains the following:
-
-      - Coordinates:  `grid_spend_index`, `channel`
-      - Data variables: `spend_grid`, `incremental_outcome_grid`
-      - Attributes: `spend_step_size`
-    """
+  def optimization_grid(self) -> OptimizationGrid:
+    """The grid information used for optimization."""
     return self._optimization_grid
 
   def output_optimization_summary(self, filename: str, filepath: str):
@@ -520,11 +560,7 @@ class OptimizationResults:
       returned this result.
     """
     channels = self.optimized_data.channel.values
-    selected_times = self.meridian.expand_selected_time_dims(
-        start_date=self.optimized_data.start_date,
-        end_date=self.optimized_data.end_date,
-    )
-    _, ubounds = self.spend_bounds
+    _, ubounds = self.optimization_grid.spend_bounds
     upper_bound = (
         ubounds.repeat(len(channels)) * self.spend_ratio
         if len(ubounds) == 1
@@ -539,10 +575,10 @@ class OptimizationResults:
     # response curve computation might take a significant amount of time.
     return self.analyzer.response_curves(
         spend_multipliers=spend_multiplier,
-        use_posterior=self.use_posterior,
-        selected_times=selected_times,
+        use_posterior=self.optimization_grid.use_posterior,
+        selected_times=self.optimization_grid.selected_times,
         by_reach=True,
-        use_optimal_frequency=self.use_optimal_frequency,
+        use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
     )
 
   def _get_plottable_response_curves_df(
@@ -558,7 +594,7 @@ class OptimizationResults:
       A dataframe containing the response curve data suitable for plotting.
     """
     channels = self.optimized_data.channel.values
-    lbounds, ubounds = self.spend_bounds
+    lbounds, ubounds = self.optimization_grid.spend_bounds
     lower_bound = (
         lbounds.repeat(len(channels)) * self.spend_ratio
         if len(lbounds) == 1
@@ -674,13 +710,12 @@ class OptimizationResults:
         id=summary_text.SCENARIO_PLAN_CARD_ID,
         title=summary_text.SCENARIO_PLAN_CARD_TITLE,
     )
-
     scenario_type = (
         summary_text.FIXED_BUDGET_LABEL.lower()
         if self.optimized_data.fixed_budget
         else summary_text.FLEXIBLE_BUDGET_LABEL
     )
-    lbounds, ubounds = self.spend_bounds
+    lbounds, ubounds = self.optimization_grid.spend_bounds
     if len(lbounds) > 1 or len(ubounds) > 1:
       insights = summary_text.SCENARIO_PLAN_INSIGHTS_VARIED_SPEND_BOUNDS.format(
           scenario_type=scenario_type,
@@ -891,6 +926,14 @@ class BudgetOptimizer:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(self._meridian)
 
+  def _validate_model_fit(self, use_posterior: bool):
+    """Validates that the model is fit."""
+    dist_type = c.POSTERIOR if use_posterior else c.PRIOR
+    if dist_type not in self._meridian.inference_data.groups():
+      raise model.NotFittedModelError(
+          'Running budget optimization scenarios requires fitting the model.'
+      )
+
   def optimize(
       self,
       use_posterior: bool = True,
@@ -980,12 +1023,175 @@ class BudgetOptimizer:
       An `OptimizationResults` object containing optimized budget allocation
       datasets, along with some of the intermediate values used to derive them.
     """
-    dist_type = c.POSTERIOR if use_posterior else c.PRIOR
-    if dist_type not in self._meridian.inference_data.groups():
-      raise model.NotFittedModelError(
-          'Running budget optimization scenarios requires fitting the model.'
-      )
-    self._validate_budget(fixed_budget, budget, target_roi, target_mroi)
+    _validate_target_metrics(fixed_budget, target_roi, target_mroi)
+
+    optimization_grid = self.create_optimization_grid(
+        use_kpi=use_kpi,
+        use_posterior=use_posterior,
+        selected_times=selected_times,
+        fixed_budget=fixed_budget,
+        budget=budget,
+        pct_of_spend=pct_of_spend,
+        spend_constraint_lower=spend_constraint_lower,
+        spend_constraint_upper=spend_constraint_upper,
+        gtol=gtol,
+        use_optimal_frequency=use_optimal_frequency,
+        batch_size=batch_size,
+    )
+    hist_spend = self._analyzer.get_historical_spend(
+        optimization_grid.selected_times,
+        include_media=self._meridian.n_media_channels > 0,
+        include_rf=self._meridian.n_rf_channels > 0,
+    ).data
+    budget = budget or np.sum(hist_spend)
+    pct_of_spend = self._validate_pct_of_spend(hist_spend, pct_of_spend)
+    spend = budget * pct_of_spend
+    rounded_spend = np.round(spend, optimization_grid.round_factor).astype(int)
+
+    # TODO: b/375644691) - Move grid search to a OptimizationGrid class.
+    optimal_spend = self._grid_search(
+        spend_grid=optimization_grid.spend_grid,
+        incremental_outcome_grid=optimization_grid.incremental_outcome_grid,
+        budget=np.sum(rounded_spend),
+        fixed_budget=fixed_budget,
+        target_mroi=target_mroi,
+        target_roi=target_roi,
+    )
+
+    spend_ratio = np.divide(
+        spend,
+        hist_spend,
+        out=np.zeros_like(hist_spend, dtype=float),
+        where=hist_spend != 0,
+    )
+    use_historical_budget = budget is None or round(budget) == round(
+        np.sum(hist_spend)
+    )
+    constraints = {
+        c.FIXED_BUDGET: fixed_budget,
+    }
+    if target_roi:
+      constraints[c.TARGET_ROI] = target_roi
+    elif target_mroi:
+      constraints[c.TARGET_MROI] = target_mroi
+
+    nonoptimized_data = self._create_budget_dataset(
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        hist_spend=hist_spend,
+        spend=rounded_spend,
+        selected_times=optimization_grid.selected_times,
+        confidence_level=confidence_level,
+        batch_size=batch_size,
+        use_historical_budget=use_historical_budget,
+    )
+    nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        hist_spend=hist_spend,
+        spend=rounded_spend,
+        selected_times=optimization_grid.selected_times,
+        optimal_frequency=optimization_grid.optimal_frequency,
+        confidence_level=confidence_level,
+        batch_size=batch_size,
+        use_historical_budget=use_historical_budget,
+    )
+    optimized_data = self._create_budget_dataset(
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        hist_spend=hist_spend,
+        spend=optimal_spend,
+        selected_times=optimization_grid.selected_times,
+        optimal_frequency=optimization_grid.optimal_frequency,
+        attrs=constraints,
+        confidence_level=confidence_level,
+        batch_size=batch_size,
+        use_historical_budget=use_historical_budget,
+    )
+
+    return OptimizationResults(
+        analyzer=self._analyzer,
+        spend_ratio=spend_ratio,
+        _nonoptimized_data=nonoptimized_data,
+        _nonoptimized_data_with_optimal_freq=nonoptimized_data_with_optimal_freq,
+        _optimized_data=optimized_data,
+        _optimization_grid=optimization_grid,
+    )
+
+  def create_optimization_grid(
+      self,
+      use_posterior: bool = True,
+      selected_times: tuple[str | None, str | None] | None = None,
+      fixed_budget: bool = True,
+      budget: float | None = None,
+      pct_of_spend: Sequence[float] | None = None,
+      spend_constraint_lower: _SpendConstraint | None = None,
+      spend_constraint_upper: _SpendConstraint | None = None,
+      gtol: float = 0.0001,
+      use_optimal_frequency: bool = True,
+      use_kpi: bool = False,
+      batch_size: int = c.DEFAULT_BATCH_SIZE,
+  ) -> OptimizationGrid:
+    """Creates a OptimizationGrid for optimization.
+
+    Args:
+      use_posterior: Boolean. If `True`, then the budget is optimized based on
+        the posterior distribution of the model. Otherwise, the prior
+        distribution is used.
+      selected_times: Tuple containing the start and end time dimension
+        coordinates for the duration to run the optimization on. Selected time
+        values should align with the Meridian time dimension coordinates in the
+        underlying model. By default, all times periods are used. Either start
+        or end time component can be `None` to represent the first or the last
+        time coordinate, respectively.
+      fixed_budget: Boolean indicating whether it's a fixed budget optimization
+        or flexible budget optimization. Defaults to `True`. If `False`, must
+        specify either `target_roi` or `target_mroi`.
+      budget: Number indicating the total budget for the fixed budget scenario.
+        Defaults to the historical budget.
+      pct_of_spend: Numeric list of size `n_total_channels` containing the
+        percentage allocation for spend for all media and RF channels. The order
+        must match `InputData.media` with values between 0-1, summing to 1. By
+        default, the historical allocation is used. Budget and allocation are
+        used in conjunction to determine the non-optimized media-level spend,
+        which is used to calculate the non-optimized performance metrics (for
+        example, ROI) and construct the feasible range of media-level spend with
+        the spend constraints. Consider using
+        `InputData.get_paid_channels_argument_builder()` to construct the
+        argument here.
+      spend_constraint_lower: Numeric list of size `n_total_channels` or float
+        (same constraint for all channels) indicating the lower bound of
+        media-level spend. The lower bound of media-level spend is `(1 -
+        spend_constraint_lower) * budget * allocation)`. The value must be
+        between 0-1. Defaults to `0.3` for fixed budget and `1` for flexible.
+        Consider using `InputData.get_paid_channels_argument_builder()` to
+        construct the argument here.
+      spend_constraint_upper: Numeric list of size `n_total_channels` or float
+        (same constraint for all channels) indicating the upper bound of
+        media-level spend. The upper bound of media-level spend is `(1 +
+        spend_constraint_upper) * budget * allocation)`. Defaults to `0.3` for
+        fixed budget and `1` for flexible. Consider using
+        `InputData.get_paid_channels_argument_builder()` to construct the
+        argument here.
+      gtol: Float indicating the acceptable relative error for the budget used
+        in the grid setup. The budget will be rounded by `10*n`, where `n` is
+        the smallest integer such that `(budget - rounded_budget)` is less than
+        or equal to `(budget * gtol)`. `gtol` must be less than 1.
+      use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
+        trained Meridian model for optimization. If `False`, uses historical
+        frequency.
+      use_kpi: If `True`, runs the optimization on KPI. Defaults to revenue.
+      batch_size: Maximum draws per chain in each batch. The calculation is run
+        in batches to avoid memory exhaustion. If a memory error occurs, try
+        reducing `batch_size`. The calculation will generally be faster with
+        larger `batch_size` values.
+
+    Returns:
+      An OptimizationGrid object containing the grid data for optimization.
+    """
+    self._validate_model_fit(use_posterior)
+    _validate_budget(fixed_budget=fixed_budget, budget=budget)
+
     if selected_times is not None:
       start_date, end_date = selected_times
       selected_time_dims = self._meridian.expand_selected_time_dims(
@@ -995,27 +1201,6 @@ class BudgetOptimizer:
     else:
       selected_time_dims = None
 
-    hist_spend = self._analyzer.get_historical_spend(
-        selected_time_dims,
-        include_media=self._meridian.n_media_channels > 0,
-        include_rf=self._meridian.n_rf_channels > 0,
-    ).data
-
-    use_historical_budget = budget is None or round(budget) == round(
-        np.sum(hist_spend)
-    )
-    budget = budget or np.sum(hist_spend)
-    pct_of_spend = self._validate_pct_of_spend(hist_spend, pct_of_spend)
-    spend = budget * pct_of_spend
-    round_factor = _get_round_factor(budget, gtol)
-    step_size = 10 ** (-round_factor)
-    rounded_spend = np.round(spend, round_factor).astype(int)
-    spend_ratio = np.divide(
-        spend,
-        hist_spend,
-        out=np.zeros_like(hist_spend, dtype=float),
-        where=hist_spend != 0,
-    )
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
@@ -1027,6 +1212,19 @@ class BudgetOptimizer:
       )
     else:
       optimal_frequency = None
+
+    hist_spend = self._analyzer.get_historical_spend(
+        selected_time_dims,
+        include_media=self._meridian.n_media_channels > 0,
+        include_rf=self._meridian.n_rf_channels > 0,
+    ).data
+
+    budget = budget or np.sum(hist_spend)
+    pct_of_spend = self._validate_pct_of_spend(hist_spend, pct_of_spend)
+    spend = budget * pct_of_spend
+    round_factor = _get_round_factor(budget, gtol)
+    step_size = 10 ** (-round_factor)
+    rounded_spend = np.round(spend, round_factor).astype(int)
 
     (optimization_lower_bound, optimization_upper_bound, spend_bounds) = (
         self._get_optimization_bounds(
@@ -1048,77 +1246,25 @@ class BudgetOptimizer:
         optimal_frequency=optimal_frequency,
         batch_size=batch_size,
     )
-    optimal_spend = self._grid_search(
-        spend_grid=spend_grid,
-        incremental_outcome_grid=incremental_outcome_grid,
-        budget=np.sum(rounded_spend),
-        fixed_budget=fixed_budget,
-        target_mroi=target_mroi,
-        target_roi=target_roi,
-    )
-
-    constraints = {
-        c.FIXED_BUDGET: fixed_budget,
-    }
-    if target_roi:
-      constraints[c.TARGET_ROI] = target_roi
-    elif target_mroi:
-      constraints[c.TARGET_MROI] = target_mroi
-
-    nonoptimized_data = self._create_budget_dataset(
-        use_posterior=use_posterior,
-        use_kpi=use_kpi,
-        hist_spend=hist_spend,
-        spend=rounded_spend,
-        selected_times=selected_time_dims,
-        confidence_level=confidence_level,
-        batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
-    )
-    nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
-        use_posterior=use_posterior,
-        use_kpi=use_kpi,
-        hist_spend=hist_spend,
-        spend=rounded_spend,
-        selected_times=selected_time_dims,
-        optimal_frequency=optimal_frequency,
-        confidence_level=confidence_level,
-        batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
-    )
-    optimized_data = self._create_budget_dataset(
-        use_posterior=use_posterior,
-        use_kpi=use_kpi,
-        hist_spend=hist_spend,
-        spend=optimal_spend,
-        selected_times=selected_time_dims,
-        optimal_frequency=optimal_frequency,
-        attrs=constraints,
-        confidence_level=confidence_level,
-        batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
-    )
-
-    optimization_grid = self._create_optimization_grid(
+    grid_dataset = self._create_grid_dataset(
         spend_grid=spend_grid,
         spend_step_size=step_size,
         incremental_outcome_grid=incremental_outcome_grid,
     )
 
-    return OptimizationResults(
-        meridian=self._meridian,
-        analyzer=self._analyzer,
+    return OptimizationGrid(
+        _grid_dataset=grid_dataset,
+        spend=spend,
+        spend_bounds=spend_bounds,
+        use_kpi=use_kpi,
         use_posterior=use_posterior,
         use_optimal_frequency=use_optimal_frequency,
-        spend_ratio=spend_ratio,
-        spend_bounds=spend_bounds,
-        _nonoptimized_data=nonoptimized_data,
-        _nonoptimized_data_with_optimal_freq=nonoptimized_data_with_optimal_freq,
-        _optimized_data=optimized_data,
-        _optimization_grid=optimization_grid,
+        round_factor=round_factor,
+        optimal_frequency=optimal_frequency,
+        selected_times=selected_time_dims,
     )
 
-  def _create_optimization_grid(
+  def _create_grid_dataset(
       self,
       spend_grid: np.ndarray,
       spend_step_size: float,
@@ -1163,39 +1309,6 @@ class BudgetOptimizer:
         },
         attrs={c.SPEND_STEP_SIZE: spend_step_size},
     )
-
-  def _validate_budget(
-      self,
-      fixed_budget: bool,
-      budget: float | None,
-      target_roi: float | None,
-      target_mroi: float | None,
-  ):
-    """Validates the budget optimization arguments."""
-    if fixed_budget:
-      if target_roi is not None:
-        raise ValueError(
-            '`target_roi` is only used for flexible budget scenarios.'
-        )
-      if target_mroi is not None:
-        raise ValueError(
-            '`target_mroi` is only used for flexible budget scenarios.'
-        )
-      if budget is not None and budget <= 0:
-        raise ValueError('`budget` must be greater than zero.')
-    else:
-      if budget is not None:
-        raise ValueError('`budget` is only used for fixed budget scenarios.')
-      if target_roi is None and target_mroi is None:
-        raise ValueError(
-            'Must specify either `target_roi` or `target_mroi` for flexible'
-            ' budget optimization.'
-        )
-      if target_roi is not None and target_mroi is not None:
-        raise ValueError(
-            'Must specify only one of `target_roi` or `target_mroi` for'
-            'flexible budget optimization.'
-        )
 
   def _validate_pct_of_spend(
       self, hist_spend: np.ndarray, pct_of_spend: Sequence[float] | None
@@ -1836,6 +1949,47 @@ class BudgetOptimizer:
           decimals=8,
       )
     return spend_optimal
+
+
+def _validate_budget(
+    fixed_budget: bool,
+    budget: float | None,
+):
+  """Validates the budget optimization arguments."""
+  if fixed_budget:
+    if budget is not None and budget <= 0:
+      raise ValueError('`budget` must be greater than zero.')
+  else:
+    if budget is not None:
+      raise ValueError('`budget` is only used for fixed budget scenarios.')
+
+
+def _validate_target_metrics(
+    fixed_budget: bool,
+    target_roi: float | None,
+    target_mroi: float | None,
+):
+  """Validates the budget optimization arguments."""
+  if fixed_budget:
+    if target_roi is not None:
+      raise ValueError(
+          '`target_roi` is only used for flexible budget scenarios.'
+      )
+    if target_mroi is not None:
+      raise ValueError(
+          '`target_mroi` is only used for flexible budget scenarios.'
+      )
+  else:
+    if target_roi is None and target_mroi is None:
+      raise ValueError(
+          'Must specify either `target_roi` or `target_mroi` for flexible'
+          ' budget optimization.'
+      )
+    if target_roi is not None and target_mroi is not None:
+      raise ValueError(
+          'Must specify only one of `target_roi` or `target_mroi` for'
+          'flexible budget optimization.'
+      )
 
 
 def _get_round_factor(budget: float, gtol: float) -> int:
