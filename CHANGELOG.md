@@ -25,6 +25,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * Align `NaNs` in `spend_grid` and `incremental_outcome_grid` in the optimizer.
 * Fix the stopping criteria of target total ROI in flexible budget optimization.
+* Separate creation of the grid data and the optimization.
 
 ## [1.0.4] - 2025-02-28
 
