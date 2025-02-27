@@ -1899,6 +1899,11 @@ def _exceeds_optimization_constraints(
   if fixed_budget:
     return np.sum(spend) > budget
   elif target_roi is not None:
-    return (np.sum(incremental_outcome) / np.sum(spend)) < target_roi
+    cur_total_roi = np.sum(incremental_outcome) / np.sum(spend)
+    # In addition to the total roi being less than the target roi, the roi of
+    # the current optimization step should also be less than the total roi.
+    # Without the second condition, the optimization algorithm may not have
+    # found the roi point close to the target roi yet.
+    return cur_total_roi < target_roi and roi_grid_point < cur_total_roi
   else:
     return roi_grid_point < target_mroi
