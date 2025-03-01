@@ -537,9 +537,14 @@ class Meridian:
     self._validate_injected_inference_data_group_coord(
         inference_data, group, constants.TIME, self.n_times
     )
-    self._validate_injected_inference_data_group_coord(
-        inference_data, group, constants.SIGMA_DIM, self._sigma_shape
-    )
+    if self.model_spec.unique_sigma_for_each_geo:
+      self._validate_injected_inference_data_group_coord(
+          inference_data, group, constants.GEO, self._sigma_shape
+      )
+    else:
+      self._validate_injected_inference_data_group_coord(
+          inference_data, group, constants.SIGMA_DIM, self._sigma_shape
+      )
     self._validate_injected_inference_data_group_coord(
         inference_data,
         group,
