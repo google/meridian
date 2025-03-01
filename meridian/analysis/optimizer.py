@@ -1714,8 +1714,11 @@ class BudgetOptimizer:
       )
       spend_grid[: len(spend_grid_m), i] = spend_grid_m
     incremental_outcome_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
-    multipliers_grid = tf.cast(
+    multipliers_grid_base = tf.cast(
         tf.math.divide_no_nan(spend_grid, spend), dtype=tf.float32
+    )
+    multipliers_grid = np.where(
+        np.isnan(spend_grid), np.nan, multipliers_grid_base
     )
     for i in range(n_grid_rows):
       self._update_incremental_outcome_grid(

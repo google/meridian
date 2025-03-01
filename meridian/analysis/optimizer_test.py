@@ -1836,6 +1836,21 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     np.testing.assert_array_equal(optimal_spend, expected_optimal_spend)
 
+  def test_optimization_grid_nans_match(self):
+    self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf._analyzer,
+            'get_historical_spend',
+            return_value=mock.MagicMock(data=np.array([100, 200, 0, 400, 0])),
+        )
+    )
+
+    opt_results = self.budget_optimizer_media_and_rf.optimize()
+    np.testing.assert_array_equal(
+        np.isnan(opt_results.optimization_grid.spend_grid),
+        np.isnan(opt_results.optimization_grid.incremental_outcome_grid),
+    )
+
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
   def test_optimizer_budget_with_specified_budget(
       self, mock_incremental_outcome
