@@ -7,7 +7,7 @@ description = """\
   your return on investment and direct your ad spend with confidence. \
   """
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
   {name = "The Meridian Authors", email="no-reply@google.com"},
