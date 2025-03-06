@@ -53,6 +53,15 @@ class TimeCoordinatesTest(parameterized.TestCase):
         self.all_dates
     )
 
+  def test_constructor_must_have_more_than_one_date(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "There must be more than one date index",
+    ):
+      time_coordinates.TimeCoordinates.from_dates(
+          pd.DatetimeIndex([np.datetime64("2024-01-01")])
+      )
+
   def test_property_all_dates(self):
     expected_dates = [
         dt.datetime.strptime(date, constants.DATE_FORMAT).date()
@@ -113,22 +122,130 @@ class TimeCoordinatesTest(parameterized.TestCase):
     )
     self.assertEqual(coordinates.interval_days, 1)
 
-  def test_property_nonregular_interval_days(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="weekly_interval_days",
+          dates=[
+              dt.datetime(2024, 1, 1) + dt.timedelta(days=7 * i)
+              for i in range(14)
+          ],
+          expected_interval_days=7,
+      ),
+      dict(
+          testcase_name="thirty_day_interval_days",
+          dates=[
+              dt.datetime(2024, 1, 1) + dt.timedelta(days=30 * i)
+              for i in range(24)
+          ],
+          expected_interval_days=30,
+      ),
+  )
+  def test_property_interval_days_regular(
+      self, dates: list[dt.date], expected_interval_days
+  ):
+    coordinates = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex(dates)
+    )
+    self.assertEqual(coordinates.interval_days, expected_interval_days)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="monthly_on_the_first_day_of_each_month_one_year",
+          dates=[dt.datetime(2024, m, 1) for m in range(1, 13)],
+          expected_interval_days=30,
+      ),
+      dict(
+          testcase_name="monthly_on_the_last_day_of_each_month_two_years",
+          dates=[
+              dt.datetime(2024 + y, m, 1) - dt.timedelta(days=1)
+              for y in range(2)
+              for m in range(1, 13)
+          ],
+          expected_interval_days=30,
+      ),
+      dict(
+          testcase_name="monthly_on_the_fifteenth_each_month_four_years",
+          dates=[
+              dt.datetime(2024 + y, m, 15)
+              for y in range(4)
+              for m in range(1, 13)
+          ],
+          expected_interval_days=30,
+      ),
+      dict(
+          testcase_name="quarterly_on_the_first_day_of_each_quarter_one_year",
+          dates=[dt.datetime(2024, q * 3 + 1, 1) for q in range(0, 4)],
+          expected_interval_days=91,
+      ),
+      dict(
+          testcase_name="yearly_with_leap_day",
+          dates=[dt.datetime(2023 + y, 1, 1) for y in range(5)],
+          expected_interval_days=365,
+      ),
+  )
+  def test_property_interval_days_fuzzy_regular(
+      self,
+      dates: list[dt.date],
+      expected_interval_days: int,
+  ):
+    coordinates = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex(dates)
+    )
+    self.assertEqual(coordinates.interval_days, expected_interval_days)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="weekly_misses_one_entire_week",
+          dates=[
+              dt.datetime(2024, 1, 1)
+              + dt.timedelta(days=7 * (i + 1 if i >= 4 else i))
+              for i in range(20)
+          ],
+      ),
+      dict(
+          testcase_name="weekly_one_week_is_half_week",
+          dates=[
+              dt.datetime(2024, 1, 1)
+              + dt.timedelta(days=7 * i + (4 if i == 10 else 0))
+              for i in range(25)
+          ],
+      ),
+      dict(
+          testcase_name="monthly_one_month_is_off_by_ten_days",
+          dates=[
+              # 2024/3/10 on March, 15th for the rest.
+              dt.date(2024, m, 15) - dt.timedelta(days=(10 if m == 2 else 0))
+              for m in range(1, 13)
+          ],
+      ),
+  )
+  def test_property_interval_days_fuzzy_irregular(
+      self,
+      dates: list[dt.date],
+  ):
+    coordinates = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex(dates)
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Time coordinates are not regularly spaced!",
+    ):
+      _ = coordinates.interval_days
+
+  def test_property_irregular_interval_days(self):
+    dates = ["2024-01-01", "2024-01-03", "2024-01-10"]
     all_dates = xr.DataArray(
-        data=np.array(["2024-01-01", "2024-01-08", "2024-01-16"]),
+        data=np.array(dates),
         dims=[constants.TIME],
         coords={
-            constants.TIME: (
-                [constants.TIME],
-                ["2024-01-01", "2024-01-08", "2024-01-16"],
-            ),
+            constants.TIME: ([constants.TIME], dates),
         },
     )
     coordinates = time_coordinates.TimeCoordinates.from_dates(all_dates)
 
     with self.assertRaisesRegex(
         ValueError,
-        "`datetime_index` coordinates are not evenly spaced!",
+        "Time coordinates are not regularly spaced!",
     ):
       _ = coordinates.interval_days
 

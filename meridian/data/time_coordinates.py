@@ -19,7 +19,6 @@ import dataclasses
 import datetime
 import functools
 from typing import TypeAlias
-import warnings
 
 from meridian import constants
 import numpy as np
@@ -145,6 +144,10 @@ class TimeCoordinates:
     return cls(datetime_index=_to_pandas_datetime_index(dates))
 
   def __post_init__(self):
+    if len(self.datetime_index) <= 1:
+      raise ValueError(
+          "There must be more than one date index in the time coordinates."
+      )
     if not self.datetime_index.is_monotonic_increasing:
       raise ValueError(
           "Time coordinates must be strictly monotonically increasing."
@@ -162,28 +165,46 @@ class TimeCoordinates:
 
   @functools.cached_property
   def interval_days(self) -> int:
-    """Returns the interval between two neighboring dates in `all_dates`.
+    """Returns the *mean* interval between two neighboring dates in `all_dates`.
 
     Raises:
-      ValueError if the date index is not regularly spaced.
+      ValueError if the date index is not "regularly spaced".
     """
+    if not self._is_regular_time_index():
+      raise ValueError("Time coordinates are not regularly spaced!")
+
     # Calculate the difference between consecutive dates, in days.
-    diff = self.datetime_index.to_series().diff().dt.days.dropna()
+    diffs = self._interval_days
+    # Return the rounded mean interval.
+    return int(np.round(np.mean(diffs)))
 
-    if diff.nunique() == 0:
-      # This edge case happens when there is only one date in the index.
-      # This is unlikely to happen in practice, but we handle it just in case.
-      warnings.warn(
-          "The time coordinates only have one date. Returning an interval of 0."
-      )
-      return 0
+  @property
+  def _timedelta_index(self) -> pd.TimedeltaIndex:
+    """Returns the timedeltas between consecutive dates in `datetime_index`."""
+    return self.datetime_index.diff().dropna()
 
-    # Check for regularity.
-    if diff.nunique() != 1:
-      raise ValueError("`datetime_index` coordinates are not evenly spaced!")
+  @property
+  def _interval_days(self) -> Sequence[int]:
+    """Converts `_timedelta_index` to a sequence of days for easier compute."""
+    return self._timedelta_index.days.to_numpy()
 
-    # Finally, return the mode interval.
-    return diff.mode()[0]
+  def _is_regular_time_index(self) -> bool:
+    """Returns True if the time index is "regularly spaced"."""
+    if np.all(self._interval_days == self._interval_days[0]):
+      # All intervals are regular. Base case.
+      return True
+    # Special cases:
+    # * Monthly cadences
+    if np.all(np.isin(self._interval_days, [28, 29, 30, 31])):
+      return True
+    # * Quarterly cadences
+    if np.all(np.isin(self._interval_days, [90, 91, 92])):
+      return True
+    # * Yearly cadences
+    if np.all(np.isin(self._interval_days, [365, 366])):
+      return True
+
+    return False
 
   def get_selected_dates(
       self,

@@ -542,11 +542,13 @@ class InputData:
     try:
       _ = self.time_coordinates.interval_days
     except ValueError as exc:
-      raise ValueError("Time coordinates must be evenly spaced.") from exc
+      raise ValueError("Time coordinates must be regularly spaced.") from exc
     try:
       _ = self.media_time_coordinates.interval_days
     except ValueError as exc:
-      raise ValueError("Media time coordinates must be evenly spaced.") from exc
+      raise ValueError(
+          "Media time coordinates must be regularly spaced."
+      ) from exc
 
   def _validate_time(self, array: xr.DataArray | None):
     """Validates the `time` dimension of the given `DataArray`.

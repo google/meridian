@@ -956,15 +956,17 @@ class InputDataTest(parameterized.TestCase):
     # that it is not regularly spaced with other coordinate values.
     old_time_coords = kpi[constants.TIME].values
     new_time_coords = old_time_coords.copy()
-    new_time_coords[-1] = (
-        datetime.datetime.strptime(old_time_coords[-1], constants.DATE_FORMAT)
+    new_time_coords[-2] = (
+        datetime.datetime.strptime(
+            old_time_coords[-2], constants.DATE_FORMAT
+        )
         + datetime.timedelta(days=2)
     ).strftime(constants.DATE_FORMAT)
     kpi = kpi.assign_coords({constants.TIME: new_time_coords})
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Time coordinates must be evenly spaced.",
+        "Time coordinates must be regularly spaced.",
     ):
       input_data.InputData(
           controls=self.not_lagged_controls,
@@ -982,9 +984,9 @@ class InputDataTest(parameterized.TestCase):
     # value so that it is not regularly spaced with other coordinate values.
     old_media_time_coords = media[constants.MEDIA_TIME].values
     new_media_time_coords = old_media_time_coords.copy()
-    new_media_time_coords[-1] = (
+    new_media_time_coords[2] = (
         datetime.datetime.strptime(
-            old_media_time_coords[-1], constants.DATE_FORMAT
+            old_media_time_coords[2], constants.DATE_FORMAT
         )
         + datetime.timedelta(days=2)
     ).strftime(constants.DATE_FORMAT)
@@ -992,7 +994,7 @@ class InputDataTest(parameterized.TestCase):
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Media time coordinates must be evenly spaced.",
+        "Media time coordinates must be regularly spaced.",
     ):
       input_data.InputData(
           controls=self.not_lagged_controls,
