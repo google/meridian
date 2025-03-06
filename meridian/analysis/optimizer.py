@@ -377,7 +377,8 @@ class OptimizationResults:
         .properties(
             title=formatter.custom_title_params(
                 summary_text.SPEND_ALLOCATION_CHART_TITLE
-            )
+            ),
+            width=c.VEGALITE_FACET_DEFAULT_WIDTH
         )
     )
 
@@ -461,7 +462,7 @@ class OptimizationResults:
       title = summary_text.INC_KPI_LABEL
     df = self._get_plottable_response_curves_df(n_top_channels=n_top_channels)
     base = (
-        alt.Chart(df)
+        alt.Chart(df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_calculate(
             spend_constraint=(
                 'datum.spend_multiplier >= datum.lower_bound &&'

@@ -400,8 +400,8 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     self.assertEqual(line_encoding.y.datum, 1)
     self.assertEqual(boxplot_encoding.x.shorthand, c.PARAMETER)
     self.assertEqual(boxplot_encoding.y.shorthand, c.RHAT)
-    self.assertEqual(boxplot_encoding.x.axis.labelAngle, -45)
-    self.assertFalse(boxplot_encoding.y.scale.zero)
+    self.assertEqual(boxplot_encoding.x["axis"]["labelAngle"], -45)
+    self.assertFalse(boxplot_encoding.y["scale"]["zero"])
 
   def test_plot_rhat_boxplot_correct_config(self):
     plot = self.model_diagnostics.plot_rhat_boxplot()
@@ -466,23 +466,23 @@ class ModelFitTest(absltest.TestCase):
   def test_model_fit_plot_different_scenarios_labels_correct(self):
     # Verifies each of the three kpi_type and revenue_per_kpi scenarios have
     # the correct labels associated with them.
-    plot_revenue_revenue_label = (
+    plot_revenue_revenue_label: alt.Chart = (
         self.model_fit_kpi_type_revenue.plot_model_fit()
     )
-    plot_non_revenue_kpi_label = self.model_fit_kpi_type_kpi.plot_model_fit()
+    plot_non_revenue_kpi_label: alt.Chart = self.model_fit_kpi_type_kpi.plot_model_fit()
     plot_non_revenue_revenue_label = (
         self.model_fit_kpi_type_revenue_2.plot_model_fit()
     )
     self.assertEqual(
-        plot_revenue_revenue_label.layer[0].encoding.y.title,
+        plot_revenue_revenue_label.layer[0].encoding.y["title"],
         summary_text.REVENUE_LABEL,
     )
     self.assertEqual(
-        plot_non_revenue_kpi_label.layer[0].encoding.y.title,
+        plot_non_revenue_kpi_label.layer[0].encoding.y["title"],
         summary_text.KPI_LABEL,
     )
     self.assertEqual(
-        plot_non_revenue_revenue_label.layer[0].encoding.y.title,
+        plot_non_revenue_revenue_label.layer[0].encoding.y["title"],
         summary_text.REVENUE_LABEL,
     )
 
@@ -598,7 +598,7 @@ class ModelFitTest(absltest.TestCase):
 
     self.assertContainsSubset([c.GEO], plot.data.columns.tolist())
     self.assertIsInstance(plot, alt.FacetChart)
-    self.assertListEqual(plot.facet.column.sort, ["geo 1", "geo 3"])
+    self.assertListEqual(plot.facet.column["sort"], ["geo 1", "geo 3"])
 
   def test_model_fit_geo_level_plots_n_largest_geos(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(
@@ -608,7 +608,7 @@ class ModelFitTest(absltest.TestCase):
     self.input_data_1.get_n_top_largest_geos.assert_called_with(3)
     self.assertContainsSubset([c.GEO], plot.data.columns.tolist())
     self.assertIsInstance(plot, alt.FacetChart)
-    self.assertListEqual(plot.facet.column.sort, ["geo 0", "geo 1", "geo 2"])
+    self.assertListEqual(plot.facet.column["sort"], ["geo 0", "geo 1", "geo 2"])
 
   def test_model_fit_plots_baseline(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_baseline=True)
@@ -618,10 +618,10 @@ class ModelFitTest(absltest.TestCase):
         [c.ACTUAL, c.BASELINE, c.EXPECTED],
     )
     self.assertEqual(
-        plot.layer[0].encoding.color.scale.domain,
+        plot.layer[0].encoding.color["scale"]["domain"],
         [c.EXPECTED, c.ACTUAL, c.BASELINE],
     )
-    self.assertLen(plot.layer[0].encoding.color.scale.range, 3)
+    self.assertLen(plot.layer[0].encoding.color["scale"]["range"], 3)
 
   def test_model_fit_plots_no_baseline(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(
@@ -632,7 +632,7 @@ class ModelFitTest(absltest.TestCase):
         plot.data.type.unique().tolist(), [c.ACTUAL, c.EXPECTED]
     )
     self.assertEqual(
-        plot.layer[0].encoding.color.scale.domain,
+        plot.layer[0].encoding.color["scale"]["domain"],
         [c.EXPECTED, c.ACTUAL],
     )
 
@@ -640,7 +640,7 @@ class ModelFitTest(absltest.TestCase):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_ci=True)
 
     self.assertIsInstance(plot, alt.LayerChart)
-    self.assertEqual(plot.layer[1].encoding.color.scale.domain, [c.EXPECTED])
+    self.assertEqual(plot.layer[1].encoding.color["scale"]["domain"], [c.EXPECTED])
     self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.CI_HI}:Q")
     self.assertEqual(plot.layer[1].encoding.y2.shorthand, f"{c.CI_LO}:Q")
 
@@ -653,7 +653,7 @@ class ModelFitTest(absltest.TestCase):
   def test_model_fit_axis_encoding(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
     self.assertEqual(
-        plot.layer[0].encoding.x.axis.to_dict(),
+        plot.layer[0].encoding.x["axis"].to_dict(),
         {
             "domainColor": c.GREY_300,
             "grid": False,
@@ -662,7 +662,7 @@ class ModelFitTest(absltest.TestCase):
         },
     )
     self.assertEqual(
-        plot.layer[0].encoding.y.axis.to_dict(),
+        plot.layer[0].encoding.y["axis"].to_dict(),
         {
             "domain": False,
             "labelExpr": formatter.compact_number_expr(),
@@ -733,15 +733,15 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     line_mark = line_layer.mark
 
     self.assertEqual(line_encoding.x.shorthand, c.FREQUENCY)
-    self.assertEqual(line_encoding.x.title, "Weekly Average Frequency")
+    self.assertEqual(line_encoding.x["title"], "Weekly Average Frequency")
     self.assertEqual(line_encoding.y.shorthand, c.ROI)
-    self.assertEqual(line_encoding.y.title, summary_text.ROI_LABEL)
+    self.assertEqual(line_encoding.y["title"], summary_text.ROI_LABEL)
 
     self.assertEqual(
-        line_encoding.color.scale.domain,
+        line_encoding.color["scale"]["domain"],
         [summary_text.OPTIMAL_FREQ_LABEL, summary_text.EXPECTED_ROI_LABEL],
     )
-    self.assertEqual(line_encoding.color.scale.range, [c.BLUE_600, c.RED_600])
+    self.assertEqual(line_encoding.color["scale"]["range"], [c.BLUE_600, c.RED_600])
 
     self.assertEqual(line_mark.type, "line")
     self.assertEqual(line_mark.strokeWidth, 4)
@@ -786,7 +786,7 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     self.assertEqual(
         label_value_encoding.text.shorthand, f"{c.OPTIMAL_FREQUENCY}:Q"
     )
-    self.assertEqual(label_value_encoding.text.format, ".2f")
+    self.assertEqual(label_value_encoding.text["format"], ".2f")
     self.assertEqual(
         label_value_encoding.x.shorthand, f"{c.OPTIMAL_FREQUENCY}:Q"
     )
@@ -837,7 +837,7 @@ class ReachAndFrequencyTest(parameterized.TestCase):
 
     self.assertIsInstance(plot, alt.FacetChart)
     self.assertEqual(plot.facet.column.shorthand, f"{c.RF_CHANNEL}:N")
-    self.assertIsNone(plot.facet.column.title)
+    self.assertIsNone(plot.facet.column["title"])
     self.assertLen(plot.spec.layer, 4)
 
   def test_reach_and_frequency_plot_optimal_freq_properties(self):
@@ -996,15 +996,15 @@ class MediaEffectsTest(parameterized.TestCase):
         )
     )
     self.assertEqual(
-        plot_revenue_revenue_label.layer[0].encoding.y.title,
+        plot_revenue_revenue_label.layer[0].encoding.y["title"],
         summary_text.INC_OUTCOME_LABEL,
     )
     self.assertEqual(
-        plot_non_revenue_kpi_label.layer[0].encoding.y.title,
+        plot_non_revenue_kpi_label.layer[0].encoding.y["title"],
         summary_text.INC_KPI_LABEL,
     )
     self.assertEqual(
-        plot_non_revenue_revenue_label.layer[0].encoding.y.title,
+        plot_non_revenue_revenue_label.layer[0].encoding.y["title"],
         summary_text.INC_OUTCOME_LABEL,
     )
 
@@ -1178,13 +1178,13 @@ class MediaEffectsTest(parameterized.TestCase):
     plot = self.media_effects_kpi_type_revenue.plot_response_curves(
         plot_separately=False
     )
-    self.assertEqual(plot.config.axis.to_dict(), formatter.TEXT_CONFIG)
+    self.assertEqual(plot.config["axis"].to_dict(), formatter.TEXT_CONFIG)
     self.assertEqual(
-        plot.layer[0].encoding.x.axis.to_dict(),
+        plot.layer[0].encoding.x["axis"].to_dict(),
         {"labelExpr": formatter.compact_number_expr()} | formatter.AXIS_CONFIG,
     )
     self.assertEqual(
-        plot.layer[0].encoding.y.axis.to_dict(),
+        plot.layer[0].encoding.y["axis"].to_dict(),
         {"labelExpr": formatter.compact_number_expr()}
         | formatter.Y_AXIS_TITLE_CONFIG,
     )
@@ -1223,17 +1223,17 @@ class MediaEffectsTest(parameterized.TestCase):
 
     self.assertEqual(line_encoding.color.shorthand, c.DISTRIBUTION)
     self.assertEqual(
-        line_encoding.color.legend.labelExpr,
+        line_encoding.color["legend"]["labelExpr"],
         'datum.value === "posterior" ? "posterior (90% CI)" : "prior (90% CI)"',
     )
     self.assertEqual(line_encoding.x.shorthand, f"{c.TIME_UNITS}:Q")
     self.assertEqual(line_encoding.y.shorthand, f"{c.MEAN}:Q")
     self.assertEqual(
-        line_encoding.color.scale.domain,
+        line_encoding.color["scale"]["domain"],
         [c.PRIOR, c.POSTERIOR],
     )
 
-    self.assertEqual(line_encoding.color.scale.range, [c.RED_600, c.BLUE_700])
+    self.assertEqual(line_encoding.color["scale"]["range"], [c.RED_600, c.BLUE_700])
 
   def test_media_effects_plot_adstock_decay_plot_correct_properties(self):
     plot_facet_by_channel = (
@@ -1264,11 +1264,11 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     self.assertEqual(discrete_value_points_encoding.y.shorthand, f"{c.MEAN}:Q")
     self.assertEqual(
-        discrete_value_points_encoding.color.scale.domain,
+        discrete_value_points_encoding.color["scale"]["domain"],
         [c.PRIOR, c.POSTERIOR],
     )
     self.assertEqual(
-        discrete_value_points_encoding.color.scale.range,
+        discrete_value_points_encoding.color["scale"]["range"],
         [c.RED_600, c.BLUE_700],
     )
 
@@ -1309,7 +1309,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(media_band_mark.type, "area")
     self.assertEqual(media_band_mark.opacity, 0.3)
     self.assertEqual(
-        media_band_encoding.color.scale.domain,
+        media_band_encoding.color["scale"]["domain"],
         [
             c.POSTERIOR,
             c.PRIOR,
@@ -1317,7 +1317,7 @@ class MediaEffectsTest(parameterized.TestCase):
         ],
     )
     self.assertEqual(
-        rf_band_encoding.color.scale.domain,
+        rf_band_encoding.color["scale"]["domain"],
         [
             c.POSTERIOR,
             c.PRIOR,
@@ -1326,7 +1326,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
 
     self.assertEqual(
-        media_band_encoding.color.scale.range,
+        media_band_encoding.color["scale"]["range"],
         [c.BLUE_700, c.RED_600, c.GREY_600],
     )
 
@@ -1367,14 +1367,14 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(posterior_or_prior_line_layer.mark, "line")
     self.assertEqual(line_encoding.color.shorthand, f"{c.DISTRIBUTION}:N")
     self.assertEqual(line_encoding.x.shorthand, f"{c.MEDIA_UNITS}:Q")
-    self.assertEqual(line_encoding.x.scale.nice, False)
+    self.assertFalse(line_encoding.x["scale"]["nice"])
     self.assertEqual(line_encoding.y.shorthand, f"{c.MEAN}:Q")
     self.assertEqual(
-        line_encoding.color.scale.domain,
+        line_encoding.color["scale"]["domain"],
         [c.POSTERIOR, c.PRIOR, summary_text.HILL_SHADED_REGION_MEDIA_LABEL],
     )
     self.assertEqual(
-        line_encoding.color.scale.range,
+        line_encoding.color["scale"]["range"],
         [c.BLUE_700, c.RED_600, c.GREY_600],
     )
 
@@ -1398,7 +1398,7 @@ class MediaEffectsTest(parameterized.TestCase):
         f"{c.SCALED_COUNT_HISTOGRAM}:Q",
     )
     self.assertEqual(histogram_mark.color, c.GREY_600)
-    self.assertEqual(histogram_mark.type, "bar")
+    self.assertEqual(histogram_mark.type, "rect")
     self.assertEqual(histogram_mark.opacity, 0.4)
 
   def test_media_effects_plot_hill_curves_plot_correct_properties(self):
@@ -1426,9 +1426,9 @@ class MediaEffectsTest(parameterized.TestCase):
     facet_chart_rf_encoding = facet_chart_rf_layer_line.encoding
 
     self.assertEqual(
-        facet_chart_media_encoding.x.title, "Media Units per Capita"
+        facet_chart_media_encoding.x["title"], "Media Units per Capita"
     )
-    self.assertEqual(facet_chart_rf_encoding.x.title, "Average Frequency")
+    self.assertEqual(facet_chart_rf_encoding.x["title"], "Average Frequency")
 
   def test_media_effects_plot_hill_curves_correct_data(self):
     plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
@@ -1562,13 +1562,13 @@ class MediaSummaryTest(parameterized.TestCase):
         self.media_summary_revenue_2.plot_contribution_waterfall_chart()
     )
     self.assertEqual(
-        plot_revenue_revenue_label.layer[0].encoding.x.title, "% Revenue"
+        plot_revenue_revenue_label.layer[0].encoding.x["title"], "% Revenue"
     )
     self.assertEqual(
-        plot_non_revenue_kpi_label.layer[0].encoding.x.title, "% KPI"
+        plot_non_revenue_kpi_label.layer[0].encoding.x["title"], "% KPI"
     )
     self.assertEqual(
-        plot_non_revenue_revenue_label.layer[0].encoding.x.title, "% Revenue"
+        plot_non_revenue_revenue_label.layer[0].encoding.x["title"], "% Revenue"
     )
 
   def test_media_summary_plot_spend_vs_contribution_different_scenarios(self):
@@ -1583,11 +1583,11 @@ class MediaSummaryTest(parameterized.TestCase):
         summary_text.SPEND_OUTCOME_CHART_TITLE.format(outcome=c.KPI.upper()),
     )
     self.assertEqual(
-        plot_revenue.spec.layer[0].encoding.color.scale.domain,
+        plot_revenue.spec.layer[0].encoding.color["scale"]["domain"],
         ["% Revenue", "% Spend", "Return on Investment"],
     )
     self.assertEqual(
-        plot_kpi.spec.layer[0].encoding.color.scale.domain,
+        plot_kpi.spec.layer[0].encoding.color["scale"]["domain"],
         ["% KPI", "% Spend", "Return on Investment"],
     )
 
@@ -1732,7 +1732,7 @@ class MediaSummaryTest(parameterized.TestCase):
     plot = self.media_summary_revenue.plot_roi_bar_chart(include_ci=False)
     self.assertIsInstance(plot, alt.LayerChart)
     self.assertEqual(plot.layer[0].encoding.x.shorthand, f"{c.CHANNEL}:N")
-    self.assertEqual(plot.layer[0].encoding.x.axis.labelAngle, -45)
+    self.assertEqual(plot.layer[0].encoding.x["axis"]["labelAngle"], -45)
     self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.ROI}:Q")
 
     self.assertEqual(plot.layer[1].encoding.x.shorthand, f"{c.CHANNEL}:N")
@@ -1766,7 +1766,7 @@ class MediaSummaryTest(parameterized.TestCase):
     plot = self.media_summary_kpi.plot_cpik(include_ci=False)
     self.assertIsInstance(plot, alt.LayerChart)
     self.assertEqual(plot.layer[0].encoding.x.shorthand, f"{c.CHANNEL}:N")
-    self.assertEqual(plot.layer[0].encoding.x.axis.labelAngle, -45)
+    self.assertEqual(plot.layer[0].encoding.x["axis"]["labelAngle"], -45)
     self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.CPIK}:Q")
 
     self.assertEqual(plot.layer[1].encoding.x.shorthand, f"{c.CHANNEL}:N")
@@ -1894,19 +1894,19 @@ class MediaSummaryTest(parameterized.TestCase):
     plot = self.media_summary_revenue.plot_contribution_waterfall_chart()
     encoding = plot.layer[0].encoding
     self.assertEqual(encoding.x.shorthand, "prev_sum:Q")
-    self.assertEqual(encoding.x.title, "% Revenue")
+    self.assertEqual(encoding.x["title"], "% Revenue")
     self.assertEqual(encoding.x2.shorthand, "sum_outcome:Q")
     self.assertEqual(encoding.y.shorthand, f"{c.CHANNEL}:N")
     self.assertIsNotNone(encoding.color)
     self.assertIsNotNone(encoding.x.axis)
-    self.assertFalse(encoding.y.axis.domain)
-    self.assertFalse(encoding.y.axis.ticks)
+    self.assertFalse(encoding.y["axis"]["domain"])
+    self.assertFalse(encoding.y["axis"]["ticks"])
 
   def test_media_summary_plot_waterfall_chart_correct_properties(self):
     plot = self.media_summary_revenue.plot_contribution_waterfall_chart()
     self.assertEqual(plot.layer[0].mark.size, 42)
     self.assertLen(plot.data.channel, 13)
-    self.assertEqual(plot.layer[0].encoding.y.scale.paddingOuter, 0.2)
+    self.assertEqual(plot.layer[0].encoding.y["scale"]["paddingOuter"], 0.2)
     expected_height = 42 * 13 + 42 * 2 * 0.2
     self.assertEqual(plot.height, expected_height)
     self.assertEqual(plot.width, 500)
@@ -1919,8 +1919,8 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(encoding.x.shorthand, "text_x:Q")
     self.assertEqual(encoding.y.shorthand, f"{c.CHANNEL}:N")
     self.assertIsNotNone(encoding.y.axis)
-    self.assertIsNone(encoding.y.sort)
-    self.assertIsNone(encoding.y.title)
+    self.assertIsNone(encoding.y["sort"])
+    self.assertIsNone(encoding.y["title"])
 
   def test_media_summary_plot_waterfall_chart_correct_config(self):
     plot = self.media_summary_revenue.plot_contribution_waterfall_chart()
@@ -2198,9 +2198,9 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.encoding.x.shorthand, c.ROI)
     self.assertEqual(plot.encoding.y.shorthand, c.EFFECTIVENESS)
     self.assertEqual(plot.encoding.size.shorthand, c.SPEND)
-    self.assertIsNone(plot.encoding.size.legend)
+    self.assertIsNone(plot.encoding.size["legend"])
     self.assertEqual(plot.encoding.color.shorthand, f"{c.CHANNEL}:N")
-    self.assertEqual(plot.encoding.y.axis.titleY, -20)
+    self.assertEqual(plot.encoding.y["axis"]["titleY"], -20)
 
   def test_media_summary_plot_roi_vs_effectiveness_correct_title(self):
     plot = self.media_summary_revenue.plot_roi_vs_effectiveness()
@@ -2258,8 +2258,8 @@ class MediaSummaryTest(parameterized.TestCase):
   def test_media_summary_plot_roi_vs_mroi_equal_axes(self):
     plot = self.media_summary_revenue.plot_roi_vs_mroi(equal_axes=True)
     max_value = max(plot.data.roi.max(), plot.data.mroi.max())
-    self.assertEqual(plot.encoding.x.scale, plot.encoding.y.scale)
-    self.assertEqual(plot.encoding.x.scale.domain[1], max_value)
+    self.assertEqual(plot.encoding.x["scale"], plot.encoding.y["scale"])
+    self.assertEqual(plot.encoding.x["scale"]["domain"][1], max_value)
 
 
 if __name__ == "__main__":

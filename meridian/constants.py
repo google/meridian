@@ -588,3 +588,6 @@ END_DATE = 'end_date'
 CARD_INSIGHTS = 'insights'
 CARD_CHARTS = 'charts'
 CARD_STATS = 'stats'
+
+# VegaLite common params.
+VEGALITE_FACET_DEFAULT_WIDTH = 400
