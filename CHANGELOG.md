@@ -26,6 +26,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Fix issue #548: Make time coordinate regularity check less stringent.
 * Force `DataTensors` to have all tensors with `dtype=tf.float32`.
 * Refactor new data validation and data filling into the `DataTensors` class.
+* Add `optimize()` method to the `OptimizationGrid` dataclass.
 
 ## [1.0.5] - 2025-03-06
 
