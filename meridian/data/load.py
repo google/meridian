@@ -950,7 +950,7 @@ class DataFrameDataLoader(InputDataLoader):
         raise ValueError('NA values found in the organic_frequency columns.')
 
     # Determine columns in which NAs are expected in the lagged-media period.
-    na_columns = []
+    not_lagged_columns = []
     coords = [
         constants.KPI,
         constants.CONTROLS,
@@ -967,12 +967,12 @@ class DataFrameDataLoader(InputDataLoader):
     for coord in coords:
       columns = getattr(self.coord_to_columns, coord)
       columns = [columns] if isinstance(columns, str) else columns
-      na_columns.extend(columns)
+      not_lagged_columns.extend(columns)
 
     # Dates with at least one non-NA value in columns different from media,
     # reach, frequency, organic_media, organic_reach, and organic_frequency.
     time_column_name = self.coord_to_columns.time
-    no_na_period = self.df[(~self.df[na_columns].isna()).any(axis=1)][
+    no_na_period = self.df[(~self.df[not_lagged_columns].isna()).any(axis=1)][
         time_column_name
     ].unique()
 
@@ -999,13 +999,17 @@ class DataFrameDataLoader(InputDataLoader):
     # organic_frequency.
     not_lagged_data = self.df.loc[
         self.df[time_column_name].isin(no_na_period),
-        na_columns,
+        not_lagged_columns,
     ]
     if not_lagged_data.isna().any(axis=None):
+      incorrect_columns = []
+      for column in not_lagged_columns:
+        if not_lagged_data[column].isna().any(axis=None):
+          incorrect_columns.append(column)
       raise ValueError(
-          'NA values found in non-media columns outside the lagged-media'
-          f' period {na_period} (continuous window of 100% NA values in all'
-          ' non-media columns).'
+          f'NA values found in not lagged columns {incorrect_columns} outside'
+          f' the lagged-media period {na_period} (continuous window of 100% NA'
+          ' values in all not lagged columns).'
       )
 
   def load(self) -> input_data.InputData:
