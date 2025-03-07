@@ -46,6 +46,45 @@ _SpendConstraint: TypeAlias = float | Sequence[float]
 
 
 @dataclasses.dataclass(frozen=True)
+class FixedBudgetScenario:
+  """A fixed budget optimization scenario.
+
+  Attributes:
+    total_budget: The total budget for the optimization period. Must be
+      non-negative. If unspecified, it represents historical total spend.
+  """
+
+  total_budget: float | None = None
+
+  def __post_init__(self):
+    if self.total_budget is not None and self.total_budget < 0:
+      raise ValueError('Total budget must be non-negative.')
+
+
+@dataclasses.dataclass(frozen=True)
+class FlexibleBudgetScenario:
+  """A flexible budget optimization scenario.
+
+  Attributes:
+    target_metric: The target metric to optimize for. This should be ROI or
+      mROI.
+    target_value: The target value for the above metric. Must be non-negative.
+  """
+
+  target_metric: str
+  target_value: float
+
+  def __post_init__(self):
+    if self.target_metric not in (c.ROI, c.MROI):
+      raise ValueError(
+          f'Unsupported target metric: {self.target_metric} for flexible budget'
+          ' scenario.'
+      )
+    if self.target_value < 0:
+      raise ValueError('Target value must be non-negative.')
+
+
+@dataclasses.dataclass(frozen=True)
 class OptimizationGrid:
   """Optimization grid information.
 
@@ -101,6 +140,77 @@ class OptimizationGrid:
   def spend_step_size(self) -> float:
     """The spend step size."""
     return self.grid_dataset.attrs[c.SPEND_STEP_SIZE]
+
+  def optimize(
+      self,
+      scenario: FixedBudgetScenario | FlexibleBudgetScenario,
+  ) -> np.ndarray:
+    """Hill-climbing search algorithm for budget optimization.
+
+    Args:
+      scenario: The optimization scenario with corresponding parameters.
+
+    Returns:
+      optimal_spend: np.ndarry of dimension `(n_total_channels,)` containing the
+        media spend that maximizes incremental outcome based on spend
+        constraints for all media and RF channels.
+    """
+    if (
+        isinstance(scenario, FixedBudgetScenario)
+        and scenario.total_budget is not None
+    ):
+      budget = scenario.total_budget
+    else:
+      rounded_spend = np.round(self.spend, self.round_factor).astype(int)
+      budget = np.sum(rounded_spend)
+
+    spend = self.spend_grid[0, :].copy()
+    incremental_outcome = self.incremental_outcome_grid[0, :].copy()
+    spend_grid = self.spend_grid[1:, :]
+    incremental_outcome_grid = self.incremental_outcome_grid[1:, :]
+    iterative_roi_grid = np.round(
+        tf.math.divide_no_nan(
+            incremental_outcome_grid - incremental_outcome, spend_grid - spend
+        ),
+        decimals=8,
+    )
+    while True:
+      spend_optimal = spend.astype(int)
+      # If none of the exit criteria are met roi_grid will eventually be filled
+      # with all nans.
+      if np.isnan(iterative_roi_grid).all():
+        break
+      point = np.unravel_index(
+          np.nanargmax(iterative_roi_grid), iterative_roi_grid.shape
+      )
+      row_idx = point[0]
+      media_idx = point[1]
+      spend[media_idx] = spend_grid[row_idx, media_idx]
+      incremental_outcome[media_idx] = incremental_outcome_grid[
+          row_idx, media_idx
+      ]
+      roi_grid_point = iterative_roi_grid[row_idx, media_idx]
+      if _exceeds_optimization_constraints(
+          budget=budget,
+          spend=spend,
+          incremental_outcome=incremental_outcome,
+          roi_grid_point=roi_grid_point,
+          scenario=scenario,
+      ):
+        break
+
+      iterative_roi_grid[0 : row_idx + 1, media_idx] = np.nan
+      iterative_roi_grid[row_idx + 1 :, media_idx] = np.round(
+          tf.math.divide_no_nan(
+              incremental_outcome_grid[row_idx + 1 :, media_idx]
+              - incremental_outcome_grid[row_idx, media_idx],
+              spend_grid[row_idx + 1 :, media_idx]
+              - spend_grid[row_idx, media_idx],
+          ),
+          decimals=8,
+      )
+
+    return spend_optimal
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1051,6 +1161,9 @@ class BudgetOptimizer:
         include_rf=self._meridian.n_rf_channels > 0,
     ).data
 
+    use_historical_budget = budget is None or round(budget) == round(
+        np.sum(hist_spend)
+    )
     budget = budget or np.sum(hist_spend)
     pct_of_spend = self._validate_pct_of_spend(hist_spend, pct_of_spend)
     spend = budget * pct_of_spend
@@ -1089,17 +1202,21 @@ class BudgetOptimizer:
         optimal_frequency=optimal_frequency,
         batch_size=batch_size,
     )
-    # TODO: b/375644691) - Move grid search to a OptimizationGrid class.
-    optimal_spend = self._grid_search(
-        spend_grid=optimization_grid.spend_grid,
-        incremental_outcome_grid=optimization_grid.incremental_outcome_grid,
-        budget=np.sum(rounded_spend),
-        fixed_budget=fixed_budget,
-        target_mroi=target_mroi,
-        target_roi=target_roi,
-    )
-    use_historical_budget = budget is None or round(budget) == round(
-        np.sum(hist_spend)
+
+    if fixed_budget:
+      total_budget = None if use_historical_budget else np.sum(rounded_spend)
+      scenario = FixedBudgetScenario(total_budget=total_budget)
+    elif target_roi:
+      scenario = FlexibleBudgetScenario(
+          target_metric=c.ROI, target_value=target_roi
+      )
+    else:
+      scenario = FlexibleBudgetScenario(
+          target_metric=c.MROI, target_value=target_mroi
+      )
+
+    optimal_spend = optimization_grid.optimize(
+        scenario=scenario,
     )
     nonoptimized_data = self._create_budget_dataset(
         use_posterior=use_posterior,
@@ -1168,7 +1285,7 @@ class BudgetOptimizer:
       round_factor: int,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      use_optimal_frequency: bool = True,
+      use_optimal_frequency: bool = False,
       optimal_frequency: xr.DataArray | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> OptimizationGrid:
@@ -1810,95 +1927,6 @@ class BudgetOptimizer:
       )
     return (spend_grid, incremental_outcome_grid)
 
-  def _grid_search(
-      self,
-      spend_grid: np.ndarray,
-      incremental_outcome_grid: np.ndarray,
-      budget: float,
-      fixed_budget: bool,
-      target_mroi: float | None = None,
-      target_roi: float | None = None,
-  ) -> np.ndarray:
-    """Hill-climbing search algorithm for budget optimization.
-
-    Args:
-      spend_grid: Discrete grid with dimensions (`grid_length` x
-        `n_total_channels`) containing spend by channel for all media and RF
-        channels, used in the hill-climbing search algorithm.
-      incremental_outcome_grid: Discrete grid with dimensions (`grid_length` x
-        `n_total_channels`) containing incremental outcome by channel for all
-        media and RF channels, used in the hill-climbing search algorithm.
-      budget: Integer indicating the total budget.
-      fixed_budget: Bool indicating whether it's a fixed budget optimization or
-        flexible budget optimization.
-      target_mroi: Optional float indicating the target marginal return on
-        investment (mroi) constraint. This can be translated into "How much can
-        I spend when I have flexible budget until the mroi of each channel hits
-        the target mroi". It's still possible that the mroi of some channels
-        will not be equal to the target mroi due to the feasible range of media
-        spend. However, the mroi will effectively shrink toward the target mroi.
-      target_roi: Optional float indicating the target return on investment
-        (roi) constraint. This can be translated into "How much can I spend when
-        I have a flexible budget until the roi of total media spend hits the
-        target roi".
-
-    Returns:
-      optimal_spend: np.ndarry of dimension (`n_total_channels`) containing the
-        media spend that maximizes incremental outcome based on spend
-        constraints for all media and RF channels.
-      optimal_inc_outcome: np.ndarry of dimension (`n_total_channels`)
-        containing the post optimization incremental outcome per channel for all
-        media and RF channels.
-    """
-    spend = spend_grid[0, :].copy()
-    incremental_outcome = incremental_outcome_grid[0, :].copy()
-    spend_grid = spend_grid[1:, :]
-    incremental_outcome_grid = incremental_outcome_grid[1:, :]
-    iterative_roi_grid = np.round(
-        tf.math.divide_no_nan(
-            incremental_outcome_grid - incremental_outcome, spend_grid - spend
-        ),
-        decimals=8,
-    )
-    while True:
-      spend_optimal = spend.astype(int)
-      # If none of the exit criteria are met roi_grid will eventually be filled
-      # with all nans.
-      if np.isnan(iterative_roi_grid).all():
-        break
-      point = np.unravel_index(
-          np.nanargmax(iterative_roi_grid), iterative_roi_grid.shape
-      )
-      row_idx = point[0]
-      media_idx = point[1]
-      spend[media_idx] = spend_grid[row_idx, media_idx]
-      incremental_outcome[media_idx] = incremental_outcome_grid[
-          row_idx, media_idx
-      ]
-      roi_grid_point = iterative_roi_grid[row_idx, media_idx]
-      if _exceeds_optimization_constraints(
-          fixed_budget,
-          budget,
-          spend,
-          incremental_outcome,
-          roi_grid_point,
-          target_mroi,
-          target_roi,
-      ):
-        break
-
-      iterative_roi_grid[0 : row_idx + 1, media_idx] = np.nan
-      iterative_roi_grid[row_idx + 1 :, media_idx] = np.round(
-          tf.math.divide_no_nan(
-              incremental_outcome_grid[row_idx + 1 :, media_idx]
-              - incremental_outcome_grid[row_idx, media_idx],
-              spend_grid[row_idx + 1 :, media_idx]
-              - spend_grid[row_idx, media_idx],
-          ),
-          decimals=8,
-      )
-    return spend_optimal
-
 
 def _validate_budget(
     fixed_budget: bool,
@@ -1958,13 +1986,11 @@ def _get_round_factor(budget: float, gtol: float) -> int:
 
 
 def _exceeds_optimization_constraints(
-    fixed_budget: bool,
     budget: float,
     spend: np.ndarray,
     incremental_outcome: np.ndarray,
     roi_grid_point: float,
-    target_mroi: float | None = None,
-    target_roi: float | None = None,
+    scenario: FixedBudgetScenario | FlexibleBudgetScenario,
 ) -> bool:
   """Checks optimization scenario constraints.
 
@@ -1972,36 +1998,30 @@ def _exceeds_optimization_constraints(
     flexibility, target_roi, and target_mroi.
 
   Args:
-    fixed_budget: bool indicating whether it's a fixed budget optimization or
-      flexible budget optimization.
     budget: integer indicating the total budget.
     spend: np.ndarray with dimensions (`n_total_channels`) containing spend per
       channel for all media and RF channels.
     incremental_outcome: np.ndarray with dimensions (`n_total_channels`)
       containing incremental outcome per channel for all media and RF channels.
     roi_grid_point: float roi for non-optimized optimation step.
-    target_mroi: Optional float indicating the target marginal return on
-      investment (mroi) constraint. This can be translated into "How much can I
-      spend when I have flexible budget until the mroi of each channel hits the
-      target mroi". It's still possible that the mroi of some channels will not
-      be equal to the target mroi due to the feasible range of spend. However,
-      the mroi will effectively shrink toward the target mroi.
-    target_roi: Optional float indicating the target return on investment (roi)
-      constraint. This can be translated into "How much can I spend when I have
-      a flexible budget until the roi of total spend hits the target roi.
+    scenario: FixedBudgetScenario or FlexibleBudgetScenario.
 
   Returns:
     bool indicating whether optimal spend and incremental outcome have been
       found, given the optimization constraints.
   """
-  if fixed_budget:
+  if isinstance(scenario, FixedBudgetScenario):
     return np.sum(spend) > budget
-  elif target_roi is not None:
+  elif (
+      isinstance(scenario, FlexibleBudgetScenario)
+      and scenario.target_metric == c.ROI
+  ):
     cur_total_roi = np.sum(incremental_outcome) / np.sum(spend)
     # In addition to the total roi being less than the target roi, the roi of
     # the current optimization step should also be less than the total roi.
     # Without the second condition, the optimization algorithm may not have
     # found the roi point close to the target roi yet.
-    return cur_total_roi < target_roi and roi_grid_point < cur_total_roi
+    target_value = scenario.target_value
+    return cur_total_roi < target_value and roi_grid_point < cur_total_roi
   else:
-    return roi_grid_point < target_mroi
+    return roi_grid_point < scenario.target_value
