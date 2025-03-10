@@ -24,6 +24,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Fix issue #548: Make time coordinate regularity check less stringent.
+* Add a warning when the target constraint of flexible budget optimization is
+  not met.
 
 ## [1.0.5] - 2025-03-06
 

@@ -1988,6 +1988,22 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimization_results.spend_ratio, _N_MEDIA_CHANNELS + _N_RF_CHANNELS
     )
 
+  def test_optimize_when_target_roi_not_met_raises_warning(self):
+    with self.assertWarnsRegex(
+        UserWarning, 'Target ROI constraint was not met.'
+    ):
+      self.budget_optimizer_media_and_rf.optimize(
+          fixed_budget=False, target_roi=1000
+      )
+
+  def test_optimize_when_target_mroi_not_met_raises_warning(self):
+    with self.assertWarnsRegex(
+        UserWarning, 'Target marginal ROI constraint was not met.'
+    ):
+      self.budget_optimizer_media_and_rf.optimize(
+          fixed_budget=False, target_mroi=1000
+      )
+
 
 class OptimizerPlotsTest(absltest.TestCase):
 

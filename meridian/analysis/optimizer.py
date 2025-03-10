@@ -20,6 +20,7 @@ import functools
 import math
 import os
 from typing import Any, TypeAlias
+import warnings
 
 import altair as alt
 import jinja2
@@ -1141,6 +1142,14 @@ class BudgetOptimizer:
         batch_size=batch_size,
         use_historical_budget=use_historical_budget,
     )
+
+    if not fixed_budget:
+      self._raise_warning_if_target_constraints_not_met(
+          target_roi=target_roi,
+          target_mroi=target_mroi,
+          optimized_data=optimized_data,
+      )
+
     spend_ratio = np.divide(
         spend,
         hist_spend,
@@ -1158,6 +1167,29 @@ class BudgetOptimizer:
         _optimized_data=optimized_data,
         _optimization_grid=optimization_grid,
     )
+
+  def _raise_warning_if_target_constraints_not_met(
+      self,
+      target_roi: float | None,
+      target_mroi: float | None,
+      optimized_data: xr.Dataset,
+  ) -> None:
+    """Raises a warning if the target constraints are not met."""
+    if target_roi:
+      optimized_roi = optimized_data[c.ROI].mean()
+      if optimized_roi < target_roi:
+        warnings.warn(
+            f'Target ROI constraint was not met. The target ROI is {target_roi}'
+            f', but the actual ROI is {optimized_roi}.'
+        )
+    elif target_mroi:
+      optimized_mroi = optimized_data[c.MROI].mean()
+      if np.any(optimized_mroi < target_mroi):
+        warnings.warn(
+            'Target marginal ROI constraint was not met. The target marginal'
+            f' ROI is {target_mroi}, but the actual channel marginal ROIs are'
+            f' {optimized_mroi}.'
+        )
 
   def create_optimization_grid(
       self,
