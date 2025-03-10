@@ -231,11 +231,13 @@ class InputDataTest(parameterized.TestCase):
         ],
     )
 
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        expected_regex=(
-            "Media channel names across `media_channel` and `rf_channel` must"
-            " be unique."
+        expected_exception_message=(
+            "Channel names across `media_channel`, `rf_channel`,"
+            " `organic_media_channel`, `organic_rf_channel`, and"
+            " `non_media_channel` must be unique. `media_channel`: ['ch_1'"
+            " 'ch_2' 'ch_3' 'ch_4' 'ch_5' 'ch_5']."
         ),
     ):
       input_data.InputData(
@@ -260,11 +262,14 @@ class InputDataTest(parameterized.TestCase):
         ],
     )
 
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        expected_regex=(
-            "Media channel names across `media_channel` and `rf_channel` must"
-            " be unique."
+        expected_exception_message=(
+            "Channel names across `media_channel`, `rf_channel`,"
+            " `organic_media_channel`, `organic_rf_channel`, and"
+            " `non_media_channel` must be unique. `media_channel`: ['ch_0'"
+            " 'ch_1' 'ch_2' 'ch_3' 'ch_4' 'ch_5']. `rf_channel`: ['rf_ch_1'"
+            " 'rf_ch_1']."
         ),
     ):
       input_data.InputData(
@@ -296,11 +301,14 @@ class InputDataTest(parameterized.TestCase):
         ],
     )
 
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        expected_regex=(
-            "Media channel names across `media_channel` and `rf_channel` must"
-            " be unique."
+        expected_exception_message=(
+            "Channel names across `media_channel`, `rf_channel`,"
+            " `organic_media_channel`, `organic_rf_channel`, and"
+            " `non_media_channel` must be unique. `media_channel`: ['ch_1'"
+            " 'ch_2' 'ch_3' 'ch_4' 'ch_5' 'ch_5']. `rf_channel`: ['rf_ch_0'"
+            " 'rf_ch_1']."
         ),
     ):
       input_data.InputData(
@@ -342,11 +350,14 @@ class InputDataTest(parameterized.TestCase):
         ],
     )
 
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        expected_regex=(
-            "Media channel names across `media_channel` and `rf_channel` must"
-            " be unique."
+        expected_exception_message=(
+            "Channel names across `media_channel`, `rf_channel`,"
+            " `organic_media_channel`, `organic_rf_channel`, and"
+            " `non_media_channel` must be unique. `media_channel`: ['ch_1'"
+            " 'ch_2' 'ch_3' 'ch_4' 'ch_5' 'ch_6']. `rf_channel`: ['rf_ch_1'"
+            " 'ch_2']."
         ),
     ):
       input_data.InputData(
