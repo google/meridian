@@ -27,6 +27,110 @@ import pandas as pd
 import tensorflow as tf
 import tensorflow_probability as tfp
 import xarray as xr
+import altair as alt
+class ContributionOverTime:
+  """Generates charts displaying the contribution share over time."""
+
+  def __init__(self, meridian: model.Meridian):
+    self._meridian = meridian
+    self._analyzer = analyzer.Analyzer(meridian)
+    def plot_contribution_over_time(
+        self,
+        new_data: DataTensors | None = None,
+        non_media_baseline_values: Sequence[float | str] | None = None,
+        selected_geos: Sequence[str] | None = None,
+        selected_times: Sequence[str] | Sequence[bool] | None = None,
+        aggregate_geos: bool = True,
+        aggregate_times: bool = False,
+        inverse_transform_outcome: bool = True,
+        use_kpi: bool = False,
+        batch_size: int = constants.DEFAULT_BATCH_SIZE,
+    ) -> alt.Chart:
+      """Calculates and displays a contribution over time chart."""
+      pass
+    self.plot_contribution_over_time = self.plot_contribution_over_time
+  
+  def _get_data_for_contribution_chart(self, incremental_outcome_all_channels):
+      """Transforms the incremental outcome distribution into a Pandas DataFrame.
+      """
+      # Transform the X axis data.
+      data = self._analyzer.filter_and_aggregate_geos_and_times(
+          tensor=incremental_outcome_all_channels,
+          aggregate_geos=True,
+          aggregate_times=False,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+          flexible_time_dim=False,
+          has_media_dim=True,
+      )
+      df = self.prepare_data_to_stack(data=data)
+      return df
+      
+  def prepare_data_to_stack(self, data: tf.Tensor) -> pd.DataFrame:
+      """Prepares the data so that it can be displayed in a stacked area chart."""
+      geos = self._meridian.input_data.geo
+      geos_list = list(geos) if geos is not None else []
+      times = self._meridian.input_data.time
+      times_list = list(times.values) if times is not None else []
+      # Make sure there is a category called "All channels"
+      channels_list = list(self._meridian.input_data.get_all_channels())
+      if constants.ALL_CHANNELS not in channels_list:
+        channels_list += [constants.ALL_CHANNELS]
+      channels_list.sort()
+
+      # Prepare data for the stack.
+      df = pd.DataFrame(
+        data.numpy(),
+        columns=channels_list,
+        index=times_list,
+    )
+      df.columns.name = "channels"
+      df.index.name = "time"
+      df = df.reset_index().rename(columns={0:"value"})
+      df = df.rename(columns={"channels": c.CHANNEL})
+      df = df.rename(columns={"index":c.TIME})
+      df = df.rename(columns={"value": c.METRIC})
+      return df
+      
+  def generate_chart(self, data: pd.DataFrame, chart_properties) -> alt.Chart:
+      """Generates an Altair stacked area chart using mark_area()."""
+      # Create the chart using mark_area
+      chart = alt.Chart(data).mark_area().encode(
+              x=alt.X(c.TIME, type='ordinal', title='Time periods (Weeks)'),
+              y=alt.Y(c.METRIC, type='quantitative', title=c.KPI),
+              color=alt.Color(c.CHANNEL, title="Channels",type='nominal'),
+              tooltip=[alt.Tooltip(f'{c.KPI}:Q', type='ordinal'),
+                       alt.Tooltip(f'{c.CHANNEL}:N', type='ordinal')],
+      ).properties(**chart_properties)
+      # Adding text labels
+      chart_labels = chart.mark_text(
+          align="left",
+          baseline="top"
+      ).encode(
+          text=alt.Text(f'{c.METRIC}:Q',type='ordinal'),
+          y=c.METRIC,
+          x=alt.X(c.TIME, type='ordinal'),
+          color=alt.Color(c.CHANNEL, type="nominal"),
+      )
+      chart_labels = chart_labels.transform_filter(
+          alt.datum.value > 0
+      )
+      chart = alt.layer(chart,chart_labels)
+      return chart
+
+  def get_chart_properties(self):
+      """Returns a dictionary with the chart properties."""
+      chart_properties = dict(
+          width=800, height=500, padding={'left': 5, 'right': 5},
+      )
+      return chart_properties
+class ContributionOverTime:
+  """Generates charts displaying the contribution share over time."""
+
+  def __init__(self, meridian: model.Meridian):
+    self._meridian = meridian
+    self._analyzer = analyzer.Analyzer(meridian)
+    self._chart_formatter = formatter.Formatter()
 
 
 __all__ = [
