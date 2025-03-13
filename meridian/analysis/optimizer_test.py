@@ -120,10 +120,6 @@ _TARGET_MROI_SPEND = np.array([0.0, 0.0, 0.0, 544.0, 576.0])
 # Correct optimal spend allocation for a flexible budget optimization scenario
 # using a target ROI value.
 _TARGET_ROI_SPEND = np.array([588.0, 558.0, 512.0, 544.0, 576.0])
-# Currently zero due to numerator being zero with mocked constant inc_outcome
-_BUDGET_MROI_WITH_CI = np.array(
-    [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
-)
 
 _N_GEOS = 5
 _N_TIMES = 49
@@ -142,7 +138,7 @@ def _create_budget_data(
     spend: np.ndarray,
     inc_outcome: np.ndarray,
     effectiveness: np.ndarray,
-    mroi: np.ndarray | None = None,
+    explicit_mroi: np.ndarray | None = None,
     explicit_cpik: np.ndarray | None = None,
     channels: np.ndarray | None = None,
     attrs: Mapping[str, Any] | None = None,
@@ -161,8 +157,17 @@ def _create_budget_data(
           [c.CHANNEL, c.METRIC],
           tf.transpose(tf.math.divide_no_nan(tf.transpose(inc_outcome), spend)),
       ),
-      c.MROI: ([c.CHANNEL, c.METRIC], mroi),
   }
+
+  if explicit_mroi is not None:
+    data_vars[c.MROI] = ([c.CHANNEL, c.METRIC], explicit_mroi)
+  else:
+    data_vars[c.MROI] = (
+        [c.CHANNEL, c.METRIC],
+        tf.transpose(
+            tf.math.divide_no_nan(tf.transpose(inc_outcome), spend * 0.01)
+        ),
+    )
 
   if explicit_cpik is not None:
     data_vars[c.CPIK] = ([c.CHANNEL, c.METRIC], explicit_cpik)
@@ -228,9 +233,6 @@ _SAMPLE_NON_OPTIMIZED_DATA = _create_budget_data(
         [0.1, 0.2, 0.3, 0.4],
         [0.1, 0.2, 0.3, 0.4],
     ]),
-    mroi=np.array(
-        [[1.2, 1.2, 1.2, 1.2], [1.3, 1.3, 1.3, 1.3], [1.4, 1.4, 1.4, 1.4]]
-    ),
     attrs={c.IS_REVENUE_KPI: True},
 )
 _SAMPLE_OPTIMIZED_DATA = _create_budget_data(
@@ -243,9 +245,6 @@ _SAMPLE_OPTIMIZED_DATA = _create_budget_data(
         [0.1, 0.2, 0.3, 0.4],
         [0.1, 0.2, 0.3, 0.4],
     ]),
-    mroi=np.array(
-        [[1.4, 1.4, 1.4, 1.4], [1.5, 1.5, 1.5, 1.5], [1.6, 1.6, 1.6, 1.6]]
-    ),
     attrs={
         c.FIXED_BUDGET: True,
         c.IS_REVENUE_KPI: True,
@@ -261,9 +260,6 @@ _SAMPLE_NON_OPTIMIZED_DATA_KPI = _create_budget_data(
         [0.1, 0.2, 0.3, 0.4],
         [0.1, 0.2, 0.3, 0.4],
     ]),
-    mroi=np.array(
-        [[2.4, 2.4, 2.4, 2.4], [2.5, 2.5, 2.5, 2.5], [2.6, 2.6, 2.6, 2.6]]
-    ),
     attrs={c.IS_REVENUE_KPI: False},
 )
 _SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
@@ -276,9 +272,6 @@ _SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
         [0.1, 0.2, 0.3, 0.4],
         [0.1, 0.2, 0.3, 0.4],
     ]),
-    mroi=np.array(
-        [[3.4, 3.4, 3.4, 3.4], [3.5, 3.5, 3.5, 3.5], [3.6, 3.6, 3.6, 3.6]]
-    ),
     attrs={
         c.FIXED_BUDGET: True,
         c.IS_REVENUE_KPI: False,
@@ -906,7 +899,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_NONOPTIMIZED_SPEND,
         inc_outcome=_NONOPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_NONOPTIMIZED_EFFECTIVENESS_WITH_CI,
-        mroi=_BUDGET_MROI_WITH_CI,
         channels=self.input_data_media_and_rf.get_all_channels(),
     )
     optimization_results = self.budget_optimizer_media_and_rf.optimize()
@@ -936,7 +928,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             :_N_MEDIA_CHANNELS
         ],
         effectiveness=_NONOPTIMIZED_EFFECTIVENESS_WITH_CI[:_N_MEDIA_CHANNELS],
-        mroi=_BUDGET_MROI_WITH_CI[:_N_MEDIA_CHANNELS],
         channels=self.input_data_media_only.get_all_channels(),
     )
     optimization_results = self.budget_optimizer_media_only.optimize()
@@ -964,7 +955,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_NONOPTIMIZED_SPEND[-_N_RF_CHANNELS:],
         inc_outcome=_NONOPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[-_N_RF_CHANNELS:],
         effectiveness=_NONOPTIMIZED_EFFECTIVENESS_WITH_CI[-_N_RF_CHANNELS:],
-        mroi=_BUDGET_MROI_WITH_CI[-_N_RF_CHANNELS:],
         channels=self.input_data_rf_only.get_all_channels(),
     )
     optimization_results = self.budget_optimizer_rf_only.optimize()
@@ -991,7 +981,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_OPTIMIZED_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
-        mroi=_BUDGET_MROI_WITH_CI,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
@@ -1024,7 +1013,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_OPTIMIZED_MEDIA_ONLY_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[:_N_MEDIA_CHANNELS],
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI[:_N_MEDIA_CHANNELS],
-        mroi=_BUDGET_MROI_WITH_CI[:_N_MEDIA_CHANNELS],
         channels=self.input_data_media_only.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
@@ -1058,7 +1046,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_OPTIMIZED_RF_ONLY_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI[-_N_RF_CHANNELS:],
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI[-_N_RF_CHANNELS:],
-        mroi=_BUDGET_MROI_WITH_CI[-self.meridian_rf_only.n_rf_channels :],
         channels=self.input_data_rf_only.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
     )
@@ -1091,7 +1078,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_TARGET_MROI_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
-        mroi=_BUDGET_MROI_WITH_CI,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_MROI: 1},
     )
@@ -1122,7 +1108,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=_TARGET_ROI_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
-        mroi=_BUDGET_MROI_WITH_CI,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_ROI: 1},
     )
@@ -1215,7 +1200,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         spend=expected_spend,
         inc_outcome=expected_incremental_outcome,
         effectiveness=expected_effectiveness,
-        mroi=expected_mroi,
+        explicit_mroi=expected_mroi,
         explicit_cpik=expected_cpik,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: True},
@@ -3368,6 +3353,9 @@ class OptimizerKPITest(parameterized.TestCase):
         aggregate_geos=True,
         aggregate_times=True,
         inverse_transform_outcome=True,
+        by_reach=True,
+        scaling_factor0=1.0,
+        scaling_factor1=1.01,
         # Note that the above arguments also happen to be their default values.
         # All other direct incremental_outcome() calls use the following args.
         use_kpi=True,
