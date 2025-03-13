@@ -788,6 +788,35 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         atol=1e-3,
     )
 
+  def test_marginal_roi_media_and_rf_new_data_modified_times(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    mroi = self.analyzer_media_and_rf.marginal_roi(
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media[..., -15:, :],
+            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                ..., -15:, :
+            ],
+            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -15:, :],
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                ..., -15:, :
+            ],
+            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                ..., -15:, :
+            ],
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                ..., -15:
+            ],
+        ),
+    )
+    self.assertAllClose(
+        mroi,
+        tf.convert_to_tensor(test_utils.MROI_MEDIA_AND_RF_NEW_TIMES_DATA),
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
   def test_roi_wrong_new_data_dims_raises_exception(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -813,8 +842,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_roi_wrong_new_data_times_raises_exception(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "New `rf_spend` is expected to have 49 time periods. Found 10 time"
-        " periods.",
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following variables"
+        " are missing: `['media', 'media_spend', 'reach', 'frequency',"
+        " 'revenue_per_kpi']`.",
     ):
       self.analyzer_media_and_rf.roi(
           new_data=analyzer.DataTensors(
@@ -869,6 +900,35 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         self.analyzer_media_and_rf.incremental_outcome() / total_spend
     )
     self.assertAllClose(expected_roi, roi)
+
+  def test_roi_media_and_rf_new_params_returns_correct_shape(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    roi = self.analyzer_media_and_rf.roi(
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media[..., -15:, :],
+            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                ..., -15:, :
+            ],
+            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -15:, :],
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                ..., -15:, :
+            ],
+            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                ..., -15:, :
+            ],
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                ..., -15:
+            ],
+        )
+    )
+    self.assertAllClose(
+        roi,
+        tf.convert_to_tensor(test_utils.ROI_NEW_TIMES_DATA),
+        rtol=1e-3,
+        atol=1e-3,
+    )
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -1296,6 +1356,41 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
       self.assertNotIn(constants.MROI, media_summary.data_vars)
       self.assertNotIn(constants.CPIK, media_summary.data_vars)
+
+  def test_media_summary_new_times_data_returns_correct_variables(self):
+    summary_metrics = self.analyzer_media_and_rf.incremental_outcome(
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media[..., -15:, :],
+            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                ..., -15:, :
+            ],
+            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -15:, :],
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                ..., -15:, :
+            ],
+            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                ..., -15:, :
+            ],
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                ..., -15:
+            ],
+        )
+    )
+    self.assertEqual(
+        list(summary_metrics.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
 
   @parameterized.product(
       aggregate_geos=[False, True],
@@ -4069,7 +4164,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
 
     # Assert that _compute_incremental_outcome_aggregate was called the right
     # number of times with the right arguments.
-    self.assertEqual(mock_compute_incremental_outcome_aggregate.call_count, 2)
+    self.assertEqual(mock_compute_incremental_outcome_aggregate.call_count, 4)
 
     # Both calls with include_non_paid_channels=True and given
     # non_media_baseline_values
