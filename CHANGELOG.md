@@ -26,6 +26,15 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Fix issue #548: Make time coordinate regularity check less stringent.
 * Force `DataTensors` to have all tensors with `dtype=tf.float32`.
 * Refactor new data validation and data filling into the `DataTensors` class.
+* Fix bug in marginal ROI calculation in `summary_metrics` when new spend data
+  is passed in.
+* Add `by_reach` param to `incremental_outcome()` to allow scaling `reach` or
+  `frequency`.
+* Refactor `marginal_roi()` and the mROI calculation in `summary_metrics` to use
+  the scaling factors in `incremental_outcome()`, removing duplicate code.
+* Allow `new_data` to have any number of time dimensions for `roi()`,
+  `marginal_roi()`, `cpik()`, and `summary_metrics()`. This allows the use of
+  forecasted data for analysis.
 
 ## [1.0.5] - 2025-03-06
 
