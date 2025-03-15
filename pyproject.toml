@@ -27,7 +27,7 @@ keywords = [
 # Installed locally with `pip install -e .`
 dependencies = [
   "arviz",
-  "altair >= 4.2.0, < 5",
+  "altair >= 5",
   "immutabledict",
   "joblib",
   "numpy >= 1.26, < 2",

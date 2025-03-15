@@ -239,7 +239,7 @@ class ModelDiagnostics:
     groupby = posterior_df.columns.tolist()
     groupby.remove(parameter)
     plot = (
-        alt.Chart(prior_posterior_df)
+        alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_density(
             parameter, groupby=groupby, as_=[parameter, 'density']
         )
@@ -332,7 +332,7 @@ class ModelDiagnostics:
     rhat = rhat.dropna(subset=[c.RHAT])
 
     boxplot = (
-        alt.Chart(rhat)
+        alt.Chart(rhat, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .mark_boxplot(median={'color': c.BLUE_300}, outliers={'filled': True})
         .encode(
             x=alt.X(c.PARAMETER, axis=alt.Axis(labelAngle=-45)),
@@ -461,7 +461,7 @@ class ModelFit:
     else:
       y_axis_label = summary_text.KPI_LABEL
     plot = (
-        alt.Chart(model_fit_df)
+        alt.Chart(model_fit_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .mark_line()
         .encode(
             x=alt.X(
@@ -762,7 +762,7 @@ class ReachAndFrequency:
         range=[c.BLUE_600, c.RED_600],
     )
 
-    base = alt.Chart().transform_calculate(
+    base = alt.Chart(width=c.VEGALITE_FACET_DEFAULT_WIDTH).transform_calculate(
         optimal_freq=f"'{summary_text.OPTIMAL_FREQ_LABEL}'",
         expected_roi=f"'{summary_text.EXPECTED_ROI_LABEL}'",
     )
@@ -1012,7 +1012,7 @@ class MediaEffects:
     else:
       y_axis_label = summary_text.INC_KPI_LABEL
     base = (
-        alt.Chart(response_curves_df)
+        alt.Chart(response_curves_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_calculate(
             spend_level=(
                 'datum.spend_multiplier >= 1.0 ? "Above current spend" : "Below'
@@ -1099,7 +1099,7 @@ class MediaEffects:
       An Altair plot showing the Adstock decay prior and posterior per media.
     """
     dataframe = self.adstock_decay_dataframe(confidence_level=confidence_level)
-    base = alt.Chart(dataframe)
+    base = alt.Chart(dataframe, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
 
     scaled_confidence_level = int(confidence_level * 100)
 
@@ -1254,7 +1254,7 @@ class MediaEffects:
       ]
       range_list = [c.BLUE_700, c.GREY_600]
 
-    base = alt.Chart(df_channel_type)
+    base = alt.Chart(df_channel_type, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
     color_scale = alt.Scale(
         domain=domain_list,
         range=range_list,
@@ -1274,7 +1274,7 @@ class MediaEffects:
         y2=f'{c.CI_HI}:Q',
         color=alt.Color(f'{c.DISTRIBUTION}:N', scale=color_scale),
     )
-    histogram = base.mark_bar(color=c.GREY_600, opacity=0.4).encode(
+    histogram = base.mark_rect(color=c.GREY_600, opacity=0.4).encode(
         x=f'{c.START_INTERVAL_HISTOGRAM}:Q',
         x2=f'{c.END_INTERVAL_HISTOGRAM}:Q',
         y=alt.Y(f'{c.SCALED_COUNT_HISTOGRAM}:Q'),
@@ -1700,7 +1700,7 @@ class MediaSummary:
 
     domain = [c.BASELINE, c.ALL_CHANNELS]
     colors = [c.YELLOW_600, c.BLUE_700]
-    base = alt.Chart(outcome_df).encode(
+    base = alt.Chart(outcome_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH).encode(
         alt.Theta(f'{c.PCT_OF_CONTRIBUTION}:Q', stack=True),
         alt.Color(
             f'{c.CHANNEL}:N',
@@ -1985,7 +1985,7 @@ class MediaSummary:
       axes_scale = alt.Scale(domain=(0, max_roi), nice=True)
 
     plot = (
-        alt.Chart(plot_df)
+        alt.Chart(plot_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .mark_circle(tooltip=True, size=c.POINT_SIZE)
         .encode(
             x=alt.X(c.ROI, title='ROI', scale=axes_scale),
