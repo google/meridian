@@ -117,6 +117,142 @@ def _build_inference_data(
   return inference_data
 
 
+class DataTensorsValidationTest(tf.test.TestCase, parameterized.TestCase):
+  """Tests specifically for DataTensors validation logic."""
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.input_data_media_and_rf = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.input_data_media_only = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.input_data_rf_only = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_media_channels=0,
+            seed=0,
+        )
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+
+    cls.meridian_media_and_rf = model.Meridian(
+        input_data=cls.input_data_media_and_rf, model_spec=model_spec
+    )
+    cls.meridian_media_only = model.Meridian(
+        input_data=cls.input_data_media_only, model_spec=model_spec
+    )
+    cls.meridian_rf_only = model.Meridian(
+        input_data=cls.input_data_rf_only, model_spec=model_spec
+    )
+
+  @parameterized.named_parameters(
+      (
+          "wrong_media_dims",
+          {"media": tf.ones((5, 1))},
+          "New `media` must have 3 dimension(s). Found 2 dimension(s).",
+          "media_and_rf",
+      ),
+      (
+          "wrong_reach_dims",
+          {"reach": tf.ones((5, 1))},
+          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
+          "media_and_rf",
+      ),
+      (
+          "wrong_frequency_dims",
+          {"frequency": tf.ones((5, 1))},
+          "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
+          "media_and_rf",
+      ),
+      (
+          "wrong_revenue_per_kpi_dims",
+          {"revenue_per_kpi": tf.ones((5))},
+          (
+              "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
+              " dimension(s)."
+          ),
+          "media_and_rf",
+      ),
+      (
+          "missing_media",
+          {
+              "reach": tf.ones((5, 1, 1)),
+              "frequency": tf.ones((5, 1, 1)),
+              "revenue_per_kpi": tf.ones((5, 1)),
+          },
+          (
+              "If the time dimension of a variable in `new_data` is modified,"
+              " then all variables must be provided in `new_data`. The"
+              " following variables are missing: `['media']`."
+          ),
+          "media_and_rf",
+      ),
+      (
+          "invalid_reach_media_only",
+          {"reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS))},
+          (
+              "New `reach` is not allowed because the input data to the"
+              " Meridian model does not contain `reach`"
+          ),
+          "media_only",
+      ),
+      (
+          "spend_1d_raises_exception",
+          {"media_spend": tf.ones((_N_MEDIA_CHANNELS))},
+          "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
+          "media_only",
+      ),
+  )
+  def test_validate_and_fill_missing_data_raises_exception(
+      self,
+      new_param: dict[str, tf.Tensor],
+      expected_error_message: str,
+      meridian_type: str,
+  ):
+    if meridian_type == "media_and_rf":
+      meridian = self.meridian_media_and_rf
+      tensors = [
+          constants.MEDIA,
+          constants.REACH,
+          constants.FREQUENCY,
+          constants.REVENUE_PER_KPI,
+      ]
+    elif meridian_type == "media_only":
+      meridian = self.meridian_media_only
+      tensors = [constants.MEDIA, constants.REVENUE_PER_KPI]
+    else:
+      raise ValueError("Invalid meridian_type: {}".format(meridian_type))
+
+    with self.assertRaisesRegex(ValueError, expected_error_message):
+      dt = analyzer.DataTensors(**new_param)
+      dt.validate_and_fill_missing_data(tensors, meridian)
+
+
+
+
 class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
 
   @classmethod
