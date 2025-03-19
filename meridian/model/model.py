@@ -1030,7 +1030,7 @@ class Meridian:
       max_energy_diff: float = 500.0,
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
-      seed: Sequence[int] | None = None,
+      seed: Sequence[int] | int | None = None,
       **pins,
   ):
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
