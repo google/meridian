@@ -1935,7 +1935,10 @@ class BudgetOptimizer:
           step_size,
       )
       spend_grid[: len(spend_grid_m), i] = spend_grid_m
-    incremental_outcome_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
+    inc_grid_val = np.nan if n_grid_rows > 1 else 0
+    incremental_outcome_grid = np.full(
+        [n_grid_rows, n_grid_columns], inc_grid_val
+    )
     multipliers_grid_base = tf.cast(
         tf.math.divide_no_nan(spend_grid, spend), dtype=tf.float32
     )
