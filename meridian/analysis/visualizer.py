@@ -1410,18 +1410,23 @@ class MediaSummary:
     self._marginal_roi_by_reach = marginal_roi_by_reach
     self._non_media_baseline_values = non_media_baseline_values
 
-  @functools.cached_property
-  def paid_summary_metrics(self) -> xr.Dataset:
+  @functools.lru_cache(maxsize=128)
+  def paid_summary_metrics(self, aggregate_times: bool = True) -> xr.Dataset:
     """Dataset holding the calculated summary metrics for the paid channels.
 
-    The dataset contains the following:
+    Args:
+      aggregate_times: If `True`, aggregates the metrics across all time
+        periods.  If `False`, returns time-varying metrics.
 
-    - **Coordinates:** `channel`, `metric` (`mean`, `median`, `ci_lo`, `ci_hi`),
-      `distribution` (`prior`, `posterior`)
-    - **Data variables:** `impressions`, `pct_of_impressions`, `spend`,
-      `pct_of_spend`, `CPM`, `incremental_outcome`, `pct_of_contribution`,
-      `roi`,
-      `effectiveness`, `mroi`.
+    Returns:
+      An `xarray.Dataset` containing the following:
+        - **Coordinates:** `channel`, `metric` (`mean`, `median`, `ci_lo`,
+        `ci_hi`),
+          `distribution` (`prior`, `posterior`)
+        - **Data variables:** `impressions`, `pct_of_impressions`, `spend`,
+          `pct_of_spend`, `CPM`, `incremental_outcome`, `pct_of_contribution`,
+          `roi`,
+          `effectiveness`, `mroi`.
     """
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,
@@ -1429,18 +1434,24 @@ class MediaSummary:
         use_kpi=self._meridian.input_data.revenue_per_kpi is None,
         confidence_level=self._confidence_level,
         include_non_paid_channels=False,
+        aggregate_times=aggregate_times,
     )
 
-  @functools.cached_property
-  def all_summary_metrics(self) -> xr.Dataset:
+  @functools.lru_cache(maxsize=128)
+  def all_summary_metrics(self, aggregate_times: bool = True) -> xr.Dataset:
     """Dataset holding the calculated summary metrics for all channels.
 
-    The dataset contains the following:
+    Args:
+      aggregate_times: If `True`, aggregates the metrics across all time
+        periods.  If `False`, returns time-varying metrics.
 
-    - **Coordinates:** `channel`, `metric` (`mean`, `median`, `ci_lo`, `ci_hi`),
-      `distribution` (`prior`, `posterior`)
-    - **Data variables:** `incremental_outcome`, `pct_of_contribution`,
-      `effectiveness`.
+    Returns:
+      An `xarray.Dataset` containing the following:
+        - **Coordinates:** `channel`, `metric` (`mean`, `median`, `ci_lo`,
+        `ci_hi`),
+          `distribution` (`prior`, `posterior`)
+        - **Data variables:** `incremental_outcome`, `pct_of_contribution`,
+          `effectiveness`.
     """
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,
@@ -1448,6 +1459,7 @@ class MediaSummary:
         confidence_level=self._confidence_level,
         include_non_paid_channels=True,
         non_media_baseline_values=self._non_media_baseline_values,
+        aggregate_times=aggregate_times,
     )
 
   def summary_table(
@@ -1488,7 +1500,7 @@ class MediaSummary:
     ]
     if include_non_paid_channels:
       monetary_metrics = [c.INCREMENTAL_OUTCOME] * use_revenue
-      summary_metrics = self.all_summary_metrics
+      summary_metrics = self.all_summary_metrics()
       columns_rename_dict = {
           c.PCT_OF_CONTRIBUTION: summary_text.PCT_CONTRIBUTION_COL,
           c.INCREMENTAL_OUTCOME: (
@@ -1512,7 +1524,7 @@ class MediaSummary:
           c.SPEND,
           c.INCREMENTAL_OUTCOME,
       ] * use_revenue
-      summary_metrics = self.paid_summary_metrics
+      summary_metrics = self.paid_summary_metrics()
       columns_rename_dict = {
           c.PCT_OF_IMPRESSIONS: summary_text.PCT_IMPRESSIONS_COL,
           c.PCT_OF_SPEND: summary_text.PCT_SPEND_COL,
@@ -1968,7 +1980,7 @@ class MediaSummary:
       An Altair bubble plot showing the ROI, spend, and another metric.
     """
     if selected_channels:
-      channels = self.paid_summary_metrics.channel
+      channels = self.paid_summary_metrics().channel
       if any(channel not in channels for channel in selected_channels):
         raise ValueError(
             '`selected_channels` should match the channel dimension names from '
@@ -2105,16 +2117,20 @@ class MediaSummary:
     Returns:
       A dataframe filtered based on the specifications.
     """
+    paid_summary_metrics = self.paid_summary_metrics()
     metrics_df = self._summary_metrics_to_mean_df(
-        metrics=[c.ROI, metric], selected_channels=selected_channels
+        paid_summary_metrics,
+        metrics=[c.ROI, metric],
+        selected_channels=selected_channels,
     )
-    spend_df = self.paid_summary_metrics[c.SPEND].to_dataframe().reset_index()
+    spend_df = paid_summary_metrics[c.SPEND].to_dataframe().reset_index()
     return metrics_df.merge(spend_df, on=c.CHANNEL)
 
   def _transform_contribution_metrics(
       self,
       selected_channels: Sequence[str] | None = None,
       include_non_paid: bool = False,
+      aggregate_times: bool = True,
   ) -> pd.DataFrame:
     """Transforms the media metrics for the contribution plot.
 
@@ -2127,56 +2143,133 @@ class MediaSummary:
       selected_channels: Optional list of a subset of channels to filter by.
       include_non_paid: If `True`, includes the organic media, organic RF and
         non-media channels in the contribution plot. Defaults to `False`.
+      aggregate_times: If `True`, aggregates the metrics across all time
+        periods.  If `False`, returns time-varying metrics.
 
     Returns:
       A dataframe with contributions per channel.
+    """
+    summary_metrics = (
+        self.all_summary_metrics(aggregate_times=aggregate_times)
+        if include_non_paid
+        else self.paid_summary_metrics(aggregate_times=aggregate_times)
+    )
+
+    contribution_df = self._calculate_contribution_dataframe(
+        summary_metrics, selected_channels
+    )
+    baseline_df = self._calculate_baseline_contribution_dataframe(
+        summary_metrics, aggregate_times
+    )
+
+    combined_df = pd.concat([baseline_df, contribution_df]).reset_index(
+        drop=True
+    )
+    if aggregate_times:
+      combined_df.sort_values(
+          by=c.INCREMENTAL_OUTCOME, ascending=False, inplace=True
+      )
+    else:
+      combined_df.sort_values(
+          by=[c.TIME, c.INCREMENTAL_OUTCOME],
+          ascending=[True, False],
+          inplace=True,
+      )
+    return combined_df
+
+  def _calculate_contribution_dataframe(
+      self,
+      summary_metrics: xr.Dataset,
+      selected_channels: Sequence[str] | None,
+  ) -> pd.DataFrame:
+    """Calculates the contribution dataframe.
+
+    Args:
+        summary_metrics: xarray Dataset of summary metrics.
+        selected_channels: Optional list of channels.
+
+    Returns:
+        pd.DataFrame: Contribution dataframe.
+          Shape:
+            - If `aggregate_times=True`: (n_channels, 3)
+              Columns: 'channel', 'incremental_outcome', 'pct_of_contribution'
+            - If `aggregate_times=False`: (n_channels * n_times, 4)
+              Columns: 'time', 'channel', 'incremental_outcome',
+              'pct_of_contribution'
+    """
+
+    contribution_df = self._summary_metrics_to_mean_df(
+        summary_metrics=summary_metrics,
+        metrics=[
+            c.INCREMENTAL_OUTCOME,
+            c.PCT_OF_CONTRIBUTION,
+        ],
+        selected_channels=selected_channels,
+    )
+    # Convert to percentage values between 0-1.
+    contribution_df[c.PCT_OF_CONTRIBUTION] = contribution_df[
+        c.PCT_OF_CONTRIBUTION
+    ].div(100)
+    return contribution_df
+
+  def _calculate_baseline_contribution_dataframe(
+      self, summary_metrics: xr.Dataset, aggregate_times: bool
+  ) -> pd.DataFrame:
+    """Calculates the baseline contribution dataframe.
+
+      Calculates a single total outcome and baseline if aggregating.
+      Calculates time-varying total and baseline if not aggregating.
+
+    Args:
+      summary_metrics: The summary metrics dataset.
+      aggregate_times: Whether to aggregate times.
+
+    Returns:
+      A DataFrame containing the baseline metrics.
+        Shape:
+          - If `aggregate_times=True`: (1, 3)
+            Columns: 'channel', 'incremental_outcome', 'pct_of_contribution'
+          - If `aggregate_times=False`: (n_times, 4)
+            Columns: 'time', 'channel', 'incremental_outcome',
+            'pct_of_contribution'
     """
     total_media_criteria = {
         c.DISTRIBUTION: c.POSTERIOR,
         c.METRIC: c.MEAN,
         c.CHANNEL: c.ALL_CHANNELS,
     }
-    summary_metrics = (
-        self.all_summary_metrics
-        if include_non_paid
-        else self.paid_summary_metrics
-    )
-    total_media_outcome = (
-        summary_metrics[c.INCREMENTAL_OUTCOME].sel(total_media_criteria).item()
+    if not aggregate_times:
+      total_media_criteria[c.TIME] = (
+          self._selected_times
+          or self.all_summary_metrics(aggregate_times=False).time
+      )
+
+    total_media_outcome = summary_metrics[c.INCREMENTAL_OUTCOME].sel(
+        total_media_criteria
     )
     total_media_pct = (
-        summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria).item()
-        / 100
+        summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria) / 100
     )
     total_outcome = total_media_outcome / total_media_pct
     baseline_pct = 1 - total_media_pct
     baseline_outcome = total_outcome * baseline_pct
 
-    baseline_df = pd.DataFrame(
-        {
-            c.CHANNEL: c.BASELINE,
-            c.INCREMENTAL_OUTCOME: baseline_outcome,
-            c.PCT_OF_CONTRIBUTION: baseline_pct,
-        },
-        index=[0],
-    )
-    outcome_df = self._summary_metrics_to_mean_df(
-        metrics=[
-            c.INCREMENTAL_OUTCOME,
-            c.PCT_OF_CONTRIBUTION,
-        ],
-        selected_channels=selected_channels,
-        include_non_paid=include_non_paid,
-    )
-    # Convert to percentage values between 0-1.
-    outcome_df[c.PCT_OF_CONTRIBUTION] = outcome_df[c.PCT_OF_CONTRIBUTION].div(
-        100
-    )
-    outcome_df = pd.concat([baseline_df, outcome_df]).reset_index(drop=True)
-    outcome_df.sort_values(
-        by=c.INCREMENTAL_OUTCOME, ascending=False, inplace=True
-    )
-    return outcome_df
+    if aggregate_times:
+      return pd.DataFrame(
+          {
+              c.CHANNEL: c.BASELINE,
+              c.INCREMENTAL_OUTCOME: baseline_outcome.item(),
+              c.PCT_OF_CONTRIBUTION: baseline_pct.item(),
+          },
+          index=[0],
+      )
+    else:
+      return pd.DataFrame({
+          c.TIME: self._selected_times or summary_metrics.time.values,
+          c.CHANNEL: c.BASELINE,
+          c.INCREMENTAL_OUTCOME: baseline_outcome.values,
+          c.PCT_OF_CONTRIBUTION: baseline_pct.values,
+      })
 
   def _transform_contribution_spend_metrics(self) -> pd.DataFrame:
     """Transforms the media metrics for the spend vs contribution plot.
@@ -2189,12 +2282,13 @@ class MediaSummary:
     Returns:
       A dataframe of spend and outcome percentages and ROI per channel.
     """
+    paid_summary_metrics = self.paid_summary_metrics()
     if self._meridian.input_data.revenue_per_kpi is not None:
       outcome = summary_text.REVENUE_LABEL
     else:
       outcome = summary_text.KPI_LABEL
     total_media_outcome = (
-        self.paid_summary_metrics[c.INCREMENTAL_OUTCOME]
+        paid_summary_metrics[c.INCREMENTAL_OUTCOME]
         .sel(
             distribution=c.POSTERIOR,
             metric=c.MEAN,
@@ -2203,7 +2297,7 @@ class MediaSummary:
         .item()
     )
     outcome_pct_df = self._summary_metrics_to_mean_df(
-        metrics=[c.INCREMENTAL_OUTCOME]
+        paid_summary_metrics, metrics=[c.INCREMENTAL_OUTCOME]
     )
     outcome_pct_df[c.PCT] = outcome_pct_df[c.INCREMENTAL_OUTCOME].div(
         total_media_outcome
@@ -2211,7 +2305,7 @@ class MediaSummary:
     outcome_pct_df.drop(columns=[c.INCREMENTAL_OUTCOME], inplace=True)
     outcome_pct_df['label'] = f'% {outcome}'
     spend_pct_df = (
-        self.paid_summary_metrics[c.PCT_OF_SPEND]
+        paid_summary_metrics[c.PCT_OF_SPEND]
         .drop_sel(channel=[c.ALL_CHANNELS])
         .to_dataframe()
         .reset_index()
@@ -2221,7 +2315,9 @@ class MediaSummary:
     spend_pct_df['label'] = '% Spend'
 
     pct_df = pd.concat([outcome_pct_df, spend_pct_df])
-    roi_df = self._summary_metrics_to_mean_df(metrics=[c.ROI])
+    roi_df = self._summary_metrics_to_mean_df(
+        paid_summary_metrics, metrics=[c.ROI]
+    )
     plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
     scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
     plot_df[c.ROI_SCALED] = plot_df[c.ROI] * scale_factor
@@ -2230,9 +2326,9 @@ class MediaSummary:
 
   def _summary_metrics_to_mean_df(
       self,
+      summary_metrics: xr.Dataset,
       metrics: Sequence[str],
       selected_channels: Sequence[str] | None = None,
-      include_non_paid: bool = False,
   ) -> pd.DataFrame:
     """Transforms the summary metrics to a dataframe of mean values.
 
@@ -2241,20 +2337,14 @@ class MediaSummary:
     channels.
 
     Args:
+      summary_metrics: The summary metrics dataset.
       metrics: A list of the metrics to include in the dataframe.
       selected_channels: List of channels to include. If None, all media
         channels will be included.
-      include_non_paid: If `True`, includes the organic media, organic RF and
-        non-media channels in the dataframe. Defaults to `False`.
 
     Returns:
       A dataframe of posterior mean values for the selected metrics and media.
     """
-    summary_metrics = (
-        self.all_summary_metrics
-        if include_non_paid
-        else self.paid_summary_metrics
-    )
     metrics_dataset = summary_metrics[metrics].sel(
         distribution=c.POSTERIOR, metric=c.MEAN
     )
@@ -2284,7 +2374,7 @@ class MediaSummary:
     central_tendency = c.MEDIAN if metric == c.CPIK else c.MEAN
     unused_central_tendency = c.MEAN if metric == c.CPIK else c.MEDIAN
     return (
-        self.paid_summary_metrics[metric]
+        self.paid_summary_metrics()[metric]
         .sel(distribution=c.POSTERIOR)
         .drop_sel(
             channel=c.ALL_CHANNELS,
