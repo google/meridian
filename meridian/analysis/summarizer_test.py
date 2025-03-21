@@ -152,7 +152,9 @@ class SummarizerTest(parameterized.TestCase):
 
   def _stub_for_insights(self):
     self.media_metrics = test_utils.generate_paid_summary_metrics()
-    self.media_summary.paid_summary_metrics = self.media_metrics
+    self.media_summary.paid_summary_metrics = mock.MagicMock(
+        return_value=self.media_metrics
+    )
 
     frequency_data = test_utils.generate_optimal_frequency_data(
         channel_prefix='rf_ch', num_channels=2
@@ -998,7 +1000,7 @@ class SummarizerTest(parameterized.TestCase):
     media_summary = self.media_summary
     reach_frequency = self.reach_frequency
 
-    media_summary.paid_summary_metrics.spend.data = [
+    media_summary.paid_summary_metrics().spend.data = [
         100,  # 'ch_0'
         200,  # 'ch_1'
         300,  # 'ch_2'
