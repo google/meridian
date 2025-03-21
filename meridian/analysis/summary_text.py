@@ -42,6 +42,11 @@ CHANNEL_CONTRIB_INSIGHTS_FORMAT = """Your channel contributions help you
 understand what drove your {outcome}. {lead_channels} drove the most overall
 {outcome}."""
 
+CHANNEL_CONTRIB_BY_TIME_CHART_ID = 'channel-contrib-by-time-chart'
+CHANNEL_CONTRIB_BY_TIME_CHART_TITLE = (
+    'Contribution over time by baseline and marketing channels'
+)
+
 CHANNEL_DRIVERS_CHART_ID = 'channel-drivers-chart'
 CHANNEL_DRIVERS_CHART_TITLE = 'Contribution by baseline and marketing channels'
 CHANNEL_DRIVERS_CHART_DESCRIPTION = """Note: This graphic encompasses all of
