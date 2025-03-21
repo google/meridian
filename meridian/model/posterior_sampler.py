@@ -393,7 +393,7 @@ class PosteriorMCMCSampler:
       max_energy_diff: float = 500.0,
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
-      seed: Sequence[int] | None = None,
+      seed: Sequence[int] | int | None = None,
       **pins,
   ) -> az.InferenceData:
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
@@ -457,7 +457,7 @@ class PosteriorMCMCSampler:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
-    seed = tfp.random.sanitize_seed(seed) if seed else None
+    seed = tfp.random.sanitize_seed(seed) if seed is not None else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
 
