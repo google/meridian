@@ -1810,7 +1810,17 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     np.testing.assert_array_equal(optimal_spend, expected_optimal_spend)
 
-  def test_optimization_grid_nans_match(self):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'zero_spend_constraint',
+          'spend_constraint': 0,
+      },
+      {
+          'testcase_name': 'with_spend_constraint',
+          'spend_constraint': 0.5,
+      },
+  )
+  def test_optimization_grid_nans_match(self, spend_constraint):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
@@ -1819,7 +1829,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
     )
 
-    opt_results = self.budget_optimizer_media_and_rf.optimize()
+    opt_results = self.budget_optimizer_media_and_rf.optimize(
+        spend_constraint_lower=spend_constraint,
+        spend_constraint_upper=spend_constraint,
+    )
     np.testing.assert_array_equal(
         np.isnan(opt_results.optimization_grid.spend_grid),
         np.isnan(opt_results.optimization_grid.incremental_outcome_grid),
