@@ -1386,13 +1386,11 @@ class PosteriorMCMCSamplerTest(
       )
 
   @parameterized.named_parameters(
-      dict(testcase_name="seed_is_none", seed=None),
-      dict(testcase_name="seed_is_int", seed=42),
-      dict(testcase_name="seed_is_pair", seed=[42, 123]),
+      dict(testcase_name="seed_is_none", seed=None, expected_seed=None),
+      dict(testcase_name="seed_is_int", seed=42, expected_seed=[43, 43]),
+      dict(testcase_name="seed_is_pair", seed=[42, 123], expected_seed=[43, 124]),
   )
-  def test_sample_posterior_with_seed(self, seed):
-    if seed is not None:
-      seed = tfp.random.sanitize_seed(seed)
+  def test_sample_posterior_with_seed(self, seed, expected_seed):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
             posterior_sampler,
@@ -1418,6 +1416,8 @@ class PosteriorMCMCSamplerTest(
         n_keep=self._N_KEEP,
         seed=seed,
     )
+    if expected_seed is not None:
+      expected_seed = tf.constant(expected_seed, dtype=tf.int32)
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -1430,7 +1430,7 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=seed,
+        seed=expected_seed,
     )
 
   @parameterized.named_parameters(
