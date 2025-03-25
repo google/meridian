@@ -494,6 +494,9 @@ class PosteriorMCMCSampler:
             " integers as `n_chains` to sample chains serially (see"
             " https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error)"
         ) from error
+      if seed is not None:
+        seed += 1
+        #seed = [x + 1 for x in seed]
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
 
