@@ -29,6 +29,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Add a `new_data` argument to `analyzer.optimal_freq()`.
 * Refactor args in `create_optimization_grid` to be consistent with
  `optimize(...)`.
+* Add Add per-channel constraints parameters to
+ `OptimizationGrid.optimize(...)`.
 
 ## [1.0.7] - 2025-03-19
 
