@@ -320,6 +320,9 @@ class ModelDiagnostics:
           }),
       ])
 
+    #TODO
+    print(f"  RHAT: {rhat[c.RHAT]}")
+    #TODO
     # If the MCMC sampling fails, the r-hat value calculated will be very large.
     if (rhat[c.RHAT] > 1e10).any():
       max_rhat = max(rhat[c.RHAT])
