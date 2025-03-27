@@ -250,7 +250,7 @@ class ModelDiagnostics:
         .mark_area(opacity=0.7)
         .encode(
             x=f'{parameter}:Q',
-            y='density:Q',
+            y=alt.Y(shorthand='density:Q', stack=False),
             color=f'{c.DISTRIBUTION}:N',
         )
     )
