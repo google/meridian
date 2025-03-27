@@ -23,6 +23,12 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add `plot_channel_contribution_area_chart` method to `MediaSummary` in the
+  visualizer.
+
+* Update contribution calculation methods in `MediaSummary` with
+  `aggregate_times` parameter to support granular time.
+
 * Add a `new_data` argument to `analyzer.optimal_freq()`.
 * Refactor args in `create_optimization_grid` to be consistent with
  `optimize(...)`.

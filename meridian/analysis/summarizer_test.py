@@ -140,6 +140,9 @@ class SummarizerTest(parameterized.TestCase):
     self.reach_frequency.plot_optimal_frequency().to_json.return_value = '{}'
 
   def _stub_media_summary_plotters(self, media_summary):
+    media_summary.plot_channel_contribution_area_chart().to_json.return_value = (
+        '{}'
+    )
     media_summary.plot_contribution_waterfall_chart().to_json.return_value = (
         '{}'
     )
@@ -152,7 +155,9 @@ class SummarizerTest(parameterized.TestCase):
 
   def _stub_for_insights(self):
     self.media_metrics = test_utils.generate_paid_summary_metrics()
-    self.media_summary.paid_summary_metrics = self.media_metrics
+    self.media_summary.get_paid_summary_metrics = mock.MagicMock(
+        return_value=self.media_metrics
+    )
 
     frequency_data = test_utils.generate_optimal_frequency_data(
         channel_prefix='rf_ch', num_channels=2
@@ -365,6 +370,12 @@ class SummarizerTest(parameterized.TestCase):
       (
           summary_text.CHANNEL_CONTRIB_CARD_ID,
           [
+              (
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+                      outcome=c.REVENUE
+                  ),
+              ),
               (
                   summary_text.CHANNEL_DRIVERS_CHART_ID,
                   summary_text.CHANNEL_DRIVERS_CHART_DESCRIPTION.format(
@@ -781,6 +792,10 @@ class SummarizerTest(parameterized.TestCase):
     media_summary.plot_contribution_pie_chart().to_json.return_value = (
         f'["{mock_spec_3}"]'
     )
+    mock_spec_4 = 'revenue_area_chart'
+    media_summary.plot_channel_contribution_area_chart().to_json.return_value = (
+        f'["{mock_spec_4}"]'
+    )
 
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         self.summarizer_revenue,
@@ -789,6 +804,7 @@ class SummarizerTest(parameterized.TestCase):
         media_summary.plot_contribution_waterfall_chart(),
         media_summary.plot_spend_vs_contribution(),
         media_summary.plot_contribution_pie_chart(),
+        media_summary.plot_channel_contribution_area_chart(),
     ]:
       mock_plot.to_json.assert_called_once()
 
@@ -812,8 +828,16 @@ class SummarizerTest(parameterized.TestCase):
     mock_spec_3_exists = any(
         [mock_spec_3 in script_text for script_text in script_texts]
     )
+    mock_spec_4_exists = any(
+        [mock_spec_4 in script_text for script_text in script_texts]
+    )
     self.assertTrue(
-        all([mock_spec_1_exists, mock_spec_2_exists, mock_spec_3_exists])
+        all([
+            mock_spec_1_exists,
+            mock_spec_2_exists,
+            mock_spec_3_exists,
+            mock_spec_4_exists,
+        ])
     )
 
   def test_channel_contrib_card_insights(self):
@@ -998,7 +1022,7 @@ class SummarizerTest(parameterized.TestCase):
     media_summary = self.media_summary
     reach_frequency = self.reach_frequency
 
-    media_summary.paid_summary_metrics.spend.data = [
+    media_summary.get_paid_summary_metrics().spend.data = [
         100,  # 'ch_0'
         200,  # 'ch_1'
         300,  # 'ch_2'

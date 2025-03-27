@@ -27,6 +27,7 @@ from meridian.analysis import visualizer
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+import numpy as np
 import xarray as xr
 
 mock = absltest.mock
@@ -1532,19 +1533,20 @@ class MediaSummaryTest(parameterized.TestCase):
         media_summary._non_media_baseline_values, non_media_baseline_values
     )
 
-  def test_media_summary_all_summary_metrics_calls_analyzer_correctly(self):
+  def test_media_summary_get_all_summary_metrics_calls_analyzer_correctly(self):
     non_media_baseline_values = [1.0, "max"]
     media_summary = visualizer.MediaSummary(
         self.meridian_revenue,
         non_media_baseline_values=non_media_baseline_values,
     )
-    _ = media_summary.all_summary_metrics
+    _ = media_summary.get_all_summary_metrics()
     self.mock_analyzer_summary_metrics.assert_called_with(
         selected_times=None,
         use_kpi=False,
         confidence_level=0.9,
         include_non_paid_channels=True,
         non_media_baseline_values=non_media_baseline_values,
+        aggregate_times=True,
     )
 
   def test_media_summary_update_non_media_baseline_values(self):
@@ -1648,10 +1650,9 @@ class MediaSummaryTest(parameterized.TestCase):
         test_utils.generate_paid_summary_metrics().drop_vars([c.ROI, c.MROI])
     )
     with mock.patch.object(
-        visualizer.MediaSummary,
-        "paid_summary_metrics",
-        new=property(lambda unused_self: media_summary_metrics),
-    ):
+        visualizer.MediaSummary, "get_paid_summary_metrics"
+    ) as mock_paid_metrics:
+      mock_paid_metrics.return_value = media_summary_metrics
       df = self.media_summary_kpi.summary_table()
     self.assertListEqual(
         list(df.columns),
@@ -1705,7 +1706,7 @@ class MediaSummaryTest(parameterized.TestCase):
 
   def test_media_summary_update_ci(self):
     self.assertEqual(
-        self.media_summary_revenue.paid_summary_metrics.confidence_level,
+        self.media_summary_revenue.get_paid_summary_metrics().confidence_level,
         c.DEFAULT_CONFIDENCE_LEVEL,
     )
     self.media_summary_revenue.update_summary_metrics(
@@ -1715,7 +1716,7 @@ class MediaSummaryTest(parameterized.TestCase):
   def test_media_summary_update_selected_times(self):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
     self.assertEqual(
-        self.media_summary_revenue.paid_summary_metrics.confidence_level,
+        self.media_summary_revenue.get_paid_summary_metrics().confidence_level,
         0.9,
     )
     self.media_summary_revenue.update_summary_metrics(
@@ -1808,6 +1809,135 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.layer[3].mark.dy, -5)
     self.assertEqual(plot.layer[3].mark.type, "text")
 
+  def test_media_summary_plot_channel_contribution_area_chart_correct_data(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    df = plot.data
+    self.assertEqual(
+        list(df.columns),
+        [c.TIME, c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
+    )
+    self.assertIn(c.BASELINE.upper(), list(df.channel))
+    self.assertEqual(
+        df[c.CHANNEL].iloc[0],
+        c.BASELINE.upper(),
+        "Baseline should be last for stacking",
+    )
+
+  def test_media_summary_plot_channel_contribution_area_chart_encoding(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    encoding = plot.encoding
+    self.assertEqual(encoding.x.shorthand, f"{c.TIME}:T")
+    self.assertEqual(encoding.x["title"], "Time period")
+    self.assertEqual(encoding.x["axis"]["format"], "%Y Q%q")
+    self.assertEqual(encoding.y.shorthand, f"{c.INCREMENTAL_OUTCOME}:Q")
+    self.assertEqual(encoding.y["title"], "Revenue")
+    self.assertEqual(encoding.color.shorthand, f"{c.CHANNEL}:N")
+    self.assertIsNone(encoding.color["legend"]["title"])
+    self.assertIsNotNone(encoding.order)
+    self.assertEqual(encoding.order["sort"], "descending")
+    self.assertIsNotNone(encoding.tooltip)
+
+  def test_media_summary_plot_channel_contribution_area_chart_y_axis_label(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot_kpi = self.media_summary_kpi.plot_channel_contribution_area_chart()
+      plot_revenue = (
+          self.media_summary_revenue.plot_channel_contribution_area_chart()
+      )
+    self.assertEqual(plot_kpi.encoding.y["title"], "KPI")
+    self.assertEqual(plot_revenue.encoding.y["title"], "Revenue")
+
+  def test_media_summary_plot_channel_contribution_area_chart_baseline_min(
+      self,
+  ):
+    summary_metrics = xr.Dataset(
+        data_vars={
+            c.INCREMENTAL_OUTCOME: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.array([
+                    [[[500]], [[2000]], [[1500]], [[400]]],
+                    [[[600]], [[1800]], [[1200]], [[360]]],
+                    [[[400]], [[2200]], [[1600]], [[-1]]],
+                ]),
+            ),
+            c.PCT_OF_CONTRIBUTION: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.array([
+                    [[[5]], [[20]], [[15]], [[10]]],
+                    [[[6]], [[18]], [[12]], [[9]]],
+                    [[[4]], [[22]], [[16]], [[1]]],
+                ]),
+            ),
+            c.EFFECTIVENESS: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.zeros(shape=(3, 4, 1, 1)),
+            ),
+        },
+        coords={
+            c.TIME: ["2023-01-01", "2023-01-08", "2023-01-15"],
+            c.CHANNEL: ["1", "2", "3", c.ALL_CHANNELS],
+            c.METRIC: [c.MEAN],
+            c.DISTRIBUTION: [c.POSTERIOR],
+        },
+        attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
+    )
+
+    with mock.patch.object(
+        visualizer.MediaSummary,
+        "get_all_summary_metrics",
+        return_value=summary_metrics,
+    ) as _:
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    # Calculate the expected minimum y-value by finding the minimum baseline
+    # outcome across all time periods.
+    total_media_criteria = {
+        c.DISTRIBUTION: c.POSTERIOR,
+        c.METRIC: c.MEAN,
+        c.CHANNEL: c.ALL_CHANNELS,
+        c.TIME: summary_metrics.time,
+    }
+    total_media_outcome = summary_metrics[c.INCREMENTAL_OUTCOME].sel(
+        total_media_criteria
+    )
+    total_media_pct = (
+        summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria) / 100
+    )
+    total_outcome = total_media_outcome / total_media_pct
+    baseline_pct = 1 - total_media_pct
+    baseline_outcome = total_outcome * baseline_pct
+    expected_min_y = baseline_outcome.min()
+
+    self.assertEqual(plot.encoding.y["scale"]["domainMin"], expected_min_y)
+    self.assertTrue(plot.encoding.y["scale"]["clamp"])
+
   def test_media_summary_plot_waterfall_chart_correct_data(self):
     summary_metrics = xr.Dataset(
         data_vars={
@@ -1827,10 +1957,9 @@ class MediaSummaryTest(parameterized.TestCase):
         },
     )
     with mock.patch.object(
-        visualizer.MediaSummary,
-        "all_summary_metrics",
-        new=property(lambda unused_self: summary_metrics),
-    ):
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
       plot = self.media_summary_revenue.plot_contribution_waterfall_chart()
 
     df = plot.data
@@ -1882,10 +2011,9 @@ class MediaSummaryTest(parameterized.TestCase):
     summary_metrics[c.INCREMENTAL_OUTCOME].loc[total_media_dict] = outcome
     summary_metrics[c.PCT_OF_CONTRIBUTION].loc[total_media_dict] = pct
     with mock.patch.object(
-        visualizer.MediaSummary,
-        "all_summary_metrics",
-        new=property(lambda unused_self: summary_metrics),
-    ):
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
       plot = self.media_summary_revenue.plot_contribution_waterfall_chart()
     df = plot.data
     baseline_outcome_text = df.loc[df[c.CHANNEL] == c.BASELINE.upper()][
@@ -2028,10 +2156,9 @@ class MediaSummaryTest(parameterized.TestCase):
     media_metrics[c.INCREMENTAL_OUTCOME].loc[total_media_dict] = 200000
     media_metrics[c.PCT_OF_CONTRIBUTION].loc[total_media_dict] = 60
     with mock.patch.object(
-        visualizer.MediaSummary,
-        "paid_summary_metrics",
-        new=property(lambda unused_self: media_metrics),
-    ):
+        visualizer.MediaSummary, "get_paid_summary_metrics"
+    ) as mock_paid_metrics:
+      mock_paid_metrics.return_value = media_metrics
       plot = media_summary.plot_spend_vs_contribution()
     df = plot.data
     self.assertEqual(

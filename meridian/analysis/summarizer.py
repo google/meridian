@@ -270,6 +270,13 @@ class Summarizer:
   ) -> str:
     """Creates the HTML snippet for the Outcome Contrib card."""
     outcome = self._kpi_or_revenue()
+    channel_contribution_by_time_chart = formatter.ChartSpec(
+        id=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
+        description=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+            outcome=outcome
+        ),
+        chart_json=media_summary.plot_channel_contribution_area_chart().to_json(),
+    )
     channel_drivers_chart = formatter.ChartSpec(
         id=summary_text.CHANNEL_DRIVERS_CHART_ID,
         description=summary_text.CHANNEL_DRIVERS_CHART_DESCRIPTION.format(
@@ -305,6 +312,7 @@ class Summarizer:
         CHANNEL_CONTRIB_CARD_SPEC,
         insights,
         [
+            channel_contribution_by_time_chart,
             channel_drivers_chart,
             spend_outcome_chart,
             outcome_contribution_chart,
@@ -318,7 +326,7 @@ class Summarizer:
       ascending: bool = False,
   ) -> pd.DataFrame:
     return (
-        media_summary.paid_summary_metrics[metrics]
+        media_summary.get_paid_summary_metrics()[metrics]
         .sel(distribution=c.POSTERIOR, metric=c.MEAN)
         .drop_sel(channel=c.ALL_CHANNELS)
         .to_dataframe()
@@ -334,7 +342,7 @@ class Summarizer:
       ascending: bool = False,
   ) -> pd.DataFrame:
     return (
-        media_summary.paid_summary_metrics[metrics]
+        media_summary.get_paid_summary_metrics()[metrics]
         .sel(distribution=c.POSTERIOR, metric=c.MEDIAN)
         .drop_sel(channel=c.ALL_CHANNELS)
         .to_dataframe()
@@ -479,7 +487,7 @@ class Summarizer:
     rf_channels = reach_frequency.optimal_frequency_data.rf_channel
     assert rf_channels.size > 0
     # This will raise KeyError if not all `rf_channels` can be found in here:
-    rf_channel_spends = media_summary.paid_summary_metrics[c.SPEND].sel(
+    rf_channel_spends = media_summary.get_paid_summary_metrics()[c.SPEND].sel(
         channel=rf_channels
     )
     most_spend_rf_channel = rf_channel_spends.idxmax()

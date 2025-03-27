@@ -2914,7 +2914,7 @@ def generate_paid_summary_metrics() -> xr.Dataset:
   )
 
 
-def generate_all_summary_metrics() -> xr.Dataset:
+def generate_all_summary_metrics(aggregate_times: bool = True) -> xr.Dataset:
   """Helper method to generate simulated summary metrics data."""
   channel = (
       [f"ch_{i}" for i in range(3)]
@@ -2926,33 +2926,36 @@ def generate_all_summary_metrics() -> xr.Dataset:
   channel.append(c.ALL_CHANNELS)
   metric = [c.MEAN, c.MEDIAN, c.CI_LO, c.CI_HI]
   distribution = [c.PRIOR, c.POSTERIOR]
+  time = [f"time_{i}" for i in range(5)]
 
   np.random.seed(0)
-  shape = (len(channel), len(metric), len(distribution))
+
+  if aggregate_times:
+    shape = (len(channel), len(metric), len(distribution))
+    dims = [c.CHANNEL, c.METRIC, c.DISTRIBUTION]
+  else:
+    shape = (len(time), len(channel), len(metric), len(distribution))
+    dims = [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION]
+
   incremental_outcome = np.random.lognormal(10, 1, size=shape)
   effectiveness = np.random.lognormal(1, 1, size=shape)
   pct_of_contribution = np.random.randint(low=0, high=50, size=shape)
 
+  coords = {
+      c.CHANNEL: channel,
+      c.METRIC: metric,
+      c.DISTRIBUTION: distribution,
+  }
+  if not aggregate_times:
+    coords[c.TIME] = time
+
   return xr.Dataset(
       data_vars={
-          c.INCREMENTAL_OUTCOME: (
-              [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
-              incremental_outcome,
-          ),
-          c.PCT_OF_CONTRIBUTION: (
-              [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
-              pct_of_contribution,
-          ),
-          c.EFFECTIVENESS: (
-              [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
-              effectiveness,
-          ),
+          c.INCREMENTAL_OUTCOME: (dims, incremental_outcome),
+          c.PCT_OF_CONTRIBUTION: (dims, pct_of_contribution),
+          c.EFFECTIVENESS: (dims, effectiveness),
       },
-      coords={
-          c.CHANNEL: channel,
-          c.METRIC: metric,
-          c.DISTRIBUTION: distribution,
-      },
+      coords=coords,
       attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
   )
 
