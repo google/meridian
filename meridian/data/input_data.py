@@ -534,15 +534,33 @@ class InputData:
   def _validate_media_channels(self):
     """Verifies Meridian media channel names invariants.
 
-    In the input data, media channel names across `media_channel` and
-    `rf_channel` must be unique.
+    In the input data, channel names across `media_channel`,
+    `rf_channel`, `organic_media_channel`, `organic_rf_channel`,
+    `non_media_channel` must be unique.
     """
     all_channels = self.get_all_channels()
     if len(np.unique(all_channels)) != all_channels.size:
-      raise ValueError(
-          "Media channel names across `media_channel` and `rf_channel` must be"
-          " unique."
+      error_msg = (
+          "Channel names across `media_channel`, `rf_channel`,"
+          " `organic_media_channel`, `organic_rf_channel`, and"
+          " `non_media_channel` must be unique."
       )
+      # pytype: disable=attribute-error
+      if self.media_channel is not None:
+        error_msg += f" `media_channel`: {self.media_channel.values}."
+      if self.rf_channel is not None:
+        error_msg += f" `rf_channel`: {self.rf_channel.values}."
+      if self.organic_media_channel is not None:
+        error_msg += (
+            f" `organic_media_channel`: {self.organic_media_channel.values}."
+        )
+      if self.organic_rf_channel is not None:
+        error_msg += f" `organic_rf_channel`: {self.organic_rf_channel.values}."
+      if self.non_media_channel is not None:
+        error_msg += f" `non_media_channel`: {self.non_media_channel.values}."
+      # pytype: enable=attribute-error
+
+      raise ValueError(error_msg)
 
   def _validate_times(self):
     """Validates time coordinate values."""
