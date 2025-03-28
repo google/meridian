@@ -494,8 +494,9 @@ IS_INT_TIME_UNIT = 'is_int_time_unit'
 OPTIMAL_FREQ = 'optimal_freq'
 CURRENT_SPEND = 'current_spend'
 
-# Media summary metrics.
+# Media summary / optimization metrics.
 SPEND = 'spend'
+OPTIMAL_SPEND = 'optimal_spend'
 IMPRESSIONS = 'impressions'
 ROI = 'roi'
 OPTIMIZED_ROI = 'optimized_roi'

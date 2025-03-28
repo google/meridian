@@ -885,10 +885,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             c.CHANNEL: self.input_data_media_and_rf.get_all_channels(),
         },
     )
+    optimization_grid = (
+        self.budget_optimizer_media_and_rf.create_optimization_grid()
+    )
 
-    optimization_results = self.budget_optimizer_media_and_rf.optimize()
-
-    actual_data = optimization_results.optimization_grid
+    actual_data = optimization_grid.grid_dataset
     self.assertEqual(actual_data, expected_data)
     self.assertEqual(actual_data.spend_step_size, 100.0)
 
@@ -1720,7 +1721,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       {
           'testcase_name': 'fixed_budget_scenario_with_new_budget',
           'scenario': optimizer.FixedBudgetScenario(total_budget=6000),
-          'expected_optimal_spend': np.array([1200, 1200, 1300, 1200, 1100]),
+          'expected_optimal_spend': np.array([1000, 1100, 1200, 1400, 1300]),
       },
       {
           'testcase_name': 'flexible_budget_target_roi_scenario',
@@ -1760,13 +1761,211 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     spend_constraint_lower = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
     spend_constraint_upper = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
-    optimal_spend = self.budget_optimizer_media_and_rf.create_optimization_grid(
+    opt_spend = self.budget_optimizer_media_and_rf.create_optimization_grid(
+        gtol=0.01,
+    ).optimize(
+        scenario=scenario,
         spend_constraint_lower=spend_constraint_lower,
         spend_constraint_upper=spend_constraint_upper,
-        gtol=0.01,
-    ).optimize(scenario=scenario)
+    )
 
-    np.testing.assert_array_equal(optimal_spend, expected_optimal_spend)
+    np.testing.assert_array_equal(
+        opt_spend.optimal_spend, expected_optimal_spend
+    )
+
+  def test_trim_grid(self):
+    grid = optimizer.OptimizationGrid(
+        historical_spend=mock.MagicMock(),
+        use_kpi=False,
+        use_posterior=True,
+        use_optimal_frequency=False,
+        round_factor=-2,
+        optimal_frequency=None,
+        selected_times=mock.MagicMock(),
+        _grid_dataset=mock.MagicMock(
+            channel=['ch1', 'ch2', 'ch3', 'ch4', 'ch5'],
+            spend_grid=np.array([
+                [100, 0, 300, 0, 200],
+                [200, 100, 400, 100, 300],
+                [300, 200, 500, 200, np.nan],
+                [400, 300, np.nan, np.nan, np.nan],
+            ]),
+            incremental_outcome_grid=np.array([
+                [1.1, 0.0, 3.3, 0.0, 5.2],
+                [1.2, 2.1, 3.4, 4.1, 5.3],
+                [1.3, 2.2, 3.5, 4.2, np.nan],
+                [1.4, 2.3, np.nan, np.nan, np.nan],
+            ]),
+        ),
+    )
+    (updated_spend, updated_incremental_outcome) = grid._trim_grid(
+        spend_bound_lower=np.array([100, 100, 400, 0, 200]),
+        spend_bound_upper=np.array([400, 300, 400, 100, 300]),
+    )
+    np.testing.assert_array_equal(
+        updated_spend,
+        np.array([
+            [100, 100, 400, 0, 200],
+            [200, 200, np.nan, 100, 300],
+            [300, 300, np.nan, np.nan, np.nan],
+            [400, np.nan, np.nan, np.nan, np.nan],
+        ]),
+    )
+    np.testing.assert_array_equal(
+        updated_incremental_outcome,
+        np.array([
+            [1.1, 2.1, 3.4, 0.0, 5.2],
+            [1.2, 2.2, np.nan, 4.1, 5.3],
+            [1.3, 2.3, np.nan, np.nan, np.nan],
+            [1.4, np.nan, np.nan, np.nan, np.nan],
+        ]),
+    )
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'default_budget_scenario_pct_of_spend_exceeds_grid',
+          'scenario': optimizer.FixedBudgetScenario(),
+          'pct_of_spend': np.array([0.0, 0.1, 0.2, 0.3, 0.4]),
+          'spend_constraint_lower': None,
+          'spend_constraint_upper': None,
+      },
+      {
+          'testcase_name': 'default_budget_scenario_constraints_exceed_grid',
+          'scenario': optimizer.FixedBudgetScenario(),
+          'pct_of_spend': None,
+          'spend_constraint_lower': np.array([1.0, 0.9, 0.8, 0.7, 0.6]),
+          'spend_constraint_upper': np.array([1.0, 0.9, 0.8, 0.7, 0.6]),
+      },
+      {
+          'testcase_name': 'fixed_budget_scenario_budget_too_large',
+          'scenario': optimizer.FixedBudgetScenario(total_budget=100_000),
+          'pct_of_spend': None,
+          'spend_constraint_lower': None,
+          'spend_constraint_upper': None,
+      },
+      {
+          'testcase_name': 'fixed_budget_scenario_budget_too_small',
+          'scenario': optimizer.FixedBudgetScenario(total_budget=100),
+          'pct_of_spend': None,
+          'spend_constraint_lower': None,
+          'spend_constraint_upper': None,
+      },
+      {
+          'testcase_name': (
+              'flexible_budget_target_roi_scenario_constraints_exceed_grid'
+          ),
+          'scenario': optimizer.FlexibleBudgetScenario(
+              target_metric=c.ROI, target_value=1.0
+          ),
+          'pct_of_spend': None,
+          'spend_constraint_lower': None,
+          'spend_constraint_upper': None,
+      },
+      {
+          'testcase_name': (
+              'flexible_budget_target_mroi_scenario_constraints_exceed_grid'
+          ),
+          'scenario': optimizer.FlexibleBudgetScenario(
+              target_metric=c.MROI, target_value=1.0
+          ),
+          'pct_of_spend': None,
+          'spend_constraint_lower': None,
+          'spend_constraint_upper': None,
+      },
+  )
+  def test_optimize_grid_exceeds_spend_constraint(
+      self,
+      scenario,
+      pct_of_spend,
+      spend_constraint_lower,
+      spend_constraint_upper,
+  ):
+    grid = self.budget_optimizer_media_and_rf.create_optimization_grid(
+        spend_constraint_lower=0.9, spend_constraint_upper=0.9
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'Spend allocation is not within the grid coverage.',
+    ):
+      grid.optimize(
+          scenario=scenario,
+          pct_of_spend=pct_of_spend,
+          spend_constraint_lower=spend_constraint_lower,
+          spend_constraint_upper=spend_constraint_upper,
+      )
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'default_fixed_budget_scenario',
+          'scenario': optimizer.FixedBudgetScenario(),
+          'fixed_budget': True,
+          'budget': None,
+          'target_roi': None,
+          'target_mroi': None,
+      },
+      {
+          'testcase_name': 'fixed_budget_scenario_with_new_budget',
+          'scenario': optimizer.FixedBudgetScenario(total_budget=6000),
+          'fixed_budget': True,
+          'budget': 6000,
+          'target_roi': None,
+          'target_mroi': None,
+      },
+      {
+          'testcase_name': 'flexible_budget_target_roi_scenario',
+          'scenario': optimizer.FlexibleBudgetScenario(
+              target_metric=c.ROI, target_value=1.0
+          ),
+          'fixed_budget': False,
+          'budget': None,
+          'target_roi': 1.0,
+          'target_mroi': None,
+      },
+      {
+          'testcase_name': 'flexible_budget_target_mroi_scenario',
+          'scenario': optimizer.FlexibleBudgetScenario(
+              target_metric=c.MROI, target_value=1.0
+          ),
+          'fixed_budget': False,
+          'budget': None,
+          'target_roi': None,
+          'target_mroi': 1.0,
+      },
+  )
+  def test_optimize_grid_matches_optimize(
+      self,
+      scenario,
+      fixed_budget,
+      budget,
+      target_roi,
+      target_mroi,
+  ):
+    spend_constraint_lower = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
+    spend_constraint_upper = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
+    grid = self.budget_optimizer_media_and_rf.create_optimization_grid(
+        budget=budget,
+    )
+    opt_spend = grid.optimize(
+        scenario=scenario,
+        spend_constraint_lower=spend_constraint_lower,
+        spend_constraint_upper=spend_constraint_upper,
+    )
+    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+        fixed_budget=fixed_budget,
+        budget=budget,
+        target_roi=target_roi,
+        target_mroi=target_mroi,
+        spend_constraint_lower=spend_constraint_lower,
+        spend_constraint_upper=spend_constraint_upper,
+    )
+
+    np.testing.assert_array_equal(
+        opt_spend.optimal_spend, optimization_results.optimized_data.spend
+    )
+    rounded_spend = np.round(opt_spend.spend, grid.round_factor).astype(int)
+    np.testing.assert_array_equal(
+        rounded_spend, optimization_results.nonoptimized_data.spend
+    )
 
   def test_optimization_grid_nans_match(self):
     self.enter_context(
@@ -1814,7 +2013,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimal_frequency=None,
         selected_times=mock.MagicMock(),
     )
-    optimal_spend = optimization_grid.optimize(
+    optimal_spend = optimization_grid._grid_search(
+        spend_grid=spend_grid,
+        incremental_outcome_grid=incremental_outcome_grid,
         scenario=optimizer.FlexibleBudgetScenario(
             target_metric=c.ROI, target_value=1.0
         ),
