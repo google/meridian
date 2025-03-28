@@ -27,6 +27,7 @@ from meridian.analysis import visualizer
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+import numpy as np
 import xarray as xr
 
 mock = absltest.mock
@@ -1807,6 +1808,349 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.layer[3].mark.baseline, "bottom")
     self.assertEqual(plot.layer[3].mark.dy, -5)
     self.assertEqual(plot.layer[3].mark.type, "text")
+
+  def test_media_summary_plot_channel_contribution_area_chart_correct_data(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    df = plot.data
+    self.assertEqual(
+        list(df.columns),
+        [c.TIME, c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
+    )
+    self.assertIn(c.BASELINE.upper(), list(df.channel))
+    self.assertEqual(
+        df[c.CHANNEL].iloc[0],
+        c.BASELINE.upper(),
+        "Baseline should be last for stacking",
+    )
+
+  def test_media_summary_plot_channel_contribution_area_chart_encoding(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    encoding = plot.encoding
+    self.assertEqual(encoding.x.shorthand, f"{c.TIME}:T")
+    self.assertEqual(encoding.x["title"], "Time period")
+    self.assertEqual(encoding.x["axis"]["format"], "%Y Q%q")
+    self.assertEqual(encoding.y.shorthand, f"{c.INCREMENTAL_OUTCOME}:Q")
+    self.assertEqual(encoding.y["title"], "Revenue")
+    self.assertEqual(encoding.color.shorthand, f"{c.CHANNEL}:N")
+    self.assertIsNone(encoding.color["legend"]["title"])
+    self.assertIsNotNone(encoding.order)
+    self.assertEqual(encoding.order["sort"], "descending")
+    self.assertIsNotNone(encoding.tooltip)
+
+  def test_media_summary_plot_channel_contribution_area_chart_y_axis_label(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot_kpi = self.media_summary_kpi.plot_channel_contribution_area_chart()
+      plot_revenue = (
+          self.media_summary_revenue.plot_channel_contribution_area_chart()
+      )
+    self.assertEqual(plot_kpi.encoding.y["title"], "KPI")
+    self.assertEqual(plot_revenue.encoding.y["title"], "Revenue")
+
+  def test_media_summary_plot_channel_contribution_area_chart_baseline_min(
+      self,
+  ):
+    summary_metrics = xr.Dataset(
+        data_vars={
+            c.INCREMENTAL_OUTCOME: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.array([
+                    [[[500]], [[2000]], [[1500]], [[400]]],
+                    [[[600]], [[1800]], [[1200]], [[360]]],
+                    [[[400]], [[2200]], [[1600]], [[-1]]],
+                ]),
+            ),
+            c.PCT_OF_CONTRIBUTION: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.array([
+                    [[[5]], [[20]], [[15]], [[10]]],
+                    [[[6]], [[18]], [[12]], [[9]]],
+                    [[[4]], [[22]], [[16]], [[1]]],
+                ]),
+            ),
+            c.EFFECTIVENESS: (
+                [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+                np.zeros(shape=(3, 4, 1, 1)),
+            ),
+        },
+        coords={
+            c.TIME: ["2023-01-01", "2023-01-08", "2023-01-15"],
+            c.CHANNEL: ["1", "2", "3", c.ALL_CHANNELS],
+            c.METRIC: [c.MEAN],
+            c.DISTRIBUTION: [c.POSTERIOR],
+        },
+        attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
+    )
+
+    with mock.patch.object(
+        visualizer.MediaSummary,
+        "get_all_summary_metrics",
+        return_value=summary_metrics,
+    ) as _:
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    # Calculate the expected minimum y-value by finding the minimum baseline
+    # outcome across all time periods.
+    total_media_criteria = {
+        c.DISTRIBUTION: c.POSTERIOR,
+        c.METRIC: c.MEAN,
+        c.CHANNEL: c.ALL_CHANNELS,
+        c.TIME: summary_metrics.time,
+    }
+    total_media_outcome = summary_metrics[c.INCREMENTAL_OUTCOME].sel(
+        total_media_criteria
+    )
+    total_media_pct = (
+        summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria) / 100
+    )
+    total_outcome = total_media_outcome / total_media_pct
+    baseline_pct = 1 - total_media_pct
+    baseline_outcome = total_outcome * baseline_pct
+    expected_min_y = baseline_outcome.min()
+
+    self.assertEqual(plot.encoding.y["scale"]["domainMin"], expected_min_y)
+    self.assertTrue(plot.encoding.y["scale"]["clamp"])
+
+  def test_media_summary_plot_channel_contribution_bump_chart_encoding(self):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_bump_chart()
+
+    self.assertEqual(plot.mark.type, "line")
+    self.assertTrue(plot.mark.point)
+
+    self.assertEqual(plot.encoding.x.shorthand, f"{c.TIME}:T")
+    self.assertEqual(plot.encoding.x["title"], "Time period")
+    self.assertEqual(plot.encoding.x["axis"]["format"], "%Y Q%q")
+
+    self.assertEqual(plot.encoding.y.shorthand, "rank:Q")
+    self.assertEqual(plot.encoding.y["title"], "Contribution Rank")
+    self.assertTrue(plot.encoding.y["scale"].reverse)
+    self.assertFalse(plot.encoding.y["scale"].zero)
+
+    expected_legend_order = [
+        "BASELINE",
+        "CH_0",
+        "CH_1",
+        "CH_2",
+        "NON_MEDIA_0",
+        "NON_MEDIA_1",
+        "ORGANIC_MEDIA_0",
+        "ORGANIC_MEDIA_1",
+        "ORGANIC_MEDIA_2",
+        "ORGANIC_MEDIA_3",
+        "ORGANIC_RF_CH_0",
+        "RF_CH_0",
+        "RF_CH_1",
+    ]
+    self.assertListEqual(
+        plot.encoding.color["scale"].domain, expected_legend_order
+    )
+    self.assertListEqual(plot.encoding.color["sort"], expected_legend_order)
+
+    self.assertEqual(
+        plot.title.text, summary_text.CHANNEL_CONTRIB_RANK_CHART_TITLE
+    )
+
+  def test_media_summary_plot_channel_contribution_bump_chart_correct_data(
+      self,
+  ):
+    times = [
+        "2023-01-15",
+        "2023-03-26",
+        "2023-04-09",
+        "2023-06-25",
+        "2023-07-02",
+        "2023-09-24",
+    ]
+    channels = ["Ch1", "Ch2", "Ch3", c.ALL_CHANNELS]
+    metrics = [c.MEAN]
+    distributions = [c.POSTERIOR]
+    dims = [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION]
+
+    summary_metrics = xr.Dataset(
+        data_vars={
+            c.INCREMENTAL_OUTCOME: (
+                dims,
+                np.array([
+                    [[[0]], [[0]], [[0]], [[0]]],  # Time 0
+                    [[[1000]], [[800]], [[1200]], [[3000]]],  # Time 1 (Q1 End)
+                    [[[0]], [[0]], [[0]], [[0]]],  # Time 2
+                    [[[1100]], [[1300]], [[900]], [[3300]]],  # Time 3 (Q2 End)
+                    [[[0]], [[0]], [[0]], [[0]]],  # Time 4
+                    [[[1500]], [[1400]], [[4600]], [[4500]]],  # Time 5 (Q3 End)
+                ]).astype(np.float32),
+            ),
+            c.PCT_OF_CONTRIBUTION: (
+                dims,
+                np.array([
+                    [[[0]], [[0]], [[0]], [[0]]],
+                    [[[0]], [[0]], [[0]], [[50]]],
+                    [[[0]], [[0]], [[0]], [[0]]],
+                    [[[0]], [[0]], [[0]], [[50]]],
+                    [[[0]], [[0]], [[0]], [[0]]],
+                    [[[0]], [[0]], [[0]], [[50]]],
+                ]),
+            ),
+            c.EFFECTIVENESS: (
+                dims,
+                np.zeros(
+                    (
+                        len(times),
+                        len(channels),
+                        len(metrics),
+                        len(distributions),
+                    ),
+                ),
+            ),
+        },
+        coords={
+            c.TIME: times,
+            c.CHANNEL: channels,
+            c.METRIC: metrics,
+            c.DISTRIBUTION: distributions,
+        },
+        attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_bump_chart()
+
+    df = plot.data
+
+    expected_columns = [
+        c.TIME,
+        c.CHANNEL,
+        c.INCREMENTAL_OUTCOME,
+        c.PCT_OF_CONTRIBUTION,
+        "rank",
+    ]
+    self.assertListEqual(list(df.columns), expected_columns)
+
+    q1_date = np.datetime64("2023-03-26")
+    q2_date = np.datetime64("2023-06-25")
+    q3_date = np.datetime64("2023-09-24")
+
+    # Q1 (2023-03-26): Base(3000), Ch3(1200), Ch1(1000), Ch2(800)
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == c.BASELINE.upper()),
+            "rank",
+        ].item(),
+        1.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "CH3"), "rank"
+        ].item(),
+        2.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "CH1"), "rank"
+        ].item(),
+        3.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "CH2"), "rank"
+        ].item(),
+        4.0,
+    )
+
+    # Q2 (2023-06-25): Base(3300), Ch2(1300), Ch1(1100), Ch3(900)
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == c.BASELINE.upper()),
+            "rank",
+        ].item(),
+        1.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "CH2"), "rank"
+        ].item(),
+        2.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "CH1"), "rank"
+        ].item(),
+        3.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "CH3"), "rank"
+        ].item(),
+        4.0,
+    )
+
+    # Q3 (2023-09-24): Ch3(4600), Base(4500), Ch1(1500), Ch2(1400)
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "CH3"),
+            "rank",
+        ].item(),
+        1.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == c.BASELINE.upper()),
+            "rank",
+        ].item(),
+        2.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "CH1"), "rank"
+        ].item(),
+        3.0,
+    )
+    self.assertEqual(
+        df.loc[
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "CH2"), "rank"
+        ].item(),
+        4.0,
+    )
+
+    # Verify correct channels are present (Baseline + the mocked channels)
+    expected_channels_in_plot = {"CH1", "CH2", "CH3", c.BASELINE.upper()}
+    self.assertSetEqual(set(df[c.CHANNEL].unique()), expected_channels_in_plot)
 
   def test_media_summary_plot_waterfall_chart_correct_data(self):
     summary_metrics = xr.Dataset(
