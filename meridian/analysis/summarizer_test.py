@@ -15,6 +15,7 @@
 import datetime as dt
 import os
 import tempfile
+from typing import cast
 from unittest import mock
 from xml.etree import ElementTree as ET
 
@@ -140,6 +141,12 @@ class SummarizerTest(parameterized.TestCase):
     self.reach_frequency.plot_optimal_frequency().to_json.return_value = '{}'
 
   def _stub_media_summary_plotters(self, media_summary):
+    media_summary.plot_channel_contribution_area_chart().to_json.return_value = (
+        '{}'
+    )
+    media_summary.plot_channel_contribution_bump_chart().to_json.return_value = (
+        '{}'
+    )
     media_summary.plot_contribution_waterfall_chart().to_json.return_value = (
         '{}'
     )
@@ -367,6 +374,18 @@ class SummarizerTest(parameterized.TestCase):
       (
           summary_text.CHANNEL_CONTRIB_CARD_ID,
           [
+              (
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+                      outcome=c.REVENUE
+                  ),
+              ),
+              (
+                  summary_text.CHANNEL_CONTRIB_RANK_CHART_ID,
+                  summary_text.CHANNEL_CONTRIB_RANK_CHART_DESCRIPTION.format(
+                      outcome=c.REVENUE
+                  ),
+              ),
               (
                   summary_text.CHANNEL_DRIVERS_CHART_ID,
                   summary_text.CHANNEL_DRIVERS_CHART_DESCRIPTION.format(
@@ -771,23 +790,34 @@ class SummarizerTest(parameterized.TestCase):
   def test_channel_contrib_card_plotters_called(self):
     media_summary = self.media_summary
 
-    mock_spec_1 = 'revenue_waterfall'
+    mock_spec_area = 'revenue_area'
+    media_summary.plot_channel_contribution_area_chart().to_json.return_value = (
+        f'["{mock_spec_area}"]'
+    )
+    mock_spec_bump = 'revenue_bump'
+    media_summary.plot_channel_contribution_bump_chart().to_json.return_value = (
+        f'["{mock_spec_bump}"]'
+    )
+    mock_spec_waterfall = 'revenue_waterfall'
     media_summary.plot_contribution_waterfall_chart().to_json.return_value = (
-        f'["{mock_spec_1}"]'
+        f'["{mock_spec_waterfall}"]'
     )
-    mock_spec_2 = 'spend_contrib'
+    mock_spec_spend = 'spend_contrib'
     media_summary.plot_spend_vs_contribution().to_json.return_value = (
-        f'["{mock_spec_2}"]'
+        f'["{mock_spec_spend}"]'
     )
-    mock_spec_3 = 'revenue_contrib_pie'
+    mock_spec_pie = 'revenue_contrib_pie'
     media_summary.plot_contribution_pie_chart().to_json.return_value = (
-        f'["{mock_spec_3}"]'
+        f'["{mock_spec_pie}"]'
     )
 
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         self.summarizer_revenue,
     )
+
     for mock_plot in [
+        media_summary.plot_channel_contribution_area_chart(),
+        media_summary.plot_channel_contribution_bump_chart(),
         media_summary.plot_contribution_waterfall_chart(),
         media_summary.plot_spend_vs_contribution(),
         media_summary.plot_contribution_pie_chart(),
@@ -805,17 +835,29 @@ class SummarizerTest(parameterized.TestCase):
         if script.text is not None
     ]
 
-    mock_spec_1_exists = any(
-        [mock_spec_1 in script_text for script_text in script_texts]
+    mock_spec_area_exists = any(
+        [mock_spec_area in script_text for script_text in script_texts]
     )
-    mock_spec_2_exists = any(
-        [mock_spec_2 in script_text for script_text in script_texts]
+    mock_spec_bump_exists = any(
+        [mock_spec_bump in script_text for script_text in script_texts]
     )
-    mock_spec_3_exists = any(
-        [mock_spec_3 in script_text for script_text in script_texts]
+    mock_spec_waterfall_exists = any(
+        [mock_spec_waterfall in script_text for script_text in script_texts]
+    )
+    mock_spec_spend_exists = any(
+        [mock_spec_spend in script_text for script_text in script_texts]
+    )
+    mock_spec_pie_exists = any(
+        [mock_spec_pie in script_text for script_text in script_texts]
     )
     self.assertTrue(
-        all([mock_spec_1_exists, mock_spec_2_exists, mock_spec_3_exists])
+        all([
+            mock_spec_area_exists,
+            mock_spec_bump_exists,
+            mock_spec_waterfall_exists,
+            mock_spec_spend_exists,
+            mock_spec_pie_exists,
+        ])
     )
 
   def test_channel_contrib_card_insights(self):
