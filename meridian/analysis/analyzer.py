@@ -63,6 +63,8 @@ class DataTensors(tf.experimental.ExtensionType):
     controls: Optional tensor with dimensions `(n_geos, n_times, n_controls)`.
     revenue_per_kpi: Optional tensor with dimensions `(n_geos, T)` for any time
       dimension `T`.
+    time: Optional tensor of time coordinates in the "YYYY-mm-dd" string format
+      for time dimension `T`.
   """
 
   media: Optional[tf.Tensor]
@@ -76,6 +78,7 @@ class DataTensors(tf.experimental.ExtensionType):
   non_media_treatments: Optional[tf.Tensor]
   controls: Optional[tf.Tensor]
   revenue_per_kpi: Optional[tf.Tensor]
+  time: Optional[tf.Tensor]
 
   def __init__(
       self,
@@ -90,6 +93,7 @@ class DataTensors(tf.experimental.ExtensionType):
       non_media_treatments: Optional[tf.Tensor] = None,
       controls: Optional[tf.Tensor] = None,
       revenue_per_kpi: Optional[tf.Tensor] = None,
+      time: Optional[Sequence[str] | tf.Tensor] = None,
   ):
     self.media = tf.cast(media, tf.float32) if media is not None else None
     self.media_spend = (
@@ -130,6 +134,7 @@ class DataTensors(tf.experimental.ExtensionType):
         if revenue_per_kpi is not None
         else None
     )
+    self.time = tf.cast(time, tf.string) if time is not None else None
 
   def __validate__(self):
     self._validate_n_dims()
@@ -241,6 +246,8 @@ class DataTensors(tf.experimental.ExtensionType):
               f"New `{field.name}` must have 1 or 3 dimensions. Found"
               f" {tensor.ndim} dimensions."
           )
+      elif field.name == constants.TIME:
+        _check_n_dims(tensor, field.name, 1)
       else:
         _check_n_dims(tensor, field.name, 3)
 
@@ -283,7 +290,7 @@ class DataTensors(tf.experimental.ExtensionType):
     for var_name in required_fields:
       new_tensor = getattr(self, var_name)
       if new_tensor is not None and new_tensor.shape[0] != meridian.n_geos:
-        # Skip spend data with only 1 dimension of (n_channels).
+        # Skip spend and time data with only 1 dimension.
         if new_tensor.ndim == 1:
           continue
         raise ValueError(
@@ -296,7 +303,7 @@ class DataTensors(tf.experimental.ExtensionType):
   ):
     """Validates the channel dimension of the specified data variables."""
     for var_name in required_fields:
-      if var_name == constants.REVENUE_PER_KPI:
+      if var_name in [constants.REVENUE_PER_KPI, constants.TIME]:
         continue
       new_tensor = getattr(self, var_name)
       old_tensor = getattr(meridian.input_data, var_name)
@@ -317,12 +324,24 @@ class DataTensors(tf.experimental.ExtensionType):
       old_tensor = getattr(meridian.input_data, var_name)
 
       # Skip spend data with only 1 dimension of (n_channels).
-      if new_tensor is not None and new_tensor.ndim == 1:
+      if (
+          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
+          and new_tensor is not None
+          and new_tensor.ndim == 1
+      ):
         continue
 
       if new_tensor is not None:
         assert old_tensor is not None
-        if new_tensor.shape[1] != old_tensor.shape[1]:
+        if (
+            var_name == constants.TIME
+            and new_tensor.shape[0] != old_tensor.shape[0]
+        ):
+          raise ValueError(
+              f"New `{var_name}` is expected to have {old_tensor.shape[0]}"
+              f" time periods. Found {new_tensor.shape[0]} time periods."
+          )
+        elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
           raise ValueError(
               f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
               f" time periods. Found {new_tensor.shape[1]} time periods."
@@ -345,12 +364,24 @@ class DataTensors(tf.experimental.ExtensionType):
       if old_tensor is None:
         continue
       # Skip spend data with only 1 dimension of (n_channels).
-      if new_tensor is not None and new_tensor.ndim == 1:
+      if (
+          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
+          and new_tensor is not None
+          and new_tensor.ndim == 1
+      ):
         continue
 
       if new_tensor is None:
         missing_params.append(var_name)
-      elif new_tensor.shape[1] != new_n_times:
+      elif var_name == constants.TIME and new_tensor.shape[0] != new_n_times:
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is "
+            "modified, then all variables must be provided with the same "
+            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
+            "time periods, which does not match the modified number of time "
+            f"periods, {new_n_times}.",
+        )
+      elif new_tensor.ndim > 1 and new_tensor.shape[1] != new_n_times:
         raise ValueError(
             "If the time dimension of any variable in `new_data` is "
             "modified, then all variables must be provided with the same "
@@ -390,6 +421,10 @@ class DataTensors(tf.experimental.ExtensionType):
         old_tensor = meridian.controls
       elif var_name == constants.REVENUE_PER_KPI:
         old_tensor = meridian.revenue_per_kpi
+      elif var_name == constants.TIME:
+        old_tensor = tf.convert_to_tensor(
+            meridian.input_data.time.values.tolist(), dtype=tf.string
+        )
       else:
         continue
 
@@ -4565,11 +4600,11 @@ class Analyzer:
 
   def get_historical_spend(
       self,
-      selected_times: Sequence[str] | None,
+      selected_times: Sequence[str] | None = None,
       include_media: bool = True,
       include_rf: bool = True,
   ) -> xr.DataArray:
-    """Gets the aggregated historical spend based on the time period.
+    """Deprecated. Gets the aggregated historical spend based on the time.
 
     Args:
       selected_times: The time period to get the historical spends. If None, the
@@ -4587,10 +4622,60 @@ class Analyzer:
       ValueError: A ValueError is raised when `include_media` and `include_rf`
       are both False.
     """
+    warnings.warn(
+        "`get_historical_spend` is deprecated. Please use "
+        "`get_aggregated_spend` with `new_data=None` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.get_aggregated_spend(
+        selected_times=selected_times,
+        include_media=include_media,
+        include_rf=include_rf,
+    )
+
+  def get_aggregated_spend(
+      self,
+      new_data: DataTensors | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      include_media: bool = True,
+      include_rf: bool = True,
+  ) -> xr.DataArray:
+    """Gets the aggregated spend based on the selected time.
+
+    Args:
+      new_data: An optional `DataTensors` object containing the new `media`,
+        `media_spend`, `reach`, `frequency`, `rf_spend` tensors. If `None`, the
+        existing tensors from the Meridian object are used. If `new_data`
+        argument is used, then the aggregated spend is computed using the values
+        of the tensors passed in the `new_data` argument and the original values
+        of all the remaining tensors.  If any of the tensors in `new_data` is
+        provided with a different number of time periods than in `InputData`,
+        then all tensors must be provided with the same number of time periods.
+      selected_times: The time period to get the aggregated spends. If None, the
+        spend will be aggregated over all time periods.
+      include_media: Whether to include spends for paid media channels that do
+        not have R&F data.
+      include_rf: Whether to include spends for paid media channels with R&F
+        data.
+
+    Returns:
+      An `xr.DataArray` with the coordinate `channel` and contains the data
+      variable `spend`.
+
+    Raises:
+      ValueError: A ValueError is raised when `include_media` and `include_rf`
+      are both False.
+    """
     if not include_media and not include_rf:
       raise ValueError(
           "At least one of include_media or include_rf must be True."
       )
+    new_data = new_data or DataTensors()
+    required_tensors_names = constants.PAID_CHANNELS + constants.SPEND_DATA
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names, self._meridian
+    )
 
     empty_da = xr.DataArray(
         dims=[constants.CHANNEL], coords={constants.CHANNEL: []}
@@ -4611,8 +4696,8 @@ class Analyzer:
     else:
       aggregated_media_spend = self._impute_and_aggregate_spend(
           selected_times,
-          self._meridian.media_tensors.media,
-          self._meridian.media_tensors.media_spend,
+          filled_data.media,
+          filled_data.media_spend,
           list(self._meridian.input_data.media_channel.values),
       )
 
@@ -4625,18 +4710,16 @@ class Analyzer:
         or self._meridian.rf_tensors.rf_spend is None
     ):
       warnings.warn(
-          "Requested spends for paid media channels with R&F data, but but the"
+          "Requested spends for paid media channels with R&F data, but the"
           " channels are not available.",
       )
       aggregated_rf_spend = empty_da
     else:
-      rf_execution_values = (
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency
-      )
+      rf_execution_values = filled_data.reach * filled_data.frequency
       aggregated_rf_spend = self._impute_and_aggregate_spend(
           selected_times,
           rf_execution_values,
-          self._meridian.rf_tensors.rf_spend,
+          filled_data.rf_spend,
           list(self._meridian.input_data.rf_channel.values),
       )
 
@@ -4646,7 +4729,7 @@ class Analyzer:
 
   def _impute_and_aggregate_spend(
       self,
-      selected_times: Sequence[str] | None,
+      selected_times: Sequence[str] | Sequence[bool] | None,
       media_execution_values: tf.Tensor,
       channel_spend: tf.Tensor,
       channel_names: Sequence[str],
@@ -4661,7 +4744,7 @@ class Analyzer:
     argument, its values only affect the output when imputation is required.
 
     Args:
-      selected_times: The time period to get the historical spend.
+      selected_times: The time period to get the aggregated spend.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
@@ -4677,17 +4760,24 @@ class Analyzer:
         "selected_times": selected_times,
         "aggregate_geos": True,
         "aggregate_times": True,
+        "flexible_time_dim": True,
     }
 
     if channel_spend.ndim == 3:
       aggregated_spend = self.filter_and_aggregate_geos_and_times(
           channel_spend,
+          has_media_dim=True,
           **dim_kwargs,
       ).numpy()
     # channel_spend.ndim can only be 3 or 1.
     else:
       # media spend can have more time points than the model time points
-      media_exe_values = media_execution_values[:, -self._meridian.n_times :, :]
+      if media_execution_values.shape[1] == self._meridian.n_media_times:
+        media_exe_values = media_execution_values[
+            :, -self._meridian.n_times :, :
+        ]
+      else:
+        media_exe_values = media_execution_values
       # Calculates CPM over all times and geos if the spend does not have time
       # and geo dimensions.
       target_media_exe_values = self.filter_and_aggregate_geos_and_times(
