@@ -270,6 +270,22 @@ class Summarizer:
   ) -> str:
     """Creates the HTML snippet for the Outcome Contrib card."""
     outcome = self._kpi_or_revenue()
+
+    channel_contrib_area_chart = formatter.ChartSpec(
+        id=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
+        description=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+            outcome=outcome
+        ),
+        chart_json=media_summary.plot_channel_contribution_area_chart().to_json(),
+    )
+
+    channel_contrib_bump_chart = formatter.ChartSpec(
+        id=summary_text.CHANNEL_CONTRIB_RANK_CHART_ID,
+        description=summary_text.CHANNEL_CONTRIB_RANK_CHART_DESCRIPTION.format(
+            outcome=outcome
+        ),
+        chart_json=media_summary.plot_channel_contribution_bump_chart().to_json(),
+    )
     channel_drivers_chart = formatter.ChartSpec(
         id=summary_text.CHANNEL_DRIVERS_CHART_ID,
         description=summary_text.CHANNEL_DRIVERS_CHART_DESCRIPTION.format(
@@ -305,6 +321,8 @@ class Summarizer:
         CHANNEL_CONTRIB_CARD_SPEC,
         insights,
         [
+            channel_contrib_area_chart,
+            channel_contrib_bump_chart,
             channel_drivers_chart,
             spend_outcome_chart,
             outcome_contribution_chart,
