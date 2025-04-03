@@ -413,6 +413,14 @@ class InputData:
     if (self.kpi.values < 0).any():
       raise ValueError("KPI values must be non-negative.")
 
+    if (
+        self.revenue_per_kpi is not None
+        and (self.revenue_per_kpi.values <= 0).all()
+    ):
+      raise ValueError(
+          "Revenue per KPI values must not be all zero or negative."
+      )
+
   def _validate_names(self):
     """Verifies that the names of the data arrays are correct."""
     arrays = [
