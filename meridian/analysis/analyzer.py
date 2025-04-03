@@ -903,8 +903,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media` or `reach` for computing prior and
-        posterior decayed effects.
+      channel_type: Specifies `media`, `reach`, or `organic_media` for computing
+        prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -921,11 +921,17 @@ class Analyzer:
           self._meridian.inference_data.posterior.alpha_m.values,
           (-1, self._meridian.n_media_channels),
       )
-    else:
+    elif channel_type is constants.REACH:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
           (-1, self._meridian.n_rf_channels),
+      )
+    else:
+      prior = self._meridian.inference_data.prior.alpha_om.values[0]
+      posterior = np.reshape(
+          self._meridian.inference_data.posterior.alpha_om.values,
+          (-1, self._meridian.n_organic_media_channels),
       )
 
     decayed_effect_prior = (
@@ -4051,7 +4057,7 @@ class Analyzer:
   def adstock_decay(
       self, confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL
   ) -> pd.DataFrame:
-    """Calculates adstock decay for media and reach and frequency channels.
+    """Calculates adstock decay for paid media, organic media, and reach and frequency channels.
 
     Args:
       confidence_level: Confidence level for prior and posterior credible
@@ -4083,54 +4089,75 @@ class Analyzer:
     step_size = 1 / steps_per_time_period
     l_range = np.arange(0, max_lag, step_size)
 
-    rf_channel_values = (
-        self._meridian.input_data.rf_channel.values
-        if self._meridian.input_data.rf_channel is not None
-        else []
-    )
-
-    media_channel_values = (
-        self._meridian.input_data.media_channel.values
-        if self._meridian.input_data.media_channel is not None
-        else []
-    )
-
     xr_dims = [
         constants.TIME_UNITS,
         constants.CHANNEL,
         constants.METRIC,
         constants.DISTRIBUTION,
     ]
-    xr_coords = {
+    base_xr_coords = {
         constants.TIME_UNITS: l_range,
-        constants.CHANNEL: rf_channel_values,
         constants.DISTRIBUTION: [constants.PRIOR, constants.POSTERIOR],
         constants.METRIC: [constants.MEAN, constants.CI_LO, constants.CI_HI],
     }
-    final_df = pd.DataFrame()
+    final_df_list = []
 
     if self._meridian.n_rf_channels > 0:
+      rf_channel_values = (
+          self._meridian.input_data.rf_channel.values
+          if self._meridian.input_data.rf_channel is not None
+          else []
+      )
+      rf_xr_coords = base_xr_coords | {constants.CHANNEL: rf_channel_values}
       adstock_df_rf = self._get_adstock_dataframe(
           constants.REACH,
           l_range,
           xr_dims,
-          xr_coords,
+          rf_xr_coords,
           confidence_level,
       )
-      final_df = pd.concat([final_df, adstock_df_rf], axis=0)
+      if not adstock_df_rf.empty:
+        final_df_list.append(adstock_df_rf)
+
     if self._meridian.n_media_channels > 0:
-      xr_coords[constants.CHANNEL] = media_channel_values
+      media_channel_values = (
+          self._meridian.input_data.media_channel.values
+          if self._meridian.input_data.media_channel is not None
+          else []
+      )
+      media_xr_coords = base_xr_coords | {
+          constants.CHANNEL: media_channel_values
+      }
       adstock_df_m = self._get_adstock_dataframe(
           constants.MEDIA,
           l_range,
           xr_dims,
-          xr_coords,
+          media_xr_coords,
           confidence_level,
       )
-      final_df = pd.concat([final_df, adstock_df_m], axis=0).reset_index(
-          drop=True
-      )
+      if not adstock_df_m.empty:
+        final_df_list.append(adstock_df_m)
 
+    if self._meridian.n_organic_media_channels > 0:
+      organic_media_channel_values = (
+          self._meridian.input_data.organic_media_channel.values
+          if self._meridian.input_data.organic_media_channel is not None
+          else []
+      )
+      organic_media_xr_coords = base_xr_coords | {
+          constants.CHANNEL: organic_media_channel_values
+      }
+      adstock_df_om = self._get_adstock_dataframe(
+          constants.ORGANIC_MEDIA,
+          l_range,
+          xr_dims,
+          organic_media_xr_coords,
+          confidence_level,
+      )
+      if not adstock_df_om.empty:
+        final_df_list.append(adstock_df_om)
+
+    final_df = pd.concat(final_df_list, ignore_index=True)
     # Adding an extra column that indicates whether time_units is an integer
     # for marking the discrete points on the plot.
     final_df[constants.IS_INT_TIME_UNIT] = final_df[constants.TIME_UNITS].apply(
