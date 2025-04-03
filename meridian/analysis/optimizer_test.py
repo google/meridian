@@ -179,8 +179,8 @@ def _create_budget_data(
     )
 
   attributes = {
-      c.START_DATE: '2020-01-05',
-      c.END_DATE: '2020-06-28',
+      c.START_DATE: '2021-01-25',
+      c.END_DATE: '2021-12-27',
       c.BUDGET: sum(spend),
       c.PROFIT: sum(inc_outcome[:, 0]) - sum(spend),
       c.TOTAL_INCREMENTAL_OUTCOME: sum(inc_outcome[:, 0]),
@@ -222,6 +222,10 @@ def _verify_actual_vs_expected_budget_data(
     np.testing.assert_equal(actual_data.target_roi, expected_data.target_roi)
   if c.TARGET_MROI in expected_data.attrs:
     np.testing.assert_equal(actual_data.target_mroi, expected_data.target_mroi)
+  if c.START_DATE in expected_data.attrs:
+    np.testing.assert_equal(actual_data.start_date, expected_data.start_date)
+  if c.END_DATE in expected_data.attrs:
+    np.testing.assert_equal(actual_data.end_date, expected_data.end_date)
 
 
 _SAMPLE_NON_OPTIMIZED_DATA = _create_budget_data(
@@ -549,6 +553,63 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     ):
       self.budget_optimizer_media_and_rf.optimize(spend_constraint_upper=-0.3)
 
+  def test_pct_of_spend_and_new_data_raises_warning(self):
+    with self.assertWarnsRegex(
+        UserWarning, '`pct_of_spend` is ignored when `new_data` is provided.'
+    ):
+      self.budget_optimizer_media_and_rf.optimize(
+          pct_of_spend=[0.2, 0.2, 0.2, 0.2, 0.2],
+          new_data=analyzer.DataTensors(
+              media=self.meridian_media_and_rf.media_tensors.media[
+                  ..., -10:, :
+              ],
+              reach=self.meridian_media_and_rf.rf_tensors.reach[..., -10:, :],
+              frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                  ..., -10:, :
+              ],
+              media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                  ..., -10:, :
+              ],
+              rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                  ..., -10:, :
+              ],
+              revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                  ..., -10:
+              ],
+              time=self.meridian_media_and_rf.input_data.time[
+                  -10:
+              ].values.tolist(),
+          ),
+      )
+
+  def test_modified_times_new_data_no_time_throws_exception(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'If the time dimension of a variable in `new_data` is modified, then '
+        'all variables must be provided in `new_data`. The following variables '
+        "are missing: `['time']`.",
+    ):
+      self.budget_optimizer_media_and_rf.optimize(
+          new_data=analyzer.DataTensors(
+              media=self.meridian_media_and_rf.media_tensors.media[
+                  ..., -10:, :
+              ],
+              reach=self.meridian_media_and_rf.rf_tensors.reach[..., -10:, :],
+              frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                  ..., -10:, :
+              ],
+              media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                  ..., -10:, :
+              ],
+              rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                  ..., -10:, :
+              ],
+              revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                  ..., -10:
+              ],
+          )
+      )
+
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
   def test_default_selected_times_all_times(
       self,
@@ -656,12 +717,132 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _, mock_kwargs = mock_incremental_outcome.call_args
     self.assertEqual(mock_kwargs['selected_times'], expected_times)
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'selected_times_range',
+          'selected_times': ['2025-04-07', '2025-04-21'],
+          'expected_times': [False, True, True, True, False],
+          'expected_dates': ['2025-04-07', '2025-04-21'],
+      },
+      {
+          'testcase_name': 'end_none',
+          'selected_times': ['2025-04-14', None],
+          'expected_times': [False, False, True, True, True],
+          'expected_dates': ['2025-04-14', '2025-04-28'],
+      },
+      {
+          'testcase_name': 'start_none',
+          'selected_times': [None, '2025-04-14'],
+          'expected_times': [True, True, True, False, False],
+          'expected_dates': ['2025-03-31', '2025-04-14'],
+      },
+      {
+          'testcase_name': 'none_tuple',
+          'selected_times': [None, None],
+          'expected_times': None,
+          'expected_dates': ['2025-03-31', '2025-04-28'],
+      },
+      {
+          'testcase_name': 'none',
+          'selected_times': None,
+          'expected_times': None,
+          'expected_dates': ['2025-03-31', '2025-04-28'],
+      },
+  )
+  @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
+  def test_selected_times_new_data_used_correctly(
+      self,
+      mock_inc_outcome,
+      selected_times,
+      expected_times,
+      expected_dates,
+  ):
+    mock_inc_outcome.return_value = tf.ones((
+        _N_CHAINS,
+        _N_DRAWS,
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    ))
+    new_times = [
+        '2025-03-31',
+        '2025-04-07',
+        '2025-04-14',
+        '2025-04-21',
+        '2025-04-28',
+    ]
+
+    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+        selected_times=selected_times,
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
+            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                ..., -5:, :
+            ],
+            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                ..., -5:, :
+            ],
+            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                ..., -5:, :
+            ],
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                ..., -5:
+            ],
+            time=new_times,
+        ),
+    )
+
+    _, mock_kwargs = mock_inc_outcome.call_args
+    self.assertEqual(mock_kwargs['selected_times'], expected_times)
+    self.assertEqual(
+        optimization_results.optimized_data.start_date, expected_dates[0]
+    )
+    self.assertEqual(
+        optimization_results.optimized_data.end_date, expected_dates[1]
+    )
+
   def test_default_hist_spend_with_time_geo_dims(self):
     expected_spend = np.round(
         np.sum(self.meridian_media_and_rf.total_spend, axis=(0, 1))
     )
 
     optimization_results = self.budget_optimizer_media_and_rf.optimize()
+
+    self.assertEqual(self.meridian_media_and_rf.total_spend.ndim, 3)
+    np.testing.assert_array_equal(
+        optimization_results.nonoptimized_data.spend,
+        expected_spend,
+    )
+    self.assertEqual(
+        optimization_results.nonoptimized_data.budget,
+        np.sum(expected_spend),
+    )
+
+  def test_hist_spend_new_data(self):
+    expected_spend = np.round(
+        np.sum(self.meridian_media_and_rf.total_spend[..., -5:, :], axis=(0, 1))
+    )
+
+    optimization_results = self.budget_optimizer_media_and_rf.optimize(
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
+            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+                ..., -5:, :
+            ],
+            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+                ..., -5:, :
+            ],
+            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+                ..., -5:, :
+            ],
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+                ..., -5:
+            ],
+            time=self.meridian_media_and_rf.input_data.time.values.tolist()[
+                -5:
+            ],
+        )
+    )
 
     self.assertEqual(self.meridian_media_and_rf.total_spend.ndim, 3)
     np.testing.assert_array_equal(
@@ -763,7 +944,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     budget_optimizer = self.budget_optimizer_media_and_rf
     with mock.patch.object(
         budget_optimizer._analyzer,
-        'get_historical_spend',
+        'get_aggregated_spend',
         return_value=mock.MagicMock(data=np.array([0, 0, 0, 0, 0])),
     ):
       optimization_results = budget_optimizer.optimize(
@@ -1145,11 +1326,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               [2493.0112, 2461.1328, 645.39844, 4406.3643],
           ]),
           expected_effectiveness=np.array([
-              [0.16258691, 0.15976532, 0.03995359, 0.29265174],
-              [0.29862484, 0.29220626, 0.11884159, 0.48884866],
-              [0.0677588, 0.06702042, 0.0330507, 0.1048169],
-              [0.00220999, 0.00221848, 0.00077439, 0.00363578],
-              [0.00339354, 0.00335014, 0.00087853, 0.00599803],
+              [2.3188981e-01, 2.2786555e-01, 5.6983873e-02, 4.1739488e-01],
+              [2.9522523e-01, 2.8879675e-01, 1.1438438e-01, 4.8648083e-01],
+              [9.6809819e-02, 9.5754884e-02, 4.7220930e-02, 1.4975630e-01],
+              [9.5688112e-05, 9.5764321e-05, 3.9768369e-05, 1.5140821e-04],
+              [1.3106108e-04, 1.2957303e-04, 4.6303954e-05, 2.1905398e-04],
           ]),
           expected_mroi=np.array([
               [1.0190495, 1.001245, 0.24795413, 1.8372412],
@@ -1178,11 +1359,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               [595.451, 588.6903, 210.37312, 995.23],
           ]),
           expected_effectiveness=np.array([
-              [1.6258691e-01, 1.5976532e-01, 3.9953593e-02, 2.9265174e-01],
-              [3.2418722e-01, 3.1713104e-01, 1.2571074e-01, 5.3409714e-01],
-              [6.7758799e-02, 6.7020416e-02, 3.3050705e-02, 1.0481690e-01],
-              [1.1391223e-04, 1.1400296e-04, 4.7342415e-05, 1.8024442e-04],
-              [1.7027026e-04, 1.6833706e-04, 6.0156573e-05, 2.8458779e-04],
+              [2.31889814e-01, 2.27865547e-01, 5.69838732e-02, 4.17394876e-01],
+              [3.01713377e-01, 2.95228422e-01, 1.20070666e-01, 4.93904650e-01],
+              [9.68098193e-02, 9.57548842e-02, 4.72209305e-02, 1.49756297e-01],
+              [3.80495272e-04, 3.81956954e-04, 1.33327194e-04, 6.25974324e-04],
+              [5.48721524e-04, 5.41704881e-04, 1.42054720e-04, 9.69857967e-04],
           ]),
           expected_mroi=np.array([
               [1.0190499, 1.0012858, 0.24795783, 1.837228],
@@ -1225,6 +1406,64 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     actual_data = optimization_results.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
+
+  def test_optimized_data_new_data(self):
+    max_lag = 15
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    start_date = times[-n_new_times]
+    end_date = times[-1]
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -total_times:, :
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -total_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -total_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -total_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -total_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -total_times:
+        ],
+        time=times[-total_times:],
+    )
+    selected_times = (start_date, end_date)
+    actual = self.budget_optimizer_media_and_rf.optimize(
+        new_data=new_data,
+        selected_times=selected_times,
+    )
+    expected = self.budget_optimizer_media_and_rf.optimize(
+        selected_times=selected_times
+    )
+    _verify_actual_vs_expected_budget_data(
+        actual.nonoptimized_data, expected.nonoptimized_data
+    )
+    _verify_actual_vs_expected_budget_data(
+        actual._nonoptimized_data_with_optimal_freq,
+        expected._nonoptimized_data_with_optimal_freq,
+    )
+    _verify_actual_vs_expected_budget_data(
+        actual.optimized_data, expected.optimized_data
+    )
+    np.testing.assert_allclose(
+        actual.optimization_grid.spend_grid,
+        expected.optimization_grid.spend_grid,
+        equal_nan=True,
+    )
+    np.testing.assert_allclose(
+        actual.optimization_grid.incremental_outcome_grid,
+        expected.optimization_grid.incremental_outcome_grid,
+        equal_nan=True,
+        atol=0.01,
+    )
 
   def test_get_round_factor_gtol_raise_error(self):
     with self.assertRaisesWithLiteralMatch(
@@ -1276,7 +1515,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(
                 data=np.array([1000, 1000, 1000, 1000, 1000])
             ),
@@ -1364,7 +1603,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_only._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(data=np.array([1000, 1000, 1000])),
         )
     )
@@ -1447,7 +1686,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_rf_only._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(data=np.array([1000, 1000])),
         )
     )
@@ -1532,7 +1771,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(
                 data=np.array([1000, 1000, 1000, 1000, 1000])
             ),
@@ -1632,7 +1871,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_rf_only._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(data=np.array([1000, 1000])),
         )
     )
@@ -1752,7 +1991,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(
                 data=np.array([1000, 1000, 1000, 1000, 1000])
             ),
@@ -1772,7 +2011,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
-            'get_historical_spend',
+            'get_aggregated_spend',
             return_value=mock.MagicMock(data=np.array([100, 200, 0, 400, 0])),
         )
     )
@@ -2720,7 +2959,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     self.assertSequenceEqual(
         [chip.text.strip() for chip in chip_nodes if chip.text is not None],
         [
-            'Time period: 2020-01-05 - 2020-06-28',
+            'Time period: 2021-01-25 - 2021-12-27',
         ],
     )
 
@@ -2753,7 +2992,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
-            start_date='2020-01-05', end_date='2020-06-28'
+            start_date='2021-01-25', end_date='2021-12-27'
         ),
     )
 
@@ -2792,7 +3031,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_NEW_BUDGET.format(
-            start_date='2020-01-05', end_date='2020-06-28'
+            start_date='2021-01-25', end_date='2021-12-27'
         ),
     )
 
@@ -2818,8 +3057,8 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
-            start_date='2020-01-05',
-            end_date='2020-06-28',
+            start_date='2021-01-25',
+            end_date='2021-12-27',
         ),
     )
 
@@ -2846,8 +3085,8 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
-            start_date='2020-01-05',
-            end_date='2020-06-28',
+            start_date='2021-01-25',
+            end_date='2021-12-27',
         ),
     )
 
