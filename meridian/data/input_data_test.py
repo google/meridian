@@ -252,6 +252,23 @@ class InputDataTest(parameterized.TestCase):
           media_spend=self.media_spend,
       )
 
+  def test_validate_revenue_per_kpi_negative_values(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        expected_regex=(
+            "Revenue per KPI values must not be all zero or negative."
+        ),
+    ):
+      input_data.InputData(
+          controls=self.not_lagged_controls,
+          kpi=self.not_lagged_kpi,
+          kpi_type=constants.REVENUE,
+          population=self.population,
+          revenue_per_kpi=self.revenue_per_kpi * 0,
+          media=self.not_lagged_media,
+          media_spend=self.media_spend,
+      )
+
   def test_validate_media_channels_duplicate_names(self):
     media = test_utils.random_media_da(
         n_geos=self.n_geos,
