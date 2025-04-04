@@ -4861,6 +4861,58 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         rtol=1e-2,
     )
 
+  def test_adstock_decay_includes_organic_channels(self):
+    df = self.analyzer_non_paid.adstock_decay()
+    actual_channels = df[constants.CHANNEL].unique()
+    expected_channels = [
+        "ch_0",
+        "ch_1",
+        "ch_2",
+        "rf_ch_0",
+        "rf_ch_1",
+        "organic_media_0",
+        "organic_media_1",
+        "organic_media_2",
+        "organic_media_3",
+    ]
+    self.assertSameElements(expected_channels, actual_channels)
+
+  def test_adstock_decay_organic_math_correct(self):
+    adstock_decay_dataframe = self.analyzer_non_paid.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+
+    target_organic_channel = "organic_media_0"
+    first_organic_channel_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.CHANNEL] == target_organic_channel
+    ]
+
+    first_organic_channel_df = first_organic_channel_df.sort_values(
+        by=[constants.DISTRIBUTION, constants.TIME_UNITS],
+        ascending=[
+            False,
+            True,
+        ],
+    )
+
+    self.assertAllClose(
+        list(first_organic_channel_df[constants.CI_HI])[:5],
+        test_utils.ORGANIC_ADSTOCK_DECAY_CI_HI,
+        atol=1e-3,
+    )
+
+    self.assertAllClose(
+        list(first_organic_channel_df[constants.CI_LO])[:5],
+        test_utils.ORGANIC_ADSTOCK_DECAY_CI_LO,
+        atol=1e-3,
+    )
+
+    self.assertAllClose(
+        list(first_organic_channel_df[constants.MEAN])[:5],
+        test_utils.ORGANIC_ADSTOCK_DECAY_MEAN,
+        atol=1e-3,
+    )
+
 
 class AnalyzerNotFittedTest(absltest.TestCase):
 
