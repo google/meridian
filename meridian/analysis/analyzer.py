@@ -903,8 +903,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media` or `reach` for computing prior and
-        posterior decayed effects.
+      channel_type: Specifies `media`, `reach`, or `organic_media` for computing
+        prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -921,11 +921,21 @@ class Analyzer:
           self._meridian.inference_data.posterior.alpha_m.values,
           (-1, self._meridian.n_media_channels),
       )
-    else:
+    elif channel_type is constants.REACH:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
           (-1, self._meridian.n_rf_channels),
+      )
+    elif channel_type is constants.ORGANIC_MEDIA:
+      prior = self._meridian.inference_data.prior.alpha_om.values[0]
+      posterior = np.reshape(
+          self._meridian.inference_data.posterior.alpha_om.values,
+          (-1, self._meridian.n_organic_media_channels),
+      )
+    else:
+      raise ValueError(
+          f"Unsupported channel type for adstock decay: '{channel_type}'. "
       )
 
     decayed_effect_prior = (
@@ -4051,7 +4061,7 @@ class Analyzer:
   def adstock_decay(
       self, confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL
   ) -> pd.DataFrame:
-    """Calculates adstock decay for media and reach and frequency channels.
+    """Calculates adstock decay for paid media, organic media, and reach and frequency channels.
 
     Args:
       confidence_level: Confidence level for prior and posterior credible
@@ -4083,54 +4093,75 @@ class Analyzer:
     step_size = 1 / steps_per_time_period
     l_range = np.arange(0, max_lag, step_size)
 
-    rf_channel_values = (
-        self._meridian.input_data.rf_channel.values
-        if self._meridian.input_data.rf_channel is not None
-        else []
-    )
-
-    media_channel_values = (
-        self._meridian.input_data.media_channel.values
-        if self._meridian.input_data.media_channel is not None
-        else []
-    )
-
     xr_dims = [
         constants.TIME_UNITS,
         constants.CHANNEL,
         constants.METRIC,
         constants.DISTRIBUTION,
     ]
-    xr_coords = {
+    base_xr_coords = {
         constants.TIME_UNITS: l_range,
-        constants.CHANNEL: rf_channel_values,
         constants.DISTRIBUTION: [constants.PRIOR, constants.POSTERIOR],
         constants.METRIC: [constants.MEAN, constants.CI_LO, constants.CI_HI],
     }
-    final_df = pd.DataFrame()
+    final_df_list = []
 
     if self._meridian.n_rf_channels > 0:
+      rf_channel_values = (
+          self._meridian.input_data.rf_channel.values
+          if self._meridian.input_data.rf_channel is not None
+          else []
+      )
+      rf_xr_coords = base_xr_coords | {constants.CHANNEL: rf_channel_values}
       adstock_df_rf = self._get_adstock_dataframe(
           constants.REACH,
           l_range,
           xr_dims,
-          xr_coords,
+          rf_xr_coords,
           confidence_level,
       )
-      final_df = pd.concat([final_df, adstock_df_rf], axis=0)
+      if not adstock_df_rf.empty:
+        final_df_list.append(adstock_df_rf)
+
     if self._meridian.n_media_channels > 0:
-      xr_coords[constants.CHANNEL] = media_channel_values
+      media_channel_values = (
+          self._meridian.input_data.media_channel.values
+          if self._meridian.input_data.media_channel is not None
+          else []
+      )
+      media_xr_coords = base_xr_coords | {
+          constants.CHANNEL: media_channel_values
+      }
       adstock_df_m = self._get_adstock_dataframe(
           constants.MEDIA,
           l_range,
           xr_dims,
-          xr_coords,
+          media_xr_coords,
           confidence_level,
       )
-      final_df = pd.concat([final_df, adstock_df_m], axis=0).reset_index(
-          drop=True
-      )
+      if not adstock_df_m.empty:
+        final_df_list.append(adstock_df_m)
 
+    if self._meridian.n_organic_media_channels > 0:
+      organic_media_channel_values = (
+          self._meridian.input_data.organic_media_channel.values
+          if self._meridian.input_data.organic_media_channel is not None
+          else []
+      )
+      organic_media_xr_coords = base_xr_coords | {
+          constants.CHANNEL: organic_media_channel_values
+      }
+      adstock_df_om = self._get_adstock_dataframe(
+          constants.ORGANIC_MEDIA,
+          l_range,
+          xr_dims,
+          organic_media_xr_coords,
+          confidence_level,
+      )
+      if not adstock_df_om.empty:
+        final_df_list.append(adstock_df_om)
+
+    final_df = pd.concat(final_df_list, ignore_index=True)
     # Adding an extra column that indicates whether time_units is an integer
     # for marking the discrete points on the plot.
     final_df[constants.IS_INT_TIME_UNIT] = final_df[constants.TIME_UNITS].apply(
@@ -4170,31 +4201,46 @@ class Analyzer:
     ):
       ec = constants.EC_M
       slope = constants.SLOPE_M
-      linspace = np.linspace(
-          0,
-          np.max(
-              np.array(self._meridian.media_tensors.media_scaled), axis=(0, 1)
-          ),
-          constants.HILL_NUM_STEPS,
-      )
       channels = self._meridian.input_data.media_channel.values
+      transformer = self._meridian.media_tensors.media_transformer
+      linspace_max_values = np.max(
+          np.array(self._meridian.media_tensors.media_scaled), axis=(0, 1)
+      )
     elif (
         channel_type == constants.RF
         and self._meridian.input_data.rf_channel is not None
     ):
       ec = constants.EC_RF
       slope = constants.SLOPE_RF
-      linspace = np.linspace(
-          0,
-          np.max(np.array(self._meridian.rf_tensors.frequency), axis=(0, 1)),
-          constants.HILL_NUM_STEPS,
-      )
       channels = self._meridian.input_data.rf_channel.values
+      transformer = None
+      linspace_max_values = np.max(
+          np.array(self._meridian.rf_tensors.frequency), axis=(0, 1)
+      )
+    elif (
+        channel_type == constants.ORGANIC_MEDIA
+        and self._meridian.input_data.organic_media_channel is not None
+    ):
+      ec = constants.EC_OM
+      slope = constants.SLOPE_OM
+      channels = self._meridian.input_data.organic_media_channel.values
+      transformer = (
+          self._meridian.organic_media_tensors.organic_media_transformer
+      )
+      linspace_max_values = np.max(
+          np.array(self._meridian.organic_media_tensors.organic_media_scaled),
+          axis=(0, 1),
+      )
     else:
       raise ValueError(
           f"Unsupported channel type: {channel_type} or the"
           " requested type of channels (`media` or `rf`) are not present."
       )
+    linspace = np.linspace(
+        0,
+        linspace_max_values,
+        constants.HILL_NUM_STEPS,
+    )
     linspace_filler = np.linspace(0, 1, constants.HILL_NUM_STEPS)
     xr_dims = [
         constants.MEDIA_UNITS,
@@ -4250,13 +4296,10 @@ class Analyzer:
 
     # Fill media_units or frequency x-axis with the correct range.
     media_units_arr = []
-    if channel_type == constants.MEDIA:
-      media_transformers = transformers.MediaTransformer(
-          self._meridian.media_tensors.media, self._meridian.population
-      )
-      population_scaled_median_m = media_transformers.population_scaled_median_m
+    if transformer is not None:
+      population_scaled_median = transformer.population_scaled_median_m
       x_range_full_shape = linspace * tf.transpose(
-          population_scaled_median_m[:, np.newaxis]
+          population_scaled_median[:, np.newaxis]
       )
     else:
       x_range_full_shape = linspace
@@ -4277,8 +4320,66 @@ class Analyzer:
     df[constants.MEDIA_UNITS] = media_units_arr
     return df
 
+  def _get_channel_hill_histogram_dataframe(
+      self,
+      channel_type: str,
+      data_to_histogram: tf.Tensor,
+      channel_names: Sequence[str],
+      n_bins: int,
+  ) -> pd.DataFrame:
+    """Calculates hill histogram dataframe for a given channel type's values.
+
+    Args:
+        channel_type: The type of channel (e.g., 'rf', 'media',
+          'organic_media').
+        data_to_histogram: The 2D tensor (observations x channels) containing
+          the data whose distribution needs to be histogrammed for each channel.
+        channel_names: The names corresponding to the channels in
+          data_to_histogram.
+        n_bins: The number of bins for the histogram.
+
+    Returns:
+        A Pandas DataFrame containing the calculated histogram data for all
+        channels of the given type. Returns an empty DataFrame if no valid
+        data is found for any channel.
+    """
+    # Initialize lists to store results across channels of this type
+    channels_data = {
+        constants.CHANNEL: [],
+        constants.CHANNEL_TYPE: [],
+        constants.SCALED_COUNT_HISTOGRAM: [],
+        constants.COUNT_HISTOGRAM: [],
+        constants.START_INTERVAL_HISTOGRAM: [],
+        constants.END_INTERVAL_HISTOGRAM: [],
+    }
+
+    for i, channel_name in enumerate(channel_names):
+      channel_data_np = data_to_histogram[:, i].numpy()
+      channel_data_np = channel_data_np[~np.isnan(channel_data_np)]
+      if channel_data_np.size == 0:
+        continue
+
+      counts_per_bucket, buckets = np.histogram(
+          channel_data_np, bins=n_bins, density=True
+      )
+      max_counts = (
+          np.max(counts_per_bucket) if np.max(counts_per_bucket) > 0 else 1.0
+      )
+
+      num_buckets = len(counts_per_bucket)
+      channels_data[constants.CHANNEL].extend([channel_name] * num_buckets)
+      channels_data[constants.CHANNEL_TYPE].extend([channel_type] * num_buckets)
+      channels_data[constants.SCALED_COUNT_HISTOGRAM].extend(
+          counts_per_bucket / max_counts
+      )
+      channels_data[constants.COUNT_HISTOGRAM].extend(counts_per_bucket)
+      channels_data[constants.START_INTERVAL_HISTOGRAM].extend(buckets[:-1])
+      channels_data[constants.END_INTERVAL_HISTOGRAM].extend(buckets[1:])
+
+    return pd.DataFrame(channels_data)
+
   def _get_hill_histogram_dataframe(self, n_bins: int) -> pd.DataFrame:
-    """Returns the bucketed media_units counts per each `media` or `rf` channel.
+    """Returns the bucketed media_units counts per each `media`, `organic_media` or `rf` channel.
 
     Args:
       n_bins: Number of equal-width bins to include in the histogram for the
@@ -4304,73 +4405,67 @@ class Analyzer:
     """
     n_geos = self._meridian.n_geos
     n_media_times = self._meridian.n_media_times
-    n_rf_channels = self._meridian.n_rf_channels
-    n_media_channels = self._meridian.n_media_channels
 
-    (
-        channels,
-        scaled_count,
-        channel_type_arr,
-        start_interval_histogram,
-        end_interval_histogram,
-        count,
-    ) = ([], [], [], [], [], [])
+    df_list = []
 
     # RF.
     if self._meridian.input_data.rf_channel is not None:
-      frequency = (
-          self._meridian.rf_tensors.frequency
-      )  # Shape: (n_geos, n_media_times, n_channels).
-      reshaped_frequency = tf.reshape(
-          frequency, (n_geos * n_media_times, n_rf_channels)
-      )
-      for i, channel in enumerate(self._meridian.input_data.rf_channel.values):
-        # Bucketize the histogram data for RF channels.
-        counts_per_bucket, buckets = np.histogram(
-            reshaped_frequency[:, i], bins=n_bins, density=True
+      frequency = self._meridian.rf_tensors.frequency
+      if frequency is not None:
+        reshaped_frequency = tf.reshape(
+            frequency, (n_geos * n_media_times, self._meridian.n_rf_channels)
         )
-        channels.extend([channel] * len(counts_per_bucket))
-        channel_type_arr.extend([constants.RF] * len(counts_per_bucket))
-        scaled_count.extend(counts_per_bucket / max(counts_per_bucket))
-        count.extend(counts_per_bucket)
-        start_interval_histogram.extend(buckets[:-1])
-        end_interval_histogram.extend(buckets[1:])
+        rf_hist_data = self._get_channel_hill_histogram_dataframe(
+            channel_type=constants.RF,
+            data_to_histogram=reshaped_frequency,
+            channel_names=self._meridian.input_data.rf_channel.values,
+            n_bins=n_bins,
+        )
+        df_list.append(pd.DataFrame(rf_hist_data))
 
     # Media.
     if self._meridian.input_data.media_channel is not None:
-      transformer = transformers.MediaTransformer(
-          self._meridian.media_tensors.media, self._meridian.population
-      )
-      scaled = (
-          self._meridian.media_tensors.media_scaled
-      )  # Shape: (n_geos, n_media_times, n_channels)
-      population_scaled_median = transformer.population_scaled_median_m
-      scaled_media_units = scaled * population_scaled_median
-      reshaped_scaled_media_units = tf.reshape(
-          scaled_media_units, (n_geos * n_media_times, n_media_channels)
-      )
-      for i, channel in enumerate(
-          self._meridian.input_data.media_channel.values
-      ):
-        # Bucketize the histogram data for media channels.
-        counts_per_bucket, buckets = np.histogram(
-            reshaped_scaled_media_units[:, i], bins=n_bins, density=True
+      transformer = self._meridian.media_tensors.media_transformer
+      scaled = self._meridian.media_tensors.media_scaled
+      if transformer is not None and scaled is not None:
+        population_scaled_median = transformer.population_scaled_median_m
+        scaled_media_units = scaled * population_scaled_median
+        reshaped_scaled_media_units = tf.reshape(
+            scaled_media_units,
+            (n_geos * n_media_times, self._meridian.n_media_channels),
         )
-        channel_type_arr.extend([constants.MEDIA] * len(counts_per_bucket))
-        channels.extend([channel] * (len(counts_per_bucket)))
-        scaled_count.extend(counts_per_bucket / max(counts_per_bucket))
-        count.extend(counts_per_bucket)
-        start_interval_histogram.extend(buckets[:-1])
-        end_interval_histogram.extend(buckets[1:])
+        media_hist_data = self._get_channel_hill_histogram_dataframe(
+            channel_type=constants.MEDIA,
+            data_to_histogram=reshaped_scaled_media_units,
+            channel_names=self._meridian.input_data.media_channel.values,
+            n_bins=n_bins,
+        )
+        df_list.append(pd.DataFrame(media_hist_data))
+    # Organic media.
+    if (
+        self._meridian.n_organic_media_channels > 0
+        and self._meridian.input_data.organic_media_channel is not None
+    ):
+      transformer_om = (
+          self._meridian.organic_media_tensors.organic_media_transformer
+      )
+      scaled_om = self._meridian.organic_media_tensors.organic_media_scaled
+      if transformer_om is not None and scaled_om is not None:
+        population_scaled_median_om = transformer_om.population_scaled_median_m
+        scaled_organic_media_units = scaled_om * population_scaled_median_om
+        reshaped_scaled_organic_media_units = tf.reshape(
+            scaled_organic_media_units,
+            (n_geos * n_media_times, self._meridian.n_organic_media_channels),
+        )
+        organic_media_hist_data = self._get_channel_hill_histogram_dataframe(
+            channel_type=constants.ORGANIC_MEDIA,
+            data_to_histogram=reshaped_scaled_organic_media_units,
+            channel_names=self._meridian.input_data.organic_media_channel.values,
+            n_bins=n_bins,
+        )
+        df_list.append(pd.DataFrame(organic_media_hist_data))
 
-    return pd.DataFrame({
-        constants.CHANNEL: channels,
-        constants.CHANNEL_TYPE: channel_type_arr,
-        constants.SCALED_COUNT_HISTOGRAM: scaled_count,
-        constants.COUNT_HISTOGRAM: count,
-        constants.START_INTERVAL_HISTOGRAM: start_interval_histogram,
-        constants.END_INTERVAL_HISTOGRAM: end_interval_histogram,
-    })
+    return pd.concat(df_list, ignore_index=True)
 
   def hill_curves(
       self,
@@ -4429,6 +4524,12 @@ class Analyzer:
           constants.RF, confidence_level
       )
       final_dfs.append(hill_df_rf)
+
+    if self._meridian.n_organic_media_channels > 0:
+      hill_df_organic_media = self._get_hill_curves_dataframe(
+          constants.ORGANIC_MEDIA, confidence_level
+      )
+      final_dfs.append(hill_df_organic_media)
 
     final_dfs.append(self._get_hill_histogram_dataframe(n_bins=n_bins))
     return pd.concat(final_dfs)
