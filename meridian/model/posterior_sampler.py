@@ -107,19 +107,17 @@ class PosteriorMCMCSampler:
     holdout_id = mmm.holdout_id
     media_tensors = mmm.media_tensors
     rf_tensors = mmm.rf_tensors
+    total_outcome = mmm.total_outcome
     organic_media_tensors = mmm.organic_media_tensors
     organic_rf_tensors = mmm.organic_rf_tensors
     controls_scaled = mmm.controls_scaled
     non_media_treatments_scaled = mmm.non_media_treatments_scaled
+    non_media_treatments_scaled_baseline = (
+        mmm.non_media_treatments_scaled_baseline
+    )
     media_effects_dist = mmm.media_effects_dist
     adstock_hill_media_fn = mmm.adstock_hill_media
     adstock_hill_rf_fn = mmm.adstock_hill_rf
-    get_roi_prior_beta_m_value_fn = (
-        mmm.prior_sampler_callable.get_roi_prior_beta_m_value
-    )
-    get_roi_prior_beta_rf_value_fn = (
-        mmm.prior_sampler_callable.get_roi_prior_beta_rf_value
-    )
 
     @tfp.distributions.JointDistributionCoroutineAutoBatched
     def joint_dist_unpinned():
@@ -167,26 +165,37 @@ class PosteriorMCMCSampler:
             ec=ec_m,
             slope=slope_m,
         )
-        prior_type = mmm.model_spec.paid_media_prior_type
-        if prior_type in constants.PAID_MEDIA_ROI_PRIOR_TYPES:
-          if prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
-            roi_or_mroi_m = yield prior_broadcast.roi_m
-          else:
-            roi_or_mroi_m = yield prior_broadcast.mroi_m
-          beta_m_value = get_roi_prior_beta_m_value_fn(
-              alpha_m,
-              beta_gm_dev,
-              ec_m,
-              eta_m,
-              roi_or_mroi_m,
-              slope_m,
-              media_transformed,
+        prior_type = mmm.model_spec.media_prior_type
+        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          beta_m = yield prior_broadcast.beta_m
+        else:
+          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+            treatment_parameter_m = yield prior_broadcast.roi_m
+          elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+            treatment_parameter_m = yield prior_broadcast.mroi_m
+          else:  # prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+            treatment_parameter_m = yield prior_broadcast.contribution_m
+          incremental_outcome_m = (
+              treatment_parameter_m * media_tensors.prior_denominator
+          )
+          linear_predictor_counterfactual_difference = (
+              mmm.linear_predictor_counterfactual_difference_media(
+                  media_transformed=media_transformed,
+                  alpha_m=alpha_m,
+                  ec_m=ec_m,
+                  slope_m=slope_m,
+              )
+          )
+          beta_m_value = mmm.calculate_beta_x(
+              is_non_media=False,
+              incremental_outcome_x=incremental_outcome_m,
+              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+              eta_x=eta_m,
+              beta_gx_dev=beta_gm_dev,
           )
           beta_m = yield tfp.distributions.Deterministic(
               beta_m_value, name=constants.BETA_M
           )
-        else:
-          beta_m = yield prior_broadcast.beta_m
 
         beta_eta_combined = beta_m + eta_m * beta_gm_dev
         beta_gm_value = (
@@ -220,27 +229,37 @@ class PosteriorMCMCSampler:
             slope=slope_rf,
         )
 
-        prior_type = mmm.model_spec.paid_media_prior_type
-        if prior_type in constants.PAID_MEDIA_ROI_PRIOR_TYPES:
-          if prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
-            roi_or_mroi_rf = yield prior_broadcast.roi_rf
-          else:
-            roi_or_mroi_rf = yield prior_broadcast.mroi_rf
-          beta_rf_value = get_roi_prior_beta_rf_value_fn(
-              alpha_rf,
-              beta_grf_dev,
-              ec_rf,
-              eta_rf,
-              roi_or_mroi_rf,
-              slope_rf,
-              rf_transformed,
+        prior_type = mmm.model_spec.rf_prior_type
+        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          beta_rf = yield prior_broadcast.beta_rf
+        else:
+          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+            treatment_parameter_rf = yield prior_broadcast.roi_rf
+          elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+            treatment_parameter_rf = yield prior_broadcast.mroi_rf
+          else:  # prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+            treatment_parameter_rf = yield prior_broadcast.contribution_rf
+          incremental_outcome_rf = (
+              treatment_parameter_rf * rf_tensors.prior_denominator
+          )
+          linear_predictor_counterfactual_difference = (
+              mmm.linear_predictor_counterfactual_difference_rf(
+                  rf_transformed=rf_transformed,
+                  alpha_rf=alpha_rf,
+                  ec_rf=ec_rf,
+                  slope_rf=slope_rf,
+              )
+          )
+          beta_rf_value = mmm.calculate_beta_x(
+              is_non_media=False,
+              incremental_outcome_x=incremental_outcome_rf,
+              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+              eta_x=eta_rf,
+              beta_gx_dev=beta_grf_dev,
           )
           beta_rf = yield tfp.distributions.Deterministic(
-              beta_rf_value,
-              name=constants.BETA_RF,
+              beta_rf_value, name=constants.BETA_RF
           )
-        else:
-          beta_rf = yield prior_broadcast.beta_rf
 
         beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
         beta_grf_value = (
@@ -272,7 +291,22 @@ class PosteriorMCMCSampler:
             ec=ec_om,
             slope=slope_om,
         )
-        beta_om = yield prior_broadcast.beta_om
+        prior_type = mmm.model_spec.organic_media_prior_type
+        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          beta_om = yield prior_broadcast.beta_om
+        else:  # prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          contribution_om = yield prior_broadcast.contribution_om
+          incremental_outcome_om = contribution_om * total_outcome
+          beta_om_value = mmm.calculate_beta_x(
+              is_non_media=False,
+              incremental_outcome_x=incremental_outcome_om,
+              linear_predictor_counterfactual_difference=organic_media_transformed,
+              eta_x=eta_om,
+              beta_gx_dev=beta_gom_dev,
+          )
+          beta_om = yield tfp.distributions.Deterministic(
+              beta_om_value, name=constants.BETA_OM
+          )
 
         beta_eta_combined = beta_om + eta_om * beta_gom_dev
         beta_gom_value = (
@@ -306,7 +340,22 @@ class PosteriorMCMCSampler:
             slope=slope_orf,
         )
 
-        beta_orf = yield prior_broadcast.beta_orf
+        prior_type = mmm.model_spec.organic_rf_prior_type
+        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          beta_orf = yield prior_broadcast.beta_orf
+        else:  # prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          contribution_orf = yield prior_broadcast.contribution_orf
+          incremental_outcome_orf = contribution_orf * total_outcome
+          beta_orf_value = mmm.calculate_beta_x(
+              is_non_media=False,
+              incremental_outcome_x=incremental_outcome_orf,
+              linear_predictor_counterfactual_difference=organic_rf_transformed,
+              eta_x=eta_orf,
+              beta_gx_dev=beta_gorf_dev,
+          )
+          beta_orf = yield tfp.distributions.Deterministic(
+              beta_orf_value, name=constants.BETA_ORF
+          )
 
         beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
         beta_gorf_value = (
@@ -338,13 +387,31 @@ class PosteriorMCMCSampler:
       )
 
       if mmm.non_media_treatments is not None:
-        gamma_n = yield prior_broadcast.gamma_n
         xi_n = yield prior_broadcast.xi_n
         gamma_gn_dev = yield tfp.distributions.Sample(
             tfp.distributions.Normal(0, 1),
             [n_geos, n_non_media_channels],
             name=constants.GAMMA_GN_DEV,
         )
+        prior_type = mmm.model_spec.non_media_treatments_prior_type
+        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          gamma_n = yield prior_broadcast.gamma_n
+        else:  # prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          contribution_n = yield prior_broadcast.contribution_n
+          incremental_outcome_n = contribution_n * total_outcome
+          linear_predictor_counterfactual_difference = (
+              non_media_treatments_scaled - non_media_treatments_scaled_baseline
+          )
+          gamma_n_value = mmm.calculate_beta_x(
+              is_non_media=True,
+              incremental_outcome_x=incremental_outcome_n,
+              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+              eta_x=xi_n,
+              beta_gx_dev=gamma_gn_dev,
+          )
+          gamma_n = yield tfp.distributions.Deterministic(
+              gamma_n_value, name=constants.GAMMA_N
+          )
         gamma_gn = yield tfp.distributions.Deterministic(
             gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
         )
