@@ -887,7 +887,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     budget_optimizer_media_and_rf = optimizer.BudgetOptimizer(
         meridian_media_and_rf
     )
-
     optimization_results = budget_optimizer_media_and_rf.optimize(
         selected_times=('2021-01-25', '2021-03-08'),
         # TODO: set optimal frequency back to true once the bug is

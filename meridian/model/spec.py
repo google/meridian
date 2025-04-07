@@ -78,24 +78,28 @@ class ModelSpec:
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
     media_prior_type: A string to specify the prior type for the media
-      coefficients. Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. The
-      `PriorDistribution` contains `roi_m`, `mroi_m`, and `beta_m`, but only one
-      of these is used depending on the `media_prior_type`. When
-      `media_prior_type` is `'roi'`, the `PriorDistribution.roi_m` parameter is
-      used to specify a prior on the ROI. When `media_prior_type` is `'mroi'`,
-      the `PriorDistribution.mroi_m` parameter is used to specify a prior on the
-      mROI. When `media_prior_type` is `'coefficient'`, the
-      `PriorDistribution.beta_m` parameter is used to specify a prior on the
-      coefficient mean parameters. Default: `'roi'`.
+      coefficients. Allowed values: `'roi'`, `'mroi'`, `'contribution'`,
+      `'coefficient'`. The `PriorDistribution` contains `roi_m`, `mroi_m`,
+      `contribution_m`, and `beta_m`, but only one of these is used depending on
+      the `media_prior_type`. When `media_prior_type` is `'roi'`, the
+      `PriorDistribution.roi_m` parameter is used to specify a prior on the ROI.
+      When `media_prior_type` is `'mroi'`, the `PriorDistribution.mroi_m`
+      parameter is used to specify a prior on the mROI. When `media_prior_type`
+      is `'contribution'`, the `PriorDistribution.contribution_m` parameter is
+      used to specify a prior on the contribution. When `media_prior_type` is
+      `'coefficient'`, the `PriorDistribution.beta_m` parameter is used to
+      specify a prior on the coefficient mean parameters. Default: `'roi'`.
     rf_prior_type: A string to specify the prior type for the RF coefficients.
-      Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. The
+      Allowed values: `'roi'`, `'mroi'`, `'contribution'`, `'coefficient'`. The
       `PriorDistribution` contains distributions `roi_rf`, `mroi_rf`,
-      and`beta_rf`, but only one of these is used depending on the
-      `rf_prior_type`. When `rf_prior_type` is `'roi'`, the
+      `contribution_rf`, and`beta_rf`, but only one of these is used depending
+      on the `rf_prior_type`. When `rf_prior_type` is `'roi'`, the
       `PriorDistribution.roi_rf` parameter is used to specify a prior on the
       ROI. When `rf_media_prior_type` is `'mroi'`, the
       `PriorDistribution.mroi_rf` parameter is used to specify a prior on the
-      mROI. When `rf_prior_type` is `'coefficient'`, the
+      mROI. When `rf_prior_type` is `'contribution'`, the
+      `PriorDistribution.contribution_rf` parameter is used to specify a prior
+      on the contribution. When `rf_prior_type` is `'coefficient'`, the
       `PriorDistribution.beta_rf` parameter is used to specify a prior on the
       coefficient mean parameters. Default: `'roi'`.
     paid_media_prior_type: Deprecated. Use `media_prior_type` and
@@ -116,6 +120,34 @@ class ModelSpec:
       is the spend during this time period. (Spend data by time period is
       required). If `None`, all times are used. Only used if `rf_prior_type` is
       `'roi'`. Default: `None`.
+    organic_media_prior_type: A string to specify the prior type for the organic
+      media coefficients. Allowed values: `'contribution'`, `'coefficient'`.
+      `PriorDistribution` contains `contribution_om` and `beta_om`, but only one
+      of these is used depending on the `organic_media_prior_type`. When
+      `organic_media_prior_type` is `'contribution'`, the
+      `PriorDistribution.contribution_om` parameter is used to specify a prior
+      on the contribution. When `organic_media_prior_type` is `'coefficient'`,
+      the `PriorDistribution.beta_om` parameter is used to specify a prior on
+      the coefficient mean parameters. Default: `'contribution'`.
+    organic_rf_prior_type: A string to specify the prior type for the organic
+      reach and frequency coefficients. Allowed values: `'contribution'`,
+      `'coefficient'`. The `PriorDistribution` contains distributions
+      `contribution_orf`, and `beta_orf`, but only one of these is used
+      depending on the `organic_rf_prior_type`. When `organic_rf_prior_type` is
+      `'contribution'`, the `PriorDistribution.contribution_orf` parameter is
+      used to specify a prior on the contribution. When `organic_rf_prior_type`
+      is `'coefficient'`, the `PriorDistribution.beta_orf` parameter is used to
+      specify a prior on the coefficient mean parameters. Default:
+      `'contribution'`.
+    non_media_treatments_prior_type: A string to specify the prior type for the
+      non-media treatment coefficients. Allowed values: `'contribution'`,
+      `'coefficient'`. `PriorDistribution` contains `contribution_n` and
+      `gamma_n`, but only one of these is used depending on the
+      `non_media_prior_type`. When `non_media_prior_type` is `'contribution'`,
+      the `PriorDistribution.contribution_n` parameter is used to specify a
+      prior on the contribution. When `non_media_prior_type` is `'coefficient'`,
+      the `PriorDistribution.gamma_n` parameter is used to specify a prior on
+      the coefficient mean parameters. Default: `'contribution'`.
     non_media_baseline_values: Optional list with the shape
       `(n_non_media_channels,)`. Each element is either a float (which means
       that the fixed value will be used as baseline for the given channel) or
@@ -174,6 +206,11 @@ class ModelSpec:
   paid_media_prior_type: str | None = None
   roi_calibration_period: np.ndarray | None = None
   rf_roi_calibration_period: np.ndarray | None = None
+  organic_media_prior_type: str = constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+  organic_rf_prior_type: str = constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+  non_media_treatments_prior_type: str = (
+      constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+  )
   non_media_baseline_values: Sequence[float | str] | None = None
   knots: int | list[int] | None = None
   baseline_geo: int | str | None = None
@@ -219,6 +256,31 @@ class ModelSpec:
           f" '{self.effective_rf_prior_type}' must be one of"
           f" {sorted(list(constants.PAID_TREATMENT_PRIOR_TYPES))}."
       )
+    if self.organic_media_prior_type not in (
+        constants.NON_PAID_TREATMENT_PRIOR_TYPES
+    ):
+      raise ValueError(
+          "The `organic_media_prior_type` parameter"
+          f" '{self.organic_media_prior_type}' must be one of"
+          f" {sorted(list(constants.NON_PAID_TREATMENT_PRIOR_TYPES))}."
+      )
+    if self.organic_rf_prior_type not in (
+        constants.NON_PAID_TREATMENT_PRIOR_TYPES
+    ):
+      raise ValueError(
+          "The `organic_rf_prior_type` parameter"
+          f" '{self.organic_rf_prior_type}' must be one of"
+          f" {sorted(list(constants.NON_PAID_TREATMENT_PRIOR_TYPES))}."
+      )
+    if self.non_media_treatments_prior_type not in (
+        constants.NON_PAID_TREATMENT_PRIOR_TYPES
+    ):
+      raise ValueError(
+          "The `non_media_treatments_prior_type` parameter"
+          f" '{self.non_media_treatments_prior_type}' must be one of"
+          f" {sorted(list(constants.NON_PAID_TREATMENT_PRIOR_TYPES))}."
+      )
+
     _validate_roi_calibration_period(
         array=self.roi_calibration_period,
         array_name="roi_calibration_period",

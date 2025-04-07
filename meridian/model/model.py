@@ -131,8 +131,6 @@ class Meridian:
       median value.
     non_media_treatments_scaled: The non-media treatment tensor normalized by
       population and by the median value.
-    non_media_treatments_baseline: The baseline values of the non-media
-      treatment tensor.
     kpi_scaled: The KPI tensor normalized by population and by the median value.
     media_effects_dist: A string to specify the distribution of media random
       effects across geos.
@@ -496,7 +494,7 @@ class Meridian:
     )
 
     if non_media_baseline_values is None:
-      # If non_media_treatments_baseline_values is not provided, use the minimum
+      # If non_media_baseline_values is not provided, use the minimum
       # value for each non_media treatment channel as the baseline.
       non_media_baseline_values_filled = [
           constants.NON_MEDIA_BASELINE_MIN
@@ -1044,6 +1042,169 @@ class Meridian:
           f"`{kpi}` cannot be constant with"
           f' `rf_prior_type` = "{self.model_spec.effective_rf_prior_type}".'
       )
+
+  def linear_predictor_counterfactual_difference_media(
+      self,
+      media_transformed: tf.Tensor,
+      alpha_m: tf.Tensor,
+      ec_m: tf.Tensor,
+      slope_m: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates linear predictor counterfactual difference for non-RF media.
+
+    For non-RF media variables (paid or organic), this function calculates the
+    linear predictor difference between the treatment variable and its
+    counterfactual. "Linear predictor" refers to the output of the hill/adstock
+    function, which is multiplied by the geo-level coefficient.
+
+    This function does the calculation efficiently by only calculating calling
+    the hill/adstock function if the prior counterfactual is not all zeros.
+
+    Args:
+      media_transformed: The output of the hill/adstock function for actual
+        historical media data.
+      alpha_m: The adstock alpha parameter values.
+      ec_m: The adstock ec parameter values.
+      slope_m: The adstock hill slope parameter values.
+
+    Returns:
+      The linear predictor difference between the treatment variable and its
+      counterfactual.
+    """
+    if self.media_tensors.prior_media_scaled_counterfactual is None:
+      return media_transformed
+    media_transformed_counterfactual = self.adstock_hill_media(
+        self.media_tensors.prior_media_scaled_counterfactual,
+        alpha_m,
+        ec_m,
+        slope_m,
+    )
+    # Absolute values is needed because the difference is negative for mROI
+    # priors and positive for ROI and contribution priors.
+    return tf.abs(media_transformed - media_transformed_counterfactual)
+
+  def linear_predictor_counterfactual_difference_rf(
+      self,
+      rf_transformed: tf.Tensor,
+      alpha_rf: tf.Tensor,
+      ec_rf: tf.Tensor,
+      slope_rf: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates linear predictor counterfactual difference for RF media.
+
+    For RF media variables (paid or organic), this function calculates the
+    linear predictor difference between the treatment variable and its
+    counterfactual. "Linear predictor" refers to the output of the hill/adstock
+    function, which is multiplied by the geo-level coefficient.
+
+    This function does the calculation efficiently by only calculating calling
+    the hill/adstock function if the prior counterfactual is not all zeros.
+
+    Args:
+      rf_transformed: The output of the hill/adstock function for actual
+        historical media data.
+      alpha_rf: The adstock alpha parameter values.
+      ec_rf: The adstock ec parameter values.
+      slope_rf: The adstock hill slope parameter values.
+
+    Returns:
+      The linear predictor difference between the treatment variable and its
+      counterfactual.
+    """
+    if self.rf_tensors.prior_reach_scaled_counterfactual is None:
+      return rf_transformed
+    rf_transformed_counterfactual = self.adstock_hill_rf(
+        reach=self.rf_tensors.prior_reach_scaled_counterfactual,
+        frequency=self.rf_tensors.frequency,
+        alpha=alpha_rf,
+        ec=ec_rf,
+        slope=slope_rf,
+    )
+    # Absolute values is needed because the difference is negative for mROI
+    # priors and positive for ROI and contribution priors.
+    return tf.abs(rf_transformed - rf_transformed_counterfactual)
+
+  def calculate_beta_or_gamma_x(
+      self,
+      is_non_media: bool,
+      incremental_outcome_x: tf.Tensor,
+      linear_predictor_counterfactual_difference: tf.Tensor,
+      eta_x: tf.Tensor,
+      beta_gx_dev: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates coefficient mean parameter for any treatment variable type.
+
+    The "beta_x" in the function name refers to the coefficient mean parameter
+    of any treatment variable. The "x" can represent "m", "rf", "om", or "orf".
+    This function can also be used to calculate "gamma_n" for any non-media
+    treatments.
+
+    Args:
+      is_non_media: Boolean indicating whether the treatment variable is a
+        non-media treatment. This argument is used to determine whether the
+        coefficient random effects are normal or log-normal. If `True`, then
+        random effects are assumed to be normal. Otherwise, the distribution is
+        inferred from `self.media_effects_dist`.
+      incremental_outcome_x: The incremental outcome of the treatment variable,
+        which depends on the parameter values of a particular prior or posterior
+        draw. The "_x" indicates that this is a tensor with length equal to the
+        dimension of the treatment variable.
+      linear_predictor_counterfactual_difference: The difference between the
+        treatment variable and its counterfactual on the linear predictor scale.
+        "Linear predictor" refers to the quantity that is multiplied by the
+        geo-level coefficient. For media variables, this is the output of the
+        hill/adstock transformation function. For non-media treatments, this is
+        simply the treatment variable after centering/scaling transformations.
+        This tensor has dimensions for geo, time, and channel.
+      eta_x: The random effect standard deviation parameter values. For media
+        variables, the "x" represents "m", "rf", "om", or "orf". For non-media
+        treatments, this argument should be set to `xi_n`, which is analogous to
+        "eta".
+      beta_gx_dev: The latent standard normal parameter values of the geo-level
+        coefficients. For media variables, the "x" represents "m", "rf", "om",
+        or "orf". For non-media treatments, this argument should be set to
+        `gamma_gn_dev`, which is analogous to "beta_gx_dev".
+
+    Returns:
+      The coefficient mean parameter of the treatment variable, which has
+      dimension equal to the number of treatment channels..
+    """
+    if is_non_media:
+      random_effects_normal = True
+    else:
+      random_effects_normal = (
+          self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+      )
+    if self.revenue_per_kpi is None:
+      revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
+    else:
+      revenue_per_kpi = self.revenue_per_kpi
+    incremental_outcome_gx_over_beta_gx = tf.einsum(
+        "...gtx,gt,g,->...gx",
+        linear_predictor_counterfactual_difference,
+        revenue_per_kpi,
+        self.population,
+        self.kpi_transformer.population_scaled_stdev,
+    )
+    if random_effects_normal:
+      numerator_term_x = tf.einsum(
+          "...gx,...gx,...x->...x",
+          incremental_outcome_gx_over_beta_gx,
+          beta_gx_dev,
+          eta_x,
+      )
+      denominator_term_x = tf.einsum(
+          "...gx->...x", incremental_outcome_gx_over_beta_gx
+      )
+      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
+    # For log-normal random effects, beta_x and eta_x are not mean & std.
+    # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
+    denominator_term_x = tf.einsum(
+        "...gx,...gx->...x",
+        incremental_outcome_gx_over_beta_gx,
+        tf.math.exp(beta_gx_dev * eta_x[..., tf.newaxis, :]),
+    )
+    return tf.math.log(incremental_outcome_x) - tf.math.log(denominator_term_x)
 
   def adstock_hill_media(
       self,
