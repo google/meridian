@@ -79,9 +79,9 @@ class PosteriorMCMCSamplerTest(
 
   @parameterized.product(
       paid_media_prior_type=[
-          constants.PAID_MEDIA_PRIOR_TYPE_ROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_MROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
       ],
       media_effects_dist=[
           constants.MEDIA_EFFECTS_NORMAL,
@@ -94,7 +94,8 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        paid_media_prior_type=paid_media_prior_type,
+        media_prior_type=paid_media_prior_type,
+        rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -140,10 +141,10 @@ class PosteriorMCMCSamplerTest(
         constants.SIGMA,
     ]
 
-    if paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    if paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       derived_params.append(constants.BETA_M)
       prior_distribution_params.append(constants.ROI_M)
-    elif paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       derived_params.append(constants.BETA_M)
       prior_distribution_params.append(constants.MROI_M)
     else:
@@ -223,9 +224,9 @@ class PosteriorMCMCSamplerTest(
 
   @parameterized.product(
       paid_media_prior_type=[
-          constants.PAID_MEDIA_PRIOR_TYPE_ROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_MROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
       ],
       media_effects_dist=[
           constants.MEDIA_EFFECTS_NORMAL,
@@ -238,7 +239,7 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        paid_media_prior_type=paid_media_prior_type,
+        rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -284,10 +285,10 @@ class PosteriorMCMCSamplerTest(
         constants.SIGMA,
     ]
 
-    if paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    if paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.ROI_RF)
-    elif paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.MROI_RF)
     else:
@@ -369,9 +370,9 @@ class PosteriorMCMCSamplerTest(
   # TODO: Add test for holdout_id.
   @parameterized.product(
       paid_media_prior_type=[
-          constants.PAID_MEDIA_PRIOR_TYPE_ROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_MROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
       ],
       media_effects_dist=[
           constants.MEDIA_EFFECTS_NORMAL,
@@ -384,7 +385,8 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        paid_media_prior_type=paid_media_prior_type,
+        media_prior_type=paid_media_prior_type,
+        rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -435,12 +437,12 @@ class PosteriorMCMCSamplerTest(
         constants.SIGMA,
     ]
 
-    if paid_media_prior_type in constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    if paid_media_prior_type in constants.TREATMENT_PRIOR_TYPE_ROI:
       derived_params.append(constants.BETA_M)
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.ROI_M)
       prior_distribution_params.append(constants.ROI_RF)
-    elif paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       derived_params.append(constants.BETA_M)
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.MROI_M)
