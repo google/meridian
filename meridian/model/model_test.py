@@ -235,16 +235,29 @@ class ModelTest(
           self._N_TIMES, knots, is_national
       )
 
-  def test_validate_paid_media_prior_type(self):
+  def test_validate_media_prior_type(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Custom priors should be set on `mroi_m` and `mroi_rf` when KPI is"
-        " non-revenue and revenue per kpi data is missing.",
+        "Custom priors should be set on `mroi_m` when `media_prior_type` is"
+        ' "mroi", KPI is non-revenue and revenue per kpi data is missing.',
     ):
       model.Meridian(
           input_data=self.input_data_non_revenue_no_revenue_per_kpi,
           model_spec=spec.ModelSpec(
-              paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_MROI
+              media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
+          ),
+      )
+
+  def test_validate_rf_prior_type(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Custom priors should be set on `mroi_rf` when `rf_prior_type` is"
+        ' "mroi", KPI is non-revenue and revenue per kpi data is missing.',
+    ):
+      model.Meridian(
+          input_data=self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi,
+          model_spec=spec.ModelSpec(
+              rf_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
           ),
       )
 
@@ -252,7 +265,7 @@ class ModelTest(
     meridian = model.Meridian(
         input_data=self.input_data_non_revenue_no_revenue_per_kpi,
         model_spec=spec.ModelSpec(
-            paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT
+            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
         ),
     )
     # Compare input data.
@@ -262,7 +275,7 @@ class ModelTest(
 
     # Create sample model spec for comparison
     sample_spec = spec.ModelSpec(
-        paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
     )
 
     # Compare model spec.
@@ -392,10 +405,13 @@ class ModelTest(
               )
           },
           ignored_priors="beta_m",
-          paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_ROI,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          wrong_prior_type_var_name="media_prior_type",
+          wrong_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
-          testcase_name="custom_mroi_m_mroi_rf_prior_type_roi",
+          testcase_name="custom_mroi_rf_prior_type_roi",
           custom_distributions={
               constants.MROI_M: tfp.distributions.LogNormal(
                   0.2, 0.8, name=constants.MROI_M
@@ -404,24 +420,30 @@ class ModelTest(
                   0.2, 0.8, name=constants.MROI_RF
               ),
           },
-          ignored_priors="mroi_m, mroi_rf",
-          paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_ROI,
+          ignored_priors="mroi_rf",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          wrong_prior_type_var_name="rf_prior_type",
+          wrong_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
-          testcase_name="custom_beta_m_beta_rf_roi_m_prior_type_mroi",
+          testcase_name="custom_beta_m_roi_m_prior_type_mroi",
           custom_distributions={
               constants.BETA_M: tfp.distributions.LogNormal(
-                  0.7, 0.9, name=constants.ROI_M
+                  0.7, 0.9, name=constants.BETA_M
               ),
               constants.BETA_RF: tfp.distributions.LogNormal(
-                  0.8, 0.9, name=constants.ROI_RF
+                  0.8, 0.9, name=constants.BETA_RF
               ),
               constants.ROI_M: tfp.distributions.LogNormal(
                   0.2, 0.1, name=constants.ROI_M
               ),
           },
-          ignored_priors="beta_m, beta_rf, roi_m",
-          paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_MROI,
+          ignored_priors="beta_m, roi_m",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          wrong_prior_type_var_name="media_prior_type",
+          wrong_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
       ),
       dict(
           testcase_name="custom_roi_rf_prior_type_coefficient",
@@ -431,14 +453,20 @@ class ModelTest(
               )
           },
           ignored_priors="roi_rf",
-          paid_media_prior_type=constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          wrong_prior_type_var_name="rf_prior_type",
+          wrong_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
       ),
   )
   def test_warn_setting_ignored_priors(
       self,
       custom_distributions: Mapping[str, tfp.distributions.Distribution],
       ignored_priors: str,
-      paid_media_prior_type: str,
+      media_prior_type: str,
+      rf_prior_type: str,
+      wrong_prior_type_var_name: str,
+      wrong_prior_type: str,
   ):
     # Create prior distribution with given parameters.
     distribution = prior_distribution.PriorDistribution(**custom_distributions)
@@ -447,17 +475,19 @@ class ModelTest(
       model.Meridian(
           input_data=self.input_data_with_media_and_rf,
           model_spec=spec.ModelSpec(
-              prior=distribution, paid_media_prior_type=paid_media_prior_type
+              prior=distribution,
+              media_prior_type=media_prior_type,
+              rf_prior_type=rf_prior_type,
           ),
       )
-      self.assertTrue(
-          any(
+      self.assertLen(w, 1)
+      self.assertEqual(
+          (
               f"Custom prior(s) `{ignored_priors}` are ignored when"
-              " `paid_media_prior_type` is set to"
-              f' "{paid_media_prior_type}".'
-              in str(warning.message)
-              for warning in w
-          )
+              f" `{wrong_prior_type_var_name}` is set to"
+              f' "{wrong_prior_type}".'
+          ),
+          str(w[0].message),
       )
 
   def test_base_geo_properties(self):
@@ -1530,9 +1560,9 @@ class NonPaidModelTest(
 
   @parameterized.product(
       paid_media_prior_type=[
-          constants.PAID_MEDIA_PRIOR_TYPE_ROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_MROI,
-          constants.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
       ],
       media_effects_dist=[
           constants.MEDIA_EFFECTS_NORMAL,
@@ -1543,7 +1573,8 @@ class NonPaidModelTest(
       self, paid_media_prior_type: str, media_effects_dist: str
   ):
     model_spec = spec.ModelSpec(
-        paid_media_prior_type=paid_media_prior_type,
+        media_prior_type=paid_media_prior_type,
+        rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -1608,12 +1639,12 @@ class NonPaidModelTest(
         constants.SLOPE_ORF,
         constants.SIGMA,
     ]
-    if paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    if paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       derived_params.append(constants.BETA_M)
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.ROI_M)
       prior_distribution_params.append(constants.ROI_RF)
-    elif paid_media_prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       derived_params.append(constants.BETA_M)
       derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.MROI_M)

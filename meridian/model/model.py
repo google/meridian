@@ -383,8 +383,11 @@ class Meridian:
     set_total_media_contribution_prior = (
         self.input_data.revenue_per_kpi is None
         and self.input_data.kpi_type == constants.NON_REVENUE
-        and self.model_spec.paid_media_prior_type
-        == constants.PAID_MEDIA_PRIOR_TYPE_ROI
+        and (
+            self.model_spec.media_prior_type
+            == constants.TREATMENT_PRIOR_TYPE_ROI
+        )
+        and self.model_spec.rf_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
     )
     total_spend = self.input_data.get_total_spend()
     # Total spend can have 1, 2 or 3 dimensions. Aggregate by channel.
@@ -650,23 +653,32 @@ class Meridian:
   def _warn_setting_ignored_priors(self):
     """Raises a warning if ignored priors are set."""
     default_distribution = prior_distribution.PriorDistribution()
-    prior_type = self.model_spec.paid_media_prior_type
-
-    ignored_custom_priors = []
-    for prior in constants.IGNORED_PRIORS.get(prior_type, []):
-      self_prior = getattr(self.model_spec.prior, prior)
-      default_prior = getattr(default_distribution, prior)
-      if not prior_distribution.distributions_are_equal(
-          self_prior, default_prior
-      ):
-        ignored_custom_priors.append(prior)
-    if ignored_custom_priors:
-      ignored_priors_str = ", ".join(ignored_custom_priors)
-      warnings.warn(
-          f"Custom prior(s) `{ignored_priors_str}` are ignored when"
-          " `paid_media_prior_type` is set to"
-          f' "{prior_type}".'
-      )
+    for ignored_priors_dict, prior_type, prior_type_name in (
+        (
+            constants.IGNORED_PRIORS_MEDIA,
+            self.model_spec.media_prior_type,
+            "media_prior_type",
+        ),
+        (
+            constants.IGNORED_PRIORS_RF,
+            self.model_spec.rf_prior_type,
+            "rf_prior_type",
+        ),
+    ):
+      ignored_custom_priors = []
+      for prior in ignored_priors_dict.get(prior_type, []):
+        self_prior = getattr(self.model_spec.prior, prior)
+        default_prior = getattr(default_distribution, prior)
+        if not prior_distribution.distributions_are_equal(
+            self_prior, default_prior
+        ):
+          ignored_custom_priors.append(prior)
+      if ignored_custom_priors:
+        ignored_priors_str = ", ".join(ignored_custom_priors)
+        warnings.warn(
+            f"Custom prior(s) `{ignored_priors_str}` are ignored when"
+            f' `{prior_type_name}` is set to "{prior_type}".'
+        )
 
   def _validate_paid_media_prior_type(self):
     """Validates the media prior type."""
@@ -686,13 +698,26 @@ class Meridian:
     if (
         self.input_data.revenue_per_kpi is None
         and self.input_data.kpi_type == constants.NON_REVENUE
-        and self.model_spec.paid_media_prior_type
-        == constants.PAID_MEDIA_PRIOR_TYPE_MROI
-        and (mroi_m_not_set or mroi_rf_not_set)
+        and (
+            self.model_spec.media_prior_type
+            == constants.TREATMENT_PRIOR_TYPE_MROI
+        )
+        and mroi_m_not_set
     ):
       raise ValueError(
-          f"Custom priors should be set on `{constants.MROI_M}` and"
-          f" `{constants.MROI_RF}` when KPI is non-revenue and revenue per kpi"
+          f"Custom priors should be set on `{constants.MROI_M}` when"
+          ' `media_prior_type` is "mroi", KPI is non-revenue and revenue per'
+          " kpi data is missing."
+      )
+    if (
+        self.input_data.revenue_per_kpi is None
+        and self.input_data.kpi_type == constants.NON_REVENUE
+        and self.model_spec.rf_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI
+        and mroi_rf_not_set
+    ):
+      raise ValueError(
+          f"Custom priors should be set on `{constants.MROI_RF}` when"
+          ' `rf_prior_type` is "mroi", KPI is non-revenue and revenue per kpi'
           " data is missing."
       )
 
