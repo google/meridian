@@ -194,17 +194,17 @@ RF_ROI_CALIBRATION_PERIOD = 'rf_roi_calibration_period'
 KNOTS = 'knots'
 BASELINE_GEO = 'baseline_geo'
 
-# Media prior types.
-PAID_MEDIA_PRIOR_TYPE_ROI = 'roi'
-PAID_MEDIA_PRIOR_TYPE_MROI = 'mroi'
-PAID_MEDIA_PRIOR_TYPE_COEFFICIENT = 'coefficient'
-PAID_MEDIA_PRIOR_TYPES = frozenset({
-    PAID_MEDIA_PRIOR_TYPE_ROI,
-    PAID_MEDIA_PRIOR_TYPE_MROI,
-    PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+# Treatment prior types.
+TREATMENT_PRIOR_TYPE_ROI = 'roi'
+TREATMENT_PRIOR_TYPE_MROI = 'mroi'
+TREATMENT_PRIOR_TYPE_COEFFICIENT = 'coefficient'
+PAID_TREATMENT_PRIOR_TYPES = frozenset({
+    TREATMENT_PRIOR_TYPE_ROI,
+    TREATMENT_PRIOR_TYPE_MROI,
+    TREATMENT_PRIOR_TYPE_COEFFICIENT,
 })
 PAID_MEDIA_ROI_PRIOR_TYPES = frozenset(
-    {PAID_MEDIA_PRIOR_TYPE_ROI, PAID_MEDIA_PRIOR_TYPE_MROI}
+    {TREATMENT_PRIOR_TYPE_ROI, TREATMENT_PRIOR_TYPE_MROI}
 )
 # Represents a 1% increase in spend.
 MROI_FACTOR = 1.01
@@ -360,10 +360,33 @@ UNSAVED_PARAMETERS = (
     GAMMA_GN_DEV,
     TAU_G_EXCL_BASELINE,  # Used to derive TAU_G.
 )
-IGNORED_PRIORS = immutabledict.immutabledict({
-    PAID_MEDIA_PRIOR_TYPE_ROI: (BETA_M, BETA_RF, MROI_M, MROI_RF),
-    PAID_MEDIA_PRIOR_TYPE_MROI: (BETA_M, BETA_RF, ROI_M, ROI_RF),
-    PAID_MEDIA_PRIOR_TYPE_COEFFICIENT: (ROI_M, ROI_RF, MROI_M, MROI_RF),
+IGNORED_PRIORS_MEDIA = immutabledict.immutabledict({
+    TREATMENT_PRIOR_TYPE_ROI: (
+        BETA_M,
+        MROI_M,
+    ),
+    TREATMENT_PRIOR_TYPE_MROI: (
+        BETA_M,
+        ROI_M,
+    ),
+    TREATMENT_PRIOR_TYPE_COEFFICIENT: (
+        ROI_M,
+        MROI_M,
+    ),
+})
+IGNORED_PRIORS_RF = immutabledict.immutabledict({
+    TREATMENT_PRIOR_TYPE_ROI: (
+        BETA_RF,
+        MROI_RF,
+    ),
+    TREATMENT_PRIOR_TYPE_MROI: (
+        BETA_RF,
+        ROI_RF,
+    ),
+    TREATMENT_PRIOR_TYPE_COEFFICIENT: (
+        ROI_RF,
+        MROI_RF,
+    ),
 })
 
 # Inference data dimensions.

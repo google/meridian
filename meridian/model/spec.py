@@ -29,12 +29,13 @@ __all__ = [
 def _validate_roi_calibration_period(
     array: np.ndarray | None,
     array_name: str,
-    media_channel_dim_name: str,
+    channel_dim_name: str,
 ):
-  if array is not None and (len(array.shape) != 2):
+  """Validates the ROI calibration period array."""
+  if array is not None and len(array.shape) != 2:
     raise ValueError(
         f"The shape of the `{array_name}` array {array.shape} should be"
-        f" 2-dimensional (`n_media_times` x `{media_channel_dim_name}`)."
+        f" 2-dimensional (`n_media_times` x `{channel_dim_name}`)."
     )
 
 
@@ -66,29 +67,41 @@ class ModelSpec:
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
-    paid_media_prior_type: A string to specify the prior type for the media
-      coefficients. Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. Default:
-      `'roi'`. The `PriorDistribution` contains distributions `roi_m`, `mroi_m`,
-      and`beta_m`, but only one of these is used depending on the
-      `paid_media_prior_type`. Likewise, the `PriorDistribution` contains
-      distributions `roi_rf`, `mroi_rf`, and`beta_rf`, but only one of these is
-      used depending on the `paid_media_prior_type`. When
-      `paid_media_prior_type` is `'roi'`, the `PriorDistribution.roi_m` and
-      `PriorDistribution.roi_rf` parameters are used to specify a prior on the
-      ROI. When `paid_media_prior_type` is `'mroi'`, the
-      `PriorDistribution.mroi_m` and `PriorDistribution.mroi_rf` parameters are
-      used to specify a prior on the mROI. When `paid_media_prior_type` is
-      `'coefficient'`, the `PriorDistribution.beta_m` and
-      `PriorDistribution.beta_rf` parameters are used to specify a prior on the
-      coefficient mean parameters.
+    media_prior_type: A string to specify the prior type for the media
+      coefficients. Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. The
+      `PriorDistribution` contains `roi_m`, `mroi_m`, and `beta_m`, but only one
+      of these is used depending on the `media_prior_type`. When
+      `media_prior_type` is `'roi'`, the `PriorDistribution.roi_m` parameter is
+      used to specify a prior on the ROI. When `media_prior_type` is `'mroi'`,
+      the `PriorDistribution.mroi_m` parameter is used to specify a prior on the
+      mROI. When `media_prior_type` is `'coefficient'`, the
+      `PriorDistribution.beta_m` parameter is used to specify a prior on the
+      coefficient mean parameters. Default: `'roi'`.
+    rf_prior_type: A string to specify the prior type for the RF coefficients.
+      Allowed values: `'roi'`, `'mroi'`, `'coefficient'`. The
+      `PriorDistribution` contains distributions `roi_rf`, `mroi_rf`,
+      and`beta_rf`, but only one of these is used depending on the
+      `rf_prior_type`. When `rf_prior_type` is `'roi'`, the
+      `PriorDistribution.roi_rf` parameter is used to specify a prior on the
+      ROI. When `rf_media_prior_type` is `'mroi'`, the
+      `PriorDistribution.mroi_rf` parameter is used to specify a prior on the
+      mROI. When `rf_prior_type` is `'coefficient'`, the
+      `PriorDistribution.beta_rf` parameter is used to specify a prior on the
+      coefficient mean parameters. Default: `'roi'`.
     roi_calibration_period: An optional boolean array of shape `(n_media_times,
       n_media_channels)` indicating the subset of `time` that the ROI value of
-      the `roi_m` prior (or mROI value of the `mroi_m` prior) applies to. If
-      `None`, all times are used. Default: `None`.
+      the `roi_m` prior applies to. The ROI numerator is the incremental outcome
+      generated during this time period, and the denominator is the spend during
+      this time period. (Spend data by time period is required). If `None`, all
+      times are used. Only used if `media_prior_type` is `'roi'`.
+      Default: `None`.
     rf_roi_calibration_period: An optional boolean array of shape
       `(n_media_times, n_rf_channels)` indicating the subset of `time` that the
-      ROI value of the `roi_rf` prior (or mROI value of the `mroi_rf` prior)
-      applies to. If `None`, all times are used. Default: `None`.
+      ROI value of the `roi_rf` prior applies to. The ROI numerator is the
+      incremental outcome generated during this time period, and the denominator
+      is the spend during this time period. (Spend data by time period is
+      required). If `None`, all times are used. Only used if `rf_prior_type` is
+      `'roi'`. Default: `None`.
     knots: An optional integer or list of integers indicating the knots used to
       estimate time effects. When `knots` is a list of integers, the knot
       locations are provided by that list. Zero corresponds to a knot at the
@@ -134,7 +147,8 @@ class ModelSpec:
   hill_before_adstock: bool = False
   max_lag: int | None = 8
   unique_sigma_for_each_geo: bool = False
-  paid_media_prior_type: str = constants.PAID_MEDIA_PRIOR_TYPE_ROI
+  media_prior_type: str = constants.TREATMENT_PRIOR_TYPE_ROI
+  rf_prior_type: str = constants.TREATMENT_PRIOR_TYPE_ROI
   roi_calibration_period: np.ndarray | None = None
   rf_roi_calibration_period: np.ndarray | None = None
   knots: int | list[int] | None = None
@@ -150,12 +164,18 @@ class ModelSpec:
           f"The `media_effects_dist` parameter '{self.media_effects_dist}' must"
           f" be one of {sorted(list(constants.MEDIA_EFFECTS_DISTRIBUTIONS))}."
       )
-    # Validate roi_prior_type.
-    if self.paid_media_prior_type not in constants.PAID_MEDIA_PRIOR_TYPES:
+    # Validate prior_type.
+    if self.media_prior_type not in constants.PAID_TREATMENT_PRIOR_TYPES:
       raise ValueError(
-          "The `paid_media_prior_type` parameter"
-          f" '{self.paid_media_prior_type}' must be one of"
-          f" {sorted(list(constants.PAID_MEDIA_PRIOR_TYPES))}."
+          "The `media_prior_type` parameter"
+          f" '{self.media_prior_type}' must be one of"
+          f" {sorted(list(constants.PAID_TREATMENT_PRIOR_TYPES))}."
+      )
+    if self.rf_prior_type not in constants.PAID_TREATMENT_PRIOR_TYPES:
+      raise ValueError(
+          "The `rf_prior_type` parameter"
+          f" '{self.rf_prior_type}' must be one of"
+          f" {sorted(list(constants.PAID_TREATMENT_PRIOR_TYPES))}."
       )
     _validate_roi_calibration_period(
         self.roi_calibration_period,
