@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.0.8] - 2025-04-08
+
 * Update contribution calculation methods in `MediaSummary` with
   `aggregate_times` parameter to support granular time.
 * Add a `new_data` argument to `analyzer.optimal_freq()`.
@@ -259,4 +261,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.0.5]: https://github.com/google/meridian/releases/tag/v1.0.5
 [1.0.6]: https://github.com/google/meridian/releases/tag/v1.0.6
 [1.0.7]: https://github.com/google/meridian/releases/tag/v1.0.7
-[Unreleased]: https://github.com/google/meridian/compare/v1.0.7...HEAD
+[1.0.8]: https://github.com/google/meridian/releases/tag/v1.0.8
+[Unreleased]: https://github.com/google/meridian/compare/v1.0.8...HEAD
