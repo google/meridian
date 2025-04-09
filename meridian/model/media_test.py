@@ -148,28 +148,28 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="no_calibration_period_paid_media_prior_type_roi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_ROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
           roi_calibration_period=None,
           expected_counterfactual=_MEDIA * 0,
           expected_spend_counterfactual=_SPEND * 0,
       ),
       dict(
           testcase_name="no_calibration_period_paid_media_prior_type_mroi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_MROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
           roi_calibration_period=None,
           expected_counterfactual=_MEDIA * c.MROI_FACTOR,
           expected_spend_counterfactual=_SPEND * c.MROI_FACTOR,
       ),
       dict(
           testcase_name="with_calibration_period_paid_media_prior_type_roi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_ROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
           expected_counterfactual=_MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
           expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
       ),
       dict(
           testcase_name="with_calibration_period_paid_media_prior_type_mroi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_MROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
           expected_counterfactual=_MEDIA_COUNTERFACTUAL_MROI_CALIBRATION_PERIOD,
           expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_MROI_CALIBRATION_PERIOD,
@@ -178,7 +178,7 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
           testcase_name=(
               "no_calibration_period_paid_media_prior_type_coefficient"
           ),
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           roi_calibration_period=None,
           expected_counterfactual=_MEDIA * 0,
           expected_spend_counterfactual=_SPEND * 0,
@@ -187,7 +187,7 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
           testcase_name=(
               "with_calibration_period_paid_media_prior_type_coefficient"
           ),
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
           expected_counterfactual=_MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
           expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
@@ -203,7 +203,8 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     media_tensors = media.build_media_tensors(
         _INPUT_DATA_WITH_MEDIA_ONLY,
         spec.ModelSpec(
-            paid_media_prior_type=paid_media_prior_type,
+            media_prior_type=paid_media_prior_type,
+            rf_prior_type=paid_media_prior_type,
             roi_calibration_period=roi_calibration_period,
         ),
     )
