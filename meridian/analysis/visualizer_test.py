@@ -1307,13 +1307,18 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertTrue(ci_lo > 0 for ci_lo in df.ci_lo)
 
   def test_media_effects_plot_hill_curve_plot_include_ci(self):
-    plot_media, plot_rf = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    plots = self.media_effects_kpi_type_revenue.plot_hill_curves()
+
+    plot_media, plot_rf, plot_organic_media = plots
     facet_chart_layer_media = plot_media.spec.layer
     facet_chart_layer_rf = plot_rf.spec.layer
+    facet_chart_layer_organic_media = plot_organic_media.spec.layer
     media_band_mark = facet_chart_layer_media[2].mark
     media_band_encoding = facet_chart_layer_media[2].encoding
     rf_band_encoding = facet_chart_layer_rf[2].encoding
+    organic_media_band_encoding = facet_chart_layer_organic_media[2].encoding
 
+    self.assertLen(plots, 3)
     self.assertLen(facet_chart_layer_media, 3)
     self.assertEqual(media_band_mark.type, "area")
     self.assertEqual(media_band_mark.opacity, 0.3)
@@ -1333,6 +1338,14 @@ class MediaEffectsTest(parameterized.TestCase):
             summary_text.HILL_SHADED_REGION_RF_LABEL,
         ],
     )
+    self.assertEqual(
+        organic_media_band_encoding.color["scale"]["domain"],
+        [
+            c.POSTERIOR,
+            c.PRIOR,
+            summary_text.HILL_SHADED_REGION_MEDIA_LABEL,
+        ],
+    )
 
     self.assertEqual(
         media_band_encoding.color["scale"]["range"],
@@ -1345,7 +1358,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(media_band_encoding.y2.shorthand, f"{c.CI_HI}:Q")
 
   def test_media_effects_plot_hill_curves_no_ci(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves(
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves(
         include_ci=False
     )
     facet_chart_layer = plot_media.spec.layer
@@ -1358,7 +1371,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(facet_chart_layer[1].encoding.y.shorthand, f"{c.MEAN}:Q")
 
   def test_media_effects_plot_hill_curves_no_prior(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves(
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves(
         include_prior=False
     )
     no_prior_data = plot_media.data
@@ -1368,7 +1381,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
 
   def test_media_effects_plot_hill_curves_plot_posterior_prior_lines(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
     facet_chart_layer = plot_media.spec.layer
     posterior_or_prior_line_layer = facet_chart_layer[1]
 
@@ -1388,7 +1401,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
 
   def test_media_effects_plot_hill_curves_histogram(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
     facet_chart_layer = plot_media.spec.layer
     histogram_layer = facet_chart_layer[0]
 
@@ -1411,7 +1424,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(histogram_mark.opacity, 0.4)
 
   def test_media_effects_plot_hill_curves_plot_correct_properties(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
 
     self.assertIsInstance(plot_media, alt.FacetChart)
     self.assertIsInstance(plot_media.facet, alt.Facet)
@@ -1425,22 +1438,36 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     self.assertEqual(plot_media.config.legend.labelLimit, 0)
 
-  def test_media_effects_plot_hill_curves_media_rf_x_axis_label(self):
-    plot_media, plot_rf = self.media_effects_kpi_type_revenue.plot_hill_curves()
+  def test_media_effects_plot_hill_curves_media_rf_organic_x_axis_label(self):
+    plots = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    self.assertIsInstance(plots, list)
+    self.assertLen(plots, 3)
 
-    facet_chart_media_layer_line = plot_media.spec.layer[1]
-    facet_chart_rf_layer_line = plot_rf.spec.layer[1]
+    plot_media, plot_rf, plot_organic_media = plots
 
-    facet_chart_media_encoding = facet_chart_media_layer_line.encoding
-    facet_chart_rf_encoding = facet_chart_rf_layer_line.encoding
+    def get_x_encoding(chart):
+      if hasattr(chart, "spec") and hasattr(chart.spec, "layer"):
+        return chart.spec.layer[1].encoding.x
+      elif hasattr(chart, "layer"):
+        return chart.layer[1].encoding.x
+      else:
+        return chart.encoding.x
+
+    media_x_encoding = get_x_encoding(plot_media)
+    rf_x_encoding = get_x_encoding(plot_rf)
+    organic_x_encoding = get_x_encoding(plot_organic_media)
 
     self.assertEqual(
-        facet_chart_media_encoding.x["title"], "Media Units per Capita"
+        media_x_encoding["title"], summary_text.HILL_X_AXIS_MEDIA_LABEL
     )
-    self.assertEqual(facet_chart_rf_encoding.x["title"], "Average Frequency")
+    self.assertEqual(rf_x_encoding["title"], summary_text.HILL_X_AXIS_RF_LABEL)
+    self.assertEqual(
+        organic_x_encoding["title"],
+        summary_text.HILL_X_AXIS_MEDIA_LABEL,
+    )
 
   def test_media_effects_plot_hill_curves_correct_data(self):
-    plot_media, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
+    plot_media, _, _ = self.media_effects_kpi_type_revenue.plot_hill_curves()
     df = plot_media.data
     self.assertEqual(
         list(df.columns),

@@ -3138,18 +3138,22 @@ def generate_optimal_frequency_data(
 
 def generate_hill_curves_dataframe() -> pd.DataFrame:
   """Helper method to generate simulated hill curve data."""
-  channel_names = [f"ch_{i}" for i in range(3)] + [
-      f"rf_ch_{i}" for i in range(2)
-  ]
+  channel_names = (
+      [f"ch_{i}" for i in range(3)]
+      + [f"rf_ch_{i}" for i in range(2)]
+      + [f"organic_ch_{i}" for i in range(2)]
+  )
   channel_array = []
   channel_type_array = []
-  for i, channel in enumerate(channel_names):
+  for channel_name in channel_names:
     for _ in range(100):
-      channel_array.append(channel)
-      if i <= 3:
+      channel_array.append(channel_name)
+      if channel_name.startswith("ch_"):
         channel_type_array.append(c.MEDIA)
-      else:
+      elif channel_name.startswith("rf_ch_"):
         channel_type_array.append(c.RF)
+      elif channel_name.startswith("organic_ch_"):
+        channel_type_array.append(c.ORGANIC_MEDIA)
 
   np.random.seed(0)
   media_units_array = [
