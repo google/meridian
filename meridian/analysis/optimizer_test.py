@@ -2260,10 +2260,239 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     np.testing.assert_array_equal(
         spend.optimized, optimization_results.optimized_data.spend
     )
-    rounded_spend = np.round(spend.non_optimized, grid.round_factor).astype(int)
     np.testing.assert_array_equal(
-        rounded_spend, optimization_results.nonoptimized_data.spend
+        spend.non_optimized, optimization_results.nonoptimized_data.spend
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='selected_times',
+          create_optimization_grid_args={'selected_times': None},
+          optimize_args={'selected_times': ('2021-01-25', '2021-02-01')},
+          warning_regex='optimization grid was created with `selected_times`',
+      ),
+      dict(
+          testcase_name='use_posterior',
+          create_optimization_grid_args={'use_posterior': False},
+          optimize_args={'use_posterior': True},
+          warning_regex='optimization grid was created with `use_posterior`',
+      ),
+      dict(
+          testcase_name='use_kpi',
+          create_optimization_grid_args={'use_kpi': True},
+          optimize_args={'use_kpi': False},
+          warning_regex='optimization grid was created with `use_kpi`',
+      ),
+      dict(
+          testcase_name='use_optimal_frequency',
+          create_optimization_grid_args={'use_optimal_frequency': False},
+          optimize_args={'use_optimal_frequency': True},
+          warning_regex=(
+              'optimization grid was created with `use_optimal_frequency`'
+          ),
+      ),
+      dict(
+          testcase_name='pct_of_spend',
+          create_optimization_grid_args={
+              'pct_of_spend': np.array([0.3, 0.3, 0.2, 0.1, 0.1])
+          },
+          optimize_args={'pct_of_spend': np.array([0.1, 0.2, 0.3, 0.3, 0.1])},
+          warning_regex=(
+              'Optimization called with bounds that are not within the grid.'
+          ),
+      ),
+  )
+  def test_optimize_with_wrong_grid_new_grid_created(
+      self, create_optimization_grid_args, optimize_args, warning_regex
+  ):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    create_optimization_grid_args.update({'gtol': gtol})
+    optimize_args.update({'gtol': gtol})
+    grid = budget_optimizer.create_optimization_grid(
+        **create_optimization_grid_args
+    )
+    with self.assertWarnsRegex(UserWarning, warning_regex):
+      budget_optimizer.optimize(optimization_grid=grid, **optimize_args)
+    default_optimization_args = {
+        'new_data': None,
+        'selected_times': None,
+        'budget': None,
+        'pct_of_spend': None,
+        'spend_constraint_lower': 0.3,
+        'spend_constraint_upper': 0.3,
+        'gtol': 0.0001,
+        'use_posterior': True,
+        'use_kpi': False,
+        'use_optimal_frequency': True,
+        'batch_size': 100,
+    }
+    default_optimization_args.update(optimize_args)
+
+    mock_create_optimization_grid.assert_has_calls([
+        # First call in the test intself.
+        mock.call(**create_optimization_grid_args),
+        # Second call from the `optimize` function.
+        mock.call(**default_optimization_args),
+    ])
+
+  def test_optimize_with_wrong_channels_grid_new_grid_created(self):
+    budget_optimizer_media_and_rf = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid_media_and_rf = self.enter_context(
+        mock.patch.object(
+            budget_optimizer_media_and_rf,
+            'create_optimization_grid',
+            side_effect=budget_optimizer_media_and_rf.create_optimization_grid,
+        )
+    )
+    grid = self.budget_optimizer_media_only.create_optimization_grid()
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Given optimization grid was created with `channels`',
+    ):
+      budget_optimizer_media_and_rf.optimize(optimization_grid=grid)
+
+    mock_create_optimization_grid_media_and_rf.assert_called_once()
+
+  def test_optimize_with_wrong_new_data_grid_new_grid_created(self):
+    selected_times = ('2025-04-07', '2025-04-28')
+    new_times = [
+        '2025-03-31',
+        '2025-04-07',
+        '2025-04-14',
+        '2025-04-21',
+        '2025-04-28',
+    ]
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[..., -5:, :],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -5:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[..., -5:, :],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[..., -5:],
+        time=new_times,
+    )
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+        )
+    )
+    create_optimization_grid_args = {
+        'new_data': new_data,
+        'selected_times': ('2025-04-07', '2025-04-21'),
+        'gtol': 0.01,
+    }
+    grid = budget_optimizer.create_optimization_grid(
+        **create_optimization_grid_args
+    )
+    optimization_args = {
+        'new_data': new_data,
+        'selected_times': selected_times,
+        'budget': None,
+        'pct_of_spend': None,
+        'spend_constraint_lower': 0.3,
+        'spend_constraint_upper': 0.3,
+        'gtol': 0.01,
+        'use_posterior': True,
+        'use_kpi': False,
+        'use_optimal_frequency': True,
+        'batch_size': 100,
+    }
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Given optimization grid was created with `selected_times`',
+    ):
+      budget_optimizer.optimize(optimization_grid=grid, **optimization_args)
+
+    mock_create_optimization_grid.assert_has_calls([
+        # First call in the test intself.
+        mock.call(**create_optimization_grid_args),
+        # Second call from the `optimize` function.
+        mock.call(**optimization_args),
+    ])
+
+  def test_optimize_with_none_grid_new_grid_created(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    budget_optimizer.optimize(optimization_grid=None, gtol=gtol)
+
+    mock_create_optimization_grid.assert_called_once()
+
+  def test_optimize_with_correct_grid_new_grid_not_created(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(gtol=gtol)
+    budget_optimizer.optimize(optimization_grid=grid, gtol=gtol)
+
+    # Only called once in the test itself.
+    mock_create_optimization_grid.assert_called_once()
+
+  def test_optimize_with_grid_correct(self):
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = self.budget_optimizer_media_and_rf.create_optimization_grid(
+        gtol=gtol
+    )
+    opt_result_1 = self.budget_optimizer_media_and_rf.optimize(
+        optimization_grid=grid, gtol=gtol
+    )
+    opt_result_2 = self.budget_optimizer_media_and_rf.optimize(gtol=gtol)
+
+    _verify_actual_vs_expected_budget_data(
+        opt_result_1.optimized_data, opt_result_2.optimized_data
+    )
+    _verify_actual_vs_expected_budget_data(
+        opt_result_1.nonoptimized_data, opt_result_2.nonoptimized_data
+    )
+    _verify_actual_vs_expected_budget_data(
+        opt_result_1.nonoptimized_data_with_optimal_freq,
+        opt_result_2.nonoptimized_data_with_optimal_freq,
+    )
+
+  def test_optimize_with_wrong_granularity_raises_warning(self):
+    grid = self.budget_optimizer_media_and_rf.create_optimization_grid(
+        budget=10_000
+    )
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Optimization accuracy may suffer owing to budget level differences.'
+        ' Consider creating a new grid with smaller `gtol` if you intend to'
+        ' shrink total budget significantly across optimization runs.'
+        ' It is only a problem when you use a much smaller budget, '
+        ' for which the intended step size is smaller.',
+    ):
+      self.budget_optimizer_media_and_rf.optimize(
+          budget=100, optimization_grid=grid
+      )
 
   def test_optimization_grid_nans_match(self):
     self.enter_context(
@@ -2274,7 +2503,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
     )
 
-    opt_results = self.budget_optimizer_media_and_rf.optimize()
+    opt_results = self.budget_optimizer_media_and_rf.optimize(gtol=0.01)
     np.testing.assert_array_equal(
         np.isnan(opt_results.optimization_grid.spend_grid),
         np.isnan(opt_results.optimization_grid.incremental_outcome_grid),
