@@ -20,7 +20,9 @@ MODEL_RESULTS_TITLE = 'Marketing Mix Modeling Report'
 MODEL_FIT_CARD_ID = 'model-fit'
 MODEL_FIT_CARD_TITLE = 'Model fit'
 MODEL_FIT_INSIGHTS_FORMAT = """Model fit is a measure of how well your MMM fits
-your current data used to train the model."""
+the data used to train the model. The best model for causal inference may differ
+from the best fitting model, because causal inference models must also estimate
+the unobserved baseline."""
 
 EXPECTED_ACTUAL_OUTCOME_CHART_ID = 'expected-actual-outcome-chart'
 EXPECTED_ACTUAL_OUTCOME_CHART_TITLE = 'Expected {outcome} vs. actual {outcome}'
