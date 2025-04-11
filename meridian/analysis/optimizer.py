@@ -226,7 +226,7 @@ class OptimizationGrid:
             spend_constraint_upper=spend_constraint_upper,
         )
     )
-    self._check_optimization_bounds(
+    self.check_optimization_bounds(
         lower_bound=optimization_lower_bound,
         upper_bound=optimization_upper_bound,
     )
@@ -382,7 +382,7 @@ class OptimizationGrid:
 
     return (updated_spend, updated_incremental_outcome)
 
-  def _check_optimization_bounds(
+  def check_optimization_bounds(
       self,
       lower_bound: np.ndarray,
       upper_bound: np.ndarray,
@@ -1279,6 +1279,7 @@ class BudgetOptimizer:
       use_kpi: bool = False,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
+      optimization_grid: OptimizationGrid | None = None,
   ) -> OptimizationResults:
     """Finds the optimal budget allocation that maximizes outcome.
 
@@ -1347,6 +1348,11 @@ class BudgetOptimizer:
         in batches to avoid memory exhaustion. If a memory error occurs, try
         reducing `batch_size`. The calculation will generally be faster with
         larger `batch_size` values.
+      optimization_grid: An `OptimizationGrid` object containing the grid
+        information. Grid creating is a time consuming part of optimization.
+        Creating one grid and running various optimizations on it can save time.
+        If `None` or grid doesn't match the optimization arguments, a new grid
+        will be created.
 
     Returns:
       An `OptimizationResults` object containing optimized budget allocation
@@ -1367,18 +1373,32 @@ class BudgetOptimizer:
       spend_constraint_lower = spend_constraint_default
     if spend_constraint_upper is None:
       spend_constraint_upper = spend_constraint_default
-    optimization_grid = self.create_optimization_grid(
+    use_grid_arg = self._validate_grid(
+        use_posterior=use_posterior,
         selected_times=selected_times,
         budget=budget,
         pct_of_spend=pct_of_spend,
         spend_constraint_lower=spend_constraint_lower,
         spend_constraint_upper=spend_constraint_upper,
         gtol=gtol,
-        use_posterior=use_posterior,
-        use_kpi=use_kpi,
         use_optimal_frequency=use_optimal_frequency,
-        batch_size=batch_size,
+        use_kpi=use_kpi,
+        optimization_grid=optimization_grid,
     )
+    if optimization_grid is None or not use_grid_arg:
+      optimization_grid = self.create_optimization_grid(
+          selected_times=selected_times,
+          budget=budget,
+          pct_of_spend=pct_of_spend,
+          spend_constraint_lower=spend_constraint_lower,
+          spend_constraint_upper=spend_constraint_upper,
+          gtol=gtol,
+          use_posterior=use_posterior,
+          use_kpi=use_kpi,
+          use_optimal_frequency=use_optimal_frequency,
+          batch_size=batch_size,
+      )
+
     if fixed_budget:
       scenario = FixedBudgetScenario(total_budget=budget)
     elif target_roi:
@@ -1473,6 +1493,117 @@ class BudgetOptimizer:
         _optimized_data=optimized_data,
         _optimization_grid=optimization_grid,
     )
+
+  def _validate_grid(
+      self,
+      use_posterior: bool,
+      selected_times: tuple[str | None, str | None] | None,
+      budget: float | None,
+      pct_of_spend: Sequence[float] | None,
+      spend_constraint_lower: _SpendConstraint,
+      spend_constraint_upper: _SpendConstraint,
+      gtol: float,
+      use_optimal_frequency: bool,
+      use_kpi: bool,
+      optimization_grid: OptimizationGrid | None,
+  ) -> bool:
+    """Checks if the grid is valid for the optimization scenario."""
+    if optimization_grid is None:
+      return False
+    if use_posterior != optimization_grid.use_posterior:
+      warnings.warn(
+          'Optimization grid does was created with `use_posterior` ='
+          f' {optimization_grid.use_posterior}, but optimization was called'
+          f' with `use_posterior` = {use_posterior}. A new grid will be'
+          ' created.'
+      )
+      return False
+    if use_kpi != optimization_grid.use_kpi:
+      warnings.warn(
+          'Optimization grid does was created with `use_kpi` ='
+          f' {optimization_grid.use_kpi}, but optimization was called'
+          f' with `use_kpi` = {use_kpi}. A new grid will be'
+          ' created.'
+      )
+      return False
+    if use_optimal_frequency != optimization_grid.use_optimal_frequency:
+      warnings.warn(
+          'Optimization grid does was created with `use_optimal_frequency` ='
+          f' {optimization_grid.use_optimal_frequency}, but optimization was'
+          f' called with `use_optimal_frequency` = {use_optimal_frequency}. A'
+          ' new grid will be created.'
+      )
+      return False
+    if selected_times is not None:
+      start_date, end_date = selected_times
+      selected_time_dims = self._meridian.expand_selected_time_dims(
+          start_date=start_date,
+          end_date=end_date,
+      )
+    else:
+      selected_time_dims = None
+    if not np.array_equal(selected_time_dims, optimization_grid.selected_times):
+      warnings.warn(
+          'Optimization grid does was created with `selected_times` ='
+          f' {optimization_grid.selected_times}, but optimization was called'
+          f' with `selected_times` = {selected_time_dims}. A new grid will be'
+          ' created.'
+      )
+      return False
+    hist_spend = self._analyzer.get_historical_spend(
+        selected_time_dims,
+        include_media=self._meridian.n_media_channels > 0,
+        include_rf=self._meridian.n_rf_channels > 0,
+    ).data
+    budget = budget or np.sum(hist_spend)
+    round_factor = _get_round_factor(budget, gtol)
+    if round_factor != optimization_grid.round_factor:
+      warnings.warn(
+          'Optimization grid does was created with `round_factor` ='
+          f' {optimization_grid.round_factor}, but optimization was called'
+          f' with `round_factor` = {round_factor}. A new grid will be'
+          ' created.'
+      )
+      return False
+
+    paid_channels = self._meridian.input_data.get_all_paid_channels()
+    if not np.array_equal(paid_channels, optimization_grid.channels):
+      warnings.warn(
+          'Optimization grid does was created with `channels` ='
+          f' {optimization_grid.channels}, but optimization was called'
+          f' with `channels` = {paid_channels}. A new grid will be'
+          ' created.'
+      )
+      return False
+    n_channels = len(optimization_grid.channels)
+    valid_pct_of_spend = _validate_pct_of_spend(
+        n_channels=n_channels,
+        hist_spend=hist_spend,
+        pct_of_spend=pct_of_spend,
+    )
+    spend = budget * valid_pct_of_spend
+    (optimization_lower_bound, optimization_upper_bound) = (
+        _get_optimization_bounds(
+            n_channels=n_channels,
+            spend=spend,
+            round_factor=optimization_grid.round_factor,
+            spend_constraint_lower=spend_constraint_lower,
+            spend_constraint_upper=spend_constraint_upper,
+        )
+    )
+    try:
+      optimization_grid.check_optimization_bounds(
+          lower_bound=optimization_lower_bound,
+          upper_bound=optimization_upper_bound,
+      )
+    except ValueError as e:
+      warnings.warn(
+          'Optimization called with bounds that are not within the grid. A new'
+          f' grid will be created. Error message: {str(e)}'
+      )
+      return False
+
+    return True
 
   def create_optimization_grid(
       self,
@@ -2207,7 +2338,7 @@ def _validate_budget(
     budget: float | None,
     target_roi: float | None,
     target_mroi: float | None,
-):
+) -> None:
   """Validates the budget optimization arguments."""
   if fixed_budget:
     if target_roi is not None:
