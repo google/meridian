@@ -71,6 +71,10 @@ class PriorDistribution:
   | `alpha_rf`            | `n_rf_channels`            |
   | `alpha_om`            | `n_organic_media_channels` |
   | `alpha_orf`           | `n_organic_rf_channels`    |
+  | `theta_m`             | `n_media_channels`         |
+  | `theta_rf`            | `n_rf_channels`            |
+  | `theta_om`            | `n_organic_media_channels` |
+  | `theta_orf`           | `n_organic_rf_channels`    |
   | `ec_m`                | `n_media_channels`         |
   | `ec_rf`               | `n_rf_channels`            |
   | `ec_om`               | `n_organic_media_channels` |
@@ -175,6 +179,18 @@ class PriorDistribution:
       organic media input. Default distribution is `Uniform(0.0, 1.0)`.
     alpha_orf: Prior distribution on the `geometric decay` Adstock parameter for
       organic RF input. Default distribution is `Uniform(0.0, 1.0)`.
+    theta_m: Prior distribution on the `delay` parameter for the Delayed
+      Adstock function for media input. Default distribution is
+      `Uniform(0.0, 8.0)`.
+    theta_rf: Prior distribution on the `delay` parameter for the Delayed
+      Adstock function for RF input. Default distribution is
+      `Uniform(0.0, 8.0)`.
+    theta_om: Prior distribution on the `delay` parameter for the Delayed
+      Adstock function for organic media input. Default distribution is
+      `Uniform(0.0, 8.0)`.
+    theta_orf: Prior distribution on the `delay` parameter for the Delayed
+      Adstock function for organic RF input. Default distribution is
+      `Uniform(0.0, 8.0)`.
     ec_m: Prior distribution on the `half-saturation` Hill parameter for media
       input. Default distribution is `TruncatedNormal(0.8, 0.8, 0.1, 10)`.
     ec_rf: Prior distribution on the `half-saturation` Hill parameter for RF
@@ -324,6 +340,26 @@ class PriorDistribution:
       default_factory=lambda: tfp.distributions.Uniform(
           0.0, 1.0, name=constants.ALPHA_ORF
       ),
+  )
+  theta_m: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, constants.DEFAULT_MAX_LAG - 1, name=constants.THETA_M
+      )
+  )
+  theta_rf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, constants.DEFAULT_MAX_LAG - 1, name=constants.THETA_RF
+      )
+  )
+  theta_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, constants.DEFAULT_MAX_LAG - 1, name=constants.THETA_OM
+      )
+  )
+  theta_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Uniform(
+          0.0, constants.DEFAULT_MAX_LAG - 1, name=constants.THETA_ORF
+      )
   )
   ec_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TruncatedNormal(
@@ -506,6 +542,7 @@ class PriorDistribution:
     _validate_media_custom_priors(self.roi_m)
     _validate_media_custom_priors(self.mroi_m)
     _validate_media_custom_priors(self.alpha_m)
+    _validate_media_custom_priors(self.theta_m)
     _validate_media_custom_priors(self.ec_m)
     _validate_media_custom_priors(self.slope_m)
     _validate_media_custom_priors(self.eta_m)
@@ -527,6 +564,7 @@ class PriorDistribution:
         )
 
     _validate_organic_media_custom_priors(self.alpha_om)
+    _validate_organic_media_custom_priors(self.theta_om)
     _validate_organic_media_custom_priors(self.ec_om)
     _validate_organic_media_custom_priors(self.slope_om)
     _validate_organic_media_custom_priors(self.eta_om)
@@ -548,6 +586,7 @@ class PriorDistribution:
         )
 
     _validate_organic_rf_custom_priors(self.alpha_orf)
+    _validate_organic_rf_custom_priors(self.theta_orf)
     _validate_organic_rf_custom_priors(self.ec_orf)
     _validate_organic_rf_custom_priors(self.slope_orf)
     _validate_organic_rf_custom_priors(self.eta_orf)
@@ -567,6 +606,7 @@ class PriorDistribution:
     _validate_rf_custom_priors(self.roi_rf)
     _validate_rf_custom_priors(self.mroi_rf)
     _validate_rf_custom_priors(self.alpha_rf)
+    _validate_rf_custom_priors(self.theta_rf)
     _validate_rf_custom_priors(self.ec_rf)
     _validate_rf_custom_priors(self.slope_rf)
     _validate_rf_custom_priors(self.eta_rf)
@@ -685,6 +725,18 @@ class PriorDistribution:
     )
     alpha_orf = tfp.distributions.BatchBroadcast(
         self.alpha_orf, n_organic_rf_channels, name=constants.ALPHA_ORF
+    )
+    theta_m = tfp.distributions.BatchBroadcast(
+        self.theta_m, n_media_channels, name=constants.THETA_M
+    )
+    theta_rf = tfp.distributions.BatchBroadcast(
+        self.theta_rf, n_rf_channels, name=constants.THETA_RF
+    )
+    theta_om = tfp.distributions.BatchBroadcast(
+        self.theta_om, n_organic_media_channels, name=constants.THETA_OM
+    )
+    theta_orf = tfp.distributions.BatchBroadcast(
+        self.theta_orf, n_organic_rf_channels, name=constants.THETA_ORF
     )
     ec_m = tfp.distributions.BatchBroadcast(
         self.ec_m, n_media_channels, name=constants.EC_M
@@ -807,6 +859,10 @@ class PriorDistribution:
         alpha_rf=alpha_rf,
         alpha_om=alpha_om,
         alpha_orf=alpha_orf,
+        theta_m=theta_m,
+        theta_rf=theta_rf,
+        theta_om=theta_om,
+        theta_orf=theta_orf,
         ec_m=ec_m,
         ec_rf=ec_rf,
         ec_om=ec_om,

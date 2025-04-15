@@ -179,6 +179,10 @@ NATIONAL = 'national'
 NATIONAL_MODEL_DEFAULT_GEO_NAME = 'national_geo'
 NATIONAL_MODEL_DEFAULT_POPULATION_VALUE = 1.0
 
+# Adstock function types
+ADSTOCK_GEOMETRIC = 'geometric'
+ADSTOCK_DELAYED = 'delayed'
+ADSTOCK_FUNCTIONS = (ADSTOCK_GEOMETRIC, ADSTOCK_DELAYED)
 
 # Media random effects distributions.
 MEDIA_EFFECTS_NORMAL = 'normal'
@@ -204,11 +208,13 @@ BASELINE_GEO = 'baseline_geo'
 PAID_MEDIA_PRIOR_TYPE_ROI = 'roi'
 PAID_MEDIA_PRIOR_TYPE_MROI = 'mroi'
 PAID_MEDIA_PRIOR_TYPE_COEFFICIENT = 'coefficient'
-PAID_MEDIA_PRIOR_TYPES = frozenset({
-    PAID_MEDIA_PRIOR_TYPE_ROI,
-    PAID_MEDIA_PRIOR_TYPE_MROI,
-    PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
-})
+PAID_MEDIA_PRIOR_TYPES = frozenset(
+    {
+        PAID_MEDIA_PRIOR_TYPE_ROI,
+        PAID_MEDIA_PRIOR_TYPE_MROI,
+        PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+    }
+)
 PAID_MEDIA_ROI_PRIOR_TYPES = frozenset(
     {PAID_MEDIA_PRIOR_TYPE_ROI, PAID_MEDIA_PRIOR_TYPE_MROI}
 )
@@ -245,6 +251,8 @@ XI_C = 'xi_c'
 XI_N = 'xi_n'
 ALPHA_M = 'alpha_m'
 ALPHA_RF = 'alpha_rf'
+THETA_M = 'theta_m'
+THETA_RF = 'theta_rf'
 EC_M = 'ec_m'
 EC_RF = 'ec_rf'
 SLOPE_M = 'slope_m'
@@ -261,6 +269,8 @@ ETA_OM = 'eta_om'
 ETA_ORF = 'eta_orf'
 ALPHA_OM = 'alpha_om'
 ALPHA_ORF = 'alpha_orf'
+THETA_OM = 'theta_om'
+THETA_ORF = 'theta_orf'
 EC_OM = 'ec_om'
 EC_ORF = 'ec_orf'
 SLOPE_OM = 'slope_om'
@@ -311,6 +321,7 @@ ORGANIC_MEDIA_PARAMETERS = (
     BETA_OM,
     ETA_OM,
     ALPHA_OM,
+    THETA_OM,
     EC_OM,
     SLOPE_OM,
 )
@@ -318,6 +329,7 @@ ORGANIC_RF_PARAMETERS = (
     BETA_ORF,
     ETA_ORF,
     ALPHA_ORF,
+    THETA_ORF,
     EC_ORF,
     SLOPE_ORF,
 )
@@ -327,8 +339,26 @@ NON_MEDIA_PARAMETERS = (
 )
 
 KNOTS_PARAMETERS = (KNOT_VALUES,)
-MEDIA_PARAMETERS = (ETA_M, BETA_M, ALPHA_M, EC_M, SLOPE_M, ROI_M, MROI_M)
-RF_PARAMETERS = (ETA_RF, BETA_RF, ALPHA_RF, EC_RF, SLOPE_RF, ROI_RF, MROI_RF)
+MEDIA_PARAMETERS = (
+    ETA_M,
+    BETA_M,
+    ALPHA_M,
+    THETA_M,
+    EC_M,
+    SLOPE_M,
+    ROI_M,
+    MROI_M,
+)
+RF_PARAMETERS = (
+    ETA_RF,
+    BETA_RF,
+    ALPHA_RF,
+    THETA_RF,
+    EC_RF,
+    SLOPE_RF,
+    ROI_RF,
+    MROI_RF,
+)
 CONTROL_PARAMETERS = (GAMMA_C, XI_C)
 SIGMA_PARAMETERS = (SIGMA,)
 GEO_PARAMETERS = (
@@ -366,11 +396,13 @@ UNSAVED_PARAMETERS = (
     GAMMA_GN_DEV,
     TAU_G_EXCL_BASELINE,  # Used to derive TAU_G.
 )
-IGNORED_PRIORS = immutabledict.immutabledict({
-    PAID_MEDIA_PRIOR_TYPE_ROI: (BETA_M, BETA_RF, MROI_M, MROI_RF),
-    PAID_MEDIA_PRIOR_TYPE_MROI: (BETA_M, BETA_RF, ROI_M, ROI_RF),
-    PAID_MEDIA_PRIOR_TYPE_COEFFICIENT: (ROI_M, ROI_RF, MROI_M, MROI_RF),
-})
+IGNORED_PRIORS = immutabledict.immutabledict(
+    {
+        PAID_MEDIA_PRIOR_TYPE_ROI: (BETA_M, BETA_RF, MROI_M, MROI_RF),
+        PAID_MEDIA_PRIOR_TYPE_MROI: (BETA_M, BETA_RF, ROI_M, ROI_RF),
+        PAID_MEDIA_PRIOR_TYPE_COEFFICIENT: (ROI_M, ROI_RF, MROI_M, MROI_RF),
+    }
+)
 
 # Inference data dimensions.
 INFERENCE_DIMS = immutabledict.immutabledict(
@@ -405,20 +437,24 @@ N_STEPS = 'n_steps'
 SAMPLE_SHAPE = 'sample_shape'
 SEED = 'seed'
 
-SAMPLE_STATS_METRICS = immutabledict.immutabledict({
-    STEP_SIZE: STEP_SIZE,
-    TARGET_LOG_PROBABILITY_TF: TARGET_LOG_PROBABILITY_ARVIZ,
-    DIVERGING: DIVERGING,
-    N_STEPS: N_STEPS,
-})
+SAMPLE_STATS_METRICS = immutabledict.immutabledict(
+    {
+        STEP_SIZE: STEP_SIZE,
+        TARGET_LOG_PROBABILITY_TF: TARGET_LOG_PROBABILITY_ARVIZ,
+        DIVERGING: DIVERGING,
+        N_STEPS: N_STEPS,
+    }
+)
 
 
 # Adstock hill functions.
-ADSTOCK_HILL_FUNCTIONS = frozenset({
-    'adstock_memory_optimized',
-    'adstock_speed_optimized',
-    'hill',
-})
+ADSTOCK_HILL_FUNCTIONS = frozenset(
+    {
+        'adstock_memory_optimized',
+        'adstock_speed_optimized',
+        'hill',
+    }
+)
 
 
 # Distribution constants.
@@ -600,6 +636,8 @@ DEFAULT_CONFIDENCE_LEVEL = 0.9
 # Default number of max draws per chain in Analyzer.expected_outcome()
 DEFAULT_BATCH_SIZE = 100
 
+# Default number of max lag in ModelSpec
+DEFAULT_MAX_LAG = 8
 
 # Optimization constants.
 CHAINS_DIMENSION = 0

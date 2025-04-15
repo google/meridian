@@ -369,8 +369,7 @@ class ModelTest(
       self.assertTrue(
           any(
               "In a nationally aggregated model, the `media_effects_dist` will"
-              " be reset to `normal`."
-              in str(warning.message)
+              " be reset to `normal`." in str(warning.message)
               for warning in w
           )
       )
@@ -454,8 +453,7 @@ class ModelTest(
           any(
               f"Custom prior(s) `{ignored_priors}` are ignored when"
               " `paid_media_prior_type` is set to"
-              f' "{paid_media_prior_type}".'
-              in str(warning.message)
+              f' "{paid_media_prior_type}".' in str(warning.message)
               for warning in w
           )
       )
@@ -790,10 +788,12 @@ class ModelTest(
       ),
       dict(
           testcase_name="3d",
-          get_total_spend=np.array([
-              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-              [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]],
-          ]),
+          get_total_spend=np.array(
+              [
+                  [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                  [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]],
+              ]
+          ),
           expected_total_spend=np.array([55.0, 77.0, 99.0]),
       ),
   )
@@ -950,7 +950,7 @@ class ModelTest(
 
   def test_adstock_hill_media_n_times_output(self):
     with mock.patch.object(
-        adstock_hill, "AdstockTransformer", autosepc=True
+        adstock_hill, "GeometricAdstockTransformer", autosepc=True
     ) as mock_adstock_cls:
       mock_adstock_cls.return_value.forward.return_value = (
           self.input_data_with_media_only.media
@@ -999,7 +999,7 @@ class ModelTest(
     )
     mock_adstock = self.enter_context(
         mock.patch.object(
-            adstock_hill.AdstockTransformer,
+            adstock_hill.GeometricAdstockTransformer,
             "forward",
             autospec=True,
             return_value=self.input_data_with_media_only.media,
@@ -1048,7 +1048,7 @@ class ModelTest(
 
   def test_adstock_hill_rf_n_times_output(self):
     with mock.patch.object(
-        adstock_hill, "AdstockTransformer", autosepc=True
+        adstock_hill, "GeometricAdstockTransformer", autosepc=True
     ) as mock_adstock_cls:
       mock_adstock_cls.return_value.forward.return_value = (
           self.input_data_with_media_and_rf.media
@@ -1084,7 +1084,7 @@ class ModelTest(
     )
     mock_adstock = self.enter_context(
         mock.patch.object(
-            adstock_hill.AdstockTransformer,
+            adstock_hill.GeometricAdstockTransformer,
             "forward",
             autospec=True,
             return_value=self.input_data_with_media_and_rf.reach
@@ -1139,6 +1139,98 @@ class ModelTest(
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
     ):
       model.load_mmm("this/path/does/not/exist")
+
+  def test_adstock_hill_media_uses_geometric_adstock(self):
+    with mock.patch.object(
+        adstock_hill,
+        "GeometricAdstockTransformer",
+        wraps=adstock_hill.GeometricAdstockTransformer,
+        autospec=True,
+    ) as mock_geometric_adstock_cls:
+      mock_geometric_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_and_rf.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_only,
+          model_spec=spec.ModelSpec(adstock="geometric"),
+      )
+      meridian.adstock_hill_media(
+          media=meridian.media_tensors.media,
+          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=np.ones(shape=(self._N_MEDIA_CHANNELS)),
+      )
+      self.assertEqual(mock_geometric_adstock_cls.call_count, 1)
+
+  def test_adstock_hill_media_uses_delayed_adstock(self):
+    with mock.patch.object(
+        adstock_hill,
+        "DelayedAdstockTransformer",
+        wraps=adstock_hill.DelayedAdstockTransformer,
+        autospec=True,
+    ) as mock_delayed_adstock_cls:
+      mock_delayed_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_and_rf.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_media_only,
+          model_spec=spec.ModelSpec(adstock="delayed"),
+      )
+      _ = meridian.adstock_hill_media(
+          media=meridian.media_tensors.media,
+          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          theta=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+      )
+      self.assertEqual(mock_delayed_adstock_cls.call_count, 1)
+
+  def test_adstock_hill_rf_uses_geometric_adstock(self):
+    with mock.patch.object(
+        adstock_hill,
+        "GeometricAdstockTransformer",
+        wraps=adstock_hill.GeometricAdstockTransformer,
+        autospec=True,
+    ) as mock_geometric_adstock_cls:
+      mock_geometric_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_and_rf.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_rf_only,
+          model_spec=spec.ModelSpec(adstock="geometric"),
+      )
+      meridian.adstock_hill_rf(
+          reach=meridian.rf_tensors.reach,
+          frequency=meridian.rf_tensors.frequency,
+          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=np.ones(shape=(self._N_RF_CHANNELS)),
+      )
+      self.assertEqual(mock_geometric_adstock_cls.call_count, 1)
+
+  def test_adstock_hill_rf_uses_delayed_adstock(self):
+    with mock.patch.object(
+        adstock_hill,
+        "DelayedAdstockTransformer",
+        wraps=adstock_hill.DelayedAdstockTransformer,
+        autospec=True,
+    ) as mock_delayed_adstock_cls:
+      mock_delayed_adstock_cls.return_value.forward.return_value = (
+          self.input_data_with_media_and_rf.media
+      )
+      meridian = model.Meridian(
+          input_data=self.input_data_with_rf_only,
+          model_spec=spec.ModelSpec(adstock="delayed"),
+      )
+      _ = meridian.adstock_hill_rf(
+          reach=meridian.rf_tensors.reach,
+          frequency=meridian.rf_tensors.frequency,
+          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          theta=np.ones(shape=(self._N_RF_CHANNELS,)),
+      )
+      self.assertEqual(mock_delayed_adstock_cls.call_count, 1)
 
 
 class NonPaidModelTest(
@@ -1423,10 +1515,12 @@ class NonPaidModelTest(
 
   def test_population_scaled_non_media_transformer_set(self):
     model_spec = spec.ModelSpec(
-        non_media_population_scaling_id=tf.convert_to_tensor([
-            True
-            for _ in self.input_data_non_media_and_organic.non_media_channel
-        ])
+        non_media_population_scaling_id=tf.convert_to_tensor(
+            [
+                True
+                for _ in self.input_data_non_media_and_organic.non_media_channel
+            ]
+        )
     )
     meridian = model.Meridian(
         input_data=self.input_data_non_media_and_organic, model_spec=model_spec
