@@ -236,9 +236,9 @@ class OptimizationGrid:
       warnings.warn(
           'Optimization accuracy may suffer owing to budget level differences.'
           ' Consider creating a new grid with smaller `gtol` if you intend to'
-          " shrink budgets significantly. It's only a problem when you use a"
-          ' smaller budget, for which the intended step size is meant to be'
-          ' smaller for one or more channels.'
+          ' shrink total budget significantly across optimization runs.'
+          ' It is only a problem when you use a much smaller budget, '
+          ' for which the intended step size is smaller. '
       )
     (spend_grid, incremental_outcome_grid) = self._trim_grid(
         spend_bound_lower=optimization_lower_bound,
