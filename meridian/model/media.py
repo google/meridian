@@ -19,7 +19,7 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.model import spec
 from meridian.model import transformers
-import tensorflow as tf
+from meridian import backend
 
 
 __all__ = [
@@ -57,13 +57,13 @@ class MediaTensors:
       this `media_spend_counterfactual` tensor.
   """
 
-  media: tf.Tensor | None = None
-  media_spend: tf.Tensor | None = None
+  media: backend.Tensor | None = None # Use backend.Tensor
+  media_spend: backend.Tensor | None = None # Use backend.Tensor
   media_transformer: transformers.MediaTransformer | None = None
-  media_scaled: tf.Tensor | None = None
-  media_counterfactual: tf.Tensor | None = None
-  media_counterfactual_scaled: tf.Tensor | None = None
-  media_spend_counterfactual: tf.Tensor | None = None
+  media_scaled: backend.Tensor | None = None # Use backend.Tensor
+  media_counterfactual: backend.Tensor | None = None # Use backend.Tensor
+  media_counterfactual_scaled: backend.Tensor | None = None # Use backend.Tensor
+  media_spend_counterfactual: backend.Tensor | None = None # Use backend.Tensor
 
 
 def build_media_tensors(
@@ -75,10 +75,10 @@ def build_media_tensors(
     return MediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  media = tf.convert_to_tensor(input_data.media, dtype=tf.float32)
-  media_spend = tf.convert_to_tensor(input_data.media_spend, dtype=tf.float32)
+  media = backend.convert_to_tensor(input_data.media, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
+  media_spend = backend.convert_to_tensor(input_data.media_spend, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
   media_transformer = transformers.MediaTransformer(
-      media, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      media, backend.convert_to_tensor(input_data.population, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
   )
   media_scaled = media_transformer.forward(media)
 
@@ -97,14 +97,14 @@ def build_media_tensors(
     media_counterfactual_scaled = factor * media_scaled
     media_spend_counterfactual = factor * media_spend
   else:
-    media_counterfactual = tf.where(
+    media_counterfactual = backend.where( # Use backend.where
         model_spec.roi_calibration_period, factor * media, media
     )
-    media_counterfactual_scaled = tf.where(
+    media_counterfactual_scaled = backend.where( # Use backend.where
         model_spec.roi_calibration_period, factor * media_scaled, media_scaled
     )
     n_times = len(input_data.time)
-    media_spend_counterfactual = tf.where(
+    media_spend_counterfactual = backend.where( # Use backend.where
         model_spec.roi_calibration_period[..., -n_times:, :],
         factor * media_spend,
         media_spend,
@@ -137,11 +137,11 @@ class OrganicMediaTensors:
       counterfactual scaled values.
   """
 
-  organic_media: tf.Tensor | None = None
+  organic_media: backend.Tensor | None = None # Use backend.Tensor
   organic_media_transformer: transformers.MediaTransformer | None = None
-  organic_media_scaled: tf.Tensor | None = None
-  organic_media_counterfactual: tf.Tensor | None = None
-  organic_media_counterfactual_scaled: tf.Tensor | None = None
+  organic_media_scaled: backend.Tensor | None = None # Use backend.Tensor
+  organic_media_counterfactual: backend.Tensor | None = None # Use backend.Tensor
+  organic_media_counterfactual_scaled: backend.Tensor | None = None # Use backend.Tensor
 
 
 def build_organic_media_tensors(
@@ -152,16 +152,16 @@ def build_organic_media_tensors(
     return OrganicMediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  organic_media = tf.convert_to_tensor(
-      input_data.organic_media, dtype=tf.float32
+  organic_media = backend.convert_to_tensor( # Use backend.convert_to_tensor
+      input_data.organic_media, dtype=backend.float32 # Use backend.float32
   )
   organic_media_transformer = transformers.MediaTransformer(
       organic_media,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      backend.convert_to_tensor(input_data.population, dtype=backend.float32), # Use backend.convert_to_tensor, backend.float32
   )
   organic_media_scaled = organic_media_transformer.forward(organic_media)
-  organic_media_counterfactual = tf.zeros_like(organic_media)
-  organic_media_counterfactual_scaled = tf.zeros_like(organic_media_scaled)
+  organic_media_counterfactual = backend.zeros_like(organic_media) # Use backend.zeros_like
+  organic_media_counterfactual_scaled = backend.zeros_like(organic_media_scaled) # Use backend.zeros_like
 
   return OrganicMediaTensors(
       organic_media=organic_media,
@@ -196,14 +196,14 @@ class RfTensors:
       `rf_spend_counterfactual` tensor.
   """
 
-  reach: tf.Tensor | None = None
-  frequency: tf.Tensor | None = None
-  rf_spend: tf.Tensor | None = None
+  reach: backend.Tensor | None = None # Use backend.Tensor
+  frequency: backend.Tensor | None = None # Use backend.Tensor
+  rf_spend: backend.Tensor | None = None # Use backend.Tensor
   reach_transformer: transformers.MediaTransformer | None = None
-  reach_scaled: tf.Tensor | None = None
-  reach_counterfactual: tf.Tensor | None = None
-  reach_counterfactual_scaled: tf.Tensor | None = None
-  rf_spend_counterfactual: tf.Tensor | None = None
+  reach_scaled: backend.Tensor | None = None # Use backend.Tensor
+  reach_counterfactual: backend.Tensor | None = None # Use backend.Tensor
+  reach_counterfactual_scaled: backend.Tensor | None = None # Use backend.Tensor
+  rf_spend_counterfactual: backend.Tensor | None = None # Use backend.Tensor
 
 
 def build_rf_tensors(
@@ -214,11 +214,11 @@ def build_rf_tensors(
   if input_data.reach is None:
     return RfTensors()
 
-  reach = tf.convert_to_tensor(input_data.reach, dtype=tf.float32)
-  frequency = tf.convert_to_tensor(input_data.frequency, dtype=tf.float32)
-  rf_spend = tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32)
+  reach = backend.convert_to_tensor(input_data.reach, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
+  frequency = backend.convert_to_tensor(input_data.frequency, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
+  rf_spend = backend.convert_to_tensor(input_data.rf_spend, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
   reach_transformer = transformers.MediaTransformer(
-      reach, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      reach, backend.convert_to_tensor(input_data.population, dtype=backend.float32) # Use backend.convert_to_tensor, backend.float32
   )
   reach_scaled = reach_transformer.forward(reach)
 
@@ -226,18 +226,18 @@ def build_rf_tensors(
   # `roi_rf` is the same, regardless of whether `roi_rf` represents ROI or
   # marginal ROI by reach.
   if model_spec.rf_roi_calibration_period is None:
-    reach_counterfactual = tf.zeros_like(reach)
-    reach_counterfactual_scaled = tf.zeros_like(reach_scaled)
-    rf_spend_counterfactual = tf.zeros_like(rf_spend)
+    reach_counterfactual = backend.zeros_like(reach) # Use backend.zeros_like
+    reach_counterfactual_scaled = backend.zeros_like(reach_scaled) # Use backend.zeros_like
+    rf_spend_counterfactual = backend.zeros_like(rf_spend) # Use backend.zeros_like
   else:
-    reach_counterfactual = tf.where(
+    reach_counterfactual = backend.where( # Use backend.where
         model_spec.rf_roi_calibration_period, 0, reach
     )
-    reach_counterfactual_scaled = tf.where(
+    reach_counterfactual_scaled = backend.where( # Use backend.where
         model_spec.rf_roi_calibration_period, 0, reach_scaled
     )
     n_times = len(input_data.time)
-    rf_spend_counterfactual = tf.where(
+    rf_spend_counterfactual = backend.where( # Use backend.where
         model_spec.rf_roi_calibration_period[..., -n_times:, :],
         0,
         rf_spend,
@@ -272,12 +272,12 @@ class OrganicRfTensors:
       counterfactual scaled values.
   """
 
-  organic_reach: tf.Tensor | None = None
-  organic_frequency: tf.Tensor | None = None
+  organic_reach: backend.Tensor | None = None # Use backend.Tensor
+  organic_frequency: backend.Tensor | None = None # Use backend.Tensor
   organic_reach_transformer: transformers.MediaTransformer | None = None
-  organic_reach_scaled: tf.Tensor | None = None
-  organic_reach_counterfactual: tf.Tensor | None = None
-  organic_reach_counterfactual_scaled: tf.Tensor | None = None
+  organic_reach_scaled: backend.Tensor | None = None # Use backend.Tensor
+  organic_reach_counterfactual: backend.Tensor | None = None # Use backend.Tensor
+  organic_reach_counterfactual_scaled: backend.Tensor | None = None # Use backend.Tensor
 
 
 def build_organic_rf_tensors(
@@ -287,19 +287,19 @@ def build_organic_rf_tensors(
   if input_data.organic_reach is None:
     return OrganicRfTensors()
 
-  organic_reach = tf.convert_to_tensor(
-      input_data.organic_reach, dtype=tf.float32
+  organic_reach = backend.convert_to_tensor( # Use backend.convert_to_tensor
+      input_data.organic_reach, dtype=backend.float32 # Use backend.float32
   )
-  organic_frequency = tf.convert_to_tensor(
-      input_data.organic_frequency, dtype=tf.float32
+  organic_frequency = backend.convert_to_tensor( # Use backend.convert_to_tensor
+      input_data.organic_frequency, dtype=backend.float32 # Use backend.float32
   )
   organic_reach_transformer = transformers.MediaTransformer(
       organic_reach,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      backend.convert_to_tensor(input_data.population, dtype=backend.float32), # Use backend.convert_to_tensor, backend.float32
   )
   organic_reach_scaled = organic_reach_transformer.forward(organic_reach)
-  organic_reach_counterfactual = tf.zeros_like(organic_reach)
-  organic_reach_counterfactual_scaled = tf.zeros_like(organic_reach_scaled)
+  organic_reach_counterfactual = backend.zeros_like(organic_reach) # Use backend.zeros_like
+  organic_reach_counterfactual_scaled = backend.zeros_like(organic_reach_scaled) # Use backend.zeros_like
 
   return OrganicRfTensors(
       organic_reach=organic_reach,

@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING
 import arviz as az
 from meridian import constants
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
+from meridian import backend
 
 if TYPE_CHECKING:
+  # Keep this type check import separate
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 
@@ -43,8 +43,8 @@ class MCMCOOMError(Exception):
 
 
 def _get_tau_g(
-    tau_g_excl_baseline: tf.Tensor, baseline_geo_idx: int
-) -> tfp.distributions.Distribution:
+    tau_g_excl_baseline: backend.Tensor, baseline_geo_idx: int
+) -> backend.tfp_distributions.Distribution:
   """Computes `tau_g` from `tau_g_excl_baseline`.
 
   This function computes `tau_g` by inserting a column of zeros at the
@@ -61,22 +61,23 @@ def _get_tau_g(
     `tau_g_excl_baseline` elsewhere.
   """
   rank = len(tau_g_excl_baseline.shape)
-  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else 1
-  tau_g = tf.concat(
+  shape = backend.shape(tau_g_excl_baseline)[:-1] + [1] if rank != 1 else 1 # Use backend.shape
+  tau_g = backend.concat(
       [
           tau_g_excl_baseline[..., :baseline_geo_idx],
-          tf.zeros(shape, dtype=tau_g_excl_baseline.dtype),
+          backend.zeros(shape, dtype=tau_g_excl_baseline.dtype), # Use backend.zeros
           tau_g_excl_baseline[..., baseline_geo_idx:],
       ],
       axis=rank - 1,
   )
-  return tfp.distributions.Deterministic(tau_g, name="tau_g")
+  return backend.tfp_distributions.Deterministic(tau_g, name="tau_g")
 
 
-@tf.function(autograph=False, jit_compile=True)
-def _xla_windowed_adaptive_nuts(**kwargs):
-  """XLA wrapper for windowed_adaptive_nuts."""
-  return tfp.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
+# This function is now defined in the backend, no need to redefine here.
+# @backend.function(autograph=False, jit_compile=True) # Assuming tf.function maps to backend.function
+# def _xla_windowed_adaptive_nuts(**kwargs):
+#   """XLA wrapper for windowed_adaptive_nuts."""
+#   return backend.tfp_experimental_mcmc.windowed_adaptive_nuts(**kwargs) # Use backend.tfp_experimental_mcmc
 
 
 class PosteriorMCMCSampler:
@@ -85,7 +86,7 @@ class PosteriorMCMCSampler:
   def __init__(self, meridian: "model.Meridian"):
     self._meridian = meridian
 
-  def _get_joint_dist_unpinned(self) -> tfp.distributions.Distribution:
+  def _get_joint_dist_unpinned(self) -> backend.tfp_distributions.Distribution:
     """Returns a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     mmm = self._meridian
     mmm.populate_cached_properties()
@@ -121,7 +122,7 @@ class PosteriorMCMCSampler:
         mmm.prior_sampler_callable.get_roi_prior_beta_rf_value
     )
 
-    @tfp.distributions.JointDistributionCoroutineAutoBatched
+    @backend.tfp_distributions.JointDistributionCoroutineAutoBatched # Use backend.tfp_distributions
     def joint_dist_unpinned():
       # Sample directly from prior.
       knot_values = yield prior_broadcast.knot_values
@@ -129,7 +130,7 @@ class PosteriorMCMCSampler:
       xi_c = yield prior_broadcast.xi_c
       sigma = yield prior_broadcast.sigma
 
-      tau_g_excl_baseline = yield tfp.distributions.Sample(
+      tau_g_excl_baseline = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
           prior_broadcast.tau_g_excl_baseline,
           name=constants.TAU_G_EXCL_BASELINE,
       )
@@ -137,27 +138,27 @@ class PosteriorMCMCSampler:
           tau_g_excl_baseline=tau_g_excl_baseline,
           baseline_geo_idx=baseline_geo_idx,
       )
-      mu_t = yield tfp.distributions.Deterministic(
-          tf.einsum(
+      mu_t = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
+          backend.einsum( # Use backend.einsum
               "k,kt->t",
               knot_values,
-              tf.convert_to_tensor(knot_info.weights),
+              backend.convert_to_tensor(knot_info.weights), # Use backend.convert_to_tensor
           ),
           name=constants.MU_T,
       )
 
-      tau_gt = tau_g[:, tf.newaxis] + mu_t
-      combined_media_transformed = tf.zeros(
-          shape=(n_geos, n_times, 0), dtype=tf.float32
+      tau_gt = tau_g[:, backend.newaxis] + mu_t # Use backend.newaxis
+      combined_media_transformed = backend.zeros( # Use backend.zeros
+          shape=(n_geos, n_times, 0), dtype=backend.float32 # Use backend.float32
       )
-      combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float32)
+      combined_beta = backend.zeros(shape=(n_geos, 0), dtype=backend.float32) # Use backend.zeros, backend.float32
       if media_tensors.media is not None:
         alpha_m = yield prior_broadcast.alpha_m
         ec_m = yield prior_broadcast.ec_m
         eta_m = yield prior_broadcast.eta_m
         slope_m = yield prior_broadcast.slope_m
-        beta_gm_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gm_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+            backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
             [n_geos, n_media_channels],
             name=constants.BETA_GM_DEV,
         )
@@ -182,7 +183,7 @@ class PosteriorMCMCSampler:
               slope_m,
               media_transformed,
           )
-          beta_m = yield tfp.distributions.Deterministic(
+          beta_m = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
               beta_m_value, name=constants.BETA_M
           )
         else:
@@ -192,23 +193,23 @@ class PosteriorMCMCSampler:
         beta_gm_value = (
             beta_eta_combined
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else tf.math.exp(beta_eta_combined)
+            else backend.exp(beta_eta_combined) # Use backend.exp
         )
-        beta_gm = yield tfp.distributions.Deterministic(
+        beta_gm = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
             beta_gm_value, name=constants.BETA_GM
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = backend.concat( # Use backend.concat
             [combined_media_transformed, media_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gm], axis=-1)
+        combined_beta = backend.concat([combined_beta, beta_gm], axis=-1) # Use backend.concat
 
       if rf_tensors.reach is not None:
         alpha_rf = yield prior_broadcast.alpha_rf
         ec_rf = yield prior_broadcast.ec_rf
         eta_rf = yield prior_broadcast.eta_rf
         slope_rf = yield prior_broadcast.slope_rf
-        beta_grf_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_grf_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+            backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
             [n_geos, n_rf_channels],
             name=constants.BETA_GRF_DEV,
         )
@@ -235,7 +236,7 @@ class PosteriorMCMCSampler:
               slope_rf,
               rf_transformed,
           )
-          beta_rf = yield tfp.distributions.Deterministic(
+          beta_rf = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
               beta_rf_value,
               name=constants.BETA_RF,
           )
@@ -246,23 +247,23 @@ class PosteriorMCMCSampler:
         beta_grf_value = (
             beta_eta_combined
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else tf.math.exp(beta_eta_combined)
+            else backend.exp(beta_eta_combined) # Use backend.exp
         )
-        beta_grf = yield tfp.distributions.Deterministic(
+        beta_grf = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
             beta_grf_value, name=constants.BETA_GRF
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = backend.concat( # Use backend.concat
             [combined_media_transformed, rf_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_grf], axis=-1)
+        combined_beta = backend.concat([combined_beta, beta_grf], axis=-1) # Use backend.concat
 
       if organic_media_tensors.organic_media is not None:
         alpha_om = yield prior_broadcast.alpha_om
         ec_om = yield prior_broadcast.ec_om
         eta_om = yield prior_broadcast.eta_om
         slope_om = yield prior_broadcast.slope_om
-        beta_gom_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gom_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+            backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
             [n_geos, n_organic_media_channels],
             name=constants.BETA_GOM_DEV,
         )
@@ -278,23 +279,23 @@ class PosteriorMCMCSampler:
         beta_gom_value = (
             beta_eta_combined
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else tf.math.exp(beta_eta_combined)
+            else backend.exp(beta_eta_combined) # Use backend.exp
         )
-        beta_gom = yield tfp.distributions.Deterministic(
+        beta_gom = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
             beta_gom_value, name=constants.BETA_GOM
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = backend.concat( # Use backend.concat
             [combined_media_transformed, organic_media_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gom], axis=-1)
+        combined_beta = backend.concat([combined_beta, beta_gom], axis=-1) # Use backend.concat
 
       if organic_rf_tensors.organic_reach is not None:
         alpha_orf = yield prior_broadcast.alpha_orf
         ec_orf = yield prior_broadcast.ec_orf
         eta_orf = yield prior_broadcast.eta_orf
         slope_orf = yield prior_broadcast.slope_orf
-        beta_gorf_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gorf_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+            backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
             [n_geos, n_organic_rf_channels],
             name=constants.BETA_GORF_DEV,
         )
@@ -312,43 +313,43 @@ class PosteriorMCMCSampler:
         beta_gorf_value = (
             beta_eta_combined
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else tf.math.exp(beta_eta_combined)
+            else backend.exp(beta_eta_combined) # Use backend.exp
         )
-        beta_gorf = yield tfp.distributions.Deterministic(
+        beta_gorf = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
             beta_gorf_value, name=constants.BETA_GORF
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = backend.concat( # Use backend.concat
             [combined_media_transformed, organic_rf_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gorf], axis=-1)
+        combined_beta = backend.concat([combined_beta, beta_gorf], axis=-1) # Use backend.concat
 
-      sigma_gt = tf.transpose(tf.broadcast_to(sigma, [n_times, n_geos]))
-      gamma_gc_dev = yield tfp.distributions.Sample(
-          tfp.distributions.Normal(0, 1),
+      sigma_gt = backend.transpose(backend.broadcast_to(sigma, [n_times, n_geos])) # Use backend.transpose, backend.broadcast_to
+      gamma_gc_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+          backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
           [n_geos, n_controls],
           name=constants.GAMMA_GC_DEV,
       )
-      gamma_gc = yield tfp.distributions.Deterministic(
+      gamma_gc = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
           gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
       )
       y_pred_combined_media = (
           tau_gt
-          + tf.einsum("gtm,gm->gt", combined_media_transformed, combined_beta)
-          + tf.einsum("gtc,gc->gt", controls_scaled, gamma_gc)
+          + backend.einsum("gtm,gm->gt", combined_media_transformed, combined_beta) # Use backend.einsum
+          + backend.einsum("gtc,gc->gt", controls_scaled, gamma_gc) # Use backend.einsum
       )
 
       if mmm.non_media_treatments is not None:
         gamma_n = yield prior_broadcast.gamma_n
         xi_n = yield prior_broadcast.xi_n
-        gamma_gn_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        gamma_gn_dev = yield backend.tfp_distributions.Sample( # Use backend.tfp_distributions
+            backend.tfp_distributions.Normal(0, 1), # Use backend.tfp_distributions
             [n_geos, n_non_media_channels],
             name=constants.GAMMA_GN_DEV,
         )
-        gamma_gn = yield tfp.distributions.Deterministic(
+        gamma_gn = yield backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
             gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
         )
-        y_pred = y_pred_combined_media + tf.einsum(
+        y_pred = y_pred_combined_media + backend.einsum( # Use backend.einsum
             "gtn,gn->gt", non_media_treatments_scaled, gamma_gn
         )
       else:
@@ -360,21 +361,22 @@ class PosteriorMCMCSampler:
       # deviation to `1/sqrt(2pi)`, so the log-density is 0 regardless of the
       # sampled posterior parameter values.
       if holdout_id is not None:
-        y_pred_holdout = tf.where(holdout_id, 0.0, y_pred)
-        test_sd = tf.cast(1.0 / np.sqrt(2.0 * np.pi), tf.float32)
-        sigma_gt_holdout = tf.where(holdout_id, test_sd, sigma_gt)
-        yield tfp.distributions.Normal(
+        y_pred_holdout = backend.where(holdout_id, 0.0, y_pred) # Use backend.where
+        test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32) # Use backend.cast, backend.float32
+        sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt) # Use backend.where
+        yield backend.tfp_distributions.Normal( # Use backend.tfp_distributions
             y_pred_holdout, sigma_gt_holdout, name="y"
         )
       else:
-        yield tfp.distributions.Normal(y_pred, sigma_gt, name="y")
+        yield backend.tfp_distributions.Normal(y_pred, sigma_gt, name="y") # Use backend.tfp_distributions
 
     return joint_dist_unpinned
 
-  def _get_joint_dist(self) -> tfp.distributions.Distribution:
+  def _get_joint_dist(self) -> backend.tfp_distributions.Distribution:
+  def _get_joint_dist(self) -> backend.tfp_distributions.Distribution:
     mmm = self._meridian
     y = (
-        tf.where(mmm.holdout_id, 0.0, mmm.kpi_scaled)
+        backend.where(mmm.holdout_id, 0.0, mmm.kpi_scaled) # Use backend.where
         if mmm.holdout_id is not None
         else mmm.kpi_scaled
     )
@@ -386,7 +388,7 @@ class PosteriorMCMCSampler:
       n_adapt: int,
       n_burnin: int,
       n_keep: int,
-      current_state: Mapping[str, tf.Tensor] | None = None,
+      current_state: Mapping[str, backend.Tensor] | None = None, # Use backend.Tensor
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
       max_tree_depth: int = 10,
@@ -444,7 +446,7 @@ class PosteriorMCMCSampler:
       seed: An `int32[2]` Tensor or a Python list or tuple of 2 `int`s, which
         will be treated as stateless seeds; or a Python `int` or `None`, which
         will be treated as stateful seeds. See [tfp.random.sanitize_seed]
-        (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
+        https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed). # Needs backend.tfp_random
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
@@ -455,17 +457,17 @@ class PosteriorMCMCSampler:
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
         a list of integers as `n_chains` to sample chains serially. For more
         information, see
-        [ResourceExhaustedError when running Meridian.sample_posterior]
+        [backend.ResourceExhaustedError when running Meridian.sample_posterior] # Use backend.ResourceExhaustedError
         (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
     if seed is not None and isinstance(seed, Sequence) and len(seed) != 2:
       raise ValueError(
           "Invalid seed: Must be either a single integer (stateful seed) or a"
           " pair of two integers (stateless seed). See"
-          " [tfp.random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)"
+          " [backend.tfp_random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)" # Use backend.tfp_random
           " for details."
       )
-    seed = tfp.random.sanitize_seed(seed) if seed is not None else None
+    seed = backend.tfp_random.sanitize_seed(seed) if seed is not None else None # Use backend.tfp_random
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
 
@@ -473,7 +475,8 @@ class PosteriorMCMCSampler:
     traces = []
     for n_chains_batch in n_chains_list:
       try:
-        mcmc = _xla_windowed_adaptive_nuts(
+        # Use backend.xla_windowed_adaptive_nuts directly
+        mcmc = backend.xla_windowed_adaptive_nuts(
             n_draws=n_burnin + n_keep,
             joint_dist=self._get_joint_dist(),
             n_chains=n_chains_batch,
@@ -488,7 +491,7 @@ class PosteriorMCMCSampler:
             seed=seed,
             **pins,
         )
-      except tf.errors.ResourceExhaustedError as error:
+      except backend.ResourceExhaustedError as error: # Use backend.ResourceExhaustedError
         raise MCMCOOMError(
             "ERROR: Out of memory. Try reducing `n_keep` or pass a list of"
             " integers as `n_chains` to sample chains serially (see"
@@ -500,9 +503,9 @@ class PosteriorMCMCSampler:
       traces.append(mcmc.trace)
 
     mcmc_states = {
-        k: tf.einsum(
+        k: backend.einsum( # Use backend.einsum
             "ij...->ji...",
-            tf.concat([state[k] for state in states], axis=1)[n_burnin:, ...],
+            backend.concat([state[k] for state in states], axis=1)[n_burnin:, ...], # Use backend.concat
         )
         for k in states[0].keys()
         if k not in constants.UNSAVED_PARAMETERS
@@ -520,10 +523,10 @@ class PosteriorMCMCSampler:
     mcmc_trace = {}
     for k in traces[0].keys():
       if k not in constants.IGNORED_TRACE_METRICS:
-        mcmc_trace[k] = tf.concat(
+        mcmc_trace[k] = backend.concat( # Use backend.concat
             [
-                tf.broadcast_to(
-                    tf.transpose(trace[k][n_burnin:, ...]),
+                backend.broadcast_to( # Use backend.broadcast_to
+                    backend.transpose(trace[k][n_burnin:, ...]), # Use backend.transpose
                     [n_chains_list[i], n_keep],
                 )
                 for i, trace in enumerate(traces)
@@ -563,7 +566,7 @@ class PosteriorMCMCSampler:
     # Tensorflow does not include a "draw" dimension on step size metric if same
     # step size is used for all chains. Step size must be broadcast to the
     # correct shape.
-    sample_stats[constants.STEP_SIZE] = tf.broadcast_to(
+    sample_stats[constants.STEP_SIZE] = backend.broadcast_to( # Use backend.broadcast_to
         sample_stats[constants.STEP_SIZE], [total_chains, n_keep]
     )
     sample_stats_dims[constants.STEP_SIZE] = [constants.CHAIN, constants.DRAW]

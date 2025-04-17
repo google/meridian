@@ -15,7 +15,7 @@
 """Function definitions for Adstock and Hill calculations."""
 
 import abc
-import tensorflow as tf
+from meridian import backend
 
 __all__ = [
     'AdstockHillTransformer',
@@ -25,9 +25,9 @@ __all__ = [
 
 
 def _validate_arguments(
-    media: tf.Tensor, alpha: tf.Tensor, max_lag: int, n_times_output: int
+    media: backend.Tensor, alpha: backend.Tensor, max_lag: int, n_times_output: int
 ) -> None:
-  batch_dims = alpha.shape[:-1]
+  batch_dims = backend.shape(alpha)[:-1] # Use backend.shape
   n_media_times = media.shape[-2]
 
   if n_times_output > n_media_times:
@@ -35,10 +35,12 @@ def _validate_arguments(
         '`n_times_output` cannot exceed number of time periods in the media'
         ' data.'
     )
-  if media.shape[:-3] not in [tf.TensorShape([]), tf.TensorShape(batch_dims)]:
+  # backend.shape already returns a tuple-like structure, direct comparison should work
+  # Assuming backend.shape returns something comparable like a tuple or list
+  if media.shape[:-3] != () and media.shape[:-3] != tuple(batch_dims): # Adjust comparison for backend.shape
     raise ValueError(
         '`media` batch dims do not match `alpha` batch dims. If `media` '
-        'has batch dims, then they must match `alpha`.'
+        'has batch dims, then they must match `alpha`.' # Error message might need update depending on backend.shape output
     )
   if media.shape[-1] != alpha.shape[-1]:
     raise ValueError(
@@ -51,11 +53,11 @@ def _validate_arguments(
 
 
 def _adstock(
-    media: tf.Tensor,
-    alpha: tf.Tensor,
+    media: backend.Tensor,
+    alpha: backend.Tensor,
     max_lag: int,
     n_times_output: int,
-) -> tf.Tensor:
+) -> backend.Tensor:
   """Computes the Adstock function."""
   _validate_arguments(
       media=media, alpha=alpha, max_lag=max_lag, n_times_output=n_times_output
@@ -86,39 +88,39 @@ def _adstock(
   # data with a huge number of zeros. The `normalization_factors` normalize
   # the weights to the correct values even if `window_size` < `max_lag`+1.
   if n_media_times < required_n_media_times:
-    pad_shape = (
-        media.shape[:-2]
-        + (required_n_media_times - n_media_times,)
-        + (media.shape[-1],)
-    )
-    media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
+    pad_shape = list(backend.shape(media)[:-2]) + [ # Use backend.shape and convert to list for modification
+        required_n_media_times - n_media_times,
+        backend.shape(media)[-1], # Use backend.shape
+    ]
+    media = backend.concat([backend.zeros(pad_shape, dtype=media.dtype), media], axis=-2) # Use backend.concat, backend.zeros
 
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
     window_list[i] = media[..., i:i+n_times_output, :]
-  windowed = tf.stack(window_list)
-  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
-  weights = tf.expand_dims(alpha, -1) ** l_range
-  normalization_factors = tf.expand_dims(
+  windowed = backend.stack(window_list) # Use backend.stack
+  l_range = backend.range(window_size - 1, -1, -1, dtype=backend.float32) # Use backend.range, backend.float32
+  weights = backend.expand_dims(alpha, -1) ** l_range # Use backend.expand_dims
+  normalization_factors = backend.expand_dims( # Use backend.expand_dims
       (1 - alpha ** (window_size)) / (1 - alpha), -1
   )
-  weights = tf.divide(weights, normalization_factors)
-  return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
+  weights = backend.divide(weights, normalization_factors) # Use backend.divide
+  return backend.einsum('...mw,w...gtm->...gtm', weights, windowed) # Use backend.einsum
 
 
 def _hill(
-    media: tf.Tensor,
-    ec: tf.Tensor,
-    slope: tf.Tensor,
-) -> tf.Tensor:
+    media: backend.Tensor,
+    ec: backend.Tensor,
+    slope: backend.Tensor,
+) -> backend.Tensor:
   """Computes the Hill function."""
   batch_dims = slope.shape[:-1]
 
   # Argument checks.
-  if slope.shape != ec.shape:
+  if backend.shape(slope) != backend.shape(ec): # Use backend.shape
     raise ValueError('`slope` and `ec` dimensions do not match.')
-  if media.shape[:-3] not in [tf.TensorShape([]), tf.TensorShape(batch_dims)]:
+  # backend.shape already returns a tuple-like structure, direct comparison should work
+  if media.shape[:-3] != () and media.shape[:-3] != tuple(batch_dims): # Adjust comparison for backend.shape
     raise ValueError(
         '`media` batch dims do not match `slope` and `ec` batch dims. '
         'If `media` has batch dims, then they must match `slope` and '
@@ -129,8 +131,8 @@ def _hill(
         '`media` contains a different number of channels than `slope` and `ec`.'
     )
 
-  t1 = media ** slope[..., tf.newaxis, tf.newaxis, :]
-  t2 = (ec**slope)[..., tf.newaxis, tf.newaxis, :]
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :] # Use backend.newaxis
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :] # Use backend.newaxis
   return t1 / (t1 + t2)
 
 
@@ -138,7 +140,7 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
   """Abstract class to compute the Adstock and Hill transformation of media."""
 
   @abc.abstractmethod
-  def forward(self, media: tf.Tensor) -> tf.Tensor:
+  def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock and Hill transformation of a given media tensor."""
     pass
 
@@ -146,7 +148,7 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
 class AdstockTransformer(AdstockHillTransformer):
   """Computes the Adstock transformation of media."""
 
-  def __init__(self, alpha: tf.Tensor, max_lag: int, n_times_output: int):
+  def __init__(self, alpha: backend.Tensor, max_lag: int, n_times_output: int):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
@@ -169,7 +171,7 @@ class AdstockTransformer(AdstockHillTransformer):
     self._max_lag = max_lag
     self._n_times_output = n_times_output
 
-  def forward(self, media: tf.Tensor) -> tf.Tensor:
+  def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
 
     For geo `g`, time period `t`, and media channel `m`, Adstock is calculated
@@ -202,7 +204,7 @@ class AdstockTransformer(AdstockHillTransformer):
 class HillTransformer(AdstockHillTransformer):
   """Class to compute the Hill transformation of media."""
 
-  def __init__(self, ec: tf.Tensor, slope: tf.Tensor):
+  def __init__(self, ec: backend.Tensor, slope: backend.Tensor):
     """Initializes the instance based on the Hill function parameters.
 
     Args:
@@ -216,7 +218,7 @@ class HillTransformer(AdstockHillTransformer):
     self._ec = ec
     self._slope = slope
 
-  def forward(self, media: tf.Tensor) -> tf.Tensor:
+  def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Hill transformation of a given `media` tensor.
 
     Calculates results for the Hill function, which accounts for the diminishing

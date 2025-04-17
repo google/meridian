@@ -25,8 +25,10 @@ from typing import Any
 import warnings
 from meridian import constants
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
+# Remove direct imports and use backend
+# import tensorflow as tf
+# import tensorflow_probability as tfp
+from meridian import backend
 
 
 __all__ = [
@@ -235,162 +237,162 @@ class PriorDistribution:
       must specify it.
   """
 
-  knot_values: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Normal(
+  knot_values: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Normal( # Use backend.tfp_distributions
           0.0, 5.0, name=constants.KNOT_VALUES
       ),
   )
-  tau_g_excl_baseline: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Normal(
+  tau_g_excl_baseline: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Normal( # Use backend.tfp_distributions
           0.0, 5.0, name=constants.TAU_G_EXCL_BASELINE
       ),
   )
-  beta_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  beta_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.BETA_M
       ),
   )
-  beta_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  beta_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.BETA_RF
       ),
   )
-  beta_om: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  beta_om: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.BETA_OM
       ),
   )
-  beta_orf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  beta_orf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.BETA_ORF
       ),
   )
-  eta_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  eta_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           1.0, name=constants.ETA_M
       ),
   )
-  eta_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  eta_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           1.0, name=constants.ETA_RF
       ),
   )
-  eta_om: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  eta_om: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           1.0, name=constants.ETA_OM
       ),
   )
-  eta_orf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  eta_orf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           1.0, name=constants.ETA_ORF
       ),
   )
-  gamma_c: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Normal(
+  gamma_c: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Normal( # Use backend.tfp_distributions
           0.0, 5.0, name=constants.GAMMA_C
       ),
   )
-  gamma_n: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Normal(
+  gamma_n: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Normal( # Use backend.tfp_distributions
           0.0, 5.0, name=constants.GAMMA_N
       ),
   )
-  xi_c: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  xi_c: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.XI_C
       ),
   )
-  xi_n: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  xi_n: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.XI_N
       ),
   )
-  alpha_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Uniform(
+  alpha_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Uniform( # Use backend.tfp_distributions
           0.0, 1.0, name=constants.ALPHA_M
       ),
   )
-  alpha_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Uniform(
+  alpha_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Uniform( # Use backend.tfp_distributions
           0.0, 1.0, name=constants.ALPHA_RF
       ),
   )
-  alpha_om: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Uniform(
+  alpha_om: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Uniform( # Use backend.tfp_distributions
           0.0, 1.0, name=constants.ALPHA_OM
       ),
   )
-  alpha_orf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Uniform(
+  alpha_orf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Uniform( # Use backend.tfp_distributions
           0.0, 1.0, name=constants.ALPHA_ORF
       ),
   )
-  ec_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.TruncatedNormal(
+  ec_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.TruncatedNormal( # Use backend.tfp_distributions
           0.8, 0.8, 0.1, 10, name=constants.EC_M
       ),
   )
-  ec_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.TransformedDistribution(
-          tfp.distributions.LogNormal(0.7, 0.4),
-          tfp.bijectors.Shift(0.1),
+  ec_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.TransformedDistribution( # Use backend.tfp_distributions
+          backend.tfp_distributions.LogNormal(0.7, 0.4), # Use backend.tfp_distributions
+          backend.tfp_bijectors.Shift(0.1), # Use backend.tfp_bijectors
           name=constants.EC_RF,
       ),
   )
-  ec_om: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.TruncatedNormal(
+  ec_om: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.TruncatedNormal( # Use backend.tfp_distributions
           0.8, 0.8, 0.1, 10, name=constants.EC_OM
       ),
   )
-  ec_orf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.TransformedDistribution(
-          tfp.distributions.LogNormal(0.7, 0.4),
-          tfp.bijectors.Shift(0.1),
+  ec_orf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.TransformedDistribution( # Use backend.tfp_distributions
+          backend.tfp_distributions.LogNormal(0.7, 0.4), # Use backend.tfp_distributions
+          backend.tfp_bijectors.Shift(0.1), # Use backend.tfp_bijectors
           name=constants.EC_ORF,
       ),
   )
-  slope_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Deterministic(
+  slope_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
           1.0, name=constants.SLOPE_M
       ),
   )
-  slope_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  slope_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.7, 0.4, name=constants.SLOPE_RF
       ),
   )
-  slope_om: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.Deterministic(
+  slope_om: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.Deterministic( # Use backend.tfp_distributions
           1.0, name=constants.SLOPE_OM
       ),
   )
-  slope_orf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  slope_orf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.7, 0.4, name=constants.SLOPE_ORF
       ),
   )
-  sigma: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.HalfNormal(
+  sigma: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.HalfNormal( # Use backend.tfp_distributions
           5.0, name=constants.SIGMA
       ),
   )
-  roi_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  roi_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.2, 0.9, name=constants.ROI_M
       ),
   )
-  roi_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  roi_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.2, 0.9, name=constants.ROI_RF
       ),
   )
-  mroi_m: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  mroi_m: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.0, 0.5, name=constants.MROI_M
       ),
   )
-  mroi_rf: tfp.distributions.Distribution = dataclasses.field(
-      default_factory=lambda: tfp.distributions.LogNormal(
+  mroi_rf: backend.tfp_distributions.Distribution = dataclasses.field( # Use backend.tfp_distributions
+      default_factory=lambda: backend.tfp_distributions.LogNormal( # Use backend.tfp_distributions
           0.0, 0.5, name=constants.MROI_RF
       ),
   )
@@ -399,7 +401,7 @@ class PriorDistribution:
     # Override to support pickling.
     def _unpack_distribution_params(
         params: MutableMapping[str, Any],
-    ) -> tfp.distributions.Distribution:
+    ) -> backend.tfp_distributions.Distribution: # Use backend.tfp_distributions
       if constants.DISTRIBUTION in params:
         params[constants.DISTRIBUTION] = _unpack_distribution_params(
             params[constants.DISTRIBUTION]
@@ -418,7 +420,7 @@ class PriorDistribution:
     state = self.__dict__.copy()
 
     def _pack_distribution_params(
-        dist: tfp.distributions.Distribution,
+        dist: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> MutableMapping[str, Any]:
       params = dist.parameters
       params[constants.DISTRIBUTION_TYPE] = type(dist)
@@ -434,10 +436,10 @@ class PriorDistribution:
     return state
 
   def has_deterministic_param(
-      self, param: tfp.distributions.Distribution
+      self, param: backend.tfp_distributions.Distribution # Use backend.tfp_distributions
   ) -> bool:
     return hasattr(self, param) and isinstance(
-        getattr(self, param).distribution, tfp.distributions.Deterministic
+        getattr(self, param).distribution, backend.tfp_distributions.Deterministic # Use backend.tfp_distributions
     )
 
   def broadcast(
@@ -493,10 +495,12 @@ class PriorDistribution:
     """
 
     def _validate_media_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
+      # Assuming backend has shape_as_list or equivalent for batch_shape
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
       if (
-          param.batch_shape.as_list()
+          batch_shape_list
           and n_media_channels != param.batch_shape[0]
       ):
         raise ValueError(
@@ -515,10 +519,11 @@ class PriorDistribution:
     _validate_media_custom_priors(self.beta_m)
 
     def _validate_organic_media_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
       if (
-          param.batch_shape.as_list()
+          batch_shape_list
           and n_organic_media_channels != param.batch_shape[0]
       ):
         raise ValueError(
@@ -536,10 +541,11 @@ class PriorDistribution:
     _validate_organic_media_custom_priors(self.beta_om)
 
     def _validate_organic_rf_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
       if (
-          param.batch_shape.as_list()
+          batch_shape_list
           and n_organic_rf_channels != param.batch_shape[0]
       ):
         raise ValueError(
@@ -557,9 +563,10 @@ class PriorDistribution:
     _validate_organic_rf_custom_priors(self.beta_orf)
 
     def _validate_rf_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
-      if param.batch_shape.as_list() and n_rf_channels != param.batch_shape[0]:
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
+      if batch_shape_list and n_rf_channels != batch_shape_list[0]:
         raise ValueError(
             f'Custom priors length ({param.batch_shape[0]}) must match the '
             f'number of RF channels ({n_rf_channels}), representing a custom '
@@ -576,9 +583,10 @@ class PriorDistribution:
     _validate_rf_custom_priors(self.beta_rf)
 
     def _validate_control_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
-      if param.batch_shape.as_list() and n_controls != param.batch_shape[0]:
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
+      if batch_shape_list and n_controls != batch_shape_list[0]:
         raise ValueError(
             f'Custom priors length ({param.batch_shape[0]}) must match the '
             f'number of control variables ({n_controls}), representing a '
@@ -590,10 +598,11 @@ class PriorDistribution:
     _validate_control_custom_priors(self.xi_c)
 
     def _validate_non_media_custom_priors(
-        param: tfp.distributions.Distribution,
+        param: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
     ) -> None:
+      batch_shape_list = backend.shape_as_list(param.batch_shape)
       if (
-          param.batch_shape.as_list()
+          batch_shape_list
           and n_non_media_channels != param.batch_shape[0]
       ):
         raise ValueError(
@@ -607,7 +616,7 @@ class PriorDistribution:
     _validate_non_media_custom_priors(self.gamma_n)
     _validate_non_media_custom_priors(self.xi_n)
 
-    knot_values = tfp.distributions.BatchBroadcast(
+    knot_values = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.knot_values,
         n_knots,
         name=constants.KNOT_VALUES,
@@ -618,19 +627,19 @@ class PriorDistribution:
       )
     else:
       tau_g_converted = self.tau_g_excl_baseline
-    tau_g_excl_baseline = tfp.distributions.BatchBroadcast(
+    tau_g_excl_baseline = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         tau_g_converted, n_geos - 1, name=constants.TAU_G_EXCL_BASELINE
     )
-    beta_m = tfp.distributions.BatchBroadcast(
+    beta_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.beta_m, n_media_channels, name=constants.BETA_M
     )
-    beta_rf = tfp.distributions.BatchBroadcast(
+    beta_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.beta_rf, n_rf_channels, name=constants.BETA_RF
     )
-    beta_om = tfp.distributions.BatchBroadcast(
+    beta_om = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.beta_om, n_organic_media_channels, name=constants.BETA_OM
     )
-    beta_orf = tfp.distributions.BatchBroadcast(
+    beta_orf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.beta_orf, n_organic_rf_channels, name=constants.BETA_ORF
     )
     if is_national:
@@ -643,70 +652,70 @@ class PriorDistribution:
       eta_rf_converted = self.eta_rf
       eta_om_converted = self.eta_om
       eta_orf_converted = self.eta_orf
-    eta_m = tfp.distributions.BatchBroadcast(
+    eta_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         eta_m_converted, n_media_channels, name=constants.ETA_M
     )
-    eta_rf = tfp.distributions.BatchBroadcast(
+    eta_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         eta_rf_converted, n_rf_channels, name=constants.ETA_RF
     )
-    eta_om = tfp.distributions.BatchBroadcast(
+    eta_om = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         eta_om_converted,
         n_organic_media_channels,
         name=constants.ETA_OM,
     )
-    eta_orf = tfp.distributions.BatchBroadcast(
+    eta_orf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         eta_orf_converted, n_organic_rf_channels, name=constants.ETA_ORF
     )
-    gamma_c = tfp.distributions.BatchBroadcast(
+    gamma_c = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.gamma_c, n_controls, name=constants.GAMMA_C
     )
     if is_national:
       xi_c_converted = _convert_to_deterministic_0_distribution(self.xi_c)
     else:
       xi_c_converted = self.xi_c
-    xi_c = tfp.distributions.BatchBroadcast(
+    xi_c = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         xi_c_converted, n_controls, name=constants.XI_C
     )
-    gamma_n = tfp.distributions.BatchBroadcast(
+    gamma_n = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.gamma_n, n_non_media_channels, name=constants.GAMMA_N
     )
     if is_national:
       xi_n_converted = _convert_to_deterministic_0_distribution(self.xi_n)
     else:
       xi_n_converted = self.xi_n
-    xi_n = tfp.distributions.BatchBroadcast(
+    xi_n = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         xi_n_converted, n_non_media_channels, name=constants.XI_N
     )
-    alpha_m = tfp.distributions.BatchBroadcast(
+    alpha_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.alpha_m, n_media_channels, name=constants.ALPHA_M
     )
-    alpha_rf = tfp.distributions.BatchBroadcast(
+    alpha_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.alpha_rf, n_rf_channels, name=constants.ALPHA_RF
     )
-    alpha_om = tfp.distributions.BatchBroadcast(
+    alpha_om = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.alpha_om, n_organic_media_channels, name=constants.ALPHA_OM
     )
-    alpha_orf = tfp.distributions.BatchBroadcast(
+    alpha_orf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.alpha_orf, n_organic_rf_channels, name=constants.ALPHA_ORF
     )
-    ec_m = tfp.distributions.BatchBroadcast(
+    ec_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.ec_m, n_media_channels, name=constants.EC_M
     )
-    ec_rf = tfp.distributions.BatchBroadcast(
+    ec_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.ec_rf, n_rf_channels, name=constants.EC_RF
     )
-    ec_om = tfp.distributions.BatchBroadcast(
+    ec_om = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.ec_om, n_organic_media_channels, name=constants.EC_OM
     )
-    ec_orf = tfp.distributions.BatchBroadcast(
+    ec_orf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.ec_orf, n_organic_rf_channels, name=constants.EC_ORF
     )
     if (
-        not isinstance(self.slope_m, tfp.distributions.Deterministic)
-        or (np.isscalar(self.slope_m.loc.numpy()) and self.slope_m.loc != 1.0)
+        not isinstance(self.slope_m, backend.tfp_distributions.Deterministic) # Use backend.tfp_distributions
+        or (np.isscalar(self.slope_m.loc.numpy()) and self.slope_m.loc != 1.0) # Assuming .loc.numpy() works or adapt
         or (
-            self.slope_m.batch_shape.as_list()
-            and any(x != 1.0 for x in self.slope_m.loc)
+            backend.shape_as_list(self.slope_m.batch_shape) # Use backend.shape_as_list
+            and any(x != 1.0 for x in self.slope_m.loc) # Assuming .loc works or adapt
         )
     ):
       warnings.warn(
@@ -714,18 +723,18 @@ class PriorDistribution:
           ' This may lead to poor MCMC convergence and budget optimization'
           ' may no longer produce a global optimum.'
       )
-    slope_m = tfp.distributions.BatchBroadcast(
+    slope_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.slope_m, n_media_channels, name=constants.SLOPE_M
     )
-    slope_rf = tfp.distributions.BatchBroadcast(
+    slope_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.slope_rf, n_rf_channels, name=constants.SLOPE_RF
     )
     if (
-        not isinstance(self.slope_om, tfp.distributions.Deterministic)
-        or (np.isscalar(self.slope_om.loc.numpy()) and self.slope_om.loc != 1.0)
+        not isinstance(self.slope_om, backend.tfp_distributions.Deterministic) # Use backend.tfp_distributions
+        or (np.isscalar(self.slope_om.loc.numpy()) and self.slope_om.loc != 1.0) # Assuming .loc.numpy() works or adapt
         or (
-            self.slope_om.batch_shape.as_list()
-            and any(x != 1.0 for x in self.slope_om.loc)
+            backend.shape_as_list(self.slope_om.batch_shape) # Use backend.shape_as_list
+            and any(x != 1.0 for x in self.slope_om.loc) # Assuming .loc works or adapt
         )
     ):
       warnings.warn(
@@ -733,13 +742,13 @@ class PriorDistribution:
           ' This may lead to poor MCMC convergence and budget optimization'
           ' may no longer produce a global optimum.'
       )
-    slope_om = tfp.distributions.BatchBroadcast(
+    slope_om = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.slope_om, n_organic_media_channels, name=constants.SLOPE_OM
     )
-    slope_orf = tfp.distributions.BatchBroadcast(
+    slope_orf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.slope_orf, n_organic_rf_channels, name=constants.SLOPE_ORF
     )
-    sigma = tfp.distributions.BatchBroadcast(
+    sigma = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.sigma, sigma_shape, name=constants.SIGMA
     )
 
@@ -761,7 +770,7 @@ class PriorDistribution:
     else:
       roi_m_converted = self.roi_m
     _check_for_negative_effect(roi_m_converted, media_effects_dist)
-    roi_m = tfp.distributions.BatchBroadcast(
+    roi_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         roi_m_converted, n_media_channels, name=constants.ROI_M
     )
 
@@ -782,15 +791,15 @@ class PriorDistribution:
     else:
       roi_rf_converted = self.roi_rf
     _check_for_negative_effect(roi_rf_converted, media_effects_dist)
-    roi_rf = tfp.distributions.BatchBroadcast(
+    roi_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         roi_rf_converted, n_rf_channels, name=constants.ROI_RF
     )
     _check_for_negative_effect(self.mroi_m, media_effects_dist)
-    mroi_m = tfp.distributions.BatchBroadcast(
+    mroi_m = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.mroi_m, n_media_channels, name=constants.MROI_M
     )
     _check_for_negative_effect(self.mroi_rf, media_effects_dist)
-    mroi_rf = tfp.distributions.BatchBroadcast(
+    mroi_rf = backend.tfp_distributions.BatchBroadcast( # Use backend.tfp_distributions
         self.mroi_rf, n_rf_channels, name=constants.MROI_RF
     )
 
@@ -830,31 +839,31 @@ class PriorDistribution:
 
 
 def _convert_to_deterministic_0_distribution(
-    distribution: tfp.distributions.Distribution,
-) -> tfp.distributions.Distribution:
+    distribution: backend.tfp_distributions.Distribution, # Use backend.tfp_distributions
+) -> backend.tfp_distributions.Distribution: # Use backend.tfp_distributions
   """Converts the given distribution to a `Deterministic(0)` one.
 
   Args:
-    distribution: `tfp.distributions.Distribution` object to be converted to
+    distribution: `backend.tfp_distributions.Distribution` object to be converted to # Use backend.tfp_distributions
       `Deterministic(0)` distribution.
 
   Returns:
-    `tfp.distribution.Deterministic(0, distribution.name)`
+    `backend.tfp_distribution.Deterministic(0, distribution.name)` # Use backend.tfp_distributions
 
   Raises:
     Warning: If the argument distribution is not a `Deterministic(0)`
     distribution.
   """
   if (
-      not isinstance(distribution, tfp.distributions.Deterministic)
-      or distribution.loc != 0
+      not isinstance(distribution, backend.tfp_distributions.Deterministic) # Use backend.tfp_distributions
+      or distribution.loc != 0 # Assuming .loc works or adapt
   ):
     warnings.warn(
         'Hierarchical distribution parameters must be deterministically zero'
         f' for national models. {distribution.name} has been automatically set'
         ' to Deterministic(0).'
     )
-    return tfp.distributions.Deterministic(loc=0, name=distribution.name)
+    return backend.tfp_distributions.Deterministic(loc=0, name=distribution.name) # Use backend.tfp_distributions
   else:
     return distribution
 
@@ -865,7 +874,7 @@ def _get_total_media_contribution_prior(
     name: str,
     p_mean: float = constants.P_MEAN,
     p_sd: float = constants.P_SD,
-) -> tfp.distributions.Distribution:
+) -> backend.tfp_distributions.Distribution: # Use backend.tfp_distributions
   """Determines ROI priors based on total media contribution.
 
   Args:
@@ -882,17 +891,17 @@ def _get_total_media_contribution_prior(
   """
   roi_mean = p_mean * kpi / np.sum(total_spend)
   roi_sd = p_sd * kpi / np.sqrt(np.sum(np.power(total_spend, 2)))
-  lognormal_sigma = tf.cast(
-      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=tf.float32
+  lognormal_sigma = backend.cast( # Use backend.cast
+      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=backend.float32 # Use backend.float32
   )
-  lognormal_mu = tf.cast(
-      np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)), dtype=tf.float32
+  lognormal_mu = backend.cast( # Use backend.cast
+      np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)), dtype=backend.float32 # Use backend.float32
   )
-  return tfp.distributions.LogNormal(lognormal_mu, lognormal_sigma, name=name)
+  return backend.tfp_distributions.LogNormal(lognormal_mu, lognormal_sigma, name=name) # Use backend.tfp_distributions
 
 
 def _check_for_negative_effect(
-    dist: tfp.distributions.Distribution, media_effects_dist: str
+    dist: backend.tfp_distributions.Distribution, media_effects_dist: str # Use backend.tfp_distributions
 ):
   """Checks for negative effect in the model."""
   if (
@@ -907,7 +916,7 @@ def _check_for_negative_effect(
 
 
 def distributions_are_equal(
-    a: tfp.distributions.Distribution, b: tfp.distributions.Distribution
+    a: backend.tfp_distributions.Distribution, b: backend.tfp_distributions.Distribution # Use backend.tfp_distributions
 ) -> bool:
   """Determine if two distributions are equal."""
   if type(a) != type(b):  # pylint: disable=unidiomatic-typecheck

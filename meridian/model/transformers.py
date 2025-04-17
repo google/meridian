@@ -16,7 +16,7 @@
 
 import abc
 import numpy as np
-import tensorflow as tf
+from meridian import backend
 
 
 __all__ = [
@@ -31,14 +31,14 @@ class TensorTransformer(abc.ABC):
   """Abstract class for data transformers."""
 
   @abc.abstractmethod
-  @tf.function(jit_compile=True)
-  def forward(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def forward(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Transforms a given tensor."""
     raise NotImplementedError("`forward` must be implemented.")
 
   @abc.abstractmethod
-  @tf.function(jit_compile=True)
-  def inverse(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def inverse(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Transforms back a given tensor."""
     raise NotImplementedError("`inverse` must be implemented.")
 
@@ -52,8 +52,8 @@ class MediaTransformer(TensorTransformer):
 
   def __init__(
       self,
-      media: tf.Tensor,
-      population: tf.Tensor,
+      media: backend.Tensor, # Use backend.Tensor
+      population: backend.Tensor, # Use backend.Tensor
   ):
     """`MediaTransformer` constructor.
 
@@ -63,22 +63,23 @@ class MediaTransformer(TensorTransformer):
       population: A tensor of dimension `(n_geos,)` containing the population of
         each geo, used to compute the scale factors.
     """
-    population_scaled_media = tf.math.divide_no_nan(
-        media, population[:, tf.newaxis, tf.newaxis]
+    population_scaled_media = backend.divide_no_nan( # Use backend.divide_no_nan
+        media, population[:, backend.newaxis, backend.newaxis] # Use backend.newaxis
     )
     # Replace zeros with NaNs
-    population_scaled_media_nan = tf.where(
+    population_scaled_media_nan = backend.where( # Use backend.where
         population_scaled_media == 0, np.nan, population_scaled_media
     )
     # Tensor of medians of the positive portion of `media`. Used as a component
     # for scaling.
-    self._population_scaled_median_m = tf.numpy_function(
+    # Assuming numpy_function is available in the backend or needs specific handling
+    self._population_scaled_median_m = backend.numpy_function( # Use backend.numpy_function
         func=lambda x: np.nanmedian(x, axis=[0, 1]),
         inp=[population_scaled_media_nan],
-        Tout=tf.float32,
+        Tout=backend.float32, # Use backend.float32
     )
     # Tensor of dimensions (`n_geos` x 1) of weights for scaling `metric`.
-    self._scale_factors_gm = tf.einsum(
+    self._scale_factors_gm = backend.einsum( # Use backend.einsum
         "g,m->gm", population, self._population_scaled_median_m
     )
 
@@ -86,15 +87,15 @@ class MediaTransformer(TensorTransformer):
   def population_scaled_median_m(self):
     return self._population_scaled_median_m
 
-  @tf.function(jit_compile=True)
-  def forward(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def forward(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales a given tensor using the stored scale factors."""
-    return tensor / self._scale_factors_gm[:, tf.newaxis, :]
+    return tensor / self._scale_factors_gm[:, backend.newaxis, :] # Use backend.newaxis
 
-  @tf.function(jit_compile=True)
-  def inverse(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def inverse(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales a given tensor using the inversed stored scale factors."""
-    return tensor * self._scale_factors_gm[:, tf.newaxis, :]
+    return tensor * self._scale_factors_gm[:, backend.newaxis, :] # Use backend.newaxis
 
 
 class CenteringAndScalingTransformer(TensorTransformer):
@@ -108,9 +109,9 @@ class CenteringAndScalingTransformer(TensorTransformer):
 
   def __init__(
       self,
-      tensor: tf.Tensor,
-      population: tf.Tensor,
-      population_scaling_id: tf.Tensor | None = None,
+      tensor: backend.Tensor, # Use backend.Tensor
+      population: backend.Tensor, # Use backend.Tensor
+      population_scaling_id: backend.Tensor | None = None, # Use backend.Tensor
   ):
     """`CenteringAndScalingTransformer` constructor.
 
@@ -124,30 +125,30 @@ class CenteringAndScalingTransformer(TensorTransformer):
         scaled by population.
     """
     if population_scaling_id is not None:
-      self._population_scaling_factors = tf.where(
+      self._population_scaling_factors = backend.where( # Use backend.where
           population_scaling_id,
           population[:, None],
-          tf.ones_like(population)[:, None],
+          backend.ones_like(population)[:, None], # Use backend.ones_like
       )
       population_scaled_tensor = (
           tensor / self._population_scaling_factors[:, None, :]
       )
-      self._means = tf.reduce_mean(population_scaled_tensor, axis=(0, 1))
-      self._stdevs = tf.math.reduce_std(population_scaled_tensor, axis=(0, 1))
+      self._means = backend.reduce_mean(population_scaled_tensor, axis=(0, 1)) # Use backend.reduce_mean
+      self._stdevs = backend.reduce_std(population_scaled_tensor, axis=(0, 1)) # Use backend.reduce_std
     else:
       self._population_scaling_factors = None
-      self._means = tf.reduce_mean(tensor, axis=(0, 1))
-      self._stdevs = tf.math.reduce_std(tensor, axis=(0, 1))
+      self._means = backend.reduce_mean(tensor, axis=(0, 1)) # Use backend.reduce_mean
+      self._stdevs = backend.reduce_std(tensor, axis=(0, 1)) # Use backend.reduce_std
 
-  @tf.function(jit_compile=True)
-  def forward(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def forward(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales a given tensor using the stored coefficients."""
     if self._population_scaling_factors is not None:
       tensor /= self._population_scaling_factors[:, None, :]
-    return tf.math.divide_no_nan(tensor - self._means, self._stdevs)
+    return backend.divide_no_nan(tensor - self._means, self._stdevs) # Use backend.divide_no_nan
 
-  @tf.function(jit_compile=True)
-  def inverse(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def inverse(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales back a given tensor using the stored coefficients."""
     scaled_tensor = tensor * self._stdevs + self._means
     return (
@@ -166,8 +167,8 @@ class KpiTransformer(TensorTransformer):
 
   def __init__(
       self,
-      kpi: tf.Tensor,
-      population: tf.Tensor,
+      kpi: backend.Tensor, # Use backend.Tensor
+      population: backend.Tensor, # Use backend.Tensor
   ):
     """`KpiTransformer` constructor.
 
@@ -178,11 +179,11 @@ class KpiTransformer(TensorTransformer):
         each geo, used to to compute the population scale factors.
     """
     self._population = population
-    population_scaled_kpi = tf.math.divide_no_nan(
-        kpi, self._population[:, tf.newaxis]
+    population_scaled_kpi = backend.divide_no_nan( # Use backend.divide_no_nan
+        kpi, self._population[:, backend.newaxis] # Use backend.newaxis
     )
-    self._population_scaled_mean = tf.reduce_mean(population_scaled_kpi)
-    self._population_scaled_stdev = tf.math.reduce_std(population_scaled_kpi)
+    self._population_scaled_mean = backend.reduce_mean(population_scaled_kpi) # Use backend.reduce_mean
+    self._population_scaled_stdev = backend.reduce_std(population_scaled_kpi) # Use backend.reduce_std
 
   @property
   def population_scaled_mean(self):
@@ -192,18 +193,18 @@ class KpiTransformer(TensorTransformer):
   def population_scaled_stdev(self):
     return self._population_scaled_stdev
 
-  @tf.function(jit_compile=True)
-  def forward(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def forward(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales a given tensor using the stored coefficients."""
-    return tf.math.divide_no_nan(
-        tf.math.divide_no_nan(tensor, self._population[:, tf.newaxis])
+    return backend.divide_no_nan( # Use backend.divide_no_nan
+        backend.divide_no_nan(tensor, self._population[:, backend.newaxis]) # Use backend.divide_no_nan, backend.newaxis
         - self._population_scaled_mean,
         self._population_scaled_stdev,
     )
 
-  @tf.function(jit_compile=True)
-  def inverse(self, tensor: tf.Tensor) -> tf.Tensor:
+  @backend.function(jit_compile=True) # Use backend.function
+  def inverse(self, tensor: backend.Tensor) -> backend.Tensor: # Use backend.Tensor
     """Scales back a given tensor using the stored coefficients."""
     return (
         tensor * self._population_scaled_stdev + self._population_scaled_mean
-    ) * self._population[:, tf.newaxis]
+    ) * self._population[:, backend.newaxis] # Use backend.newaxis

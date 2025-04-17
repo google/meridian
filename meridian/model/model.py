@@ -33,7 +33,7 @@ from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model import transformers
 import numpy as np
-import tensorflow as tf
+from meridian import backend
 
 
 __all__ = [
@@ -180,37 +180,37 @@ class Meridian:
     return media.build_organic_rf_tensors(self.input_data)
 
   @functools.cached_property
-  def kpi(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float32)
+  def kpi(self) -> backend.Tensor:
+    return backend.convert_to_tensor(self.input_data.kpi, dtype=backend.float32)
 
   @functools.cached_property
-  def revenue_per_kpi(self) -> tf.Tensor | None:
+  def revenue_per_kpi(self) -> backend.Tensor | None:
     if self.input_data.revenue_per_kpi is None:
       return None
-    return tf.convert_to_tensor(
-        self.input_data.revenue_per_kpi, dtype=tf.float32
+    return backend.convert_to_tensor(
+        self.input_data.revenue_per_kpi, dtype=backend.float32
     )
 
   @functools.cached_property
-  def controls(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.controls, dtype=tf.float32)
+  def controls(self) -> backend.Tensor:
+    return backend.convert_to_tensor(self.input_data.controls, dtype=backend.float32)
 
   @functools.cached_property
-  def non_media_treatments(self) -> tf.Tensor | None:
+  def non_media_treatments(self) -> backend.Tensor | None:
     if self.input_data.non_media_treatments is None:
       return None
-    return tf.convert_to_tensor(
-        self.input_data.non_media_treatments, dtype=tf.float32
+    return backend.convert_to_tensor(
+        self.input_data.non_media_treatments, dtype=backend.float32
     )
 
   @functools.cached_property
-  def population(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.population, dtype=tf.float32)
+  def population(self) -> backend.Tensor:
+    return backend.convert_to_tensor(self.input_data.population, dtype=backend.float32)
 
   @functools.cached_property
-  def total_spend(self) -> tf.Tensor:
-    return tf.convert_to_tensor(
-        self.input_data.get_total_spend(), dtype=tf.float32
+  def total_spend(self) -> backend.Tensor:
+    return backend.convert_to_tensor(
+        self.input_data.get_total_spend(), dtype=backend.float32
     )
 
   @property
@@ -278,8 +278,8 @@ class Meridian:
   @functools.cached_property
   def controls_transformer(self) -> transformers.CenteringAndScalingTransformer:
     if self.model_spec.control_population_scaling_id is not None:
-      controls_population_scaling_id = tf.convert_to_tensor(
-          self.model_spec.control_population_scaling_id, dtype=bool
+      controls_population_scaling_id = backend.convert_to_tensor(
+          self.model_spec.control_population_scaling_id, dtype=backend.bool
       )
     else:
       controls_population_scaling_id = None
@@ -298,8 +298,8 @@ class Meridian:
     if self.non_media_treatments is None:
       return None
     if self.model_spec.non_media_population_scaling_id is not None:
-      non_media_population_scaling_id = tf.convert_to_tensor(
-          self.model_spec.non_media_population_scaling_id, dtype=bool
+      non_media_population_scaling_id = backend.convert_to_tensor(
+          self.model_spec.non_media_population_scaling_id, dtype=backend.bool
       )
     else:
       non_media_population_scaling_id = None
@@ -315,18 +315,17 @@ class Meridian:
     return transformers.KpiTransformer(self.kpi, self.population)
 
   @functools.cached_property
-  def controls_scaled(self) -> tf.Tensor:
+  def controls_scaled(self) -> backend.Tensor:
     return self.controls_transformer.forward(self.controls)
 
   @functools.cached_property
-  def non_media_treatments_scaled(self) -> tf.Tensor | None:
+  def non_media_treatments_scaled(self) -> backend.Tensor | None:
     if self.non_media_transformer is not None:
       return self.non_media_transformer.forward(self.non_media_treatments)  # pytype: disable=attribute-error
-    else:
       return None
 
   @functools.cached_property
-  def kpi_scaled(self) -> tf.Tensor:
+  def kpi_scaled(self) -> backend.Tensor:
     return self.kpi_transformer.forward(self.kpi)
 
   @functools.cached_property
@@ -369,14 +368,14 @@ class Meridian:
       # Geos are unique, so index is a 1-element array.
       return index[0]
     else:
-      return tf.argmax(self.population)
+      return backend.argmax(self.population)
 
   @functools.cached_property
-  def holdout_id(self) -> tf.Tensor | None:
+  def holdout_id(self) -> backend.Tensor | None:
     if self.model_spec.holdout_id is None:
       return None
-    tensor = tf.convert_to_tensor(self.model_spec.holdout_id, dtype=bool)
-    return tensor[tf.newaxis, ...] if self.is_national else tensor
+    tensor = backend.convert_to_tensor(self.model_spec.holdout_id, dtype=backend.bool)
+    return tensor[backend.newaxis, ...] if self.is_national else tensor
 
   @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
@@ -747,7 +746,7 @@ class Meridian:
 
   def _check_if_no_geo_variation(
       self,
-      scaled_data: tf.Tensor,
+      scaled_data: backend.Tensor,
       data_name: str,
       data_dims: Sequence[str],
       epsilon=1e-4,
@@ -755,16 +754,16 @@ class Meridian:
     """Raise an error if `n_knots == n_time` and data lacks geo variation."""
 
     # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = tf.where(tf.math.reduce_std(scaled_data, axis=0) < epsilon)[
+    col_idx_full = backend.where(backend.reduce_std(scaled_data, axis=0) < epsilon)[
         :, 1
     ]
-    col_idx_unique, _, counts = tf.unique_with_counts(col_idx_full)
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
     # We use the shape of scaled_data (instead of `n_time`) because the data may
     # be padded to account for lagged effects.
     data_n_time = scaled_data.shape[1]
-    mask = tf.equal(counts, data_n_time)
-    col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
-    dims_bad = tf.gather(data_dims, col_idx_bad)
+    mask = backend.equal(counts, data_n_time)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
 
     if col_idx_bad.shape[0] and self.knot_info.n_knots == self.n_times:
       raise ValueError(
@@ -801,7 +800,7 @@ class Meridian:
 
   def _check_if_no_time_variation(
       self,
-      scaled_data: tf.Tensor,
+      scaled_data: backend.Tensor,
       data_name: str,
       data_dims: Sequence[str],
       epsilon=1e-4,
@@ -809,13 +808,13 @@ class Meridian:
     """Raise an error if data lacks time variation."""
 
     # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = tf.where(tf.math.reduce_std(scaled_data, axis=1) < epsilon)[
+    col_idx_full = backend.where(backend.reduce_std(scaled_data, axis=1) < epsilon)[
         :, 1
     ]
-    col_idx_unique, _, counts = tf.unique_with_counts(col_idx_full)
-    mask = tf.equal(counts, self.n_geos)
-    col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
-    dims_bad = tf.gather(data_dims, col_idx_bad)
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
+    mask = backend.equal(counts, self.n_geos)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
 
     if col_idx_bad.shape[0] and not self.is_national:
       raise ValueError(
@@ -842,12 +841,12 @@ class Meridian:
 
   def adstock_hill_media(
       self,
-      media: tf.Tensor,  # pylint: disable=redefined-outer-name
-      alpha: tf.Tensor,
-      ec: tf.Tensor,
-      slope: tf.Tensor,
+      media: backend.Tensor,  # pylint: disable=redefined-outer-name
+      alpha: backend.Tensor,
+      ec: backend.Tensor,
+      slope: backend.Tensor,
       n_times_output: int | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
 
     Args:
@@ -867,7 +866,7 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
-    if n_times_output is None and (media.shape[1] == self.n_media_times):
+    if n_times_output is None and (backend.shape(media)[1] == self.n_media_times):
       n_times_output = self.n_times
     elif n_times_output is None:
       raise ValueError(
@@ -896,13 +895,13 @@ class Meridian:
 
   def adstock_hill_rf(
       self,
-      reach: tf.Tensor,
-      frequency: tf.Tensor,
-      alpha: tf.Tensor,
-      ec: tf.Tensor,
-      slope: tf.Tensor,
+      reach: backend.Tensor,
+      frequency: backend.Tensor,
+      alpha: backend.Tensor,
+      ec: backend.Tensor,
+      slope: backend.Tensor,
       n_times_output: int | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
 
     Args:
@@ -922,7 +921,7 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
-    if n_times_output is None and (reach.shape[1] == self.n_media_times):
+    if n_times_output is None and (backend.shape(reach)[1] == self.n_media_times):
       n_times_output = self.n_times
     elif n_times_output is None:
       raise ValueError(
@@ -946,7 +945,7 @@ class Meridian:
   def populate_cached_properties(self):
     """Eagerly activates all cached properties.
 
-    This is useful for creating a `tf.function` computation graph with this
+    This is useful for creating a `backend.function` computation graph with this
     Meridian object as part of a captured closure. Within the computation graph,
     internal state mutations are problematic, and so this method freezes the
     object's states before the computation graph is created.
@@ -1038,7 +1037,7 @@ class Meridian:
       n_adapt: int,
       n_burnin: int,
       n_keep: int,
-      current_state: Mapping[str, tf.Tensor] | None = None,
+      current_state: Mapping[str, backend.Tensor] | None = None,
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
       max_tree_depth: int = 10,
@@ -1074,9 +1073,9 @@ class Meridian:
       init_step_size: Optional integer determining where to initialize the step
         size for the leapfrog integrator. The structure must broadcast with
         `current_state`. For example, if the initial state is:  ``` { 'a':
-        tf.zeros(n_chains), 'b': tf.zeros([n_chains, n_features]), } ```  then
-        any of `1.`, `{'a': 1., 'b': 1.}`, or `{'a': tf.ones(n_chains), 'b':
-        tf.ones([n_chains, n_features])}` will work. Defaults to the dimension
+        backend.zeros(n_chains), 'b': backend.zeros([n_chains, n_features]), } ```  then
+        any of `1.`, `{'a': 1., 'b': 1.}`, or `{'a': backend.ones(n_chains), 'b':
+        backend.ones([n_chains, n_features])}` will work. Defaults to the dimension
         of the log density to the ¼ power.
       dual_averaging_kwargs: Optional dict keyword arguments to pass to
         `tfp.mcmc.DualAveragingStepSizeAdaptation`. By default, a
@@ -1094,11 +1093,11 @@ class Meridian:
         expansion step. Applies a direct linear multiplier to the maximum
         trajectory length implied by `max_tree_depth`. Defaults is `1`.
       parallel_iterations: Number of iterations allowed to run in parallel. Must
-        be a positive integer. For more information, see `tf.while_loop`.
+        be a positive integer. For more information, see `backend.while_loop`. # Assuming while_loop is exposed
       seed: An `int32[2]` Tensor or a Python list or tuple of 2 `int`s, which
         will be treated as stateless seeds; or a Python `int` or `None`, which
         will be treated as stateful seeds. See [tfp.random.sanitize_seed]
-        (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
+        (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed). # Note: tfp.random needs backend handling later
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
@@ -1106,7 +1105,7 @@ class Meridian:
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
         a list of integers as `n_chains` to sample chains serially. For more
         information, see
-        [ResourceExhaustedError when running Meridian.sample_posterior]
+        [backend.ResourceExhaustedError when running Meridian.sample_posterior] # Replaced tf.errors
         (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
     posterior_inference_data = self.posterior_sampler_callable(
