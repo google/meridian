@@ -2113,32 +2113,34 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         [constants.MEAN, constants.CI_LO, constants.CI_HI],
     )
 
-    self.assertEqual(ds.expected.shape, expected_shape)
-    self.assertEqual(ds.baseline.shape, expected_shape)
-    self.assertEqual(ds.actual.shape, expected_actual_shape)
-    self.assertEqual(ds.confidence_level, constants.DEFAULT_CONFIDENCE_LEVEL)
+    self.assertEqual(ds[constants.EXPECTED].shape, expected_shape)
+    self.assertEqual(ds[constants.BASELINE].shape, expected_shape)
+    self.assertEqual(ds[constants.ACTUAL].shape, expected_actual_shape)
+    self.assertEqual(
+        ds.attrs[constants.CONFIDENCE_LEVEL], constants.DEFAULT_CONFIDENCE_LEVEL
+    )
 
     np.testing.assert_array_less(
-        ds.expected.sel(metric=constants.MEAN),
-        ds.expected.sel(metric=constants.CI_HI),
+        ds[constants.EXPECTED].sel(metric=constants.MEAN),
+        ds[constants.EXPECTED].sel(metric=constants.CI_HI),
     )
     np.testing.assert_array_less(
-        ds.expected.sel(metric=constants.CI_LO),
-        ds.expected.sel(metric=constants.MEAN),
+        ds[constants.EXPECTED].sel(metric=constants.CI_LO),
+        ds[constants.EXPECTED].sel(metric=constants.MEAN),
     )
     np.testing.assert_array_less(
-        ds.baseline.sel(metric=constants.MEAN),
-        ds.baseline.sel(metric=constants.CI_HI),
+        ds[constants.BASELINE].sel(metric=constants.MEAN),
+        ds[constants.BASELINE].sel(metric=constants.CI_HI),
     )
     np.testing.assert_array_less(
-        ds.baseline.sel(metric=constants.CI_LO),
-        ds.baseline.sel(metric=constants.MEAN),
+        ds[constants.BASELINE].sel(metric=constants.CI_LO),
+        ds[constants.BASELINE].sel(metric=constants.MEAN),
     )
-    np.testing.assert_array_less(ds.baseline, ds.expected)
+    np.testing.assert_array_less(ds[constants.BASELINE], ds[constants.EXPECTED])
 
     # Test the math for a sample of the actual outcome metrics.
     self.assertAllClose(
-        ds.actual.values,
+        ds[constants.ACTUAL].values,
         expected_actual_values,
         atol=1e-5,
     )

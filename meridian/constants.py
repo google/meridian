@@ -439,9 +439,9 @@ CONFIDENCE_LEVEL = 'confidence_level'
 
 # Model fit types.
 TYPE = 'type'
-EXPECTED = 'expected'
-ACTUAL = 'actual'
-BASELINE = 'baseline'
+EXPECTED = 'Expected'
+ACTUAL = 'Actual'
+BASELINE = 'Baseline'
 
 # Model fit filtering.
 GEO_GRANULARITY = 'geo_granularity'
@@ -544,7 +544,7 @@ NEW_DATA = 'new_data'
 
 
 # Media types.
-ALL_CHANNELS = 'All Channels'
+ALL_CHANNELS = 'All channels'
 
 # Optimization constants.
 OPTIMIZED = 'optimized'
