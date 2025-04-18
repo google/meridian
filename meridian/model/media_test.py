@@ -141,69 +141,53 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNone(media_tensors.media_spend)
     self.assertIsNone(media_tensors.media_transformer)
     self.assertIsNone(media_tensors.media_scaled)
-    self.assertIsNone(media_tensors.media_counterfactual)
-    self.assertIsNone(media_tensors.media_counterfactual_scaled)
-    self.assertIsNone(media_tensors.media_spend_counterfactual)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="no_calibration_period_paid_media_prior_type_roi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_ROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
           roi_calibration_period=None,
-          expected_counterfactual=_MEDIA * 0,
-          expected_spend_counterfactual=_SPEND * 0,
       ),
       dict(
           testcase_name="no_calibration_period_paid_media_prior_type_mroi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_MROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
           roi_calibration_period=None,
-          expected_counterfactual=_MEDIA * c.MROI_FACTOR,
-          expected_spend_counterfactual=_SPEND * c.MROI_FACTOR,
       ),
       dict(
           testcase_name="with_calibration_period_paid_media_prior_type_roi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_ROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
-          expected_counterfactual=_MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
-          expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
       ),
       dict(
           testcase_name="with_calibration_period_paid_media_prior_type_mroi",
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_MROI,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
-          expected_counterfactual=_MEDIA_COUNTERFACTUAL_MROI_CALIBRATION_PERIOD,
-          expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_MROI_CALIBRATION_PERIOD,
       ),
       dict(
           testcase_name=(
               "no_calibration_period_paid_media_prior_type_coefficient"
           ),
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           roi_calibration_period=None,
-          expected_counterfactual=_MEDIA * 0,
-          expected_spend_counterfactual=_SPEND * 0,
       ),
       dict(
           testcase_name=(
               "with_calibration_period_paid_media_prior_type_coefficient"
           ),
-          paid_media_prior_type=c.PAID_MEDIA_PRIOR_TYPE_COEFFICIENT,
+          paid_media_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           roi_calibration_period=_ROI_CALIBRATION_PERIOD,
-          expected_counterfactual=_MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
-          expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
       ),
   )
   def test_media_tensors(
       self,
       paid_media_prior_type: str,
       roi_calibration_period: np.ndarray | None,
-      expected_counterfactual: tf.Tensor,
-      expected_spend_counterfactual: tf.Tensor,
   ):
     media_tensors = media.build_media_tensors(
         _INPUT_DATA_WITH_MEDIA_ONLY,
         spec.ModelSpec(
-            paid_media_prior_type=paid_media_prior_type,
+            media_prior_type=paid_media_prior_type,
+            rf_prior_type=paid_media_prior_type,
             roi_calibration_period=roi_calibration_period,
         ),
     )
@@ -215,15 +199,6 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNotNone(media_tensors.media_transformer)
     self.assertAllClose(
         media_tensors.media_scaled, _INPUT_DATA_WITH_MEDIA_ONLY.media
-    )
-    self.assertAllClose(
-        media_tensors.media_counterfactual, expected_counterfactual
-    )
-    self.assertAllClose(
-        media_tensors.media_counterfactual_scaled, expected_counterfactual
-    )
-    self.assertAllClose(
-        media_tensors.media_spend_counterfactual, expected_spend_counterfactual
     )
 
 
@@ -248,13 +223,8 @@ class OrganicMediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNone(organic_media_tensors.organic_media)
     self.assertIsNone(organic_media_tensors.organic_media_transformer)
     self.assertIsNone(organic_media_tensors.organic_media_scaled)
-    self.assertIsNone(organic_media_tensors.organic_media_counterfactual)
-    self.assertIsNone(organic_media_tensors.organic_media_counterfactual_scaled)
 
   def test_organic_media_tensors(self):
-    expected_counterfactual = tf.zeros_like(
-        _MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD
-    )
     organic_media_tensors = media.build_organic_media_tensors(
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA
     )
@@ -267,14 +237,6 @@ class OrganicMediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         organic_media_tensors.organic_media_scaled,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
-    )
-    self.assertAllClose(
-        organic_media_tensors.organic_media_counterfactual,
-        expected_counterfactual,
-    )
-    self.assertAllClose(
-        organic_media_tensors.organic_media_counterfactual_scaled,
-        expected_counterfactual,
     )
 
 
@@ -301,29 +263,20 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNone(rf_tensors.rf_spend)
     self.assertIsNone(rf_tensors.reach_transformer)
     self.assertIsNone(rf_tensors.reach_scaled)
-    self.assertIsNone(rf_tensors.reach_counterfactual)
-    self.assertIsNone(rf_tensors.reach_counterfactual_scaled)
-    self.assertIsNone(rf_tensors.rf_spend_counterfactual)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="no_calibration_period",
           rf_roi_calibration_period=None,
-          expected_counterfactual=tf.zeros_like(_MEDIA),
-          expected_spend_counterfactual=tf.zeros_like(_SPEND),
       ),
       dict(
           testcase_name="with_calibration_period",
           rf_roi_calibration_period=_ROI_CALIBRATION_PERIOD,
-          expected_counterfactual=_MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
-          expected_spend_counterfactual=_SPEND_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD,
       ),
   )
   def test_rf_tensors(
       self,
       rf_roi_calibration_period: np.ndarray | None,
-      expected_counterfactual: tf.Tensor,
-      expected_spend_counterfactual: tf.Tensor,
   ):
     rf_tensors = media.build_rf_tensors(
         _INPUT_DATA_WITH_RF_ONLY,
@@ -337,15 +290,6 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(rf_tensors.rf_spend, _INPUT_DATA_WITH_RF_ONLY.rf_spend)
     self.assertIsNotNone(rf_tensors.reach_transformer)
     self.assertAllClose(rf_tensors.reach_scaled, _INPUT_DATA_WITH_RF_ONLY.reach)
-    self.assertAllClose(
-        rf_tensors.reach_counterfactual, expected_counterfactual
-    )
-    self.assertAllClose(
-        rf_tensors.reach_counterfactual_scaled, expected_counterfactual
-    )
-    self.assertAllClose(
-        rf_tensors.rf_spend_counterfactual, expected_spend_counterfactual
-    )
 
 
 class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
@@ -370,13 +314,8 @@ class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNone(organic_rf_tensors.organic_frequency)
     self.assertIsNone(organic_rf_tensors.organic_reach_transformer)
     self.assertIsNone(organic_rf_tensors.organic_reach_scaled)
-    self.assertIsNone(organic_rf_tensors.organic_reach_counterfactual)
-    self.assertIsNone(organic_rf_tensors.organic_reach_counterfactual_scaled)
 
   def test_organic_rf_tensors(self):
-    expected_counterfactual = tf.zeros_like(
-        _MEDIA_COUNTERFACTUAL_ROI_CALIBRATION_PERIOD
-    )
     organic_rf_tensors = media.build_organic_rf_tensors(
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF,
     )
@@ -393,13 +332,6 @@ class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         organic_rf_tensors.organic_reach_scaled,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
-    )
-    self.assertAllClose(
-        organic_rf_tensors.organic_reach_counterfactual, expected_counterfactual
-    )
-    self.assertAllClose(
-        organic_rf_tensors.organic_reach_counterfactual_scaled,
-        expected_counterfactual,
     )
 
 

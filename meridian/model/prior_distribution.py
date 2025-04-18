@@ -84,6 +84,11 @@ class PriorDistribution:
   | `roi_rf`              | `n_rf_channels`            |
   | `mroi_m`              | `n_media_channels`         |
   | `mroi_rf`             | `n_rf_channels`            |
+  | `contribution_m`      | `n_media_channels`         |
+  | `contribution_rf`     | `n_rf_channels`            |
+  | `contribution_om`     | `n_organic_media_channels` |
+  | `contribution_orf`    | `n_organic_f_channels`     |
+  | `contribution_n`      | `n_non_media_channels`     |
 
   (σ) `n_geos` if `unique_sigma_for_each_geo`, otherwise this is `1`
 
@@ -233,6 +238,36 @@ class PriorDistribution:
       is interpreted as the marginal incremental KPI units per monetary unit
       spent. In this case, a default distribution is not provided, so the user
       must specify it.
+    contribution_m: Prior distribution on the contribution of each media channel
+      as a percentage of total outcome. This parameter is only used when
+      `paid_media_prior_type` is `'contribution'`, in which case `beta_m` is
+      calculated as a deterministic function of `contribution_m`, `alpha_m`,
+      `ec_m`, `slope_m`, and the total outcome. Default distribution is
+      `Beta(1.0, 100.0)`.
+    contribution_rf: Prior distribution on the contribution of each Reach &
+      Frequency channel as a percentage of total outcome. This parameter is only
+      used when `paid_media_prior_type` is `'contribution'`, in which case
+      `beta_rf` is calculated as a deterministic function of `contribution_rf`,
+      `alpha_rf`, `ec_rf`, `slope_rf`, and the total outcome. Default
+      distribution is `Beta(1.0, 100.0)`.
+    contribution_om: Prior distribution on the contribution of each organic
+      media channel as a percentage of total outcome. This parameter is only
+      used when `organic_media_prior_type` is `'contribution'`, in which case
+      `beta_om` is calculated as a deterministic function of `contribution_om`,
+      `alpha_om`, `ec_om`, `slope_om`, and the total outcome. Default
+      distribution is `Beta(1.0, 100.0)`.
+    contribution_orf: Prior distribution on the contribution of each organic
+      Reach & Frequency channel as a percentage of total outcome. This parameter
+      is only used when `organic_media_prior_type` is `'contribution'`, in which
+      case `beta_orf` is calculated as a deterministic function of
+      `contribution_orf`, `alpha_orf`, `ec_orf`, `slope_orf`, and the total
+      outcome. Default distribution is `Beta(1.0, 100.0)`.
+    contribution_n: Prior distribution on the contribution of each non-media
+      treatment channel as a percentage of total outcome. This parameter is only
+      used when `non_media_treatment_prior_type` is `'contribution'`, in which
+      case `gamma_n` is calculated as a deterministic function of
+      `contribution_n` and the total outcome. Default distribution is `Beta(1.0,
+      100.0)`.
   """
 
   knot_values: tfp.distributions.Distribution = dataclasses.field(
@@ -394,6 +429,31 @@ class PriorDistribution:
           0.0, 0.5, name=constants.MROI_RF
       ),
   )
+  contribution_m: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Beta(
+          1.0, 100.0, name=constants.CONTRIBUTION_M
+      ),
+  )
+  contribution_rf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Beta(
+          1.0, 100.0, name=constants.CONTRIBUTION_RF
+      ),
+  )
+  contribution_om: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Beta(
+          1.0, 100.0, name=constants.CONTRIBUTION_OM
+      ),
+  )
+  contribution_orf: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Beta(
+          1.0, 100.0, name=constants.CONTRIBUTION_ORF
+      ),
+  )
+  contribution_n: tfp.distributions.Distribution = dataclasses.field(
+      default_factory=lambda: tfp.distributions.Beta(
+          1.0, 100.0, name=constants.CONTRIBUTION_N
+      ),
+  )
 
   def __setstate__(self, state):
     # Override to support pickling.
@@ -508,6 +568,7 @@ class PriorDistribution:
 
     _validate_media_custom_priors(self.roi_m)
     _validate_media_custom_priors(self.mroi_m)
+    _validate_media_custom_priors(self.contribution_m)
     _validate_media_custom_priors(self.alpha_m)
     _validate_media_custom_priors(self.ec_m)
     _validate_media_custom_priors(self.slope_m)
@@ -529,6 +590,7 @@ class PriorDistribution:
             'that channel.'
         )
 
+    _validate_organic_media_custom_priors(self.contribution_om)
     _validate_organic_media_custom_priors(self.alpha_om)
     _validate_organic_media_custom_priors(self.ec_om)
     _validate_organic_media_custom_priors(self.slope_om)
@@ -550,6 +612,7 @@ class PriorDistribution:
             'for that channel.'
         )
 
+    _validate_organic_rf_custom_priors(self.contribution_orf)
     _validate_organic_rf_custom_priors(self.alpha_orf)
     _validate_organic_rf_custom_priors(self.ec_orf)
     _validate_organic_rf_custom_priors(self.slope_orf)
@@ -569,6 +632,7 @@ class PriorDistribution:
 
     _validate_rf_custom_priors(self.roi_rf)
     _validate_rf_custom_priors(self.mroi_rf)
+    _validate_rf_custom_priors(self.contribution_rf)
     _validate_rf_custom_priors(self.alpha_rf)
     _validate_rf_custom_priors(self.ec_rf)
     _validate_rf_custom_priors(self.slope_rf)
@@ -604,6 +668,7 @@ class PriorDistribution:
             'that channel.'
         )
 
+    _validate_non_media_custom_priors(self.contribution_n)
     _validate_non_media_custom_priors(self.gamma_n)
     _validate_non_media_custom_priors(self.xi_n)
 
@@ -743,44 +808,21 @@ class PriorDistribution:
         self.sigma, sigma_shape, name=constants.SIGMA
     )
 
-    default_distribution = PriorDistribution()
-    if set_total_media_contribution_prior and distributions_are_equal(
-        self.roi_m, default_distribution.roi_m
-    ):
-      warnings.warn(
-          'Consider setting custom ROI priors, as kpi_type was specified as'
-          ' `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the'
-          ' total media contribution prior will be used with'
-          f' `p_mean={constants.P_MEAN}` and `p_sd={constants.P_SD}`. Further'
-          ' documentation available at '
-          ' https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior',
-      )
+    if set_total_media_contribution_prior:
       roi_m_converted = _get_total_media_contribution_prior(
           kpi, total_spend, constants.ROI_M
-      )
-    else:
-      roi_m_converted = self.roi_m
-    _check_for_negative_effect(roi_m_converted, media_effects_dist)
-    roi_m = tfp.distributions.BatchBroadcast(
-        roi_m_converted, n_media_channels, name=constants.ROI_M
-    )
-
-    if set_total_media_contribution_prior and distributions_are_equal(
-        self.roi_rf, default_distribution.roi_rf
-    ):
-      warnings.warn(
-          'Consider setting custom ROI priors, as kpi_type was specified as'
-          ' `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the'
-          ' total media contribution prior will be used with'
-          f' `p_mean={constants.P_MEAN}` and `p_sd={constants.P_SD}`. Further'
-          ' documentation available at '
-          ' https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior',
       )
       roi_rf_converted = _get_total_media_contribution_prior(
           kpi, total_spend, constants.ROI_RF
       )
     else:
+      roi_m_converted = self.roi_m
       roi_rf_converted = self.roi_rf
+
+    _check_for_negative_effect(roi_m_converted, media_effects_dist)
+    roi_m = tfp.distributions.BatchBroadcast(
+        roi_m_converted, n_media_channels, name=constants.ROI_M
+    )
     _check_for_negative_effect(roi_rf_converted, media_effects_dist)
     roi_rf = tfp.distributions.BatchBroadcast(
         roi_rf_converted, n_rf_channels, name=constants.ROI_RF
@@ -792,6 +834,26 @@ class PriorDistribution:
     _check_for_negative_effect(self.mroi_rf, media_effects_dist)
     mroi_rf = tfp.distributions.BatchBroadcast(
         self.mroi_rf, n_rf_channels, name=constants.MROI_RF
+    )
+
+    contribution_m = tfp.distributions.BatchBroadcast(
+        self.contribution_m, n_media_channels, name=constants.CONTRIBUTION_M
+    )
+    contribution_rf = tfp.distributions.BatchBroadcast(
+        self.contribution_rf, n_rf_channels, name=constants.CONTRIBUTION_RF
+    )
+    contribution_om = tfp.distributions.BatchBroadcast(
+        self.contribution_om,
+        n_organic_media_channels,
+        name=constants.CONTRIBUTION_OM,
+    )
+    contribution_orf = tfp.distributions.BatchBroadcast(
+        self.contribution_orf,
+        n_organic_rf_channels,
+        name=constants.CONTRIBUTION_ORF,
+    )
+    contribution_n = tfp.distributions.BatchBroadcast(
+        self.contribution_n, n_non_media_channels, name=constants.CONTRIBUTION_N
     )
 
     return PriorDistribution(
@@ -826,6 +888,11 @@ class PriorDistribution:
         roi_rf=roi_rf,
         mroi_m=mroi_m,
         mroi_rf=mroi_rf,
+        contribution_m=contribution_m,
+        contribution_rf=contribution_rf,
+        contribution_om=contribution_om,
+        contribution_orf=contribution_orf,
+        contribution_n=contribution_n,
     )
 
 
