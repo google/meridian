@@ -100,10 +100,8 @@ class PriorDistributionSampler:
         range(media_spend.ndim - 1),
     )
 
-    if (
-        mmm.model_spec.roi_calibration_period is None
-        and mmm.model_spec.paid_media_prior_type
-        == constants.PAID_MEDIA_PRIOR_TYPE_ROI
+    if mmm.model_spec.roi_calibration_period is None and (
+        mmm.model_spec.media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
     ):
       # We can skip the adstock/hill computation step in this case.
       media_counterfactual_transformed = tf.zeros_like(media_transformed)
@@ -250,8 +248,8 @@ class PriorDistributionSampler:
         slope=media_vars[constants.SLOPE_M],
     )
 
-    prior_type = mmm.model_spec.paid_media_prior_type
-    if prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    prior_type = mmm.model_spec.media_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       roi_m = prior.roi_m.sample(**sample_kwargs)
       beta_m_value = self.get_roi_prior_beta_m_value(
           beta_gm_dev=beta_gm_dev,
@@ -263,7 +261,7 @@ class PriorDistributionSampler:
       media_vars[constants.BETA_M] = tfp.distributions.Deterministic(
           beta_m_value, name=constants.BETA_M
       ).sample()
-    elif prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       mroi_m = prior.mroi_m.sample(**sample_kwargs)
       beta_m_value = self.get_roi_prior_beta_m_value(
           beta_gm_dev=beta_gm_dev,
@@ -334,8 +332,8 @@ class PriorDistributionSampler:
         slope=rf_vars[constants.SLOPE_RF],
     )
 
-    prior_type = mmm.model_spec.paid_media_prior_type
-    if prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
+    prior_type = mmm.model_spec.rf_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       roi_rf = prior.roi_rf.sample(**sample_kwargs)
       beta_rf_value = self.get_roi_prior_beta_rf_value(
           beta_grf_dev=beta_grf_dev,
@@ -348,7 +346,7 @@ class PriorDistributionSampler:
           beta_rf_value,
           name=constants.BETA_RF,
       ).sample()
-    elif prior_type == constants.PAID_MEDIA_PRIOR_TYPE_MROI:
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       mroi_rf = prior.mroi_rf.sample(**sample_kwargs)
       beta_rf_value = self.get_roi_prior_beta_rf_value(
           beta_grf_dev=beta_grf_dev,
@@ -552,10 +550,12 @@ class PriorDistributionSampler:
         constants.GAMMA_C: prior.gamma_c.sample(**sample_kwargs),
         constants.XI_C: prior.xi_c.sample(**sample_kwargs),
         constants.SIGMA: prior.sigma.sample(**sample_kwargs),
-        constants.TAU_G: _get_tau_g(
-            tau_g_excl_baseline=tau_g_excl_baseline,
-            baseline_geo_idx=mmm.baseline_geo_idx,
-        ).sample(),
+        constants.TAU_G: (
+            _get_tau_g(
+                tau_g_excl_baseline=tau_g_excl_baseline,
+                baseline_geo_idx=mmm.baseline_geo_idx,
+            ).sample()
+        ),
     }
     base_vars[constants.MU_T] = tfp.distributions.Deterministic(
         tf.einsum(

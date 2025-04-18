@@ -130,6 +130,17 @@ class WithInputDataSamples:
             seed=0,
         )
     )
+    self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi = (
+        test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=self._N_GEOS,
+            n_times=self._N_TIMES,
+            n_media_times=self._N_MEDIA_TIMES,
+            n_controls=self._N_CONTROLS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            seed=0,
+        )
+    )
     self.input_data_with_media_only = (
         test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=self._N_GEOS,
