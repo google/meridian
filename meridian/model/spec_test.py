@@ -14,9 +14,11 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import constants as c
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
+import tensorflow_probability as tfp
 
 
 class ModelSpecTest(parameterized.TestCase):
@@ -28,6 +30,7 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertEqual(repr(model_spec.prior), repr(default_priors))
     self.assertEqual(model_spec.media_effects_dist, "log_normal")
     self.assertFalse(model_spec.hill_before_adstock)
+    self.assertEqual(model_spec.adstock, "geometric")
     self.assertEqual(model_spec.max_lag, 8)
     self.assertFalse(model_spec.unique_sigma_for_each_geo)
     self.assertEqual(model_spec.paid_media_prior_type, "roi")
@@ -188,6 +191,46 @@ class ModelSpecTest(parameterized.TestCase):
   def test_spec_inits_empty_knots_fails(self, knots, error_message):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(knots=knots)
+
+  def test_default_adstock_value(self):
+    """Default adstock should be 'geometric'."""
+    model_spec = spec.ModelSpec()
+    self.assertEqual(model_spec.adstock, "geometric")
+
+  def test_setting_adstock_value(self):
+    """ModelSpec should store provided adstock type and max_lag."""
+    model_spec = spec.ModelSpec(adstock="delayed")
+    self.assertEqual(model_spec.adstock, "delayed")
+
+  def test_invalid_adstock_type(self):
+    """Invalid adstock type should raise a ValueError."""
+    with self.assertRaises(ValueError):
+      spec.ModelSpec(adstock="invalid_type")
+
+  def test_max_lag_none_allowed_for_delayed(self):
+    """
+    When max_lag is None for delayed adstock, no error is raised, and the
+    default theta prior remains unchanged.
+    """
+    model_spec = spec.ModelSpec(adstock="delayed", max_lag=None)
+    theta_dist = model_spec.prior.theta_m
+    self.assertIsInstance(theta_dist, tfp.distributions.Uniform)
+    self.assertAlmostEqual(theta_dist.low.numpy(), 0.0, places=6)
+    self.assertAlmostEqual(
+        theta_dist.high.numpy(), c.DEFAULT_MAX_LAG - 1, places=6
+    )
+
+  def test_theta_prior_initialization_in_spec(self):
+    """
+    When adstock is delayed, ModelSpec should initialize theta prior
+    based on max_lag.
+    """
+    model_spec = spec.ModelSpec(adstock="delayed", max_lag=5)
+    theta_dist = model_spec.prior.theta_m
+    self.assertIsNotNone(theta_dist)
+    self.assertIsInstance(theta_dist, tfp.distributions.Uniform)
+    self.assertAlmostEqual(theta_dist.low.numpy(), 0.0, places=6)
+    self.assertAlmostEqual(theta_dist.high.numpy(), 5.0, places=6)
 
 
 if __name__ == "__main__":

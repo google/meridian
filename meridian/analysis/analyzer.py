@@ -441,6 +441,10 @@ class DistributionTensors(tf.experimental.ExtensionType):
   alpha_rf: Optional[tf.Tensor] = None
   alpha_om: Optional[tf.Tensor] = None
   alpha_orf: Optional[tf.Tensor] = None
+  theta_m: Optional[tf.Tensor] = None
+  theta_rf: Optional[tf.Tensor] = None
+  theta_om: Optional[tf.Tensor] = None
+  theta_orf: Optional[tf.Tensor] = None
   ec_m: Optional[tf.Tensor] = None
   ec_rf: Optional[tf.Tensor] = None
   ec_om: Optional[tf.Tensor] = None
@@ -1154,38 +1158,48 @@ class Analyzer:
     """
     params = []
     if self._meridian.media_tensors.media is not None:
-      params.extend([
-          constants.EC_M,
-          constants.SLOPE_M,
-          constants.ALPHA_M,
-          constants.BETA_GM,
-      ])
+      params.extend(
+          [
+              constants.EC_M,
+              constants.SLOPE_M,
+              constants.ALPHA_M,
+              constants.BETA_GM,
+          ]
+      )
     if self._meridian.rf_tensors.reach is not None:
-      params.extend([
-          constants.EC_RF,
-          constants.SLOPE_RF,
-          constants.ALPHA_RF,
-          constants.BETA_GRF,
-      ])
+      params.extend(
+          [
+              constants.EC_RF,
+              constants.SLOPE_RF,
+              constants.ALPHA_RF,
+              constants.BETA_GRF,
+          ]
+      )
     if include_non_paid_channels:
       if self._meridian.organic_media_tensors.organic_media is not None:
-        params.extend([
-            constants.EC_OM,
-            constants.SLOPE_OM,
-            constants.ALPHA_OM,
-            constants.BETA_GOM,
-        ])
+        params.extend(
+            [
+                constants.EC_OM,
+                constants.SLOPE_OM,
+                constants.ALPHA_OM,
+                constants.BETA_GOM,
+            ]
+        )
       if self._meridian.organic_rf_tensors.organic_reach is not None:
-        params.extend([
-            constants.EC_ORF,
-            constants.SLOPE_ORF,
-            constants.ALPHA_ORF,
-            constants.BETA_GORF,
-        ])
+        params.extend(
+            [
+                constants.EC_ORF,
+                constants.SLOPE_ORF,
+                constants.ALPHA_ORF,
+                constants.BETA_GORF,
+            ]
+        )
       if self._meridian.non_media_treatments is not None:
-        params.extend([
-            constants.GAMMA_GN,
-        ])
+        params.extend(
+            [
+                constants.GAMMA_GN,
+            ]
+        )
     return params
 
   def _get_transformed_media_and_beta(
@@ -1219,6 +1233,7 @@ class Analyzer:
           self._meridian.adstock_hill_media(
               media=data_tensors.media,
               alpha=dist_tensors.alpha_m,
+              theta=dist_tensors.theta_m,
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
               n_times_output=n_times_output,
@@ -1232,6 +1247,7 @@ class Analyzer:
               reach=data_tensors.reach,
               frequency=data_tensors.frequency,
               alpha=dist_tensors.alpha_rf,
+              theta=dist_tensors.theta_rf,
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
               n_times_output=n_times_output,
@@ -1243,6 +1259,7 @@ class Analyzer:
           self._meridian.adstock_hill_media(
               media=data_tensors.organic_media,
               alpha=dist_tensors.alpha_om,
+              theta=dist_tensors.theta_om,
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
               n_times_output=n_times_output,
@@ -1255,6 +1272,7 @@ class Analyzer:
               reach=data_tensors.organic_reach,
               frequency=data_tensors.organic_frequency,
               alpha=dist_tensors.alpha_orf,
+              theta=dist_tensors.theta_orf,
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
               n_times_output=n_times_output,
@@ -3064,16 +3082,20 @@ class Analyzer:
             "Effectiveness is not reported because it does not have a clear"
             " interpretation by time period."
         )
-        return xr.merge([
-            incremental_outcome,
-            pct_of_contribution,
-        ])
+        return xr.merge(
+            [
+                incremental_outcome,
+                pct_of_contribution,
+            ]
+        )
       else:
-        return xr.merge([
-            incremental_outcome,
-            pct_of_contribution,
-            effectiveness,
-        ])
+        return xr.merge(
+            [
+                incremental_outcome,
+                pct_of_contribution,
+                effectiveness,
+            ]
+        )
 
     # If non-paid channels are not included, return all metrics, paid and
     # non-paid.
@@ -3110,11 +3132,13 @@ class Analyzer:
           "ROI, mROI, Effectiveness, and CPIK are not reported because they "
           "do not have a clear interpretation by time period."
       )
-      return xr.merge([
-          spend_data,
-          incremental_outcome,
-          pct_of_contribution,
-      ])
+      return xr.merge(
+          [
+              spend_data,
+              incremental_outcome,
+              pct_of_contribution,
+          ]
+      )
     else:
       roi = self._compute_roi_aggregate(
           incremental_outcome_prior=incremental_outcome_prior,
@@ -3161,15 +3185,17 @@ class Analyzer:
           xr_coords=xr_coords_with_ci_and_distribution,
           confidence_level=confidence_level,
       )
-      return xr.merge([
-          spend_data,
-          incremental_outcome,
-          pct_of_contribution,
-          roi,
-          effectiveness,
-          mroi,
-          cpik,
-      ])
+      return xr.merge(
+          [
+              spend_data,
+              incremental_outcome,
+              pct_of_contribution,
+              roi,
+              effectiveness,
+              mroi,
+              cpik,
+          ]
+      )
 
   def get_aggregated_impressions(
       self,
@@ -3400,10 +3426,12 @@ class Analyzer:
         confidence_level=confidence_level,
     ).sel(channel=constants.BASELINE)
 
-    return xr.merge([
-        baseline_outcome,
-        baseline_pct_of_contribution,
-    ])
+    return xr.merge(
+        [
+            baseline_outcome,
+            baseline_pct_of_contribution,
+        ]
+    )
 
   def optimal_freq(
       self,
@@ -3584,20 +3612,24 @@ class Analyzer:
         selected_geos=selected_geos,
         selected_times=selected_times,
         use_kpi=use_kpi,
-    ).sel({
-        constants.CHANNEL: rf_channel_values,
-        constants.DISTRIBUTION: dist_type,
-    })
+    ).sel(
+        {
+            constants.CHANNEL: rf_channel_values,
+            constants.DISTRIBUTION: dist_type,
+        }
+    )
     optimized_metrics_by_frequency = self.summary_metrics(
         new_data=new_summary_metrics_data,
         marginal_roi_by_reach=False,
         selected_geos=selected_geos,
         selected_times=selected_times,
         use_kpi=use_kpi,
-    ).sel({
-        constants.CHANNEL: rf_channel_values,
-        constants.DISTRIBUTION: dist_type,
-    })
+    ).sel(
+        {
+            constants.CHANNEL: rf_channel_values,
+            constants.DISTRIBUTION: dist_type,
+        }
+    )
 
     data_vars = {
         constants.ROI: (
@@ -3859,10 +3891,12 @@ class Analyzer:
       perm = [1, 0] + list(range(2, n_dim))
       return tf.transpose(x, perm)
 
-    rhat = tfp.mcmc.potential_scale_reduction({
-        k: _transpose_first_two_dims(v)
-        for k, v in self._meridian.inference_data.posterior.data_vars.items()
-    })
+    rhat = tfp.mcmc.potential_scale_reduction(
+        {
+            k: _transpose_first_two_dims(v)
+            for k, v in self._meridian.inference_data.posterior.data_vars.items()
+        }
+    )
     return rhat
 
   def rhat_summary(self, bad_rhat_threshold: float = 1.2) -> pd.DataFrame:
@@ -3926,17 +3960,19 @@ class Analyzer:
         raise ValueError(f"Unexpected dimension for parameter {param}.")
 
       rhat_summary.append(
-          pd.Series({
-              constants.PARAM: param,
-              constants.N_PARAMS: np.prod(rhat[param].shape),
-              constants.AVG_RHAT: np.nanmean(rhat[param]),
-              constants.MAX_RHAT: np.nanmax(rhat[param]),
-              constants.PERCENT_BAD_RHAT: np.nanmean(
-                  rhat[param] > bad_rhat_threshold
-              ),
-              constants.ROW_IDX_BAD_RHAT: row_idx,
-              constants.COL_IDX_BAD_RHAT: col_idx,
-          })
+          pd.Series(
+              {
+                  constants.PARAM: param,
+                  constants.N_PARAMS: np.prod(rhat[param].shape),
+                  constants.AVG_RHAT: np.nanmean(rhat[param]),
+                  constants.MAX_RHAT: np.nanmax(rhat[param]),
+                  constants.PERCENT_BAD_RHAT: np.nanmean(
+                      rhat[param] > bad_rhat_threshold
+                  ),
+                  constants.ROW_IDX_BAD_RHAT: row_idx,
+                  constants.COL_IDX_BAD_RHAT: col_idx,
+              }
+          )
       )
     return pd.DataFrame(rhat_summary)
 
@@ -4019,11 +4055,13 @@ class Analyzer:
       reach = self._meridian.rf_tensors.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
-    incremental_outcome = np.zeros((
-        len(spend_multipliers),
-        len(self._meridian.input_data.get_all_paid_channels()),
-        3,
-    ))
+    incremental_outcome = np.zeros(
+        (
+            len(spend_multipliers),
+            len(self._meridian.input_data.get_all_paid_channels()),
+            3,
+        )
+    )
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
         incremental_outcome[i, :, :] = tf.zeros(

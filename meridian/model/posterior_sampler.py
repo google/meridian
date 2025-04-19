@@ -153,6 +153,11 @@ class PosteriorMCMCSampler:
       combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float32)
       if media_tensors.media is not None:
         alpha_m = yield prior_broadcast.alpha_m
+        theta_m = (
+            yield prior_broadcast.theta_m
+            if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED
+            else tfp.distributions.Deterministic(0.0, name=constants.THETA_M)
+        )
         ec_m = yield prior_broadcast.ec_m
         eta_m = yield prior_broadcast.eta_m
         slope_m = yield prior_broadcast.slope_m
@@ -164,6 +169,7 @@ class PosteriorMCMCSampler:
         media_transformed = adstock_hill_media_fn(
             media=media_tensors.media_scaled,
             alpha=alpha_m,
+            theta=theta_m,
             ec=ec_m,
             slope=slope_m,
         )
@@ -181,6 +187,7 @@ class PosteriorMCMCSampler:
               roi_or_mroi_m,
               slope_m,
               media_transformed,
+              theta_m,
           )
           beta_m = yield tfp.distributions.Deterministic(
               beta_m_value, name=constants.BETA_M
@@ -204,6 +211,11 @@ class PosteriorMCMCSampler:
 
       if rf_tensors.reach is not None:
         alpha_rf = yield prior_broadcast.alpha_rf
+        theta_rf = (
+            yield prior_broadcast.theta_rf
+            if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED
+            else tfp.distributions.Deterministic(0.0, name=constants.THETA_RF)
+        )
         ec_rf = yield prior_broadcast.ec_rf
         eta_rf = yield prior_broadcast.eta_rf
         slope_rf = yield prior_broadcast.slope_rf
@@ -216,6 +228,7 @@ class PosteriorMCMCSampler:
             reach=rf_tensors.reach_scaled,
             frequency=rf_tensors.frequency,
             alpha=alpha_rf,
+            theta=theta_rf,
             ec=ec_rf,
             slope=slope_rf,
         )
@@ -234,6 +247,7 @@ class PosteriorMCMCSampler:
               roi_or_mroi_rf,
               slope_rf,
               rf_transformed,
+              theta_rf,
           )
           beta_rf = yield tfp.distributions.Deterministic(
               beta_rf_value,
@@ -258,6 +272,11 @@ class PosteriorMCMCSampler:
 
       if organic_media_tensors.organic_media is not None:
         alpha_om = yield prior_broadcast.alpha_om
+        theta_om = (
+            yield prior_broadcast.theta_om
+            if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED
+            else tfp.distributions.Deterministic(0.0, name=constants.THETA_OM)
+        )
         ec_om = yield prior_broadcast.ec_om
         eta_om = yield prior_broadcast.eta_om
         slope_om = yield prior_broadcast.slope_om
@@ -269,6 +288,7 @@ class PosteriorMCMCSampler:
         organic_media_transformed = adstock_hill_media_fn(
             media=organic_media_tensors.organic_media_scaled,
             alpha=alpha_om,
+            theta=theta_om,
             ec=ec_om,
             slope=slope_om,
         )
@@ -290,6 +310,11 @@ class PosteriorMCMCSampler:
 
       if organic_rf_tensors.organic_reach is not None:
         alpha_orf = yield prior_broadcast.alpha_orf
+        theta_orf = (
+            yield prior_broadcast.theta_orf
+            if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED
+            else tfp.distributions.Deterministic(0.0, name=constants.THETA_ORF)
+        )
         ec_orf = yield prior_broadcast.ec_orf
         eta_orf = yield prior_broadcast.eta_orf
         slope_orf = yield prior_broadcast.slope_orf
@@ -302,6 +327,7 @@ class PosteriorMCMCSampler:
             reach=organic_rf_tensors.organic_reach_scaled,
             frequency=organic_rf_tensors.organic_frequency,
             alpha=alpha_orf,
+            theta=theta_orf,
             ec=ec_orf,
             slope=slope_orf,
         )

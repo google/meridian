@@ -19,6 +19,7 @@ import dataclasses
 from meridian import constants
 from meridian.model import prior_distribution
 import numpy as np
+import tensorflow_probability as tfp
 
 
 __all__ = [
@@ -60,6 +61,8 @@ class ModelSpec:
       before the Adstock function, instead of the default order of Adstock
       before Hill. This argument does not apply to RF channels. Default:
       `False`.
+    adstock: A string specifying the Adstock function type to use.
+      Allowed values: `'geometric'` or `'delayed'`. Default: 'geometric'.
     max_lag: An integer indicating the maximum number of lag periods (≥ `0`) to
       include in the Adstock calculation. Can also be set to `None`, which is
       equivalent to infinite max lag. Default: `8`.
@@ -132,7 +135,8 @@ class ModelSpec:
   )
   media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
   hill_before_adstock: bool = False
-  max_lag: int | None = 8
+  adstock: str = constants.ADSTOCK_GEOMETRIC
+  max_lag: int | None = constants.DEFAULT_MAX_LAG
   unique_sigma_for_each_geo: bool = False
   paid_media_prior_type: str = constants.PAID_MEDIA_PRIOR_TYPE_ROI
   roi_calibration_period: np.ndarray | None = None
@@ -157,6 +161,47 @@ class ModelSpec:
           f" '{self.paid_media_prior_type}' must be one of"
           f" {sorted(list(constants.PAID_MEDIA_PRIOR_TYPES))}."
       )
+    # Validate adstock type.
+    if self.adstock not in constants.ADSTOCK_FUNCTIONS:
+      raise ValueError(
+          f"The `adstock` parameter '{self.adstock}' must be one of "
+          f"{sorted(list(constants.ADSTOCK_FUNCTIONS))}."
+      )
+    # Override theta prior upper bound based on max_lag for delayed adstock.
+    if self.adstock == constants.ADSTOCK_DELAYED and self.max_lag is not None:
+      max_lag = float(self.max_lag)
+      if (
+          isinstance(self.prior.theta_m, tfp.distributions.Uniform)
+          and self.prior.theta_m.low == 0.0
+          and self.prior.theta_m.high == constants.DEFAULT_MAX_LAG - 1
+      ):
+        self.prior.theta_m = tfp.distributions.Uniform(
+            0.0, max_lag, name=constants.THETA_M
+        )
+      if (
+          isinstance(self.prior.theta_m, tfp.distributions.Uniform)
+          and self.prior.theta_rf.low == 0.0
+          and self.prior.theta_rf.high == constants.DEFAULT_MAX_LAG - 1
+      ):
+        self.prior.theta_rf = tfp.distributions.Uniform(
+            0.0, max_lag, name=constants.THETA_RF
+        )
+      if (
+          isinstance(self.prior.theta_m, tfp.distributions.Uniform)
+          and self.prior.theta_om.low == 0.0
+          and self.prior.theta_om.high == constants.DEFAULT_MAX_LAG - 1
+      ):
+        self.prior.theta_om = tfp.distributions.Uniform(
+            0.0, max_lag, name=constants.THETA_OM
+        )
+      if (
+          isinstance(self.prior.theta_m, tfp.distributions.Uniform)
+          and self.prior.theta_orf.low == 0.0
+          and self.prior.theta_orf.high == constants.DEFAULT_MAX_LAG - 1
+      ):
+        self.prior.theta_orf = tfp.distributions.Uniform(
+            0.0, max_lag, name=constants.THETA_ORF
+        )
     _validate_roi_calibration_period(
         self.roi_calibration_period,
         "roi_calibration_period",

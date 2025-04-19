@@ -19,13 +19,18 @@ import tensorflow as tf
 
 __all__ = [
     'AdstockHillTransformer',
-    'AdstockTransformer',
+    'GeometricAdstockTransformer',
+    'DelayedAdstockTransformer',
     'HillTransformer',
 ]
 
 
 def _validate_arguments(
-    media: tf.Tensor, alpha: tf.Tensor, max_lag: int, n_times_output: int
+    media: tf.Tensor,
+    alpha: tf.Tensor,
+    max_lag: int,
+    n_times_output: int,
+    theta: tf.Tensor = None,
 ) -> None:
   batch_dims = alpha.shape[:-1]
   n_media_times = media.shape[-2]
@@ -48,15 +53,24 @@ def _validate_arguments(
     raise ValueError('`n_times_output` must be positive.')
   if max_lag < 0:
     raise ValueError('`max_lag` must be non-negative.')
+  if theta is not None:
+    if theta.shape[:-1] != batch_dims:
+      raise ValueError('`theta` batch dims do not match `alpha` batch dims.')
+    if theta.shape[-1] != alpha.shape[-1]:
+      raise ValueError(
+          '`theta` contains a different number of channels than `alpha`.'
+      )
+    if tf.reduce_any(theta < 0):
+      raise ValueError('`theta` values must be non-negative.')
 
 
-def _adstock(
+def _geometric_adstock(
     media: tf.Tensor,
     alpha: tf.Tensor,
     max_lag: int,
     n_times_output: int,
 ) -> tf.Tensor:
-  """Computes the Adstock function."""
+  """Computes the Geometric Adstock function."""
   _validate_arguments(
       media=media, alpha=alpha, max_lag=max_lag, n_times_output=n_times_output
   )
@@ -93,10 +107,10 @@ def _adstock(
     )
     media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
 
-  # Adstock calculation.
+  # Geometric Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
-    window_list[i] = media[..., i:i+n_times_output, :]
+    window_list[i] = media[..., i : i + n_times_output, :]
   windowed = tf.stack(window_list)
   l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
   weights = tf.expand_dims(alpha, -1) ** l_range
@@ -104,6 +118,69 @@ def _adstock(
       (1 - alpha ** (window_size)) / (1 - alpha), -1
   )
   weights = tf.divide(weights, normalization_factors)
+  return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
+
+
+def _delayed_adstock(
+    media: tf.Tensor,
+    alpha: tf.Tensor,
+    theta: tf.Tensor,
+    max_lag: int,
+    n_times_output: int,
+) -> tf.Tensor:
+  """Computes the delayed Adstock function."""
+  _validate_arguments(
+      media=media,
+      alpha=alpha,
+      theta=theta,
+      max_lag=max_lag,
+      n_times_output=n_times_output,
+  )
+  # alpha dims: batch_dims, n_media_channels.
+  # theta dims: batch_dims, n_media_channels.
+  # media dims: batch_dims (optional), n_geos, n_media_times, n_channels.
+  n_media_times = media.shape[-2]
+
+  # The window size is the number of time periods that go into the adstock
+  # weighted average for each output time period.
+  window_size = min(max_lag + 1, n_media_times)
+
+  # Drop any excess historical time periods that do not affect output.
+  required_n_media_times = n_times_output + window_size - 1
+  if n_media_times > required_n_media_times:
+    # Note that ProductCoverage believes that unit tests should cover the case
+    # that both conditions (1) `n_media_times > required_n_media_times` and
+    # (2) `window_size = n_media_times`. However, this combination of conditions
+    # is not possible.
+    media = media[..., -required_n_media_times:, :]
+
+  # If necessary, pad the media tensor with zeros. For each output time period,
+  # we need a media history of at least `window_size` time periods from which to
+  # calculate the adstock. The purpose of padding is to allow us to apply
+  # a fixed window size calculation to all time periods. The purpose is NOT to
+  # ensure that we have `max_lag` historical time periods for each output time
+  # period. If `max_lag` is set to a huge value, it is not necessary to pad the
+  # data with a huge number of zeros. The `normalization_factors` normalize
+  # the weights to the correct values even if `window_size` < `max_lag`+1.
+  if n_media_times < required_n_media_times:
+    pad_shape = (
+        media.shape[:-2]
+        + (required_n_media_times - n_media_times,)
+        + (media.shape[-1],)
+    )
+    media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
+
+  # Delayed Adstock calculation.
+  window_list = [None] * window_size
+  for i in range(window_size):
+    window_list[i] = media[..., i : i + n_times_output, :]
+  windowed = tf.stack(window_list)
+  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
+  alpha_expanded = tf.expand_dims(alpha, -1)
+  theta_expanded = tf.expand_dims(theta, -1)
+  weights = alpha_expanded ** ((l_range - theta_expanded) ** 2)
+  normalization_factors = tf.expand_dims(tf.reduce_sum(weights, axis=-1), -1)
+  weights = tf.math.divide_no_nan(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
 
@@ -143,11 +220,11 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
     pass
 
 
-class AdstockTransformer(AdstockHillTransformer):
-  """Computes the Adstock transformation of media."""
+class GeometricAdstockTransformer(AdstockHillTransformer):
+  """Computes the Geometric Adstock transformation of media."""
 
   def __init__(self, alpha: tf.Tensor, max_lag: int, n_times_output: int):
-    """Initializes this transformer based on Adstock function parameters.
+    """Initializes this transformer based on Geometric Adstock function parameters.
 
     Args:
       alpha: Tensor of `alpha` parameters taking values ≥ `[0, 1)` with
@@ -170,10 +247,10 @@ class AdstockTransformer(AdstockHillTransformer):
     self._n_times_output = n_times_output
 
   def forward(self, media: tf.Tensor) -> tf.Tensor:
-    """Computes the Adstock transformation of a given `media` tensor.
+    """Computes the Geometric Adstock transformation of a given `media` tensor.
 
-    For geo `g`, time period `t`, and media channel `m`, Adstock is calculated
-    as `adstock_{g,t,m} = sum_{i=0}^max_lag media_{g,t-i,m} alpha^i`.
+    For geo `g`, time period `t`, and media channel `m`, Geometric Adstock is
+    calculated as `adstock_{g,t,m} = sum_{i=0}^max_lag media_{g,t-i,m} alpha^i`.
 
     Note: The Hill function can be applied before or after Adstock. If Hill is
     applied first, then the Adstock media input can contain batch dimensions
@@ -189,11 +266,69 @@ class AdstockTransformer(AdstockHillTransformer):
 
     Returns:
       Tensor with dimensions `[..., n_geos, n_times_output, n_media_channels]`
-      representing Adstock transformed media.
+      representing Geometric Adstock transformed media.
     """
-    return _adstock(
+    return _geometric_adstock(
         media=media,
         alpha=self._alpha,
+        max_lag=self._max_lag,
+        n_times_output=self._n_times_output,
+    )
+
+
+class DelayedAdstockTransformer(AdstockHillTransformer):
+  """Computes the Delayed Adstock transformation of media."""
+
+  def __init__(
+      self,
+      alpha: tf.Tensor,
+      theta: tf.Tensor,
+      max_lag: int,
+      n_times_output: int,
+  ):
+    """Initializes this transformer for Delayed Adstock.
+
+    Args:
+      alpha: Tensor of `alpha` parameters (0 ≤ values < 1) with dimensions
+        `[..., n_media_channels]`. Batch dimensions are optional and must match
+        those of `theta`.
+      theta: Tensor of `theta` parameters (delay of peak effect, ≥ 0) with
+        dimensions `[..., n_media_channels]`. Batch dimensions are optional and
+        must match those of `alpha`.
+      max_lag: Integer indicating the maximum number of lag periods (≥ 0) to
+        include in the Adstock calculation.
+      n_times_output: Number of time periods to include in the output tensor
+        (≤ number of time periods in media).
+    """
+    self._alpha = alpha
+    self._theta = theta
+    self._max_lag = max_lag
+    self._n_times_output = n_times_output
+
+  def forward(self, media: tf.Tensor) -> tf.Tensor:
+    """Computes the Delayed Adstock transformation of the given media tensor.
+
+    For each geo `g`, time period `t`, and media channel `m`, Delayed Adstock
+    is calculated as (
+      `adstock_{g,t,m} = \sum_{i=0}^{max_lag} media_{g,t-i,m} * `
+      `alpha_m^{(i - theta_m)^2}`
+    ),
+    where weights are normalized so that they sum to 1. This allows the peak
+    effect to occur at lag `theta_m`.
+
+    Args:
+      media: Tensor of media values with dimensions
+      `[..., n_geos, n_media_times, n_media_channels]`. Batch dimensions must
+      match those of `alpha` and `theta` if present.
+
+    Returns:
+      Tensor with dimensions `[..., n_geos, n_times_output, n_media_channels]`
+      representing the Delayed Adstock-transformed media.
+    """
+    return _delayed_adstock(
+        media=media,
+        alpha=self._alpha,
+        theta=self._theta,
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
     )

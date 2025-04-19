@@ -565,6 +565,44 @@ class PriorDistributionSamplerTest(
           inference_data=inference_data,
       )
 
+  def test_sample_prior_delayed_includes_theta(self):
+    """
+    Test that for delayed adstock, the sampled prior includes the theta
+    parameter with correct shape.
+    """
+    model_spec = spec.ModelSpec(adstock="delayed")
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    prior = meridian.inference_data.prior
+    self.assertTrue(hasattr(prior, constants.THETA_M))
+    theta_m = getattr(prior, constants.THETA_M)
+    expected_shape = (1, self._N_DRAWS, self._N_MEDIA_CHANNELS)
+    self.assertEqual(theta_m.shape, expected_shape)
+
+  def test_sample_prior_delayed_different_seed_results_in_different_theta(self):
+    """
+    Test that using different seeds for delayed adstock leads to different
+    theta samples.
+    """
+    model_spec = spec.ModelSpec(adstock="delayed")
+    meridian1 = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    meridian1.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    meridian2 = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    meridian2.sample_prior(n_draws=self._N_DRAWS, seed=2)
+    theta1 = getattr(meridian1.inference_data.prior, constants.THETA_M)
+    theta2 = getattr(meridian2.inference_data.prior, constants.THETA_M)
+    with self.assertRaises(AssertionError):
+      self.assertAllEqual(theta1, theta2)
+
 
 if __name__ == "__main__":
   absltest.main()

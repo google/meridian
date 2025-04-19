@@ -321,7 +321,9 @@ class Meridian:
   @functools.cached_property
   def non_media_treatments_scaled(self) -> tf.Tensor | None:
     if self.non_media_transformer is not None:
-      return self.non_media_transformer.forward(self.non_media_treatments)  # pytype: disable=attribute-error
+      return self.non_media_transformer.forward(
+          self.non_media_treatments
+      )  # pytype: disable=attribute-error
     else:
       return None
 
@@ -846,6 +848,7 @@ class Meridian:
       alpha: tf.Tensor,
       ec: tf.Tensor,
       slope: tf.Tensor,
+      theta: tf.Tensor | None = None,
       n_times_output: int | None = None,
   ) -> tf.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
@@ -856,6 +859,7 @@ class Meridian:
         impressions, but it can be any metric, such as `media_spend`. Clicks are
         often used for paid search ads.
       alpha: Uniform distribution for Adstock and Hill calculations.
+      theta: Adstock peak delay parameter (used only if `adstock='delayed'`).
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
       n_times_output: Number of time periods to output. This argument is
@@ -874,11 +878,21 @@ class Meridian:
           "n_times_output is required. This argument is only optional when "
           "`media` has a number of time periods equal to `self.n_media_times`."
       )
-    adstock_transformer = adstock_hill.AdstockTransformer(
-        alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
-    )
+    if self.model_spec.adstock == constants.ADSTOCK_GEOMETRIC:
+      adstock_transformer = adstock_hill.GeometricAdstockTransformer(
+          alpha=alpha,
+          max_lag=self.model_spec.max_lag,
+          n_times_output=n_times_output,
+      )
+    elif self.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      adstock_transformer = adstock_hill.DelayedAdstockTransformer(
+          alpha=alpha,
+          theta=theta,
+          max_lag=self.model_spec.max_lag,
+          n_times_output=n_times_output,
+      )
+    else:
+      raise ValueError(f"Unsupported adstock type: {self.model_spec.adstock}")
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
         slope=slope,
@@ -901,6 +915,7 @@ class Meridian:
       alpha: tf.Tensor,
       ec: tf.Tensor,
       slope: tf.Tensor,
+      theta: tf.Tensor | None = None,
       n_times_output: int | None = None,
   ) -> tf.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
@@ -911,6 +926,8 @@ class Meridian:
       frequency: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
         containing non-negative media for frequency.
       alpha: Uniform distribution for Adstock and Hill calculations.
+      theta: Adstock peak delay parameter for RF channels (used if
+          `adstock='delayed'`).
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
       n_times_output: Number of time periods to output. This argument is
@@ -933,11 +950,21 @@ class Meridian:
         ec=ec,
         slope=slope,
     )
-    adstock_transformer = adstock_hill.AdstockTransformer(
-        alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
-    )
+    if self.model_spec.adstock == constants.ADSTOCK_GEOMETRIC:
+      adstock_transformer = adstock_hill.GeometricAdstockTransformer(
+          alpha=alpha,
+          max_lag=self.model_spec.max_lag,
+          n_times_output=n_times_output,
+      )
+    elif self.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      adstock_transformer = adstock_hill.DelayedAdstockTransformer(
+          alpha=alpha,
+          theta=theta,
+          max_lag=self.model_spec.max_lag,
+          n_times_output=n_times_output,
+      )
+    else:
+      raise ValueError(f"Unsupported adstock type: {self.model_spec.adstock}")
     adj_frequency = hill_transformer.forward(frequency)
     rf_out = adstock_transformer.forward(reach * adj_frequency)
 

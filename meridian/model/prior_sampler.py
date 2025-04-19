@@ -77,6 +77,7 @@ class PriorDistributionSampler:
       roi_or_mroi_m: tf.Tensor,
       slope_m: tf.Tensor,
       media_transformed: tf.Tensor,
+      theta_m: tf.Tensor | None = None,
   ) -> tf.Tensor:
     """Returns a tensor to be used in `beta_m`."""
     mmm = self._meridian
@@ -111,6 +112,7 @@ class PriorDistributionSampler:
       media_counterfactual_transformed = mmm.adstock_hill_media(
           media=media_counterfactual_scaled,
           alpha=alpha_m,
+          theta=theta_m,
           ec=ec_m,
           slope=slope_m,
       )
@@ -153,6 +155,7 @@ class PriorDistributionSampler:
       roi_or_mroi_rf: tf.Tensor,
       slope_rf: tf.Tensor,
       rf_transformed: tf.Tensor,
+      theta_rf: tf.Tensor | None = None,
   ) -> tf.Tensor:
     """Returns a tensor to be used in `beta_rf`."""
     mmm = self._meridian
@@ -177,6 +180,7 @@ class PriorDistributionSampler:
           reach=reach_counterfactual_scaled,
           frequency=frequency,
           alpha=alpha_rf,
+          theta=theta_rf,
           ec=ec_rf,
           slope=slope_rf,
       )
@@ -238,6 +242,8 @@ class PriorDistributionSampler:
         constants.ETA_M: prior.eta_m.sample(**sample_kwargs),
         constants.SLOPE_M: prior.slope_m.sample(**sample_kwargs),
     }
+    if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      media_vars[constants.THETA_M] = prior.theta_m.sample(**sample_kwargs)
     beta_gm_dev = tfp.distributions.Sample(
         tfp.distributions.Normal(0, 1),
         [mmm.n_geos, mmm.n_media_channels],
@@ -246,10 +252,10 @@ class PriorDistributionSampler:
     media_transformed = mmm.adstock_hill_media(
         media=mmm.media_tensors.media_scaled,
         alpha=media_vars[constants.ALPHA_M],
+        theta=media_vars.get(constants.THETA_M),
         ec=media_vars[constants.EC_M],
         slope=media_vars[constants.SLOPE_M],
     )
-
     prior_type = mmm.model_spec.paid_media_prior_type
     if prior_type == constants.PAID_MEDIA_PRIOR_TYPE_ROI:
       roi_m = prior.roi_m.sample(**sample_kwargs)
@@ -321,6 +327,8 @@ class PriorDistributionSampler:
         constants.ETA_RF: prior.eta_rf.sample(**sample_kwargs),
         constants.SLOPE_RF: prior.slope_rf.sample(**sample_kwargs),
     }
+    if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      rf_vars[constants.THETA_RF] = prior.theta_rf.sample(**sample_kwargs)
     beta_grf_dev = tfp.distributions.Sample(
         tfp.distributions.Normal(0, 1),
         [mmm.n_geos, mmm.n_rf_channels],
@@ -330,6 +338,7 @@ class PriorDistributionSampler:
         reach=mmm.rf_tensors.reach_scaled,
         frequency=mmm.rf_tensors.frequency,
         alpha=rf_vars[constants.ALPHA_RF],
+        theta=rf_vars.get(constants.THETA_RF),
         ec=rf_vars[constants.EC_RF],
         slope=rf_vars[constants.SLOPE_RF],
     )
@@ -408,6 +417,10 @@ class PriorDistributionSampler:
         constants.ETA_OM: prior.eta_om.sample(**sample_kwargs),
         constants.SLOPE_OM: prior.slope_om.sample(**sample_kwargs),
     }
+    if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      organic_media_vars[constants.THETA_OM] = prior.theta_om.sample(
+          **sample_kwargs
+      )
     beta_gom_dev = tfp.distributions.Sample(
         tfp.distributions.Normal(0, 1),
         [mmm.n_geos, mmm.n_organic_media_channels],
@@ -463,6 +476,10 @@ class PriorDistributionSampler:
         constants.ETA_ORF: prior.eta_orf.sample(**sample_kwargs),
         constants.SLOPE_ORF: prior.slope_orf.sample(**sample_kwargs),
     }
+    if mmm.model_spec.adstock == constants.ADSTOCK_DELAYED:
+      organic_rf_vars[constants.THETA_ORF] = prior.theta_orf.sample(
+          **sample_kwargs
+      )
     beta_gorf_dev = tfp.distributions.Sample(
         tfp.distributions.Normal(0, 1),
         [mmm.n_geos, mmm.n_organic_rf_channels],

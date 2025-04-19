@@ -19,6 +19,7 @@ import warnings
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants as c
+from meridian.model import spec
 from meridian.model import prior_distribution
 import numpy as np
 import tensorflow_probability as tfp
@@ -1472,6 +1473,21 @@ class PriorDistributionTest(parameterized.TestCase):
     self.assertEqual(
         prior_distribution.distributions_are_equal(a, b), expected_result
     )
+
+  def test_theta_prior_default_for_delayed(self):
+    model_spec = spec.ModelSpec(adstock='delayed', max_lag=6)
+    theta_dist = model_spec.prior.theta_m
+    self.assertIsInstance(theta_dist, tfp.distributions.Uniform)
+    self.assertAlmostEqual(theta_dist.low.numpy(), 0.0, places=6)
+    self.assertAlmostEqual(theta_dist.high.numpy(), 6.0, places=6)
+
+  def test_valid_custom_theta_prior(self):
+    theta = tfp.distributions.Uniform(low=0.0, high=7.0, name='theta_m')
+    model_spec = spec.ModelSpec(
+        adstock='delayed',
+        prior=prior_distribution.PriorDistribution(theta_m=theta),
+    )
+    self.assertIsInstance(model_spec.prior.theta_m, tfp.distributions.Uniform)
 
 
 if __name__ == '__main__':
