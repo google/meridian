@@ -754,79 +754,6 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   return xr.Dataset(data_vars=xr_data, coords=xr_coords)
 
 
-def _compute_non_media_baseline(
-    non_media_treatments: tf.Tensor,
-    non_media_baseline_values: Sequence[float | str] | None = None,
-    non_media_selected_times: Sequence[bool] | None = None,
-) -> tf.Tensor:
-  """Computes the baseline for each non-media treatment channel.
-
-  Args:
-    non_media_treatments: The non-media treatment input data.
-    non_media_baseline_values: Optional list of shape (n_non_media_channels,).
-      Each element is either a float (which means that the fixed value will be
-      used as baseline for the given channel) or one of the strings "min" or
-      "max" (which mean that the global minimum or maximum value will be used as
-      baseline for the values of the given non_media treatment channel). If
-      None, the minimum value is used as baseline for each non_media treatment
-      channel.
-    non_media_selected_times: Optional list of shape (n_times,). Each element is
-      a boolean indicating whether the corresponding time period should be
-      included in the baseline computation.
-
-  Returns:
-    A tensor of shape (n_geos, n_times, n_non_media_channels) containing the
-    baseline values for each non-media treatment channel.
-  """
-
-  if non_media_selected_times is None:
-    non_media_selected_times = [True] * non_media_treatments.shape[-2]
-
-  if non_media_baseline_values is None:
-    # If non_media_baseline_values is not provided, use the minimum value for
-    # each non_media treatment channel as the baseline.
-    non_media_baseline_values_filled = [
-        constants.NON_MEDIA_BASELINE_MIN
-    ] * non_media_treatments.shape[-1]
-  else:
-    non_media_baseline_values_filled = non_media_baseline_values
-
-  if non_media_treatments.shape[-1] != len(non_media_baseline_values_filled):
-    raise ValueError(
-        "The number of non-media channels"
-        f" ({non_media_treatments.shape[-1]}) does not match the number"
-        f" of baseline types ({len(non_media_baseline_values_filled)})."
-    )
-
-  baseline_list = []
-  for channel in range(non_media_treatments.shape[-1]):
-    baseline_value = non_media_baseline_values_filled[channel]
-
-    if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
-      baseline_for_channel = tf.reduce_min(
-          non_media_treatments[..., channel], axis=[0, 1]
-      )
-    elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
-      baseline_for_channel = tf.reduce_max(
-          non_media_treatments[..., channel], axis=[0, 1]
-      )
-    elif isinstance(baseline_value, float):
-      baseline_for_channel = tf.cast(baseline_value, tf.float32)
-    else:
-      raise ValueError(
-          f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
-          " float numbers and strings 'min' and 'max' are supported."
-      )
-
-    baseline_list.append(
-        baseline_for_channel
-        * tf.ones_like(non_media_treatments[..., channel])
-        * non_media_selected_times
-    )
-
-  return tf.stack(baseline_list, axis=-1)
-
-
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -1641,7 +1568,7 @@ class Analyzer:
         combined_beta,
     )
     if data_tensors.non_media_treatments is not None:
-      non_media_scaled_baseline = _compute_non_media_baseline(
+      non_media_scaled_baseline = model.compute_non_media_treatments_baseline(
           non_media_treatments=data_tensors.non_media_treatments,
           non_media_baseline_values=non_media_baseline_values,
       )
@@ -2014,7 +1941,7 @@ class Analyzer:
     )[:, None]
 
     if data_tensors.non_media_treatments is not None:
-      new_non_media_treatments0 = _compute_non_media_baseline(
+      new_non_media_treatments0 = model.compute_non_media_treatments_baseline(
           non_media_treatments=data_tensors.non_media_treatments,
           non_media_baseline_values=non_media_baseline_values,
           non_media_selected_times=non_media_selected_times,
@@ -2690,7 +2617,7 @@ class Analyzer:
         else None
     )
     if self._meridian.non_media_treatments is not None:
-      new_non_media_treatments = _compute_non_media_baseline(
+      new_non_media_treatments = model.compute_non_media_treatments_baseline(
           non_media_treatments=self._meridian.non_media_treatments,
           non_media_baseline_values=non_media_baseline_values,
       )

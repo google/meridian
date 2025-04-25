@@ -848,3 +848,9 @@ class InputData:
       return self.media_spend.values
     else:
       raise ValueError("Both RF and Media are missing.")
+
+  def get_total_outcome(self) -> np.ndarray:
+    """Returns total outcome, aggregated over geos and times."""
+    if self.revenue_per_kpi is None:
+      return np.sum(self.kpi.values)
+    return np.sum(self.kpi.values * self.revenue_per_kpi.values)

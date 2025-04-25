@@ -68,145 +68,6 @@ class PriorDistributionSampler:
   def __init__(self, meridian: "model.Meridian"):
     self._meridian = meridian
 
-  def get_roi_prior_beta_m_value(
-      self,
-      alpha_m: tf.Tensor,
-      beta_gm_dev: tf.Tensor,
-      ec_m: tf.Tensor,
-      eta_m: tf.Tensor,
-      roi_or_mroi_m: tf.Tensor,
-      slope_m: tf.Tensor,
-      media_transformed: tf.Tensor,
-  ) -> tf.Tensor:
-    """Returns a tensor to be used in `beta_m`."""
-    mmm = self._meridian
-
-    # The `roi_or_mroi_m` parameter represents either ROI or mROI. For reach &
-    # frequency channels, marginal ROI priors are defined as "mROI by reach",
-    # which is equivalent to ROI.
-    media_spend = mmm.media_tensors.media_spend
-    media_spend_counterfactual = mmm.media_tensors.media_spend_counterfactual
-    media_counterfactual_scaled = mmm.media_tensors.media_counterfactual_scaled
-    # If we got here, then we should already have media tensors derived from
-    # non-None InputData.media data.
-    assert media_spend is not None
-    assert media_spend_counterfactual is not None
-    assert media_counterfactual_scaled is not None
-
-    # Use absolute value here because this difference will be negative for
-    # marginal ROI priors.
-    inc_revenue_m = roi_or_mroi_m * tf.reduce_sum(
-        tf.abs(media_spend - media_spend_counterfactual),
-        range(media_spend.ndim - 1),
-    )
-
-    if mmm.model_spec.roi_calibration_period is None and (
-        mmm.model_spec.media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
-    ):
-      # We can skip the adstock/hill computation step in this case.
-      media_counterfactual_transformed = tf.zeros_like(media_transformed)
-    else:
-      media_counterfactual_transformed = mmm.adstock_hill_media(
-          media=media_counterfactual_scaled,
-          alpha=alpha_m,
-          ec=ec_m,
-          slope=slope_m,
-      )
-
-    revenue_per_kpi = mmm.revenue_per_kpi
-    if mmm.input_data.revenue_per_kpi is None:
-      revenue_per_kpi = tf.ones([mmm.n_geos, mmm.n_times], dtype=tf.float32)
-    # Note: use absolute value here because this difference will be negative for
-    # marginal ROI priors.
-    media_contrib_gm = tf.einsum(
-        "...gtm,g,,gt->...gm",
-        tf.abs(media_transformed - media_counterfactual_transformed),
-        mmm.population,
-        mmm.kpi_transformer.population_scaled_stdev,
-        revenue_per_kpi,
-    )
-
-    if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-      media_contrib_m = tf.einsum("...gm->...m", media_contrib_gm)
-      random_effect_m = tf.einsum(
-          "...m,...gm,...gm->...m", eta_m, beta_gm_dev, media_contrib_gm
-      )
-      return (inc_revenue_m - random_effect_m) / media_contrib_m
-    else:
-      # For log_normal, beta_m and eta_m are not mean & std.
-      # The parameterization is beta_gm ~ exp(beta_m + eta_m * N(0, 1)).
-      random_effect_m = tf.einsum(
-          "...gm,...gm->...m",
-          tf.math.exp(beta_gm_dev * eta_m[..., tf.newaxis, :]),
-          media_contrib_gm,
-      )
-    return tf.math.log(inc_revenue_m) - tf.math.log(random_effect_m)
-
-  def get_roi_prior_beta_rf_value(
-      self,
-      alpha_rf: tf.Tensor,
-      beta_grf_dev: tf.Tensor,
-      ec_rf: tf.Tensor,
-      eta_rf: tf.Tensor,
-      roi_or_mroi_rf: tf.Tensor,
-      slope_rf: tf.Tensor,
-      rf_transformed: tf.Tensor,
-  ) -> tf.Tensor:
-    """Returns a tensor to be used in `beta_rf`."""
-    mmm = self._meridian
-
-    rf_spend = mmm.rf_tensors.rf_spend
-    rf_spend_counterfactual = mmm.rf_tensors.rf_spend_counterfactual
-    reach_counterfactual_scaled = mmm.rf_tensors.reach_counterfactual_scaled
-    frequency = mmm.rf_tensors.frequency
-    # If we got here, then we should already have RF media tensors derived from
-    # non-None InputData.reach data.
-    assert rf_spend is not None
-    assert rf_spend_counterfactual is not None
-    assert reach_counterfactual_scaled is not None
-    assert frequency is not None
-
-    inc_revenue_rf = roi_or_mroi_rf * tf.reduce_sum(
-        rf_spend - rf_spend_counterfactual,
-        range(rf_spend.ndim - 1),
-    )
-    if mmm.model_spec.rf_roi_calibration_period is not None:
-      rf_counterfactual_transformed = mmm.adstock_hill_rf(
-          reach=reach_counterfactual_scaled,
-          frequency=frequency,
-          alpha=alpha_rf,
-          ec=ec_rf,
-          slope=slope_rf,
-      )
-    else:
-      rf_counterfactual_transformed = tf.zeros_like(rf_transformed)
-    revenue_per_kpi = mmm.revenue_per_kpi
-    if mmm.input_data.revenue_per_kpi is None:
-      revenue_per_kpi = tf.ones([mmm.n_geos, mmm.n_times], dtype=tf.float32)
-
-    media_contrib_grf = tf.einsum(
-        "...gtm,g,,gt->...gm",
-        rf_transformed - rf_counterfactual_transformed,
-        mmm.population,
-        mmm.kpi_transformer.population_scaled_stdev,
-        revenue_per_kpi,
-    )
-    if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL:
-      media_contrib_rf = tf.einsum("...gm->...m", media_contrib_grf)
-      random_effect_rf = tf.einsum(
-          "...m,...gm,...gm->...m", eta_rf, beta_grf_dev, media_contrib_grf
-      )
-      return (inc_revenue_rf - random_effect_rf) / media_contrib_rf
-    else:
-      # For log_normal, beta_rf and eta_rf are not mean & std.
-      # The parameterization is beta_grf ~ exp(beta_rf + eta_rf * N(0, 1)).
-      random_effect_rf = tf.einsum(
-          "...gm,...gm->...m",
-          tf.math.exp(beta_grf_dev * eta_rf[..., tf.newaxis, :]),
-          media_contrib_grf,
-      )
-      return tf.math.log(inc_revenue_rf) - tf.math.log(random_effect_rf)
-
   def _sample_media_priors(
       self,
       n_draws: int,
@@ -241,40 +102,49 @@ class PriorDistributionSampler:
         [mmm.n_geos, mmm.n_media_channels],
         name=constants.BETA_GM_DEV,
     ).sample(**sample_kwargs)
-    media_transformed = mmm.adstock_hill_media(
-        media=mmm.media_tensors.media_scaled,
-        alpha=media_vars[constants.ALPHA_M],
-        ec=media_vars[constants.EC_M],
-        slope=media_vars[constants.SLOPE_M],
-    )
 
     prior_type = mmm.model_spec.media_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-      roi_m = prior.roi_m.sample(**sample_kwargs)
-      beta_m_value = self.get_roi_prior_beta_m_value(
-          beta_gm_dev=beta_gm_dev,
-          media_transformed=media_transformed,
-          roi_or_mroi_m=roi_m,
-          **media_vars,
-      )
-      media_vars[constants.ROI_M] = roi_m
-      media_vars[constants.BETA_M] = tfp.distributions.Deterministic(
-          beta_m_value, name=constants.BETA_M
-      ).sample()
-    elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-      mroi_m = prior.mroi_m.sample(**sample_kwargs)
-      beta_m_value = self.get_roi_prior_beta_m_value(
-          beta_gm_dev=beta_gm_dev,
-          media_transformed=media_transformed,
-          roi_or_mroi_m=mroi_m,
-          **media_vars,
-      )
-      media_vars[constants.MROI_M] = mroi_m
-      media_vars[constants.BETA_M] = tfp.distributions.Deterministic(
-          beta_m_value, name=constants.BETA_M
-      ).sample()
-    else:
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       media_vars[constants.BETA_M] = prior.beta_m.sample(**sample_kwargs)
+    else:
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+        treatment_parameter_m = prior.roi_m.sample(**sample_kwargs)
+        media_vars[constants.ROI_M] = treatment_parameter_m
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+        treatment_parameter_m = prior.mroi_m.sample(**sample_kwargs)
+        media_vars[constants.MROI_M] = treatment_parameter_m
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+        treatment_parameter_m = prior.contribution_m.sample(**sample_kwargs)
+        media_vars[constants.CONTRIBUTION_M] = treatment_parameter_m
+      else:
+        raise ValueError(f"Unsupported prior type: {prior_type}")
+      incremental_outcome_m = (
+          treatment_parameter_m * mmm.media_tensors.prior_denominator
+      )
+      media_transformed = mmm.adstock_hill_media(
+          media=mmm.media_tensors.media_scaled,
+          alpha=media_vars[constants.ALPHA_M],
+          ec=media_vars[constants.EC_M],
+          slope=media_vars[constants.SLOPE_M],
+      )
+      linear_predictor_counterfactual_difference = (
+          mmm.linear_predictor_counterfactual_difference_media(
+              media_transformed=media_transformed,
+              alpha_m=media_vars[constants.ALPHA_M],
+              ec_m=media_vars[constants.EC_M],
+              slope_m=media_vars[constants.SLOPE_M],
+          )
+      )
+      beta_m_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_m,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=media_vars[constants.ETA_M],
+          beta_gx_dev=beta_gm_dev,
+      )
+      media_vars[constants.BETA_M] = tfp.distributions.Deterministic(
+          beta_m_value, name=constants.BETA_M
+      ).sample()
 
     beta_eta_combined = (
         media_vars[constants.BETA_M][..., tf.newaxis, :]
@@ -324,43 +194,51 @@ class PriorDistributionSampler:
         [mmm.n_geos, mmm.n_rf_channels],
         name=constants.BETA_GRF_DEV,
     ).sample(**sample_kwargs)
-    rf_transformed = mmm.adstock_hill_rf(
-        reach=mmm.rf_tensors.reach_scaled,
-        frequency=mmm.rf_tensors.frequency,
-        alpha=rf_vars[constants.ALPHA_RF],
-        ec=rf_vars[constants.EC_RF],
-        slope=rf_vars[constants.SLOPE_RF],
-    )
 
     prior_type = mmm.model_spec.rf_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-      roi_rf = prior.roi_rf.sample(**sample_kwargs)
-      beta_rf_value = self.get_roi_prior_beta_rf_value(
-          beta_grf_dev=beta_grf_dev,
-          rf_transformed=rf_transformed,
-          roi_or_mroi_rf=roi_rf,
-          **rf_vars,
-      )
-      rf_vars[constants.ROI_RF] = roi_rf
-      rf_vars[constants.BETA_RF] = tfp.distributions.Deterministic(
-          beta_rf_value,
-          name=constants.BETA_RF,
-      ).sample()
-    elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-      mroi_rf = prior.mroi_rf.sample(**sample_kwargs)
-      beta_rf_value = self.get_roi_prior_beta_rf_value(
-          beta_grf_dev=beta_grf_dev,
-          rf_transformed=rf_transformed,
-          roi_or_mroi_rf=mroi_rf,
-          **rf_vars,
-      )
-      rf_vars[constants.MROI_RF] = mroi_rf
-      rf_vars[constants.BETA_RF] = tfp.distributions.Deterministic(
-          beta_rf_value,
-          name=constants.BETA_RF,
-      ).sample()
-    else:
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       rf_vars[constants.BETA_RF] = prior.beta_rf.sample(**sample_kwargs)
+    else:
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+        treatment_parameter_rf = prior.roi_rf.sample(**sample_kwargs)
+        rf_vars[constants.ROI_RF] = treatment_parameter_rf
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+        treatment_parameter_rf = prior.mroi_rf.sample(**sample_kwargs)
+        rf_vars[constants.MROI_RF] = treatment_parameter_rf
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+        treatment_parameter_rf = prior.contribution_rf.sample(**sample_kwargs)
+        rf_vars[constants.CONTRIBUTION_RF] = treatment_parameter_rf
+      else:
+        raise ValueError(f"Unsupported prior type: {prior_type}")
+      incremental_outcome_rf = (
+          treatment_parameter_rf * mmm.rf_tensors.prior_denominator
+      )
+      rf_transformed = mmm.adstock_hill_rf(
+          reach=mmm.rf_tensors.reach_scaled,
+          frequency=mmm.rf_tensors.frequency,
+          alpha=rf_vars[constants.ALPHA_RF],
+          ec=rf_vars[constants.EC_RF],
+          slope=rf_vars[constants.SLOPE_RF],
+      )
+      linear_predictor_counterfactual_difference = (
+          mmm.linear_predictor_counterfactual_difference_rf(
+              rf_transformed=rf_transformed,
+              alpha_rf=rf_vars[constants.ALPHA_RF],
+              ec_rf=rf_vars[constants.EC_RF],
+              slope_rf=rf_vars[constants.SLOPE_RF],
+          )
+      )
+      beta_rf_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_rf,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=rf_vars[constants.ETA_RF],
+          beta_gx_dev=beta_grf_dev,
+      )
+      rf_vars[constants.BETA_RF] = tfp.distributions.Deterministic(
+          beta_rf_value,
+          name=constants.BETA_RF,
+      ).sample()
 
     beta_eta_combined = (
         rf_vars[constants.BETA_RF][..., tf.newaxis, :]
@@ -412,9 +290,37 @@ class PriorDistributionSampler:
         name=constants.BETA_GOM_DEV,
     ).sample(**sample_kwargs)
 
-    organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
-        **sample_kwargs
-    )
+    prior_type = mmm.model_spec.organic_media_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
+          **sample_kwargs
+      )
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      organic_media_vars[constants.CONTRIBUTION_OM] = (
+          prior.contribution_om.sample(**sample_kwargs)
+      )
+      incremental_outcome_om = (
+          organic_media_vars[constants.CONTRIBUTION_OM] * mmm.total_outcome
+      )
+      organic_media_transformed = mmm.adstock_hill_media(
+          media=mmm.organic_media_tensors.organic_media_scaled,
+          alpha=organic_media_vars[constants.ALPHA_OM],
+          ec=organic_media_vars[constants.EC_OM],
+          slope=organic_media_vars[constants.SLOPE_OM],
+      )
+      beta_om_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_om,
+          linear_predictor_counterfactual_difference=organic_media_transformed,
+          eta_x=organic_media_vars[constants.ETA_OM],
+          beta_gx_dev=beta_gom_dev,
+      )
+      organic_media_vars[constants.BETA_OM] = tfp.distributions.Deterministic(
+          beta_om_value,
+          name=constants.BETA_OM,
+      ).sample()
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = (
         organic_media_vars[constants.BETA_OM][..., tf.newaxis, :]
@@ -467,7 +373,38 @@ class PriorDistributionSampler:
         name=constants.BETA_GORF_DEV,
     ).sample(**sample_kwargs)
 
-    organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(**sample_kwargs)
+    prior_type = mmm.model_spec.organic_media_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(
+          **sample_kwargs
+      )
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      organic_rf_vars[constants.CONTRIBUTION_ORF] = (
+          prior.contribution_orf.sample(**sample_kwargs)
+      )
+      incremental_outcome_orf = (
+          organic_rf_vars[constants.CONTRIBUTION_ORF] * mmm.total_outcome
+      )
+      organic_rf_transformed = mmm.adstock_hill_rf(
+          reach=mmm.organic_rf_tensors.organic_reach_scaled,
+          frequency=mmm.organic_rf_tensors.organic_frequency,
+          alpha=organic_rf_vars[constants.ALPHA_ORF],
+          ec=organic_rf_vars[constants.EC_ORF],
+          slope=organic_rf_vars[constants.SLOPE_ORF],
+      )
+      beta_orf_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_orf,
+          linear_predictor_counterfactual_difference=organic_rf_transformed,
+          eta_x=organic_rf_vars[constants.ETA_ORF],
+          beta_gx_dev=beta_gorf_dev,
+      )
+      organic_rf_vars[constants.BETA_ORF] = tfp.distributions.Deterministic(
+          beta_orf_value,
+          name=constants.BETA_ORF,
+      ).sample()
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = (
         organic_rf_vars[constants.BETA_ORF][..., tf.newaxis, :]
@@ -509,7 +446,6 @@ class PriorDistributionSampler:
     sample_shape = [1, n_draws]
     sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
     non_media_treatments_vars = {
-        constants.GAMMA_N: prior.gamma_n.sample(**sample_kwargs),
         constants.XI_N: prior.xi_n.sample(**sample_kwargs),
     }
     gamma_gn_dev = tfp.distributions.Sample(
@@ -517,6 +453,37 @@ class PriorDistributionSampler:
         [mmm.n_geos, mmm.n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     ).sample(**sample_kwargs)
+    prior_type = mmm.model_spec.non_media_treatments_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      non_media_treatments_vars[constants.GAMMA_N] = prior.gamma_n.sample(
+          **sample_kwargs
+      )
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      non_media_treatments_vars[constants.CONTRIBUTION_N] = (
+          prior.contribution_n.sample(**sample_kwargs)
+      )
+      incremental_outcome_n = (
+          non_media_treatments_vars[constants.CONTRIBUTION_N]
+          * mmm.total_outcome
+      )
+      linear_predictor_counterfactual_difference = (
+          mmm.non_media_treatments_scaled
+          - mmm.non_media_treatments_scaled_baseline
+      )
+      gamma_n_value = mmm.calculate_beta_x(
+          is_non_media=True,
+          incremental_outcome_x=incremental_outcome_n,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=non_media_treatments_vars[constants.XI_N],
+          beta_gx_dev=gamma_gn_dev,
+      )
+      non_media_treatments_vars[constants.GAMMA_N] = (
+          tfp.distributions.Deterministic(
+              gamma_n_value, name=constants.GAMMA_N
+          ).sample()
+      )
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
     non_media_treatments_vars[constants.GAMMA_GN] = (
         tfp.distributions.Deterministic(
             non_media_treatments_vars[constants.GAMMA_N][..., tf.newaxis, :]

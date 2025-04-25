@@ -5132,5 +5132,254 @@ class AnalyzerNotFittedTest(absltest.TestCase):
       not_fitted_analyzer.rhat_summary()
 
 
+def helper_sample_joint_dist_unpinned_as_posterior(self, n_draws):
+  """A helper function to sample joint distribution unpinned as posterior.
+
+  Calling the `sample` method on the `tfp.JointDistributionCoroutineAutobatched`
+  object is much faster than running MCMC posterior sampling. The `sample`
+  method draws from the prior, but we use these draws to verify that the
+  calculation of the coefficient means (`beta_m`, `beta_rf`, `beta_om`,
+  `beta_orf`, `gamma_n`) is correct when non-coefficient prior types are used.
+  `Analyzer.incremental_outcome` uses the coefficient values (`beta_gm`,
+  `beta_grf`, `beta_gom`, `beta_gorf`, gamma_gn), so if the results derived from
+  this method match the sampled parameters (`roi_m`, `mroi_m`, `contribution_m`,
+  etc.) for every draw, then this confirms that the corresponding coefficient
+  mean calculation is implemented correctly.
+
+  Args:
+    self: The Meridian object to sample from.
+    n_draws: The number of draws to sample.
+  """
+  posterior_sampler = self.posterior_sampler_callable
+  prior_draws = (
+      posterior_sampler._get_joint_dist_unpinned()
+      .sample([1, n_draws])
+      ._asdict()
+  )
+  prior_draws = {
+      k: v
+      for k, v in prior_draws.items()
+      if k not in constants.UNSAVED_PARAMETERS
+  }
+  # Create Arviz InferenceData for posterior draws.
+  posterior_coords = self.create_inference_data_coords(1, n_draws)
+  posterior_dims = self.create_inference_data_dims()
+  infdata_posterior = az.convert_to_inference_data(
+      prior_draws, coords=posterior_coords, dims=posterior_dims
+  )
+
+  self.inference_data.extend(infdata_posterior, join="right")
+
+
+def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
+  infdata = (
+      mmm.inference_data.posterior
+      if use_posterior
+      else mmm.inference_data.prior
+  )
+  # Calculate total_outcome from input_data instead of using mmm.total_outcome.
+  total_outcome = np.sum(mmm.input_data.kpi * mmm.input_data.revenue_per_kpi)
+  mmm_analyzer = analyzer.Analyzer(mmm)
+  n_m, n_rf, n_om, n_orf = (
+      mmm.n_media_channels,
+      mmm.n_rf_channels,
+      mmm.n_organic_media_channels,
+      mmm.n_organic_rf_channels,
+  )
+  incremental_outcome = mmm_analyzer.incremental_outcome(
+      include_non_paid_channels=True, use_posterior=use_posterior
+  )
+  ii_m = incremental_outcome[:, :, :n_m]
+  ii_rf = incremental_outcome[:, :, n_m : (n_m + n_rf)]
+  ii_om = incremental_outcome[:, :, (n_m + n_rf) : (n_m + n_rf + n_om)]
+  ii_orf = incremental_outcome[
+      :, :, (n_m + n_rf + n_om) : (n_m + n_rf + n_om + n_orf)
+  ]
+  ii_n = incremental_outcome[:, :, (n_m + n_rf + n_om + n_orf) :]
+  calculated_om = ii_om / total_outcome
+  calculated_orf = ii_orf / total_outcome
+  calculated_n = ii_n / total_outcome
+  param_om = infdata.contribution_om
+  param_orf = infdata.contribution_orf
+  param_n = infdata.contribution_n
+
+  media_prior_type = mmm.model_spec.media_prior_type
+  assert media_prior_type in [
+      constants.TREATMENT_PRIOR_TYPE_ROI,
+      constants.TREATMENT_PRIOR_TYPE_MROI,
+      constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+  ]
+  if media_prior_type == "roi":
+    param_m = infdata.roi_m
+    if mmm.model_spec.roi_calibration_period is None:
+      roi = mmm_analyzer.roi(use_posterior=use_posterior)
+      calculated_m = roi[:, :, :n_m]
+    else:
+      calculated_m = np.zeros_like(param_m)
+      for i in range(n_m):
+        times = mmm.model_spec.roi_calibration_period[:, i]
+        ii = mmm_analyzer.incremental_outcome(
+            media_selected_times=times.tolist(),
+            use_posterior=use_posterior,
+        )
+        spend = np.einsum(
+            "gtm,t->m",
+            mmm.input_data.media_spend,
+            times[-mmm.n_times :],
+        )
+        calculated_m[:, :, i] = ii[:, :, i] / spend[i]
+      calculated_m = tf.convert_to_tensor(calculated_m)
+  elif media_prior_type == "mroi":
+    mroi = mmm_analyzer.marginal_roi(use_posterior=use_posterior)
+    calculated_m = mroi[:, :, :n_m]
+    param_m = infdata.mroi_m
+  else:  # media_prior_type == "contribution"
+    calculated_m = ii_m / total_outcome
+    param_m = infdata.contribution_m
+
+  rf_prior_type = mmm.model_spec.rf_prior_type
+  assert rf_prior_type in [
+      constants.TREATMENT_PRIOR_TYPE_ROI,
+      constants.TREATMENT_PRIOR_TYPE_MROI,
+      constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+  ]
+  if rf_prior_type == "roi":
+    param_rf = infdata.roi_rf
+    if mmm.model_spec.rf_roi_calibration_period is None:
+      roi = mmm_analyzer.roi(use_posterior=use_posterior)
+      calculated_rf = roi[:, :, n_m:]
+    else:
+      calculated_rf = np.zeros_like(param_rf)
+      for i in range(n_rf):
+        times = mmm.model_spec.rf_roi_calibration_period[:, i]
+        ii = mmm_analyzer.incremental_outcome(
+            media_selected_times=times.tolist(),
+            use_posterior=use_posterior,
+        )
+        spend = np.einsum(
+            "gtm,t->m",
+            mmm.input_data.rf_spend,
+            times[-mmm.n_times :],
+        )
+        calculated_rf[:, :, i] = ii[:, :, n_m + i] / spend[i]
+      calculated_rf = tf.convert_to_tensor(calculated_rf)
+  elif rf_prior_type == "mroi":
+    mroi = mmm_analyzer.marginal_roi(use_posterior=use_posterior)
+    calculated_rf = mroi[:, :, n_m : (n_m + n_rf)]
+    param_rf = infdata.mroi_rf
+  else:  # rf_prior_type == "contribution"
+    calculated_rf = ii_rf / total_outcome
+    param_rf = infdata.contribution_rf
+
+  tf.debugging.assert_near(calculated_m, param_m, rtol=rtol, atol=atol)
+  tf.debugging.assert_near(calculated_rf, param_rf, rtol=rtol, atol=atol)
+  tf.debugging.assert_near(calculated_om, param_om, rtol=rtol, atol=atol)
+  tf.debugging.assert_near(calculated_orf, param_orf, rtol=rtol, atol=atol)
+  tf.debugging.assert_near(calculated_n, param_n, rtol=rtol, atol=atol)
+
+
+class AnalyzerCustomPriorTest(parameterized.TestCase):
+
+  @parameterized.product(
+      n_channels_per_treatment=[1, 2],
+      media_prior_type=["roi", "mroi", "contribution"],
+      rf_prior_type=["roi", "mroi", "contribution"],
+      roi_calibration_times=[None, [5, 6, 7]],
+      rf_roi_calibration_times=[None, [5, 6, 7]],
+  )
+  def test_treatment_parameter_accuracy(
+      self,
+      n_channels_per_treatment,
+      media_prior_type,
+      rf_prior_type,
+      roi_calibration_times,
+      rf_roi_calibration_times,
+  ):
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=10,
+        n_media_times=15,
+        n_controls=1,
+        n_media_channels=n_channels_per_treatment,
+        n_rf_channels=n_channels_per_treatment,
+        n_organic_media_channels=n_channels_per_treatment,
+        n_organic_rf_channels=n_channels_per_treatment,
+        n_non_media_channels=n_channels_per_treatment,
+        seed=1,
+    )
+
+    # Scale each channel's spend to be between 4-6% of total revenue. (Otherwise
+    # spend values can be so small that they cause numerical inaccuracies with
+    # ROI priors.)
+    # pytype: disable=attribute-error
+    total_outcome = np.sum(
+        input_data.kpi.values * input_data.revenue_per_kpi.values
+    )
+    # pytype: enable=attribute-error
+
+    total_spend_m = np.sum(input_data.media_spend.values, (0, 1))
+    total_spend_rf = np.sum(input_data.rf_spend.values, (0, 1))
+    n_m = len(input_data.media_channel)
+    n_rf = len(input_data.rf_channel)
+    media_pcts = np.linspace(0.04, 0.06, n_m)
+    input_data.media_spend *= media_pcts * total_outcome / total_spend_m
+    rf_pcts = np.linspace(0.04, 0.06, n_rf)
+    input_data.rf_spend *= rf_pcts * total_outcome / total_spend_rf
+
+    # Set `roi_calibration_period` and assert error if media_prior_type !=
+    # "roi".
+    if roi_calibration_times is None:
+      roi_calibration_period = None
+    else:
+      n_media_times = len(input_data.media_time)
+      n_media_channels = len(input_data.media_channel)
+      roi_calibration_period = np.full([n_media_times, n_media_channels], False)
+      for time in roi_calibration_times:
+        roi_calibration_period[time, :] = True
+      if media_prior_type != "roi":
+        with self.assertRaisesRegex(ValueError, "The `roi_calibration_period`"):
+          spec.ModelSpec(
+              media_prior_type=media_prior_type,
+              roi_calibration_period=roi_calibration_period,
+          )
+        return
+    # Set `rf_roi_calibration_period` and assert error if rf_prior_type !=
+    # "roi".
+    if rf_roi_calibration_times is None:
+      rf_roi_calibration_period = None
+    else:
+      n_media_times = len(input_data.media_time)
+      n_rf_channels = len(input_data.rf_channel)
+      rf_roi_calibration_period = np.full([n_media_times, n_rf_channels], False)
+      for time in rf_roi_calibration_times:
+        rf_roi_calibration_period[time, :] = True
+      if rf_prior_type != "roi":
+        with self.assertRaisesRegex(
+            ValueError, "The `rf_roi_calibration_period`"
+        ):
+          spec.ModelSpec(
+              rf_prior_type=rf_prior_type,
+              rf_roi_calibration_period=rf_roi_calibration_period,
+          )
+        return
+
+    model_spec = spec.ModelSpec(
+        media_prior_type=media_prior_type,
+        rf_prior_type=rf_prior_type,
+        roi_calibration_period=roi_calibration_period,
+        rf_roi_calibration_period=rf_roi_calibration_period,
+    )
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+
+    mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
+    mmm.sample_prior(100)
+    mmm.sample_joint_dist_unpinned_as_posterior(100)
+    check_treatment_parameters(mmm, use_posterior=False)
+    check_treatment_parameters(mmm, use_posterior=True)
+
+
 if __name__ == "__main__":
   absltest.main()

@@ -1736,6 +1736,11 @@ class NonPaidModelTest(
             beta_rf=tfp.distributions.Deterministic(0),
             beta_om=tfp.distributions.Deterministic(0),
             beta_orf=tfp.distributions.Deterministic(0),
+            contribution_m=tfp.distributions.Deterministic(0),
+            contribution_rf=tfp.distributions.Deterministic(0),
+            contribution_om=tfp.distributions.Deterministic(0),
+            contribution_orf=tfp.distributions.Deterministic(0),
+            contribution_n=tfp.distributions.Deterministic(0),
             eta_m=tfp.distributions.Deterministic(0),
             eta_rf=tfp.distributions.Deterministic(0),
             eta_om=tfp.distributions.Deterministic(0),
@@ -1776,23 +1781,50 @@ class NonPaidModelTest(
         tf.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
     )
 
-  @parameterized.product(
-      paid_media_prior_type=[
-          constants.TREATMENT_PRIOR_TYPE_ROI,
-          constants.TREATMENT_PRIOR_TYPE_MROI,
-          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-      ],
-      media_effects_dist=[
-          constants.MEDIA_EFFECTS_NORMAL,
-          constants.MEDIA_EFFECTS_LOG_NORMAL,
-      ],
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default_normal_failing",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+      ),
+      dict(
+          testcase_name="mixed_log_normal_ok",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+      ),
+      dict(
+          testcase_name="mixed_normal_failing",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+      ),
   )
   def test_get_joint_dist_with_log_prob_non_media(
-      self, paid_media_prior_type: str, media_effects_dist: str
+      self,
+      media_prior_type: str,
+      rf_prior_type: str,
+      organic_media_prior_type: str,
+      organic_rf_prior_type: str,
+      non_media_treatments_prior_type: str,
+      media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        media_prior_type=paid_media_prior_type,
-        rf_prior_type=paid_media_prior_type,
+        media_prior_type=media_prior_type,
+        rf_prior_type=rf_prior_type,
+        organic_media_prior_type=organic_media_prior_type,
+        organic_rf_prior_type=organic_rf_prior_type,
+        non_media_treatments_prior_type=non_media_treatments_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -1833,15 +1865,12 @@ class NonPaidModelTest(
     ]
     prior_distribution_params = [
         constants.KNOT_VALUES,
-        constants.BETA_OM,
-        constants.BETA_ORF,
         constants.ETA_M,
         constants.ETA_RF,
         constants.ETA_OM,
         constants.ETA_ORF,
         constants.GAMMA_C,
         constants.XI_C,
-        constants.GAMMA_N,
         constants.XI_N,
         constants.ALPHA_M,
         constants.ALPHA_RF,
@@ -1857,19 +1886,70 @@ class NonPaidModelTest(
         constants.SLOPE_ORF,
         constants.SIGMA,
     ]
-    if paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+    if media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       derived_params.append(constants.BETA_M)
-      derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.ROI_M)
-      prior_distribution_params.append(constants.ROI_RF)
-    elif paid_media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+    elif media_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
       derived_params.append(constants.BETA_M)
-      derived_params.append(constants.BETA_RF)
       prior_distribution_params.append(constants.MROI_M)
-      prior_distribution_params.append(constants.MROI_RF)
-    else:
+    elif media_prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      derived_params.append(constants.BETA_M)
+      prior_distribution_params.append(constants.CONTRIBUTION_M)
+    elif media_prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       prior_distribution_params.append(constants.BETA_M)
+    else:
+      raise ValueError(f"Unsupported media prior type: {media_prior_type}")
+
+    if rf_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+      derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.ROI_RF)
+    elif rf_prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+      derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.MROI_RF)
+    elif rf_prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      derived_params.append(constants.BETA_RF)
+      prior_distribution_params.append(constants.CONTRIBUTION_RF)
+    elif rf_prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       prior_distribution_params.append(constants.BETA_RF)
+    else:
+      raise ValueError(f"Unsupported RF prior type: {rf_prior_type}")
+
+    if organic_media_prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      derived_params.append(constants.BETA_OM)
+      prior_distribution_params.append(constants.CONTRIBUTION_OM)
+    elif organic_media_prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      prior_distribution_params.append(constants.BETA_OM)
+    else:
+      raise ValueError(
+          f"Unsupported organic media prior type: {organic_media_prior_type}"
+      )
+
+    if organic_rf_prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      derived_params.append(constants.BETA_ORF)
+      prior_distribution_params.append(constants.CONTRIBUTION_ORF)
+    elif organic_rf_prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      prior_distribution_params.append(constants.BETA_ORF)
+    else:
+      raise ValueError(
+          f"Unsupported organic RF prior type: {organic_rf_prior_type}"
+      )
+
+    if (
+        non_media_treatments_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    ):
+      derived_params.append(constants.GAMMA_N)
+      prior_distribution_params.append(constants.CONTRIBUTION_N)
+    elif (
+        non_media_treatments_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    ):
+      prior_distribution_params.append(constants.GAMMA_N)
+    else:
+      raise ValueError(
+          "Unsupported non-media treatments prior type:"
+          f" {non_media_treatments_prior_type}"
+      )
 
     # Parameters that are derived from other parameters via Deterministic()
     # should have zero contribution to log_prob.
@@ -2063,6 +2143,11 @@ class NonPaidModelTest(
                   input_data_samples._N_DRAWS,
                   input_data_samples._N_NON_MEDIA_CHANNELS + 1,
               ),
+              constants.CONTRIBUTION_N: (
+                  1,
+                  input_data_samples._N_DRAWS,
+                  input_data_samples._N_NON_MEDIA_CHANNELS + 1,
+              ),
           },
           mismatched_coord_size=input_data_samples._N_NON_MEDIA_CHANNELS + 1,
           expected_coord_size=input_data_samples._N_NON_MEDIA_CHANNELS,
@@ -2098,6 +2183,11 @@ class NonPaidModelTest(
                   input_data_samples._N_ORGANIC_RF_CHANNELS + 1,
               ),
               constants.SLOPE_ORF: (
+                  1,
+                  input_data_samples._N_DRAWS,
+                  input_data_samples._N_ORGANIC_RF_CHANNELS + 1,
+              ),
+              constants.CONTRIBUTION_ORF: (
                   1,
                   input_data_samples._N_DRAWS,
                   input_data_samples._N_ORGANIC_RF_CHANNELS + 1,

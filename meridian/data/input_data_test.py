@@ -1534,6 +1534,48 @@ class NonpaidInputDataTest(parameterized.TestCase):
         expected_paid_channels,
     )
 
+  def test_get_total_outcome_no_revenue(self):
+    """Tests get_total_outcome when revenue_per_kpi is None."""
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=None,  # Explicitly set to None
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+    total_outcome = data.get_total_outcome()
+    expected_outcome = np.sum(self.kpi.values)
+    # Use xarray testing for potential floating point comparisons
+    self.assertAlmostEqual(total_outcome, expected_outcome)
+
+  def test_get_total_outcome_with_revenue(self):
+    """Tests get_total_outcome when revenue_per_kpi is provided."""
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,  # kpi_type shouldn't affect this calc
+        revenue_per_kpi=self.revenue_per_kpi,  # Provided
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+    total_outcome = data.get_total_outcome()
+    expected_outcome = np.sum(self.kpi.values * self.revenue_per_kpi.values)
+    # Use xarray testing for potential floating point comparisons
+    # Need to convert expected_outcome to a 0-d DataArray for assert_allclose
+    expected_outcome_da = xr.DataArray(expected_outcome)
+    self.assertAlmostEqual(total_outcome, expected_outcome_da)
+
 
 if __name__ == "__main__":
   absltest.main()

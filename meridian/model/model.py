@@ -55,6 +55,85 @@ MCMCSamplingError = posterior_sampler.MCMCSamplingError
 MCMCOOMError = posterior_sampler.MCMCOOMError
 
 
+def compute_non_media_treatments_baseline(
+    non_media_treatments: tf.Tensor,
+    non_media_baseline_values: Sequence[float | str] | None = None,
+    non_media_selected_times: Sequence[bool] | None = None,
+) -> tf.Tensor:
+  """Computes the baseline for each non-media treatment channel.
+
+  Args:
+    non_media_treatments: The non-media treatment data tensor with the same
+      shape as `input_data.non_media_treatments`.
+    non_media_baseline_values: Optional list of shape `(n_non_media_channels,)`.
+      Each element is either a float (which means that the fixed value will be
+      used as baseline for the given channel) or one of the strings `"min"` or
+      `"max"` (which mean that the global minimum or maximum value will be used
+      as baseline for the values of the given non_media treatment channel). If
+      None, the minimum value is used as baseline for each non_media treatment
+      channel.
+    non_media_selected_times: Optional list of shape `(n_times,)`. Each element
+      is a boolean indicating whether the corresponding time period should be
+      included in the baseline computation.
+
+  Returns:
+    A tensor of shape `(n_geos, n_times, n_non_media_channels)` containing the
+    baseline values for each non-media treatment channel.
+  """
+
+  if non_media_selected_times is None:
+    non_media_selected_times = [True] * non_media_treatments.shape[-2]
+  time_mask_expanded = tf.expand_dims(
+      tf.cast(non_media_selected_times, dtype=tf.bool), axis=0
+  )  # Shape: (1, n_times)
+  if non_media_baseline_values is None:
+    # If non_media_baseline_values is not provided, use the minimum value for
+    # each non_media treatment channel as the baseline.
+    non_media_baseline_values_filled = [
+        constants.NON_MEDIA_BASELINE_MIN
+    ] * non_media_treatments.shape[-1]
+  else:
+    non_media_baseline_values_filled = non_media_baseline_values
+
+  if non_media_treatments.shape[-1] != len(non_media_baseline_values_filled):
+    raise ValueError(
+        "The number of non-media channels"
+        f" ({non_media_treatments.shape[-1]}) does not match the number"
+        f" of baseline types ({len(non_media_baseline_values_filled)})."
+    )
+
+  baseline_list = []
+  for channel in range(non_media_treatments.shape[-1]):
+    baseline_value = non_media_baseline_values_filled[channel]
+
+    if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
+      baseline_for_channel = tf.reduce_min(
+          non_media_treatments[..., channel], axis=[0, 1]
+      )
+    elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
+      baseline_for_channel = tf.reduce_max(
+          non_media_treatments[..., channel], axis=[0, 1]
+      )
+    elif isinstance(baseline_value, float):
+      baseline_for_channel = tf.cast(baseline_value, tf.float32)
+    else:
+      raise ValueError(
+          f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
+          " float numbers and strings 'min' and 'max' are supported."
+      )
+
+    baseline_list.append(
+        tf.where(
+            time_mask_expanded,
+            baseline_for_channel
+            * tf.ones_like(non_media_treatments[..., channel]),
+            tf.zeros_like(non_media_treatments[..., channel]),
+        )
+    )
+
+  return tf.stack(baseline_list, axis=-1)
+
+
 def _warn_setting_national_args(**kwargs):
   """Raises a warning if a geo argument is found in kwargs."""
   for kwarg, value in kwargs.items():
@@ -118,6 +197,8 @@ class Meridian:
       tensors.
     total_spend: A tensor containing total spend, including
       `media_tensors.media_spend` and `rf_tensors.rf_spend`.
+    total_outcome: A tensor containing the total outcome, aggregated over geos
+      and times.
     controls_transformer: A `ControlsTransformer` to scale controls tensors
       using the model's controls data.
     non_media_transformer: A `CenteringAndScalingTransformer` to scale non-media
@@ -128,6 +209,8 @@ class Meridian:
       median value.
     non_media_treatments_scaled: The non-media treatment tensor normalized by
       population and by the median value.
+    non_media_treatments_scaled_baseline: The baseline values of the non-media
+      treatment tensor normalized by population and by the median value.
     kpi_scaled: The KPI tensor normalized by population and by the median value.
     media_effects_dist: A string to specify the distribution of media random
       effects across geos.
@@ -230,6 +313,12 @@ class Meridian:
   def total_spend(self) -> tf.Tensor:
     return tf.convert_to_tensor(
         self.input_data.get_total_spend(), dtype=tf.float32
+    )
+
+  @functools.cached_property
+  def total_outcome(self) -> tf.Tensor:
+    return tf.convert_to_tensor(
+        self.input_data.get_total_outcome(), dtype=tf.float32
     )
 
   @property
@@ -343,6 +432,16 @@ class Meridian:
       return self.non_media_transformer.forward(self.non_media_treatments)  # pytype: disable=attribute-error
     else:
       return None
+
+  @functools.cached_property
+  def non_media_treatments_scaled_baseline(self) -> tf.Tensor | None:
+    if self.input_data.non_media_treatments is None:
+      return None
+    baseline = compute_non_media_treatments_baseline(
+        self.non_media_treatments,
+        self.model_spec.non_media_treatments_baseline_values,
+    )
+    return self.non_media_transformer.forward(baseline)  # pytype: disable=attribute-error
 
   @functools.cached_property
   def kpi_scaled(self) -> tf.Tensor:
@@ -675,6 +774,21 @@ class Meridian:
             self.model_spec.rf_prior_type,
             "rf_prior_type",
         ),
+        (
+            constants.IGNORED_PRIORS_ORGANIC_MEDIA,
+            self.model_spec.organic_media_prior_type,
+            "organic_media_prior_type",
+        ),
+        (
+            constants.IGNORED_PRIORS_ORGANIC_RF,
+            self.model_spec.organic_rf_prior_type,
+            "organic_rf_prior_type",
+        ),
+        (
+            constants.IGNORED_PRIORS_NON_MEDIA_TREATMENTS,
+            self.model_spec.non_media_treatments_prior_type,
+            "non_media_treatments_prior_type",
+        ),
     ):
       ignored_custom_priors = []
       for prior in ignored_priors_dict.get(prior_type, []):
@@ -941,6 +1055,169 @@ class Meridian:
           f"`{kpi}` cannot be constant with"
           f' `rf_prior_type` = "{self.model_spec.rf_prior_type}".'
       )
+
+  def linear_predictor_counterfactual_difference_media(
+      self,
+      media_transformed: tf.Tensor,
+      alpha_m: tf.Tensor,
+      ec_m: tf.Tensor,
+      slope_m: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates linear predictor counterfactual difference for non-RF media.
+
+    For non-RF media variables (paid or organic), this function calculates the
+    linear predictor difference between the treatment variable and its
+    counterfactual. "Linear predictor" refers to the output of the hill/adstock
+    function, which is multiplied by the geo-level coefficient.
+
+    This function does the calculation efficiently by only calculating calling
+    the hill/adstock function if the prior counterfactual is not all zeros.
+
+    Args:
+      media_transformed: The output of the hill/adstock function for actual
+        historical media data.
+      alpha_m: The adstock alpha parameter values.
+      ec_m: The adstock ec parameter values.
+      slope_m: The adstock hill slope parameter values.
+
+    Returns:
+      The linear predictor difference between the treatment variable and its
+      counterfactual.
+    """
+    if self.media_tensors.prior_media_scaled_counterfactual is None:
+      return media_transformed
+    media_transformed_counterfactual = self.adstock_hill_media(
+        self.media_tensors.prior_media_scaled_counterfactual,
+        alpha_m,
+        ec_m,
+        slope_m,
+    )
+    # Absolute values is needed because the difference is negative for mROI
+    # priors and positive for ROI and contribution priors.
+    return tf.abs(media_transformed - media_transformed_counterfactual)
+
+  def linear_predictor_counterfactual_difference_rf(
+      self,
+      rf_transformed: tf.Tensor,
+      alpha_rf: tf.Tensor,
+      ec_rf: tf.Tensor,
+      slope_rf: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates linear predictor counterfactual difference for RF media.
+
+    For RF media variables (paid or organic), this function calculates the
+    linear predictor difference between the treatment variable and its
+    counterfactual. "Linear predictor" refers to the output of the hill/adstock
+    function, which is multiplied by the geo-level coefficient.
+
+    This function does the calculation efficiently by only calculating calling
+    the hill/adstock function if the prior counterfactual is not all zeros.
+
+    Args:
+      rf_transformed: The output of the hill/adstock function for actual
+        historical media data.
+      alpha_rf: The adstock alpha parameter values.
+      ec_rf: The adstock ec parameter values.
+      slope_rf: The adstock hill slope parameter values.
+
+    Returns:
+      The linear predictor difference between the treatment variable and its
+      counterfactual.
+    """
+    if self.rf_tensors.prior_reach_scaled_counterfactual is None:
+      return rf_transformed
+    rf_transformed_counterfactual = self.adstock_hill_rf(
+        reach=self.rf_tensors.prior_reach_scaled_counterfactual,
+        frequency=self.rf_tensors.frequency,
+        alpha=alpha_rf,
+        ec=ec_rf,
+        slope=slope_rf,
+    )
+    # Absolute values is needed because the difference is negative for mROI
+    # priors and positive for ROI and contribution priors.
+    return tf.abs(rf_transformed - rf_transformed_counterfactual)
+
+  def calculate_beta_x(
+      self,
+      is_non_media: bool,
+      incremental_outcome_x: tf.Tensor,
+      linear_predictor_counterfactual_difference: tf.Tensor,
+      eta_x: tf.Tensor,
+      beta_gx_dev: tf.Tensor,
+  ) -> tf.Tensor:
+    """Calculates coefficient mean parameter for any treatment variable type.
+
+    The "beta_x" in the function name refers to the coefficient mean parameter
+    of any treatment variable. The "x" can represent "m", "rf", "om", or "orf".
+    This function can also be used to calculate "gamma_n" for any non-media
+    treatments.
+
+    Args:
+      is_non_media: Boolean indicating whether the treatment variable is a
+        non-media treatment. This argument is used to determine whether the
+        coefficient random effects are normal or log-normal. If `True`, then
+        random effects are assumed to be normal. Otherwise, the distribution is
+        inferred from `self.media_effects_dist`.
+      incremental_outcome_x: The incremental outcome of the treatment variable,
+        which depends on the parameter values of a particular prior or posterior
+        draw. The "_x" indicates that this is a tensor with length equal to the
+        dimension of the treatment variable.
+      linear_predictor_counterfactual_difference: The difference between the
+        treatment variable and its counterfactual on the linear predictor scale.
+        "Linear predictor" refers to the quantity that is multiplied by the
+        geo-level coefficient. For media variables, this is the output of the
+        hill/adstock transformation function. For non-media treatments, this is
+        simply the treatment variable after centering/scaling transformations.
+        This tensor has dimensions for geo, time, and channel.
+      eta_x: The random effect standard deviation parameter values. For media
+        variables, the "x" represents "m", "rf", "om", or "orf". For non-media
+        treatments, this argument should be set to `xi_n`, which is analogous to
+        "eta".
+      beta_gx_dev: The latent standard normal parameter values of the geo-level
+        coefficients. For media variables, the "x" represents "m", "rf", "om",
+        or "orf". For non-media treatments, this argument should be set to
+        `gamma_gn_dev`, which is analogous to "beta_gx_dev".
+
+    Returns:
+      The coefficient mean parameter of the treatment variable, which has
+      dimension equal to the number of treatment channels..
+    """
+    if is_non_media:
+      random_effects_normal = True
+    else:
+      random_effects_normal = (
+          self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+      )
+    if self.revenue_per_kpi is None:
+      revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
+    else:
+      revenue_per_kpi = self.revenue_per_kpi
+    incremental_outcome_gx_over_beta_gx = tf.einsum(
+        "...gtx,gt,g,->...gx",
+        linear_predictor_counterfactual_difference,
+        revenue_per_kpi,
+        self.population,
+        self.kpi_transformer.population_scaled_stdev,
+    )
+    if random_effects_normal:
+      numerator_term_x = tf.einsum(
+          "...gx,...gx,...x->...x",
+          incremental_outcome_gx_over_beta_gx,
+          beta_gx_dev,
+          eta_x,
+      )
+      denominator_term_x = tf.einsum(
+          "...gx->...x", incremental_outcome_gx_over_beta_gx
+      )
+      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
+    # For log-normal random effects, beta_x and eta_x are not mean & std.
+    # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
+    denominator_term_x = tf.einsum(
+        "...gx,...gx->...x",
+        incremental_outcome_gx_over_beta_gx,
+        tf.math.exp(beta_gx_dev * eta_x[..., tf.newaxis, :]),
+    )
+    return tf.math.log(incremental_outcome_x) - tf.math.log(denominator_term_x)
 
   def adstock_hill_media(
       self,

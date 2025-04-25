@@ -91,7 +91,7 @@ class ModelSpecTest(parameterized.TestCase):
           "roi",
           (
               "The `media_prior_type` parameter '' must be one of"
-              " ['coefficient', 'mroi', 'roi']."
+              " ['coefficient', 'contribution', 'mroi', 'roi']."
           ),
       ),
       (
@@ -100,7 +100,7 @@ class ModelSpecTest(parameterized.TestCase):
           "invalid",
           (
               "The `rf_prior_type` parameter 'invalid' must be one"
-              " of ['coefficient', 'mroi', 'roi']."
+              " of ['coefficient', 'contribution', 'mroi', 'roi']."
           ),
       ),
   )
