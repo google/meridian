@@ -3525,8 +3525,8 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
     total_spend = self.analyzer_rf_only.filter_and_aggregate_geos_and_times(
         self.meridian_rf_only.rf_tensors.rf_spend
     )
-    expeted_roi = self.analyzer_rf_only.incremental_outcome() / total_spend
-    self.assertAllClose(expeted_roi, roi)
+    expected_roi = self.analyzer_rf_only.incremental_outcome() / total_spend
+    self.assertAllClose(expected_roi, roi)
 
   def test_by_reach_returns_correct_values(self):
     mroi = self.analyzer_rf_only.marginal_roi(

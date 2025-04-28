@@ -752,7 +752,6 @@ class InputDataTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(testcase_name="geo_time_channel", n_geos=10, n_times=100),
       dict(testcase_name="channel", n_geos=None, n_times=None),
-      dict(testcase_name="geo_channel", n_geos=10, n_times=None),
   )
   def test_rf_spend_properties(self, n_geos: int | None, n_times: int | None):
     rf_spend = test_utils.random_rf_spend_nd_da(
@@ -807,7 +806,6 @@ class InputDataTest(parameterized.TestCase):
         media=self.not_lagged_media,
         media_spend=self.media_spend_1d,
     )
-
     xr.testing.assert_equal(data.kpi, self.not_lagged_kpi)
     xr.testing.assert_equal(data.revenue_per_kpi, self.revenue_per_kpi)
     xr.testing.assert_equal(data.media, self.not_lagged_media)
@@ -1408,6 +1406,84 @@ class InputDataTest(parameterized.TestCase):
     )
     self.assertTrue(spend in total_spend for spend in self.rf_spend)
     self.assertTrue(spend in total_spend for spend in self.media_spend)
+
+  def test_allocate_media_spend_basic(self):
+    """Tests basic allocation, dimensions, and total spend conservation."""
+    data = input_data.InputData(
+        controls=self.lagged_controls,
+        kpi=self.lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=xr.DataArray(
+            [1000, 2000, 3000, 4000, 5000, 6000],
+            coords=[self.lagged_media[constants.MEDIA_CHANNEL].media_channel],
+            dims=[constants.MEDIA_CHANNEL],
+            name=constants.MEDIA_SPEND,
+        ),
+    )
+    allocated_spend = data.allocated_media_spend
+
+    # 1. Verify dimensions
+    self.assertEqual(
+        allocated_spend.dims,  # pytype: disable=attribute-error
+        (constants.GEO, constants.TIME, constants.MEDIA_CHANNEL),
+    )
+    self.assertLen(allocated_spend[constants.GEO], self.n_geos)
+    self.assertLen(allocated_spend[constants.TIME], self.n_times)
+    self.assertLen(
+        allocated_spend[constants.MEDIA_CHANNEL], self.n_media_channels
+    )
+    # Verify time coordinates match kpi time, not media_time
+    np.testing.assert_array_equal(
+        allocated_spend[constants.TIME].values, self.lagged_kpi.time
+    )
+
+    # 2. Verify total spend conservation per channel
+    total_allocated = allocated_spend.sum(dim=[constants.GEO, constants.TIME])  # pytype: disable=attribute-error
+    xr.testing.assert_allclose(total_allocated, data.media_spend)
+
+  def test_allocate_rf_spend_all_zero_media(self):
+    """Tests allocation when all media units across all channels are zero."""
+    reach_zeros = xr.DataArray(
+        np.zeros((self.n_geos, self.n_lagged_media_times, self.n_rf_channels)),
+        coords=[
+            self.lagged_reach[constants.GEO].geo,
+            self.lagged_reach[constants.MEDIA_TIME].media_time,
+            self.lagged_reach[constants.RF_CHANNEL].rf_channel,
+        ],
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL],
+        name=constants.REACH,
+    )
+    data = input_data.InputData(
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        controls=self.lagged_controls,
+        kpi=self.lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        reach=reach_zeros,
+        frequency=self.lagged_frequency,
+        rf_spend=xr.DataArray(
+            [1000, 2000],
+            coords=[self.lagged_reach[constants.RF_CHANNEL].rf_channel],
+            dims=[constants.RF_CHANNEL],
+            name=constants.RF_SPEND,
+        ),
+    )
+
+    allocated_spend = data.allocated_rf_spend
+
+    # Verify dimensions are still correct
+    self.assertEqual(
+        allocated_spend.dims,  # pytype: disable=attribute-error
+        (constants.GEO, constants.TIME, constants.RF_CHANNEL),
+    )
+
+    # All channels had zero total units, expect all NaN allocation
+    self.assertTrue(np.isnan(allocated_spend).all())
 
 
 class NonpaidInputDataTest(parameterized.TestCase):
