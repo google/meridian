@@ -98,6 +98,8 @@ class OptimizationGrid:
     use_kpi: Whether using generic KPI or revenue.
     use_posterior: Whether posterior distributions were used, or prior.
     use_optimal_frequency: Whether optimal frequency was used.
+    start_date: The start date of the optimization period.
+    end_date: The end date of the optimization period.
     gtol: Float indicating the acceptable relative error for the budget used in
       the grid setup. The budget is rounded by `10*n`, where `n` is the smallest
       integer such that `(budget - rounded_budget)` is less than or equal to
@@ -117,10 +119,12 @@ class OptimizationGrid:
   use_kpi: bool
   use_posterior: bool
   use_optimal_frequency: bool
+  start_date: tc.Date
+  end_date: tc.Date
   gtol: float
   round_factor: int
   optimal_frequency: np.ndarray | None
-  selected_times: Sequence[str] | Sequence[bool] | None
+  selected_times: Sequence[str] | None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -1278,7 +1282,10 @@ class BudgetOptimizer:
       self,
       new_data: analyzer.DataTensors | None = None,
       use_posterior: bool = True,
+      # TODO: b/409550413 - Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
       fixed_budget: bool = True,
       budget: float | None = None,
       pct_of_spend: Sequence[float] | None = None,
@@ -1316,8 +1323,15 @@ class BudgetOptimizer:
     `fixed_budget=True`) will be inferred from the `new_data`, but can be
     overridden using the `pct_of_spend` and `budget` arguments.
 
-    If `selected_times` is specified, then the default values are inferred based
-    on the subset of time periods specified.
+    If `start_date` or `end_date` is specified, then the default values are
+    inferred based on the subset of time periods specified. Both start and end
+    time selectors should align with the Meridian time dimension coordinates in
+    the underlying model if optimizing the original data. If `new_data` is
+    provided with a different number of time periods than in `InputData`, then
+    the start and end time coordinates must match the time dimensions in
+    `new_data.time`. By default, all times periods are used. Either start or
+    end time component can be `None` to represent the first or the last time
+    coordinate, respectively.
 
     Args:
       new_data: An optional `DataTensors` container with optional tensors:
@@ -1332,15 +1346,13 @@ class BudgetOptimizer:
       use_posterior: Boolean. If `True`, then the budget is optimized based on
         the posterior distribution of the model. Otherwise, the prior
         distribution is used.
-      selected_times: Tuple containing the start and end time dimension
-        coordinates for the duration to run the optimization on. Selected time
-        values should align with the Meridian time dimension coordinates in the
-        underlying model if optimizing the original data. If `new_data` is
-        provided with a different number of time periods than in `InputData`,
-        then the start and end time coordinates must match the time dimensions
-        in `new_data.time`. By default, all times periods are used. Either start
-        or end time component can be `None` to represent the first or the last
-        time coordinate, respectively.
+      selected_times: Deprecated. Tuple containing the start and end time
+        dimension coordinates for the duration to run the optimization on.
+        Please Use `start_date` and `end_date` instead.
+      start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
+        format. Default is `None`, i.e. the first time period.
+      end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
+        Default is `None`, i.e. the last time period.
       fixed_budget: Boolean indicating whether it's a fixed budget optimization
         or flexible budget optimization. Defaults to `True`. If `False`, must
         specify either `target_roi` or `target_mroi`.
@@ -1402,6 +1414,17 @@ class BudgetOptimizer:
       An `OptimizationResults` object containing optimized budget allocation
       datasets, along with some of the intermediate values used to derive them.
     """
+    if selected_times is not None:
+      warnings.warn(
+          '`selected_times` is deprecated. Please use `start_date` and'
+          ' `end_date` instead.',
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      deprecated_start_date, deprecated_end_date = selected_times
+      start_date = start_date or deprecated_start_date
+      end_date = end_date or deprecated_end_date
+
     _validate_budget(
         fixed_budget=fixed_budget,
         budget=budget,
@@ -1420,7 +1443,8 @@ class BudgetOptimizer:
     use_grid_arg = optimization_grid is not None and self._validate_grid(
         new_data=new_data,
         use_posterior=use_posterior,
-        selected_times=selected_times,
+        start_date=start_date,
+        end_date=end_date,
         budget=budget,
         pct_of_spend=pct_of_spend,
         spend_constraint_lower=spend_constraint_lower,
@@ -1433,7 +1457,8 @@ class BudgetOptimizer:
     if optimization_grid is None or not use_grid_arg:
       optimization_grid = self.create_optimization_grid(
           new_data=new_data,
-          selected_times=selected_times,
+          start_date=start_date,
+          end_date=end_date,
           budget=budget,
           pct_of_spend=pct_of_spend,
           spend_constraint_lower=spend_constraint_lower,
@@ -1545,7 +1570,8 @@ class BudgetOptimizer:
       self,
       new_data: analyzer.DataTensors | None,
       use_posterior: bool,
-      selected_times: tuple[str | None, str | None] | None,
+      start_date: tc.Date,
+      end_date: tc.Date,
       budget: float | None,
       pct_of_spend: Sequence[float] | None,
       spend_constraint_lower: _SpendConstraint,
@@ -1584,16 +1610,16 @@ class BudgetOptimizer:
       )
       return False
 
-    selected_time_dims = self._validate_selected_times(
-        selected_times=selected_times,
-        new_data=new_data,
-    )
-    if not np.array_equal(selected_time_dims, optimization_grid.selected_times):
+    if (
+        start_date != optimization_grid.start_date
+        or end_date != optimization_grid.end_date
+    ):
       warnings.warn(
-          'Given optimization grid was created with `selected_times` ='
-          f' {optimization_grid.selected_times}, but optimization was called'
-          f' with `selected_times` = {selected_time_dims}. A new grid will be'
-          ' created.'
+          'Given optimization grid was created with `start_date` ='
+          f' {optimization_grid.start_date} and `end_date` ='
+          f' {optimization_grid.end_date}, but optimization was called with'
+          f' `start_date` = {start_date} and `end_date` = {end_date}. A new'
+          ' grid will be created.'
       )
       return False
 
@@ -1614,9 +1640,14 @@ class BudgetOptimizer:
       return False
 
     n_channels = len(optimization_grid.channels)
+    selected_times = self._validate_selected_times(
+        start_date=start_date,
+        end_date=end_date,
+        new_data=new_data,
+    )
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
-        selected_times=selected_time_dims,
+        selected_times=selected_times,
         include_media=self._meridian.n_media_channels > 0,
         include_rf=self._meridian.n_rf_channels > 0,
     ).data
@@ -1664,7 +1695,10 @@ class BudgetOptimizer:
       self,
       new_data: xr.Dataset | None = None,
       use_posterior: bool = True,
+      # TODO: b/409550413 - Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
       budget: float | None = None,
       pct_of_spend: Sequence[float] | None = None,
       spend_constraint_lower: _SpendConstraint = c.SPEND_CONSTRAINT_DEFAULT,
@@ -1675,6 +1709,16 @@ class BudgetOptimizer:
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> OptimizationGrid:
     """Creates a OptimizationGrid for optimization.
+
+    If `start_date` or `end_date` is specified, then the default values are
+    inferred based on the subset of time periods specified. Both start and end
+    time selectors should align with the Meridian time dimension coordinates in
+    the underlying model if optimizing the original data. If `new_data` is
+    provided with a different number of time periods than in `InputData`, then
+    the start and end time coordinates must match the time dimensions in
+    `new_data.time`. By default, all times periods are used. Either start or
+    end time component can be `None` to represent the first or the last time
+    coordinate, respectively.
 
     Args:
       new_data: An optional `DataTensors` container with optional tensors:
@@ -1689,15 +1733,12 @@ class BudgetOptimizer:
       use_posterior: Boolean. If `True`, then the incremental outcome is derived
         from the posterior distribution of the model. Otherwise, the prior
         distribution is used.
-      selected_times: Tuple containing the start and end time dimension
-        coordinates for the duration to run the optimization on. Selected time
-        values should align with the Meridian time dimension coordinates in the
-        underlying model if optimizing the original data. If `new_data` is
-        provided with a different number of time periods than in `InputData`,
-        then the start and end time coordinates must match the time dimensions
-        in `new_data.time`. By default, all times periods are used. Either start
-        or end time component can be `None` to represent the first or the last
-        time coordinate, respectively.
+      selected_times: Deprecated. Tuple containing the start and end time
+        dimension coordinates. Please Use `start_date` and `end_date` instead.
+      start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
+        format. Default is `None`, i.e. the first time period.
+      end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
+        Default is `None`, i.e. the last time period.
       budget: Number indicating the total budget for the fixed budget scenario.
         Defaults to the historical budget.
       pct_of_spend: Numeric list of size `n_paid_channels` containing the
@@ -1747,16 +1788,29 @@ class BudgetOptimizer:
     if new_data is None:
       new_data = analyzer.DataTensors()
 
+    if selected_times is not None:
+      warnings.warn(
+          '`selected_times` is deprecated. Please use `start_date` and'
+          ' `end_date` instead.',
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      deprecated_start_date, deprecated_end_date = selected_times
+      start_date = start_date or deprecated_start_date
+      end_date = end_date or deprecated_end_date
+
     required_tensors = c.PERFORMANCE_DATA + (c.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors, meridian=self._meridian
     )
-    selected_time_dims = self._validate_selected_times(
-        selected_times, filled_data
+    selected_times = self._validate_selected_times(
+        start_date=start_date,
+        end_date=end_date,
+        new_data=filled_data,
     )
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
-        selected_times=selected_time_dims,
+        selected_times=selected_times,
         include_media=self._meridian.n_media_channels > 0,
         include_rf=self._meridian.n_rf_channels > 0,
     ).data
@@ -1783,7 +1837,7 @@ class BudgetOptimizer:
           self._analyzer.optimal_freq(
               new_data=filled_data.filter_fields(c.RF_DATA),
               use_posterior=use_posterior,
-              selected_times=selected_time_dims,
+              selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
           dtype=tf.float32,
@@ -1797,7 +1851,7 @@ class BudgetOptimizer:
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
         step_size=step_size,
-        selected_times=selected_time_dims,
+        selected_times=selected_times,
         new_data=filled_data.filter_fields(c.PAID_DATA),
         use_posterior=use_posterior,
         use_kpi=use_kpi,
@@ -1816,10 +1870,12 @@ class BudgetOptimizer:
         use_kpi=use_kpi,
         use_posterior=use_posterior,
         use_optimal_frequency=use_optimal_frequency,
+        start_date=start_date,
+        end_date=end_date,
         gtol=gtol,
         round_factor=round_factor,
         optimal_frequency=optimal_frequency,
-        selected_times=selected_time_dims,
+        selected_times=selected_times,
     )
 
   def _create_grid_dataset(
@@ -1864,13 +1920,11 @@ class BudgetOptimizer:
 
   def _validate_selected_times(
       self,
-      selected_times: tuple[str | None, str | None] | None,
+      start_date: tc.Date,
+      end_date: tc.Date,
       new_data: analyzer.DataTensors | None,
   ) -> Sequence[str] | Sequence[bool] | None:
     """Validates and returns the selected times."""
-    if selected_times is None:
-      return None
-    start_date, end_date = selected_times
     if start_date is None and end_date is None:
       return None
 

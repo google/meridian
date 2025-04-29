@@ -75,8 +75,8 @@ class Summarizer:
       self,
       filename: str,
       filepath: str,
-      start_date: tc.Date | None = None,
-      end_date: tc.Date | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
   ):
     """Generates and saves the HTML results summary output.
 
@@ -93,8 +93,8 @@ class Summarizer:
 
   def _gen_model_results_summary(
       self,
-      start_date: tc.Date | None = None,
-      end_date: tc.Date | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
     all_dates = self._meridian.input_data.time_coordinates.all_dates

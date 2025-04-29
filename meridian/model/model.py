@@ -456,8 +456,8 @@ class Meridian:
 
   def expand_selected_time_dims(
       self,
-      start_date: tc.Date | None = None,
-      end_date: tc.Date | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
   ) -> list[str] | None:
     """Validates and returns time dimension values based on the selected times.
 
