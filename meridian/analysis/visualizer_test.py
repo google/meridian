@@ -2041,7 +2041,7 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.encoding.y["axis"]["tickMinStep"], 1)
 
     expected_legend_order = [
-        "baseline",
+        "Baseline",
         "ch_0",
         "ch_1",
         "ch_2",
