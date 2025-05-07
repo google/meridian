@@ -359,7 +359,8 @@ class OptimizationGrid:
     """
     spend_grid = self.spend_grid
     updated_spend = self.spend_grid.copy()
-    updated_incremental_outcome = self.incremental_outcome_grid.copy()
+    # Copy mean values
+    updated_incremental_outcome = self.incremental_outcome_grid.copy()[:, :, 0]
 
     for ch in range(len(self.channels)):
       valid_indices = np.where(
@@ -886,32 +887,12 @@ class OptimizationResults:
       optimization scenario specified in `BudgetOptimizer.optimize()` call that
       returned this result.
     """
-    channels = self.optimized_data.channel.values
-    selected_times = self.meridian.expand_selected_time_dims(
-        start_date=self.optimized_data.start_date,
-        end_date=self.optimized_data.end_date,
-    )
-    _, ubounds = self.spend_bounds
-    upper_bound = (
-        ubounds.repeat(len(channels)) * self.spend_ratio
-        if len(ubounds) == 1
-        else ubounds * self.spend_ratio
-    )
-
-    # Get the upper limit for plotting the response curves. Default to 2 or the
-    # max upper spend constraint + padding.
-    upper_limit = max(max(upper_bound) + c.SPEND_CONSTRAINT_PADDING, 2)
-    spend_multiplier = np.arange(0, upper_limit, c.RESPONSE_CURVE_STEP_SIZE)
-    # WARN: If `selected_times` is not None (i.e. a subset time range), this
-    # response curve computation might take a significant amount of time.
-    return self.analyzer.response_curves(
-        spend_multipliers=spend_multiplier,
-        use_posterior=self.optimization_grid.use_posterior,
-        selected_times=selected_times,
-        by_reach=True,
-        use_kpi=not self.nonoptimized_data.attrs[c.IS_REVENUE_KPI],
-        use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
-    )
+    # Remane coords/vars so that I don't have to update the processor/2-pager here.
+    return self.optimization_grid.grid_dataset.rename({
+        c.GRID_SPEND_INDEX: c.SPEND_MULTIPLIER,
+        c.SPEND_GRID: c.SPEND,
+        c.INCREMENTAL_OUTCOME_GRID: c.INCREMENTAL_OUTCOME,
+    })
 
   def _get_plottable_response_curves_df(
       self, n_top_channels: int | None = None
@@ -1436,8 +1417,10 @@ class BudgetOptimizer:
           selected_times=selected_times,
           budget=budget,
           pct_of_spend=pct_of_spend,
-          spend_constraint_lower=spend_constraint_lower,
-          spend_constraint_upper=spend_constraint_upper,
+          # Use larger spend constraints for the grid, actual constraints are
+          # applied in the optimization call.
+          spend_constraint_lower=c.SPEND_CONSTRAINT_DEFAULT,
+          spend_constraint_upper=c.SPEND_CONSTRAINT_DEFAULT,
           gtol=gtol,
           use_posterior=use_posterior,
           use_kpi=use_kpi,
@@ -1845,10 +1828,11 @@ class BudgetOptimizer:
         - Data variables: `spend_grid`, `incremental_outcome_grid`
         - Attributes: `spend_step_size`
     """
+    # Add CIs
     data_vars = {
         c.SPEND_GRID: ([c.GRID_SPEND_INDEX, c.CHANNEL], spend_grid),
         c.INCREMENTAL_OUTCOME_GRID: (
-            [c.GRID_SPEND_INDEX, c.CHANNEL],
+            [c.GRID_SPEND_INDEX, c.CHANNEL, c.METRIC],
             incremental_outcome_grid,
         ),
     }
@@ -1858,8 +1842,12 @@ class BudgetOptimizer:
         coords={
             c.GRID_SPEND_INDEX: np.arange(0, len(spend_grid)),
             c.CHANNEL: self._meridian.input_data.get_all_paid_channels(),
+            c.METRIC: [c.MEAN, c.CI_LO, c.CI_HI],
         },
-        attrs={c.SPEND_STEP_SIZE: spend_step_size},
+        attrs={
+            c.SPEND_STEP_SIZE: spend_step_size,
+            c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL,
+        },
     )
 
   def _validate_selected_times(
@@ -2232,22 +2220,23 @@ class BudgetOptimizer:
     # incremental_outcome returns a three dimensional tensor with dims
     # (n_chains x n_draws x n_total_channels). Incremental_outcome_grid requires
     # incremental outcome by channel.
-    incremental_outcome_grid[i, :] = np.mean(
-        self._analyzer.incremental_outcome(
-            use_posterior=use_posterior,
-            new_data=analyzer.DataTensors(
-                media=new_media,
-                reach=new_reach,
-                frequency=new_frequency,
-                revenue_per_kpi=filled_data.revenue_per_kpi,
-            ),
-            selected_times=selected_times,
-            use_kpi=use_kpi,
-            include_non_paid_channels=False,
-            batch_size=batch_size,
+    data = self._analyzer.incremental_outcome(
+        use_posterior=use_posterior,
+        new_data=analyzer.DataTensors(
+            media=new_media,
+            reach=new_reach,
+            frequency=new_frequency,
+            revenue_per_kpi=filled_data.revenue_per_kpi,
         ),
-        (c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
-        dtype=np.float64,
+        selected_times=selected_times,
+        use_kpi=use_kpi,
+        include_non_paid_channels=False,
+        batch_size=batch_size,
+    )
+    incremental_outcome_grid[i, :] = analyzer.get_central_tendency_and_ci(
+        data=data,
+        confidence_level=c.DEFAULT_CONFIDENCE_LEVEL,
+        axis=(c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
     )
 
   def _create_grids(
@@ -2305,9 +2294,10 @@ class BudgetOptimizer:
         determined by the `spend_bound_**` and `step_size`, and the number of
         columns is equal to the number of total channels, containing spend by
         channel.
-      incremental_outcome_grid: Discrete two-dimensional grid with the number of
-        rows determined by the `spend_bound_**` and `step_size`, and the
-        number of columns is equal to the number of total channels, containing
+      incremental_outcome_grid: Discrete three-dimensional grid. Its first
+        dimension is determined by the `spend_bound_**` and `step_size`, the
+        second dimension is equal to the number of total channels, and the third
+        dimension is mean, lower CI, and upper CI, The grid contains
         incremental outcome by channel.
     """
     n_grid_rows = int(
@@ -2315,6 +2305,7 @@ class BudgetOptimizer:
         + 1
     )
     n_grid_columns = len(self._meridian.input_data.get_all_paid_channels())
+    n_metrics = 3  # mean, lower CI, upper CI
     spend_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
     for i in range(n_grid_columns):
       spend_grid_m = np.arange(
@@ -2323,7 +2314,9 @@ class BudgetOptimizer:
           step_size,
       )
       spend_grid[: len(spend_grid_m), i] = spend_grid_m
-    incremental_outcome_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
+    incremental_outcome_grid = np.full(
+        [n_grid_rows, n_grid_columns, n_metrics], np.nan
+    )
     multipliers_grid_base = tf.cast(
         tf.math.divide_no_nan(spend_grid, spend), dtype=tf.float32
     )
@@ -2349,17 +2342,19 @@ class BudgetOptimizer:
     # np.unravel_index(np.nanargmax(iROAS_grid), iROAS_grid.shape). Therefore
     # we use the following code to fix it, and ensure incremental_outcome/spend
     # is always same for RF channels.
-    if self._meridian.n_rf_channels > 0:
-      rf_incremental_outcome_max = np.nanmax(
-          incremental_outcome_grid[:, -self._meridian.n_rf_channels :], axis=0
-      )
-      rf_spend_max = np.nanmax(
-          spend_grid[:, -self._meridian.n_rf_channels :], axis=0
-      )
-      rf_roi = tf.math.divide_no_nan(rf_incremental_outcome_max, rf_spend_max)
-      incremental_outcome_grid[:, -self._meridian.n_rf_channels :] = (
-          rf_roi * spend_grid[:, -self._meridian.n_rf_channels :]
-      )
+
+    # Not sure if this part is needed.
+    # if self._meridian.n_rf_channels > 0:
+    #   rf_incremental_outcome_max = np.nanmax(
+    #       incremental_outcome_grid[:, -self._meridian.n_rf_channels :], axis=0
+    #   )
+    #   rf_spend_max = np.nanmax(
+    #       spend_grid[:, -self._meridian.n_rf_channels :], axis=0
+    #   )
+    #   rf_roi = tf.math.divide_no_nan(rf_incremental_outcome_max, rf_spend_max)
+    #   incremental_outcome_grid[:, -self._meridian.n_rf_channels :] = (
+    #       rf_roi * spend_grid[:, -self._meridian.n_rf_channels :]
+    #   )
     return (spend_grid, incremental_outcome_grid)
 
 
