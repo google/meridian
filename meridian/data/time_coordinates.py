@@ -36,7 +36,7 @@ __all__ = [
 
 
 # A type alias for a polymorphic "date" type.
-Date: TypeAlias = str | datetime.datetime | datetime.date | np.datetime64
+Date: TypeAlias = str | datetime.datetime | datetime.date | np.datetime64 | None
 
 # A type alias for a polymorphic "date interval" type. In all variants it is
 # always a tuple of (start_date, end_date).
@@ -236,8 +236,8 @@ class TimeCoordinates:
 
   def expand_selected_time_dims(
       self,
-      start_date: Date | None = None,
-      end_date: Date | None = None,
+      start_date: Date = None,
+      end_date: Date = None,
   ) -> list[datetime.date] | None:
     """Validates and returns time dimension values based on the selected times.
 
