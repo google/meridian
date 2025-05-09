@@ -979,6 +979,14 @@ class Meridian:
         constants.CONTROLS,
         self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
     )
+    if self.input_data.non_media_treatments is not None:
+      self._check_if_no_time_variation(
+          self.non_media_treatments_normalized,
+          constants.NON_MEDIA_TREATMENTS,
+          self.input_data.non_media_treatments.coords[
+              constants.NON_MEDIA_CHANNEL
+          ].values,
+      )
     if self.input_data.media is not None:
       self._check_if_no_time_variation(
           self.media_tensors.media_scaled,
@@ -990,6 +998,22 @@ class Meridian:
           self.rf_tensors.reach_scaled,
           constants.REACH,
           self.input_data.reach.coords[constants.RF_CHANNEL].values,
+      )
+    if self.input_data.organic_media is not None:
+      self._check_if_no_time_variation(
+          self.organic_media_tensors.organic_media_scaled,
+          constants.ORGANIC_MEDIA,
+          self.input_data.organic_media.coords[
+              constants.ORGANIC_MEDIA_CHANNEL
+          ].values,
+      )
+    if self.input_data.organic_reach is not None:
+      self._check_if_no_time_variation(
+          self.organic_rf_tensors.organic_reach_scaled,
+          constants.ORGANIC_REACH,
+          self.input_data.organic_reach.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values,
       )
 
   def _check_if_no_time_variation(
@@ -1009,16 +1033,24 @@ class Meridian:
     mask = tf.equal(counts, self.n_geos)
     col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
     dims_bad = tf.gather(data_dims, col_idx_bad)
-
-    if col_idx_bad.shape[0] and not self.is_national:
-      raise ValueError(
-          f"The following {data_name} variables do not vary across time, making"
-          f" a model with geo main effects unidentifiable: {dims_bad}. This can"
-          " lead to poor model convergence. Since these variables only vary"
-          " across geo and not across time, they are collinear with geo and"
-          " redundant in a model with geo main effects. To address this, drop"
-          " the listed variables that do not vary across time."
-      )
+    if col_idx_bad.shape[0]:
+      if self.is_national:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            " which is equivalent to no signal at all in a national model:"
+            f" {dims_bad}.  This can lead to poor model convergence. To address"
+            " this, drop the listed variables that do not vary across time."
+        )
+      else:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            f" making a model with geo main effects unidentifiable: {dims_bad}."
+            " This can lead to poor model convergence. Since these variables"
+            " only vary across geo and not across time, they are collinear"
+            " with geo and redundant in a model with geo main effects. To"
+            " address this, drop the listed variables that do not vary across"
+            " time."
+        )
 
   def _validate_kpi_transformer(self):
     """Validates the KPI transformer."""

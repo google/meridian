@@ -65,11 +65,23 @@ _REQUIRED_COORDS = immutabledict.immutabledict({
     c.MEDIA_TIME: _sample_times(n_times=3),
     c.CONTROL_VARIABLE: ['control_0', 'control_1'],
 })
+_NON_MEDIA_COORDS = immutabledict.immutabledict(
+    {c.NON_MEDIA_CHANNEL: ['non_media_channel_0', 'non_media_channel_1']}
+)
 _MEDIA_COORDS = immutabledict.immutabledict(
     {c.MEDIA_CHANNEL: ['media_channel_0', 'media_channel_1', 'media_channel_2']}
 )
+_ORGANIC_MEDIA_COORDS = immutabledict.immutabledict({
+    c.ORGANIC_MEDIA_CHANNEL: [
+        'organic_media_channel_0',
+        'organic_media_channel_1',
+    ]
+})
 _RF_COORDS = immutabledict.immutabledict(
     {c.RF_CHANNEL: ['rf_channel_0', 'rf_channel_1']}
+)
+_ORGANIC_RF_COORDS = immutabledict.immutabledict(
+    {c.ORGANIC_RF_CHANNEL: ['organic_rf_channel_0', 'organic_rf_channel_1']}
 )
 
 _REQUIRED_DATA_VARS = immutabledict.immutabledict({
@@ -371,6 +383,70 @@ DATASET_WITHOUT_TIME_VARIATION_IN_REACH = xr.Dataset(
             [
                 [[8.1, 8.2], [8.3, 8.4], [8.5, 8.8]],
                 [[8.11, 8.21], [8.31, 8.41], [8.51, 8.61]],
+            ],
+        ),
+    },
+)
+
+DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA = xr.Dataset(
+    coords=_REQUIRED_COORDS
+    | _MEDIA_COORDS
+    | _RF_COORDS
+    | _ORGANIC_MEDIA_COORDS,
+    data_vars=_REQUIRED_DATA_VARS
+    | _MEDIA_DATA_VARS
+    | _RF_DATA_VARS
+    | _OPTIONAL_DATA_VARS
+    | {
+        c.ORGANIC_MEDIA: (
+            ['geo', 'media_time', 'organic_media_channel'],
+            [
+                [[2.1, 2.2], [2.1, 2.21], [2.1, 2.2]],
+                [[2.7, 2.8], [2.7, 2.8], [2.7, 2.8]],
+            ],
+        ),
+    },
+)
+
+DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH = xr.Dataset(
+    coords=_REQUIRED_COORDS
+    | _MEDIA_COORDS
+    | _RF_COORDS
+    | _ORGANIC_RF_COORDS,
+    data_vars=_REQUIRED_DATA_VARS
+    | _MEDIA_DATA_VARS
+    | _RF_DATA_VARS
+    | _OPTIONAL_DATA_VARS
+    | {
+        c.ORGANIC_REACH: (
+            ['geo', 'media_time', 'organic_rf_channel'],
+            [
+                [[2.1, 2.2], [2.11, 2.2], [2.1, 2.2]],
+                [[2.7, 2.8], [2.7, 2.8], [2.7, 2.8]],
+            ],
+        ),
+        c.ORGANIC_FREQUENCY: (
+            ['geo', 'media_time', 'organic_rf_channel'],
+            [
+                [[7.1, 7.2], [7.3, 7.4], [7.5, 7.6]],
+                [[7.11, 7.21], [7.31, 7.41], [7.51, 7.61]],
+            ],
+        ),
+    },
+)
+
+DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS = xr.Dataset(
+    coords=_REQUIRED_COORDS | _MEDIA_COORDS | _RF_COORDS | _NON_MEDIA_COORDS,
+    data_vars=_REQUIRED_DATA_VARS
+    | _MEDIA_DATA_VARS
+    | _RF_DATA_VARS
+    | _OPTIONAL_DATA_VARS
+    | {
+        c.NON_MEDIA_TREATMENTS: (
+            ['geo', 'time', 'non_media_channel'],
+            [
+                [[2.1, 2.2], [2.1, 2.2], [2.1, 2.2]],
+                [[2.7, 2.8], [2.7, 2.8], [2.7, 2.8]],
             ],
         ),
     },
@@ -1491,17 +1567,52 @@ def sample_input_data_from_dataset(
     dataset: xr.Dataset, kpi_type: str
 ) -> input_data.InputData:
   """Generates a sample `InputData` from a full xarray Dataset."""
+  media = dataset.media if c.MEDIA in dataset.data_vars.keys() else None
+  media_spend = (
+      dataset.media_spend if c.MEDIA_SPEND in dataset.data_vars.keys() else None
+  )
+  reach = dataset.reach if c.REACH in dataset.data_vars.keys() else None
+  frequency = (
+      dataset.frequency if c.FREQUENCY in dataset.data_vars.keys() else None
+  )
+  rf_spend = (
+      dataset.rf_spend if c.RF_SPEND in dataset.data_vars.keys() else None
+  )
+  organic_media = (
+      dataset.organic_media
+      if c.ORGANIC_MEDIA in dataset.data_vars.keys()
+      else None
+  )
+  organic_reach = (
+      dataset.organic_reach
+      if c.ORGANIC_REACH in dataset.data_vars.keys()
+      else None
+  )
+  organic_frequency = (
+      dataset.organic_frequency
+      if c.ORGANIC_FREQUENCY in dataset.data_vars.keys()
+      else None
+  )
+  non_media_treatments = (
+      dataset.non_media_treatments
+      if c.NON_MEDIA_TREATMENTS in dataset.data_vars.keys()
+      else None
+  )
   return input_data.InputData(
       kpi=dataset.kpi,
       kpi_type=kpi_type,
       revenue_per_kpi=dataset.revenue_per_kpi,
       population=dataset.population,
       controls=dataset.controls,
-      media=dataset.media,
-      media_spend=dataset.media_spend,
-      reach=dataset.reach,
-      frequency=dataset.frequency,
-      rf_spend=dataset.rf_spend,
+      media=media,
+      media_spend=media_spend,
+      reach=reach,
+      frequency=frequency,
+      rf_spend=rf_spend,
+      organic_media=organic_media,
+      organic_reach=organic_reach,
+      organic_frequency=organic_frequency,
+      non_media_treatments=non_media_treatments,
   )
 
 
