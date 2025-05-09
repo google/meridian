@@ -811,6 +811,12 @@ class ModelTest(
           dims_bad=np.array([b"control_0", b"control_1"]),
       ),
       dict(
+          testcase_name="wrong_non_media_treatments",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
+          data_name=constants.NON_MEDIA_TREATMENTS,
+          dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
+      ),
+      dict(
           testcase_name="wrong_media",
           dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
@@ -821,6 +827,18 @@ class ModelTest(
           dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
           data_name=constants.REACH,
           dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
+      ),
+      dict(
+          testcase_name="wrong_organic_media",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
+          data_name=constants.ORGANIC_MEDIA,
+          dims_bad=np.array([b"organic_media_channel_0"]),
+      ),
+      dict(
+          testcase_name="wrong_organic_rf",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
+          data_name=constants.ORGANIC_REACH,
+          dims_bad=np.array([b"organic_rf_channel_1"]),
       ),
   )
   def test_init_without_time_variation_fails(
