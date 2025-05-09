@@ -979,6 +979,14 @@ class Meridian:
         constants.CONTROLS,
         self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
     )
+    if self.input_data.non_media_treatments is not None:
+      self._check_if_no_time_variation(
+          self.non_media_treatments_normalized,
+          constants.NON_MEDIA_TREATMENTS,
+          self.input_data.non_media_treatments.coords[
+              constants.NON_MEDIA_CHANNEL
+          ].values,
+      )
     if self.input_data.media is not None:
       self._check_if_no_time_variation(
           self.media_tensors.media_scaled,
@@ -990,6 +998,22 @@ class Meridian:
           self.rf_tensors.reach_scaled,
           constants.REACH,
           self.input_data.reach.coords[constants.RF_CHANNEL].values,
+      )
+    if self.input_data.organic_media is not None:
+      self._check_if_no_time_variation(
+          self.organic_media_tensors.organic_media_scaled,
+          constants.ORGANIC_MEDIA,
+          self.input_data.organic_media.coords[
+              constants.ORGANIC_MEDIA_CHANNEL
+          ].values,
+      )
+    if self.input_data.organic_reach is not None:
+      self._check_if_no_time_variation(
+          self.organic_rf_tensors.organic_reach_scaled,
+          constants.ORGANIC_REACH,
+          self.input_data.organic_reach.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values,
       )
 
   def _check_if_no_time_variation(
