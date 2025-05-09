@@ -28,6 +28,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
   model init.
 * Add an optional `optimization_grid` arg to the optimizer.
 * Fix `incremental_outcome` to accept unscaled `non_media_treatments_baseline`.
+* Validate no time variation for non-media treatments, organic media, and
+  organic reach.
 
 ## [1.0.9] - 2025-04-17
 
