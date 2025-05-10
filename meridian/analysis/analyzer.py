@@ -196,6 +196,7 @@ class DataTensors(tf.experimental.ExtensionType):
           new_tensor is not None
           and old_tensor is not None
           and new_tensor.ndim > 1
+          and old_tensor.ndim > 1
           and new_tensor.shape[1] != old_tensor.shape[1]
       ):
         return new_tensor.shape[1]
