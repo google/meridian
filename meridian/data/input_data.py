@@ -131,7 +131,9 @@ class InputData:
       time window of media executed during the time window. `media` and
       `media_spend` must contain the same number of media channels in the same
       order. If either of these arguments is passed, then the other is not
-      optional.
+      optional. If a tensor of shape `(n_media_channels,)` is passed as
+      `media_spend`, then it will be automatically allocated across geos and
+      times proportinally to `media`.
     reach: An optional `DataArray` of dimensions `(n_geos, n_media_times,
       n_rf_channels)` containing non-negative `reach` values. It is required
       that `n_media_times` ≥ `n_times`, and the final `n_times` time periods
@@ -164,18 +166,20 @@ class InputData:
       others are not optional.
     rf_spend: An optional `DataArray` containing the cost of each reach and
       frequency channel. This is used as the denominator for ROI calculations.
-      The DataArray shape can be `(n_rf_channels,)`, `(n_geos, n_times,
-      n_rf_channels)`, or `(n_geos, n_rf_channels)`. The spend should be
-      aggregated over geo and/or time dimensions that are not represented. We
-      recommend that the spend total aligns with the time window of the `kpi`
-      and `controls` data, which is the time window over which incremental
-      outcome of the ROI numerator is calculated. However, note that incremental
-      outcome is influenced by media execution prior to this time window,
-      through lagged effects, and excludes lagged effects beyond the time window
-      of media executed during the time window. If only `media` data is used,
-      `rf_spend` will be `None`. `reach`, `frequency`, and `rf_spend` must
-      contain the same number of media channels in the same order. If any of
-      these arguments is passed, then the others are not optional.
+      The DataArray shape can be `(n_rf_channels,)` or `(n_geos, n_times,
+      n_rf_channels)`. The spend should be aggregated over geo and/or time
+      dimensions that are not represented. We recommend that the spend total
+      aligns with the time window of the `kpi` and `controls` data, which is the
+      time window over which incremental outcome of the ROI numerator is
+      calculated. However, note that incremental outcome is influenced by media
+      execution prior to this time window, through lagged effects, and excludes
+      lagged effects beyond the time window of media executed during the time
+      window. If only `media` data is used, `rf_spend` will be `None`. `reach`,
+      `frequency`, and `rf_spend` must contain the same number of media channels
+      in the same order. If any of these arguments is passed, then the others
+      are not optional. If a tensor of shape `(n_rf_channels,)` is passed as
+      `rf_spend`, then it will be automatically allocated across geos and times
+      proportionally to `(reach * frequency)`.
     organic_media: An optional `DataArray` of dimensions `(n_geos,
       n_media_times, n_organic_media_channels)` containing non-negative organic
       media values. Organic media variables are media activities that have no
@@ -264,6 +268,23 @@ class InputData:
       array = getattr(self, field.name)
       if isinstance(array, xr.DataArray) and constants.GEO in array.dims:
         array.coords[constants.GEO] = array.coords[constants.GEO].astype(str)
+
+  # TODO: 416775065 - Combine with Analyzer._impute_and_aggregate_spend
+  @functools.cached_property
+  def allocated_media_spend(self) -> xr.DataArray | None:
+    """Returns the allocated media spend for each geo and time."""
+    if self.media_spend is not None and len(self.media_spend.shape) == 1:
+      return self._allocate_spend(self.media_spend, self.media)
+    else:
+      return self.media_spend
+
+  @functools.cached_property
+  def allocated_rf_spend(self) -> xr.DataArray | None:
+    """Returns the allocated RF spend for each geo and time."""
+    if self.rf_spend is not None and len(self.rf_spend.shape) == 1:
+      return self._allocate_spend(self.rf_spend, self.reach * self.frequency)
+    else:
+      return self.rf_spend
 
   @property
   def geo(self) -> xr.DataArray:
@@ -479,7 +500,6 @@ class InputData:
         [
             [constants.RF_CHANNEL],
             [constants.GEO, constants.TIME, constants.RF_CHANNEL],
-            [constants.GEO, constants.RF_CHANNEL],
         ],
     )
     _check_dim_collection(
@@ -854,3 +874,18 @@ class InputData:
     if self.revenue_per_kpi is None:
       return np.sum(self.kpi.values)
     return np.sum(self.kpi.values * self.revenue_per_kpi.values)
+
+  def _allocate_spend(self, spend: xr.DataArray, media_units: xr.DataArray):
+    """Allocates spend across geo and time proportionally to media units."""
+    n_times = len(self.kpi.coords[constants.TIME])
+    selected_media_units = media_units.isel(media_time=slice(-n_times, None))
+    total_media_units_per_channel = selected_media_units.sum(
+        dim=["geo", "media_time"]
+    )
+    proportions = selected_media_units / total_media_units_per_channel
+    expanded_spend = spend.expand_dims({
+        "geo": selected_media_units["geo"],
+        "media_time": selected_media_units["media_time"],
+    })
+    allocated_spend = expanded_spend * proportions
+    return allocated_spend.rename({"media_time": "time"})
