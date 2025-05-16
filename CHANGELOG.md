@@ -33,6 +33,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
   organic reach.
 * Add optimizer parameters `start_date` and `end_date` to replace
   `selected_times`.
+* Add a time variation error message for national models.
 
 ## [1.0.9] - 2025-04-17
 
