@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-05-16
+
+* Add `media_prior_type`, `rf_prior_type`, `organic_media_prior_type`,
+  `organic_rf_prior_type`, `non_media_prior_type` parameters to `ModelSpec`.
+* Add `'contribution'` prior type option.
 * Change `VEGALITE_FACET_EXTRA_LARGE_WIDTH` from 900 to 700.
 * Prevent negative media effect priors when using lognormal distribution upon
   model init.
@@ -294,4 +299,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.0.7]: https://github.com/google/meridian/releases/tag/v1.0.7
 [1.0.8]: https://github.com/google/meridian/releases/tag/v1.0.8
 [1.0.9]: https://github.com/google/meridian/releases/tag/v1.0.9
-[Unreleased]: https://github.com/google/meridian/compare/v1.0.9...HEAD
+[1.1.0]: https://github.com/google/meridian/releases/tag/v1.1.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.1.0...HEAD
