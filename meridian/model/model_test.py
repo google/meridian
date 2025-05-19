@@ -861,6 +861,61 @@ class ModelTest(
 
   @parameterized.named_parameters(
       dict(
+          testcase_name="wrong_controls",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
+          data_name=constants.CONTROLS,
+          dims_bad=np.array([b"control_0", b"control_1"]),
+      ),
+      dict(
+          testcase_name="wrong_non_media_treatments",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
+          data_name=constants.NON_MEDIA_TREATMENTS,
+          dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
+      ),
+      dict(
+          testcase_name="wrong_media",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
+          data_name=constants.MEDIA,
+          dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
+      ),
+      dict(
+          testcase_name="wrong_rf",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
+          data_name=constants.REACH,
+          dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
+      ),
+      dict(
+          testcase_name="wrong_organic_media",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
+          data_name=constants.ORGANIC_MEDIA,
+          dims_bad=np.array([b"organic_media_channel_0"]),
+      ),
+      dict(
+          testcase_name="wrong_organic_rf",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
+          data_name=constants.ORGANIC_REACH,
+          dims_bad=np.array([b"organic_rf_channel_1"]),
+      ),
+  )
+  def test_init_without_time_variation_national_model_fails(
+      self, dataset: xr.Dataset, data_name: str, dims_bad: Sequence[str]
+  ):
+    national_dataset = dataset.sel(geo=["geo_0"])
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        f"The following {data_name} variables do not vary across time, which is"
+        f" equivalent to no signal at all in a national model: {dims_bad}. "
+        " This can lead to poor model convergence. To address this, drop the"
+        " listed variables that do not vary across time.",
+    ):
+      model.Meridian(
+          input_data=test_utils.sample_input_data_from_dataset(
+              national_dataset, kpi_type=constants.NON_REVENUE
+          )
+      )
+
+  @parameterized.named_parameters(
+      dict(
           testcase_name="rf_prior_type_roi",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
