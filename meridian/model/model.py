@@ -972,7 +972,11 @@ class Meridian:
   def _validate_time_invariants(self):
     """Validates model time invariants."""
 
-    # TODO: Check controls.
+    self._check_if_no_time_variation(
+        self.controls_scaled,
+        constants.CONTROLS,
+        self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
+    )
     if self.input_data.non_media_treatments is not None:
       self._check_if_no_time_variation(
           self.non_media_treatments_normalized,

@@ -804,7 +804,12 @@ class ModelTest(
       )
 
   @parameterized.named_parameters(
-      # TODO: Add a test case for wrong_controls.
+      dict(
+          testcase_name="wrong_controls",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
+          data_name=constants.CONTROLS,
+          dims_bad=np.array([b"control_0", b"control_1"]),
+      ),
       dict(
           testcase_name="wrong_non_media_treatments",
           dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
@@ -855,7 +860,12 @@ class ModelTest(
       )
 
   @parameterized.named_parameters(
-      # TODO: Add a test case for wrong_controls.
+      dict(
+          testcase_name="wrong_controls",
+          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
+          data_name=constants.CONTROLS,
+          dims_bad=np.array([b"control_0", b"control_1"]),
+      ),
       dict(
           testcase_name="wrong_non_media_treatments",
           dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
