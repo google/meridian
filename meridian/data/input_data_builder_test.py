@@ -1986,7 +1986,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the kpi array.',
+          error_msg='NA values found in the kpi data.',
       ),
       dict(
           testcase_name='na_population',
@@ -2000,7 +2000,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the population array.',
+          error_msg='NA values found in the population data.',
       ),
       dict(
           testcase_name='na_controls',
@@ -2015,7 +2015,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the controls array.',
+          error_msg='NA values found in the controls data.',
       ),
       dict(
           testcase_name='na_revenue_per_kpi',
@@ -2034,7 +2034,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the revenue per kpi array.',
+          error_msg='NA values found in the revenue per kpi data.',
       ),
       dict(
           testcase_name='na_media_spend',
@@ -2046,7 +2046,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   builder, 'media_spend', InputDataBuilderTest.NA_MEDIA_SPEND_DA
               ),
           ],
-          error_msg='NA values found in the media spend array.',
+          error_msg='NA values found in the media spend data.',
       ),
       dict(
           testcase_name='na_rf_spend',
@@ -2059,7 +2059,7 @@ class InputDataBuilderTest(parameterized.TestCase):
               ),
               setattr(builder, 'rf_spend', InputDataBuilderTest.NA_RF_SPEND_DA),
           ],
-          error_msg='NA values found in the rf spend array.',
+          error_msg='NA values found in the rf spend data.',
       ),
       dict(
           testcase_name='na_non_media_treatments',
@@ -2078,7 +2078,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the non media treatments array.',
+          error_msg='NA values found in the non media treatments data.',
       ),
       dict(
           testcase_name='na_media',
@@ -2092,7 +2092,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_MEDIA_SPEND_DA,
               ),
           ],
-          error_msg='NA values found in the media array.',
+          error_msg='NA values found in the media data.',
       ),
       dict(
           testcase_name='na_reach',
@@ -2107,7 +2107,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   builder, 'rf_spend', InputDataBuilderTest.BASIC_RF_SPEND_DA
               ),
           ],
-          error_msg='NA values found in the reach array.',
+          error_msg='NA values found in the reach data.',
       ),
       dict(
           testcase_name='na_frequency',
@@ -2122,7 +2122,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   builder, 'rf_spend', InputDataBuilderTest.BASIC_RF_SPEND_DA
               ),
           ],
-          error_msg='NA values found in the frequency array.',
+          error_msg='NA values found in the frequency data.',
       ),
       dict(
           testcase_name='na_organic_media',
@@ -2142,7 +2142,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.NA_ORGANIC_MEDIA_DA,
               ),
           ],
-          error_msg='NA values found in the organic media array.',
+          error_msg='NA values found in the organic media data.',
       ),
       dict(
           testcase_name='na_organic_reach',
@@ -2167,7 +2167,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.NA_ORGANIC_REACH_DA,
               ),
           ],
-          error_msg='NA values found in the organic reach array.',
+          error_msg='NA values found in the organic reach data.',
       ),
       dict(
           testcase_name='na_organic_frequency',
@@ -2192,7 +2192,7 @@ class InputDataBuilderTest(parameterized.TestCase):
                   InputDataBuilderTest.BASIC_ORGANIC_REACH_DA,
               ),
           ],
-          error_msg='NA values found in the organic frequency array.',
+          error_msg='NA values found in the organic frequency data.',
       ),
   )
   def test_build_with_nas_raises_error(self, setter, error_msg):
@@ -2232,6 +2232,341 @@ class InputDataBuilderTest(parameterized.TestCase):
     xr.testing.assert_equal(input_data.population, self.BASIC_GEO_DA)
     xr.testing.assert_equal(input_data.media, self.BASIC_MEDIA_DA)
     xr.testing.assert_equal(input_data.media_spend, self.BASIC_MEDIA_SPEND_DA)
+
+  def test_build_unsorted_sorts_input_data(self):
+    builder = input_data_builder.InputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    )
+    unsorted_kpi_da = xr.DataArray(
+        [[3, 3, 3], [2, 2, 2], [1, 1, 1]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+        },
+        dims=[constants.GEO, constants.TIME],
+        name=constants.KPI,
+    )
+    sorted_kpi_da = xr.DataArray(
+        [[1, 1, 1], [2, 2, 2], [3, 3, 3]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+        },
+        dims=[constants.GEO, constants.TIME],
+        name=constants.KPI,
+    )
+    unsorted_revenue_per_kpi_da = xr.DataArray(
+        [[3, 3, 3], [2, 2, 2], [1, 1, 1]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+        },
+        dims=[constants.GEO, constants.TIME],
+        name=constants.REVENUE_PER_KPI,
+    )
+    sorted_revenue_per_kpi_da = xr.DataArray(
+        [[1, 1, 1], [2, 2, 2], [3, 3, 3]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+        },
+        dims=[constants.GEO, constants.TIME],
+        name=constants.REVENUE_PER_KPI,
+    )
+    unsorted_non_media_treatments_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.NON_MEDIA_CHANNEL: ['non_media_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL],
+        name=constants.NON_MEDIA_TREATMENTS,
+    )
+    sorted_non_media_treatments_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.NON_MEDIA_CHANNEL: ['non_media_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL],
+        name=constants.NON_MEDIA_TREATMENTS,
+    )
+    unsorted_controls_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.CONTROL_VARIABLE: ['control_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
+        name=constants.CONTROLS,
+    )
+    sorted_controls_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.CONTROL_VARIABLE: ['control_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
+        name=constants.CONTROLS,
+    )
+    unsorted_population_da = xr.DataArray(
+        [3, 2, 1],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+        },
+        dims=[constants.GEO],
+        name=constants.POPULATION,
+    )
+    sorted_population_da = xr.DataArray(
+        [1, 2, 3],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+        },
+        dims=[constants.GEO],
+        name=constants.POPULATION,
+    )
+    unsorted_media_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.MEDIA_CHANNEL: ['media_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.MEDIA_CHANNEL],
+        name=constants.MEDIA,
+    )
+    sorted_media_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.MEDIA_CHANNEL: ['media_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.MEDIA_CHANNEL],
+        name=constants.MEDIA,
+    )
+    unsorted_media_spend_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.MEDIA_CHANNEL: ['media_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+        name=constants.MEDIA_SPEND,
+    )
+    sorted_media_spend_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.MEDIA_CHANNEL: ['media_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+        name=constants.MEDIA_SPEND,
+    )
+    unsorted_reach_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL],
+        name=constants.REACH,
+    )
+    sorted_reach_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL],
+        name=constants.REACH,
+    )
+    unsorted_frequency_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL],
+        name=constants.FREQUENCY,
+    )
+    sorted_frequency_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL],
+        name=constants.FREQUENCY,
+    )
+    unsorted_organic_media_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.ORGANIC_MEDIA_CHANNEL: ['organic_media_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_MEDIA_CHANNEL,
+        ],
+        name=constants.ORGANIC_MEDIA,
+    )
+    sorted_organic_media_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.ORGANIC_MEDIA_CHANNEL: ['organic_media_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_MEDIA_CHANNEL,
+        ],
+        name=constants.ORGANIC_MEDIA,
+    )
+    unsorted_organic_reach_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.ORGANIC_RF_CHANNEL: ['organic_rf_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_RF_CHANNEL,
+        ],
+        name=constants.ORGANIC_REACH,
+    )
+    sorted_organic_reach_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.ORGANIC_RF_CHANNEL: ['organic_rf_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_RF_CHANNEL,
+        ],
+        name=constants.ORGANIC_REACH,
+    )
+    unsorted_organic_frequency_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.MEDIA_TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.ORGANIC_RF_CHANNEL: ['organic_rf_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_RF_CHANNEL,
+        ],
+        name=constants.ORGANIC_FREQUENCY,
+    )
+    sorted_organic_frequency_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.MEDIA_TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.ORGANIC_RF_CHANNEL: ['organic_rf_ch_1'],
+        },
+        dims=[
+            constants.GEO,
+            constants.MEDIA_TIME,
+            constants.ORGANIC_RF_CHANNEL,
+        ],
+        name=constants.ORGANIC_FREQUENCY,
+    )
+    unsorted_rf_spend_da = xr.DataArray(
+        [[[3], [3], [3]], [[2], [2], [2]], [[1], [1], [1]]],
+        coords={
+            constants.GEO: ['geo_10', 'geo_2', 'geo_1'],
+            constants.TIME: ['2024-01-03', '2024-01-01', '2024-01-02'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.RF_CHANNEL],
+        name=constants.RF_SPEND,
+    )
+    sorted_rf_spend_da = xr.DataArray(
+        [[[1], [1], [1]], [[2], [2], [2]], [[3], [3], [3]]],
+        coords={
+            constants.GEO: ['geo_1', 'geo_2', 'geo_10'],
+            constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
+            constants.RF_CHANNEL: ['rf_ch_1'],
+        },
+        dims=[constants.GEO, constants.TIME, constants.RF_CHANNEL],
+        name=constants.RF_SPEND,
+    )
+    builder.kpi = unsorted_kpi_da.copy()
+    builder.revenue_per_kpi = unsorted_revenue_per_kpi_da.copy()
+    builder.controls = unsorted_controls_da.copy()
+    builder.population = unsorted_population_da.copy()
+    builder.media = unsorted_media_da.copy()
+    builder.media_spend = unsorted_media_spend_da.copy()
+    builder.reach = unsorted_reach_da.copy()
+    builder.frequency = unsorted_frequency_da.copy()
+    builder.rf_spend = unsorted_rf_spend_da.copy()
+    builder.organic_media = unsorted_organic_media_da.copy()
+    builder.organic_reach = unsorted_organic_reach_da.copy()
+    builder.organic_frequency = unsorted_organic_frequency_da.copy()
+    builder.non_media_treatments = unsorted_non_media_treatments_da.copy()
+    input_data = builder.build()
+    xr.testing.assert_equal(input_data.kpi, sorted_kpi_da)
+    xr.testing.assert_equal(
+        input_data.revenue_per_kpi, sorted_revenue_per_kpi_da
+    )
+    xr.testing.assert_equal(input_data.controls, sorted_controls_da)
+    xr.testing.assert_equal(input_data.population, sorted_population_da)
+    xr.testing.assert_equal(input_data.media, sorted_media_da)
+    xr.testing.assert_equal(input_data.media_spend, sorted_media_spend_da)
+    xr.testing.assert_equal(input_data.reach, sorted_reach_da)
+    xr.testing.assert_equal(input_data.frequency, sorted_frequency_da)
+    xr.testing.assert_equal(input_data.rf_spend, sorted_rf_spend_da)
+    xr.testing.assert_equal(input_data.organic_media, sorted_organic_media_da)
+    xr.testing.assert_equal(input_data.organic_reach, sorted_organic_reach_da)
+    xr.testing.assert_equal(
+        input_data.organic_frequency, sorted_organic_frequency_da
+    )
+    xr.testing.assert_equal(
+        input_data.non_media_treatments, sorted_non_media_treatments_da
+    )
+
+    # assert copy not modified
+    xr.testing.assert_equal(builder.kpi, unsorted_kpi_da)
+    xr.testing.assert_equal(
+        builder.revenue_per_kpi, unsorted_revenue_per_kpi_da
+    )
+    xr.testing.assert_equal(builder.controls, unsorted_controls_da)
+    xr.testing.assert_equal(builder.population, unsorted_population_da)
+    xr.testing.assert_equal(builder.media, unsorted_media_da)
+    xr.testing.assert_equal(builder.media_spend, unsorted_media_spend_da)
+    xr.testing.assert_equal(builder.reach, unsorted_reach_da)
+    xr.testing.assert_equal(builder.frequency, unsorted_frequency_da)
+    xr.testing.assert_equal(builder.rf_spend, unsorted_rf_spend_da)
+    xr.testing.assert_equal(builder.organic_media, unsorted_organic_media_da)
+    xr.testing.assert_equal(builder.organic_reach, unsorted_organic_reach_da)
+    xr.testing.assert_equal(
+        builder.organic_frequency, unsorted_organic_frequency_da
+    )
+    xr.testing.assert_equal(
+        builder.non_media_treatments, unsorted_non_media_treatments_da
+    )
 
   def test_build_national_population_not_set(self):
     builder = input_data_builder.InputDataBuilder(
@@ -2288,7 +2623,7 @@ class InputDataBuilderTest(parameterized.TestCase):
         xr.DataArray(
             [1],
             coords={
-                constants.GEO: ['A'],
+                constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME],
             },
             dims=[constants.GEO],
         ),
@@ -2357,7 +2692,7 @@ class InputDataBuilderTest(parameterized.TestCase):
         xr.DataArray(
             [1],
             coords={
-                constants.GEO: ['A'],
+                constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME],
             },
             dims=[constants.GEO],
             name=constants.POPULATION,
