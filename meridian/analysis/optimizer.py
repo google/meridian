@@ -2059,17 +2059,17 @@ class BudgetOptimizer:
         c.PAID_DATA + (c.TIME,),
         self._meridian,
     )
-    spend = tf.convert_to_tensor(spend, dtype=tf.float32)
+    spend_tensor = tf.convert_to_tensor(spend, dtype=tf.float32)
     hist_spend = tf.convert_to_tensor(hist_spend, dtype=tf.float32)
     (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
         self._get_incremental_outcome_tensors(
             hist_spend,
-            spend,
+            spend_tensor,
             new_data=filled_data.filter_fields(c.PAID_CHANNELS),
             optimal_frequency=optimal_frequency,
         )
     )
-    budget = np.sum(spend)
+    budget = np.sum(spend_tensor)
 
     # incremental_outcome here is a tensor with the shape
     # (n_chains, n_draws, n_channels)
@@ -2123,7 +2123,7 @@ class BudgetOptimizer:
     )
 
     roi = analyzer.get_central_tendency_and_ci(
-        data=tf.math.divide_no_nan(incremental_outcome, spend),
+        data=tf.math.divide_no_nan(incremental_outcome, spend_tensor),
         confidence_level=confidence_level,
         include_median=True,
     )
@@ -2148,7 +2148,7 @@ class BudgetOptimizer:
     )
 
     cpik = analyzer.get_central_tendency_and_ci(
-        data=tf.math.divide_no_nan(spend, incremental_outcome),
+        data=tf.math.divide_no_nan(spend_tensor, incremental_outcome),
         confidence_level=confidence_level,
         include_median=True,
     )
@@ -2159,9 +2159,10 @@ class BudgetOptimizer:
     )
 
     total_spend = np.sum(spend) if np.sum(spend) > 0 else 1
+    pct_of_spend = spend / total_spend
     data_vars = {
-        c.SPEND: ([c.CHANNEL], spend),
-        c.PCT_OF_SPEND: ([c.CHANNEL], spend / total_spend),
+        c.SPEND: ([c.CHANNEL], spend.data),
+        c.PCT_OF_SPEND: ([c.CHANNEL], pct_of_spend.data),
         c.INCREMENTAL_OUTCOME: (
             [c.CHANNEL, c.METRIC],
             incremental_outcome_with_mean_median_and_ci,
