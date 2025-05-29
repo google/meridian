@@ -524,12 +524,12 @@ class PriorDistributionSampler:
             ).sample()
         ),
     }
-
+    print("base_vars[constants.KNOT_VALUES]: ", base_vars[constants.KNOT_VALUES])
     base_vars[constants.MU_T] = tfp.distributions.Deterministic(
         tf.einsum(
             "...k,kt->...t",
             base_vars[constants.KNOT_VALUES],
-            tf.convert_to_tensor(mmm.knot_info.weights),
+            tf.convert_to_tensor(mmm.knot_info.weights, dtype=tf.float64)
         ),
         name=constants.MU_T,
     ).sample()

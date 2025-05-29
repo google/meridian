@@ -203,44 +203,44 @@ class Meridian:
 
   @functools.cached_property
   def kpi(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float32)
+    return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float64)
 
   @functools.cached_property
   def revenue_per_kpi(self) -> tf.Tensor | None:
     if self.input_data.revenue_per_kpi is None:
       return None
     return tf.convert_to_tensor(
-        self.input_data.revenue_per_kpi, dtype=tf.float32
+        self.input_data.revenue_per_kpi, dtype=tf.float64
     )
 
   @functools.cached_property
   def controls(self) -> tf.Tensor | None:
     if self.input_data.controls is None:
       return None
-    return tf.convert_to_tensor(self.input_data.controls, dtype=tf.float32)
+    return tf.convert_to_tensor(self.input_data.controls, dtype=tf.float64)
 
   @functools.cached_property
   def non_media_treatments(self) -> tf.Tensor | None:
     if self.input_data.non_media_treatments is None:
       return None
     return tf.convert_to_tensor(
-        self.input_data.non_media_treatments, dtype=tf.float32
+        self.input_data.non_media_treatments, dtype=tf.float64
     )
 
   @functools.cached_property
   def population(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.population, dtype=tf.float32)
+    return tf.convert_to_tensor(self.input_data.population, dtype=tf.float64)
 
   @functools.cached_property
   def total_spend(self) -> tf.Tensor:
     return tf.convert_to_tensor(
-        self.input_data.get_total_spend(), dtype=tf.float32
+        self.input_data.get_total_spend(), dtype=tf.float64
     )
 
   @functools.cached_property
   def total_outcome(self) -> tf.Tensor:
     return tf.convert_to_tensor(
-        self.input_data.get_total_outcome(), dtype=tf.float32
+        self.input_data.get_total_outcome(), dtype=tf.float64
     )
 
   @property
@@ -539,7 +539,7 @@ class Meridian:
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = tf.cast(baseline_value, tf.float32)
+        baseline_for_channel = tf.cast(baseline_value, tf.float64)
       else:
         raise ValueError(
             f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
@@ -1215,7 +1215,7 @@ class Meridian:
           self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
       )
     if self.revenue_per_kpi is None:
-      revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
+      revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float64)
     else:
       revenue_per_kpi = self.revenue_per_kpi
     incremental_outcome_gx_over_beta_gx = tf.einsum(

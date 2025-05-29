@@ -621,52 +621,52 @@ class ModelTest(
   def test_input_data_tensor_properties(self, data):
     meridian = model.Meridian(input_data=data)
     self.assertAllEqual(
-        tf.convert_to_tensor(data.kpi, dtype=tf.float32),
+        tf.convert_to_tensor(data.kpi, dtype=tf.float64),
         meridian.kpi,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float32),
+        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float64),
         meridian.revenue_per_kpi,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.controls, dtype=tf.float32),
+        tf.convert_to_tensor(data.controls, dtype=tf.float64),
         meridian.controls,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.population, dtype=tf.float32),
+        tf.convert_to_tensor(data.population, dtype=tf.float64),
         meridian.population,
     )
     if data.media is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.media, dtype=tf.float32),
+          tf.convert_to_tensor(data.media, dtype=tf.float64),
           meridian.media_tensors.media,
       )
     if data.media_spend is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
           meridian.media_tensors.media_spend,
       )
     if data.reach is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.reach, dtype=tf.float32),
+          tf.convert_to_tensor(data.reach, dtype=tf.float64),
           meridian.rf_tensors.reach,
       )
     if data.frequency is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.frequency, dtype=tf.float32),
+          tf.convert_to_tensor(data.frequency, dtype=tf.float64),
           meridian.rf_tensors.frequency,
       )
     if data.rf_spend is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
           meridian.rf_tensors.rf_spend,
       )
     if data.media_spend is not None and data.rf_spend is not None:
       self.assertAllClose(
           tf.concat(
               [
-                  tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
-                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+                  tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
+                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
               ],
               axis=-1,
           ),
@@ -674,12 +674,12 @@ class ModelTest(
       )
     elif data.media_spend is not None:
       self.assertAllClose(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
           meridian.total_spend,
       )
     else:
       self.assertAllClose(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
           meridian.total_spend,
       )
 
@@ -1161,7 +1161,7 @@ class ModelTest(
 
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
-    atol = np.finfo(np.float32).eps * 100
+    atol = np.finfo(np.float64).eps * 100
     self.assertAllClose(
         meridian.controls_transformer.inverse(meridian.controls_scaled),  # pytype: disable=attribute-error
         self.input_data_with_media_and_rf.controls,
@@ -1512,71 +1512,71 @@ class NonPaidModelTest(
   def test_input_data_tensor_properties(self, data):
     meridian = model.Meridian(input_data=data)
     self.assertAllEqual(
-        tf.convert_to_tensor(data.kpi, dtype=tf.float32),
+        tf.convert_to_tensor(data.kpi, dtype=tf.float64),
         meridian.kpi,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float32),
+        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float64),
         meridian.revenue_per_kpi,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.controls, dtype=tf.float32),
+        tf.convert_to_tensor(data.controls, dtype=tf.float64),
         meridian.controls,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.non_media_treatments, dtype=tf.float32),
+        tf.convert_to_tensor(data.non_media_treatments, dtype=tf.float64),
         meridian.non_media_treatments,
     )
     self.assertAllEqual(
-        tf.convert_to_tensor(data.population, dtype=tf.float32),
+        tf.convert_to_tensor(data.population, dtype=tf.float64),
         meridian.population,
     )
     if data.media is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.media, dtype=tf.float32),
+          tf.convert_to_tensor(data.media, dtype=tf.float64),
           meridian.media_tensors.media,
       )
     if data.media_spend is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
           meridian.media_tensors.media_spend,
       )
     if data.reach is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.reach, dtype=tf.float32),
+          tf.convert_to_tensor(data.reach, dtype=tf.float64),
           meridian.rf_tensors.reach,
       )
     if data.frequency is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.frequency, dtype=tf.float32),
+          tf.convert_to_tensor(data.frequency, dtype=tf.float64),
           meridian.rf_tensors.frequency,
       )
     if data.rf_spend is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
           meridian.rf_tensors.rf_spend,
       )
     if data.organic_media is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_media, dtype=tf.float32),
+          tf.convert_to_tensor(data.organic_media, dtype=tf.float64),
           meridian.organic_media_tensors.organic_media,
       )
     if data.organic_reach is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_reach, dtype=tf.float32),
+          tf.convert_to_tensor(data.organic_reach, dtype=tf.float64),
           meridian.organic_rf_tensors.organic_reach,
       )
     if data.organic_frequency is not None:
       self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_frequency, dtype=tf.float32),
+          tf.convert_to_tensor(data.organic_frequency, dtype=tf.float64),
           meridian.organic_rf_tensors.organic_frequency,
       )
     if data.media_spend is not None and data.rf_spend is not None:
       self.assertAllClose(
           tf.concat(
               [
-                  tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
-                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+                  tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
+                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
               ],
               axis=-1,
           ),
@@ -1584,12 +1584,12 @@ class NonPaidModelTest(
       )
     elif data.media_spend is not None:
       self.assertAllClose(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.media_spend, dtype=tf.float64),
           meridian.total_spend,
       )
     else:
       self.assertAllClose(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+          tf.convert_to_tensor(data.rf_spend, dtype=tf.float64),
           meridian.total_spend,
       )
 
@@ -1744,7 +1744,7 @@ class NonPaidModelTest(
 
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
-    atol = np.finfo(np.float32).eps * 100
+    atol = np.finfo(np.float64).eps * 100
     self.assertAllClose(
         meridian.controls_transformer.inverse(meridian.controls_scaled),  # pytype: disable=attribute-error
         self.input_data_non_media_and_organic.controls,
@@ -2496,7 +2496,7 @@ class NonPaidModelTest(
         input_data=self.input_data_non_media_and_organic,
         model_spec=spec.ModelSpec(non_media_baseline_values=baseline_values),
     )
-    expected_baseline = tf.cast(baseline_values, tf.float32)
+    expected_baseline = tf.cast(baseline_values, tf.float64)
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     self.assertAllClose(expected_baseline, actual_baseline)
 
@@ -2511,7 +2511,7 @@ class NonPaidModelTest(
     expected_baseline_min = tf.reduce_min(
         non_media_treatments[..., 0], axis=[0, 1]
     )
-    expected_baseline_float = tf.cast(baseline_values[1], tf.float32)
+    expected_baseline_float = tf.cast(baseline_values[1], tf.float64)
     expected_baseline = tf.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1
     )

@@ -91,14 +91,14 @@ def _adstock(
         + (required_n_media_times - n_media_times,)
         + (media.shape[-1],)
     )
-    media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
+    media = tf.concat([tf.zeros(pad_shape, dtype=tf.float64), media], axis=-2)
 
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
     window_list[i] = media[..., i:i+n_times_output, :]
   windowed = tf.stack(window_list)
-  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
+  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float64)
   weights = tf.expand_dims(alpha, -1) ** l_range
   normalization_factors = tf.expand_dims(
       (1 - alpha ** (window_size)) / (1 - alpha), -1

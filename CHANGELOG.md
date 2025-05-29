@@ -94,7 +94,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [1.0.6] - 2025-03-18
 
 * Fix issue #548: Make time coordinate regularity check less stringent.
-* Force `DataTensors` to have all tensors with `dtype=tf.float32`.
+* Force `DataTensors` to have all tensors with `dtype=tf.float64`.
 * Refactor new data validation and data filling into the `DataTensors` class.
 * Fix bug in marginal ROI calculation in `summary_metrics` when new spend data
   is passed in.

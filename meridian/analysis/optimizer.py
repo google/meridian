@@ -1845,7 +1845,7 @@ class BudgetOptimizer:
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
-          dtype=tf.float32,
+          dtype=tf.float64,
       )
     else:
       optimal_frequency = None
@@ -2059,8 +2059,8 @@ class BudgetOptimizer:
         c.PAID_DATA + (c.TIME,),
         self._meridian,
     )
-    spend = tf.convert_to_tensor(spend, dtype=tf.float32)
-    hist_spend = tf.convert_to_tensor(hist_spend, dtype=tf.float32)
+    spend = tf.convert_to_tensor(spend, dtype=tf.float64)
+    hist_spend = tf.convert_to_tensor(hist_spend, dtype=tf.float64)
     (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
         self._get_incremental_outcome_tensors(
             hist_spend,
@@ -2384,7 +2384,7 @@ class BudgetOptimizer:
       spend_grid[: len(spend_grid_m), i] = spend_grid_m
     incremental_outcome_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
     multipliers_grid_base = tf.cast(
-        tf.math.divide_no_nan(spend_grid, spend), dtype=tf.float32
+        tf.math.divide_no_nan(spend_grid, spend), dtype=tf.float64
     )
     multipliers_grid = np.where(
         np.isnan(spend_grid), np.nan, multipliers_grid_base

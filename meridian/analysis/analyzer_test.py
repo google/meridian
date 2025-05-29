@@ -1228,9 +1228,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         seed=1,
     )
     new_data = analyzer.DataTensors(
-        media=tf.convert_to_tensor(data1.media, dtype=tf.float32),
-        reach=tf.convert_to_tensor(data1.reach, dtype=tf.float32),
-        media_spend=tf.convert_to_tensor(data1.media_spend, dtype=tf.float32),
+        media=tf.convert_to_tensor(data1.media, dtype=tf.float64),
+        reach=tf.convert_to_tensor(data1.reach, dtype=tf.float64),
+        media_spend=tf.convert_to_tensor(data1.media_spend, dtype=tf.float64),
     )
     media_summary = self.analyzer_media_and_rf.summary_metrics(
         new_data=new_data,
@@ -3060,7 +3060,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
 
   def test_roi_zero_media_returns_zero(self):
     new_media = tf.zeros_like(
-        self.meridian_media_only.media_tensors.media, dtype=tf.float32
+        self.meridian_media_only.media_tensors.media, dtype=tf.float64
     )
     roi = self.analyzer_media_only.roi(
         new_data=analyzer.DataTensors(media=new_media)

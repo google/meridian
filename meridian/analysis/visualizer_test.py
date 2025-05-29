@@ -2147,7 +2147,7 @@ class MediaSummaryTest(parameterized.TestCase):
                     [[[1100]], [[1300]], [[900]], [[3300]]],  # Time 3 (Q2 End)
                     [[[0]], [[0]], [[0]], [[0]]],  # Time 4
                     [[[1500]], [[1400]], [[4600]], [[4500]]],  # Time 5 (Q3 End)
-                ]).astype(np.float32),
+                ]).astype(np.float64),
             ),
             c.PCT_OF_CONTRIBUTION: (
                 dims,
