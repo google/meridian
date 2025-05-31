@@ -1046,16 +1046,24 @@ class Meridian:
     mask = tf.equal(counts, self.n_geos)
     col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
     dims_bad = tf.gather(data_dims, col_idx_bad)
-
-    if col_idx_bad.shape[0] and not self.is_national:
-      raise ValueError(
-          f"The following {data_name} variables do not vary across time, making"
-          f" a model with geo main effects unidentifiable: {dims_bad}. This can"
-          " lead to poor model convergence. Since these variables only vary"
-          " across geo and not across time, they are collinear with geo and"
-          " redundant in a model with geo main effects. To address this, drop"
-          " the listed variables that do not vary across time."
-      )
+    if col_idx_bad.shape[0]:
+      if self.is_national:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            " which is equivalent to no signal at all in a national model:"
+            f" {dims_bad}.  This can lead to poor model convergence. To address"
+            " this, drop the listed variables that do not vary across time."
+        )
+      else:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            f" making a model with geo main effects unidentifiable: {dims_bad}."
+            " This can lead to poor model convergence. Since these variables"
+            " only vary across geo and not across time, they are collinear"
+            " with geo and redundant in a model with geo main effects. To"
+            " address this, drop the listed variables that do not vary across"
+            " time."
+        )
 
   def _validate_kpi_transformer(self):
     """Validates the KPI transformer."""

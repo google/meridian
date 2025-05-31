@@ -30,6 +30,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Rename the directory of unit testing datasets from `sample` to
   `unit_testing_data` and add a README.
 * Make `controls` data optional in the model.
+* Add a time variation error message for national models.
 
 ## [1.1.0] - 2025-05-20
 
