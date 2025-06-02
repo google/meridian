@@ -250,6 +250,7 @@ class InputDataLoaderTest(parameterized.TestCase):
         n_media_channels=10,
         n_rf_channels=2,
         n_controls=5,
+        n_non_media_channels=2,
         remove_media_time=True,
     )
 
@@ -267,6 +268,10 @@ class InputDataLoaderTest(parameterized.TestCase):
     )
     xr.testing.assert_equal(
         data.controls, dataset[constants.CONTROLS].dropna(dim=constants.TIME)
+    )
+    xr.testing.assert_equal(
+        data.non_media_treatments,
+        dataset[constants.NON_MEDIA_TREATMENTS].dropna(dim=constants.TIME),
     )
     xr.testing.assert_equal(data.population, dataset[constants.POPULATION])
     xr.testing.assert_equal(
@@ -301,6 +306,7 @@ class InputDataLoaderTest(parameterized.TestCase):
         n_media_channels=10,
         n_rf_channels=2,
         n_controls=5,
+        n_non_media_channels=2,
         remove_media_time=True,
     )
 
@@ -316,6 +322,9 @@ class InputDataLoaderTest(parameterized.TestCase):
     )
     xr.testing.assert_equal(data.controls, dataset[constants.CONTROLS])
     xr.testing.assert_equal(data.population, dataset[constants.POPULATION])
+    xr.testing.assert_equal(
+        data.non_media_treatments, dataset[constants.NON_MEDIA_TREATMENTS]
+    )
     xr.testing.assert_equal(
         data.media,
         dataset[constants.MEDIA].rename({constants.TIME: constants.MEDIA_TIME}),
@@ -388,7 +397,9 @@ class InputDataLoaderTest(parameterized.TestCase):
         "Invalid time label: '2023-W4'. Expected format:"
         f" '{constants.DATE_FORMAT}'",
     ):
-      _ = load.XrDatasetDataLoader(dataset, kpi_type=constants.NON_REVENUE)
+      _ = load.XrDatasetDataLoader(
+          dataset, kpi_type=constants.NON_REVENUE
+      ).load()
 
   @parameterized.named_parameters(
       dict(
@@ -430,7 +441,9 @@ class InputDataLoaderTest(parameterized.TestCase):
     with warnings.catch_warnings(record=True) as warning_list:
       # Cause all warnings to always be triggered.
       warnings.simplefilter('always')
-      loader = load.XrDatasetDataLoader(dataset, kpi_type=constants.NON_REVENUE)
+      data = load.XrDatasetDataLoader(
+          dataset, kpi_type=constants.NON_REVENUE
+      ).load()
       if has_population:
         self.assertTrue(
             any(
@@ -438,12 +451,11 @@ class InputDataLoaderTest(parameterized.TestCase):
                 and (
                     str(warning.message)
                     == 'The `population` argument is ignored in a nationally'
-                    ' aggregated model. It will be reset to [1]'
+                    ' aggregated model. It will be reset to [1, 1, ..., 1]'
                 )
                 for warning in warning_list
             )
         )
-    data = loader.load()
 
     xr.testing.assert_equal(data.kpi, expected_dataset[constants.KPI])
     xr.testing.assert_equal(
@@ -540,14 +552,12 @@ class InputDataLoaderTest(parameterized.TestCase):
         n_controls=1,
     )
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "Array 'kpi' not found in dataset's arrays. Please use the"
-        " 'name_mapping' argument to rename the arrays.",
+        AttributeError, "'Dataset' object has no attribute 'kpi'"
     ):
       _ = load.XrDatasetDataLoader(
           dataset.rename({constants.KPI: 'conversions'}),
           kpi_type=constants.NON_REVENUE,
-      )
+      ).load()
 
   def test_xr_dataset_data_loader_name_mapping_works(self):
     dataset = test_utils.random_dataset(
@@ -602,62 +612,37 @@ class InputDataLoaderTest(parameterized.TestCase):
       (
           'wrong_dataset_no_media_no_rf',
           test_utils.WRONG_DATASET_WO_MEDIA_WO_RF,
-          (
-              "Some required data is missing. Please use the 'name_mapping'"
-              ' argument to rename the coordinates/arrays. It is required to'
-              ' have at least one of media or reach and frequency.'
-          ),
+          'It is required to have at least one of media or reach + frequency.',
       ),
       (
           'wrong_dataset_partial_media_no_rf',
           test_utils.WRONG_DATASET_PARTIAL_MEDIA_WO_RF,
-          (
-              "Some required data is missing. Please use the 'name_mapping'"
-              ' argument to rename the coordinates/arrays. It is required to'
-              ' have at least one of media or reach and frequency.'
-          ),
+          'Media and media spend must be provided together.',
       ),
       (
           'wrong_dataset_no_media_partial_rf',
           test_utils.WRONG_DATASET_WO_MEDIA_PARTIAL_RF,
-          (
-              "Some required data is missing. Please use the 'name_mapping'"
-              ' argument to rename the coordinates/arrays. It is required to'
-              ' have at least one of media or reach and frequency.'
-          ),
+          'Reach, frequency, and rf_spend must be provided together.',
       ),
       (
           'wrong_dataset_partial_media_partial_rf',
           test_utils.WRONG_DATASET_PARTIAL_MEDIA_PARTIAL_RF,
-          (
-              "Some required data is missing. Please use the 'name_mapping'"
-              ' argument to rename the coordinates/arrays. It is required to'
-              ' have at least one of media or reach and frequency.'
-          ),
+          'Media and media spend must be provided together.',
       ),
       (
           'wrong_dataset_with_media_partial_rf',
           test_utils.WRONG_DATASET_W_MEDIA_PARTIAL_RF,
-          (
-              "RF data is partially missing. '['rf_channel', 'frequency']' not"
-              " found in dataset's coordinates/arrays. Please use the"
-              " 'name_mapping' argument to rename the coordinates/arrays."
-          ),
+          'Reach, frequency, and rf_spend must be provided together.',
       ),
       (
           'wrong_dataset_partial_media_with_rf',
           test_utils.WRONG_DATASET_PARTIAL_MEDIA_W_RF,
-          (
-              "Media data is partially missing. '['media_channel',"
-              " 'media_spend']' not found in dataset's coordinates/arrays."
-              " Please use the 'name_mapping' argument to rename the"
-              ' coordinates/arrays.'
-          ),
+          'Media and media spend must be provided together.',
       ),
   )
   def test_xr_dataset_data_loader_missing_data_fails(self, data, error_message):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
-      _ = load.XrDatasetDataLoader(data, kpi_type=constants.NON_REVENUE)
+      _ = load.XrDatasetDataLoader(data, kpi_type=constants.NON_REVENUE).load()
 
   @parameterized.named_parameters(
       (
@@ -684,11 +669,9 @@ class InputDataLoaderTest(parameterized.TestCase):
   def test_xr_dataset_data_loader_nas_in_data_fails(self, dataset):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "The 'lagged media' period (period with 100% NA values in all non-media"
-        " columns) ['2021-01-04' '2021-01-11' '2021-01-18' '2024-11-11'] is not"
-        ' a continuous window starting from the earliest time period.',
+        'Time coordinates are not regularly spaced!',
     ):
-      load.XrDatasetDataLoader(dataset, kpi_type=constants.NON_REVENUE)
+      load.XrDatasetDataLoader(dataset, kpi_type=constants.NON_REVENUE).load()
 
   def test_xr_dataset_data_loader_wrong_name_mapping_fails(self):
     dataset = test_utils.random_dataset(
@@ -716,7 +699,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           dataset.rename({constants.KPI: 'revenue'}),
           kpi_type=constants.NON_REVENUE,
           name_mapping={constants.KPI: 'revenue'},
-      )
+      ).load()
 
   def test_dataframe_data_loader_name_mapping_works(self):
     df = self._sample_df_with_media_and_rf
