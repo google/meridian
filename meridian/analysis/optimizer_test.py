@@ -840,7 +840,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             autospec=True,
             spec_set=True,
             return_value=tf.convert_to_tensor(
-                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
             ),
         )
     )
@@ -853,7 +853,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             autospec=True,
             spec_set=True,
             return_value=tf.convert_to_tensor(
-                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], tf.float32
+                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], tf.float64
             ),
         )
     )
@@ -927,8 +927,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       )
 
   def test_incremental_outcome_tensors(self):
-    spend = np.array([100, 200, 300, 400, 500], dtype=np.float32)
-    hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float32)
+    spend = np.array([100, 200, 300, 400, 500], dtype=np.float64)
+    hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float64)
     (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend, spend
@@ -952,9 +952,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     np.testing.assert_allclose(new_rf_spend, expected_rf_spend)
 
   def test_incremental_outcome_tensors_with_optimal_frequency(self):
-    spend = np.array([100, 200, 300, 400, 500], dtype=np.float32)
-    hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float32)
-    optimal_frequency = np.array([2, 2], dtype=np.float32)
+    spend = np.array([100, 200, 300, 400, 500], dtype=np.float64)
+    hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float64)
+    optimal_frequency = np.array([2, 2], dtype=np.float64)
     (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend=hist_spend,
@@ -1054,10 +1054,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS]], tf.float64
     )
 
     expected_data = _create_budget_data(
@@ -1082,10 +1082,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
         [[_NONOPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS]]],
-        tf.float32,
+        tf.float64,
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[:_N_MEDIA_CHANNELS],
@@ -1111,10 +1111,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
         [[_NONOPTIMIZED_INCREMENTAL_OUTCOME[-_N_RF_CHANNELS:]]],
-        tf.float32,
+        tf.float64,
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[-_N_RF_CHANNELS:],
@@ -1137,10 +1137,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_SPEND,
@@ -1169,10 +1169,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS]]],
-        tf.float32,
+        tf.float64,
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_MEDIA_ONLY_SPEND,
@@ -1202,10 +1202,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME[-_N_RF_CHANNELS:]]],
-        tf.float32,
+        tf.float64,
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_RF_ONLY_SPEND,
@@ -1234,10 +1234,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_TARGET_MROI_SPEND,
@@ -1264,10 +1264,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     mock_get_aggregated_impressions.return_value = tf.convert_to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], tf.float32
+        [[_AGGREGATED_IMPRESSIONS]], tf.float64
     )
     expected_data = _create_budget_data(
         spend=_TARGET_ROI_SPEND,
@@ -2675,7 +2675,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     budget = 2000
 
@@ -2703,7 +2703,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
@@ -2743,7 +2743,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
@@ -2804,7 +2804,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -2820,13 +2820,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = tf.convert_to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Percent of spend must sum to one.',
     ):
-      pct_of_spend = np.array([0.1, 0.2, 0.3, 0.3, 0.5], dtype=np.float32)
+      pct_of_spend = np.array([0.1, 0.2, 0.3, 0.3, 0.5], dtype=np.float64)
       self.budget_optimizer_media_and_rf.optimize(
           pct_of_spend=pct_of_spend, fixed_budget=True
       )
@@ -2839,7 +2839,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             'incremental_outcome',
             autospec=True,
             return_value=tf.convert_to_tensor(
-                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float32
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], tf.float64
             ),
         )
     )

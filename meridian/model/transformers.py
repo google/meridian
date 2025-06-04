@@ -75,7 +75,7 @@ class MediaTransformer(TensorTransformer):
     self._population_scaled_median_m = tf.numpy_function(
         func=lambda x: np.nanmedian(x, axis=[0, 1]),
         inp=[population_scaled_media_nan],
-        Tout=tf.float32,
+        Tout=tf.float64,
     )
     # Tensor of dimensions (`n_geos` x 1) of weights for scaling `metric`.
     self._scale_factors_gm = tf.einsum(

@@ -141,9 +141,9 @@ class PosteriorMCMCSampler:
 
       tau_gt = tau_g[:, tf.newaxis] + mu_t
       combined_media_transformed = tf.zeros(
-          shape=(n_geos, n_times, 0), dtype=tf.float32
+          shape=(n_geos, n_times, 0), dtype=tf.float64
       )
-      combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float32)
+      combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float64)
       if media_tensors.media is not None:
         alpha_m = yield prior_broadcast.alpha_m
         ec_m = yield prior_broadcast.ec_m
@@ -442,7 +442,7 @@ class PosteriorMCMCSampler:
       # sampled posterior parameter values.
       if holdout_id is not None:
         y_pred_holdout = tf.where(holdout_id, 0.0, y_pred)
-        test_sd = tf.cast(1.0 / np.sqrt(2.0 * np.pi), tf.float32)
+        test_sd = tf.cast(1.0 / np.sqrt(2.0 * np.pi), tf.float64)
         sigma_gt_holdout = tf.where(holdout_id, test_sd, sigma_gt)
         yield tfp.distributions.Normal(
             y_pred_holdout, sigma_gt_holdout, name="y"

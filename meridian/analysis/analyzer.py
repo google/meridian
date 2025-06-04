@@ -110,42 +110,42 @@ class DataTensors(tf.experimental.ExtensionType):
       revenue_per_kpi: Optional[tf.Tensor] = None,
       time: Optional[Sequence[str] | tf.Tensor] = None,
   ):
-    self.media = tf.cast(media, tf.float32) if media is not None else None
+    self.media = tf.cast(media, tf.float64) if media is not None else None
     self.media_spend = (
-        tf.cast(media_spend, tf.float32) if media_spend is not None else None
+        tf.cast(media_spend, tf.float64) if media_spend is not None else None
     )
-    self.reach = tf.cast(reach, tf.float32) if reach is not None else None
+    self.reach = tf.cast(reach, tf.float64) if reach is not None else None
     self.frequency = (
-        tf.cast(frequency, tf.float32) if frequency is not None else None
+        tf.cast(frequency, tf.float64) if frequency is not None else None
     )
     self.rf_spend = (
-        tf.cast(rf_spend, tf.float32) if rf_spend is not None else None
+        tf.cast(rf_spend, tf.float64) if rf_spend is not None else None
     )
     self.organic_media = (
-        tf.cast(organic_media, tf.float32)
+        tf.cast(organic_media, tf.float64)
         if organic_media is not None
         else None
     )
     self.organic_reach = (
-        tf.cast(organic_reach, tf.float32)
+        tf.cast(organic_reach, tf.float64)
         if organic_reach is not None
         else None
     )
     self.organic_frequency = (
-        tf.cast(organic_frequency, tf.float32)
+        tf.cast(organic_frequency, tf.float64)
         if organic_frequency is not None
         else None
     )
     self.non_media_treatments = (
-        tf.cast(non_media_treatments, tf.float32)
+        tf.cast(non_media_treatments, tf.float64)
         if non_media_treatments is not None
         else None
     )
     self.controls = (
-        tf.cast(controls, tf.float32) if controls is not None else None
+        tf.cast(controls, tf.float64) if controls is not None else None
     )
     self.revenue_per_kpi = (
-        tf.cast(revenue_per_kpi, tf.float32)
+        tf.cast(revenue_per_kpi, tf.float64)
         if revenue_per_kpi is not None
         else None
     )
@@ -1986,7 +1986,7 @@ class Analyzer:
       )
       non_media_treatments0 = tf.broadcast_to(
           tf.constant(
-              non_media_treatments_baseline_normalized, dtype=tf.float32
+              non_media_treatments_baseline_normalized, dtype=tf.float64
           )[tf.newaxis, tf.newaxis, :],
           self._meridian.non_media_treatments.shape,  # pytype: disable=attribute-error
       )
@@ -2692,7 +2692,7 @@ class Analyzer:
           non_media_baseline_values=non_media_baseline_values,
       )
       new_non_media_treatments_population_scaled = tf.broadcast_to(
-          tf.constant(baseline, dtype=tf.float32)[tf.newaxis, tf.newaxis, :],
+          tf.constant(baseline, dtype=tf.float64)[tf.newaxis, tf.newaxis, :],
           self._meridian.non_media_treatments.shape,
       )
       new_non_media_treatments = (
@@ -3569,7 +3569,7 @@ class Analyzer:
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
     optimal_frequency_tensor = tf.convert_to_tensor(
         tf.ones_like(filled_data.frequency) * optimal_frequency,
-        tf.float32,
+        tf.float64,
     )
     optimal_reach = (
         filled_data.frequency * filled_data.reach / optimal_frequency_tensor
@@ -4015,7 +4015,7 @@ class Analyzer:
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
-          dtype=tf.float32,
+          dtype=tf.float64,
       )
       reach = tf.math.divide_no_nan(
           self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,

@@ -105,7 +105,7 @@ def l1_distance_weights(
   times = np.arange(n_times)
   time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])
 
-  w = np.zeros(time_minus_knot.shape, dtype=np.float32)
+  w = np.zeros(time_minus_knot.shape, dtype=np.float64)
   neighboring_knots_indices = _find_neighboring_knots_indices(
       times, knot_locations
   )
@@ -203,7 +203,7 @@ def get_knot_info(
     knot_locations = _get_equally_spaced_knot_locations(n_times, n_knots)
 
   if n_knots == 1:
-    weights = np.ones((1, n_times), dtype=np.float32)
+    weights = np.ones((1, n_times), dtype=np.float64)
   else:
     weights = l1_distance_weights(n_times, knot_locations)
 

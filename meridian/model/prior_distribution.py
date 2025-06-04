@@ -272,186 +272,186 @@ class PriorDistribution:
 
   knot_values: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Normal(
-          0.0, 5.0, name=constants.KNOT_VALUES
+          0.0, 5.0, name=constants.KNOT_VALUES, dtype=tf.float64
       ),
   )
   tau_g_excl_baseline: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Normal(
-          0.0, 5.0, name=constants.TAU_G_EXCL_BASELINE
+          0.0, 5.0, name=constants.TAU_G_EXCL_BASELINE, dtype=tf.float64
       ),
   )
   beta_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.BETA_M
+          5.0, name=constants.BETA_M, dtype=tf.float64
       ),
   )
   beta_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.BETA_RF
+          5.0, name=constants.BETA_RF, dtype=tf.float64
       ),
   )
   beta_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.BETA_OM
+          5.0, name=constants.BETA_OM, dtype=tf.float64
       ),
   )
   beta_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.BETA_ORF
+          5.0, name=constants.BETA_ORF, dtype=tf.float64
       ),
   )
   eta_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          1.0, name=constants.ETA_M
+          1.0, name=constants.ETA_M, dtype=tf.float64
       ),
   )
   eta_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          1.0, name=constants.ETA_RF
+          1.0, name=constants.ETA_RF, dtype=tf.float64
       ),
   )
   eta_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          1.0, name=constants.ETA_OM
+          1.0, name=constants.ETA_OM, dtype=tf.float64
       ),
   )
   eta_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          1.0, name=constants.ETA_ORF
+          1.0, name=constants.ETA_ORF, dtype=tf.float64
       ),
   )
   gamma_c: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Normal(
-          0.0, 5.0, name=constants.GAMMA_C
+          0.0, 5.0, name=constants.GAMMA_C, dtype=tf.float64
       ),
   )
   gamma_n: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Normal(
-          0.0, 5.0, name=constants.GAMMA_N
+          0.0, 5.0, name=constants.GAMMA_N, dtype=tf.float64
       ),
   )
   xi_c: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.XI_C
+          5.0, name=constants.XI_C, dtype=tf.float64
       ),
   )
   xi_n: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.XI_N
+          5.0, name=constants.XI_N, dtype=tf.float64
       ),
   )
   alpha_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Uniform(
-          0.0, 1.0, name=constants.ALPHA_M
+          0.0, 1.0, name=constants.ALPHA_M, dtype=tf.float64
       ),
   )
   alpha_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Uniform(
-          0.0, 1.0, name=constants.ALPHA_RF
+          0.0, 1.0, name=constants.ALPHA_RF, dtype=tf.float64
       ),
   )
   alpha_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Uniform(
-          0.0, 1.0, name=constants.ALPHA_OM
+          0.0, 1.0, name=constants.ALPHA_OM, dtype=tf.float64
       ),
   )
   alpha_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Uniform(
-          0.0, 1.0, name=constants.ALPHA_ORF
+          0.0, 1.0, name=constants.ALPHA_ORF, dtype=tf.float64
       ),
   )
   ec_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TruncatedNormal(
-          0.8, 0.8, 0.1, 10, name=constants.EC_M
+          0.8, 0.8, 0.1, 10, name=constants.EC_M, dtype=tf.float64
       ),
   )
   ec_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TransformedDistribution(
           tfp.distributions.LogNormal(0.7, 0.4),
           tfp.bijectors.Shift(0.1),
-          name=constants.EC_RF,
+          name=constants.EC_RF, dtype=tf.float64
       ),
   )
   ec_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TruncatedNormal(
-          0.8, 0.8, 0.1, 10, name=constants.EC_OM
+          0.8, 0.8, 0.1, 10, name=constants.EC_OM, dtype=tf.float64
       ),
   )
   ec_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TransformedDistribution(
           tfp.distributions.LogNormal(0.7, 0.4),
           tfp.bijectors.Shift(0.1),
-          name=constants.EC_ORF,
+          name=constants.EC_ORF, dtype=tf.float64
       ),
   )
   slope_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Deterministic(
-          1.0, name=constants.SLOPE_M
+          1.0, name=constants.SLOPE_M, dtype=tf.float64
       ),
   )
   slope_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.7, 0.4, name=constants.SLOPE_RF
+          0.7, 0.4, name=constants.SLOPE_RF, dtype=tf.float64
       ),
   )
   slope_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Deterministic(
-          1.0, name=constants.SLOPE_OM
+          1.0, name=constants.SLOPE_OM, dtype=tf.float64
       ),
   )
   slope_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.7, 0.4, name=constants.SLOPE_ORF
+          0.7, 0.4, name=constants.SLOPE_ORF, dtype=tf.float64
       ),
   )
   sigma: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.HalfNormal(
-          5.0, name=constants.SIGMA
+          5.0, name=constants.SIGMA, dtype=tf.float64
       ),
   )
   roi_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.2, 0.9, name=constants.ROI_M
+          0.2, 0.9, name=constants.ROI_M, dtype=tf.float64
       ),
   )
   roi_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.2, 0.9, name=constants.ROI_RF
+          0.2, 0.9, name=constants.ROI_RF, dtype=tf.float64
       ),
   )
   mroi_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.0, 0.5, name=constants.MROI_M
+          0.0, 0.5, name=constants.MROI_M, dtype=tf.float64
       ),
   )
   mroi_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.LogNormal(
-          0.0, 0.5, name=constants.MROI_RF
+          0.0, 0.5, name=constants.MROI_RF, dtype=tf.float64
       ),
   )
   contribution_m: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_M
+          1.0, 99.0, name=constants.CONTRIBUTION_M, dtype=tf.float64
       ),
   )
   contribution_rf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_RF
+          1.0, 99.0, name=constants.CONTRIBUTION_RF, dtype=tf.float64
       ),
   )
   contribution_om: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_OM
+          1.0, 99.0, name=constants.CONTRIBUTION_OM, dtype=tf.float64
       ),
   )
   contribution_orf: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_ORF
+          1.0, 99.0, name=constants.CONTRIBUTION_ORF, dtype=tf.float64
       ),
   )
   contribution_n: tfp.distributions.Distribution = dataclasses.field(
       default_factory=lambda: tfp.distributions.TruncatedNormal(
-          loc=0.0, scale=0.1, low=-1.0, high=1.0, name=constants.CONTRIBUTION_N
+          loc=0.0, scale=0.1, low=-1.0, high=1.0, name=constants.CONTRIBUTION_N, dtype=tf.float64
       ),
   )
 
@@ -914,7 +914,7 @@ def _convert_to_deterministic_0_distribution(
         f' for national models. {distribution.name} has been automatically set'
         ' to Deterministic(0).'
     )
-    return tfp.distributions.Deterministic(loc=0, name=distribution.name)
+    return tfp.distributions.Deterministic(loc=0, name=distribution.name, dtype=tf.float64)
   else:
     return distribution
 
@@ -943,10 +943,10 @@ def _get_total_media_contribution_prior(
   roi_mean = p_mean * kpi / np.sum(total_spend)
   roi_sd = p_sd * kpi / np.sqrt(np.sum(np.power(total_spend, 2)))
   lognormal_sigma = tf.cast(
-      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=tf.float32
+      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=tf.float64
   )
   lognormal_mu = tf.cast(
-      np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)), dtype=tf.float32
+      np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)), dtype=tf.float64
   )
   return tfp.distributions.LogNormal(lognormal_mu, lognormal_sigma, name=name)
 
