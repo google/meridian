@@ -1916,9 +1916,9 @@ class NonPaidModelTest(
     model_spec = spec.ModelSpec(
         media_prior_type=media_prior_type,
         rf_prior_type=rf_prior_type,
-        organic_media_prior_type=organic_media_prior_type,
-        organic_rf_prior_type=organic_rf_prior_type,
-        non_media_treatments_prior_type=non_media_treatments_prior_type,
+        effective_organic_media_prior_type=organic_media_prior_type,
+        effective_organic_rf_prior_type=organic_rf_prior_type,
+        effective_non_media_treatments_prior_type=non_media_treatments_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
