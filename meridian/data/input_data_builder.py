@@ -26,6 +26,7 @@ import warnings
 from meridian import constants
 from meridian.data import input_data
 from meridian.data import time_coordinates as tc
+import natsort
 import numpy as np
 import xarray as xr
 
@@ -158,7 +159,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('KPI', self.kpi)
 
-    self._kpi = self._normalize_time_coords(kpi, constants.TIME)
+    self._kpi = self._normalize_coords(kpi, constants.TIME)
     self.geos = self.kpi.coords[constants.GEO].values.tolist()
     self.time_coords = self.kpi.coords[constants.TIME].values.tolist()
 
@@ -190,7 +191,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('Controls', self.controls)
 
-    self._controls = self._normalize_time_coords(controls, constants.TIME)
+    self._controls = self._normalize_coords(controls, constants.TIME)
     self.geos = self.controls.coords[constants.GEO].values.tolist()
     self.time_coords = self.controls.coords[constants.TIME].values.tolist()
 
@@ -220,7 +221,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('Population', self.population)
 
-    self._population = population
+    self._population = self._normalize_coords(population)
     self.geos = self.population.coords[constants.GEO].values.tolist()
 
   @property
@@ -249,7 +250,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('Revenue per KPI', self.revenue_per_kpi)
 
-    self._revenue_per_kpi = self._normalize_time_coords(
+    self._revenue_per_kpi = self._normalize_coords(
         revenue_per_kpi, constants.TIME
     )
     self.geos = self.revenue_per_kpi.coords[constants.GEO].values.tolist()
@@ -288,7 +289,7 @@ class InputDataBuilder(abc.ABC):
         constants.MEDIA_CHANNEL, [media, self.media_spend]
     )
 
-    self._media = self._normalize_time_coords(media, constants.MEDIA_TIME)
+    self._media = self._normalize_coords(media, constants.MEDIA_TIME)
     self.geos = self.media.coords[constants.GEO].values.tolist()
     self.media_time_coords = self.media.coords[
         constants.MEDIA_TIME
@@ -325,7 +326,7 @@ class InputDataBuilder(abc.ABC):
         constants.MEDIA_CHANNEL, [media_spend, self.media]
     )
 
-    self._media_spend = self._normalize_time_coords(media_spend, constants.TIME)
+    self._media_spend = self._normalize_coords(media_spend, constants.TIME)
     self.geos = self.media_spend.coords[constants.GEO].values.tolist()
     self.time_coords = self.media_spend.coords[constants.TIME].values.tolist()
 
@@ -360,7 +361,7 @@ class InputDataBuilder(abc.ABC):
         constants.RF_CHANNEL, [reach, self.frequency, self.rf_spend]
     )
 
-    self._reach = self._normalize_time_coords(reach, constants.MEDIA_TIME)
+    self._reach = self._normalize_coords(reach, constants.MEDIA_TIME)
     self.geos = self.reach.coords[constants.GEO].values.tolist()
     self.media_time_coords = self.reach.coords[
         constants.MEDIA_TIME
@@ -397,9 +398,7 @@ class InputDataBuilder(abc.ABC):
         constants.RF_CHANNEL, [frequency, self.reach, self.rf_spend]
     )
 
-    self._frequency = self._normalize_time_coords(
-        frequency, constants.MEDIA_TIME
-    )
+    self._frequency = self._normalize_coords(frequency, constants.MEDIA_TIME)
     self.geos = self.frequency.coords[constants.GEO].values.tolist()
     self.media_time_coords = self.frequency.coords[
         constants.MEDIA_TIME
@@ -436,7 +435,7 @@ class InputDataBuilder(abc.ABC):
         constants.RF_CHANNEL, [rf_spend, self.reach, self.frequency]
     )
 
-    self._rf_spend = self._normalize_time_coords(rf_spend, constants.TIME)
+    self._rf_spend = self._normalize_coords(rf_spend, constants.TIME)
     self.geos = self.rf_spend.coords[constants.GEO].values.tolist()
     self.time_coords = self.rf_spend.coords[constants.TIME].values.tolist()
 
@@ -467,7 +466,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('Organic media', self.organic_media)
 
-    self._organic_media = self._normalize_time_coords(
+    self._organic_media = self._normalize_coords(
         organic_media, constants.MEDIA_TIME
     )
     self.geos = self.organic_media.coords[constants.GEO].values.tolist()
@@ -506,7 +505,7 @@ class InputDataBuilder(abc.ABC):
         constants.ORGANIC_RF_CHANNEL, [organic_reach, self.organic_frequency]
     )
 
-    self._organic_reach = self._normalize_time_coords(
+    self._organic_reach = self._normalize_coords(
         organic_reach, constants.MEDIA_TIME
     )
     self.geos = self.organic_reach.coords[constants.GEO].values.tolist()
@@ -545,7 +544,7 @@ class InputDataBuilder(abc.ABC):
         constants.ORGANIC_RF_CHANNEL, [organic_frequency, self.organic_reach]
     )
 
-    self._organic_frequency = self._normalize_time_coords(
+    self._organic_frequency = self._normalize_coords(
         organic_frequency, constants.MEDIA_TIME
     )
     self.geos = self.organic_frequency.coords[constants.GEO].values.tolist()
@@ -567,10 +566,11 @@ class InputDataBuilder(abc.ABC):
     xarray.DataArray(
         data=...,
         name='non_media_treatments',
-        dims=['geo', 'time'],
+        dims=['geo', 'time', 'non_media_channel'],
         coords={
           'geo': ...,
           'time': ...,
+          'non_media_channel': ...,
         },
     )
     ```
@@ -580,7 +580,7 @@ class InputDataBuilder(abc.ABC):
     """
     self._validate_set('Non-media treatments', self.non_media_treatments)
 
-    self._non_media_treatments = self._normalize_time_coords(
+    self._non_media_treatments = self._normalize_coords(
         non_media_treatments, constants.TIME
     )
     self.geos = self.non_media_treatments.coords[constants.GEO].values.tolist()
@@ -604,52 +604,72 @@ class InputDataBuilder(abc.ABC):
     # TODO: move logic from input_data to here: all channel names
     # should be unique across media channels, rf channels, organic media
     # channels, and organic rf channels.
-    # TODO: dataarrays need to be sorted by geo and time/media time.
+    sorted_geos = natsort.natsorted(self.geos)
+    sorted_times = natsort.natsorted(self.time_coords)
+    sorted_media_times = natsort.natsorted(self.media_time_coords)
+
+    def _get_sorted(da: xr.DataArray | None, is_media_time: bool = False):
+      """Naturally sorts the DataArray by geo and time/media time."""
+
+      if da is None:
+        return None
+      else:
+        if is_media_time:
+          return da.reindex(geo=sorted_geos, media_time=sorted_media_times)
+        else:
+          return da.reindex(geo=sorted_geos, time=sorted_times)
+
     return input_data.InputData(
         kpi_type=self._kpi_type,
-        kpi=self.kpi,
-        revenue_per_kpi=self.revenue_per_kpi,
-        controls=self.controls,
-        population=self.population,
-        media=self.media,
-        media_spend=self.media_spend,
-        reach=self.reach,
-        frequency=self.frequency,
-        rf_spend=self.rf_spend,
-        non_media_treatments=self.non_media_treatments,
-        organic_media=self.organic_media,
-        organic_reach=self.organic_reach,
-        organic_frequency=self.organic_frequency,
+        kpi=_get_sorted(self.kpi),
+        revenue_per_kpi=_get_sorted(self.revenue_per_kpi),
+        controls=_get_sorted(self.controls),
+        population=self.population.reindex(geo=sorted_geos),
+        media=_get_sorted(self.media, True),
+        media_spend=_get_sorted(self.media_spend),
+        reach=_get_sorted(self.reach, True),
+        frequency=_get_sorted(self.frequency, True),
+        rf_spend=_get_sorted(self.rf_spend),
+        non_media_treatments=_get_sorted(self.non_media_treatments),
+        organic_media=_get_sorted(self.organic_media, True),
+        organic_reach=_get_sorted(self.organic_reach, True),
+        organic_frequency=_get_sorted(self.organic_frequency, True),
     )
 
-  def _normalize_time_coords(
-      self, da: xr.DataArray, time_dimension_name: str
+  def _normalize_coords(
+      self, da: xr.DataArray, time_dimension_name: str | None = None
   ) -> xr.DataArray:
-    """Validates that time values are in the conventional Meridian format."""
-    # Time values are expected to be (a) strings formatted in `"yyyy-mm-dd"` or
-    # (b) `datetime` values as numpy's `datetime64` types. All other types are
-    # not currently supported.
+    """Validates that time values are in the conventional Meridian format and geos have national name if national."""
+    if time_dimension_name is not None:
+      # Time values are expected to be
+      # (a) strings formatted in `"yyyy-mm-dd"`
+      # or
+      # (b) `datetime` values as numpy's `datetime64` types.
+      # All other types are not currently supported.
 
-    # In (b) case, `datetime` coordinate values will be normalized as formatted
-    # strings.
+      # If (b), `datetime` coord values will be normalized as formatted strings.
 
-    if da.coords.dtypes[time_dimension_name] == np.dtype('datetime64[ns]'):
-      date_strvalues = np.datetime_as_string(
-          da.coords[time_dimension_name], unit='D'
+      if da.coords.dtypes[time_dimension_name] == np.dtype('datetime64[ns]'):
+        date_strvalues = np.datetime_as_string(
+            da.coords[time_dimension_name], unit='D'
+        )
+        da = da.assign_coords({time_dimension_name: date_strvalues})
+
+      # Assume that the time coordinate labels are date-formatted strings.
+      # We don't currently support other, arbitrary object types in the builder.
+      for time in da.coords[time_dimension_name].values:
+        try:
+          _ = datetime.datetime.strptime(time, constants.DATE_FORMAT)
+        except ValueError as exc:
+          raise ValueError(
+              f"Invalid time label: '{time}'. Expected format:"
+              f" '{constants.DATE_FORMAT}'"
+          ) from exc
+
+    if len(da.coords[constants.GEO].values.tolist()) == 1:
+      da = da.assign_coords(
+          {constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME]},
       )
-      da = da.assign_coords({time_dimension_name: date_strvalues})
-
-    # Assume that the time coordinate labels are date-formatted strings.
-    # We don't currently support other, arbitrary object types in the builder.
-    for time in da.coords[time_dimension_name].values:
-      try:
-        _ = datetime.datetime.strptime(time, constants.DATE_FORMAT)
-      except ValueError as exc:
-        raise ValueError(
-            f"Invalid time label: '{time}'. Expected format:"
-            f" '{constants.DATE_FORMAT}'"
-        ) from exc
-
     return da
 
   def _validate_set(self, component: str, da: xr.DataArray):
@@ -725,49 +745,49 @@ class InputDataBuilder(abc.ABC):
     NAs.
     """
     if self.kpi.isnull().any(axis=None):
-      raise ValueError('NA values found in the kpi array.')
+      raise ValueError('NA values found in the kpi data.')
     if self.population.isnull().any(axis=None):
-      raise ValueError('NA values found in the population array.')
+      raise ValueError('NA values found in the population data.')
     if self.controls is not None and self.controls.isnull().any(axis=None):
-      raise ValueError('NA values found in the controls array.')
+      raise ValueError('NA values found in the controls data.')
     if self.revenue_per_kpi is not None and self.revenue_per_kpi.isnull().any(
         axis=None
     ):
-      raise ValueError('NA values found in the revenue per kpi array.')
+      raise ValueError('NA values found in the revenue per kpi data.')
     if self.media_spend is not None and self.media_spend.isnull().any(
         axis=None
     ):
-      raise ValueError('NA values found in the media spend array.')
+      raise ValueError('NA values found in the media spend data.')
     if self.rf_spend is not None and self.rf_spend.isnull().any(axis=None):
-      raise ValueError('NA values found in the rf spend array.')
+      raise ValueError('NA values found in the rf spend data.')
     if (
         self.non_media_treatments is not None
         and self.non_media_treatments.isnull().any(axis=None)
     ):
-      raise ValueError('NA values found in the non media treatments array.')
+      raise ValueError('NA values found in the non media treatments data.')
 
     if self.media is not None and self.media.isnull().any(axis=None):
-      raise ValueError('NA values found in the media array.')
+      raise ValueError('NA values found in the media data.')
 
     if self.reach is not None and self.reach.isnull().any(axis=None):
-      raise ValueError('NA values found in the reach array.')
+      raise ValueError('NA values found in the reach data.')
     if self.frequency is not None and self.frequency.isnull().any(axis=None):
-      raise ValueError('NA values found in the frequency array.')
+      raise ValueError('NA values found in the frequency data.')
 
     if self.organic_media is not None and self.organic_media.isnull().any(
         axis=None
     ):
-      raise ValueError('NA values found in the organic media array.')
+      raise ValueError('NA values found in the organic media data.')
 
     if self.organic_reach is not None and self.organic_reach.isnull().any(
         axis=None
     ):
-      raise ValueError('NA values found in the organic reach array.')
+      raise ValueError('NA values found in the organic reach data.')
     if (
         self.organic_frequency is not None
         and self.organic_frequency.isnull().any(axis=None)
     ):
-      raise ValueError('NA values found in the organic frequency array.')
+      raise ValueError('NA values found in the organic frequency data.')
 
   def _validate_lagged_media(
       self, media_time_coords: Sequence[str], time_coords: Sequence[str]
