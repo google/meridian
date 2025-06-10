@@ -958,8 +958,7 @@ class InputDataLoaderTest(parameterized.TestCase):
     xr.testing.assert_equal(data.kpi, expected_dataset[constants.KPI])
 
   def test_dataframe_data_loader_invalid_time_format(self):
-    df = self._sample_df_with_media_and_rf
-    df.at[-2, constants.TIME] = '2023-W42'
+    df = self._sample_df_with_media_and_rf.replace('2021-01-25', '2023-W42')
 
     coord_to_columns = load.CoordToColumns(
         revenue_per_kpi=constants.REVENUE_PER_KPI,
@@ -986,7 +985,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           reach_to_channel=self._correct_reach_to_channel,
           frequency_to_channel=self._correct_frequency_to_channel,
           rf_spend_to_channel=self._correct_rf_spend_to_channel,
-      )
+      ).load()
 
   @parameterized.named_parameters(
       ('not_lagged', 50, 200, 200, 10, 5), ('lagged', 50, 200, 203, 10, 5)
@@ -1447,29 +1446,14 @@ class InputDataLoaderTest(parameterized.TestCase):
       (
           'wrong_value',
           'wrong_value',
-          (
-              "Values of the `coord_to_columns` object ['control_0',"
-              " 'control_1', 'geo', 'media_0', 'media_1', 'media_2',"
-              " 'media_spend_0', 'media_spend_1', 'media_spend_2',"
-              " 'population', 'revenue', 'revenue_per_kpi', 'time'] should map"
-              " to the DataFrame column names ['control_0', 'control_1', 'geo',"
-              " 'kpi', 'media_0', 'media_1', 'media_2', 'media_spend_0',"
-              " 'media_spend_1', 'media_spend_2', 'population',"
-              " 'revenue_per_kpi', 'time']."
-          ),
+          "DataFrame is missing one or more columns from ['revenue', 'time']",
       ),
       (
           'extra_control',
           'extra_control',
           (
-              "Values of the `coord_to_columns` object ['control_0',"
-              " 'control_1', 'control_2', 'geo', 'kpi', 'media_0', 'media_1',"
-              " 'media_2', 'media_spend_0', 'media_spend_1', 'media_spend_2',"
-              " 'population', 'revenue_per_kpi', 'time'] should map to the"
-              " DataFrame column names ['control_0', 'control_1', 'geo', 'kpi',"
-              " 'media_0', 'media_1', 'media_2', 'media_spend_0',"
-              " 'media_spend_1', 'media_spend_2', 'population',"
-              " 'revenue_per_kpi', 'time']."
+              "DataFrame is missing one or more columns from ['control_0',"
+              " 'control_1', 'control_2', 'time']"
           ),
       ),
   )
@@ -1486,7 +1470,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           kpi_type=constants.NON_REVENUE,
           media_to_channel=self._correct_media_to_channel,
           media_spend_to_channel=self._correct_media_spend_to_channel,
-      )
+      ).load()
 
   @parameterized.named_parameters(
       (
@@ -1562,7 +1546,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           reach_to_channel=reach_to_channel,
           frequency_to_channel=frequency_to_channel,
           rf_spend_to_channel=rf_spend_to_channel,
-      )
+      ).load()
 
   @parameterized.named_parameters(
       (
@@ -1592,7 +1576,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           kpi_type=constants.NON_REVENUE,
           media_to_channel=self._correct_media_to_channel,
           media_spend_to_channel=self._correct_media_spend_to_channel,
-      )
+      ).load()
 
   def test_dataframe_data_loader_extra_columns_ok(self):
     n_geos = 10
@@ -1620,36 +1604,41 @@ class InputDataLoaderTest(parameterized.TestCase):
       (
           'NA_in_media',
           'NA_in_media',
-          'NA values found in the media columns.',
+          'NA values found in the media data.',
       ),
       (
           'NA_in_reach',
           'NA_in_reach',
-          'NA values found in the reach columns.',
+          'NA values found in the reach data.',
       ),
       (
           'NA_in_frequency',
           'NA_in_frequency',
-          'NA values found in the frequency columns.',
+          'NA values found in the frequency data.',
       ),
       (
           'non_NA_in_lagged_period',
           'non_NA_in_lagged_period',
           (
-              "NA values found in columns ['kpi', 'population', 'control_0',"
-              " 'control_1', 'revenue_per_kpi', 'media_spend_0',"
-              " 'media_spend_1', 'media_spend_2', 'rf_spend_0', 'rf_spend_1']"
-              ' within the modeling time window (time periods where the KPI is'
-              ' modeled).'
+              "`times` coords already set to ['2021-01-25', '2021-02-01',"
+              " '2021-02-08', '2021-02-15', '2021-02-22', '2021-03-01',"
+              " '2021-03-08', '2021-03-15', '2021-03-22', '2021-03-29',"
+              " '2021-04-05', '2021-04-12', '2021-04-19', '2021-04-26',"
+              " '2021-05-03', '2021-05-10', '2021-05-17', '2021-05-24',"
+              " '2021-05-31', '2021-06-07', '2021-06-14', '2021-06-21',"
+              " '2021-06-28', '2021-07-05', '2021-07-12', '2021-07-19',"
+              " '2021-07-26', '2021-08-02', '2021-08-09', '2021-08-16',"
+              " '2021-08-23', '2021-08-30', '2021-09-06', '2021-09-13',"
+              " '2021-09-20', '2021-09-27', '2021-10-04', '2021-10-11',"
+              " '2021-10-18', '2021-10-25', '2021-11-01', '2021-11-08',"
+              " '2021-11-15', '2021-11-22', '2021-11-29', '2021-12-06',"
+              " '2021-12-13', '2021-12-20', '2021-12-27', '2022-01-03']."
           ),
       ),
       (
           'NA_outside_lagged_period',
           'NA_outside_lagged_period',
-          (
-              "NA values found in columns ['kpi'] within the modeling time"
-              ' window (time periods where the KPI is modeled).'
-          ),
+          'NA values found in the kpi data.',
       ),
   )
   def test_dataframe_data_loader_wrong_lagged_media_fails(
@@ -1668,14 +1657,11 @@ class InputDataLoaderTest(parameterized.TestCase):
           reach_to_channel=self._correct_reach_to_channel,
           frequency_to_channel=self._correct_frequency_to_channel,
           rf_spend_to_channel=self._correct_rf_spend_to_channel,
-      )
+      ).load()
 
   def test_dataframe_data_loader_not_continuous_na_period_fails(self):
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "The 'lagged media' period (period with 100% NA values in all"
-        " non-media columns) ['2021-01-04', '2021-02-01', '2021-01-18'] is"
-        ' not a continuous window starting from the earliest time period.',
+        ValueError, 'Time coordinates are not regularly spaced!'
     ):
       load.DataFrameDataLoader(
           df=self._sample_df_not_continuous_na_period,
@@ -1683,7 +1669,7 @@ class InputDataLoaderTest(parameterized.TestCase):
           kpi_type=constants.NON_REVENUE,
           media_to_channel=self._correct_media_to_channel,
           media_spend_to_channel=self._correct_media_spend_to_channel,
-      )
+      ).load()
 
   @parameterized.named_parameters(
       dict(

@@ -1097,21 +1097,29 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="media",
-          df=BASIC_MEDIA_DF[["geo", "media_time"]],
+          df=BASIC_MEDIA_DF[
+              ["geo", "media_time", "media_spend_1", "media_spend_2"]
+          ],
           setter=lambda builder, df: builder.with_media(
               df,
               ["media_1", "media_2"],
               ["media_spend_1", "media_spend_2"],
-              [
-                  "media_channel_1",
-                  "media_channel_2",
-              ],
+              ["media_channel_1", "media_channel_2"],
               "media_time",
           ),
-          missing_cols=(
-              "['media_1', 'media_2', 'media_spend_1',"
-              " 'media_spend_2', 'media_time']"
+          missing_cols="['media_1', 'media_2', 'media_time']",
+      ),
+      dict(
+          testcase_name="media_spend",
+          df=BASIC_MEDIA_DF[["geo", "media_time", "media_1", "media_2"]],
+          setter=lambda builder, df: builder.with_media(
+              df,
+              ["media_1", "media_2"],
+              ["media_spend_1", "media_spend_2"],
+              ["media_channel_1", "media_channel_2"],
+              "media_time",
           ),
+          missing_cols="['media_spend_1', 'media_spend_2', 'media_time']",
       ),
       dict(
           testcase_name="reach",
@@ -1315,10 +1323,7 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
               df,
               ["organic_reach_0", "organic_reach_0"],
               ["organic_frequency_0", "organic_frequency_0"],
-              [
-                  "organic_rf_channel_1",
-                  "organic_rf_channel_2",
-              ],
+              ["organic_rf_channel_1", "organic_rf_channel_2"],
               media_time_col="time",
           ),
           dupes=(
@@ -1331,16 +1336,20 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
           setter=lambda builder, df: builder.with_media(
               df,
               ["media_1", "media_1"],
+              ["media_spend_1", "media_spend_2"],
+              ["media_channel_1", "media_channel_2"],
+          ),
+          dupes="['media_1', 'media_1', 'time', 'geo']",
+      ),
+      dict(
+          testcase_name="media_spend",
+          setter=lambda builder, df: builder.with_media(
+              df,
+              ["media_1", "media_2"],
               ["media_spend_1", "media_spend_1"],
-              [
-                  "media_channel_1",
-                  "media_channel_2",
-              ],
+              ["media_channel_1", "media_channel_2"],
           ),
-          dupes=(
-              "['media_1', 'media_1', 'media_spend_1',"
-              " 'media_spend_1', 'time', 'geo']"
-          ),
+          dupes="['media_spend_1', 'media_spend_1', 'time', 'geo']",
       ),
       dict(
           testcase_name="reach",
@@ -1368,6 +1377,16 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
           ),
           self.GEO_ORGANIC_DF,
       )
+
+  def test_media_and_spend_same_columns_no_error(self):
+    data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    ).with_media(
+        self.GEO_ORGANIC_DF,
+        ["media_1", "media_2"],
+        ["media_1", "media_2"],
+        ["media_1", "media_2"],
+    )
 
   @parameterized.named_parameters(
       dict(
@@ -1431,7 +1450,7 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
               ["media_channel_1"],
               "media_time",
           ),
-          missing_cols="['media_1', 'media_spend_1', 'media_time']",
+          missing_cols="['media_1', 'media_time']",
       ),
       dict(
           testcase_name="reach",

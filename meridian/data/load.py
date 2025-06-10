@@ -27,6 +27,7 @@ import warnings
 
 import immutabledict
 from meridian import constants
+from meridian.data import data_frame_input_data_builder
 from meridian.data import input_data
 import numpy as np
 import pandas as pd
@@ -801,110 +802,20 @@ class DataFrameDataLoader(InputDataLoader):
   organic_reach_to_channel: Mapping[str, str] | None = None
   organic_frequency_to_channel: Mapping[str, str] | None = None
 
-  # If [key] in the following dict exists as an attribute in `coord_to_columns`,
-  # then the corresponding attribute must exist in this loader instance.
-  _required_mappings = immutabledict.immutabledict({
-      'media': 'media_to_channel',
-      'media_spend': 'media_spend_to_channel',
-      'reach': 'reach_to_channel',
-      'frequency': 'frequency_to_channel',
-      'rf_spend': 'rf_spend_to_channel',
-      'organic_reach': 'organic_reach_to_channel',
-      'organic_frequency': 'organic_frequency_to_channel',
-  })
-
   def __post_init__(self):
-    self._validate_and_normalize_time_values()
-    self._expand_if_national()
-    self._validate_column_names()
-    self._validate_required_mappings()
-    self._validate_geo_and_time()
-    self._validate_nas()
-
-  def _validate_and_normalize_time_values(self):
-    """Validates that time values are in the conventional Meridian format.
-
-    Time values are expected to be (a) strings formatted in `"yyyy-mm-dd"` or
-    (b) `datetime` values as numpy's `datetime64` types. All other types are
-    not currently supported.
-
-    In (b) case, `datetime` coordinate values will be normalized as formatted
-    strings.
-    """
-    time_column_name = self.coord_to_columns.time
-
-    if self.df.dtypes[time_column_name] == np.dtype('datetime64[ns]'):
-      self.df[time_column_name] = self.df[time_column_name].map(
-          lambda time: time.strftime(constants.DATE_FORMAT)
-      )
-    else:
-      # Assume that the `time` column values are strings formatted as dates.
-      for _, time in self.df[time_column_name].items():
-        try:
-          _ = dt.datetime.strptime(time, constants.DATE_FORMAT)
-        except ValueError as exc:
-          raise ValueError(
-              f"Invalid time label: '{time}'. Expected format:"
-              f" '{constants.DATE_FORMAT}'"
-          ) from exc
-
-  def _validate_column_names(self):
-    """Validates the column names in `df` and `coord_to_columns`."""
-
-    desired_columns = []
-    for field in dataclasses.fields(self.coord_to_columns):
-      value = getattr(self.coord_to_columns, field.name)
-      if isinstance(value, str):
-        desired_columns.append(value)
-      elif isinstance(value, Sequence):
-        for column in value:
-          desired_columns.append(column)
-    desired_columns = sorted(desired_columns)
-
-    actual_columns = sorted(self.df.columns.to_list())
-    if any(d not in actual_columns for d in desired_columns):
-      raise ValueError(
-          f'Values of the `coord_to_columns` object {desired_columns}'
-          f' should map to the DataFrame column names {actual_columns}.'
-      )
-
-  def _expand_if_national(self):
-    """Adds geo/population columns in a national model if necessary."""
-
-    geo_column_name = self.coord_to_columns.geo
-    population_column_name = self.coord_to_columns.population
-
-    def set_default_population_with_lag_periods():
-      """Sets the `population` column.
-
-      The `population` column is set to the default value for non-lag periods,
-      and None for lag-periods. The lag periods are inferred from the Nan values
-      in the other non-media columns.
-      """
-      non_lagged_idx = self.df.isna().idxmin().max()
-      self.df[population_column_name] = (
-          constants.NATIONAL_MODEL_DEFAULT_POPULATION_VALUE
-      )
-      self.df.loc[: non_lagged_idx - 1, population_column_name] = None
-
-    if geo_column_name not in self.df.columns:
-      self.df[geo_column_name] = constants.NATIONAL_MODEL_DEFAULT_GEO_NAME
-
-    if self.df[geo_column_name].nunique() == 1:
-      self.df[geo_column_name] = constants.NATIONAL_MODEL_DEFAULT_GEO_NAME
-      if population_column_name in self.df.columns:
-        warnings.warn(
-            'The `population` argument is ignored in a nationally aggregated'
-            ' model. It will be reset to [1, 1, ..., 1]'
-        )
-        set_default_population_with_lag_periods()
-
-    if population_column_name not in self.df.columns:
-      set_default_population_with_lag_periods()
-
-  def _validate_required_mappings(self):
-    """Validates required mappings in `coord_to_columns`."""
-    for coord_name, channel_dict in self._required_mappings.items():
+    # If [key] in the following dict exists as an attribute in
+    # `coord_to_columns`, then the corresponding attribute must exist in this
+    # loader instance.
+    required_mappings = immutabledict.immutabledict({
+        'media': 'media_to_channel',
+        'media_spend': 'media_spend_to_channel',
+        'reach': 'reach_to_channel',
+        'frequency': 'frequency_to_channel',
+        'rf_spend': 'rf_spend_to_channel',
+        'organic_reach': 'organic_reach_to_channel',
+        'organic_frequency': 'organic_frequency_to_channel',
+    })
+    for coord_name, channel_dict in required_mappings.items():
       if (
           getattr(self.coord_to_columns, coord_name, None) is not None
           and getattr(self, channel_dict, None) is None
@@ -913,320 +824,89 @@ class DataFrameDataLoader(InputDataLoader):
             f"When {coord_name} data is provided, '{channel_dict}' is required."
         )
 
-  def _validate_geo_and_time(self):
-    """Validates that for every geo the list of `time`s is the same."""
-    geo_column_name = self.coord_to_columns.geo
-    time_column_name = self.coord_to_columns.time
-
-    df_grouped = self.df.sort_values(time_column_name).groupby(
-        geo_column_name, sort=False
-    )[time_column_name]
-    if any(df_grouped.count() != df_grouped.nunique()):
-      raise ValueError("Duplicate entries found in the 'time' column.")
-
-    times_by_geo = df_grouped.apply(list).reset_index(drop=True)
-    if any(t != times_by_geo[0] for t in times_by_geo[1:]):
-      raise ValueError(
-          "Values in the 'time' column not consistent across different geos."
-      )
-
-  def _validate_nas(self):
-    """Validates that the only NAs are in the lagged-media period."""
-    # Check if there are no NAs in media.
-    if self.coord_to_columns.media is not None:
-      if self.df[self.coord_to_columns.media].isna().any(axis=None):
-        raise ValueError('NA values found in the media columns.')
-
-    # Check if there are no NAs in reach & frequency.
-    if self.coord_to_columns.reach is not None:
-      if self.df[self.coord_to_columns.reach].isna().any(axis=None):
-        raise ValueError('NA values found in the reach columns.')
-    if self.coord_to_columns.frequency is not None:
-      if self.df[self.coord_to_columns.frequency].isna().any(axis=None):
-        raise ValueError('NA values found in the frequency columns.')
-
-    # Check if ther are no NAs in organic_media.
-    if self.coord_to_columns.organic_media is not None:
-      if self.df[self.coord_to_columns.organic_media].isna().any(axis=None):
-        raise ValueError('NA values found in the organic_media columns.')
-
-    # Check if there are no NAs in organic_reach & organic_frequency.
-    if self.coord_to_columns.organic_reach is not None:
-      if self.df[self.coord_to_columns.organic_reach].isna().any(axis=None):
-        raise ValueError('NA values found in the organic_reach columns.')
-    if self.coord_to_columns.organic_frequency is not None:
-      if self.df[self.coord_to_columns.organic_frequency].isna().any(axis=None):
-        raise ValueError('NA values found in the organic_frequency columns.')
-
-    # Determine columns in which NAs are expected in the lagged-media period.
-    not_lagged_columns = []
-    coords = [
-        constants.KPI,
-        constants.POPULATION,
-    ]
-    if self.coord_to_columns.controls is not None:
-      coords.append(constants.CONTROLS)
-    if self.coord_to_columns.revenue_per_kpi is not None:
-      coords.append(constants.REVENUE_PER_KPI)
-    if self.coord_to_columns.media_spend is not None:
-      coords.append(constants.MEDIA_SPEND)
-    if self.coord_to_columns.rf_spend is not None:
-      coords.append(constants.RF_SPEND)
-    if self.coord_to_columns.non_media_treatments is not None:
-      coords.append(constants.NON_MEDIA_TREATMENTS)
-    for coord in coords:
-      columns = getattr(self.coord_to_columns, coord)
-      columns = [columns] if isinstance(columns, str) else columns
-      not_lagged_columns.extend(columns)
-
-    # Dates with at least one non-NA value in columns different from media,
-    # reach, frequency, organic_media, organic_reach, and organic_frequency.
-    time_column_name = self.coord_to_columns.time
-    no_na_period = self.df[(~self.df[not_lagged_columns].isna()).any(axis=1)][
-        time_column_name
-    ].unique()
-
-    # Dates with 100% NA values in all columns different from media, reach,
-    # frequency, organic_media, organic_reach, and organic_frequency.
-    na_period = [
-        t for t in self.df[time_column_name].unique() if t not in no_na_period
-    ]
-
-    # Check if na_period is a continuous window starting from the earliest time
-    # period.
-    if not np.all(
-        np.sort(na_period)
-        == np.sort(self.df[time_column_name].unique())[: len(na_period)]
-    ):
-      raise ValueError(
-          "The 'lagged media' period (period with 100% NA values in all"
-          f' non-media columns) {na_period} is not a continuous window starting'
-          ' from the earliest time period.'
-      )
-
-    # Check if for the non-lagged period, there are no NAs in data different
-    # from media, reach, frequency, organic_media, organic_reach, and
-    # organic_frequency.
-    not_lagged_data = self.df.loc[
-        self.df[time_column_name].isin(no_na_period),
-        not_lagged_columns,
-    ]
-    if not_lagged_data.isna().any(axis=None):
-      incorrect_columns = []
-      for column in not_lagged_columns:
-        if not_lagged_data[column].isna().any(axis=None):
-          incorrect_columns.append(column)
-      raise ValueError(
-          f'NA values found in columns {incorrect_columns} within the modeling'
-          ' time window (time periods where the KPI is modeled).'
-      )
-
   def load(self) -> input_data.InputData:
     """Reads data from a dataframe and returns an InputData object."""
 
-    # Change geo strings to numbers to keep the order of geos. The .to_xarray()
-    # method from Pandas sorts lexicographically by the key columns, so if the
-    # geos were unsorted strings, it would change their order.
-    geo_column_name = self.coord_to_columns.geo
-    time_column_name = self.coord_to_columns.time
-    geo_names = self.df[geo_column_name].unique()
-    self.df[geo_column_name] = self.df[geo_column_name].replace(
-        dict(zip(geo_names, np.arange(len(geo_names))))
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=self.kpi_type
+    ).with_kpi(
+        self.df,
+        self.coord_to_columns.kpi,
+        self.coord_to_columns.time,
+        self.coord_to_columns.geo,
     )
-    df_indexed = self.df.set_index([geo_column_name, time_column_name])
-
-    kpi_xr = (
-        df_indexed[self.coord_to_columns.kpi]
-        .dropna()
-        .rename(constants.KPI)
-        .rename_axis([constants.GEO, constants.TIME])
-        .to_frame()
-        .to_xarray()
-    )
-    population_xr = (
-        df_indexed[self.coord_to_columns.population]
-        .groupby(geo_column_name)
-        .mean()
-        .rename(constants.POPULATION)
-        .rename_axis([constants.GEO])
-        .to_frame()
-        .to_xarray()
-    )
-    dataset = xr.combine_by_coords([kpi_xr, population_xr])
-
+    if self.coord_to_columns.population in self.df.columns:
+      builder.with_population(
+          self.df, self.coord_to_columns.population, self.coord_to_columns.geo
+      )
     if self.coord_to_columns.controls is not None:
-      controls_xr = (
-          df_indexed[self.coord_to_columns.controls]
-          .stack()
-          .rename(constants.CONTROLS)
-          .rename_axis(
-              [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE]
-          )
-          .to_frame()
-          .to_xarray()
+      builder.with_controls(
+          self.df,
+          list(self.coord_to_columns.controls),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
-      dataset = xr.combine_by_coords([dataset, controls_xr])
-
     if self.coord_to_columns.non_media_treatments is not None:
-      non_media_xr = (
-          df_indexed[self.coord_to_columns.non_media_treatments]
-          .stack()
-          .rename(constants.NON_MEDIA_TREATMENTS)
-          .rename_axis(
-              [constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL]
-          )
-          .to_frame()
-          .to_xarray()
+      builder.with_non_media_treatments(
+          self.df,
+          list(self.coord_to_columns.non_media_treatments),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
-      dataset = xr.combine_by_coords([dataset, non_media_xr])
-
     if self.coord_to_columns.revenue_per_kpi is not None:
-      revenue_per_kpi_xr = (
-          df_indexed[self.coord_to_columns.revenue_per_kpi]
-          .dropna()
-          .rename(constants.REVENUE_PER_KPI)
-          .rename_axis([constants.GEO, constants.TIME])
-          .to_frame()
-          .to_xarray()
+      builder.with_revenue_per_kpi(
+          self.df,
+          self.coord_to_columns.revenue_per_kpi,
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
-      dataset = xr.combine_by_coords([dataset, revenue_per_kpi_xr])
-    if self.coord_to_columns.media is not None:
-      media_xr = (
-          df_indexed[self.coord_to_columns.media]
-          .stack()
-          .rename(constants.MEDIA)
-          .rename_axis(
-              [constants.GEO, constants.MEDIA_TIME, constants.MEDIA_CHANNEL]
-          )
-          .to_frame()
-          .to_xarray()
-      )
-      media_xr.coords[constants.MEDIA_CHANNEL] = [
-          self.media_to_channel[x]
-          for x in media_xr.coords[constants.MEDIA_CHANNEL].values
-      ]
-
-      media_spend_xr = (
-          df_indexed[self.coord_to_columns.media_spend]
-          .stack()
-          .rename(constants.MEDIA_SPEND)
-          .rename_axis([constants.GEO, constants.TIME, constants.MEDIA_CHANNEL])
-          .to_frame()
-          .to_xarray()
-      )
-      media_spend_xr.coords[constants.MEDIA_CHANNEL] = [
-          self.media_spend_to_channel[x]
-          for x in media_spend_xr.coords[constants.MEDIA_CHANNEL].values
-      ]
-      dataset = xr.combine_by_coords([dataset, media_xr, media_spend_xr])
-
-    if self.coord_to_columns.reach is not None:
-      reach_xr = (
-          df_indexed[self.coord_to_columns.reach]
-          .stack()
-          .rename(constants.REACH)
-          .rename_axis(
-              [constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL]
-          )
-          .to_frame()
-          .to_xarray()
-      )
-      reach_xr.coords[constants.RF_CHANNEL] = [
-          self.reach_to_channel[x]
-          for x in reach_xr.coords[constants.RF_CHANNEL].values
-      ]
-
-      frequency_xr = (
-          df_indexed[self.coord_to_columns.frequency]
-          .stack()
-          .rename(constants.FREQUENCY)
-          .rename_axis(
-              [constants.GEO, constants.MEDIA_TIME, constants.RF_CHANNEL]
-          )
-          .to_frame()
-          .to_xarray()
-      )
-      frequency_xr.coords[constants.RF_CHANNEL] = [
-          self.frequency_to_channel[x]
-          for x in frequency_xr.coords[constants.RF_CHANNEL].values
-      ]
-
-      rf_spend_xr = (
-          df_indexed[self.coord_to_columns.rf_spend]
-          .stack()
-          .rename(constants.RF_SPEND)
-          .rename_axis([constants.GEO, constants.TIME, constants.RF_CHANNEL])
-          .to_frame()
-          .to_xarray()
-      )
-      rf_spend_xr.coords[constants.RF_CHANNEL] = [
-          self.rf_spend_to_channel[x]
-          for x in rf_spend_xr.coords[constants.RF_CHANNEL].values
-      ]
-      dataset = xr.combine_by_coords(
-          [dataset, reach_xr, frequency_xr, rf_spend_xr]
+    if (
+        self.coord_to_columns.media is not None
+        and self.media_to_channel is not None
+    ):
+      builder.with_media(
+          self.df,
+          list(self.coord_to_columns.media),
+          list(self.coord_to_columns.media_spend),
+          list(self.media_to_channel.values()),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
 
+    if (
+        self.coord_to_columns.reach is not None
+        and self.reach_to_channel is not None
+    ):
+      builder.with_reach(
+          self.df,
+          list(self.coord_to_columns.reach),
+          list(self.coord_to_columns.frequency),
+          list(self.coord_to_columns.rf_spend),
+          list(self.reach_to_channel.values()),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
+      )
     if self.coord_to_columns.organic_media is not None:
-      organic_media_xr = (
-          df_indexed[self.coord_to_columns.organic_media]
-          .stack()
-          .rename(constants.ORGANIC_MEDIA)
-          .rename_axis([
-              constants.GEO,
-              constants.MEDIA_TIME,
-              constants.ORGANIC_MEDIA_CHANNEL,
-          ])
-          .to_frame()
-          .to_xarray()
+      builder.with_organic_media(
+          self.df,
+          list(self.coord_to_columns.organic_media),
+          list(self.coord_to_columns.organic_media),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
-      dataset = xr.combine_by_coords([dataset, organic_media_xr])
-
-    if self.coord_to_columns.organic_reach is not None:
-      organic_reach_xr = (
-          df_indexed[self.coord_to_columns.organic_reach]
-          .stack()
-          .rename(constants.ORGANIC_REACH)
-          .rename_axis([
-              constants.GEO,
-              constants.MEDIA_TIME,
-              constants.ORGANIC_RF_CHANNEL,
-          ])
-          .to_frame()
-          .to_xarray()
+    if (
+        self.coord_to_columns.organic_reach is not None
+        and self.organic_reach_to_channel is not None
+    ):
+      builder.with_organic_reach(
+          self.df,
+          list(self.coord_to_columns.organic_reach),
+          list(self.coord_to_columns.organic_frequency),
+          list(self.organic_reach_to_channel.values()),
+          self.coord_to_columns.time,
+          self.coord_to_columns.geo,
       )
-      organic_reach_xr.coords[constants.ORGANIC_RF_CHANNEL] = [
-          self.organic_reach_to_channel[x]
-          for x in organic_reach_xr.coords[constants.ORGANIC_RF_CHANNEL].values
-      ]
-      organic_frequency_xr = (
-          df_indexed[self.coord_to_columns.organic_frequency]
-          .stack()
-          .rename(constants.ORGANIC_FREQUENCY)
-          .rename_axis([
-              constants.GEO,
-              constants.MEDIA_TIME,
-              constants.ORGANIC_RF_CHANNEL,
-          ])
-          .to_frame()
-          .to_xarray()
-      )
-      organic_frequency_xr.coords[constants.ORGANIC_RF_CHANNEL] = [
-          self.organic_frequency_to_channel[x]
-          for x in organic_frequency_xr.coords[
-              constants.ORGANIC_RF_CHANNEL
-          ].values
-      ]
-      dataset = xr.combine_by_coords(
-          [dataset, organic_reach_xr, organic_frequency_xr]
-      )
-
-    # Change back to geo names
-    self.df[geo_column_name] = self.df[geo_column_name].replace(
-        dict(zip(np.arange(len(geo_names)), geo_names))
-    )
-    dataset.coords[constants.GEO] = geo_names
-    return XrDatasetDataLoader(dataset, kpi_type=self.kpi_type).load()
+    return builder.build()
 
 
 class CsvDataLoader(InputDataLoader):
