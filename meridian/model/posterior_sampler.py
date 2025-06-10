@@ -144,6 +144,25 @@ class PosteriorMCMCSampler:
           shape=(n_geos, n_times, 0), dtype=tf.float32
       )
       combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float32)
+      if mmm.model_spec.use_total_treatment_contribution_prior:
+        total_treatment_contribution = (
+            yield prior_broadcast.total_treatment_contribution
+        )
+        total_treatment_allocation_concentration = (
+            yield prior_broadcast.total_treatment_allocation_concentration
+        )
+        total_treatment_dirichlet_params = (
+            prior_broadcast.total_treatment_allocation_means
+            * total_treatment_allocation_concentration
+        )
+        total_treatment_allocation = yield tfp.distributions.Dirichlet(
+            concentration=total_treatment_dirichlet_params,
+            name=constants.TOTAL_TREATMENT_ALLOCATION,
+        )
+        # `dummy_index` is a placeholder that gets updated as we iterate through
+        # the treatment variable types to unpack `total_treatment_allocation`.
+        dummy_index = 0
+
       if media_tensors.media is not None:
         alpha_m = yield prior_broadcast.alpha_m
         ec_m = yield prior_broadcast.ec_m
@@ -164,7 +183,21 @@ class PosteriorMCMCSampler:
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
           beta_m = yield prior_broadcast.beta_m
         else:
-          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+          if mmm.model_spec.use_total_treatment_contribution_prior:
+            total_treatment_allocation_m = (
+                yield tfp.distributions.Deterministic(
+                  total_treatment_allocation[
+                      dummy_index:(dummy_index + mmm.n_media_channels)
+                  ],
+                  name=constants.TOTAL_TREATMENT_ALLOCATION_M,
+                )
+            )
+            treatment_parameter_m = yield tfp.distributions.Deterministic(
+                total_treatment_contribution * total_treatment_allocation_m,
+                name=constants.CONTRIBUTION_M,
+            )
+            dummy_index += mmm.n_media_channels
+          elif prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
             treatment_parameter_m = yield prior_broadcast.roi_m
           elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
             treatment_parameter_m = yield prior_broadcast.mroi_m
@@ -230,7 +263,21 @@ class PosteriorMCMCSampler:
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
           beta_rf = yield prior_broadcast.beta_rf
         else:
-          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+          if mmm.model_spec.use_total_treatment_contribution_prior:
+            total_treatment_allocation_rf = (
+                yield tfp.distributions.Deterministic(
+                    total_treatment_allocation[
+                        dummy_index:(dummy_index + mmm.n_rf_channels)
+                    ],
+                    name=constants.TOTAL_TREATMENT_ALLOCATION_RF,
+                )
+            )
+            treatment_parameter_rf = yield tfp.distributions.Deterministic(
+                total_treatment_contribution * total_treatment_allocation_rf,
+                name=constants.CONTRIBUTION_RF,
+            )
+            dummy_index += mmm.n_rf_channels
+          elif prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
             treatment_parameter_rf = yield prior_broadcast.roi_rf
           elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
             treatment_parameter_rf = yield prior_broadcast.mroi_rf
@@ -290,11 +337,26 @@ class PosteriorMCMCSampler:
             ec=ec_om,
             slope=slope_om,
         )
-        prior_type = mmm.model_spec.organic_media_prior_type
+        prior_type = mmm.model_spec.effective_organic_media_prior_type
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
           beta_om = yield prior_broadcast.beta_om
         elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_om = yield prior_broadcast.contribution_om
+          if mmm.model_spec.use_total_treatment_contribution_prior:
+            total_treatment_allocation_om = (
+                yield tfp.distributions.Deterministic(
+                    total_treatment_allocation[
+                        dummy_index:(dummy_index+mmm.n_organic_media_channels)
+                    ],
+                    name=constants.TOTAL_TREATMENT_ALLOCATION_OM,
+                )
+            )
+            contribution_om = yield tfp.distributions.Deterministic(
+                total_treatment_contribution * total_treatment_allocation_om,
+                name=constants.CONTRIBUTION_OM,
+            )
+            dummy_index += mmm.n_organic_media_channels
+          else:
+            contribution_om = yield prior_broadcast.contribution_om
           incremental_outcome_om = contribution_om * total_outcome
           beta_om_value = mmm.calculate_beta_x(
               is_non_media=False,
@@ -341,11 +403,26 @@ class PosteriorMCMCSampler:
             slope=slope_orf,
         )
 
-        prior_type = mmm.model_spec.organic_rf_prior_type
+        prior_type = mmm.model_spec.effective_organic_rf_prior_type
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
           beta_orf = yield prior_broadcast.beta_orf
         elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_orf = yield prior_broadcast.contribution_orf
+          if mmm.model_spec.use_total_treatment_contribution_prior:
+            total_treatment_allocation_orf = (
+                yield tfp.distributions.Deterministic(
+                    total_treatment_allocation[
+                        dummy_index:(dummy_index + mmm.n_organic_rf_channels)
+                    ],
+                    name=constants.TOTAL_TREATMENT_ALLOCATION_ORF,
+                )
+            )
+            contribution_orf = yield tfp.distributions.Deterministic(
+                total_treatment_contribution * total_treatment_allocation_orf,
+                name=constants.CONTRIBUTION_ORF,
+            )
+            dummy_index += mmm.n_organic_rf_channels
+          else:
+            contribution_orf = yield prior_broadcast.contribution_orf
           incremental_outcome_orf = contribution_orf * total_outcome
           beta_orf_value = mmm.calculate_beta_x(
               is_non_media=False,
@@ -402,11 +479,26 @@ class PosteriorMCMCSampler:
             [n_geos, n_non_media_channels],
             name=constants.GAMMA_GN_DEV,
         )
-        prior_type = mmm.model_spec.non_media_treatments_prior_type
+        prior_type = mmm.model_spec.effective_non_media_treatments_prior_type
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
           gamma_n = yield prior_broadcast.gamma_n
         elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_n = yield prior_broadcast.contribution_n
+          if mmm.model_spec.use_total_treatment_contribution_prior:
+            total_treatment_allocation_n = (
+                yield tfp.distributions.Deterministic(
+                    total_treatment_allocation[
+                        dummy_index:(dummy_index + mmm.n_non_media_channels)
+                    ],
+                    name=constants.TOTAL_TREATMENT_ALLOCATION_N,
+                )
+            )
+            contribution_n = yield tfp.distributions.Deterministic(
+                total_treatment_contribution * total_treatment_allocation_n,
+                name=constants.CONTRIBUTION_N,
+            )
+            dummy_index += mmm.n_non_media_channels
+          else:
+            contribution_n = yield prior_broadcast.contribution_n
           incremental_outcome_n = contribution_n * total_outcome
           baseline_scaled = mmm.non_media_transformer.forward(  # pytype: disable=attribute-error
               mmm.compute_non_media_treatments_baseline()

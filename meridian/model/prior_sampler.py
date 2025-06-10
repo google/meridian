@@ -291,7 +291,7 @@ class PriorDistributionSampler:
         name=constants.BETA_GOM_DEV,
     ).sample(**sample_kwargs)
 
-    prior_type = mmm.model_spec.organic_media_prior_type
+    prior_type = mmm.model_spec.effective_organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
           **sample_kwargs
@@ -374,7 +374,7 @@ class PriorDistributionSampler:
         name=constants.BETA_GORF_DEV,
     ).sample(**sample_kwargs)
 
-    prior_type = mmm.model_spec.organic_media_prior_type
+    prior_type = mmm.model_spec.effective_organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(
           **sample_kwargs
@@ -453,7 +453,7 @@ class PriorDistributionSampler:
         [mmm.n_geos, mmm.n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     ).sample(**sample_kwargs)
-    prior_type = mmm.model_spec.non_media_treatments_prior_type
+    prior_type = mmm.model_spec.effective_non_media_treatments_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       non_media_treatments_vars[constants.GAMMA_N] = prior.gamma_n.sample(
           **sample_kwargs
@@ -607,3 +607,55 @@ class PriorDistributionSampler:
     return az.convert_to_inference_data(
         prior_draws, coords=prior_coords, dims=prior_dims, group=constants.PRIOR
     )
+
+  def sample_prior(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+  ):
+    """Draws samples from the prior distributions.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      include_prior_predictive_draws: Boolean indicating whether to include
+        draws from the prior distribution. If `True`, the
+        `Meridian.inference_data` object will include "y" (model response which
+        is population-scaled and has undergone centering/scaling
+        transformations), the "kpi" (model response on the original scale), and
+        "outcome" (`kpi * revenue_per_kpi`).
+    """
+    mmm = self._meridian
+    if seed is not None:
+      tf.keras.utils.set_random_seed(1)
+    prior_draws = (
+        mmm.posterior_sampler_callable._get_joint_dist_unpinned()
+        .sample([1, n_draws])
+        ._asdict()
+    )
+    prior_draws = {
+        k: v
+        for k, v in prior_draws.items()
+        if k not in constants.UNSAVED_PARAMETERS + ("y",)
+    }
+    # Create Arviz InferenceData group for the prior draws.
+    posterior_coords = (
+        mmm.posterior_sampler_callable._create_inference_data_coords(1, n_draws)
+    )
+    posterior_dims = (
+        mmm.posterior_sampler_callable._create_inference_data_dims()
+    )
+    infdata_posterior = az.convert_to_inference_data(
+        prior_draws,
+        coords=posterior_coords,
+        dims=posterior_dims,
+        group="prior",
+    )
+    # Append to the existing InferenceData object (overwriting any previous values).
+    mmm.posterior_sampler_callable.inference_data.extend(
+        infdata_posterior, join="right"
+    )
+
+    return mmm.posterior_sampler_callable.inference_data

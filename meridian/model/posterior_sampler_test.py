@@ -1318,19 +1318,6 @@ class PosteriorMCMCSamplerTest(
           expected_coord_size=input_data_samples._N_TIMES_SHORT,
       ),
       dict(
-          testcase_name="sigma_dims",
-          coord=constants.SIGMA_DIM,
-          mismatched_posteriors={
-              constants.SIGMA: (
-                  input_data_samples._N_CHAINS,
-                  input_data_samples._N_KEEP,
-                  input_data_samples._N_GEOS_NATIONAL + 1,
-              ),
-          },
-          mismatched_coord_size=input_data_samples._N_GEOS_NATIONAL + 1,
-          expected_coord_size=input_data_samples._N_GEOS_NATIONAL,
-      ),
-      dict(
           testcase_name="media_channels",
           coord=constants.MEDIA_CHANNEL,
           mismatched_posteriors={

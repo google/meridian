@@ -228,7 +228,6 @@ NATIONAL_ANALYZER_PARAMETERS_DEFAULTS = immutabledict.immutabledict(
 CHAIN = 'chain'
 DRAW = 'draw'
 KNOTS = 'knots'
-SIGMA_DIM = 'sigma_dim'
 
 
 # Model parameters.
@@ -244,6 +243,16 @@ CONTRIBUTION_RF = 'contribution_rf'
 CONTRIBUTION_OM = 'contribution_om'
 CONTRIBUTION_ORF = 'contribution_orf'
 CONTRIBUTION_N = 'contribution_n'
+TOTAL_TREATMENT_CONTRIBUTION = 'total_treatment_contribution'
+TOTAL_TREATMENT_ALLOCATION_CONCENTRATION = (
+    'total_treatment_allocation_concentration'
+)
+TOTAL_TREATMENT_ALLOCATION = 'total_treatment_allocation'
+TOTAL_TREATMENT_ALLOCATION_M = 'total_treatment_allocation_m'
+TOTAL_TREATMENT_ALLOCATION_RF = 'total_treatment_allocation_rf'
+TOTAL_TREATMENT_ALLOCATION_OM = 'total_treatment_allocation_om'
+TOTAL_TREATMENT_ALLOCATION_ORF = 'total_treatment_allocation_orf'
+TOTAL_TREATMENT_ALLOCATION_N = 'total_treatment_allocation_n'
 GAMMA_C = 'gamma_c'
 GAMMA_N = 'gamma_n'
 XI_C = 'xi_c'
@@ -317,6 +326,7 @@ MEDIA_PARAMETERS = (
     ROI_M,
     MROI_M,
     CONTRIBUTION_M,
+    TOTAL_TREATMENT_ALLOCATION_M,
     BETA_M,
     ETA_M,
     ALPHA_M,
@@ -327,6 +337,7 @@ RF_PARAMETERS = (
     ROI_RF,
     MROI_RF,
     CONTRIBUTION_RF,
+    TOTAL_TREATMENT_ALLOCATION_RF,
     BETA_RF,
     ETA_RF,
     ALPHA_RF,
@@ -335,6 +346,7 @@ RF_PARAMETERS = (
 )
 ORGANIC_MEDIA_PARAMETERS = (
     CONTRIBUTION_OM,
+    TOTAL_TREATMENT_ALLOCATION_OM,
     BETA_OM,
     ETA_OM,
     ALPHA_OM,
@@ -343,6 +355,7 @@ ORGANIC_MEDIA_PARAMETERS = (
 )
 ORGANIC_RF_PARAMETERS = (
     CONTRIBUTION_ORF,
+    TOTAL_TREATMENT_ALLOCATION_ORF,
     BETA_ORF,
     ETA_ORF,
     ALPHA_ORF,
@@ -351,6 +364,7 @@ ORGANIC_RF_PARAMETERS = (
 )
 NON_MEDIA_PARAMETERS = (
     CONTRIBUTION_N,
+    TOTAL_TREATMENT_ALLOCATION_N,
     GAMMA_N,
     XI_N,
 )
@@ -370,6 +384,10 @@ GEO_MEDIA_PARAMETERS = (BETA_GM,)
 GEO_RF_PARAMETERS = (BETA_GRF,)
 GEO_CONTROL_PARAMETERS = (GAMMA_GC,)
 GEO_NON_MEDIA_PARAMETERS = (GAMMA_GN,)
+TOTAL_TREATMENT_CONTRIBUTION_PARAMETERS = (
+    TOTAL_TREATMENT_CONTRIBUTION,
+    TOTAL_TREATMENT_ALLOCATION_CONCENTRATION,
+)
 
 ALL_PRIOR_DISTRIBUTION_PARAMETERS = (
     *KNOTS_PARAMETERS,
@@ -382,6 +400,7 @@ ALL_PRIOR_DISTRIBUTION_PARAMETERS = (
     *SIGMA_PARAMETERS,
     TAU_G_EXCL_BASELINE,
     *TIME_PARAMETERS,
+    *TOTAL_TREATMENT_CONTRIBUTION_PARAMETERS,
 )
 
 UNSAVED_PARAMETERS = (
@@ -392,6 +411,7 @@ UNSAVED_PARAMETERS = (
     GAMMA_GC_DEV,
     GAMMA_GN_DEV,
     TAU_G_EXCL_BASELINE,  # Used to derive TAU_G.
+    TOTAL_TREATMENT_ALLOCATION,
 )
 IGNORED_PRIORS_MEDIA = immutabledict.immutabledict({
     TREATMENT_PRIOR_TYPE_ROI: (
@@ -462,6 +482,8 @@ INFERENCE_DIMS = immutabledict.immutabledict(
         BETA_GORF: (GEO, ORGANIC_RF_CHANNEL),
         GAMMA_GC: (GEO, CONTROL_VARIABLE),
         GAMMA_GN: (GEO, NON_MEDIA_CHANNEL),
+        TOTAL_TREATMENT_CONTRIBUTION: (),
+        TOTAL_TREATMENT_ALLOCATION_CONCENTRATION: (),
     }
     | {param: (CONTROL_VARIABLE,) for param in CONTROL_PARAMETERS}
     | {param: (NON_MEDIA_CHANNEL,) for param in NON_MEDIA_PARAMETERS}
@@ -508,6 +530,8 @@ POSTERIOR = 'posterior'
 P_MEAN = 0.4
 # Prior standard deviation proportion of KPI incremental to all media.
 P_SD = 0.2
+# Default prior mean proportion of contribution allocated to paid channels.
+TOTAL_TREATMENT_PAID_MEAN_ALLOCATION = 0.75
 
 
 # Model metrics.

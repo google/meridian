@@ -32,9 +32,13 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertFalse(model_spec.unique_sigma_for_each_geo)
     self.assertEqual(model_spec.effective_media_prior_type, "roi")
     self.assertEqual(model_spec.effective_rf_prior_type, "roi")
-    self.assertEqual(model_spec.organic_media_prior_type, "contribution")
-    self.assertEqual(model_spec.organic_rf_prior_type, "contribution")
-    self.assertEqual(model_spec.non_media_treatments_prior_type, "contribution")
+    self.assertEqual(
+        model_spec.effective_organic_media_prior_type, "contribution"
+    )
+    self.assertEqual(model_spec.effective_organic_rf_prior_type, "contribution")
+    self.assertEqual(
+        model_spec.effective_non_media_treatments_prior_type, "contribution"
+    )
     self.assertIsNone(model_spec.roi_calibration_period)
     self.assertIsNone(model_spec.rf_roi_calibration_period)
     self.assertIsNone(model_spec.knots)
@@ -125,11 +129,13 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertEqual(model_spec.effective_media_prior_type, media_prior_type)
     self.assertEqual(model_spec.effective_rf_prior_type, rf_prior_type)
     self.assertEqual(
-        model_spec.organic_media_prior_type, organic_media_prior_type
+        model_spec.effective_organic_media_prior_type, organic_media_prior_type
     )
-    self.assertEqual(model_spec.organic_rf_prior_type, organic_rf_prior_type)
     self.assertEqual(
-        model_spec.non_media_treatments_prior_type,
+        model_spec.effective_organic_rf_prior_type, organic_rf_prior_type
+    )
+    self.assertEqual(
+        model_spec.effective_non_media_treatments_prior_type,
         non_media_treatments_prior_type,
     )
 
@@ -212,6 +218,27 @@ class ModelSpecTest(parameterized.TestCase):
           organic_rf_prior_type=organic_rf_prior_type,
           non_media_treatments_prior_type=non_media_treatments_prior_type,
       )
+
+  def test_spec_inits_use_total_treatment_contribution_overwrites_prior_types(
+      self,
+  ):
+    model_spec = spec.ModelSpec(
+        use_total_treatment_contribution_prior=True,
+        media_prior_type="mroi",
+        rf_prior_type="coefficient",
+        organic_media_prior_type="coefficient",
+        organic_rf_prior_type="coefficient",
+        non_media_treatments_prior_type="coefficient",
+    )
+    self.assertEqual(model_spec.effective_media_prior_type, "contribution")
+    self.assertEqual(model_spec.effective_rf_prior_type, "contribution")
+    self.assertEqual(
+        model_spec.effective_organic_media_prior_type, "contribution"
+    )
+    self.assertEqual(model_spec.effective_organic_rf_prior_type, "contribution")
+    self.assertEqual(
+        model_spec.effective_non_media_treatments_prior_type, "contribution"
+    )
 
   def test_spec_inits_valid_roi_calibration_works(self):
     shape = (3, 7)

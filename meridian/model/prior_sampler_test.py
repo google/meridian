@@ -94,7 +94,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -162,7 +162,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -281,7 +281,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -482,19 +482,6 @@ class PriorDistributionSamplerTest(
           },
           mismatched_coord_size=input_data_samples._N_TIMES_SHORT + 1,
           expected_coord_size=input_data_samples._N_TIMES_SHORT,
-      ),
-      dict(
-          testcase_name="sigma_dims",
-          coord=constants.SIGMA_DIM,
-          mismatched_priors={
-              constants.SIGMA: (
-                  1,
-                  input_data_samples._N_DRAWS,
-                  input_data_samples._N_GEOS_NATIONAL + 1,
-              ),
-          },
-          mismatched_coord_size=input_data_samples._N_GEOS_NATIONAL + 1,
-          expected_coord_size=input_data_samples._N_GEOS_NATIONAL,
       ),
       dict(
           testcase_name="media_channels",

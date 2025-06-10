@@ -77,6 +77,10 @@ class ModelSpec:
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
+    use_total_treatment_contribution_prior: A boolean indicating whether to use
+      a prior on the total treatment contribution. If `True`, then a prior on
+      the total treatment contribution is used and `paid_media_prior_type`,
+      `organic_media_prior_type`, and `non_media_prior_type` are ignored.
     media_prior_type: A string to specify the prior type for the media
       coefficients. Allowed values: `'roi'`, `'mroi'`, `'contribution'`,
       `'coefficient'`. The `PriorDistribution` contains `roi_m`, `mroi_m`,
@@ -211,16 +215,15 @@ class ModelSpec:
   hill_before_adstock: bool = False
   max_lag: int | None = 8
   unique_sigma_for_each_geo: bool = False
+  use_total_treatment_contribution_prior: bool = False
   media_prior_type: str | None = None
   rf_prior_type: str | None = None
   paid_media_prior_type: str | None = None
   roi_calibration_period: np.ndarray | None = None
   rf_roi_calibration_period: np.ndarray | None = None
-  organic_media_prior_type: str = constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
-  organic_rf_prior_type: str = constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
-  non_media_treatments_prior_type: str = (
-      constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
-  )
+  organic_media_prior_type: str | None = None
+  organic_rf_prior_type: str | None = None
+  non_media_treatments_prior_type: str | None = None
   non_media_baseline_values: Sequence[float | str] | None = None
   knots: int | list[int] | None = None
   baseline_geo: int | str | None = None
@@ -266,28 +269,28 @@ class ModelSpec:
           f" '{self.effective_rf_prior_type}' must be one of"
           f" {sorted(constants.PAID_TREATMENT_PRIOR_TYPES)}."
       )
-    if self.organic_media_prior_type not in (
+    if self.effective_organic_media_prior_type not in (
         constants.NON_PAID_TREATMENT_PRIOR_TYPES
     ):
       raise ValueError(
           "The `organic_media_prior_type` parameter"
-          f" '{self.organic_media_prior_type}' must be one of"
+          f" '{self.effective_organic_media_prior_type}' must be one of"
           f" {sorted(constants.NON_PAID_TREATMENT_PRIOR_TYPES)}."
       )
-    if self.organic_rf_prior_type not in (
+    if self.effective_organic_rf_prior_type not in (
         constants.NON_PAID_TREATMENT_PRIOR_TYPES
     ):
       raise ValueError(
           "The `organic_rf_prior_type` parameter"
-          f" '{self.organic_rf_prior_type}' must be one of"
+          f" '{self.effective_organic_rf_prior_type}' must be one of"
           f" {sorted(constants.NON_PAID_TREATMENT_PRIOR_TYPES)}."
       )
-    if self.non_media_treatments_prior_type not in (
+    if self.effective_non_media_treatments_prior_type not in (
         constants.NON_PAID_TREATMENT_PRIOR_TYPES
     ):
       raise ValueError(
           "The `non_media_treatments_prior_type` parameter"
-          f" '{self.non_media_treatments_prior_type}' must be one of"
+          f" '{self.effective_non_media_treatments_prior_type}' must be one of"
           f" {sorted(constants.NON_PAID_TREATMENT_PRIOR_TYPES)}."
       )
 
@@ -316,12 +319,16 @@ class ModelSpec:
   def effective_media_prior_type(self) -> str:
     """Returns the effective media prior type.
 
-    The recommended way to set prior types is to use `media_prior_type` and
-    `rf_prior_type` directly. If both `media_prior_type` and `rf_prior_type`
-    are not set, the deprecated `paid_media_prior_type` is used for both media
-    and RF channels. If none of them are set, the default is `roi`.
+    If `use_total_treatment_contribution_prior` is `True`, then the effective
+    media prior type is set to `contribution`. Otherwise, the recommended way to
+    set prior types is to use `media_prior_type` and `rf_prior_type` directly.
+    If both `media_prior_type` and `rf_prior_type` are not set, the deprecated
+    `paid_media_prior_type` is used for both media and RF channels. If none of
+    them are set, the default is `roi`.
     """
-    if self.media_prior_type is not None:
+    if self.use_total_treatment_contribution_prior:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    elif self.media_prior_type is not None:
       return self.media_prior_type
     elif self.paid_media_prior_type is not None:
       return self.paid_media_prior_type
@@ -332,14 +339,66 @@ class ModelSpec:
   def effective_rf_prior_type(self) -> str:
     """Returns the effective rf prior type.
 
-    The recommended way to set prior types is to use `media_prior_type` and
-    `rf_prior_type` directly. If both `media_prior_type` and `rf_prior_type`
-    are not set, the deprecated `paid_media_prior_type` is used for both media
-    and RF channels. If none of them are set, the default is `roi`.
+    If `use_total_treatment_contribution_prior` is `True`, then the effective rf
+    prior type is set to `contribution`. Otherwise, the recommended way to set
+    prior types is to use `media_prior_type` and `rf_prior_type` directly. If
+    both `media_prior_type` and `rf_prior_type` are not set, the deprecated
+    `paid_media_prior_type` is used for both media and RF channels. If none of
+    them are set, the default is `roi`.
     """
-    if self.rf_prior_type is not None:
+    if self.use_total_treatment_contribution_prior:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    elif self.rf_prior_type is not None:
       return self.rf_prior_type
     elif self.paid_media_prior_type is not None:
       return self.paid_media_prior_type
     else:
       return constants.TREATMENT_PRIOR_TYPE_ROI
+
+  @property
+  def effective_organic_media_prior_type(self) -> str:
+    """Returns the effective organic media prior type.
+
+    If `use_total_treatment_contribution_prior` is `True` then the effective
+    organic media prior type is set to `contribution`. Otherwise, if not set
+    directly, the default value of the effective organic media prior type is
+    also set to `contribution`.
+    """
+    if self.use_total_treatment_contribution_prior:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    elif self.organic_media_prior_type is not None:
+      return self.organic_media_prior_type
+    else:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+
+  @property
+  def effective_organic_rf_prior_type(self) -> str:
+    """Returns the effective organic rf prior type.
+
+    If `use_total_treatment_contribution_prior` is `True` then the effective
+    organic rf prior type is set to `contribution`. Otherwise, if not set
+    directly, the default value of the effective organic rf prior type is also
+    set to `contribution`.
+    """
+    if self.use_total_treatment_contribution_prior:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    elif self.organic_rf_prior_type is not None:
+      return self.organic_rf_prior_type
+    else:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+
+  @property
+  def effective_non_media_treatments_prior_type(self) -> str:
+    """Returns the effective non-media treatments prior type.
+
+    If `use_total_treatment_contribution_prior` is `True` then the effective
+    non-media treatments prior type is set to `contribution`. Otherwise, if not
+    set directly, the default value of the effective non-media treatments prior
+    type is also set to `contribution`.
+    """
+    if self.use_total_treatment_contribution_prior:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+    elif self.non_media_treatments_prior_type is not None:
+      return self.non_media_treatments_prior_type
+    else:
+      return constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION

@@ -21,7 +21,7 @@ used by the Meridian model object.
 from __future__ import annotations
 from collections.abc import MutableMapping
 import dataclasses
-from typing import Any
+from typing import Any, List
 import warnings
 from meridian import constants
 import numpy as np
@@ -89,6 +89,11 @@ class PriorDistribution:
   | `contribution_om`     | `n_organic_media_channels` |
   | `contribution_orf`    | `n_organic_f_channels`     |
   | `contribution_n`      | `n_non_media_channels`     |
+  | `total_treatment      | `1`                        |
+  |  _contribution`       |                            |
+  | `total_treatment      | `1`                        |
+  |  _allocation          |                            |
+  |  _concentration`      |                            |
 
   (σ) `n_geos` if `unique_sigma_for_each_geo`, otherwise this is `1`
 
@@ -268,6 +273,36 @@ class PriorDistribution:
       case `gamma_n` is calculated as a deterministic function of
       `contribution_n` and the total outcome. Default distribution is
       `TruncatedNormal(0.0, 0.1, -1.0, 1.0)`.
+    total_treatment_contribution: Prior distribution on the total treatment
+      contribution, as a percentage of total observed outcome.. This parameter
+      is only used when `use_total_treatment_contribution_prior` is `True`.
+      Default distribution is `Beta(2.0, 3.0)`, which has a mean of 0.4 and a
+      standard deviation of 0.2.
+    total_treatment_allocation_concentration: "Total" concentration parameter
+      for the Dirichlet distribution used to allocate the total treatment
+      contribution to the individual treatment channels. (This is a scalar value
+      that determines the variance of the allocation proportions around the
+      allocation means.) More specifically, the prior contribution allocation is
+      `tfp.distributions.Dirichlet( total_treatment_allocation_means *
+      total_treatment_allocation_concentration)`. This parameter is only used
+      when `use_total_treatment_contribution_prior` is `True` and must have a
+      positive prior distribution. Default distribution is
+      `Deterministic(100.0)`.
+    total_treatment_allocation_means: List-like object containing the prior mean
+      percentage of total treatmetn contribution allocated to each channel. The
+      list must have length equal to the number of treatment channels and be
+      have the ordering 1) paid channels, 2) paid R&F channels, 3) organic
+      channels, 4) organic R&F channels, 5) non-media channels. All values must
+      be between 0.0 and 1.0 and must sum to 1.0. If there are both paid and
+      unpaid channels, the default allocates 75% to paid channels and 25% to
+      unpaid channels. If there are only paid (or only unpaid) channels, the
+      default allocates 100% to the paid (or unpaid) channels. The portion
+      allocated to paid channels is allocated proportional to the channel spend.
+      The portion allocated to unpaid channels is divided equally among the
+      unpaid channels. For example, if there are 2 paid channels with $100 and
+      $200 spend and 2 unpaid channels, the default is `[0.25, 0.5, 0.125,
+      0.125]`. This parameter is only used when
+      `use_total_treatment_contribution_prior` is `True`.
   """
 
   knot_values: tfp.distributions.Distribution = dataclasses.field(
@@ -454,6 +489,21 @@ class PriorDistribution:
           loc=0.0, scale=0.1, low=-1.0, high=1.0, name=constants.CONTRIBUTION_N
       ),
   )
+  total_treatment_contribution: tfp.distributions.Distribution = (
+      dataclasses.field(
+          default_factory=lambda: tfp.distributions.Beta(
+              2.0, 3.0, name=constants.TOTAL_TREATMENT_CONTRIBUTION
+          ),
+      )
+  )
+  total_treatment_allocation_concentration: tfp.distributions.Distribution = (
+      dataclasses.field(
+          default_factory=lambda: tfp.distributions.Deterministic(
+              100.0, name=constants.TOTAL_TREATMENT_ALLOCATION_CONCENTRATION
+          ),
+      )
+  )
+  total_treatment_allocation_means: List[float] | None = None
 
   def __setstate__(self, state):
     # Override to support pickling.
@@ -509,7 +559,7 @@ class PriorDistribution:
       n_organic_rf_channels: int,
       n_controls: int,
       n_non_media_channels: int,
-      sigma_shape: int,
+      unique_sigma_for_each_geo: bool,
       n_knots: int,
       is_national: bool,
       set_total_media_contribution_prior: bool,
@@ -527,9 +577,9 @@ class PriorDistribution:
         used.
       n_controls: Number of controls used.
       n_non_media_channels: Number of non-media channels used.
-      sigma_shape: A number describing the shape of the sigma parameter. It's
-        either `1` (if `sigma_for_each_geo=False`) or `n_geos` (if
-        `sigma_for_each_geo=True`). For more information, see `ModelSpec`.
+      unique_sigma_for_each_geo: A boolean indicator whether to use the same
+        sigma parameter for all geos. Only used if n_geos > 1. For more
+        information, see `ModelSpec`.
       n_knots: Number of knots used.
       is_national: A boolean indicator whether the prior distribution will be
         adapted for a national model.
@@ -801,6 +851,7 @@ class PriorDistribution:
     slope_orf = tfp.distributions.BatchBroadcast(
         self.slope_orf, n_organic_rf_channels, name=constants.SLOPE_ORF
     )
+    sigma_shape = n_geos if n_geos > 1 and unique_sigma_for_each_geo else []
     sigma = tfp.distributions.BatchBroadcast(
         self.sigma, sigma_shape, name=constants.SIGMA
     )
@@ -848,6 +899,73 @@ class PriorDistribution:
     contribution_n = tfp.distributions.BatchBroadcast(
         self.contribution_n, n_non_media_channels, name=constants.CONTRIBUTION_N
     )
+    total_treatment_contribution = tfp.distributions.BatchBroadcast(
+        self.total_treatment_contribution,
+        [],
+        name=constants.TOTAL_TREATMENT_CONTRIBUTION,
+    )
+    total_treatment_allocation_concentration = tfp.distributions.BatchBroadcast(
+        self.total_treatment_allocation_concentration,
+        [],
+        name=constants.TOTAL_TREATMENT_ALLOCATION_CONCENTRATION,
+    )
+    # Validate `total_treatment_allocation_means` argument.
+    n_total_channels = (
+        n_media_channels
+        + n_rf_channels
+        + n_organic_media_channels
+        + n_organic_rf_channels
+    )
+    if self.total_treatment_allocation_means is not None:
+      if len(self.total_treatment_allocation_means) != n_total_channels:
+        raise ValueError(
+            'The length of `total_treatment_allocation_means` must match the'
+            ' number of total channels.'
+        )
+      if np.any(self.total_treatment_allocation_means < 0):
+        raise ValueError(
+            'The values in `total_treatment_allocation_means` must be'
+            ' non-negative.'
+        )
+      if np.any(self.total_treatment_allocation_means > 1):
+        raise ValueError(
+            'The values in `total_treatment_allocation_means` must be'
+            ' less than or equal to 1.'
+        )
+      if np.sum(self.total_treatment_allocation_means) != 1:
+        raise ValueError(
+            'The sum of the values in `total_treatment_allocation_means` must'
+            ' be 1.'
+        )
+      total_treatment_allocation_means = self.total_treatment_allocation_means
+    else:
+      n_paid_channels = n_media_channels + n_rf_channels
+      n_unpaid_channels = (
+          n_organic_media_channels
+          + n_organic_rf_channels
+          + n_non_media_channels
+      )
+      total_treatment_allocation_means = []
+      if n_paid_channels > 0:
+        paid_allocation_means = total_spend / np.sum(total_spend)
+        paid_mean_total = (
+            1.0
+            if n_unpaid_channels == 0
+            else (constants.TOTAL_TREATMENT_PAID_MEAN_ALLOCATION)
+        )
+        paid_allocation_means *= paid_mean_total
+        total_treatment_allocation_means.extend(paid_allocation_means)
+      if n_unpaid_channels > 0:
+        unpaid_allocation_means = np.repeat(
+            1.0 / n_unpaid_channels, n_unpaid_channels
+        )
+        unpaid_mean_total = (
+            1.0
+            if n_paid_channels == 0
+            else (1.0 - constants.TOTAL_TREATMENT_PAID_MEAN_ALLOCATION)
+        )
+        unpaid_allocation_means *= unpaid_mean_total
+        total_treatment_allocation_means.extend(unpaid_allocation_means)
 
     return PriorDistribution(
         knot_values=knot_values,
@@ -886,6 +1004,9 @@ class PriorDistribution:
         contribution_om=contribution_om,
         contribution_orf=contribution_orf,
         contribution_n=contribution_n,
+        total_treatment_contribution=total_treatment_contribution,
+        total_treatment_allocation_concentration=total_treatment_allocation_concentration,
+        total_treatment_allocation_means=total_treatment_allocation_means,
     )
 
 
