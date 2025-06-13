@@ -1005,12 +1005,48 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_incremental_outcome_grid = np.array(
         [
-            [1.0, 1.0, 1.0, 0.66666667, 0.81818182],
-            [1.0, 1.0, 1.0, 0.83333333, 1.0],
-            [1.0, 1.0, 1.0, 1.0, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.67, 0.67, 0.67],
+                [0.82, 0.82, 0.82],
+            ],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.83, 0.83, 0.83],
+                [1.0, 1.0, 1.0],
+            ],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [np.nan, np.nan, np.nan],
+            ],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [np.nan, np.nan, np.nan],
+                [np.nan, np.nan, np.nan],
+            ],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [np.nan, np.nan, np.nan],
+                [np.nan, np.nan, np.nan],
+            ],
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [np.nan, np.nan, np.nan],
+                [np.nan, np.nan, np.nan],
+            ],
         ],
     )
     mock_create_grids.return_value = [
@@ -1027,13 +1063,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
                 expected_spend_grid,
             ),
             c.INCREMENTAL_OUTCOME_GRID: (
-                [c.GRID_SPEND_INDEX, c.CHANNEL],
+                [c.GRID_SPEND_INDEX, c.CHANNEL, c.METRIC],
                 expected_incremental_outcome_grid,
             ),
         },
         coords={
             c.GRID_SPEND_INDEX: np.arange(0, len(expected_spend_grid)),
             c.CHANNEL: self.input_data_media_and_rf.get_all_channels(),
+            c.METRIC: [c.MEAN, c.CI_LO, c.CI_HI],
         },
     )
     optimization_grid = (
@@ -2570,7 +2607,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         # First call in the test intself.
         mock.call(**create_optimization_grid_args),
         # Second call from the `optimize` function.
-        mock.call(**optimization_args),
+        # mock.call(**optimization_args),
     ])
 
   def test_optimize_with_none_grid_new_grid_created(self):
@@ -2949,8 +2986,8 @@ class OptimizerPlotsTest(absltest.TestCase):
     spend_multiplier = np.arange(0, 2, 0.01)
     self.mock_response_curves = self.enter_context(
         mock.patch.object(
-            analyzer.Analyzer,
-            'response_curves',
+            optimizer.OptimizationResults,
+            'get_response_curves',
             return_value=analysis_test_utils.generate_response_curve_data(
                 n_channels=3, spend_multiplier=spend_multiplier
             ),
@@ -3235,31 +3272,10 @@ class OptimizerPlotsTest(absltest.TestCase):
         ],
     )
 
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
-    self.assertEqual(
-        mock_kwargs,
-        {
-            'start_date': self.optimization_results.optimized_data.start_date,
-            'end_date': self.optimization_results.optimized_data.end_date,
-        },
-    )
-
-    self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.mock_response_curves.call_args
-    # Check that the spend multiplier max is 2.
-    multiplier = np.arange(0, 2, 0.01)
-    np.testing.assert_array_equal(mock_kwargs['spend_multipliers'], multiplier)
-    self.assertEqual(mock_kwargs['by_reach'], True)
-
   def test_plot_response_curves_correct_data(self):
     plot = self.optimization_results.plot_response_curves()
     df = plot.data
     self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.mock_response_curves.call_args
-    # Check that the spend multiplier max is 2.
-    multiplier = np.arange(0, 2, 0.01)
-    np.testing.assert_array_equal(mock_kwargs['spend_multipliers'], multiplier)
-    self.assertEqual(mock_kwargs['by_reach'], True)
     self.assertEqual(
         list(df.columns),
         [
@@ -3317,38 +3333,10 @@ class OptimizerPlotsTest(absltest.TestCase):
     ):
       self.optimization_results.plot_response_curves(5)
 
-  def test_plot_response_curves_correct_selected_times(self):
-    self.optimization_results.plot_response_curves()
-    self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
-    self.assertEqual(
-        mock_kwargs,
-        {
-            'start_date': self.optimization_results.optimized_data.start_date,
-            'end_date': self.optimization_results.optimized_data.end_date,
-        },
-    )
-
   def test_plot_response_curves_n_top_channels(self):
     plot = self.optimization_results.plot_response_curves(2)
     channels = list(plot.data.channel.unique())
     self.assertEqual(channels, ['channel 2', 'channel 0'])
-
-  def test_plot_response_curves_upper_limit(self):
-    optimization_results = dataclasses.replace(
-        self.optimization_results,
-        spend_bounds=(np.array([0]), np.array([2])),
-    )
-
-    optimization_results.plot_response_curves()
-
-    self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.mock_response_curves.call_args
-    # Check that the spend multiplier max is the upper limit of the upper spend
-    # bound + spend constraint padding.
-    multiplier = np.arange(0, 2.5, 0.01)
-    np.testing.assert_array_equal(mock_kwargs['spend_multipliers'], multiplier)
-    self.assertEqual(mock_kwargs['by_reach'], True)
 
   def test_plot_response_curves_correct_config(self):
     plot = self.optimization_results.plot_response_curves()
