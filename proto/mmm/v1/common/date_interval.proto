@@ -1,0 +1,19 @@
+edition = "2023";
+
+package mmm.v1.common;
+
+import "google/type/date.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+message DateInterval {
+  // The start date of the interval. Inclusive. Required.
+  google.type.Date start_date = 1;
+
+  // The end date of the interval. Exclusive. Required.
+  google.type.Date end_date = 2;
+
+  // A tag to identify the date interval. Optional.
+  string tag = 3;
+}

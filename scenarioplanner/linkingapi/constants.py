@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Constants shared for the Linking API usage for the Meridian UI.
 
-from meridian import analysis
-from meridian import data
-from meridian import model
-from meridian.version import __version__
+Defines constants used in the URL generation process, such as API endpoints and
+parameter names.
+"""
 
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+REPORT_TEMPLATE_ID = 'fbd3aeff-fc00-45fd-83f7-1ec5f21c9f56'
+COMMUNITY_CONNECTOR_NAME = 'community'
+COMMUNITY_CONNECTOR_ID = (
+    'AKfycbz-xdEN-GbTuQ9MjEddS-64wLgXwMMTp9a4zFE4PO_kwT6wDgZPsN4Y19oKmLLHD6xk'
+)
+SHEETS_CONNECTOR_NAME = 'googleSheets'
+GA4_MEASUREMENT_ID = 'G-R6C81BNHJ4'
