@@ -20,7 +20,7 @@ import json
 from typing import Any, Callable
 
 import arviz as az
-import meridian
+from meridian.version import __version__
 from meridian.analysis import visualizer
 import mlflow
 from mlflow.utils.autologging_utils import autologging_integration, safe_patch
@@ -37,7 +37,7 @@ FLAVOR_NAME = "meridian"
 
 def _log_versions() -> None:
   """Logs Meridian and ArviZ versions."""
-  mlflow.log_param("meridian_version", meridian.__version__)
+  mlflow.log_param("meridian_version", __version__)
   mlflow.log_param("arviz_version", az.__version__)
 
 
