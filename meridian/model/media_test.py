@@ -285,6 +285,7 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
 
     self.assertIsNone(rf_tensors.reach)
     self.assertIsNone(rf_tensors.frequency)
+    self.assertIsNone(rf_tensors.rf_impressions)
     self.assertIsNone(rf_tensors.rf_spend)
     self.assertIsNone(rf_tensors.reach_transformer)
     self.assertIsNone(rf_tensors.reach_scaled)
@@ -311,6 +312,10 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(rf_tensors.reach, _INPUT_DATA_WITH_RF_ONLY.reach)
     self.assertAllClose(
         rf_tensors.frequency, _INPUT_DATA_WITH_RF_ONLY.frequency
+    )
+    self.assertAllClose(
+        rf_tensors.rf_impressions,
+        _INPUT_DATA_WITH_RF_ONLY.reach * _INPUT_DATA_WITH_RF_ONLY.frequency,
     )
     self.assertAllClose(rf_tensors.rf_spend, _INPUT_DATA_WITH_RF_ONLY.rf_spend)
     self.assertIsNotNone(rf_tensors.reach_transformer)

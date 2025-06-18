@@ -24,11 +24,15 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Add MLflow autologging support.
+* Add the ability to set `max_frequency` to `optimal_freq()` and update the
+  `new_data` argument to take in `rf_impressions` rather than `reach` and
+  `frequency` separately.
 
 ## [1.1.2] - 2025-06-11
 
 * Add new `InputDataBuilder` APIs.
-* `DataFrameDataLoader` to use new `DataFrameInputDataBuilder` API under the hood. These changes are backwards compatible.
+* `DataFrameDataLoader` to use new `DataFrameInputDataBuilder` API under the
+  hood. These changes are backwards compatible.
 * Keep rounded spend as int64 in optimizer.
 
 ## [1.1.1] - 2025-05-28
