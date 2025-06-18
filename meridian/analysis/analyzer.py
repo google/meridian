@@ -65,6 +65,8 @@ class DataTensors(tf.experimental.ExtensionType):
       time dimension `T`.
     frequency: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
       any time dimension `T`.
+    rf_impressions: Optional tensor with dimensions `(n_geos, T, n_rf_channels)`
+      for any time dimension `T`.
     rf_spend: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
       any time dimension `T`.
     organic_media: Optional tensor with dimensions `(n_geos, T,
@@ -86,6 +88,7 @@ class DataTensors(tf.experimental.ExtensionType):
   media_spend: Optional[tf.Tensor]
   reach: Optional[tf.Tensor]
   frequency: Optional[tf.Tensor]
+  rf_impressions: Optional[tf.Tensor]
   rf_spend: Optional[tf.Tensor]
   organic_media: Optional[tf.Tensor]
   organic_reach: Optional[tf.Tensor]
@@ -101,6 +104,7 @@ class DataTensors(tf.experimental.ExtensionType):
       media_spend: Optional[tf.Tensor] = None,
       reach: Optional[tf.Tensor] = None,
       frequency: Optional[tf.Tensor] = None,
+      rf_impressions: Optional[tf.Tensor] = None,
       rf_spend: Optional[tf.Tensor] = None,
       organic_media: Optional[tf.Tensor] = None,
       organic_reach: Optional[tf.Tensor] = None,
@@ -117,6 +121,11 @@ class DataTensors(tf.experimental.ExtensionType):
     self.reach = tf.cast(reach, tf.float32) if reach is not None else None
     self.frequency = (
         tf.cast(frequency, tf.float32) if frequency is not None else None
+    )
+    self.rf_impressions = (
+        tf.cast(rf_impressions, tf.float32)
+        if rf_impressions is not None
+        else None
     )
     self.rf_spend = (
         tf.cast(rf_spend, tf.float32) if rf_spend is not None else None
@@ -189,7 +198,10 @@ class DataTensors(tf.experimental.ExtensionType):
     """
     for field in self._tf_extension_type_fields():
       new_tensor = getattr(self, field.name)
-      old_tensor = getattr(meridian.input_data, field.name)
+      if field.name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(meridian.rf_tensors, field.name)
+      else:
+        old_tensor = getattr(meridian.input_data, field.name)
       # The time dimension is always the second dimension, except for when spend
       # data is provided with only one dimension of (n_channels).
       if (
@@ -293,7 +305,13 @@ class DataTensors(tf.experimental.ExtensionType):
             "This is not supported and will be ignored."
         )
       if field.name in required_variables:
-        if getattr(meridian.input_data, field.name) is None:
+        if field.name == constants.RF_IMPRESSIONS:
+          if meridian.n_rf_channels == 0:
+            raise ValueError(
+                "New `rf_impressions` is not allowed because there are no R&F"
+                " channels in the Meridian model."
+            )
+        elif getattr(meridian.input_data, field.name) is None:
           raise ValueError(
               f"New `{field.name}` is not allowed because the input data to the"
               f" Meridian model does not contain `{field.name}`."
@@ -322,7 +340,10 @@ class DataTensors(tf.experimental.ExtensionType):
       if var_name in [constants.REVENUE_PER_KPI, constants.TIME]:
         continue
       new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(meridian.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(meridian.input_data, var_name)
       if new_tensor is not None:
         assert old_tensor is not None
         if new_tensor.shape[-1] != old_tensor.shape[-1]:
@@ -337,7 +358,10 @@ class DataTensors(tf.experimental.ExtensionType):
     """Validates the time dimension of the specified data variables."""
     for var_name in required_fields:
       new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(meridian.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(meridian.input_data, var_name)
 
       # Skip spend data with only 1 dimension of (n_channels).
       if (
@@ -375,7 +399,10 @@ class DataTensors(tf.experimental.ExtensionType):
     missing_params = []
     for var_name in required_fields:
       new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(meridian.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(meridian.input_data, var_name)
 
       if old_tensor is None:
         continue
@@ -3415,6 +3442,7 @@ class Analyzer:
   def optimal_freq(
       self,
       new_data: DataTensors | None = None,
+      max_frequency: float | None = None,
       freq_grid: Sequence[float] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
@@ -3443,7 +3471,7 @@ class Analyzer:
     ROI numerator is KPI units.
 
     Args:
-      new_data: Optional `DataTensors` object containing `reach`, `frequency`,
+      new_data: Optional `DataTensors` object containing `rf_impressions`,
         `rf_spend`, and `revenue_per_kpi`. If provided, the optimal frequency is
         calculated using the values of the tensors passed in `new_data` and the
         original values of all the remaining tensors. If `None`, the historical
@@ -3451,6 +3479,10 @@ class Analyzer:
         tensors in `new_data` is provided with a different number of time
         periods than in `InputData`, then all tensors must be provided with the
         same number of time periods.
+      max_frequency: Maximum frequency value used to calculate the frequency
+        grid. If `None`, the maximum frequency value is calculated from the
+        historic frequency. If `freq_grid` is provided, this argument has no
+        effect.
       freq_grid: List of frequency values. The ROI of each channel is calculated
         for each frequency value in the list. By default, the list includes
         numbers from `1.0` to the maximum frequency in increments of `0.1`.
@@ -3506,7 +3538,11 @@ class Analyzer:
       )
 
     filled_data = new_data.validate_and_fill_missing_data(
-        constants.RF_DATA,
+        [
+            constants.RF_IMPRESSIONS,
+            constants.RF_SPEND,
+            constants.REVENUE_PER_KPI,
+        ],
         self._meridian,
     )
     # TODO: Once treatment type filtering is added, remove adding
@@ -3527,7 +3563,9 @@ class Analyzer:
         (self._meridian.n_geos, n_times, self._meridian.n_media_channels)
     )
 
-    max_freq = np.max(np.array(filled_data.frequency))
+    max_freq = max_frequency or np.max(
+        np.array(self._meridian.rf_tensors.frequency)
+    )
     if freq_grid is None:
       freq_grid = np.arange(1, max_freq, 0.1)
 
@@ -3537,8 +3575,8 @@ class Analyzer:
     metric_grid = np.zeros((len(freq_grid), self._meridian.n_rf_channels, 4))
 
     for i, freq in enumerate(freq_grid):
-      new_frequency = tf.ones_like(filled_data.frequency) * freq
-      new_reach = filled_data.frequency * filled_data.reach / new_frequency
+      new_frequency = tf.ones_like(filled_data.rf_impressions) * freq
+      new_reach = filled_data.rf_impressions / new_frequency
       new_roi_data = DataTensors(
           reach=new_reach,
           frequency=new_frequency,
@@ -3568,12 +3606,10 @@ class Analyzer:
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
     optimal_frequency_tensor = tf.convert_to_tensor(
-        tf.ones_like(filled_data.frequency) * optimal_frequency,
+        tf.ones_like(filled_data.rf_impressions) * optimal_frequency,
         tf.float32,
     )
-    optimal_reach = (
-        filled_data.frequency * filled_data.reach / optimal_frequency_tensor
-    )
+    optimal_reach = filled_data.rf_impressions / optimal_frequency_tensor
 
     new_summary_metrics_data = DataTensors(
         reach=optimal_reach,

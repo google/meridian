@@ -1863,9 +1863,14 @@ class BudgetOptimizer:
         )
     )
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          rf_impressions=filled_data.reach * filled_data.frequency,
+          rf_spend=filled_data.rf_spend,
+          revenue_per_kpi=filled_data.revenue_per_kpi,
+      )
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
-              new_data=filled_data.filter_fields(c.RF_DATA),
+              new_data=opt_freq_data,
               use_posterior=use_posterior,
               selected_times=selected_times,
               use_kpi=use_kpi,

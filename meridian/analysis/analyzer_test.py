@@ -1668,10 +1668,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     total_times = max_lag + n_new_times
     actual = self.analyzer_media_and_rf.optimal_freq(
         new_data=analyzer.DataTensors(
-            reach=self.meridian_media_and_rf.rf_tensors.reach[
+            rf_impressions=self.meridian_media_and_rf.rf_tensors.reach[
                 ..., -total_times:, :
-            ],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ]
+            * self.meridian_media_and_rf.rf_tensors.frequency[
                 ..., -total_times:, :
             ],
             rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[

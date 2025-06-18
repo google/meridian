@@ -207,6 +207,8 @@ class RfTensors:
   Attributes:
     reach: A tensor constructed from `InputData.reach`.
     frequency: A tensor constructed from `InputData.frequency`.
+    rf_impressions: A tensor constructed from `InputData.reach` *
+      `InputData.frequency`.
     rf_spend: A tensor constructed from `InputData.rf_spend`.
     reach_transformer: A `MediaTransformer` to scale RF tensors using the
       model's RF data.
@@ -233,6 +235,7 @@ class RfTensors:
 
   reach: tf.Tensor | None = None
   frequency: tf.Tensor | None = None
+  rf_impressions: tf.Tensor | None = None
   rf_spend: tf.Tensor | None = None
   reach_transformer: transformers.MediaTransformer | None = None
   reach_scaled: tf.Tensor | None = None
@@ -250,6 +253,9 @@ def build_rf_tensors(
 
   reach = tf.convert_to_tensor(input_data.reach, dtype=tf.float32)
   frequency = tf.convert_to_tensor(input_data.frequency, dtype=tf.float32)
+  rf_impressions = (
+      reach * frequency if reach is not None and frequency is not None else None
+  )
   rf_spend = tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32)
   reach_transformer = transformers.MediaTransformer(
       reach, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
@@ -292,6 +298,7 @@ def build_rf_tensors(
   return RfTensors(
       reach=reach,
       frequency=frequency,
+      rf_impressions=rf_impressions,
       rf_spend=rf_spend,
       reach_transformer=reach_transformer,
       reach_scaled=reach_scaled,
