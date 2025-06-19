@@ -154,6 +154,131 @@ class DataTensors(tf.experimental.ExtensionType):
   def __validate__(self):
     self._validate_n_dims()
 
+  @classmethod
+  def optimization_tensors(
+      cls,
+      time: Sequence[str] | tf.Tensor,
+      cpmu: tf.Tensor | None = None,
+      cprf: tf.Tensor | None = None,
+      media: tf.Tensor | None = None,
+      reach: tf.Tensor | None = None,
+      frequency: tf.Tensor | None = None,
+      media_spend: tf.Tensor | None = None,
+      rf_spend: tf.Tensor | None = None,
+      revenue_per_kpi: tf.Tensor | None = None,
+      population: tf.Tensor | None = None,
+  ) -> Self:
+    """Creates a `DataTensors` for optimizations from CPM and flighting data.
+
+    CPM is broken down into cost per media unit, `cpmu`, for the media channels
+    and cost per impression (reach * frequency), `cprf`, for the reach and
+    frequency channels.
+
+    The flighting pattern can be specified as the spend flighting or the media
+    units flighting pattern.  The flighting pattern can be specified at either
+    the time or geo x time granularity. If the time granularity is used, then
+    the values are scaled to the geo x time granularity based on population.
+
+    If the spend flighting pattern is specified, then the `media_spend` and
+    `rf_spend` tensors must be provided. If `rf_spend` is provided, then a
+    `frequency` tensor must also be provided.
+
+    If the media units flighting pattern is specified, then the `media`,
+    `reach`, and `frequency` tensors must be provided.
+
+    Args:
+      time: A sequence or tensor of time coordinates in the "YYYY-mm-dd" string
+        format.
+      cpmu: A tensor of cost per media unit with dimensions `(n_geos, T,
+        n_media_channels)` for any time dimension `T`.
+      cprf: A tensor of cost per impression (reach * frequency) with dimensions
+        `(n_geos, T, n_rf_channels)` for any time dimension `T`.
+      media: An optional tensor of media unit values with dimensions `(T,
+        n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
+        dimension `T`.
+      reach: A tensor of reach values with dimensions `(T, n_rf_channels)` or
+        `(n_geos, T, n_rf_channels)` for any time dimension `T`.
+      frequency: A tensor of frequency values with dimensions `(T,
+        n_rf_channels)` or `(n_geos, T, n_rf_channels)` for any time dimension
+        `T`.
+      media_spend: A tensor of media spend values with dimensions `(T,
+        n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
+        dimension `T`.
+      rf_spend: A tensor of rf spend values with dimensions `(T, n_rf_channels)`
+        or `(n_geos, T, n_rf_channels)` for any time dimension `T`.
+      revenue_per_kpi: A tensor of revenue per KPI values with dimensions (`T`)
+        or `(n_geos, T)` for any time dimension `T`.
+      population: A tensor of population values with dimensions `(n_geos)`.
+
+    Returns:
+      A `DataTensors` object with optional tensors `media`, `reach`,
+      `frequency`, `media_spend`, `rf_spend`, `revenue_per_kpi`, and `time`.
+    """
+    if (media is not None or media_spend is not None) and cpmu is None:
+      raise ValueError(
+          "If `media` or `media_spend` is provided, then `cpmu` must also be"
+          " provided."
+      )
+    if (
+        (reach is not None and frequency is not None) or rf_spend is not None
+    ) and cprf is None:
+      raise ValueError(
+          "If `reach` and `frequency` or `rf_spend` is provided, then `cprf`"
+          " must also be provided."
+      )
+    if media is not None and media_spend is not None:
+      raise ValueError("Only one of `media` or `media_spend` can be provided.")
+    if reach is not None and frequency is not None and rf_spend is not None:
+      raise ValueError(
+          "Only `reach` and `frequency` or `rf_spend` can be provided."
+      )
+    if reach is not None and frequency is None:
+      raise ValueError(
+          "If `reach` is provided, then `frequency` must also be provided."
+      )
+    if rf_spend is not None and frequency is None:
+      raise ValueError(
+          "If `rf_spend` is provided, then `frequency` must also be provided."
+      )
+
+    tensors = {}
+    if media is not None:
+      tensors[constants.MEDIA] = cls._scale_tensor_by_population(
+          media, population
+      )
+      tensors[constants.MEDIA_SPEND] = tensors[constants.MEDIA] * cpmu
+    if media_spend is not None:
+      tensors[constants.MEDIA_SPEND] = cls._scale_tensor_by_population(
+          media_spend, population
+      )
+      tensors[constants.MEDIA] = tensors[constants.MEDIA_SPEND] / cpmu
+    if reach is not None:
+      tensors[constants.REACH] = cls._scale_tensor_by_population(
+          reach, population
+      )
+      tensors[constants.FREQUENCY] = cls._scale_tensor_by_population(
+          frequency, population
+      )
+      tensors[constants.RF_SPEND] = (
+          tensors[constants.REACH] * tensors[constants.FREQUENCY] * cprf
+      )
+    if rf_spend is not None:
+      tensors[constants.RF_SPEND] = cls._scale_tensor_by_population(
+          rf_spend, population
+      )
+      tensors[constants.FREQUENCY] = cls._scale_tensor_by_population(
+          frequency, population
+      )
+      tensors[constants.REACH] = tensors[constants.RF_SPEND] / (
+          cprf * tensors[constants.FREQUENCY]
+      )
+    if revenue_per_kpi is not None:
+      tensors[constants.REVENUE_PER_KPI] = cls._scale_tensor_by_population(
+          revenue_per_kpi, population, 2
+      )
+    tensors[constants.TIME] = time
+    return cls(**tensors)
+
   def total_spend(self) -> tf.Tensor | None:
     """Returns the total spend tensor.
 
@@ -247,6 +372,45 @@ class DataTensors(tf.experimental.ExtensionType):
       self._validate_time_dims(required_tensors_names, meridian)
 
     return self._fill_default_values(required_tensors_names, meridian)
+
+  @staticmethod
+  def _scale_tensor_by_population(
+      tensor: tf.Tensor, population: tf.Tensor | None, required_ndim: int = 3
+  ):
+    """Scales a tensor of shape (time,) or (time, channel) by the population.
+
+    Args:
+      tensor: A tensor of shape (time,) or (time, channel).
+      population: A tensor of shape (geo,) with the population values.
+      required_ndim: The required number of dimensions for the tensor.
+
+    Returns:
+      The scaled tensor of shape (geo, time) or (geo, time, channel).
+    """
+    if tensor.ndim == required_ndim:
+      return tensor
+
+    if tensor.ndim != required_ndim - 1:
+      raise ValueError(
+          "Tensor must be 2D or 1D of shape (n_times, n_channels) or"
+          f" (n_times)` but found {tensor.ndim}."
+      )
+    if population is None:
+      raise ValueError("Population must be provided to scale.")
+    if population.ndim != 1:
+      raise ValueError(
+          "Population must be 1D of shape (n_geos) but found"
+          f" {population.ndim}."
+      )
+
+    normalized_population = population / tf.reduce_sum(population)
+    if tensor.ndim == 1:
+      reshaped_population = normalized_population[:, tf.newaxis]
+      reshaped_tensor = tensor[tf.newaxis, :]
+    else:
+      reshaped_population = normalized_population[:, tf.newaxis, tf.newaxis]
+      reshaped_tensor = tensor[tf.newaxis, :, :]
+    return reshaped_tensor * reshaped_population
 
   def _validate_n_dims(self):
     """Raises an error if the tensors have the wrong number of dimensions."""

@@ -5247,6 +5247,182 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     )
 
 
+class DataTensorsTest(tf.test.TestCase):
+
+  def setUp(self):
+    """Set up common tensors for all tests."""
+    super().setUp()
+    self.time = ["2023-01-01", "2023-01-08"]
+    self.population = tf.constant(
+        [1000.0, 4000.0], dtype=tf.float32
+    )  # n_geos=2
+    self.cpmu = tf.constant(
+        [
+            [[10.0, 11.0, 12.0], [13.0, 14.0, 15.0]],
+            [[16.0, 17.0, 18.0], [19.0, 20.0, 21.0]],
+        ],
+        dtype=tf.float32,
+    )  # n_channels=3
+    self.cprf = tf.constant([[[1.0], [1.0]], [[2.0], [2.0]]], dtype=tf.float32)
+    self.frequency = tf.constant(
+        [[[2.0], [2.0]], [[3.0], [3.0]]], dtype=tf.float32
+    )
+
+  def test_value_error_if_media_without_cpmu(self):
+    with self.assertRaisesRegex(ValueError, "cpmu` must also be provided"):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time, media=tf.zeros((2, 2, 3))
+      )
+
+  def test_value_error_if_rf_without_cprf(self):
+    with self.assertRaisesRegex(ValueError, "cprf` must also be provided"):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time,
+          reach=tf.zeros((2, 2, 1)),
+          frequency=tf.zeros((2, 2, 1)),
+      )
+
+  def test_value_error_if_media_and_media_spend_provided(self):
+    with self.assertRaisesRegex(
+        ValueError, "Only one of `media` or `media_spend`"
+    ):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time,
+          cpmu=self.cpmu,
+          media=tf.zeros((2, 2, 3)),
+          media_spend=tf.zeros((2, 2, 3)),
+      )
+
+  def test_value_error_if_reach_and_rf_spend_provided(self):
+    with self.assertRaisesRegex(
+        ValueError, "Only `reach` and `frequency` or `rf_spend`"
+    ):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time,
+          cprf=self.cprf,
+          reach=tf.zeros((2, 2, 1)),
+          frequency=tf.zeros((2, 2, 1)),
+          rf_spend=tf.zeros((2, 2, 1)),
+      )
+
+  def test_value_error_if_only_reach_provided(self):
+    with self.assertRaisesRegex(
+        ValueError, "If `reach` is provided, then `frequency`"
+    ):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time, cprf=self.cprf, reach=tf.zeros((2, 2, 1))
+      )
+
+  def test_value_error_if_rf_spend_without_frequency(self):
+    with self.assertRaisesRegex(
+        ValueError, "If `rf_spend` is provided, then `frequency`"
+    ):
+      analyzer.DataTensors.optimization_tensors(
+          time=self.time, cprf=self.cprf, rf_spend=tf.zeros((2, 2, 1))
+      )
+
+  def test_media_units_flighting_calculates_spend(self):
+    media = tf.constant(
+        [
+            [[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
+            [[20.0, 20.0, 20.0], [20.0, 20.0, 20.0]],
+        ],
+        dtype=tf.float32,
+    )
+    result = analyzer.DataTensors.optimization_tensors(
+        time=self.time, cpmu=self.cpmu, media=media
+    )
+    expected_spend = media * self.cpmu
+    self.assertAllClose(result.media, media)
+    self.assertAllClose(result.media_spend, expected_spend)
+
+  def test_spend_flighting_calculates_media(self):
+    media_spend = tf.constant(
+        [
+            [[100.0, 110.0, 120.0], [130.0, 140.0, 150.0]],
+            [[260.0, 270.0, 280.0], [290.0, 300.0, 310.0]],
+        ],
+        dtype=tf.float32,
+    )
+    result = analyzer.DataTensors.optimization_tensors(
+        time=self.time, cpmu=self.cpmu, media_spend=media_spend
+    )
+    expected_media = media_spend / self.cpmu
+    # Avoid the pytype check complaint.
+    assert result.media is not None and result.media_spend is not None
+    self.assertAllClose(result.media_spend, media_spend)
+    self.assertAllClose(result.media, expected_media)
+
+  def test_population_scaling_for_2d_media_spend(self):
+    media_spend_2d = tf.constant(
+        [[500.0, 500.0, 500.0], [1000.0, 1000.0, 1000.0]], dtype=tf.float32
+    )  # (time, channel)
+    result = analyzer.DataTensors.optimization_tensors(
+        time=self.time,
+        cpmu=self.cpmu,
+        media_spend=media_spend_2d,
+        population=self.population,
+    )
+
+    # Population proportions are [0.2, 0.8] for population [1000, 4000]
+    expected_scaled_spend = tf.constant(
+        [
+            [[100.0, 100.0, 100.0], [200.0, 200.0, 200.0]],
+            [[400.0, 400.0, 400.0], [800.0, 800.0, 800.0]],
+        ],  # Geo 1 (20%)  # Geo 2 (80%)
+        dtype=tf.float32,
+    )
+
+    # Avoid the pytype check complaint.
+    assert result.media is not None and result.media_spend is not None
+    # Check that the sum over geos equals the original 2D tensor
+    self.assertAllClose(
+        tf.reduce_sum(result.media_spend, axis=0), media_spend_2d
+    )
+    self.assertAllClose(result.media_spend, expected_scaled_spend)
+    self.assertEqual(result.media.shape, (2, 2, 3))
+
+  def test_rf_flighting_with_scaling(self):
+    rf_spend_2d = tf.constant([[100.0], [200.0]], dtype=tf.float32)
+    freq_2d = tf.constant([[2.0], [3.0]], dtype=tf.float32)
+    result = analyzer.DataTensors.optimization_tensors(
+        time=self.time,
+        cprf=self.cprf,
+        rf_spend=rf_spend_2d,
+        frequency=freq_2d,
+        population=self.population,
+    )
+
+    # Avoid the pytype check complaint.
+    assert (
+        result.rf_spend is not None
+        and result.frequency is not None
+        and result.reach is not None
+    )
+    self.assertEqual(result.rf_spend.shape, (2, 2, 1))
+    self.assertEqual(result.frequency.shape, (2, 2, 1))
+    self.assertEqual(result.reach.shape, (2, 2, 1))
+
+    calculated_rf_spend = result.reach * result.frequency * self.cprf
+    self.assertAllClose(result.rf_spend, calculated_rf_spend)
+
+  def test_revenue_per_kpi_with_scaling(self):
+    revenue_per_kpi = tf.constant([100.0, 200.0], dtype=tf.float32)
+    result = analyzer.DataTensors.optimization_tensors(
+        time=self.time,
+        revenue_per_kpi=revenue_per_kpi,
+        population=self.population,
+    )
+    expected_scaled_revenue_per_kpi = tf.constant(
+        [[20.0, 40.0], [80.0, 160.0]],  # Geo 1 (20%)  # Geo 2 (80%)
+        dtype=tf.float32,
+    )
+    # Avoid the pytype check complaint.
+    assert result.revenue_per_kpi is not None
+    self.assertEqual(result.revenue_per_kpi.shape, (2, 2))
+    self.assertAllClose(result.revenue_per_kpi, expected_scaled_revenue_per_kpi)
+
+
 class AnalyzerNotFittedTest(absltest.TestCase):
 
   def test_rhat_summary_media_and_rf_pre_fitting_raises_exception(self):
