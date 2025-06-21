@@ -22,14 +22,11 @@ object.
 import abc
 from collections.abc import Mapping, Sequence
 import dataclasses
-import datetime as dt
-import warnings
-
 import immutabledict
 from meridian import constants
 from meridian.data import data_frame_input_data_builder
 from meridian.data import input_data
-import numpy as np
+from meridian.data import input_data_builder
 import pandas as pd
 import xarray as xr
 
@@ -202,346 +199,124 @@ class XrDatasetDataLoader(InputDataLoader):
     if (constants.GEO) not in self.dataset.sizes.keys():
       self.dataset = self.dataset.expand_dims(dim=[constants.GEO], axis=0)
 
-    if len(self.dataset.coords[constants.GEO]) == 1:
-      if constants.POPULATION in self.dataset.data_vars.keys():
-        warnings.warn(
-            'The `population` argument is ignored in a nationally aggregated'
-            ' model. It will be reset to [1]'
-        )
-        self.dataset = self.dataset.drop_vars(names=[constants.POPULATION])
-
-      # Add a default `population` [1].
-      national_population_darray = xr.DataArray(
-          [constants.NATIONAL_MODEL_DEFAULT_POPULATION_VALUE],
-          dims=[constants.GEO],
-          coords={
-              constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME],
-          },
-          name=constants.POPULATION,
-      )
-      self.dataset = xr.combine_by_coords(
-          [
-              national_population_darray,
-              self.dataset.assign_coords(
-                  {constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME]}
-              ),
-          ],
-          compat='override',
-      )
-
     if constants.MEDIA_TIME not in self.dataset.sizes.keys():
-      self._add_media_time()
-    self._normalize_time_coordinates(constants.TIME)
-    self._normalize_time_coordinates(constants.MEDIA_TIME)
-    self._validate_dataset()
+      na_mask = self.dataset[constants.KPI].isnull().any(dim=constants.GEO)
 
-  def _normalize_time_coordinates(self, dim: str):
-    if self.dataset.coords.dtypes[dim] == np.dtype('datetime64[ns]'):
-      date_strvalues = np.datetime_as_string(self.dataset.coords[dim], unit='D')
-      self.dataset = self.dataset.assign_coords({dim: date_strvalues})
-
-    # Assume that the time coordinate labels are date-formatted strings.
-    # We don't currently support other, arbitrary object types in the loaders.
-    for time in self.dataset.coords[dim].values:
-      try:
-        _ = dt.datetime.strptime(time, constants.DATE_FORMAT)
-      except ValueError as exc:
-        raise ValueError(
-            f"Invalid time label: '{time}'. Expected format:"
-            f" '{constants.DATE_FORMAT}'"
-        ) from exc
-
-  def _validate_dataset(self):
-    for coord_name in constants.REQUIRED_INPUT_DATA_COORD_NAMES:
-      if coord_name not in self.dataset.coords:
-        raise ValueError(
-            f"Coordinate '{coord_name}' not found in dataset's coordinates."
-            " Please use the 'name_mapping' argument to rename the coordinates."
+      if constants.CONTROLS in self.dataset.data_vars.keys():
+        na_mask |= (
+            self.dataset[constants.CONTROLS]
+            .isnull()
+            .any(dim=[constants.GEO, constants.CONTROL_VARIABLE])
         )
 
-    for array_name in constants.REQUIRED_INPUT_DATA_ARRAY_NAMES:
-      if array_name not in self.dataset.data_vars:
-        raise ValueError(
-            f"Array '{array_name}' not found in dataset's arrays."
-            " Please use the 'name_mapping' argument to rename the arrays."
+      if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys():
+        na_mask |= (
+            self.dataset[constants.NON_MEDIA_TREATMENTS]
+            .isnull()
+            .any(dim=[constants.GEO, constants.NON_MEDIA_CHANNEL])
         )
 
-    # Check for media.
-    missing_media_input = []
-    for coord_name in constants.MEDIA_INPUT_DATA_COORD_NAMES:
-      if coord_name not in self.dataset.coords:
-        missing_media_input.append(coord_name)
-    for array_name in constants.MEDIA_INPUT_DATA_ARRAY_NAMES:
-      if array_name not in self.dataset.data_vars:
-        missing_media_input.append(array_name)
-
-    # Check for RF.
-    missing_rf_input = []
-    for coord_name in constants.RF_INPUT_DATA_COORD_NAMES:
-      if coord_name not in self.dataset.coords:
-        missing_rf_input.append(coord_name)
-    for array_name in constants.RF_INPUT_DATA_ARRAY_NAMES:
-      if array_name not in self.dataset.data_vars:
-        missing_rf_input.append(array_name)
-
-    if missing_media_input and missing_rf_input:
-      raise ValueError(
-          "Some required data is missing. Please use the 'name_mapping'"
-          ' argument to rename the coordinates/arrays. It is required to have'
-          ' at least one of media or reach and frequency.'
-      )
-
-    if missing_media_input and len(missing_media_input) != len(
-        constants.MEDIA_INPUT_DATA_COORD_NAMES
-    ) + len(constants.MEDIA_INPUT_DATA_ARRAY_NAMES):
-      raise ValueError(
-          f"Media data is partially missing. '{missing_media_input}' not found"
-          " in dataset's coordinates/arrays. Please use the 'name_mapping'"
-          ' argument to rename the coordinates/arrays.'
-      )
-
-    if missing_rf_input and len(missing_rf_input) != len(
-        constants.RF_INPUT_DATA_COORD_NAMES
-    ) + len(constants.RF_INPUT_DATA_ARRAY_NAMES):
-      raise ValueError(
-          f"RF data is partially missing. '{missing_rf_input}' not found in"
-          " dataset's coordinates/arrays. Please use the 'name_mapping'"
-          ' argument to rename the coordinates/arrays.'
-      )
-
-  def _add_media_time(self):
-    """Creates the `media_time` coordinate if it is not provided directly.
-
-    The user can either create both `time` and `media_time` coordinates directly
-    and use them to provide the lagged data for `media`, `reach` and `frequency`
-    arrays, or use the `time` coordinate for all arrays. In the second case,
-    the lagged period will be determined and the `media_time` and `time`
-    coordinates will be created based on the missing values in the other arrays:
-    `kpi`, `revenue_per_kpi`, `controls`, `media_spend`, `rf_spend`. The
-    analogous mechanism to determine the lagged period is used in
-    `DataFrameDataLoader` and `CsvDataLoader`.
-    """
-    # Check if there are no NAs in media.
-    if constants.MEDIA in self.dataset.data_vars.keys():
-      if self.dataset.media.isnull().any(axis=None):
-        raise ValueError('NA values found in the media array.')
-
-    # Check if there are no NAs in reach & frequency.
-    if constants.REACH in self.dataset.data_vars.keys():
-      if self.dataset.reach.isnull().any(axis=None):
-        raise ValueError('NA values found in the reach array.')
-    if constants.FREQUENCY in self.dataset.data_vars.keys():
-      if self.dataset.frequency.isnull().any(axis=None):
-        raise ValueError('NA values found in the frequency array.')
-
-    # Check if there are no NAs in organic media.
-    if constants.ORGANIC_MEDIA in self.dataset.data_vars.keys():
-      if self.dataset.organic_media.isnull().any(axis=None):
-        raise ValueError('NA values found in the organic media array.')
-
-    # Check if there are no NAs in organic reach & frequency.
-    if constants.ORGANIC_REACH in self.dataset.data_vars.keys():
-      if self.dataset.organic_reach.isnull().any(axis=None):
-        raise ValueError('NA values found in the organic reach array.')
-    if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys():
-      if self.dataset.organic_frequency.isnull().any(axis=None):
-        raise ValueError('NA values found in the organic frequency array.')
-
-    # Arrays in which NAs are expected in the lagged-media period.
-    na_arrays = [
-        constants.KPI,
-    ]
-
-    na_mask = self.dataset[constants.KPI].isnull().any(dim=constants.GEO)
-
-    if constants.CONTROLS in self.dataset.data_vars.keys():
-      na_arrays.append(constants.CONTROLS)
-      na_mask |= (
-          self.dataset[constants.CONTROLS]
-          .isnull()
-          .any(dim=[constants.GEO, constants.CONTROL_VARIABLE])
-      )
-
-    if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys():
-      na_arrays.append(constants.NON_MEDIA_TREATMENTS)
-      na_mask |= (
-          self.dataset[constants.NON_MEDIA_TREATMENTS]
-          .isnull()
-          .any(dim=[constants.GEO, constants.NON_MEDIA_CHANNEL])
-      )
-
-    if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys():
-      na_arrays.append(constants.REVENUE_PER_KPI)
-      na_mask |= (
-          self.dataset[constants.REVENUE_PER_KPI]
-          .isnull()
-          .any(dim=constants.GEO)
-      )
-    if constants.MEDIA_SPEND in self.dataset.data_vars.keys():
-      na_arrays.append(constants.MEDIA_SPEND)
-      na_mask |= (
-          self.dataset[constants.MEDIA_SPEND]
-          .isnull()
-          .any(dim=[constants.GEO, constants.MEDIA_CHANNEL])
-      )
-    if constants.RF_SPEND in self.dataset.data_vars.keys():
-      na_arrays.append(constants.RF_SPEND)
-      na_mask |= (
-          self.dataset[constants.RF_SPEND]
-          .isnull()
-          .any(dim=[constants.GEO, constants.RF_CHANNEL])
-      )
-
-    # Dates with at least one non-NA value in non-media columns
-    no_na_period = self.dataset[constants.TIME].isel(time=~na_mask).values
-
-    # Dates with 100% NA values in all non-media columns.
-    na_period = self.dataset[constants.TIME].isel(time=na_mask).values
-
-    # Check if na_period is a continuous window starting from the earliest time
-    # period.
-    if not np.all(
-        np.sort(na_period)
-        == np.sort(np.unique(self.dataset[constants.TIME]))[: len(na_period)]
-    ):
-      raise ValueError(
-          "The 'lagged media' period (period with 100% NA values in all"
-          f' non-media columns) {na_period} is not a continuous window starting'
-          ' from the earliest time period.'
-      )
-
-    # Check if for the non-lagged period, there are no NAs in non-media data
-    for array in na_arrays:
-      if np.any(np.isnan(self.dataset[array].isel(time=~na_mask))):
-        raise ValueError(
-            'NA values found in other than media columns outside the'
-            f' lagged-media period {na_period} (continuous window of 100% NA'
-            ' values in all other than media columns).'
+      if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys():
+        na_mask |= (
+            self.dataset[constants.REVENUE_PER_KPI]
+            .isnull()
+            .any(dim=constants.GEO)
+        )
+      if constants.MEDIA_SPEND in self.dataset.data_vars.keys():
+        na_mask |= (
+            self.dataset[constants.MEDIA_SPEND]
+            .isnull()
+            .any(dim=[constants.GEO, constants.MEDIA_CHANNEL])
+        )
+      if constants.RF_SPEND in self.dataset.data_vars.keys():
+        na_mask |= (
+            self.dataset[constants.RF_SPEND]
+            .isnull()
+            .any(dim=[constants.GEO, constants.RF_CHANNEL])
         )
 
-    # Create new `time` and `media_time` coordinates.
-    new_time = 'new_time'
+      # Dates with at least one non-NA value in non-media columns
+      no_na_period = self.dataset[constants.TIME].isel(time=~na_mask).values
 
-    new_dataset = self.dataset.assign_coords(
-        new_time=(new_time, no_na_period),
-    )
+      # Create new `time` and `media_time` coordinates.
+      new_time = 'new_time'
 
-    new_dataset[constants.KPI] = (
-        new_dataset[constants.KPI]
-        .dropna(dim=constants.TIME)
-        .rename({constants.TIME: new_time})
-    )
-    if constants.CONTROLS in new_dataset.data_vars.keys():
-      new_dataset[constants.CONTROLS] = (
-          new_dataset[constants.CONTROLS]
+      new_dataset = self.dataset.assign_coords(
+          new_time=(new_time, no_na_period),
+      )
+
+      new_dataset[constants.KPI] = (
+          new_dataset[constants.KPI]
           .dropna(dim=constants.TIME)
           .rename({constants.TIME: new_time})
       )
-    if constants.NON_MEDIA_TREATMENTS in new_dataset.data_vars.keys():
-      new_dataset[constants.NON_MEDIA_TREATMENTS] = (
-          new_dataset[constants.NON_MEDIA_TREATMENTS]
-          .dropna(dim=constants.TIME)
-          .rename({constants.TIME: new_time})
-      )
+      if constants.CONTROLS in new_dataset.data_vars.keys():
+        new_dataset[constants.CONTROLS] = (
+            new_dataset[constants.CONTROLS]
+            .dropna(dim=constants.TIME)
+            .rename({constants.TIME: new_time})
+        )
+      if constants.NON_MEDIA_TREATMENTS in new_dataset.data_vars.keys():
+        new_dataset[constants.NON_MEDIA_TREATMENTS] = (
+            new_dataset[constants.NON_MEDIA_TREATMENTS]
+            .dropna(dim=constants.TIME)
+            .rename({constants.TIME: new_time})
+        )
 
-    if constants.REVENUE_PER_KPI in new_dataset.data_vars.keys():
-      new_dataset[constants.REVENUE_PER_KPI] = (
-          new_dataset[constants.REVENUE_PER_KPI]
-          .dropna(dim=constants.TIME)
-          .rename({constants.TIME: new_time})
-      )
+      if constants.REVENUE_PER_KPI in new_dataset.data_vars.keys():
+        new_dataset[constants.REVENUE_PER_KPI] = (
+            new_dataset[constants.REVENUE_PER_KPI]
+            .dropna(dim=constants.TIME)
+            .rename({constants.TIME: new_time})
+        )
 
-    if constants.MEDIA_SPEND in new_dataset.data_vars.keys():
-      new_dataset[constants.MEDIA_SPEND] = (
-          new_dataset[constants.MEDIA_SPEND]
-          .dropna(dim=constants.TIME)
-          .rename({constants.TIME: new_time})
-      )
+      if constants.MEDIA_SPEND in new_dataset.data_vars.keys():
+        new_dataset[constants.MEDIA_SPEND] = (
+            new_dataset[constants.MEDIA_SPEND]
+            .dropna(dim=constants.TIME)
+            .rename({constants.TIME: new_time})
+        )
 
-    if constants.RF_SPEND in new_dataset.data_vars.keys():
-      new_dataset[constants.RF_SPEND] = (
-          new_dataset[constants.RF_SPEND]
-          .dropna(dim=constants.TIME)
-          .rename({constants.TIME: new_time})
-      )
+      if constants.RF_SPEND in new_dataset.data_vars.keys():
+        new_dataset[constants.RF_SPEND] = (
+            new_dataset[constants.RF_SPEND]
+            .dropna(dim=constants.TIME)
+            .rename({constants.TIME: new_time})
+        )
 
-    self.dataset = new_dataset.rename(
-        {constants.TIME: constants.MEDIA_TIME, new_time: constants.TIME}
-    )
+      self.dataset = new_dataset.rename(
+          {constants.TIME: constants.MEDIA_TIME, new_time: constants.TIME}
+      )
 
   def load(self) -> input_data.InputData:
     """Returns an `InputData` object containing the data from the dataset."""
-    controls = (
-        self.dataset.controls
-        if constants.CONTROLS in self.dataset.data_vars.keys()
-        else None
-    )
-    revenue_per_kpi = (
-        self.dataset.revenue_per_kpi
-        if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys()
-        else None
-    )
-    media = (
-        self.dataset.media
-        if constants.MEDIA in self.dataset.data_vars.keys()
-        else None
-    )
-    media_spend = (
-        self.dataset.media_spend
-        if constants.MEDIA in self.dataset.data_vars.keys()
-        else None
-    )
-    reach = (
-        self.dataset.reach
-        if constants.REACH in self.dataset.data_vars.keys()
-        else None
-    )
-    frequency = (
-        self.dataset.frequency
-        if constants.FREQUENCY in self.dataset.data_vars.keys()
-        else None
-    )
-    rf_spend = (
-        self.dataset.rf_spend
-        if constants.RF_SPEND in self.dataset.data_vars.keys()
-        else None
-    )
-    non_media_treatments = (
-        self.dataset.non_media_treatments
-        if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys()
-        else None
-    )
-    organic_media = (
-        self.dataset.organic_media
-        if constants.ORGANIC_MEDIA in self.dataset.data_vars.keys()
-        else None
-    )
-    organic_reach = (
-        self.dataset.organic_reach
-        if constants.ORGANIC_REACH in self.dataset.data_vars.keys()
-        else None
-    )
-    organic_frequency = (
-        self.dataset.organic_frequency
-        if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys()
-        else None
-    )
-    return input_data.InputData(
-        kpi=self.dataset.kpi,
-        kpi_type=self.kpi_type,
-        population=self.dataset.population,
-        controls=controls,
-        revenue_per_kpi=revenue_per_kpi,
-        media=media,
-        media_spend=media_spend,
-        reach=reach,
-        frequency=frequency,
-        rf_spend=rf_spend,
-        non_media_treatments=non_media_treatments,
-        organic_media=organic_media,
-        organic_reach=organic_reach,
-        organic_frequency=organic_frequency,
-    )
+    builder = input_data_builder.InputDataBuilder(self.kpi_type)
+    builder.kpi = self.dataset.kpi
+    if constants.POPULATION in self.dataset.data_vars.keys():
+      builder.population = self.dataset.population
+    if constants.CONTROLS in self.dataset.data_vars.keys():
+      builder.controls = self.dataset.controls
+    if constants.REVENUE_PER_KPI in self.dataset.data_vars.keys():
+      builder.revenue_per_kpi = self.dataset.revenue_per_kpi
+    if constants.MEDIA in self.dataset.data_vars.keys():
+      builder.media = self.dataset.media
+    if constants.MEDIA_SPEND in self.dataset.data_vars.keys():
+      builder.media_spend = self.dataset.media_spend
+    if constants.REACH in self.dataset.data_vars.keys():
+      builder.reach = self.dataset.reach
+    if constants.FREQUENCY in self.dataset.data_vars.keys():
+      builder.frequency = self.dataset.frequency
+    if constants.RF_SPEND in self.dataset.data_vars.keys():
+      builder.rf_spend = self.dataset.rf_spend
+    if constants.NON_MEDIA_TREATMENTS in self.dataset.data_vars.keys():
+      builder.non_media_treatments = self.dataset.non_media_treatments
+    if constants.ORGANIC_MEDIA in self.dataset.data_vars.keys():
+      builder.organic_media = self.dataset.organic_media
+    if constants.ORGANIC_REACH in self.dataset.data_vars.keys():
+      builder.organic_reach = self.dataset.organic_reach
+    if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys():
+      builder.organic_frequency = self.dataset.organic_frequency
+    return builder.build()
 
 
 @dataclasses.dataclass(frozen=True)
