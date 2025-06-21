@@ -2292,6 +2292,346 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
     else:
       self.assertIsNone(data.organic_frequency)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='media',
+          media_to_channel={'media_2': 'ch_2', 'media_1': 'ch_1'},
+          error_msg=(
+              'The media_to_channel must have the same set of channels as the'
+              ' media columns.'
+          ),
+      ),
+      dict(
+          testcase_name='media_spend',
+          media_spend_to_channel={
+              'media_spend_2': 'ch_2',
+              'media_spend_1': 'ch_1',
+          },
+          error_msg=(
+              'The media_spend_to_channel must have the same set of channels as'
+              ' the media_spend columns.'
+          ),
+      ),
+      dict(
+          testcase_name='reach',
+          reach_to_channel={'reach_1': 'rf_ch_1'},
+          error_msg=(
+              'The reach_to_channel must have the same set of channels as the'
+              ' reach columns.'
+          ),
+      ),
+      dict(
+          testcase_name='frequency',
+          frequency_to_channel={'frequency_1': 'rf_ch_1'},
+          error_msg=(
+              'The frequency_to_channel must have the same set of channels as'
+              ' the frequency columns.'
+          ),
+      ),
+      dict(
+          testcase_name='rf_spend',
+          rf_spend_to_channel={'rf_spend_1': 'rf_ch_1'},
+          error_msg=(
+              'The rf_spend_to_channel must have the same set of channels as'
+              ' the rf_spend columns.'
+          ),
+      ),
+      dict(
+          testcase_name='organic_reach',
+          organic_reach_to_channel={'organic_reach_7': 'organic_rf_ch_7'},
+          error_msg=(
+              'The organic_reach_to_channel must have the same set of channels'
+              ' as the organic_reach columns.'
+          ),
+      ),
+      dict(
+          testcase_name='organic_frequency',
+          organic_frequency_to_channel={
+              'organic_frequency_7': 'organic_rf_ch_7'
+          },
+          error_msg=(
+              'The organic_frequency_to_channel must have the same set of'
+              ' channels as the organic_frequency columns.'
+          ),
+      ),
+  )
+  def test_dataframe_data_loader_raises_error_with_missing_channels(
+      self,
+      error_msg: str,
+      media_to_channel: dict[str, str] = {
+          'media_2': 'ch_2',
+          'media_1': 'ch_1',
+          'media_0': 'ch_0',
+      },
+      media_spend_to_channel: dict[str, str] = {
+          'media_spend_2': 'ch_2',
+          'media_spend_1': 'ch_1',
+          'media_spend_0': 'ch_0',
+      },
+      reach_to_channel: dict[str, str] = {
+          'reach_1': 'rf_ch_1',
+          'reach_0': 'rf_ch_0',
+      },
+      frequency_to_channel: dict[str, str] = {
+          'frequency_1': 'rf_ch_1',
+          'frequency_0': 'rf_ch_0',
+      },
+      rf_spend_to_channel: dict[str, str] = {
+          'rf_spend_1': 'rf_ch_1',
+          'rf_spend_0': 'rf_ch_0',
+      },
+      organic_reach_to_channel: dict[str, str] = {
+          'organic_reach_0': 'organic_rf_ch_0'
+      },
+      organic_frequency_to_channel: dict[str, str] = {
+          'organic_frequency_0': 'organic_rf_ch_0'
+      },
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        error_msg,
+    ):
+      coord_to_columns = load.CoordToColumns(
+          time='time',
+          geo='geo',
+          controls=['control_0', 'control_1'],
+          population='population',
+          kpi='kpi',
+          revenue_per_kpi='revenue_per_kpi',
+          media=['media_0', 'media_1', 'media_2'],
+          media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+          reach=['reach_0', 'reach_1'],
+          frequency=['frequency_0', 'frequency_1'],
+          rf_spend=['rf_spend_0', 'rf_spend_1'],
+          organic_reach=['organic_reach_0'],
+          organic_frequency=['organic_frequency_0'],
+      )
+      load.CsvDataLoader(
+          csv_path=os.path.join(
+              os.path.dirname(__file__),
+              _UNIT_TEST_DATA_DIR_NAME,
+              'sample_data_with_organic_and_non_media.csv',
+          ),
+          coord_to_columns=coord_to_columns,
+          kpi_type=constants.NON_REVENUE,
+          media_to_channel=media_to_channel,
+          media_spend_to_channel=media_spend_to_channel,
+          reach_to_channel=reach_to_channel,
+          frequency_to_channel=frequency_to_channel,
+          rf_spend_to_channel=rf_spend_to_channel,
+          organic_reach_to_channel=organic_reach_to_channel,
+          organic_frequency_to_channel=organic_frequency_to_channel,
+      ).load()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='media_and_media_spend',
+          media_to_channel={
+              'media_2': 'ch_2',
+              'media_1': 'ch_1',
+              'media_0': 'ch_0',
+          },
+          media_spend_to_channel={
+              'media_spend_2': 'yt',
+              'media_spend_1': 'ads',
+              'media_spend_0': 'search',
+          },
+          error_msg=(
+              'The media and media_spend columns must have the same set of'
+              ' channels.'
+          ),
+      ),
+      dict(
+          testcase_name='rf_and_rf_spend',
+          reach_to_channel={'reach_1': 'rf_ch_1', 'reach_0': 'rf_ch_0'},
+          frequency_to_channel={
+              'frequency_1': 'search',
+              'frequency_0': 'rf_ch_0',
+          },
+          rf_spend_to_channel={'rf_spend_1': 'yt', 'rf_spend_0': 'ads'},
+          error_msg=(
+              'The reach, frequency, and rf_spend columns must have the same'
+              ' set of channels.'
+          ),
+      ),
+      dict(
+          testcase_name='organic_reach_frequency',
+          organic_reach_to_channel={'organic_reach_0': 'ads'},
+          organic_frequency_to_channel={
+              'organic_frequency_0': 'organic_rf_ch_0'
+          },
+          error_msg=(
+              'The organic_reach and organic_frequency columns must have the'
+              ' same set of channels.'
+          ),
+      ),
+  )
+  def test_dataframe_data_loader_raises_error_with_inconsistent_channels(
+      self,
+      error_msg: str,
+      media_to_channel: dict[str, str] = {
+          'media_2': 'ch_2',
+          'media_1': 'ch_1',
+          'media_0': 'ch_0',
+      },
+      media_spend_to_channel: dict[str, str] = {
+          'media_spend_2': 'ch_2',
+          'media_spend_1': 'ch_1',
+          'media_spend_0': 'ch_0',
+      },
+      reach_to_channel: dict[str, str] = {
+          'reach_1': 'rf_ch_1',
+          'reach_0': 'rf_ch_0',
+      },
+      frequency_to_channel: dict[str, str] = {
+          'frequency_1': 'rf_ch_1',
+          'frequency_0': 'rf_ch_0',
+      },
+      rf_spend_to_channel: dict[str, str] = {
+          'rf_spend_1': 'rf_ch_1',
+          'rf_spend_0': 'rf_ch_0',
+      },
+      organic_reach_to_channel: dict[str, str] = {
+          'organic_reach_0': 'organic_rf_ch_0'
+      },
+      organic_frequency_to_channel: dict[str, str] = {
+          'organic_frequency_0': 'organic_rf_ch_0'
+      },
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        error_msg,
+    ):
+      coord_to_columns = load.CoordToColumns(
+          time='time',
+          geo='geo',
+          controls=['control_0', 'control_1'],
+          population='population',
+          kpi='kpi',
+          revenue_per_kpi='revenue_per_kpi',
+          media=['media_0', 'media_1', 'media_2'],
+          media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+          reach=['reach_0', 'reach_1'],
+          frequency=['frequency_0', 'frequency_1'],
+          rf_spend=['rf_spend_0', 'rf_spend_1'],
+          organic_reach=['organic_reach_0'],
+          organic_frequency=['organic_frequency_0'],
+      )
+      load.CsvDataLoader(
+          csv_path=os.path.join(
+              os.path.dirname(__file__),
+              _UNIT_TEST_DATA_DIR_NAME,
+              'sample_data_with_organic_and_non_media.csv',
+          ),
+          coord_to_columns=coord_to_columns,
+          kpi_type=constants.NON_REVENUE,
+          media_to_channel=media_to_channel,
+          media_spend_to_channel=media_spend_to_channel,
+          reach_to_channel=reach_to_channel,
+          frequency_to_channel=frequency_to_channel,
+          rf_spend_to_channel=rf_spend_to_channel,
+          organic_reach_to_channel=organic_reach_to_channel,
+          organic_frequency_to_channel=organic_frequency_to_channel,
+      ).load()
+
+  def test_dataframe_data_loader_loads_unsorted_channels(self):
+    coord_to_columns = load.CoordToColumns(
+        time='time',
+        geo='geo',
+        controls=['control_0', 'control_1'],
+        population='population',
+        kpi='kpi',
+        revenue_per_kpi='revenue_per_kpi',
+        media=['media_0', 'media_1', 'media_2'],
+        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        reach=['reach_0', 'reach_1'],
+        frequency=['frequency_0', 'frequency_1'],
+        rf_spend=['rf_spend_0', 'rf_spend_1'],
+        organic_reach=['organic_reach_0'],
+        organic_frequency=['organic_frequency_0'],
+    )
+    sorted_loader = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel={
+            'media_0': 'ch_0',
+            'media_1': 'ch_1',
+            'media_2': 'ch_2',
+        },
+        media_spend_to_channel={
+            'media_spend_0': 'ch_0',
+            'media_spend_1': 'ch_1',
+            'media_spend_2': 'ch_2',
+        },
+        reach_to_channel={
+            'reach_0': 'rf_ch_0',
+            'reach_1': 'rf_ch_1',
+        },
+        frequency_to_channel={
+            'frequency_0': 'rf_ch_0',
+            'frequency_1': 'rf_ch_1',
+        },
+        rf_spend_to_channel={
+            'rf_spend_0': 'rf_ch_0',
+            'rf_spend_1': 'rf_ch_1',
+        },
+        organic_reach_to_channel={'organic_reach_0': 'organic_rf_ch_0'},
+        organic_frequency_to_channel={'organic_frequency_0': 'organic_rf_ch_0'},
+    ).load()
+
+    unsorted_loader = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel={
+            'media_2': 'ch_2',
+            'media_1': 'ch_1',
+            'media_0': 'ch_0',
+        },
+        media_spend_to_channel={
+            'media_spend_1': 'ch_1',
+            'media_spend_2': 'ch_2',
+            'media_spend_0': 'ch_0',
+        },
+        reach_to_channel={
+            'reach_1': 'rf_ch_1',
+            'reach_0': 'rf_ch_0',
+        },
+        frequency_to_channel={
+            'frequency_1': 'rf_ch_1',
+            'frequency_0': 'rf_ch_0',
+        },
+        rf_spend_to_channel={
+            'rf_spend_0': 'rf_ch_0',
+            'rf_spend_1': 'rf_ch_1',
+        },
+        organic_reach_to_channel={'organic_reach_0': 'organic_rf_ch_0'},
+        organic_frequency_to_channel={'organic_frequency_0': 'organic_rf_ch_0'},
+    ).load()
+
+    xr.testing.assert_equal(sorted_loader.media, unsorted_loader.media)
+    xr.testing.assert_equal(
+        sorted_loader.media_spend, unsorted_loader.media_spend
+    )
+    xr.testing.assert_equal(sorted_loader.reach, unsorted_loader.reach)
+    xr.testing.assert_equal(sorted_loader.frequency, unsorted_loader.frequency)
+    xr.testing.assert_equal(sorted_loader.rf_spend, unsorted_loader.rf_spend)
+    xr.testing.assert_equal(
+        sorted_loader.organic_reach, unsorted_loader.organic_reach
+    )
+    xr.testing.assert_equal(
+        sorted_loader.organic_frequency, unsorted_loader.organic_frequency
+    )
+
 
 if __name__ == '__main__':
   absltest.main()
