@@ -97,4 +97,4 @@ include = ["meridian*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
-version = {attr = "meridian.__version__"}
+version = {attr = "meridian.version.__version__"}
