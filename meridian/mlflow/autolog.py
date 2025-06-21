@@ -20,7 +20,7 @@ import json
 from typing import Any, Callable
 
 import arviz as az
-import meridian
+from meridian.__version__ import __version__
 from meridian.analysis import visualizer
 import mlflow
 from mlflow.utils.autologging_utils import autologging_integration, safe_patch
@@ -37,7 +37,7 @@ FLAVOR_NAME = "meridian"
 
 def _log_versions() -> None:
   """Logs Meridian and ArviZ versions."""
-  mlflow.log_param("meridian_version", meridian.__version__)
+  mlflow.log_param("meridian_version", __version__)
   mlflow.log_param("arviz_version", az.__version__)
 
 
@@ -102,8 +102,6 @@ def autolog(
     _log_model_spec(self.model_spec)
     _log_priors(self.model_spec)
     return mmm
-
-  safe_patch(FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init)
 
   def patch_prior_sampling(original: Callable[..., Any], self, *args, **kwargs):
     mlflow.log_param("sample_prior.n_draws", kwargs.get("n_draws", "default"))

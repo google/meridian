@@ -12,18 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
-
-import logging
-
-from meridian import analysis
-from meridian import data
-from meridian import model
-import meridian.__version__
-
-__version__ = meridian.__version__.__version__
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  logging.warning("MLFlow is not installed.")
+__version__ = "1.1.2"
