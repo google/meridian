@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.1.3]
+
 * Add MLflow autologging support.
 
 ## [1.1.2] - 2025-06-11
