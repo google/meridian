@@ -72,6 +72,7 @@ and-cuda = [
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
+# TODO: Add unified schema dependencies.
 
 # NEW: JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
@@ -101,7 +102,11 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*"]
+include = [
+  "meridian*",
+  "proto*",
+  "scenarioplanner*",
+]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
