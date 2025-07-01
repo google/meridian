@@ -218,9 +218,10 @@ PAID_MEDIA_ROI_PRIOR_TYPES = frozenset(
 # Represents a 1% increase in spend.
 MROI_FACTOR = 1.01
 
-NATIONAL_MODEL_SPEC_ARGS = immutabledict.immutabledict(
-    {MEDIA_EFFECTS_DIST: MEDIA_EFFECTS_NORMAL, UNIQUE_SIGMA_FOR_EACH_GEO: False}
-)
+NATIONAL_MODEL_SPEC_ARGS = immutabledict.immutabledict({
+    MEDIA_EFFECTS_DIST: MEDIA_EFFECTS_NORMAL,
+    UNIQUE_SIGMA_FOR_EACH_GEO: False,
+})
 
 NATIONAL_ANALYZER_PARAMETERS_DEFAULTS = immutabledict.immutabledict(
     {'aggregate_geos': True, 'geos_to_include': None}
@@ -231,7 +232,6 @@ NATIONAL_ANALYZER_PARAMETERS_DEFAULTS = immutabledict.immutabledict(
 CHAIN = 'chain'
 DRAW = 'draw'
 KNOTS = 'knots'
-SIGMA_DIM = 'sigma_dim'
 
 
 # Model parameters.

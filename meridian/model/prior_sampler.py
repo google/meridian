@@ -510,6 +510,8 @@ class PriorDistributionSampler:
       tf.keras.utils.set_random_seed(1)
 
     prior = mmm.prior_broadcast
+    # `sample_shape` is prepended to the shape of each BatchBroadcast in `prior`
+    # when it is sampled.
     sample_shape = [1, n_draws]
     sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
 

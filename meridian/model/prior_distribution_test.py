@@ -94,7 +94,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
         n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        sigma_shape=_N_GEOS,
+        unique_sigma_for_each_geo=True,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=False,
@@ -248,7 +248,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
         n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        sigma_shape=_N_GEOS,
+        unique_sigma_for_each_geo=True,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=False,
@@ -340,7 +340,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=0,
         n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        sigma_shape=_N_GEOS,
+        unique_sigma_for_each_geo=True,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=False,
@@ -424,8 +424,6 @@ class PriorDistributionTest(parameterized.TestCase):
 
   @parameterized.named_parameters(('one_sigma', False), ('unique_sigmas', True))
   def test_broadcast_preserves_shape(self, unique_sigma_for_each_geo: bool):
-    sigma_shape = _N_GEOS if unique_sigma_for_each_geo else 1
-
     # Create prior distribution with beta_m broadcasted to n_media_channels and
     # other parameters as scalars.
     distribution = prior_distribution.PriorDistribution(
@@ -442,7 +440,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
         n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        sigma_shape=sigma_shape,
+        unique_sigma_for_each_geo=unique_sigma_for_each_geo,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=False,
@@ -527,7 +525,8 @@ class PriorDistributionTest(parameterized.TestCase):
       self.assertEqual(broad.batch_shape, (_N_NON_MEDIA_CHANNELS,))
 
     # Validate sigma.
-    self.assertEqual(broadcast_distribution.sigma.batch_shape, (sigma_shape,))
+    sigma_shape = (_N_GEOS,) if unique_sigma_for_each_geo else ()
+    self.assertEqual(broadcast_distribution.sigma.batch_shape, sigma_shape)
 
   @parameterized.named_parameters(
       dict(
@@ -566,7 +565,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
           n_non_media_channels=0,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -651,7 +650,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
           n_non_media_channels=0,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -726,7 +725,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
           n_non_media_channels=0,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -794,7 +793,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
           n_controls=_N_CONTROLS,
           n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -862,7 +861,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
           n_controls=_N_CONTROLS,
           n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -906,7 +905,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=0,
           n_controls=_N_CONTROLS,
           n_non_media_channels=0,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -950,7 +949,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
           n_controls=_N_CONTROLS,
           n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=False,
           set_total_media_contribution_prior=False,
@@ -1042,7 +1041,7 @@ class PriorDistributionTest(parameterized.TestCase):
           n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
           n_controls=_N_CONTROLS,
           n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-          sigma_shape=_N_GEOS_NATIONAL,
+          unique_sigma_for_each_geo=True,
           n_knots=_N_KNOTS,
           is_national=True,
           set_total_media_contribution_prior=False,
@@ -1183,10 +1182,8 @@ class PriorDistributionTest(parameterized.TestCase):
         broadcast_distribution.xi_n.batch_shape, (_N_NON_MEDIA_CHANNELS,)
     )
 
-    # Validate sigma.
-    self.assertEqual(
-        broadcast_distribution.sigma.batch_shape, (_N_GEOS_NATIONAL,)
-    )
+    # Validate sigma -- should be a scalar batch since n_geos is 1 for national.
+    self.assertEqual(broadcast_distribution.sigma.batch_shape, ())
 
   def test_correct_total_media_contribution_roi_prior_distribution(
       self,
@@ -1210,7 +1207,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=0,
         n_controls=_N_CONTROLS,
         n_non_media_channels=0,
-        sigma_shape=_N_GEOS,
+        unique_sigma_for_each_geo=True,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=True,
@@ -1341,7 +1338,7 @@ class PriorDistributionTest(parameterized.TestCase):
         n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
         n_controls=_N_CONTROLS,
         n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        sigma_shape=_N_GEOS,
+        unique_sigma_for_each_geo=True,
         n_knots=_N_KNOTS,
         is_national=False,
         set_total_media_contribution_prior=False,

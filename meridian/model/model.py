@@ -295,10 +295,6 @@ class Meridian:
   def is_national(self) -> bool:
     return self.n_geos == 1
 
-  @property
-  def _sigma_shape(self) -> int:
-    return len(self.input_data.geo) if self.unique_sigma_for_each_geo else 1
-
   @functools.cached_property
   def knot_info(self) -> knots.KnotInfo:
     return knots.get_knot_info(
@@ -389,6 +385,7 @@ class Meridian:
   @functools.cached_property
   def unique_sigma_for_each_geo(self) -> bool:
     if self.is_national:
+      # Should evaluate to False.
       return constants.NATIONAL_MODEL_SPEC_ARGS[
           constants.UNIQUE_SIGMA_FOR_EACH_GEO
       ]
@@ -449,7 +446,7 @@ class Meridian:
         n_organic_rf_channels=self.n_organic_rf_channels,
         n_controls=self.n_controls,
         n_non_media_channels=self.n_non_media_channels,
-        sigma_shape=self._sigma_shape,
+        unique_sigma_for_each_geo=self.unique_sigma_for_each_geo,
         n_knots=self.knot_info.n_knots,
         is_national=self.is_national,
         set_total_media_contribution_prior=self._set_total_media_contribution_prior,
@@ -663,10 +660,6 @@ class Meridian:
     self._validate_injected_inference_data_group_coord(
         inference_data, group, constants.TIME, self.n_times
     )
-    if not self.model_spec.unique_sigma_for_each_geo:
-      self._validate_injected_inference_data_group_coord(
-          inference_data, group, constants.SIGMA_DIM, self._sigma_shape
-      )
     self._validate_injected_inference_data_group_coord(
         inference_data,
         group,
@@ -1429,7 +1422,7 @@ class Meridian:
     if self.unique_sigma_for_each_geo:
       inference_dims[constants.SIGMA] = [constants.GEO]
     else:
-      inference_dims[constants.SIGMA] = [constants.SIGMA_DIM]
+      inference_dims[constants.SIGMA] = []
 
     return {
         param: [constants.CHAIN, constants.DRAW] + list(dims)
