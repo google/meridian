@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Module that contains schema processors."""
 
-from meridian import analysis
-from meridian import data
-from meridian import model
-from meridian.version import __version__
-
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+from schema.processors import budget_optimization_processor
+from schema.processors import common
+from schema.processors import marketing_processor
+from schema.processors import model_fit_processor
+from schema.processors import model_kernel_processor
+from schema.processors import model_processor
+from schema.processors import reach_frequency_processor
