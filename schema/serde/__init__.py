@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Module that contains Meridian serializer and deserializer."""
 
-from meridian import analysis
-from meridian import data
-from meridian import model
-from meridian.version import __version__
-
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+from schema.serde import constants
+from schema.serde import distribution
+from schema.serde import hyperparameters
+from schema.serde import inference_data
+from schema.serde import meridian_serde
+from schema.serde import serde
+from schema.serde import test_data
