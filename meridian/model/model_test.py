@@ -1024,7 +1024,7 @@ class ModelTest(
     self.assertIsNotNone(meridian)
     self.assertIsNotNone(national_meridian)
 
-  def test_broadcast_prior_distribution_is_called_in_meridian_init(self):
+  def test_broadcast_prior_distribution_compute_property(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
     # Validate `tau_g_excl_baseline` distribution.
     self.assertEqual(
@@ -1070,8 +1070,9 @@ class ModelTest(
     for broad in n_controls_distributions_list:
       self.assertEqual(broad.batch_shape, (meridian.n_controls,))
 
-    # Validate sigma.
-    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, (1,))
+    # Validate sigma -- unique_sigma_for_each_geo is False by default, so sigma
+    # should be a scalar batch.
+    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
   @parameterized.named_parameters(
       dict(
@@ -1724,8 +1725,9 @@ class NonPaidModelTest(
     for broad in n_non_media_distributions_list:
       self.assertEqual(broad.batch_shape, (meridian.n_non_media_channels,))
 
-    # Validate sigma.
-    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, (1,))
+    # Validate sigma -- unique_sigma_for_each_geo is False by default, so sigma
+    # should be a scalar batch.
+    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
   def test_scaled_data_shape(self):
     meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
@@ -2180,11 +2182,40 @@ class NonPaidModelTest(
     for param, tensor in prior_draws.items():
       self.assertIn(param, prior_dims)
       dims = prior_dims[param]
-      self.assertEqual(len(dims), len(tensor.shape))
+      self.assertEqual(
+          len(tensor.shape),
+          len(dims),
+          f"Parameter {param} has expected dimension {dims} but prior-drawn"
+          f" tensor for this parameter has shape {tensor.shape}",
+      )
       for dim, shape_dim in zip(dims, tensor.shape):
-        if dim != constants.SIGMA_DIM:
-          self.assertIn(dim, prior_coords)
-          self.assertLen(prior_coords[dim], shape_dim)
+        self.assertIn(dim, prior_coords)
+        self.assertLen(prior_coords[dim], shape_dim)
+
+  def test_inference_data_with_unique_sigma_geo_correct_dims(self):
+    model_spec = spec.ModelSpec(unique_sigma_for_each_geo=True)
+    mmm = model.Meridian(
+        input_data=self.input_data_non_media_and_organic,
+        model_spec=model_spec,
+    )
+    n_draws = 7
+    prior_draws = mmm.prior_sampler_callable._sample_prior(n_draws, seed=1)
+    # Create Arviz InferenceData for prior draws.
+    prior_coords = mmm.create_inference_data_coords(1, n_draws)
+    prior_dims = mmm.create_inference_data_dims()
+
+    for param, tensor in prior_draws.items():
+      self.assertIn(param, prior_dims)
+      dims = prior_dims[param]
+      self.assertEqual(
+          len(tensor.shape),
+          len(dims),
+          f"Parameter {param} has expected dimension {dims} but prior-drawn"
+          f" tensor for this parameter has shape {tensor.shape}",
+      )
+      for dim, shape_dim in zip(dims, tensor.shape):
+        self.assertIn(dim, prior_coords)
+        self.assertLen(prior_coords[dim], shape_dim)
 
   def test_validate_injected_inference_data_correct_shapes(self):
     """Checks validation passes with correct shapes."""
@@ -2414,21 +2445,6 @@ class NonPaidModelTest(
           },
           mismatched_coord_size=input_data_samples._N_GEOS + 1,
           expected_coord_size=input_data_samples._N_GEOS,
-          unique_sigma=True,
-      ),
-      dict(
-          testcase_name="sigma_dims_not_unique_sigma",
-          coord=constants.SIGMA_DIM,
-          mismatched_priors={
-              constants.SIGMA: (
-                  1,
-                  input_data_samples._N_DRAWS,
-                  2,
-              ),
-          },
-          mismatched_coord_size=2,
-          expected_coord_size=1,
-          unique_sigma=False,
       ),
   )
   def test_validate_injected_inference_data_prior_incorrect_sigma_coordinates(
@@ -2437,10 +2453,9 @@ class NonPaidModelTest(
       mismatched_priors,
       mismatched_coord_size,
       expected_coord_size,
-      unique_sigma,
   ):
     """Checks validation fails with incorrect coordinates for sigma."""
-    model_spec = spec.ModelSpec(unique_sigma_for_each_geo=unique_sigma)
+    model_spec = spec.ModelSpec(unique_sigma_for_each_geo=True)
     meridian = model.Meridian(
         input_data=self.input_data_non_media_and_organic,
         model_spec=model_spec,
@@ -2454,10 +2469,7 @@ class NonPaidModelTest(
       prior_samples[param] = tf.zeros(mismatched_priors[param])
     prior_coords = dict(prior_coords)
     prior_coords[coord] = np.arange(mismatched_coord_size)
-    if unique_sigma:
-      prior_coords[constants.GEO] = np.arange(mismatched_coord_size)
-    else:
-      prior_coords[constants.SIGMA_DIM] = np.arange(mismatched_coord_size)
+    prior_coords[constants.GEO] = np.arange(mismatched_coord_size)
 
     inference_data = az.convert_to_inference_data(
         prior_samples,

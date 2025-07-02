@@ -509,7 +509,7 @@ class PriorDistribution:
       n_organic_rf_channels: int,
       n_controls: int,
       n_non_media_channels: int,
-      sigma_shape: int,
+      unique_sigma_for_each_geo: bool,
       n_knots: int,
       is_national: bool,
       set_total_media_contribution_prior: bool,
@@ -527,9 +527,9 @@ class PriorDistribution:
         used.
       n_controls: Number of controls used.
       n_non_media_channels: Number of non-media channels used.
-      sigma_shape: A number describing the shape of the sigma parameter. It's
-        either `1` (if `sigma_for_each_geo=False`) or `n_geos` (if
-        `sigma_for_each_geo=True`). For more information, see `ModelSpec`.
+      unique_sigma_for_each_geo: A boolean indicator whether to use the same
+        sigma parameter for all geos. Only used if `n_geos > 1`. For more
+        information, see `ModelSpec`.
       n_knots: Number of knots used.
       is_national: A boolean indicator whether the prior distribution will be
         adapted for a national model.
@@ -801,6 +801,9 @@ class PriorDistribution:
     slope_orf = tfp.distributions.BatchBroadcast(
         self.slope_orf, n_organic_rf_channels, name=constants.SLOPE_ORF
     )
+
+    # If `unique_sigma_for_each_geo == False`, then make a scalar batch.
+    sigma_shape = n_geos if (n_geos > 1 and unique_sigma_for_each_geo) else []
     sigma = tfp.distributions.BatchBroadcast(
         self.sigma, sigma_shape, name=constants.SIGMA
     )

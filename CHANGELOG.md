@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Remove `sigma_dims` from inference data coordinates.
+
 ## [1.1.4] - 2025-06-30
 
 * `XrDatasetDataLoader` to use new `InputDataBuilder` API under the hood.
