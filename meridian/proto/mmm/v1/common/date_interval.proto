@@ -12,16 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+edition = "2023";
 
-from meridian import analysis
-from meridian import data
-from meridian import lookerstudio
-from meridian import model
-from meridian.version import __version__
+package mmm.v1.common;
 
+import "google/type/date.proto";
+import "google/protobuf/cpp_features.proto";
 
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+option features.(pb.cpp).string_type = VIEW;
+option java_multiple_files = true;
+
+message DateInterval {
+  // The start date of the interval. Inclusive. Required.
+  google.type.Date start_date = 1;
+
+  // The end date of the interval. Exclusive. Required.
+  google.type.Date end_date = 2;
+
+  // A tag to identify the date interval. Optional.
+  string tag = 3 [features.field_presence = IMPLICIT];
+}
