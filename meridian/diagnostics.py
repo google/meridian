@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import stats
 import arviz as az
 
 from meridian.model import Meridian
@@ -104,6 +105,92 @@ def plot_media_coef_lognormal(
     plt.show()
 
     return mu_hat, sigma_hat
+
+
+def durbin_watson(residuals: np.ndarray) -> float:
+    """Compute the Durbin-Watson statistic.
+
+    Parameters
+    ----------
+    residuals:
+        1-D array of model residuals in time order.
+
+    Returns
+    -------
+    float
+        The Durbin-Watson statistic.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    diff = np.diff(residuals)
+    return float(np.sum(diff**2) / np.sum(residuals**2))
+
+
+def breusch_pagan(
+    residuals: np.ndarray, exog: np.ndarray
+) -> Tuple[float, float, float, float]:
+    """Breusch-Pagan/White heteroscedasticity test.
+
+    Parameters
+    ----------
+    residuals:
+        1-D array of model residuals.
+    exog:
+        1-D or 2-D array of explanatory variables used in the regression
+        (excluding the intercept). A column of ones is added automatically.
+
+    Returns
+    -------
+    Tuple[float, float, float, float]
+        ``(lm_stat, lm_pvalue, f_stat, f_pvalue)``.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    exog = np.asarray(exog, dtype=float)
+
+    if exog.ndim == 1:
+        exog = exog[:, np.newaxis]
+
+    n = residuals.shape[0]
+    x = np.column_stack([np.ones(n), exog])
+    y = residuals**2
+
+    params, *_ = np.linalg.lstsq(x, y, rcond=None)
+    y_hat = x @ params
+    sse = np.sum((y - y_hat) ** 2)
+    tss = np.sum((y - y.mean()) ** 2)
+    r2 = 1.0 - sse / tss
+
+    k = x.shape[1]
+    lm_stat = n * r2
+    lm_pvalue = stats.chi2.sf(lm_stat, k - 1)
+    f_stat = (n - k) * r2 / ((k - 1) * (1.0 - r2))
+    f_pvalue = stats.f.sf(f_stat, k - 1, n - k)
+    return float(lm_stat), float(lm_pvalue), float(f_stat), float(f_pvalue)
+
+
+def jarque_bera(residuals: np.ndarray) -> Tuple[float, float]:
+    """Jarque-Bera normality test for residuals.
+
+    Parameters
+    ----------
+    residuals:
+        1-D array of residuals.
+
+    Returns
+    -------
+    Tuple[float, float]
+        ``(jb_stat, jb_pvalue)``.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    n = residuals.size
+    mean = residuals.mean()
+    std = residuals.std(ddof=1)
+    if std == 0:
+        return float("nan"), float("nan")
+    skew = np.mean(((residuals - mean) / std) ** 3)
+    kurt = np.mean(((residuals - mean) / std) ** 4)
+    jb_stat = n / 6.0 * (skew**2 + 0.25 * (kurt - 3) ** 2)
+    jb_pvalue = stats.chi2.sf(jb_stat, 2)
+    return float(jb_stat), float(jb_pvalue)
 
 
 if __name__ == "__main__":
