@@ -123,5 +123,48 @@ class PlotMediaCoefLognormalTest(parameterized.TestCase):
             diagnostics.plot_media_coef_lognormal(model, channel_idx=5)
 
 
+class DiagnosticMetricsTest(absltest.TestCase):
+
+    def test_durbin_watson(self):
+        residuals = np.array([0.5, 0.1, -0.3, 0.2])
+        expected = np.sum(np.diff(residuals) ** 2) / np.sum(residuals ** 2)
+        self.assertAlmostEqual(diagnostics.durbin_watson(residuals), expected)
+
+    def test_jarque_bera(self):
+        residuals = np.array([0.5, 0.1, -0.3, 0.2])
+        n = residuals.size
+        mean = residuals.mean()
+        std = residuals.std(ddof=1)
+        skew = np.mean(((residuals - mean) / std) ** 3)
+        kurt = np.mean(((residuals - mean) / std) ** 4)
+        jb_stat = n / 6.0 * (skew ** 2 + 0.25 * (kurt - 3) ** 2)
+        jb_p = diagnostics.stats.chi2.sf(jb_stat, 2)
+        res_stat, res_p = diagnostics.jarque_bera(residuals)
+        self.assertAlmostEqual(res_stat, jb_stat)
+        self.assertAlmostEqual(res_p, jb_p)
+
+    def test_breusch_pagan(self):
+        residuals = np.array([1.0, -1.0, 0.5, 0.5, -0.5])
+        exog = np.arange(1, 6)
+        x = np.column_stack([np.ones_like(exog), exog])
+        y = residuals ** 2
+        params, *_ = np.linalg.lstsq(x, y, rcond=None)
+        y_hat = x @ params
+        sse = np.sum((y - y_hat) ** 2)
+        tss = np.sum((y - y.mean()) ** 2)
+        r2 = 1.0 - sse / tss
+        n = residuals.size
+        k = x.shape[1]
+        lm = n * r2
+        lm_p = diagnostics.stats.chi2.sf(lm, k - 1)
+        f = (n - k) * r2 / ((k - 1) * (1.0 - r2))
+        f_p = diagnostics.stats.f.sf(f, k - 1, n - k)
+        res = diagnostics.breusch_pagan(residuals, exog)
+        self.assertAlmostEqual(res[0], lm)
+        self.assertAlmostEqual(res[1], lm_p)
+        self.assertAlmostEqual(res[2], f)
+        self.assertAlmostEqual(res[3], f_p)
+
+
 if __name__ == "__main__":
     absltest.main()
