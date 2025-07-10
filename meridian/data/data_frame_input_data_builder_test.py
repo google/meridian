@@ -781,7 +781,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
       expected_da,
   ):
     builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-        kpi_type=constants.NON_REVENUE
+        kpi_type=constants.NON_REVENUE,
+        default_media_time_column="media_time",
     )
     setter(builder, df)
     if isinstance(expected_da, list):
@@ -898,7 +899,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
       expected_da,
   ):
     builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-        kpi_type=constants.NON_REVENUE
+        kpi_type=constants.NON_REVENUE,
+        default_media_time_column="media_time",
     )
     original_df = df.copy()
     setter(builder, df)
@@ -1150,7 +1152,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     ):
       setter(
           data_frame_input_data_builder.DataFrameInputDataBuilder(
-              kpi_type=constants.NON_REVENUE
+              kpi_type=constants.NON_REVENUE,
+              default_media_time_column="media_time",
           ),
           df,
       )
@@ -1266,7 +1269,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
   )
   def test_with_missing_geo_column(self, df, setter, getter, expected_da):
     builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-        kpi_type=constants.NON_REVENUE
+        kpi_type=constants.NON_REVENUE,
+        default_media_time_column="media_time",
     )
     setter(builder, df)
     if isinstance(expected_da, list):
@@ -1473,7 +1477,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     ):
       setter(
           data_frame_input_data_builder.DataFrameInputDataBuilder(
-              kpi_type=constants.NON_REVENUE
+              kpi_type=constants.NON_REVENUE,
+              default_media_time_column="media_time",
           ),
           df,
       )
@@ -1551,7 +1556,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     ):
       setter(
           data_frame_input_data_builder.DataFrameInputDataBuilder(
-              kpi_type=constants.NON_REVENUE
+              kpi_type=constants.NON_REVENUE,
+              default_media_time_column="media_time",
           ),
           df,
       )
@@ -1629,7 +1635,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     ):
       setter(
           data_frame_input_data_builder.DataFrameInputDataBuilder(
-              kpi_type=constants.NON_REVENUE
+              kpi_type=constants.NON_REVENUE,
+              default_media_time_column="media_time",
           ),
           df,
       )
@@ -1684,7 +1691,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
         "Given channel columns must have same length as channel names.",
     ):
       builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-          kpi_type=constants.REVENUE
+          kpi_type=constants.REVENUE,
+          default_media_time_column="media_time",
       )
       setter(builder, df)
 
@@ -1738,7 +1746,8 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
         "Channel names must be unique.",
     ):
       builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-          kpi_type=constants.REVENUE
+          kpi_type=constants.REVENUE,
+          default_media_time_column="media_time",
       )
       setter(builder, df)
 
@@ -2111,6 +2120,226 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     self.assertIsNone(builder.reach)
     self.assertIsNone(builder.frequency)
     self.assertIsNone(builder.rf_spend)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default_geo_column",
+          property_name="default_geo_column",
+          expected_value=constants.GEO,
+      ),
+      dict(
+          testcase_name="default_time_column",
+          property_name="default_time_column",
+          expected_value=constants.TIME,
+      ),
+      dict(
+          testcase_name="default_media_time_column",
+          property_name="default_media_time_column",
+          expected_value=constants.TIME,
+      ),
+      dict(
+          testcase_name="default_population_column",
+          property_name="default_population_column",
+          expected_value=constants.POPULATION,
+      ),
+      dict(
+          testcase_name="default_kpi_column",
+          property_name="default_kpi_column",
+          expected_value=constants.KPI,
+      ),
+      dict(
+          testcase_name="default_revenue_per_kpi_column",
+          property_name="default_revenue_per_kpi_column",
+          expected_value=constants.REVENUE_PER_KPI,
+      ),
+      dict(
+          testcase_name="override_default_geo_column",
+          property_name="default_geo_column",
+          expected_value="my_geo",
+          constructor_kwargs={"default_geo_column": "my_geo"},
+      ),
+      dict(
+          testcase_name="override_default_time_column",
+          property_name="default_time_column",
+          expected_value="my_time",
+          constructor_kwargs={"default_time_column": "my_time"},
+      ),
+      dict(
+          testcase_name="override_default_media_time_column",
+          property_name="default_media_time_column",
+          expected_value="my_media_time",
+          constructor_kwargs={"default_media_time_column": "my_media_time"},
+      ),
+      dict(
+          testcase_name="override_default_population_column",
+          property_name="default_population_column",
+          expected_value="my_population",
+          constructor_kwargs={"default_population_column": "my_population"},
+      ),
+      dict(
+          testcase_name="override_default_kpi_column",
+          property_name="default_kpi_column",
+          expected_value="my_kpi",
+          constructor_kwargs={"default_kpi_column": "my_kpi"},
+      ),
+      dict(
+          testcase_name="override_default_revenue_per_kpi_column",
+          property_name="default_revenue_per_kpi_column",
+          expected_value="my_revenue_per_kpi",
+          constructor_kwargs={
+              "default_revenue_per_kpi_column": "my_revenue_per_kpi"
+          },
+      ),
+  )
+  def test_default_column_names(
+      self, property_name, expected_value, constructor_kwargs=None
+  ):
+    constructor_kwargs = constructor_kwargs or {}
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI, **constructor_kwargs
+    )
+    self.assertEqual(getattr(builder, property_name), expected_value)
+
+  def test_with_kpi_custom_columns(self):
+    data = self.BASIC_KPI_DF.rename(
+        columns={"kpi": "my_kpi", "time": "my_time", "geo": "my_geo"}
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_kpi(data, "my_kpi", time_col="my_time", geo_col="my_geo")
+    self.assertIsNotNone(builder.kpi)
+
+  def test_with_controls_custom_columns(self):
+    data = self.BASIC_CONTROLS_DF.rename(
+        columns={"time": "my_time", "geo": "my_geo"}
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_controls(data, ["control_1"], time_col="my_time", geo_col="my_geo")
+    self.assertIsNotNone(builder.controls)
+
+  def test_with_population_custom_columns(self):
+    data = self.BASIC_POPULATION_DF.rename(
+        columns={"population": "my_population", "geo": "my_geo"}
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_population(data, population_col="my_population", geo_col="my_geo")
+    self.assertIsNotNone(builder.population)
+
+  def test_with_revenue_per_kpi_custom_columns(self):
+    data = self.BASIC_REVENUE_PER_KPI_DF.rename(
+        columns={
+            "revenue_per_kpi": "my_revenue_per_kpi",
+            "geo": "my_geo",
+            "time": "my_time",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_revenue_per_kpi(
+        data,
+        revenue_per_kpi_col="my_revenue_per_kpi",
+        geo_col="my_geo",
+        time_col="my_time",
+    )
+    self.assertIsNotNone(builder.revenue_per_kpi)
+
+  def test_with_media_custom_columns(self):
+    data = self.BASIC_MEDIA_DF.rename(
+        columns={
+            "media_time": "my_time",
+            "geo": "my_geo",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_media(
+        data,
+        ["media_1"],
+        ["media_spend_1"],
+        ["media_channel_1"],
+        time_col="my_time",
+        geo_col="my_geo",
+    )
+    self.assertIsNotNone(builder.media)
+    self.assertIsNotNone(builder.media_spend)
+
+  def test_with_reach_custom_columns(self):
+    data = self.BASIC_REACH_DF.rename(
+        columns={
+            "media_time": "my_time",
+            "geo": "my_geo",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_reach(
+        data,
+        ["reach_1"],
+        ["frequency_1"],
+        ["rf_spend_1"],
+        ["rf_channel_1"],
+        time_col="my_time",
+        geo_col="my_geo",
+    )
+    self.assertIsNotNone(builder.reach)
+    self.assertIsNotNone(builder.frequency)
+    self.assertIsNotNone(builder.rf_spend)
+
+  def test_with_organic_media_custom_columns(self):
+    data = self.BASIC_ORGANIC_MEDIA_DF.rename(
+        columns={
+            "media_time": "my_time",
+            "geo": "my_geo",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_organic_media(
+        data,
+        ["organic_media_1"],
+        media_time_col="my_time",
+        geo_col="my_geo",
+    )
+    self.assertIsNotNone(builder.organic_media)
+
+  def test_with_organic_reach_custom_columns(self):
+    data = self.BASIC_ORGANIC_REACH_DF.rename(
+        columns={
+            "media_time": "my_time",
+            "geo": "my_geo",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_organic_reach(
+        data,
+        ["organic_reach_1"],
+        ["organic_frequency_1"],
+        ["organic_rf_channel_1"],
+        media_time_col="my_time",
+        geo_col="my_geo",
+    )
+    self.assertIsNotNone(builder.organic_reach)
+    self.assertIsNotNone(builder.organic_frequency)
+
+  def test_with_non_media_treatments_custom_columns(self):
+    data = self.BASIC_NON_MEDIA_TREATMENTS_DF.rename(
+        columns={
+            "time": "my_time",
+            "geo": "my_geo",
+        }
+    )
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.KPI
+    ).with_non_media_treatments(
+        data,
+        ["non_media_channel_1"],
+        time_col="my_time",
+        geo_col="my_geo",
+    )
+    self.assertIsNotNone(builder.non_media_treatments)
 
 
 if __name__ == "__main__":

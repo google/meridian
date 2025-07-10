@@ -24,6 +24,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Remove `sigma_dims` from inference data coordinates.
+* Sets builder-wide default column names in `DataFrameInputDataBuilder`.
 
 ## [1.1.4] - 2025-06-30
 
