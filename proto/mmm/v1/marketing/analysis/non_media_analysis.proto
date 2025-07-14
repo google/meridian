@@ -1,0 +1,27 @@
+edition = "2023";
+
+package mmm.v1.marketing.analysis;
+
+import "mmm/v1/marketing/analysis/kpi_outcome.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// The analysis on non-media factor.
+// Next ID: 4
+message NonMediaAnalysis {
+  reserved 2;
+
+  // The name of the non-media factor. Required.
+  string non_media_name = 1;
+
+  // The marketing outcomes from this non-media factor. Required.
+  //
+  // The non-media outcome(s) calculated based on revenue and/or generic
+  // non-revenue KPI. One or more outcome values are set when revenue and/or
+  // generic non-revenue KPI outcome information is available.
+  //
+  // The spend-related fields herein won't be set as non-media factor doesn't
+  // have spend.
+  repeated KpiOutcome non_media_outcomes = 3;
+}
