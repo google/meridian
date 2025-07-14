@@ -30,31 +30,122 @@ __all__ = [
 class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
   """Builds `InputData` from DataFrames."""
 
+  def __init__(
+      self,
+      kpi_type: str,
+      default_geo_column: str = constants.GEO,
+      default_time_column: str = constants.TIME,
+      default_media_time_column: str = constants.TIME,
+      default_population_column: str = constants.POPULATION,
+      default_kpi_column: str = constants.KPI,
+      default_revenue_per_kpi_column: str = constants.REVENUE_PER_KPI,
+  ):
+    super().__init__(kpi_type)
+
+    self._default_geo_column = default_geo_column
+    self._default_time_column = default_time_column
+    self._default_media_time_column = default_media_time_column
+    self._default_population_column = default_population_column
+    self._default_kpi_column = default_kpi_column
+    self._default_revenue_per_kpi_column = default_revenue_per_kpi_column
+
+  @property
+  def default_geo_column(self) -> str:
+    """The default geo column name for this builder to use.
+
+    This column name is used when `geo_col` is not explicitly provided to a data
+    setter method.
+
+    By default, this is `"geo"`.
+    """
+    return self._default_geo_column
+
+  @property
+  def default_time_column(self) -> str:
+    """The default time column name for this builder to use.
+
+    This column name is used when `time_col` is not explicitly provided to a
+    data setter method.
+
+    By default, this is `"time"`.
+    """
+    return self._default_time_column
+
+  @property
+  def default_media_time_column(self) -> str:
+    """The default *media* time column name for this builder to use.
+
+    This column name is used when `media_time_col` is not explicitly provided to
+    a data setter method.
+
+    By default, this is also `"time"`, since most input dataframes are likely
+    to use the same time column for both their media execution and media spend
+    data.
+    """
+    return self._default_media_time_column
+
+  @property
+  def default_population_column(self) -> str:
+    """The default population column name for this builder to use.
+
+    This column name is used when `population_col` is not explicitly provided to
+    a data setter method.
+
+    By default, this is `"population"`.
+    """
+    return self._default_population_column
+
+  @property
+  def default_kpi_column(self) -> str:
+    """The default kpi column name for this builder to use.
+
+    This column name is used when `kpi_col` is not explicitly provided to a data
+    setter method.
+
+    By default, this is `"kpi"`.
+    """
+    return self._default_kpi_column
+
+  @property
+  def default_revenue_per_kpi_column(self) -> str:
+    """The default revenue per kpi column name for this builder to use.
+
+    This column name is used when `revenue_per_kpi_col` is not explicitly
+    provided to a data setter method.
+
+    By default, this is `"revenue_per_kpi"`.
+    """
+    return self._default_revenue_per_kpi_column
+
   def with_kpi(
       self,
       df: pd.DataFrame,
-      kpi_col: str = constants.KPI,
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      kpi_col: str | None = None,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads KPI data from a DataFrame.
 
     Args:
       df: The DataFrame to read the KPI data from.
       kpi_col: The name of the column containing the KPI values. If not
-        provided, the default name is `kpi`.
+        provided, `self.default_kpi_column` is used.
       time_col: The name of the column containing the time coordinates. If not
-        provided, the default name is `time`.
+        provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
       The `DataFrameInputDataBuilder` with the added KPI data.
     """
     kpi_df = df.copy()
+
+    kpi_col = kpi_col or self.default_kpi_column
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(kpi_df, [kpi_col, time_col], [geo_col])
@@ -73,8 +164,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       self,
       df: pd.DataFrame,
       control_cols: list[str],
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads controls data from a DataFrame.
 
@@ -82,11 +173,11 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       df: The DataFrame to read the controls data from.
       control_cols: The names of the columns containing the controls values.
       time_col: The name of the column containing the time coordinates. If not
-        provided, the default name is `time`.
+        provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -97,6 +188,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       return self
 
     controls_df = df.copy()
+
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(
@@ -120,25 +214,28 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
   def with_population(
       self,
       df: pd.DataFrame,
-      population_col: str = constants.POPULATION,
-      geo_col: str = constants.GEO,
+      population_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads population data from a DataFrame.
 
     Args:
       df: The DataFrame to read the population data from.
       population_col: The name of the column containing the population values.
-        If not provided, the default name is `population`.
+        If not provided, `self.default_population_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
       The `DataFrameInputDataBuilder` with the added population data.
     """
     population_df = df.copy()
+
+    population_col = population_col or self.default_population_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(population_df, [population_col], [geo_col])
@@ -161,28 +258,34 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
   def with_revenue_per_kpi(
       self,
       df: pd.DataFrame,
-      revenue_per_kpi_col: str = constants.REVENUE_PER_KPI,
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      revenue_per_kpi_col: str | None = None,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads revenue per KPI data from a DataFrame.
 
     Args:
       df: The DataFrame to read the revenue per KPI data from.
       revenue_per_kpi_col: The name of the column containing the revenue per KPI
-        values. If not provided, the default name is `revenue_per_kpi`.
+        values. If not provided, `self.default_revenue_per_kpi_column` is used.
       time_col: The name of the column containing the time coordinates. If not
-        provided, the default name is `time`.
+        provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
       The `DataFrameInputDataBuilder` with the added revenue per KPI data.
     """
     revenue_per_kpi_df = df.copy()
+
+    revenue_per_kpi_col = (
+        revenue_per_kpi_col or self.default_revenue_per_kpi_column
+    )
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(
@@ -213,8 +316,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       media_cols: list[str],
       media_spend_cols: list[str],
       media_channels: list[str],
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads media and media spend data from a DataFrame.
 
@@ -227,14 +330,15 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         `media_cols` and `media_spend_cols` in length. These are also index
         mapped.
       time_col: The name of the column containing the time coordinates for media
-        spend and media time coordinates for media. If not provided, the default
-        name is `time`. Media time coordinates will be shorter than time
+        spend and media time coordinates for media. If not provided,
+        `self.default_time_column` is used. Media time coordinates are inferred
+        from the same `time_col` and are potentially shorter than time
         coordinates if media spend values are missing (NaN) for some t in
         `time`. Media time must be equal or a subset of time.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -247,6 +351,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       )
 
     media_df = df.copy()
+
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     # For a media dataframe, media and media_spend columns may be the same
@@ -290,8 +397,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       frequency_cols: list[str],
       rf_spend_cols: list[str],
       rf_channels: list[str],
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads reach, frequency, and rf spend data from a DataFrame.
 
@@ -305,13 +412,14 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         also index mapped.
       time_col: The name of the column containing the time coordinates for rf
         spend and media time coordinates for reach and frequency. If not
-        provided, the default name is `time`. Media time coordinates will be
-        shorter than time coordinates if media spend values are missing (NaN)
-        for some t in `time`. Media time must be equal or a subset of time.
+        provided, `self.default_time_column` is used. Media time coordinates are
+        inferred from the same `time_col` and are potentially shorter than time
+        coordinates if media spend values are missing (NaN) for some t in
+        `time`. Media time must be equal or a subset of time.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -330,6 +438,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       )
 
     reach_df = df.copy()
+
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(
@@ -389,8 +500,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       df: pd.DataFrame,
       organic_media_cols: list[str],
       organic_media_channels: list[str] | None = None,
-      media_time_col: str = constants.MEDIA_TIME,
-      geo_col: str = constants.GEO,
+      media_time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads organic media data from a DataFrame.
 
@@ -403,11 +514,11 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         provided, must match `organic_media_cols` in length. This is index
         mapped.
       media_time_col: The name of the column containing the media time
-        coordinates. If not provided, the default name is `media_time`.
+        coordinates. If not provided, `self.default_media_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -417,6 +528,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       raise ValueError('`organic_media_cols` must not be empty.')
 
     organic_media_df = df.copy()
+
+    media_time_col = media_time_col or self.default_media_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     if not organic_media_channels:
@@ -456,8 +570,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       organic_reach_cols: list[str],
       organic_frequency_cols: list[str],
       organic_rf_channels: list[str],
-      media_time_col: str = constants.MEDIA_TIME,
-      geo_col: str = constants.GEO,
+      media_time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads organic reach and organic frequency data from a DataFrame.
 
@@ -471,11 +585,11 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         match `organic_reach_cols` and `organic_frequency_cols` in length. These
         are also index mapped.
       media_time_col: The name of the column containing the media time
-        coordinates. If not provided, the default name is `media_time`.
+        coordinates. If not provided, `self.default_media_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -493,6 +607,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       )
 
     organic_reach_frequency_df = df.copy()
+
+    media_time_col = media_time_col or self.default_media_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(
@@ -540,8 +657,8 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       self,
       df: pd.DataFrame,
       non_media_treatment_cols: list[str],
-      time_col: str = constants.TIME,
-      geo_col: str = constants.GEO,
+      time_col: str | None = None,
+      geo_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads non-media treatments data from a DataFrame.
 
@@ -550,11 +667,11 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       non_media_treatment_cols: The names of the columns containing the
         non-media treatments values.
       time_col: The name of the column containing the time coordinates. If not
-        provided, the default name is `time`.
+        provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
-        If not provided, the default name is `geo`. If the DataFrame provided
-        has no geo column, a national model data is assumed and a geo dimension
-        will be created internally with a single coordinate value
+        If not provided, `self.default_geo_column` is used. If the DataFrame
+        provided has no geo column, a national model data is assumed and a geo
+        dimension will be created internally with a single coordinate value
         `national_geo`.
 
     Returns:
@@ -568,6 +685,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       return self
 
     non_media_treatments_df = df.copy()
+
+    time_col = time_col or self.default_time_column
+    geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     self._validate_cols(

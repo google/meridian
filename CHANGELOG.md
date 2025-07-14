@@ -23,7 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-* Remove `sigma_dims` from inference data coordinates.
+## [1.1.5] - 2025-07-10
+
+* Remove `sigma_dims` pseudo-dimension from inference data.
+* Sets builder-wide default column names in `DataFrameInputDataBuilder`.
 
 ## [1.1.4] - 2025-06-30
 
@@ -338,4 +341,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.2]: https://github.com/google/meridian/releases/tag/v1.1.2
 [1.1.3]: https://github.com/google/meridian/releases/tag/v1.1.3
 [1.1.4]: https://github.com/google/meridian/releases/tag/v1.1.4
-[Unreleased]: https://github.com/google/meridian/compare/v1.1.4...HEAD
+[1.1.5]: https://github.com/google/meridian/releases/tag/v1.1.5
+[Unreleased]: https://github.com/google/meridian/compare/v1.1.5...HEAD
