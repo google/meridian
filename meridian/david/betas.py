@@ -1,0 +1,112 @@
+"""Utilities for exploring beta posteriors from a Meridian model.
+
+This module provides helper functions to extract posterior draws for
+parameters of a :class:`meridian.model.Meridian` model and to fit a simple
+probability distribution matching the type of the corresponding prior.
+It also exposes a plotting helper which returns an Altair chart so that
+posteriors can easily be visualised.
+
+These functions only operate on a fitted model. Make sure you call
+``Meridian.sample_posterior`` beforehand.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+import pandas as pd
+import numpy as np
+import altair as alt
+import tensorflow_probability as tfp
+
+from meridian import constants as c
+from meridian.model import model as meridian_model
+
+
+tfpd = tfp.distributions
+
+
+def _check_fitted(mmm: meridian_model.Meridian) -> None:
+  if not hasattr(mmm.inference_data, c.POSTERIOR):
+    raise meridian_model.NotFittedModelError(
+        "sample_posterior() must be run before using this utility")
+
+
+def get_posterior_samples(
+    mmm: meridian_model.Meridian, parameter: str) -> np.ndarray:
+  """Returns flattened posterior draws for ``parameter``."""
+  _check_fitted(mmm)
+  if parameter not in mmm.inference_data.posterior.data_vars:
+    raise ValueError(f"Unknown parameter: {parameter}")
+  return mmm.inference_data.posterior[parameter].values.reshape(-1)
+
+
+def estimate_distribution(samples: np.ndarray,
+                          prior_dist: tfpd.Distribution) -> Mapping[str, Any]:
+  """Estimates distribution parameters for the posterior samples.
+
+  This fits parameters of the same distribution class as ``prior_dist`` using
+  simple moment matching. Returned values depend on the distribution type.
+  """
+  dist_type = type(prior_dist)
+
+  if dist_type is tfpd.Normal:
+    loc = float(np.mean(samples))
+    scale = float(np.std(samples, ddof=1))
+    return {"distribution": "Normal", "loc": loc, "scale": scale}
+  if dist_type is tfpd.LogNormal:
+    logs = np.log(samples)
+    loc = float(np.mean(logs))
+    scale = float(np.std(logs, ddof=1))
+    return {"distribution": "LogNormal", "loc": loc, "scale": scale}
+  if dist_type is tfpd.HalfNormal:
+    scale = float(np.sqrt(np.mean(samples**2)))
+    return {"distribution": "HalfNormal", "scale": scale}
+  if dist_type is tfpd.Uniform:
+    low = float(samples.min())
+    high = float(samples.max())
+    return {"distribution": "Uniform", "low": low, "high": high}
+  if dist_type is tfpd.Beta:
+    mean = np.mean(samples)
+    var = np.var(samples, ddof=1)
+    alpha = mean * (mean * (1 - mean) / var - 1)
+    beta = (1 - mean) * (mean * (1 - mean) / var - 1)
+    return {
+        "distribution": "Beta",
+        "concentration1": float(alpha),
+        "concentration0": float(beta),
+    }
+  if dist_type is tfpd.Deterministic:
+    return {"distribution": "Deterministic", "loc": float(samples.mean())}
+
+  # Generic fallback.
+  return {
+      "distribution": dist_type.__name__,
+      "mean": float(np.mean(samples)),
+      "stddev": float(np.std(samples, ddof=1)),
+  }
+
+
+def fit_parameter_distribution(
+    mmm: meridian_model.Meridian, parameter: str) -> Mapping[str, Any]:
+  """Returns estimated distribution parameters for ``parameter``."""
+  prior = getattr(mmm.prior_broadcast, parameter, None)
+  if prior is None:
+    raise ValueError(f"No prior information found for parameter: {parameter}")
+  samples = get_posterior_samples(mmm, parameter)
+  return estimate_distribution(samples, prior)
+
+
+def plot_posterior(mmm: meridian_model.Meridian, parameter: str) -> alt.Chart:
+  """Creates an Altair histogram for the posterior of ``parameter``."""
+  samples = get_posterior_samples(mmm, parameter)
+  df = pd.DataFrame({parameter: samples})
+  chart = (
+      alt.Chart(df)
+      .mark_bar(opacity=0.7)
+      .encode(x=alt.X(f"{parameter}:Q", bin=True), y="count()")
+      .properties(title=f"Posterior of {parameter}")
+  )
+  return chart
+
