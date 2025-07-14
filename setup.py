@@ -19,7 +19,6 @@ import sass
 from setuptools import Command, setup
 from setuptools.command.build import build
 
-
 class ScssCompileCommand(Command):
   _templates_path = 'meridian/analysis/templates'
   _scss_output_mapping = {
@@ -65,4 +64,6 @@ class CustomBuild(build):
 
 
 if __name__ == '__main__':
-  setup(cmdclass={'build': CustomBuild, 'compile_scss': ScssCompileCommand})
+  setup(
+      cmdclass={'build': CustomBuild, 'compile_scss': ScssCompileCommand},
+  )
