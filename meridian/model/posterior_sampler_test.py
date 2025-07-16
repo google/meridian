@@ -1602,6 +1602,43 @@ class PosteriorMCMCSamplerTest(
       sanitized_seed1 = kwargs1["seed"]
       self.assertAllEqual(sanitized_seed1, [x + 1 for x in sanitized_seed0])
 
+  def test_sample_posterior_seed_int(self):
+    n_chains_list = [self._N_CHAINS, self._N_CHAINS]
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(
+            posterior_sampler,
+            "_xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=n_chains_list,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+    calls = mock_sample_posterior.call_args_list
+    self.assertLen(calls, len(n_chains_list))
+
+    _, kwargs0 = calls[0]
+    _, kwargs1 = calls[1]
+
+    self.assertAllEqual(kwargs0["seed"], [123, 123])
+    self.assertAllEqual(kwargs1["seed"], [124, 124])
+
 
 if __name__ == "__main__":
   absltest.main()

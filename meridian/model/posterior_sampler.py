@@ -528,7 +528,7 @@ class PosteriorMCMCSampler:
         be a positive integer. For more information, see `tf.while_loop`.
       seed: An `int32[2]` Tensor or a Python list or tuple of 2 `int`s, which
         will be treated as stateless seeds; or a Python `int` or `None`, which
-        will be treated as stateful seeds. See [tfp.random.sanitize_seed]
+        will be converted into a stateless seed. See [tfp.random.sanitize_seed]
         (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
@@ -547,6 +547,8 @@ class PosteriorMCMCSampler:
           " [tfp.random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)"
           " for details."
       )
+    if seed is not None and isinstance(seed, int):
+      seed = (seed, seed)
     seed = tfp.random.sanitize_seed(seed) if seed is not None else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
