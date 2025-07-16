@@ -24,8 +24,8 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 
-class TestAdstock(parameterized.TestCase):
-  """Tests for adstock()."""
+class TestGeometricAdstock(parameterized.TestCase):
+  """Tests for adstock() with geometric decay."""
 
   # Data dimensions for default parameter values.
   _N_CHAINS = 2
@@ -49,28 +49,37 @@ class TestAdstock(parameterized.TestCase):
           alpha=self._ALPHA,
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES + 1,
+          decay_func="geometric",
       ).forward(self._MEDIA)
     with self.assertRaisesRegex(ValueError, "`media` batch dims do not"):
       adstock_hill.AdstockTransformer(
           alpha=self._ALPHA[1:, ...],
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES,
+          decay_func="geometric",
       ).forward(self._MEDIA)
     with self.assertRaisesRegex(ValueError, "`media` contains a different"):
       adstock_hill.AdstockTransformer(
           alpha=self._ALPHA,
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES,
+          decay_func="geometric",
       ).forward(self._MEDIA[..., 1:])
     with self.assertRaisesRegex(
         ValueError, "`n_times_output` must be positive"
     ):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA, max_lag=self._MAX_LAG, n_times_output=0
+          alpha=self._ALPHA,
+          max_lag=self._MAX_LAG,
+          n_times_output=0,
+          decay_func="geometric",
       ).forward(self._MEDIA)
     with self.assertRaisesRegex(ValueError, "`max_lag` must be non-negative"):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA, max_lag=-1, n_times_output=self._N_MEDIA_TIMES
+          alpha=self._ALPHA,
+          max_lag=-1,
+          n_times_output=self._N_MEDIA_TIMES,
+          decay_func="geometric",
       ).forward(self._MEDIA)
 
   @parameterized.named_parameters(
@@ -108,15 +117,13 @@ class TestAdstock(parameterized.TestCase):
   def test_basic_output(self, media, alpha, n_time_output):
     """Basic test for valid output."""
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha, self._MAX_LAG, n_time_output
-        ).forward(media)
+        alpha, self._MAX_LAG, n_time_output, decay_func="geometric"
+    ).forward(media)
     output_shape = tf.TensorShape(
         alpha.shape[:-1] + media.shape[-3] + [n_time_output] + alpha.shape[-1]
     )
     msg = f"{adstock_hill.AdstockTransformer.__name__}() failed."
-    tf.debugging.assert_equal(
-        media_transformed.shape, output_shape, message=msg
-    )
+    tf.debugging.assert_equal(media_transformed.shape, output_shape, message=msg)
     tf.debugging.assert_all_finite(media_transformed, message=msg)
     tf.debugging.assert_non_negative(media_transformed, message=msg)
 
@@ -125,6 +132,7 @@ class TestAdstock(parameterized.TestCase):
         alpha=self._ALPHA,
         max_lag=0,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_func="geometric",
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
@@ -133,6 +141,7 @@ class TestAdstock(parameterized.TestCase):
         alpha=tf.zeros_like(self._ALPHA),
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_func="geometric",
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
@@ -141,6 +150,7 @@ class TestAdstock(parameterized.TestCase):
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_func="geometric",
     ).forward(
         tf.zeros_like(self._MEDIA),
     )
@@ -151,6 +161,7 @@ class TestAdstock(parameterized.TestCase):
         alpha=0.99999 * tf.ones_like(self._ALPHA),
         max_lag=self._N_MEDIA_TIMES - 1,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_func="geometric",
     ).forward(self._MEDIA)
     tf.debugging.assert_near(
         media_transformed,
@@ -165,6 +176,7 @@ class TestAdstock(parameterized.TestCase):
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_func="geometric",
     ).forward(tf.ones_like(self._MEDIA))
     # n_nonzero_terms is a tensor with length containing the number of nonzero
     # terms in the adstock for each output time period.
@@ -194,6 +206,70 @@ class TestAdstock(parameterized.TestCase):
         multiples=[1, 1, self._N_GEOS, 1, 1]
     )
     tf.debugging.assert_near(media_transformed, result)
+
+
+class TestBinomialAdstock(parameterized.TestCase):
+  """Tests for adstock() with binomial decay."""
+
+  # Data dimensions for default parameter values.
+  _N_CHAINS = 2
+  _N_DRAWS = 5
+  _N_GEOS = 4
+  _N_MEDIA_TIMES = 10
+  _N_MEDIA_CHANNELS = 3
+  _MAX_LAG = 5
+
+  # Generate random data based on dimensions specified above.
+  tf.random.set_seed(1)
+  _MEDIA = tfd.HalfNormal(1).sample(
+      [_N_CHAINS, _N_DRAWS, _N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS]
+  )
+  _ALPHA = tfd.Uniform(0, 1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="basic",
+          media=_MEDIA,
+          alpha=_ALPHA,
+          n_time_output=_N_MEDIA_TIMES,
+      ),
+      dict(
+          testcase_name="no media batch dims",
+          media=_MEDIA[0, 0, ...],
+          alpha=_ALPHA,
+          n_time_output=_N_MEDIA_TIMES,
+      ),
+      dict(
+          testcase_name="n_time_output < n_time",
+          media=_MEDIA,
+          alpha=_ALPHA,
+          n_time_output=_N_MEDIA_TIMES - 1,
+      ),
+      dict(
+          testcase_name="max_lag > n_media_times",
+          media=_MEDIA[..., :(_MAX_LAG - 1)],
+          alpha=_ALPHA,
+          n_time_output=_N_MEDIA_TIMES,
+      ),
+      dict(
+          testcase_name="excess lagged media history available",
+          media=_MEDIA,
+          alpha=_ALPHA,
+          n_time_output=_N_MEDIA_TIMES - _MAX_LAG - 1,
+      ),
+  )
+  def test_basic_output(self, media, alpha, n_time_output):
+    """Basic test for valid output."""
+    media_transformed = adstock_hill.AdstockTransformer(
+        alpha, self._MAX_LAG, n_time_output, decay_func="binomial"
+    ).forward(media)
+    output_shape = tf.TensorShape(
+        alpha.shape[:-1] + media.shape[-3] + [n_time_output] + alpha.shape[-1]
+    )
+    msg = f"{adstock_hill.AdstockTransformer.__name__}() failed."
+    tf.debugging.assert_equal(media_transformed.shape, output_shape, message=msg)
+    tf.debugging.assert_all_finite(media_transformed, message=msg)
+    tf.debugging.assert_non_negative(media_transformed, message=msg)
 
 
 class TestHill(parameterized.TestCase):
