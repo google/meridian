@@ -110,3 +110,66 @@ def plot_posterior(mmm: meridian_model.Meridian, parameter: str) -> alt.Chart:
   )
   return chart
 
+
+def get_posterior_coef_samples(
+    mmm: meridian_model.Meridian, parameter: str, index: int
+) -> np.ndarray:
+  """Returns flattened draws for one coefficient of ``parameter``.
+
+  Parameters
+  ----------
+  mmm:
+    Fitted :class:`Meridian` model instance.
+  parameter:
+    Name of the parameter that contains multiple coefficients.
+  index:
+    Index of the coefficient to inspect. The function assumes the
+    coefficient dimension is the last axis of the parameter array.
+
+  Returns
+  -------
+  numpy.ndarray
+    1-D array of posterior draws for the requested coefficient.
+  """
+  _check_fitted(mmm)
+  if parameter not in mmm.inference_data.posterior.data_vars:
+    raise ValueError(f"Unknown parameter: {parameter}")
+
+  values = mmm.inference_data.posterior[parameter].values
+  if values.ndim == 0:
+    raise IndexError("Parameter has no coefficient dimension")
+  if index < 0 or index >= values.shape[-1]:
+    raise IndexError("index out of bounds for coefficient dimension")
+  return values[..., index].reshape(-1)
+
+
+def fit_parameter_coef_distribution(
+    mmm: meridian_model.Meridian, parameter: str, index: int
+) -> Mapping[str, Any]:
+  """Estimates distribution parameters for one coefficient of ``parameter``."""
+  prior = getattr(mmm.prior_broadcast, parameter, None)
+  if prior is None:
+    raise ValueError(f"No prior information found for parameter: {parameter}")
+  try:
+    prior_slice = prior[index]
+  except Exception:  # pragma: no cover - indexing may fail for scalar priors
+    prior_slice = prior
+  samples = get_posterior_coef_samples(mmm, parameter, index)
+  return estimate_distribution(samples, prior_slice)
+
+
+def plot_posterior_coef(
+    mmm: meridian_model.Meridian, parameter: str, index: int
+) -> alt.Chart:
+  """Altair histogram for one coefficient of ``parameter``."""
+  samples = get_posterior_coef_samples(mmm, parameter, index)
+  col = f"{parameter}[{index}]"
+  df = pd.DataFrame({col: samples})
+  chart = (
+      alt.Chart(df)
+      .mark_bar(opacity=0.7)
+      .encode(x=alt.X(f"{col}:Q", bin=True), y="count()")
+      .properties(title=f"Posterior of {col}")
+  )
+  return chart
+
