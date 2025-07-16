@@ -94,7 +94,7 @@ class TestAdstock(parameterized.TestCase):
       ),
       dict(
           testcase_name="max_lag > n_media_times",
-          media=_MEDIA[..., :(_MAX_LAG - 1)],
+          media=_MEDIA[..., : (_MAX_LAG - 1)],
           alpha=_ALPHA,
           n_time_output=_N_MEDIA_TIMES,
       ),
@@ -109,7 +109,7 @@ class TestAdstock(parameterized.TestCase):
     """Basic test for valid output."""
     media_transformed = adstock_hill.AdstockTransformer(
         alpha, self._MAX_LAG, n_time_output
-        ).forward(media)
+    ).forward(media)
     output_shape = tf.TensorShape(
         alpha.shape[:-1] + media.shape[-3] + [n_time_output] + alpha.shape[-1]
     )
@@ -169,8 +169,7 @@ class TestAdstock(parameterized.TestCase):
     # n_nonzero_terms is a tensor with length containing the number of nonzero
     # terms in the adstock for each output time period.
     n_nonzero_terms = np.minimum(
-        np.arange(1, self._N_MEDIA_TIMES + 1),
-        self._MAX_LAG + 1
+        np.arange(1, self._N_MEDIA_TIMES + 1), self._MAX_LAG + 1
     )
     # For each output time period and alpha value, the adstock is given by
     # adstock = series1 / series2, where:
@@ -190,10 +189,28 @@ class TestAdstock(parameterized.TestCase):
     result = term1 / term2[:, :, None, :]
     # Broadcast `result` across geos.
     result = tf.tile(
-        result[:, :, None, :, :],
-        multiples=[1, 1, self._N_GEOS, 1, 1]
+        result[:, :, None, :, :], multiples=[1, 1, self._N_GEOS, 1, 1]
     )
     tf.debugging.assert_near(media_transformed, result)
+
+  def test_weights(self):
+    """Test for valid adstock weights."""
+    alpha = tf.constant([0.1, 0.5, 0.9])
+    window_size = 5
+    media = tf.ones([1, window_size, 3])
+    adstock = adstock_hill.AdstockTransformer(
+        alpha=alpha,
+        max_lag=window_size - 1,
+        n_times_output=1,
+    ).forward(media)
+    weights = tf.constant([
+        [0.0001, 0.001, 0.01, 0.1, 1.0],
+        [0.0625, 0.125, 0.25, 0.5, 1.0],
+        [0.6561, 0.729, 0.81, 0.9, 1.0],
+    ])
+    weights /= tf.reduce_sum(weights, axis=-1, keepdims=True)
+    expected_adstock = tf.reduce_sum(weights, axis=-1)
+    tf.debugging.assert_near(tf.squeeze(adstock), expected_adstock)
 
 
 class TestHill(parameterized.TestCase):
