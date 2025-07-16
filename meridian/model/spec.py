@@ -202,6 +202,7 @@ class ModelSpec:
       `(n_non_media_channels,)` indicating the non-media variables for which the
       non-media value will be scaled by population. If `None`, then no non-media
       variables are scaled by population. Default: `None`.
+    adstock_decay_func: A string to specify the Adstock decay function.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -227,6 +228,7 @@ class ModelSpec:
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
+  adstock_decay_func: str = "geometric"
 
   def __post_init__(self):
     # Validate media_effects_dist.
