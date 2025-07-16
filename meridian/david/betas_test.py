@@ -229,5 +229,57 @@ class PlotPosteriorTest(absltest.TestCase):
     self.assertEqual(list(chart.data.columns), ['a'])
 
 
+class GetPosteriorCoefSamplesTest(absltest.TestCase):
+
+  def test_unknown_parameter_raises(self):
+    m = DummyMeridian({'a': [[[1.0]]]})
+    with self.assertRaises(ValueError):
+      betas.get_posterior_coef_samples(m, 'b', 0)
+
+  def test_not_fitted_raises(self):
+    m = DummyMeridian()
+    with self.assertRaises(meridian_model.NotFittedModelError):
+      betas.get_posterior_coef_samples(m, 'a', 0)
+
+  def test_index_out_of_bounds_raises(self):
+    m = DummyMeridian({'a': [[[1.0, 2.0]]]})
+    with self.assertRaises(IndexError):
+      betas.get_posterior_coef_samples(m, 'a', 5)
+
+  def test_returns_flattened_values(self):
+    m = DummyMeridian({'a': [[[1, 2], [3, 4]]]})
+    result = betas.get_posterior_coef_samples(m, 'a', 1)
+    np.testing.assert_array_equal(result, np.array([2, 4]))
+
+
+class FitParameterCoefDistributionTest(absltest.TestCase):
+
+  def test_unknown_prior_raises(self):
+    m = DummyMeridian({'a': [[[1.0]]]})
+    with self.assertRaises(ValueError):
+      betas.fit_parameter_coef_distribution(m, 'b', 0)
+
+  def test_estimates_from_prior_and_samples(self):
+    posterior = {'a': [[[1.0, 2.0], [3.0, 4.0]]]}
+    prior = {'a': tfpd.Normal(loc=0.0, scale=1.0)}
+    m = DummyMeridian(posterior, prior)
+    expected = betas.estimate_distribution(
+        np.array([2.0, 4.0]), prior['a']
+    )
+    result = betas.fit_parameter_coef_distribution(m, 'a', 1)
+    self.assertEqual(result, expected)
+
+
+class PlotPosteriorCoefTest(absltest.TestCase):
+
+  def test_returns_chart(self):
+    posterior = {'a': [[[1.0, 2.0]]]}  # shape (1,1,2)
+    m = DummyMeridian(posterior)
+    chart = betas.plot_posterior_coef(m, 'a', 1)
+    self.assertIsInstance(chart, alt.Chart)
+    self.assertEqual(chart.properties_args.get('title'), 'Posterior of a[1]')
+    self.assertEqual(list(chart.data.columns), ['a[1]'])
+
+
 if __name__ == '__main__':
   absltest.main()
