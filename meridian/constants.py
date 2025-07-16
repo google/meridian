@@ -536,6 +536,9 @@ ADSTOCK_HILL_FUNCTIONS = frozenset({
     'hill',
 })
 
+# Adstock decay functions.
+GEOMETRIC_DECAY = 'geometric'
+BINOMIAL_DECAY = 'binomial'
 
 # Distribution constants.
 DISTRIBUTION = 'distribution'
