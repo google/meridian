@@ -13,7 +13,8 @@ These functions only operate on a fitted model. Make sure you call
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Sequence
+import types
 
 import pandas as pd
 import numpy as np
@@ -172,4 +173,43 @@ def plot_posterior_coef(
       .properties(title=f"Posterior of {col}")
   )
   return chart
+
+
+def optimal_freq_safe(
+    ana,
+    *,
+    selected_freqs: Sequence[float] | None = None,
+    selected_channels: Sequence[str] | None = None,
+    **kw,
+) -> Any:
+  """Wrapper for ``Analyzer.optimal_freq`` supporting simple filtering.
+
+  Parameters
+  ----------
+  ana:
+    :class:`Analyzer` instance.
+  selected_freqs:
+    Optional list of frequencies to keep from the result.
+  selected_channels:
+    Optional list of RF channels to keep from the result.
+  **kw:
+    Additional keyword arguments forwarded to ``ana.optimal_freq``.
+
+  Returns
+  -------
+  xarray.Dataset
+    The dataset returned by ``ana.optimal_freq`` filtered to the requested
+    frequencies and channels.
+  """
+  out = ana.optimal_freq(**kw)
+
+  if selected_freqs is not None:
+    freq_mask = np.isin(out.frequency.values, selected_freqs)
+    out = out.isel(frequency=freq_mask)
+
+  if selected_channels is not None:
+    channel_mask = np.isin(out.rf_channel.values, selected_channels)
+    out = out.isel(rf_channel=channel_mask)
+
+  return out
 
