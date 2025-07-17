@@ -55,6 +55,7 @@ def _adstock(
     alpha: tf.Tensor,
     max_lag: int,
     n_times_output: int,
+    decay_func: str = 'geometric',
 ) -> tf.Tensor:
   """Computes the Adstock function."""
   _validate_arguments(
@@ -93,18 +94,51 @@ def _adstock(
     )
     media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
 
+  weights = _adstock_weights(alpha, window_size, decay_func)
+
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
-    window_list[i] = media[..., i:i+n_times_output, :]
+    window_list[i] = media[..., i : i + n_times_output, :]
+
   windowed = tf.stack(window_list)
-  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
-  weights = tf.expand_dims(alpha, -1) ** l_range
-  normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
-  )
-  weights = tf.divide(weights, normalization_factors)
+
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
+
+
+def _adstock_weights(
+    alpha: tf.Tensor, window_size: int, decay_func: str = 'geometric'
+):
+  """Computes the weights for the Adstock function."""
+
+  l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
+
+  # TODO these might have some broadcasting/dim issues
+  match decay_func:
+    case 'geometric':
+      base = tf.expand_dims(alpha, -1)
+      weights = base ** l_range
+    case 'binomial':
+      alpha_binomial = tf.expand_dims(alpha, -1)
+      mapped_alpha_binomial = _interval_map(alpha_binomial)
+      weights = (1-l_range / window_size) ** mapped_alpha_binomial
+    case _:
+      raise ValueError(f'Unsupported decay function: {decay_func}')
+
+  normalization_factors = tf.reduce_sum(weights, axis=-1, keepdims=True)
+  weights = tf.divide(weights, normalization_factors)
+
+  return weights
+
+
+def _interval_map(x: tf.Tensor):
+  # Map x -> 1/x - 1 to map (0, 1] to [0, inf)
+
+  # TODO: What's the best way to raise this error
+  # if not (tf.reduce_all(x > 0) and tf.reduce_all(x <= 1)):
+  #   raise ValueError('`x` must be in (0, 1].')
+
+  return 1 / x - 1
 
 
 def _hill(
@@ -144,9 +178,15 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
 
 
 class AdstockTransformer(AdstockHillTransformer):
-  """Computes the Adstock transformation of media."""
+  """Class to compute the Adstock transformation of media."""
 
-  def __init__(self, alpha: tf.Tensor, max_lag: int, n_times_output: int):
+  def __init__(
+      self,
+      alpha: tf.Tensor,
+      max_lag: int,
+      n_times_output: int,
+      decay_func: str = 'geometric',
+  ):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
@@ -164,10 +204,13 @@ class AdstockTransformer(AdstockHillTransformer):
         correspond to the most recent time periods of the media argument. For
         example, `media[..., -n_times_output:, :]` represents the media
         execution of the output weeks.
+      decay_func: String indicating the decay function to use for the Adstock
+        calculation. Default is 'geometric'.
     """
     self._alpha = alpha
     self._max_lag = max_lag
     self._n_times_output = n_times_output
+    self._decay_func = decay_func
 
   def forward(self, media: tf.Tensor) -> tf.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
@@ -196,6 +239,7 @@ class AdstockTransformer(AdstockHillTransformer):
         alpha=self._alpha,
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
+        decay_func=self._decay_func,
     )
 
 
