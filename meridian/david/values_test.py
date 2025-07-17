@@ -66,30 +66,28 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
     pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
 
-class GetActualVsFittedDataTest(absltest.TestCase):
+
+class GetActualVsFittedDataFixedTest(absltest.TestCase):
 
   def test_calls_analyzer_and_returns_dataframe(self):
     mmm = object()
-    ds = xr.Dataset({"x": (['t'], [1, 2])}, coords={"t": [0, 1]})
+    ds = xr.Dataset({"x": (['time'], [1, 2])}, coords={"time": ['a', 'b']})
     with mock.patch.object(values.analyzer, 'Analyzer') as MockAnalyzer:
       MockAnalyzer.return_value.expected_vs_actual_data.return_value = ds
-      result = values.get_actual_vs_fitted_data(
+      result = values.get_actual_vs_fitted_data_fixed(
           mmm,
           confidence_level=0.8,
           aggregate_geos=True,
           aggregate_times=True,
-          selected_geos=['g'],
-          selected_times=['t'],
+          selected_times=['a'],
       )
       MockAnalyzer.assert_called_once_with(mmm)
       MockAnalyzer.return_value.expected_vs_actual_data.assert_called_once_with(
           confidence_level=0.8,
           aggregate_geos=True,
           aggregate_times=True,
-          selected_geos=['g'],
-          selected_times=['t'],
       )
-    expected = ds.to_dataframe().reset_index()
+    expected = ds.sel(time=['a']).to_dataframe().reset_index()
     pd.testing.assert_frame_equal(result, expected)
 
 
