@@ -89,6 +89,32 @@ def get_actual_vs_fitted_data(
   return fit_ds.to_dataframe().reset_index()
 
 
+# ---------------------------------------------------------------------------
+# 4. Actual-vs-fitted outcome data (API-compatible wrapper)
+# ---------------------------------------------------------------------------
+def get_actual_vs_fitted_data_fixed(
+    mmm,
+    *,
+    confidence_level: float = 0.90,
+    aggregate_geos: bool = False,
+    aggregate_times: bool = False,
+    selected_times: Sequence[str | int] | None = None,
+) -> pd.DataFrame:
+  """Wrapper for ``Analyzer.expected_vs_actual_data`` removing deprecated args."""
+
+  ana = analyzer.Analyzer(mmm)
+  fit_ds: xr.Dataset = ana.expected_vs_actual_data(
+      confidence_level=confidence_level,
+      aggregate_geos=aggregate_geos,
+      aggregate_times=aggregate_times,
+  )
+
+  if selected_times is not None:
+    fit_ds = fit_ds.sel(time=selected_times)
+
+  return fit_ds.to_dataframe().reset_index()
+
+
 if __name__ == "__main__":
   curves = get_curve_parameter_data(mmm)
   curves.to_csv("hill_curve_parameters.csv", index=False)
@@ -96,5 +122,5 @@ if __name__ == "__main__":
   opt = get_budget_optimisation_data(mmm, selected_channels=["YouTube"])
   opt.to_csv("rf_budget_optimisation.csv", index=False)
 
-  avf = get_actual_vs_fitted_data(mmm, aggregate_geos=True)
+  avf = get_actual_vs_fitted_data_fixed(mmm, aggregate_geos=True)
   avf.to_csv("actual_vs_fitted.csv", index=False)
