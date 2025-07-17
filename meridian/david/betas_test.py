@@ -281,5 +281,46 @@ class PlotPosteriorCoefTest(absltest.TestCase):
     self.assertEqual(list(chart.data.columns), ['a[1]'])
 
 
+class OptimalFreqSafeTest(absltest.TestCase):
+
+  class DummyDataset:
+    def __init__(self):
+      self.frequency = types.SimpleNamespace(values=np.array([1.0, 2.0, 3.0]))
+      self.rf_channel = types.SimpleNamespace(values=np.array(['A', 'B']))
+      self.isel_args = None
+
+    def isel(self, **kw):
+      self.isel_args = kw
+      return self
+
+  class DummyAnalyzer:
+    def __init__(self, ds):
+      self.ds = ds
+      self.called_with = None
+
+    def optimal_freq(self, **kw):
+      self.called_with = kw
+      return self.ds
+
+  def test_filters_dataset_and_passes_kwargs(self):
+    ds = self.DummyDataset()
+    ana = self.DummyAnalyzer(ds)
+    result = betas.optimal_freq_safe(
+        ana,
+        selected_freqs=[2.0],
+        selected_channels=['B'],
+        foo='bar',
+    )
+
+    self.assertIs(result, ds)
+    self.assertEqual(ana.called_with, {'foo': 'bar'})
+    np.testing.assert_array_equal(
+        ds.isel_args['frequency'], np.array([False, True, False])
+    )
+    np.testing.assert_array_equal(
+        ds.isel_args['rf_channel'], np.array([False, True])
+    )
+
+
 if __name__ == '__main__':
   absltest.main()
