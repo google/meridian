@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import arviz as az
 from meridian import constants
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -572,6 +573,10 @@ class PosteriorMCMCSampler:
             seed=seed,
             **pins,
         )
+        print(" NEW SEED VERSION")
+        print(f" SEED before: {seed}")
+        seed = [x + 1 for x in (seed or [0, 0])]
+        print(f" SEED after: {seed}")
       except tf.errors.ResourceExhaustedError as error:
         raise MCMCOOMError(
             "ERROR: Out of memory. Try reducing `n_keep` or pass a list of"
@@ -582,7 +587,7 @@ class PosteriorMCMCSampler:
         seed += 1
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
-
+      
     mcmc_states = {
         k: tf.einsum(
             "ij...->ji...",
