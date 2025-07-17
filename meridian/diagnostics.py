@@ -1,18 +1,27 @@
-"""Diagnostic plotting utilities for the Meridian model.
+"""Diagnostic utilities for the Meridian model.
 
-This module provides helper functions to visualize posterior draws from a
-``Meridian`` model. Currently it offers utilities for fitting a log-normal
-distribution to media coefficients and plotting the result.
+This module primarily provides helper functions for inspecting a fitted
+``Meridian`` instance.  In addition to the original plotting helper it now
+exposes a small collection of statistical diagnostics that proved useful when
+debugging models.  These utilities do not require TensorFlow and therefore can
+be used independently of the rest of the library.
 """
 
-from typing import Optional, Tuple
+from __future__ import annotations
 
+from typing import Dict, Optional, Tuple, Union
+
+try:  # pandas is optional
+    import pandas as pd  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    pd = None
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 import arviz as az
 
 from meridian.model import Meridian
+from meridian import constants as c
 
 
 # -----------------------------------------------------------------------------
@@ -191,6 +200,115 @@ def jarque_bera(residuals: np.ndarray) -> Tuple[float, float]:
     jb_stat = n / 6.0 * (skew**2 + 0.25 * (kurt - 3) ** 2)
     jb_pvalue = stats.chi2.sf(jb_stat, 2)
     return float(jb_stat), float(jb_pvalue)
+
+
+def posterior_summary(
+    idata: az.InferenceData,
+    var_name: str,
+    coord: Optional[Dict[str, Union[str, int]]] = None,
+    cred_mass: float = 0.95,
+) -> Dict[str, float]:
+    """Compute summary statistics for a posterior variable."""
+    da = idata.posterior[var_name]
+    if coord:
+        da = da.sel(**coord)
+    samples = da.values.reshape(-1)
+
+    mean = float(samples.mean())
+    sd = float(samples.std(ddof=1))
+    t = mean / sd
+
+    alpha = 1.0 - cred_mass
+    lo, hi = np.quantile(samples, [alpha / 2, 1.0 - alpha / 2])
+    return {
+        "mean": mean,
+        "sd": sd,
+        "t_stat": t,
+        f"{cred_mass * 100:.1f}%_ci_lower": float(lo),
+        f"{cred_mass * 100:.1f}%_ci_upper": float(hi),
+    }
+
+
+def compute_vif(X: Union[np.ndarray, 'pd.DataFrame']) -> 'pd.Series':
+    """Variance inflation factors for a design matrix."""
+    if pd is not None and isinstance(X, pd.DataFrame):
+        X_mat = X.values
+        columns = list(X.columns)
+    else:
+        X_mat = X
+        columns = [f"x{i}" for i in range(X.shape[1])]
+
+    vifs = []
+    for j in range(X_mat.shape[1]):
+        y = X_mat[:, j]
+        X_other = np.delete(X_mat, j, axis=1)
+        coef, *_ = np.linalg.lstsq(X_other, y, rcond=None)
+        y_hat = X_other @ coef
+        ssr = np.sum((y - y_hat) ** 2)
+        sst = np.sum((y - y.mean()) ** 2)
+        r2 = 1.0 - ssr / sst
+        vifs.append(1.0 / (1.0 - r2 + 1e-12))
+
+    if pd is not None:
+        return pd.Series(vifs, index=columns, name="VIF")
+    return np.asarray(vifs)
+
+
+def mass_above_threshold(
+    idata: az.InferenceData,
+    var_name: str,
+    coord: dict | None = None,
+    cred_mass: float = 0.95,
+    *,
+    threshold: float | None = None,
+    log_space: bool = False,
+) -> dict[str, float | bool]:
+    """Probability mass of a variable lying above ``threshold``."""
+    da = idata.posterior[var_name]
+    if coord:
+        da = da.sel(**coord)
+    samples = da.values.reshape(-1)
+
+    if log_space:
+        samples = np.log(samples)
+
+    threshold = 0.0 if threshold is None else threshold
+    prob_above = np.mean(samples > threshold)
+
+    return {
+        "prob_above": float(prob_above),
+        "meets_cred": bool(prob_above >= cred_mass),
+        "cred_mass_req": float(cred_mass),
+        "threshold": float(threshold),
+    }
+
+
+def series_diagnostics(
+    mmm: Meridian,
+    var_name: str,
+    *,
+    geo_index: int = 0,
+    log_space: bool = False,
+) -> Dict[str, float]:
+    """Durbinâ€“Watson and Jarqueâ€“Bera for a single media regressor."""
+    media_da = mmm.input_data.media
+    if var_name not in media_da.coords[c.MEDIA_CHANNEL].values:
+        raise ValueError(f"Unknown media channel: {var_name}")
+
+    series = (
+        media_da
+        .sel(media_channel=var_name)
+        .isel(geo=geo_index, drop=True)
+        .values
+        .astype(float)
+        .ravel()
+    )
+    if log_space:
+        series = np.log(series)
+
+    dw = durbin_watson(series)
+    jb_stat, jb_p = jarque_bera(series)
+    return {"dw": float(dw), "jb_stat": float(jb_stat), "jb_p": float(jb_p)}
 
 
 if __name__ == "__main__":
