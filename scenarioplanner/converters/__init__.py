@@ -12,16 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Provides tools for converting and wrapping MMM schema data.
 
-from meridian import analysis
-from meridian import backend
-from meridian import data
-from meridian import model
-from meridian.version import __version__
+This package contains modules to transform Marketing Mix Modeling (MMM) protocol
+buffer data into other formats and provides high-level wrappers for easier data
+manipulation, analysis, and reporting.
+"""
 
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+from scenarioplanner.converters import dataframe
+from scenarioplanner.converters import mmm
+from scenarioplanner.converters import mmm_converter
+from scenarioplanner.converters import sheets
