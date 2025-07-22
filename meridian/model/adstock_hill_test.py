@@ -21,8 +21,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-tfd = tfp.distributions
-
 
 class TestAdstock(parameterized.TestCase):
   """Tests for adstock()."""
@@ -37,10 +35,12 @@ class TestAdstock(parameterized.TestCase):
 
   # Generate random data based on dimensions specified above.
   tf.random.set_seed(1)
-  _MEDIA = tfd.HalfNormal(1).sample(
+  _MEDIA = tfp.distributions.HalfNormal(1).sample(
       [_N_CHAINS, _N_DRAWS, _N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS]
   )
-  _ALPHA = tfd.Uniform(0, 1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
+  _ALPHA = tfp.distributions.Uniform(0, 1).sample(
+      [_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS]
+  )
 
   def test_raises(self):
     """Test that exceptions are raised as expected."""
@@ -238,11 +238,15 @@ class TestHill(parameterized.TestCase):
 
   # Generate random data based on dimensions specified above.
   tf.random.set_seed(1)
-  _MEDIA = tfd.HalfNormal(1).sample(
+  _MEDIA = tfp.distributions.HalfNormal(1).sample(
       [_N_CHAINS, _N_DRAWS, _N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS]
   )
-  _EC = tfd.Uniform(0, 1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
-  _SLOPE = tfd.HalfNormal(1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
+  _EC = tfp.distributions.Uniform(0, 1).sample(
+      [_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS]
+  )
+  _SLOPE = tfp.distributions.HalfNormal(1).sample(
+      [_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS]
+  )
 
   def test_raises(self):
     """Test that exceptions are raised as expected."""
@@ -308,6 +312,42 @@ class TestHill(parameterized.TestCase):
     ).forward(media)
     tf.debugging.assert_near(media_transformed, result)
 
+
+class TestTransformNonNegativeRealsDistribution(parameterized.TestCase):
+  """Tests for transform_non_negative_reals_distribution()."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="lognormal",
+          distribution=tfp.distributions.LogNormal(0.2, 0.9),
+      ),
+      dict(
+          testcase_name="halfnormal 2d",
+          distribution=tfp.distributions.HalfNormal([1, 2]),
+      ),
+  )
+  def test_support(self, distribution):
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    q0 = transformed_distribution.quantile(0.0)
+    q1 = transformed_distribution.quantile(1.0)
+
+    tf.debugging.assert_near(q0, 0.0)
+    tf.debugging.assert_near(q1, 1.0)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="0", inp=0.0, out=1.0),
+      dict(testcase_name="1", inp=1.0, out=0.5),
+      dict(testcase_name="4", inp=4.0, out=0.2),
+      dict(testcase_name="inf", inp=np.inf, out=0.0),
+  )
+  def test_mapping(self, inp, out):
+    distribution = tfp.distributions.Deterministic(inp)
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    tf.debugging.assert_near(transformed_distribution.sample(), out)
 
 if __name__ == "__main__":
   absltest.main()
