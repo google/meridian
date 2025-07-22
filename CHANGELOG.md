@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Remove deprecated `selected_times` argument from the optimizer.
+
 ## [1.1.7] - 2025-07-16
 
 * Fix `rhat_summary()` to work with a vector sigma dim.
