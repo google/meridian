@@ -34,6 +34,28 @@ def _check_fitted(mmm: meridian_model.Meridian) -> None:
         "sample_posterior() must be run before using this utility")
 
 
+def get_scalar_prior_names(mmm: meridian_model.Meridian) -> list[str]:
+  """Returns names of scalar parameters in the posterior."""
+  _check_fitted(mmm)
+  names = [
+      name
+      for name, da in mmm.inference_data.posterior.data_vars.items()
+      if da.values.ndim == 2
+  ]
+  return names
+
+
+def get_beta_channel_names(mmm: meridian_model.Meridian) -> list[str]:
+  """Returns media channel names for ``beta_m`` coefficients."""
+  channels = getattr(getattr(mmm, "input_data", None), "media_channel", None)
+  if channels is None:
+    return []
+  try:
+    return list(channels.values)
+  except Exception:  # pragma: no cover - fallback for simple sequences
+    return list(channels)
+
+
 def get_posterior_samples(
     mmm: meridian_model.Meridian, parameter: str) -> np.ndarray:
   """Returns flattened posterior draws for ``parameter``."""
