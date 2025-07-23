@@ -81,9 +81,14 @@ class DummyInferenceData:
 
 
 class DummyMeridian:
-  def __init__(self, posterior=None, priors=None):
+  def __init__(self, posterior=None, priors=None, channels=None):
     self.inference_data = DummyInferenceData(posterior)
     self.prior_broadcast = types.SimpleNamespace(**(priors or {}))
+    if channels is not None:
+      media_channel = types.SimpleNamespace(values=np.array(channels))
+    else:
+      media_channel = None
+    self.input_data = types.SimpleNamespace(media_channel=media_channel)
 
 
 class CheckFittedTest(absltest.TestCase):
@@ -281,6 +286,36 @@ class FitParameterCoefDistributionTest(absltest.TestCase):
     )
     result = betas.fit_parameter_coef_distribution(m, 'a', 1)
     self.assertEqual(result, expected)
+
+
+class GetScalarPriorNamesTest(absltest.TestCase):
+
+  def test_not_fitted_raises(self):
+    m = DummyMeridian()
+    with self.assertRaises(meridian_model.NotFittedModelError):
+      betas.get_scalar_prior_names(m)
+
+  def test_returns_scalar_names(self):
+    posterior = {
+        'a': [[1.0]],  # scalar
+        'b': [[[1.0]]],  # has extra dim
+        'c': [[2.0]],
+    }
+    m = DummyMeridian(posterior)
+    names = betas.get_scalar_prior_names(m)
+    self.assertEqual(set(names), {'a', 'c'})
+
+
+class GetBetaChannelNamesTest(absltest.TestCase):
+
+  def test_returns_channels(self):
+    channels = ['Ch0', 'Ch1', 'Ch2']
+    m = DummyMeridian({'a': [[1.0]]}, channels=channels)
+    self.assertEqual(betas.get_beta_channel_names(m), channels)
+
+  def test_no_channels_returns_empty(self):
+    m = DummyMeridian({'a': [[1.0]]})
+    self.assertEqual(betas.get_beta_channel_names(m), [])
 
 
 class PlotPosteriorCoefTest(absltest.TestCase):
