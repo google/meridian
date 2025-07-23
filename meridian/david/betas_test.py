@@ -33,8 +33,21 @@ except ModuleNotFoundError:
   def X(field, **kwargs):
     return {"field": field, **kwargs}
 
+  def Bin(**kwargs):
+    return kwargs
+
+  class _DataTransformers:
+    def __init__(self):
+      self.disable_called = False
+
+    def disable_max_rows(self):
+      self.disable_called = True
+
+  alt.data_transformers = _DataTransformers()
+
   alt.Chart = Chart
   alt.X = X
+  alt.Bin = Bin
   sys.modules['altair'] = alt
 
 from meridian.david import betas
@@ -275,10 +288,15 @@ class PlotPosteriorCoefTest(absltest.TestCase):
   def test_returns_chart(self):
     posterior = {'a': [[[1.0, 2.0]]]}  # shape (1,1,2)
     m = DummyMeridian(posterior)
-    chart = betas.plot_posterior_coef(m, 'a', 1)
+    chart = betas.plot_posterior_coef(m, 'a', 1, maxbins=20, width=300, height=100)
     self.assertIsInstance(chart, alt.Chart)
-    self.assertEqual(chart.properties_args.get('title'), 'Posterior of a[1]')
+    self.assertEqual(chart.properties_args.get('title'), 'Posterior of a[1] (log scale)')
+    self.assertEqual(chart.properties_args.get('width'), 300)
+    self.assertEqual(chart.properties_args.get('height'), 100)
     self.assertEqual(list(chart.data.columns), ['a[1]'])
+    # Ensure encoding used the provided maxbins.
+    _, enc_kwargs = chart.encode_args
+    self.assertEqual(enc_kwargs['x']['bin']['maxbins'], 20)
 
 
 class OptimalFreqSafeTest(absltest.TestCase):

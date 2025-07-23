@@ -160,19 +160,37 @@ def fit_parameter_coef_distribution(
 
 
 def plot_posterior_coef(
-    mmm: meridian_model.Meridian, parameter: str, index: int
+    mmm: meridian_model.Meridian,
+    parameter: str,
+    index: int,
+    *,
+    maxbins: int = 50,
+    width: int = 400,
+    height: int = 200,
 ) -> alt.Chart:
-  """Altair histogram for one coefficient of ``parameter``."""
+  """Histogram of posterior draws for one coefficient on the log scale."""
+  _check_fitted(mmm)
   samples = get_posterior_coef_samples(mmm, parameter, index)
+
+  import pandas as pd, altair as alt
+  alt.data_transformers.disable_max_rows()  # avoid silent truncation
+
   col = f"{parameter}[{index}]"
   df = pd.DataFrame({col: samples})
-  chart = (
+
+  return (
       alt.Chart(df)
       .mark_bar(opacity=0.7)
-      .encode(x=alt.X(f"{col}:Q", bin=True), y="count()")
-      .properties(title=f"Posterior of {col}")
+      .encode(
+          x=alt.X(f"{col}:Q", bin=alt.Bin(maxbins=maxbins)),
+          y="count()",
+      )
+      .properties(
+          width=width,
+          height=height,
+          title=f"Posterior of {col} (log scale)",
+      )
   )
-  return chart
 
 
 def optimal_freq_safe(
