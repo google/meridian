@@ -65,6 +65,71 @@ class PushAndPurgeTest(absltest.TestCase):
     m_exc.assert_called_once()
 
 
+class PullLoadPurgeTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.tmp = self.create_tempdir()
+
+  def test_downloads_and_cleans_up(self):
+    client = mock.Mock()
+    loader = mock.Mock(return_value='obj')
+    with (
+        mock.patch.object(s3.boto3, 'client', return_value=client) as m_client,
+        mock.patch('pathlib.Path.unlink') as m_unlink,
+        mock.patch('pathlib.Path.rmdir') as m_rmdir,
+        mock.patch.object(s3.shutil, 'rmtree') as m_rmtree,
+        mock.patch('builtins.print') as m_print,
+    ):
+      result = s3.pull_load_purge(
+          's3://b/prefix/file.txt',
+          loader,
+          tmp_dir=self.tmp.full_path,
+      )
+
+    m_client.assert_called_once_with('s3')
+    expected_local = Path(self.tmp.full_path) / 'file.txt'
+    client.download_file.assert_called_once_with(
+        'b',
+        'prefix/file.txt',
+        str(expected_local),
+    )
+    loader.assert_called_once_with(expected_local)
+    m_unlink.assert_called_once_with(missing_ok=True)
+    m_rmdir.assert_called_once_with()
+    m_rmtree.assert_not_called()
+    m_print.assert_any_call(
+        f'Downloaded s3://b/prefix/file.txt to {expected_local}')
+    m_print.assert_any_call('Object loaded.')
+    m_print.assert_any_call(
+        f'Removed temporary directory {self.tmp.full_path}')
+    self.assertEqual(result, 'obj')
+
+  def test_download_error_still_cleans_up(self):
+    err = RuntimeError('boom')
+    client = mock.Mock()
+    client.download_file.side_effect = err
+    loader = mock.Mock()
+    with (
+        mock.patch.object(s3.boto3, 'client', return_value=client),
+        mock.patch('pathlib.Path.unlink') as m_unlink,
+        mock.patch('pathlib.Path.rmdir', side_effect=OSError) as m_rmdir,
+        mock.patch.object(s3.shutil, 'rmtree') as m_rmtree,
+        mock.patch.object(s3.traceback, 'print_exc') as m_exc,
+    ):
+      with self.assertRaises(RuntimeError):
+        s3.pull_load_purge(
+            's3://b/prefix/file.txt',
+            loader,
+            tmp_dir=self.tmp.full_path,
+        )
+
+    m_unlink.assert_called_once_with(missing_ok=True)
+    m_rmdir.assert_called_once_with()
+    m_rmtree.assert_called_once_with(Path(self.tmp.full_path), ignore_errors=True)
+    m_exc.assert_called_once()
+
+
 class GeneratePresignedUrlTest(absltest.TestCase):
 
   def test_uses_default_client(self):
@@ -109,7 +174,12 @@ class AllExportedTest(absltest.TestCase):
   def test_expected_exports(self):
     self.assertCountEqual(
         s3.__all__,
-        ['push_and_purge', 'generate_presigned_url', 'display_html_link'],
+        [
+            'push_and_purge',
+            'pull_load_purge',
+            'generate_presigned_url',
+            'display_html_link',
+        ],
     )
 
 
