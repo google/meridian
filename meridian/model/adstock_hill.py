@@ -52,13 +52,13 @@ def _validate_arguments(
 
 def _adstock(
     media: tf.Tensor,
-    alpha: tf.Tensor,
+    alphabeta: tf.Tensor,
     max_lag: int,
     n_times_output: int,
 ) -> tf.Tensor:
-  """Computes the Adstock function."""
+  """Computes the Adstock function no change."""
   _validate_arguments(
-      media=media, alpha=alpha, max_lag=max_lag, n_times_output=n_times_output
+      media=media, alpha=alphabeta, max_lag=max_lag, n_times_output=n_times_output
   )
   # alpha dims: batch_dims, n_media_channels.
   # media dims: batch_dims (optional), n_geos, n_media_times, n_channels.
@@ -99,9 +99,10 @@ def _adstock(
     window_list[i] = media[..., i:i+n_times_output, :]
   windowed = tf.stack(window_list)
   l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
-  weights = tf.expand_dims(alpha, -1) ** l_range
+  base = tf.expand_dims(alphabeta, -1)
+  weights = base ** l_range
   normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
+      (1 - alphabeta ** (window_size)) / (1 - alphabeta), -1
   )
   weights = tf.divide(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
@@ -193,7 +194,7 @@ class AdstockTransformer(AdstockHillTransformer):
     """
     return _adstock(
         media=media,
-        alpha=self._alpha,
+        alphabeta=self._alpha,
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
     )
