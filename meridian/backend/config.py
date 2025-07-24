@@ -12,14 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
-from meridian import analysis
-from meridian import backend
-from meridian import data
-from meridian import model
-from meridian.version import __version__
+"""Backend configuration for Meridian."""
 
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+import enum
+
+
+class Backend(enum.Enum):
+  TENSORFLOW = "tensorflow"
+  JAX = "jax"
+
+
+_BACKEND = Backend.TENSORFLOW
+
+
+def set_backend(backend: Backend) -> None:
+  """Sets the backend for Meridian."""
+  global _BACKEND
+  if not isinstance(backend, Backend):
+    raise ValueError("Backend must be a member of the Backend enum.")
+  _BACKEND = backend
+
+
+def get_backend() -> Backend:
+  """Returns the current backend for Meridian."""
+  return _BACKEND
+
