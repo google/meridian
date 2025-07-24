@@ -1686,7 +1686,7 @@ class MediaSummary:
         c.DATE_FORMAT if time_granularity == c.WEEKLY else c.QUARTER_FORMAT
     )
 
-    outcome_df = self._transform_contribution_metrics(
+    outcome_df = self.contribution_metrics(
         include_non_paid=True, aggregate_times=False
     )
 
@@ -1800,7 +1800,7 @@ class MediaSummary:
           f'time_granularity must be one of {c.TIME_GRANULARITIES}'
       )
 
-    outcome_df = self._transform_contribution_metrics(
+    outcome_df = self.contribution_metrics(
         include_non_paid=True, aggregate_times=False
     )
     outcome_df[c.TIME] = pd.to_datetime(outcome_df[c.TIME])
@@ -1907,7 +1907,7 @@ class MediaSummary:
         if self._meridian.input_data.revenue_per_kpi is not None
         else c.KPI.upper()
     )
-    outcome_df = self._transform_contribution_metrics(include_non_paid=True)
+    outcome_df = self.contribution_metrics(include_non_paid=True)
     pct = c.PCT_OF_CONTRIBUTION
     value = c.INCREMENTAL_OUTCOME
     outcome_df['outcome_text'] = outcome_df.apply(
@@ -1991,7 +1991,7 @@ class MediaSummary:
     Returns:
       An Altair plot showing the contributions for all channels.
     """
-    outcome_df = self._transform_contribution_metrics(
+    outcome_df = self.contribution_metrics(
         [c.ALL_CHANNELS], include_non_paid=True
     )
 
@@ -2411,7 +2411,7 @@ class MediaSummary:
     spend_df = paid_summary_metrics[c.SPEND].to_dataframe().reset_index()
     return metrics_df.merge(spend_df, on=c.CHANNEL)
 
-  def _transform_contribution_metrics(
+  def contribution_metrics(
       self,
       selected_channels: Sequence[str] | None = None,
       include_non_paid: bool = False,
