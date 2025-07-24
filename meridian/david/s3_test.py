@@ -1,4 +1,5 @@
 import os
+import datetime
 from pathlib import Path
 from absl.testing import absltest
 
@@ -42,6 +43,31 @@ class PushAndPurgeTest(absltest.TestCase):
         f'Uploaded {expected_local} to s3://bucket/{expected_key}')
     m_print.assert_any_call(
         f'Removed temporary directory {self.tmp.full_path}')
+
+  def test_timestamped_upload(self):
+    dt = datetime.datetime(2025, 1, 1, 12, 0, 0)
+    client = mock.Mock()
+    with (
+        mock.patch.object(s3.boto3, 'client', return_value=client),
+        mock.patch.object(s3.shutil, 'rmtree'),
+        mock.patch('builtins.print'),
+        mock.patch.object(s3, 'datetime') as m_dt,
+    ):
+      m_dt.utcnow.return_value = dt
+      s3.push_and_purge(
+          self.tmp.full_path,
+          self.file_name,
+          bucket='b',
+          team_prefix='t/',
+          user_space='u',
+          file_structure='f',
+          add_timestamp=True,
+      )
+
+    expected_local = Path(self.tmp.full_path) / self.file_name
+    expected_key = 't/u/f/' + 'file_20250101T120000.txt'
+    client.upload_file.assert_called_once_with(
+        str(expected_local), 'b', expected_key)
 
   def test_upload_error_still_removes_dir(self):
     err = RuntimeError('boom')

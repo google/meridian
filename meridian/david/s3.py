@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
+from datetime import datetime
 
 import boto3
 import shutil
@@ -30,6 +31,8 @@ def push_and_purge(
     team_prefix: str,
     user_space: str,
     file_structure: str,
+    *,
+    add_timestamp: bool = False,
 ) -> None:
     """Upload a file to S3 and remove the temporary directory.
 
@@ -52,7 +55,15 @@ def push_and_purge(
     local = out_dir / file_name
 
     prefix = f"{team_prefix.rstrip('/')}/{user_space.strip('/')}/{file_structure.strip('/')}/"
-    s3_key = f"{prefix}{file_name}"
+
+    if add_timestamp:
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        path = Path(file_name)
+        remote_name = f"{path.stem}_{ts}{path.suffix}"
+    else:
+        remote_name = file_name
+
+    s3_key = f"{prefix}{remote_name}"
     s3 = boto3.client("s3")
 
     try:
