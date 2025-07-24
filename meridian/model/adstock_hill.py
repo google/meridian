@@ -96,13 +96,14 @@ def _adstock(
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
-    window_list[i] = media[..., i:i+n_times_output, :]
+    window_list[i] = media[..., i : i + n_times_output, :]
   windowed = tf.stack(window_list)
   l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
   weights = tf.expand_dims(alpha, -1) ** l_range
-  normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
-  )
+  # normalization_factors = tf.expand_dims(
+  #    (1 - alpha ** (window_size)) / (1 - alpha), -1
+  # )
+  normalization_factors = tf.reduce_sum(weights, axis=-1, keepdims=True)
   weights = tf.divide(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
