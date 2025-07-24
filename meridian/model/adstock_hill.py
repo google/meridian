@@ -102,15 +102,11 @@ def _adstock(
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
-    window_list[i] = media[..., i : i + n_times_output, :]
+    window_list[i] = media[..., i:i+n_times_output, :]
   windowed = backend.ops.stack(window_list)
-  l_range = backend.arange(
-      window_size - 1, -1, -1, dtype=backend.ops.float32
-  )
+  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.ops.float32)
   weights = backend.ops.expand_dims(alpha, -1) ** l_range
-  normalization_factors = backend.ops.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
-  )
+  normalization_factors = backend.ops.reduce_sum(weights, axis=-1, keepdims=True)
   weights = backend.ops.divide(weights, normalization_factors)
   return backend.ops.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
@@ -158,12 +154,10 @@ class AdstockTransformer(AdstockHillTransformer):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
-      alpha: Tensor of `alpha` parameters taking values ≥ `[0, 1)` with
+      alpha: Tensor of `alpha` parameters taking values in `[0, 1]` with
         dimensions `[..., n_media_channels]`. Batch dimensions `(...)` are
         optional. Note that `alpha = 0` is allowed, so it is possible to put a
-        point mass prior at zero (effectively no Adstock). However, `alpha = 1`
-        is not allowed since the geometric sum formula is not defined, and there
-        is no practical reason to have point mass at `alpha = 1`.
+        point mass prior at zero (effectively no Adstock).
       max_lag: Integer indicating the maximum number of lag periods (≥ `0`) to
         include in the Adstock calculation.
       n_times_output: Integer indicating the number of time periods to include

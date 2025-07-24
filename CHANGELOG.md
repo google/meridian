@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix numerical stability of Adstock computation around `alpha = 1`.
+
 * Make `trim_grids()` a public method of `OptimizationGrid` and update it to
   remove rows of NaNs.
 
