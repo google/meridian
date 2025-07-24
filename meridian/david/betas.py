@@ -197,20 +197,22 @@ def plot_posterior_coef(
   import pandas as pd, altair as alt
   alt.data_transformers.disable_max_rows()  # avoid silent truncation
 
-  col = f"{parameter}[{index}]"
-  df = pd.DataFrame({col: samples})
+  col_name = f"{parameter}[{index}]"
+  df = pd.DataFrame({col_name: samples})
+
+  field = f"`{col_name}`:Q"
 
   return (
       alt.Chart(df)
       .mark_bar(opacity=0.7)
       .encode(
-          x=alt.X(f"{col}:Q", bin=alt.Bin(maxbins=maxbins)),
+          x=alt.X(field, bin=alt.Bin(maxbins=maxbins)),
           y="count()",
       )
       .properties(
           width=width,
           height=height,
-          title=f"Posterior of {col} (log scale)",
+          title=f"Posterior of {col_name} (log scale)",
       )
   )
 

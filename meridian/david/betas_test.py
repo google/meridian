@@ -329,9 +329,10 @@ class PlotPosteriorCoefTest(absltest.TestCase):
     self.assertEqual(chart.properties_args.get('width'), 300)
     self.assertEqual(chart.properties_args.get('height'), 100)
     self.assertEqual(list(chart.data.columns), ['a[1]'])
-    # Ensure encoding used the provided maxbins.
+    # Ensure encoding used the provided maxbins and quoted field name.
     _, enc_kwargs = chart.encode_args
     self.assertEqual(enc_kwargs['x']['bin']['maxbins'], 20)
+    self.assertEqual(enc_kwargs['x']['field'], '`a[1]`:Q')
 
 
 class OptimalFreqSafeTest(absltest.TestCase):
