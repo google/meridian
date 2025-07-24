@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix numerical stability of Adstock computation around `alpha = 1`.
+* Add `binomial` decay option to Adstock.
+
 ## [1.1.7] - 2025-07-16
 
 * Fix `rhat_summary()` to work with a vector sigma dim.

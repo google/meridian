@@ -16,12 +16,24 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import constants
 from meridian.model import adstock_hill
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
 tfd = tfp.distributions
+
+_DECAY_FUNCTIONS = [
+    dict(
+        testcase_name=constants.GEOMETRIC_DECAY,
+        decay_function=constants.GEOMETRIC_DECAY,
+    ),
+    dict(
+        testcase_name=constants.BINOMIAL_DECAY,
+        decay_function=constants.BINOMIAL_DECAY,
+    ),
+]
 
 
 class TestAdstock(parameterized.TestCase):
@@ -120,37 +132,46 @@ class TestAdstock(parameterized.TestCase):
     tf.debugging.assert_all_finite(media_transformed, message=msg)
     tf.debugging.assert_non_negative(media_transformed, message=msg)
 
-  def test_max_lag_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_max_lag_zero(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=0,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
-  def test_alpha_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_zero(self, decay_function: str):
+    """Alpha of zero is allowed, effectively no Adstock."""
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=tf.zeros_like(self._ALPHA),
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
-  def test_media_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_media_zero(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(
         tf.zeros_like(self._MEDIA),
     )
     tf.debugging.assert_near(media_transformed, tf.zeros_like(self._MEDIA))
 
-  def test_alpha_close_to_one(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_close_to_one(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=0.99999 * tf.ones_like(self._ALPHA),
         max_lag=self._N_MEDIA_TIMES - 1,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(
         media_transformed,
@@ -159,12 +180,28 @@ class TestAdstock(parameterized.TestCase):
         atol=1e-4,
     )
 
-  def test_media_all_ones(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_one(self, decay_function: str):
+    media_transformed = adstock_hill.AdstockTransformer(
+        alpha=tf.ones_like(self._ALPHA),
+        max_lag=self._N_MEDIA_TIMES - 1,
+        n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
+    ).forward(self._MEDIA)
+    tf.debugging.assert_near(
+        media_transformed,
+        tf.cumsum(self._MEDIA, axis=-2) / self._N_MEDIA_TIMES,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+
+  def test_media_all_ones_geometric(self):
     # Calculate adstock on a media vector of all ones and no lag history.
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=constants.GEOMETRIC_DECAY,
     ).forward(tf.ones_like(self._MEDIA))
     # n_nonzero_terms is a tensor with length containing the number of nonzero
     # terms in the adstock for each output time period.
@@ -193,7 +230,19 @@ class TestAdstock(parameterized.TestCase):
     )
     tf.debugging.assert_near(media_transformed, result)
 
-  def test_output(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name=constants.GEOMETRIC_DECAY,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_adstock=tf.constant([0.751, 0.435, 0.572]),
+      ),
+      dict(
+          testcase_name=constants.BINOMIAL_DECAY,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_adstock=tf.constant([0.742, 0.463, 0.567]),
+      ),
+  )
+  def test_output(self, decay_function: str, expected_adstock: tf.Tensor):
     """Test for valid adstock weights."""
     alpha = tf.constant([0.1, 0.5, 0.9])
     window_size = 5
@@ -208,8 +257,8 @@ class TestAdstock(parameterized.TestCase):
         alpha=alpha,
         max_lag=window_size - 1,
         n_times_output=1,
+        decay_function=decay_function,
     ).forward(media)
-    expected_adstock = tf.constant([0.751, 0.435, 0.572])
     tf.debugging.assert_near(adstock, expected_adstock, rtol=1e-2)
 
 
