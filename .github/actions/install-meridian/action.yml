@@ -17,6 +17,6 @@ runs:
         cache-dependency-path: '**/pyproject.toml'
     - shell: bash
       run: |
-        pip install -e .[dev,mlflow] --config-settings editable_mode=strict
+        pip install -e .[dev,jax,mlflow] --config-settings editable_mode=strict
         pip freeze
 

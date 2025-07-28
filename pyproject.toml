@@ -73,6 +73,14 @@ and-cuda = [
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
 
+# NEW: JAX backend dependencies.
+# Installed through `pip install -e .[jax]`
+jax = [
+    "jax==0.4.26",
+    "jaxlib==0.4.26",
+    "tensorflow-probability[substrates-jax] >= 0.25, < 0.26",
+]
+
 [tool.pyink]
 # Formatting configuration to follow Google style-guide
 line-length = 80

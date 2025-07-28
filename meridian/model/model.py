@@ -22,6 +22,7 @@ import warnings
 
 import arviz as az
 import joblib
+from meridian import backend
 from meridian import constants
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
@@ -1248,12 +1249,12 @@ class Meridian:
 
   def adstock_hill_media(
       self,
-      media: tf.Tensor,  # pylint: disable=redefined-outer-name
-      alpha: tf.Tensor,
-      ec: tf.Tensor,
-      slope: tf.Tensor,
+      media: backend.Tensor,  # pylint: disable=redefined-outer-name
+      alpha: backend.Tensor,
+      ec: backend.Tensor,
+      slope: backend.Tensor,
       n_times_output: int | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
 
     Args:
@@ -1302,13 +1303,13 @@ class Meridian:
 
   def adstock_hill_rf(
       self,
-      reach: tf.Tensor,
-      frequency: tf.Tensor,
-      alpha: tf.Tensor,
-      ec: tf.Tensor,
-      slope: tf.Tensor,
+      reach: backend.Tensor,
+      frequency: backend.Tensor,
+      alpha: backend.Tensor,
+      ec: backend.Tensor,
+      slope: backend.Tensor,
       n_times_output: int | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
 
     Args:
