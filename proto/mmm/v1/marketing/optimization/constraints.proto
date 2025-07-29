@@ -1,0 +1,39 @@
+edition = "2023";
+
+package mmm.v1.marketing.optimization;
+
+import "mmm/v1/common/target_metric.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// The constraint of target metrics.
+message TargetMetricConstraint {
+  reserved 2, 3;
+
+  // The type of the target metric that is constrained. Required.
+  common.TargetMetric target_metric = 1;
+
+  // The constraint on the target metric value. Required.
+  // Whether this target value represents a lower or upper bound depends on the
+  // target metric set above.
+  double target_value = 4;
+}
+
+message BudgetConstraint {
+  // Required.
+  // Absolute minimum budget value.
+  double min_budget = 1;
+
+  // Required.
+  // Absolute maximum budget value.
+  double max_budget = 2;
+}
+
+message FrequencyConstraint {
+  // Required.
+  double min_frequency = 1;
+
+  // Required.
+  double max_frequency = 2;
+}

@@ -1,0 +1,47 @@
+edition = "2023";
+
+package mmm.v1.marketing.analysis;
+
+import "mmm/v1/marketing/analysis/kpi_outcome.proto";
+import "mmm/v1/marketing/analysis/response_curve.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+message SpendInfo {
+  // The amount spent on the media channel. Required
+  double spend = 1;
+
+  // Spend share = spend / total spend. Required
+  double spend_share = 2;
+}
+
+// An analysis on a media channel between its spend variable and KPI(s) outcome.
+// Next ID: 6
+message MediaAnalysis {
+  reserved 3;
+
+  // The name of the media channel. Required.
+  string channel_name = 1;
+
+  // The spend information of this media channel.
+  //
+  // This is optional and is left unset for a non-paid media channel analysis.
+  SpendInfo spend_info = 2;
+
+  // The marketing outcomes of advertising from this media channel. Required.
+  //
+  // The outcome(s) calculated based on revenue and/or generic non-revenue KPI.
+  // One or more outcome values are set when revenue and/or generic non-revenue
+  // KPI outcome information is available.
+  //
+  // For a non-paid media, the spend-related fields in `KpiOutcome` won't be
+  // set.
+  repeated KpiOutcome media_outcomes = 5;
+
+  // A response curve for the media channel.
+  //
+  // When the media is a non-paid media, response curve is not available due to
+  // the lack of spend information.
+  ResponseCurve response_curve = 4;
+}
