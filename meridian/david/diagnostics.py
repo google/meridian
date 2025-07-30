@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Union
 
+import xarray as xr
+
 import arviz as az
 import numpy as np
 import pandas as pd
@@ -170,7 +172,41 @@ def augmented_dickey_fuller(series: np.ndarray):
 
 
 # --------------------------------------------------------------------
-# 7. Breusch-Pagan-Godfrey heteroscedasticity test
+# 7. Design matrix construction
+# --------------------------------------------------------------------
+
+
+def build_design_matrix(
+    media_da: xr.DataArray | None,
+    controls_da: xr.DataArray | None,
+) -> np.ndarray:
+    """Creates a design matrix from media and control ``DataArray`` objects."""
+
+    pieces: list[pd.DataFrame] = []
+    if media_da is not None:
+        media_df = (
+            media_da.stack(sample=("geo", "time"))
+            .transpose("sample", "media_channel")
+            .to_pandas()
+        )
+        pieces.append(media_df)
+
+    if controls_da is not None:
+        ctrl_df = (
+            controls_da.stack(sample=("geo", "time"))
+            .transpose("sample", "control")
+            .to_pandas()
+        )
+        pieces.append(ctrl_df)
+
+    if not pieces:
+        raise ValueError("At least one of `media_da` or `controls_da` must be provided")
+
+    return pd.concat(pieces, axis=1).to_numpy()
+
+
+# --------------------------------------------------------------------
+# 8. Breusch-Pagan-Godfrey heteroscedasticity test
 # --------------------------------------------------------------------
 
 
@@ -194,7 +230,7 @@ def breusch_pagan_godfrey(
 
 
 # --------------------------------------------------------------------
-# 8. Kurtosis of residuals
+# 9. Kurtosis of residuals
 # --------------------------------------------------------------------
 
 
@@ -204,7 +240,7 @@ def residual_kurtosis(residuals: np.ndarray, *, fisher: bool = True) -> float:
 
 
 # --------------------------------------------------------------------
-# 9. Correlation-matrix inspection
+# 10. Correlation-matrix inspection
 # --------------------------------------------------------------------
 
 
