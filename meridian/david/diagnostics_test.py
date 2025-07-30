@@ -2,6 +2,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 import scipy.stats
+import xarray as xr
 from absl.testing import absltest
 
 from meridian.david import diagnostics
@@ -85,6 +86,32 @@ class AugmentedDickeyFullerTest(absltest.TestCase):
         self.assertTrue(np.isfinite(stat))
         self.assertGreaterEqual(p, 0.0)
         self.assertLessEqual(p, 1.0)
+
+
+class BuildDesignMatrixTest(absltest.TestCase):
+
+    def test_matrix_construction(self):
+        media = xr.DataArray(
+            np.arange(8).reshape(1, 2, 4),
+            dims=("geo", "time", "media_channel"),
+        )
+        controls = xr.DataArray(
+            np.arange(2).reshape(1, 2, 1),
+            dims=("geo", "time", "control"),
+        )
+        result = diagnostics.build_design_matrix(media, controls)
+        media_df = (
+            media.stack(sample=("geo", "time"))
+            .transpose("sample", "media_channel")
+            .to_pandas()
+        )
+        ctrl_df = (
+            controls.stack(sample=("geo", "time"))
+            .transpose("sample", "control")
+            .to_pandas()
+        )
+        expected = pd.concat([media_df, ctrl_df], axis=1).to_numpy()
+        np.testing.assert_allclose(result, expected)
 
 
 class BreuschPaganGodfreyTest(absltest.TestCase):
