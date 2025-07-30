@@ -540,6 +540,7 @@ ADSTOCK_HILL_FUNCTIONS = frozenset({
 # Distribution constants.
 DISTRIBUTION = 'distribution'
 DISTRIBUTION_TYPE = 'distribution_type'
+INDEPENDENT_MULTIVARIATE = 'IndependentMultivariate'
 PRIOR = 'prior'
 POSTERIOR = 'posterior'
 # Prior mean proportion of KPI incremental due to all media.
