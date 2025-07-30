@@ -3966,12 +3966,13 @@ class Analyzer:
       if self._meridian.prior_broadcast.has_deterministic_param(param):
         continue
 
-      bad_idx = np.where(rhat[param] > bad_rhat_threshold)
-      if len(bad_idx) == 2:
-        row_idx, col_idx = bad_idx
-      elif len(bad_idx) == 1:
-        row_idx = bad_idx[0]
+      if rhat[param].ndim == 2:
+        row_idx, col_idx = np.where(rhat[param] > bad_rhat_threshold)
+      elif rhat[param].ndim == 1:
+        row_idx = np.where(rhat[param] > bad_rhat_threshold)[0]
         col_idx = []
+      elif rhat[param].ndim == 0:
+        row_idx = col_idx = []
       else:
         raise ValueError(f"Unexpected dimension for parameter {param}.")
 
