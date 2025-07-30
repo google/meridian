@@ -22,6 +22,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.model import prior_distribution
 import numpy as np
+import tensorflow_probability as tfp
 
 _N_GEOS = 10
 _N_GEOS_NATIONAL = 1
@@ -1544,6 +1545,102 @@ class PriorDistributionTest(parameterized.TestCase):
     self.assertEqual(
         prior_distribution.distributions_are_equal(a, b), expected_result
     )
+
+  @parameterized.named_parameters(
+      (
+          'alpha_m_can_be_negative',
+          {'alpha_m': tfp.distributions.Uniform(-1, 1)},
+      ),
+      (
+          'alpha_m_can_exceed_one',
+          {'alpha_m': tfp.distributions.Uniform(0, 2)},
+      ),
+      (
+          'alpha_m_deterministic_negative_one',
+          {'alpha_m': tfp.distributions.Deterministic(-1)},
+      ),
+      (
+          'alpha_m_deterministic_two',
+          {'alpha_m': tfp.distributions.Deterministic(2)},
+      ),
+      (
+          'eta_m_can_be_negative',
+          {'eta_m': tfp.distributions.Normal(0, 1)},
+      )
+  )
+  def test_validate_support_raises_value_error(
+      self,
+      prior_distribution_kwargs: dict[str, tfp.distributions.Distribution],
+  ):
+    with self.assertRaises(ValueError):
+      prior_distribution.PriorDistribution(**prior_distribution_kwargs)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='alpha_m_deterministic_prior_at_one',
+          param_name='alpha_m',
+          deterministic_value=1,
+          expect_error=True,
+      ),
+      dict(
+          testcase_name='ec_m_deterministic_prior_at_zero',
+          param_name='ec_m',
+          deterministic_value=0,
+          expect_error=True,
+      ),
+      dict(
+          testcase_name='slope_m_deterministic_prior_at_zero',
+          param_name='slope_m',
+          deterministic_value=0,
+          expect_error=True,
+      ),
+      dict(
+          testcase_name='alpha_m_deterministic_prior_at_zero',
+          param_name='alpha_m',
+          deterministic_value=0,
+          expect_error=False,
+      ),
+      dict(
+          testcase_name='eta_m_deterministic_prior_at_zero',
+          param_name='eta_m',
+          deterministic_value=0,
+          expect_error=False,
+      ),
+  )
+  def test_deterministic_prior_at_bound(
+      self,
+      param_name: str,
+      deterministic_value: float,
+      expect_error: bool,
+  ):
+    if expect_error:
+      with self.assertRaisesRegex(
+          ValueError,
+          f'{param_name} was assigned a point mass',
+      ):
+        prior_distribution.PriorDistribution(
+            **{param_name: tfp.distributions.Deterministic(deterministic_value)}
+        )
+    else:
+      try:
+        prior_distribution.PriorDistribution(
+            **{param_name: tfp.distributions.Deterministic(deterministic_value)}
+        )
+      except ValueError:
+        self.fail(
+            f'Assigning Deterministic({deterministic_value}) prior to'
+            f' {param_name} raises an unexpected ValueError.'
+        )
+
+  def test_quantile_not_implemented_raises_warning(self):
+    with self.assertWarnsRegex(
+        UserWarning,
+        'The prior distribution for alpha_m does not have a `quantile` method'
+    ):
+      # Note that `tfp.distributions.Categorical.quantile` raises a
+      # `NotImplementedError`.
+      dist = tfp.distributions.Categorical(probs=[0.5, 0.5])
+      prior_distribution.PriorDistribution(alpha_m=dist)
 
 
 class TestIndependentMultivariateDistribution(parameterized.TestCase):
