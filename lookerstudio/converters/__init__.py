@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Module containing Meridian Looker Studio converters."""
 
-from meridian import analysis
-from meridian import data
-from meridian import model
-from meridian.version import __version__
-
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+from lookerstudio.converters import constants
+from lookerstudio.converters import dataframe
+from lookerstudio.converters import mmm
+from lookerstudio.converters import mmm_converter
+from lookerstudio.converters import sheets
