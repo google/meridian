@@ -77,6 +77,12 @@ class MediaTransformer(TensorTransformer):
         inp=[population_scaled_media_nan],
         Tout=tf.float32,
     )
+    if tf.reduce_any(tf.math.is_nan(self._population_scaled_median_m)):
+      raise ValueError(
+          "MediaTransformer has a NaN population-scaled non-zero median,"
+          " suggesting that a media channel could be either all zeroes or all"
+          " NaNs. Please drop the channel if this is the case."
+      )
     # Tensor of dimensions (`n_geos` x 1) of weights for scaling `metric`.
     self._scale_factors_gm = tf.einsum(
         "g,m->gm", population, self._population_scaled_median_m
