@@ -108,9 +108,25 @@ class BuildDesignMatrixTest(absltest.TestCase):
         )
         ctrl_df = (
             controls.stack(sample=("geo", "media_time"))
+            .transpose("sample", "control")
             .to_pandas()
         )
         expected = pd.concat([media_df, ctrl_df], axis=1)
+        expected.insert(0, "const", 1.0)
+        expected = expected.astype("float64")
+        pdt.assert_frame_equal(result, expected)
+
+    def test_matrix_without_controls(self):
+        media = xr.DataArray(
+            np.arange(8).reshape(1, 2, 4),
+            dims=("geo", "media_time", "media_channel"),
+        )
+        result = diagnostics.build_design_matrix(media)
+        expected = (
+            media.stack(sample=("geo", "media_time"))
+            .transpose("sample", "media_channel")
+            .to_pandas()
+        )
         expected.insert(0, "const", 1.0)
         expected = expected.astype("float64")
         pdt.assert_frame_equal(result, expected)

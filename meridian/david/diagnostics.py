@@ -227,8 +227,10 @@ def build_design_matrix(
 
   if controls_da is not None:
     tdim_ctrl = _infer_time_dim(controls_da)
+    ctrl_dim = next(d for d in controls_da.dims if d not in ("geo", tdim_ctrl))
     ctrl_df = (
         controls_da.stack(sample=("geo", tdim_ctrl))
+        .transpose("sample", ctrl_dim)
         .to_pandas()
     )
     X = pd.concat([media_df, ctrl_df], axis=1)
