@@ -176,33 +176,69 @@ def augmented_dickey_fuller(series: np.ndarray):
 # --------------------------------------------------------------------
 
 
+def _infer_time_dim(da: xr.DataArray) -> str:
+  """Return the name of the temporal dimension in ``da``.
+
+  Meridian tensors may expose one of ``"time"``, ``"media_time"`` or
+  ``"geo_time"``.  This helper searches for the first matching dimension name
+  and returns it.  A :class:`ValueError` is raised if none of the expected
+  dimensions are present.
+  """
+
+  for cand in ("time", "media_time", "geo_time"):
+    if cand in da.dims:
+      return cand
+  raise ValueError(
+      f"Cannot locate temporal dimension in {list(da.dims)}; expected one of "
+      "'time', 'media_time', 'geo_time'."
+  )
+
+
 def build_design_matrix(
-    media_da: xr.DataArray | None,
-    controls_da: xr.DataArray | None,
-) -> np.ndarray:
-    """Creates a design matrix from media and control ``DataArray`` objects."""
+    media_da: xr.DataArray,
+    controls_da: xr.DataArray | None = None,
+    add_constant: bool = True,
+) -> pd.DataFrame:
+  """Construct a long-format design matrix for regression.
 
-    pieces: list[pd.DataFrame] = []
-    if media_da is not None:
-        media_df = (
-            media_da.stack(sample=("geo", "time"))
-            .transpose("sample", "media_channel")
-            .to_pandas()
-        )
-        pieces.append(media_df)
+  Parameters
+  ----------
+  media_da:
+    Media predictors with dims ``('geo', <time_dim>, 'media_channel')``.
+  controls_da:
+    Optional controls with dims ``('geo', <time_dim>, <ctrl_dim>)``.
+  add_constant:
+    If ``True``, a column named ``"const"`` filled with ``1.0`` is
+    prepended.
 
-    if controls_da is not None:
-        ctrl_df = (
-            controls_da.stack(sample=("geo", "time"))
-            .transpose("sample", "control")
-            .to_pandas()
-        )
-        pieces.append(ctrl_df)
+  Returns
+  -------
+  pandas.DataFrame
+    Rows correspond to ``(#geo × #time)`` samples, columns to regressors.
+  """
 
-    if not pieces:
-        raise ValueError("At least one of `media_da` or `controls_da` must be provided")
+  tdim_media = _infer_time_dim(media_da)
 
-    return pd.concat(pieces, axis=1).to_numpy()
+  media_df = (
+      media_da.stack(sample=("geo", tdim_media))
+      .transpose("sample", "media_channel")
+      .to_pandas()
+  )
+
+  if controls_da is not None:
+    tdim_ctrl = _infer_time_dim(controls_da)
+    ctrl_df = (
+        controls_da.stack(sample=("geo", tdim_ctrl))
+        .to_pandas()
+    )
+    X = pd.concat([media_df, ctrl_df], axis=1)
+  else:
+    X = media_df
+
+  if add_constant and "const" not in X.columns:
+    X.insert(0, "const", 1.0)
+
+  return X.astype("float64")
 
 
 # --------------------------------------------------------------------
