@@ -79,6 +79,30 @@ class MediaTransformerTest(absltest.TestCase):
     )
     tf.debugging.assert_near(median, np.ones(self._n_media_channels))
 
+  def test_all_zeros_media_raises_error(self):
+    media_with_zeros = self._media1.numpy()
+    media_with_zeros[..., 0] = 0
+    media_with_zeros = tf.convert_to_tensor(media_with_zeros)
+    with self.assertRaisesRegex(
+        ValueError,
+        "MediaTransformer has a NaN population-scaled non-zero median",
+    ):
+      transformers.MediaTransformer(
+          media=media_with_zeros, population=self._population
+      )
+
+  def test_all_nan_media_raises_error(self):
+    media_with_nan = self._media1.numpy()
+    media_with_nan[..., 0] = np.nan
+    media_with_nan = tf.convert_to_tensor(media_with_nan)
+    with self.assertRaisesRegex(
+        ValueError,
+        "MediaTransformer has a NaN population-scaled non-zero median",
+    ):
+      transformers.MediaTransformer(
+          media=media_with_nan, population=self._population
+      )
+
 
 class CenteringAndScalingTransformerTest(absltest.TestCase):
 
