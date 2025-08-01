@@ -12,16 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+edition = "2023";
 
-from meridian import analysis
-from meridian import backend
-from meridian import data
-from meridian import model
-from meridian.version import __version__
+package mmm.v1.model;
 
+import "google/protobuf/any.proto";
+import "proto/mmm/v1/marketing/marketing_data.proto";
 
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+option java_multiple_files = true;
+
+message MmmKernel {
+  // The marketing data that is used to train the marketing mix model and
+  // later analyzed by the model.
+  marketing.MarketingData marketing_data = 1;
+
+  // The details about the model implementation.
+  //
+  // This should contain a trained marketing mix model along with model-specific
+  // information such as model convergence, flags of model usage.
+  google.protobuf.Any model = 2;
+}

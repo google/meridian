@@ -12,16 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""Module containing Meridian Looker Studio Dashboard library."""
 
-from meridian import analysis
-from meridian import backend
-from meridian import data
-from meridian import model
-from meridian.version import __version__
-
-
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+from lookerstudio import converters
