@@ -1,6 +1,7 @@
 import arviz as az
 import numpy as np
 import pandas as pd
+import pandas.testing as pdt
 import scipy.stats
 import xarray as xr
 from absl.testing import absltest
@@ -93,25 +94,39 @@ class BuildDesignMatrixTest(absltest.TestCase):
     def test_matrix_construction(self):
         media = xr.DataArray(
             np.arange(8).reshape(1, 2, 4),
-            dims=("geo", "time", "media_channel"),
+            dims=("geo", "media_time", "media_channel"),
         )
         controls = xr.DataArray(
             np.arange(2).reshape(1, 2, 1),
-            dims=("geo", "time", "control"),
+            dims=("geo", "media_time", "control"),
         )
         result = diagnostics.build_design_matrix(media, controls)
         media_df = (
-            media.stack(sample=("geo", "time"))
+            media.stack(sample=("geo", "media_time"))
             .transpose("sample", "media_channel")
             .to_pandas()
         )
         ctrl_df = (
-            controls.stack(sample=("geo", "time"))
-            .transpose("sample", "control")
+            controls.stack(sample=("geo", "media_time"))
             .to_pandas()
         )
-        expected = pd.concat([media_df, ctrl_df], axis=1).to_numpy()
-        np.testing.assert_allclose(result, expected)
+        expected = pd.concat([media_df, ctrl_df], axis=1)
+        expected.insert(0, "const", 1.0)
+        expected = expected.astype("float64")
+        pdt.assert_frame_equal(result, expected)
+
+
+class InferTimeDimTest(absltest.TestCase):
+
+    def test_detect_known_dims(self):
+        for dim in ("time", "media_time", "geo_time"):
+            da = xr.DataArray(np.zeros((1, 2)), dims=("geo", dim))
+            self.assertEqual(diagnostics._infer_time_dim(da), dim)
+
+    def test_error_on_unknown_dim(self):
+        da = xr.DataArray(np.zeros((1, 2)), dims=("geo", "not_time"))
+        with self.assertRaises(ValueError):
+            diagnostics._infer_time_dim(da)
 
 
 class BreuschPaganGodfreyTest(absltest.TestCase):
