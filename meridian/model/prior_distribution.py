@@ -21,6 +21,7 @@ used by the Meridian model object.
 from __future__ import annotations
 from collections.abc import MutableMapping
 import dataclasses
+import functools
 from typing import Any
 import warnings
 from meridian import constants
@@ -891,6 +892,225 @@ class PriorDistribution:
         contribution_n=contribution_n,
     )
 
+
+class IndependentMultivariateDistribution(tfp.distributions.Distribution):
+  """Class to create a joint distribution from a list of independent distributions.
+
+  This class is useful when one wants to define a joint distribution for a
+  Meridian prior, where the elements are not necessary from the same
+  distribution family. For example, to define a distribution where
+  one element is Uniform and the second is triangular:
+
+  ```python
+  distributions = [
+      tfp.distributions.Uniform(0.0, 1.0),
+      tfp.distributions.Triangular(0.0, 1.0, 0.5)
+      ]
+  distribution = IndependentMultivariateDistribution(distributions)
+
+  It is also possible to define a distribution where multiple elements come
+  from the same distribution family. For example, to define a distribution where
+  the three elements are LogNormal(0.2, 0.9), LogNormal(0, 0.5) and
+  Gamma(2 2):
+
+  ```python
+  distributions = [
+      tfp.distributions.LogNormal([0.2, 0.0], [0.9, 0.5]),
+      tfp.distributions.Gamma(2.0, 2.0)
+      ]
+  distribution = IndependentMultivariateDistribution(distributions)
+
+  ```
+
+  """
+
+  def __init__(
+      self,
+      distributions,
+      validate_args=False,
+      allow_nan_stats=True,
+      name=None,
+  ):
+    """Initialize a batch of independent distributions from different families.
+
+    Args:
+      distributions: List of tfp.Distribution from which to construct a
+        multivariate distribution. The distributions must have scalar or one
+        dimensional batch shapes; the resulting batch shape will be the sum of
+        the underlying batch shapes.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+        Default value: `False`.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+        Default value: `True`.
+      name: Python `str` name prefixed to Ops created by this class.
+        Default value: `'IndependentMultivariate'` followed by the names
+        of the underlying distributions.
+
+    """
+    parameters = dict(locals())
+
+    self._distributions = [
+        dist
+        if dist.batch_shape != []  # bool(tf.TensorShape([])) evaluates to True
+        else tfp.distributions.BatchBroadcast(dist, (1,))
+        for dist in distributions
+    ]
+
+    self._distribution_batch_shape_tensors = tf.concat(
+        [dist.batch_shape_tensor() for dist in self._distributions],
+        axis=0,
+    )
+
+    dtype = self._check_dtypes()
+
+    name = name or '-'.join(
+        ['IndependentMultivariate'] + [d.name for d in distributions]
+        )
+
+    super().__init__(
+        dtype=dtype,
+        reparameterization_type=tfp.distributions.NOT_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        name=name
+    )
+
+  def _check_dtypes(self):
+    dtypes = [dist.dtype for dist in self._distributions]
+    if len(set(dtypes)) != 1:
+      raise ValueError(
+          'All distributions must have the same dtype. Found:'
+          f' {dtypes}.'
+      )
+
+    return dtypes[0]
+
+  def _event_shape(self):
+    return tf.TensorShape([])
+
+  def _batch_shape_tensor(self):
+    distribution_batch_shape_tensors = tf.concat(
+        [dist.batch_shape_tensor() for dist in self._distributions],
+        axis=0,
+    )
+
+    return tf.math.reduce_sum(
+        distribution_batch_shape_tensors,
+        keepdims=True
+        )
+
+  def _batch_shape(self):
+    return tf.TensorShape(sum(self._distribution_batch_shapes))
+
+  def _sample_n(self, n, seed=None):
+    return tf.concat(
+        [dist.sample(n, seed) for dist in self._distributions],
+        axis=-1
+    )
+
+  def _quantile(self, value):
+    value = self._broadcast_value(value)
+    split_value = tf.split(
+        value,
+        self._distribution_batch_shapes,
+        axis=-1
+        )
+    quantiles = [
+        dist.quantile(sv) for dist, sv in zip(self._distributions, split_value)
+        ]
+
+    return tf.concat(quantiles, axis=-1)
+
+  def _log_prob(self, value):
+    value = self._broadcast_value(value)
+    split_value = tf.split(
+        value,
+        self._distribution_batch_shapes,
+        axis=-1
+        )
+
+    log_probs = [
+        dist.log_prob(sv) for dist, sv in zip(self._distributions, split_value)
+        ]
+
+    return tf.concat(log_probs, axis=-1)
+
+  def _log_cdf(self, value):
+    value = self._broadcast_value(value)
+    split_value = tf.split(
+        value,
+        self._distribution_batch_shapes,
+        axis=-1
+        )
+
+    log_cdfs = [
+        dist.log_cdf(sv) for dist, sv in zip(self._distributions, split_value)
+        ]
+
+    return tf.concat(log_cdfs, axis=-1)
+
+  def _mean(self):
+    return tf.concat([
+        dist.mean() for dist in self._distributions
+        ], axis=-1)
+
+  def _variance(self):
+    return tf.concat([
+        dist.variance() for dist in self._distributions
+        ], axis=-1)
+
+  def _default_event_space_bijector(self):
+    """Mapping from R^n to the event space of the distributions.
+
+    This is the blockwise concatenation of the bijectors of
+    the wrapped distributions.
+
+    Returns:
+      A `tfp.bijectors.Bijector` that concatenates the underlying bijectors.
+    """
+    bijectors = [
+        d.experimental_default_event_space_bijector()
+        for d in self._distributions
+        ]
+
+    return tfp.bijectors.Blockwise(
+        bijectors,
+        block_sizes=self._distribution_batch_shapes,
+        )
+
+  def _broadcast_value(self, value: tf.Tensor) -> tf.Tensor:
+    value = tf.convert_to_tensor(value)
+    broadcast_shape = tf.broadcast_dynamic_shape(
+        value.shape, self.batch_shape_tensor()
+        )
+    return tf.broadcast_to(value, broadcast_shape)
+
+  @functools.cached_property
+  def _distribution_batch_shapes(self) -> list[int]:
+    """List of batch shapes of underlying distributions."""
+
+    batch_shapes = []
+
+    for dist in self._distributions:
+      try:
+        dist_batch_shape, = dist.batch_shape
+      except ValueError as exc:
+        raise ValueError(
+            'All distributions must be 0- or 1-dimensional.'
+            f' Found {len(dist.batch_shape)}-dimensional distribution:'
+            f' {dist.batch_shape}.'
+        ) from exc
+      else:
+        batch_shapes.append(dist_batch_shape)
+
+    return batch_shapes
 
 def _convert_to_deterministic_0_distribution(
     distribution: tfp.distributions.Distribution,

@@ -21,7 +21,11 @@ from absl.testing import parameterized
 from meridian import constants as c
 from meridian.model import prior_distribution
 import numpy as np
+import tensorflow as tf
 import tensorflow_probability as tfp
+
+tfb = tfp.bijectors
+tfd = tfp.distributions
 
 _N_GEOS = 10
 _N_GEOS_NATIONAL = 1
@@ -32,6 +36,119 @@ _N_ORGANIC_RF_CHANNELS = 1
 _N_NON_MEDIA_CHANNELS = 2
 _N_CONTROLS = 3
 _N_KNOTS = 5
+
+
+_INDEPENDENT_TEST_CASES = dict(
+    name=[
+        'shifted_uniform',
+        'ragged_shifted_uniform',
+        'differing',
+        'ragged_differing'
+        ],
+    distributions=[
+        (
+            tfp.distributions.Uniform(0.0, 1.0),
+            tfp.distributions.Uniform(1.0, 2.0),
+            tfp.distributions.Uniform(2.0, 3.0),
+        ),
+        (
+            tfp.distributions.Uniform([0.0, 1.0], [1.0, 2.0]),
+            tfp.distributions.Uniform(2.0, 3.0),
+        ),
+        (
+            tfp.distributions.HalfNormal(1),
+            tfp.distributions.Gamma(2, 2),
+            tfp.distributions.TruncatedNormal(0, 1, 1, 2),
+        ),
+        (
+            tfp.distributions.HalfNormal(1),
+            tfp.distributions.TruncatedNormal([0, 0], [1, 1], [1, 2], [2, 3]),
+        )
+    ],
+    expected_quantile_0=[
+        (0.0, 1.0, 2.0),
+        (0.0, 1.0, 2.0),
+        (0.0, 0.0, 1.0),
+        (0.0, 1.0, 2.0),
+    ],
+    expected_quantile_1=[
+        (1.0, 2.0, 3.0),
+        (1.0, 2.0, 3.0),
+        (np.inf, np.inf, 2.0),
+        (np.inf, 2.0, 3.0),
+    ],
+    expected_log_prob=[
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (0.0, 0.0, 0.0),
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+        ),
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (0.0, 0.0, 0.0),
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+        ),
+        (
+            (-np.inf, np.nan, -np.inf),
+            (-np.inf, -0.306852818, -0.048140287),
+            (-0.350791335, -1.208240509, -np.inf),
+            (-1.350791335, -2.697414875, -np.inf),
+            (-50.225791931, -16.31111908, -np.inf),
+        ),
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (-0.350791335, -0.048140287, -0.199585199),
+            (-1.350791335, -np.inf, -np.inf),
+            (-50.225791931, -np.inf, -np.inf),
+        ),
+    ],
+    expected_log_cdf=[
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (-np.log(2.0), -np.log(2.0), -np.log(2.0)),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0)
+        ),
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (-np.log(2.0), -np.log(2.0), -np.log(2.0)),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0)
+        ),
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -1.330893278, -0.391821384),
+            (-0.959916353, -0.222079486, 0.0),
+            (-0.143425226, -0.0412676, 0.0),
+            (0.0, 0.0, 0.0),
+        ),
+        (
+            (-np.inf, -np.inf, -np.inf),
+            (-np.inf, -np.inf, -np.inf),
+            (-0.959916353, -0.391821623, -0.257591963),
+            (-0.143425226, 0.0, 0.0), (0.0, 0.0, 0.0),
+        )
+    ],
+    expected_mean=[
+        (0.5, 1.5, 2.5),
+        (0.5, 1.5, 2.5),
+        (np.sqrt(2 / np.pi), 1.0, 1.383169293),
+        (np.sqrt(2 / np.pi), 1.383169293, 2.315821171)
+    ],
+    expected_variance=[
+        (1/12, 1/12, 1/12),
+        (1/12, 1/12, 1/12),
+        (1 - 2/np.pi, 1/2, 0.072742462),
+        (1 - 2/np.pi, 0.072742462, 0.061521053)
+    ]
+)
 
 
 class PriorDistributionTest(parameterized.TestCase):
@@ -1445,6 +1562,191 @@ class PriorDistributionTest(parameterized.TestCase):
     self.assertEqual(
         prior_distribution.distributions_are_equal(a, b), expected_result
     )
+
+
+class TestIndependentMultivariateDistribution(parameterized.TestCase):
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions']
+  ))
+  def test_batch_shape_tensor(self, distributions):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+
+    np.testing.assert_array_equal(
+        distribution.batch_shape_tensor(),
+        tf.convert_to_tensor([3]))
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='scalar_sample',
+          sample_kwargs=dict(),
+          expected_shape=(2,),
+      ),
+      dict(
+          testcase_name='three_sample',
+          sample_kwargs=dict(sample_shape=3),
+          expected_shape=(3, 2),
+      ),
+  )
+  def test_independent_bivariate_distribution_sample_shape(
+      self,
+      sample_kwargs: dict[str, Any],
+      expected_shape: tuple[int, ...],
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        [
+            tfp.distributions.Normal(-10, 1),
+            tfp.distributions.Normal(10, 1)
+        ]
+    )
+    sample = distribution.sample(**sample_kwargs)
+    self.assertEqual(sample.shape, expected_shape)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_quantile_0'],
+      ))
+  def test_independent_distribution_support_lower_bound(
+      self, distributions, expected_quantile_0
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    lower_bound = distribution.quantile(0.0)
+
+    np.testing.assert_allclose(lower_bound, expected_quantile_0, rtol=1e-3)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_quantile_1'],
+      ))
+  def test_independent_distribution_support_upper_bound(
+      self, distributions, expected_quantile_1
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    upper_bound = distribution.quantile(1.0)
+
+    np.testing.assert_allclose(upper_bound, expected_quantile_1, rtol=1e-3)
+
+  @parameterized.product(
+      (
+          dict(
+              value=1.0,
+              expected_broadcasted_value=tf.convert_to_tensor([1.0, 1.0, 1.0]),
+          ),
+          dict(
+              value=[1.0],
+              expected_broadcasted_value=tf.convert_to_tensor([1.0, 1.0, 1.0]),
+          ),
+          dict(
+              value=[0.0, 0.5, 1.0],
+              expected_broadcasted_value=tf.convert_to_tensor([0.0, 0.5, 1.0]),
+          ),
+          dict(
+              value=[[0.0], [1.0]],
+              expected_broadcasted_value=tf.convert_to_tensor([
+                  [0.0, 0.0, 0.0],
+                  [1.0, 1.0, 1.0],
+              ]),
+          ),
+      ),
+      distributions=_INDEPENDENT_TEST_CASES['distributions'],
+  )
+  def test_independent_distribution_broadcast_value(
+      self,
+      value,
+      expected_broadcasted_value,
+      distributions,
+  ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    broadcasted_value = distribution._broadcast_value(value)
+    np.testing.assert_array_equal(
+        broadcasted_value.shape, expected_broadcasted_value.shape
+    )
+
+    np.testing.assert_array_equal(broadcasted_value, expected_broadcasted_value)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_log_prob']
+  ))
+  def test_independent_distributions_log_prob(
+      self, distributions, expected_log_prob
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    log_prob = distribution.log_prob([
+        [-1.0, -1.0, -1.0],
+        [-0.5, 0.5, 1.5],
+        [0.5, 1.5, 2.5],
+        [1.5, 2.5, 3.5],
+        [10, 10, 10]
+        ])
+
+    np.testing.assert_allclose(log_prob, expected_log_prob, rtol=1e-4)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_log_cdf']
+  ))
+  def test_independent_distributions_log_cdf(
+      self, distributions, expected_log_cdf):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    log_cdf = distribution.log_cdf([
+        [-1.0, -1.0, -1.0],
+        [-0.5, 0.5, 1.5],
+        [0.5, 1.5, 2.5],
+        [1.5, 2.5, 3.5],
+        [100.0, 100.0, 100.0]
+        ])
+
+    np.testing.assert_allclose(log_cdf, expected_log_cdf, rtol=1e-4)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_mean']
+  ))
+  def test_independent_distributions_mean(
+      self,
+      distributions,
+      expected_mean
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    mean = distribution.mean()
+    np.testing.assert_allclose(mean, expected_mean, rtol=1e-4)
+
+  @parameterized.named_parameters(*zip(
+      _INDEPENDENT_TEST_CASES['name'],
+      _INDEPENDENT_TEST_CASES['distributions'],
+      _INDEPENDENT_TEST_CASES['expected_variance']
+  ))
+  def test_independent_distributions_variance(
+      self,
+      distributions,
+      expected_variance
+      ):
+    distribution = prior_distribution.IndependentMultivariateDistribution(
+        distributions
+    )
+    variance = distribution.variance()
+    np.testing.assert_allclose(variance, expected_variance, rtol=1e-4)
 
 
 if __name__ == '__main__':
