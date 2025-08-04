@@ -455,6 +455,10 @@ class PriorDistribution:
       ),
   )
 
+  def __post_init__(self):
+    for param, bounds in _parameter_space_bounds.items():
+      _validate_support(param, getattr(self, param), bounds[0], bounds[1])
+
   def __setstate__(self, state):
     # Override to support pickling.
     def _unpack_distribution_params(
@@ -976,3 +980,67 @@ def distributions_are_equal(
     return False
 
   return a_params == b_params
+
+
+def _validate_support(
+    parameter_name: str,
+    tfp_dist: tfp.distributions.Distribution,
+    parameter_min: float,
+    parameter_max: float,
+) -> None:
+  """Validates that distribution support is within the parameter bounds.
+
+  Args:
+    parameter_name: Name of the parameter.
+    tfp_dist: The TFP distribution to validate.
+    parameter_min: The minimum value of the parameter.
+    parameter_max: The maximum value of the parameter.
+
+  Raises:
+    ValueError: If the distribution support is not within the parameter bounds.
+  """
+  # Note that `tfp.distributions.BatchBroadcast` objects have a `distribution`
+  # attribute that points to a `tfp.distributions.Distribution` object.
+  if isinstance(tfp_dist, tfp.distributions.BatchBroadcast):
+    tfp_dist = tfp_dist.distribution
+  # Note that `tfp.distributions.Deterministic` does not have a `quantile`
+  # method implemented, so the min and max values must be extracted from the
+  # `loc` attribute instead.
+  if isinstance(tfp_dist, tfp.python.distributions.deterministic.Deterministic):
+    support_min_vals = tfp_dist.loc
+    support_max_vals = tfp_dist.loc
+  else:
+    support_min_vals = tfp_dist.quantile(0)
+    support_max_vals = tfp_dist.quantile(1)
+  if tf.reduce_any(support_min_vals < parameter_min):
+    raise ValueError(
+        f'{parameter_name} was assigned a prior distribution that allows values'
+        f' less than the parameter minimum {parameter_min}.'
+    )
+  if tf.reduce_any(support_max_vals > parameter_max):
+    raise ValueError(
+        f'{parameter_name} was assigned a prior distribution that allows values'
+        f' greater than the parameter maximum {parameter_max}.'
+    )
+
+_parameter_space_bounds = {
+    'eta_m': (0, np.inf),
+    'eta_rf': (0, np.inf),
+    'eta_om': (0, np.inf),
+    'eta_orf': (0, np.inf),
+    'xi_c': (0, np.inf),
+    'xi_n': (0, np.inf),
+    'alpha_m': (0, 1),
+    'alpha_rf': (0, 1),
+    'alpha_om': (0, 1),
+    'alpha_orf': (0, 1),
+    'ec_m': (0, np.inf),
+    'ec_rf': (0, np.inf),
+    'ec_om': (0, np.inf),
+    'ec_orf': (0, np.inf),
+    'slope_m': (0, np.inf),
+    'slope_rf': (0, np.inf),
+    'slope_om': (0, np.inf),
+    'slope_orf': (0, np.inf),
+    'sigma': (0, np.inf),
+}

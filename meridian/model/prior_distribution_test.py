@@ -1446,6 +1446,31 @@ class PriorDistributionTest(parameterized.TestCase):
         prior_distribution.distributions_are_equal(a, b), expected_result
     )
 
+  @parameterized.named_parameters(
+      (
+          'alpha_m prior allows values less than zero.',
+          {'alpha_m': tfp.distributions.Uniform(-1, 1)},
+      ),
+      (
+          'alpha_m prior allows values greater than one.',
+          {'alpha_m': tfp.distributions.Uniform(0, 2)},
+      ),
+      (
+          'alpha_m prior is Deterministic(-1).',
+          {'alpha_m': tfp.distributions.Deterministic(-1)},
+      ),
+      (
+          'alpha_m prior is Deterministic(2).',
+          {'alpha_m': tfp.distributions.Deterministic(2)},
+      ),
+  )
+  def test_validate_support_raises_value_error(
+      self,
+      prior_distribution_kwargs: dict[str, tfp.distributions.Distribution],
+  ):
+    with self.assertRaises(ValueError):
+      prior_distribution.PriorDistribution(**prior_distribution_kwargs)
+
 
 if __name__ == '__main__':
   absltest.main()
