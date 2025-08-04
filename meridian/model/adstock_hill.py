@@ -21,7 +21,36 @@ __all__ = [
     'AdstockHillTransformer',
     'AdstockTransformer',
     'HillTransformer',
+    'compute_decay_weights',
 ]
+
+
+def compute_decay_weights(
+    alpha: tf.Tensor,
+    l_range: tf.Tensor,
+    normalize: bool = False,
+) -> tf.Tensor:
+  """Computes decay weights using geometric decay.
+
+  This function always broadcasts the lag dimension (`l_range`) to the
+  trailing axis of the output tensor.
+
+  Args:
+      alpha: The parameter for the adstock decay function.
+      l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
+        0]`.
+      normalize: A boolean indicating whether to normalize the weights.
+
+  Returns:
+      A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
+  """
+
+  base_tensor = tf.expand_dims(alpha, -1)
+  weights = base_tensor**l_range
+  if normalize:
+    normalization_factors = tf.reduce_sum(weights, axis=-1, keepdims=True)
+    return tf.divide(weights, normalization_factors)
+  return weights
 
 
 def _validate_arguments(
@@ -96,14 +125,12 @@ def _adstock(
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
-    window_list[i] = media[..., i:i+n_times_output, :]
+    window_list[i] = media[..., i : i + n_times_output, :]
   windowed = tf.stack(window_list)
   l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
-  weights = tf.expand_dims(alpha, -1) ** l_range
-  normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
+  weights = compute_decay_weights(
+      alpha=alpha, l_range=l_range, normalize=True
   )
-  weights = tf.divide(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
 
@@ -150,12 +177,10 @@ class AdstockTransformer(AdstockHillTransformer):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
-      alpha: Tensor of `alpha` parameters taking values ≥ `[0, 1)` with
+      alpha: Tensor of `alpha` parameters taking values in `[0, 1]` with
         dimensions `[..., n_media_channels]`. Batch dimensions `(...)` are
         optional. Note that `alpha = 0` is allowed, so it is possible to put a
-        point mass prior at zero (effectively no Adstock). However, `alpha = 1`
-        is not allowed since the geometric sum formula is not defined, and there
-        is no practical reason to have point mass at `alpha = 1`.
+        point mass prior at zero (effectively no Adstock).
       max_lag: Integer indicating the maximum number of lag periods (≥ `0`) to
         include in the Adstock calculation.
       n_times_output: Integer indicating the number of time periods to include
