@@ -296,5 +296,35 @@ class TestHill(parameterized.TestCase):
     tf.debugging.assert_near(media_transformed, result)
 
 
+class TestTransformNonNegativeRealsDistribution(parameterized.TestCase):
+  """Tests for adstock_hill.transform_non_negative_reals_distribution()."""
+
+  @parameterized.named_parameters(
+      dict(testcase_name="lognormal", distribution=tfd.LogNormal(0.2, 0.9)),
+      dict(testcase_name="halfnormal 2d", distribution=tfd.HalfNormal([1, 2])),
+  )
+  def test_support(self, distribution):
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    q0 = transformed_distribution.quantile(0.0)
+    q1 = transformed_distribution.quantile(1.0)
+
+    tf.debugging.assert_near(q0, 0.0)
+    tf.debugging.assert_near(q1, 1.0)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="0", inp=0.0, out=1.0),
+      dict(testcase_name="1", inp=1.0, out=0.5),
+      dict(testcase_name="4", inp=4.0, out=0.2),
+      dict(testcase_name="inf", inp=np.inf, out=0.0),
+  )
+  def test_mapping(self, inp, out):
+    distribution = tfd.Deterministic(inp)
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    tf.debugging.assert_near(transformed_distribution.sample(), out)
+
 if __name__ == "__main__":
   absltest.main()
