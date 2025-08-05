@@ -1386,7 +1386,7 @@ class Analyzer:
       use_posterior: bool = True,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       inverse_transform_outcome: bool = True,
@@ -1442,9 +1442,10 @@ class Analyzer:
         original tensors from `input_data`.
       selected_geos: Optional list of containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of dates to include.
-        The values accepted here must match time dimension coordinates from
-        `InputData.time`. By default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data or number of time periods in the `new_data` args, if provided.
+        By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -1742,7 +1743,7 @@ class Analyzer:
         are included.
       selected_times: An optional string list containing a subset of
         `InputData.time` to include or a boolean list with length equal to the
-        number of time periods in `new_media` (if provided). By default, all
+        number of time periods in KPI data in `data_tensors`. By default, all
         time periods are included.
       aggregate_geos: If True, then incremental outcome is summed over all
         regions.
@@ -2130,7 +2131,7 @@ class Analyzer:
   def _validate_geo_and_time_granularity(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -3330,7 +3331,7 @@ class Analyzer:
   def baseline_summary_metrics(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
@@ -3342,8 +3343,9 @@ class Analyzer:
     Args:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -3472,8 +3474,8 @@ class Analyzer:
       freq_grid: Sequence[float] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      selected_geos: Sequence[str | int] | None = None,
-      selected_times: Sequence[str | int | bool] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3728,7 +3730,7 @@ class Analyzer:
   def predictive_accuracy(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Calculates `R-Squared`, `MAPE`, and `wMAPE` goodness of fit metrics.
@@ -3757,8 +3759,9 @@ class Analyzer:
     Args:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of dates to include. By
-        default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       batch_size: Integer representing the maximum draws per chain in each
         batch. By default, `batch_size` is `100`. The calculation is run in
         batches to avoid memory exhaustion. If a memory error occurs, try
@@ -4014,10 +4017,11 @@ class Analyzer:
 
   def response_curves(
       self,
+      new_data: DataTensors | None = None,
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       by_reach: bool = True,
       use_optimal_frequency: bool = False,
       use_kpi: bool = False,
@@ -4032,13 +4036,22 @@ class Analyzer:
 
     A list of multipliers is applied to each media channel's total historical
     spend within `selected_geos` and `selected_times` to obtain the x-axis
-    values. The y-axis values are the incremental ouctcome generated by each
+    values. The y-axis values are the incremental outcome generated by each
     channel within `selected_geos` and `selected_times` under the counterfactual
     where media units in each geo and time period are scaled by the
     corresponding multiplier. (Media units for time periods prior to
     `selected_times` are also scaled by the multiplier.)
 
     Args:
+      new_data: Optional `DataTensors` object with optional new tensors:
+        `media`, `reach`, `frequency`, `media_spend`, `rf_spend`,
+        `revenue_per_kpi`. If provided, the response curves are calculated using
+        the values of the tensors passed in `new_data` and the original values
+        of all the remaining tensors. If `None`, the response curves are
+        calculated using the original values of all the tensors. If any of the
+        tensors in `new_data` is provided with a different number of time
+        periods than in `InputData`, then all tensors must be provided with the
+        same number of time periods.
       spend_multipliers: List of multipliers. Each channel's total spend is
         multiplied by these factors to obtain the values at which the curve is
         calculated for that channel.
@@ -4046,9 +4059,9 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of time dimensions to
-        include. By default, all time periods are included. Time dimension
-        strings and integers must align with the `Meridian.n_times`.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -4077,11 +4090,43 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
+    if new_data is None:
+      new_data = DataTensors()
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=constants.PAID_DATA + constants.SPEND_DATA,
+        meridian=self._meridian,
+        allow_modified_times=True,
+    )
+    new_n_media_times = filled_data.get_modified_times(self._meridian)
+
+    if new_n_media_times is None:
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=self._meridian.input_data.time,
+          n_times=self._meridian.n_times,
+          arg_name="selected_times",
+          comparison_arg_name="the input data",
+      )
+    else:
+      _validate_flexible_selected_times(
+          selected_times=selected_times,
+          media_selected_times=None,
+          new_n_media_times=new_n_media_times,
+      )
+
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
+      opt_freq_data = DataTensors(
+          media=filled_data.media,
+          rf_impressions=filled_data.reach * filled_data.frequency,
+          media_spend=filled_data.media_spend,
+          rf_spend=filled_data.rf_spend,
+          revenue_per_kpi=filled_data.revenue_per_kpi,
+      )
       frequency = tf.ones_like(
-          self._meridian.rf_tensors.frequency
+          filled_data.frequency
       ) * tf.convert_to_tensor(
           self.optimal_freq(
+              new_data=opt_freq_data,
               selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
@@ -4089,12 +4134,12 @@ class Analyzer:
           dtype=tf.float32,
       )
       reach = tf.math.divide_no_nan(
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
+          filled_data.reach * filled_data.frequency,
           frequency,
       )
     else:
-      frequency = self._meridian.rf_tensors.frequency
-      reach = self._meridian.rf_tensors.reach
+      frequency = filled_data.frequency
+      reach = filled_data.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
     incremental_outcome = np.zeros((
@@ -4108,18 +4153,19 @@ class Analyzer:
             (len(self._meridian.input_data.get_all_paid_channels()), 3)
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
-      new_data = _scale_tensors_by_multiplier(
+      scaled_data = _scale_tensors_by_multiplier(
           data=DataTensors(
-              media=self._meridian.media_tensors.media,
+              media=filled_data.media,
               reach=reach,
               frequency=frequency,
+              revenue_per_kpi=filled_data.revenue_per_kpi,
           ),
           multiplier=multiplier,
           by_reach=by_reach,
       )
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=new_data.filter_fields(constants.PAID_DATA),
+          new_data=scaled_data.filter_fields(constants.PAID_DATA),
           inverse_transform_outcome=True,
           batch_size=batch_size,
           use_kpi=use_kpi,
@@ -4130,22 +4176,11 @@ class Analyzer:
           inc_outcome_temp, confidence_level
       )
 
-    if self._meridian.n_media_channels > 0 and self._meridian.n_rf_channels > 0:
-      spend = tf.concat(
-          [
-              self._meridian.media_tensors.media_spend,
-              self._meridian.rf_tensors.rf_spend,
-          ],
-          axis=-1,
-      )
-    elif self._meridian.n_media_channels > 0:
-      spend = self._meridian.media_tensors.media_spend
-    else:
-      spend = self._meridian.rf_tensors.rf_spend
-
-    if tf.rank(spend) == 3:
+    spend = filled_data.total_spend()
+    if spend is not None and spend.ndim == 3:
       spend = self.filter_and_aggregate_geos_and_times(
           tensor=spend,
+          flexible_time_dim=True,
           **dim_kwargs,
       )
     spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
@@ -4792,15 +4827,16 @@ class Analyzer:
 
   def get_historical_spend(
       self,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       include_media: bool = True,
       include_rf: bool = True,
   ) -> xr.DataArray:
     """Deprecated. Gets the aggregated historical spend based on the time.
 
     Args:
-      selected_times: The time period to get the historical spends. If None, the
-        historical spends will be aggregated over all time points.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4844,8 +4880,9 @@ class Analyzer:
         of all the remaining tensors.  If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
         then all tensors must be provided with the same number of time periods.
-      selected_times: The time period to get the aggregated spends. If None, the
-        spend will be aggregated over all time periods.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4936,7 +4973,9 @@ class Analyzer:
     argument, its values only affect the output when imputation is required.
 
     Args:
-      selected_times: The time period to get the aggregated spend.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
