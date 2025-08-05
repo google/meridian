@@ -101,7 +101,7 @@ def _adstock(
   l_range = tf.range(window_size - 1, -1, -1, dtype=tf.float32)
   weights = tf.expand_dims(alpha, -1) ** l_range
   normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1
+      (- alpha ** (window_size) + 1) / (2 - alpha - 1), -1
   )
   weights = tf.divide(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
