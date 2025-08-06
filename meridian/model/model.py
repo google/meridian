@@ -427,6 +427,18 @@ class Meridian:
     return tensor[tf.newaxis, ...] if self.is_national else tensor
 
   @functools.cached_property
+  def adstock_decay_function_broadcast(
+      self,
+  ) -> adstock_hill.AdstockDecayFunction:
+    """Returns broadcasted `AdstockDecayParameterization` object."""
+    return self.model_spec.adstock_decay_function.broadcast(
+        n_media_channels=self.n_media_channels,
+        n_rf_channels=self.n_rf_channels,
+        n_organic_media_channels=self.n_organic_media_channels,
+        n_organic_rf_channels=self.n_organic_rf_channels,
+    )
+
+  @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
     """Returns broadcasted `PriorDistribution` object."""
     total_spend = self.input_data.get_total_spend()
@@ -1119,6 +1131,7 @@ class Meridian:
         alpha_m,
         ec_m,
         slope_m,
+        adstock_functions=self.adstock_decay_function_broadcast.media,
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
@@ -1160,6 +1173,7 @@ class Meridian:
         alpha=alpha_rf,
         ec=ec_rf,
         slope=slope_rf,
+        adstock_functions=self.adstock_decay_function_broadcast.rf,
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
@@ -1253,6 +1267,7 @@ class Meridian:
       alpha: backend.Tensor,
       ec: backend.Tensor,
       slope: backend.Tensor,
+      adstock_functions: list[str] | str = constants.GEOMETRIC_DECAY,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
@@ -1265,6 +1280,8 @@ class Meridian:
       alpha: Uniform distribution for Adstock and Hill calculations.
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
+      adstock_functions: List of str denoting the adstock decay parameterization
+        for each channel. Defaults to geometric for all channels.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `media` equals
         `self.n_media_times`, in which case `n_times_output` defaults to
@@ -1285,6 +1302,7 @@ class Meridian:
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
         n_times_output=n_times_output,
+        decay_function=adstock_functions,
     )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
@@ -1308,6 +1326,7 @@ class Meridian:
       alpha: backend.Tensor,
       ec: backend.Tensor,
       slope: backend.Tensor,
+      adstock_functions: list[str] | str  = constants.GEOMETRIC_DECAY,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
@@ -1320,6 +1339,8 @@ class Meridian:
       alpha: Uniform distribution for Adstock and Hill calculations.
       ec: Shifted half-normal distribution for Adstock and Hill calculations.
       slope: Deterministic distribution for Adstock and Hill calculations.
+      adstock_functions: List of str denoting the adstock decay parameterization
+        for each channel. Defaults to geometric for all channels.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `reach` equals
         `self.n_media_times`, in which case `n_times_output` defaults to
@@ -1344,6 +1365,7 @@ class Meridian:
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
         n_times_output=n_times_output,
+        decay_function=adstock_functions,
     )
     adj_frequency = hill_transformer.forward(frequency)
     rf_out = adstock_transformer.forward(reach * adj_frequency)

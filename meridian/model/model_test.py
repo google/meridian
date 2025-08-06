@@ -1384,6 +1384,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
           ec=np.ones(shape=(self._N_RF_CHANNELS,)),
           slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          adstock_functions=meridian.adstock_decay_function_broadcast.rf,
       )
 
   def test_adstock_hill_rf_n_times_output(self):
@@ -1403,6 +1404,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
           ec=np.ones(shape=(self._N_RF_CHANNELS,)),
           slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          adstock_functions=meridian.adstock_decay_function_broadcast.rf,
           n_times_output=8,
       )
 
@@ -1445,6 +1447,7 @@ class ModelTest(
         alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
         ec=np.ones(shape=(self._N_RF_CHANNELS,)),
         slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+        adstock_functions=meridian.adstock_decay_function_broadcast.rf,
     )
 
     expected_called_names = ["mock_hill", "mock_adstock"]
@@ -2083,6 +2086,7 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        adstock_functions=meridian.adstock_decay_function_broadcast.media,
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,
@@ -2090,12 +2094,14 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        adstock_functions=meridian.adstock_decay_function_broadcast.rf,
     )[0, :, :, :]
     transformed_organic_media = meridian.adstock_hill_media(
         media=meridian.organic_media_tensors.organic_media_scaled,
         alpha=par[constants.ALPHA_OM],
         ec=par[constants.EC_OM],
         slope=par[constants.SLOPE_OM],
+        adstock_functions=meridian.adstock_decay_function_broadcast.organic_media,
     )[0, :, :, :]
     transformed_organic_reach = meridian.adstock_hill_rf(
         reach=meridian.organic_rf_tensors.organic_reach_scaled,
@@ -2103,6 +2109,7 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_ORF],
         ec=par[constants.EC_ORF],
         slope=par[constants.SLOPE_ORF],
+        adstock_functions=meridian.adstock_decay_function_broadcast.organic_rf,
     )[0, :, :, :]
     combined_transformed_media = tf.concat(
         [
