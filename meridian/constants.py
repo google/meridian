@@ -144,6 +144,7 @@ MEDIA_CHANNEL = 'media_channel'
 RF_CHANNEL = 'rf_channel'
 CHANNEL = 'channel'
 RF = 'rf'
+ORGANIC_RF = 'organic_rf'
 ORGANIC_MEDIA_CHANNEL = 'organic_media_channel'
 ORGANIC_RF_CHANNEL = 'organic_rf_channel'
 NON_MEDIA_CHANNEL = 'non_media_channel'
@@ -542,6 +543,9 @@ ADSTOCK_HILL_FUNCTIONS = frozenset({
 # Adstock decay functions.
 GEOMETRIC_DECAY = 'geometric'
 BINOMIAL_DECAY = 'binomial'
+
+ADSTOCK_DECAY_FUNCTIONS = frozenset({GEOMETRIC_DECAY, BINOMIAL_DECAY})
+ADSTOCK_CHANNELS = (MEDIA, RF, ORGANIC_MEDIA, ORGANIC_RF)
 
 # Distribution constants.
 DISTRIBUTION = 'distribution'
