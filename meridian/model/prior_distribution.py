@@ -19,7 +19,7 @@ used by the Meridian model object.
 """
 
 from __future__ import annotations
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 import dataclasses
 from typing import Any
 import warnings
@@ -958,21 +958,30 @@ def distributions_are_equal(
     a: tfp.distributions.Distribution, b: tfp.distributions.Distribution
 ) -> bool:
   """Determine if two distributions are equal."""
-  if type(a) != type(b):  # pylint: disable=unidiomatic-typecheck
+  if not isinstance(a, type(b)):
     return False
 
-  a_params = a.parameters.copy()
-  b_params = b.parameters.copy()
+  if set(a.parameters.keys()) != set(b.parameters.keys()):
+    return False
 
-  if constants.DISTRIBUTION in a_params and constants.DISTRIBUTION in b_params:
-    if not distributions_are_equal(
-        a_params[constants.DISTRIBUTION], b_params[constants.DISTRIBUTION]
-    ):
+  for param in a.parameters:
+    a_param_value = getattr(a, param)
+    b_param_value = getattr(b, param)
+
+    if not isinstance(a_param_value, type(b_param_value)):
       return False
-    del a_params[constants.DISTRIBUTION]
-    del b_params[constants.DISTRIBUTION]
 
-  if constants.DISTRIBUTION in a_params or constants.DISTRIBUTION in b_params:
-    return False
+    if isinstance(a_param_value, Sequence):
+      if a_param_value != b_param_value:
+        return False
+    elif tf.is_tensor(a_param_value):
+      if not all(tf.math.equal(a_param_value, b_param_value)):
+        return False
+    elif isinstance(a_param_value, tfp.distributions.Distribution):
+      if not distributions_are_equal(a_param_value, b_param_value):
+        return False
+    else:
+      if a_param_value != b_param_value:
+        return False
 
-  return a_params == b_params
+  return True
