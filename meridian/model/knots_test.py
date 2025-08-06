@@ -15,6 +15,8 @@
 from collections.abc import Collection
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian.data import input_data
+from meridian.data import test_utils
 from meridian.model import knots
 import numpy as np
 
@@ -253,6 +255,323 @@ class GetKnotInfoTest(parameterized.TestCase):
         msg,
     ):
       knots.get_knot_info(n_times=200, knots=knots_arg, is_national=is_national)
+
+
+class AKSTest(parameterized.TestCase):
+  """Tests for knots.AKS class."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="when_min_gt_initial_knots",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=1,
+                  n_times=2,
+                  n_media_times=10,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_error=(
+              "The minimum number of internal knots cannot be greater than the"
+              " total number of initial knots."
+          ),
+      ),
+      dict(
+          testcase_name="when_max_lt_min_media",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=2,
+                  n_times=10,
+                  n_media_times=10,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_error=(
+              "The maximum number of internal knots cannot be less than the"
+              " minimum number of internal knots."
+          ),
+      ),
+      dict(
+          testcase_name="when_max_lt_min_organic_media",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=2,
+                  n_times=10,
+                  n_media_times=10,
+                  n_controls=2,
+                  n_organic_media_channels=4,
+                  n_media_channels=1,
+              ),
+              "non_revenue",
+          ),
+          expected_error=(
+              "The maximum number of internal knots cannot be less than the"
+              " minimum number of internal knots."
+          ),
+      ),
+      dict(
+          testcase_name="when_max_lt_min_non_media",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=2,
+                  n_times=10,
+                  n_media_times=10,
+                  n_controls=2,
+                  n_non_media_channels=4,
+                  n_media_channels=1,
+              ),
+              "non_revenue",
+          ),
+          expected_error=(
+              "The maximum number of internal knots cannot be less than the"
+              " minimum number of internal knots."
+          ),
+      ),
+  )
+  def test_aks_internal_knots_guardrail_raises(self, data, expected_error):
+    aks_obj = knots.AKS()
+
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error):
+      aks_obj.automatic_knot_selection(data)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="20_geos",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=20,
+                  n_times=117,
+                  n_media_times=117,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[38, 39, 41, 48, 50, 55],
+      ),
+      dict(
+          testcase_name="national_geos",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=1,
+                  n_times=117,
+                  n_media_times=117,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[1, 5, 6, 21, 38, 39, 53, 54, 64, 83],
+      ),
+      dict(
+          testcase_name="5_geos",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=5,
+                  n_times=117,
+                  n_media_times=117,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[4, 41, 50, 54, 59],
+      ),
+      dict(
+          testcase_name="50_geos",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=50,
+                  n_times=117,
+                  n_media_times=117,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[114],
+      ),
+      dict(
+          testcase_name="50_times",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=20,
+                  n_times=50,
+                  n_media_times=50,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[1],
+      ),
+      dict(
+          testcase_name="200_times",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=20,
+                  n_times=200,
+                  n_media_times=200,
+                  n_controls=2,
+                  n_media_channels=5,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[195, 196, 197],
+      ),
+      dict(
+          testcase_name="flat_kpi",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=1,
+                  n_times=50,
+                  n_media_times=50,
+                  n_controls=2,
+                  n_media_channels=5,
+                  kpi_data_pattern="flat",
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[17, 25],
+      ),
+      dict(
+          testcase_name="seasonal",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=1,
+                  n_times=50,
+                  n_media_times=50,
+                  n_controls=2,
+                  n_media_channels=5,
+                  kpi_data_pattern="seasonal",
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[1],
+      ),
+      dict(
+          testcase_name="peak",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=1,
+                  n_times=50,
+                  n_media_times=50,
+                  n_controls=2,
+                  n_media_channels=5,
+                  kpi_data_pattern="peak",
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[24, 25, 26],
+      ),
+      dict(
+          testcase_name="minimal_initial_knots",
+          data=test_utils.sample_input_data_from_dataset(
+              test_utils.random_dataset(
+                  n_geos=20,
+                  n_times=15,
+                  n_media_times=15,
+                  n_controls=4,
+                  n_media_channels=7,
+              ),
+              "non_revenue",
+          ),
+          expected_knots=[3],
+      ),
+  )
+  def test_aks(self, data: input_data.InputData, expected_knots: list[int]):
+    aks_obj = knots.AKS()
+    actual_knots, actual_model = aks_obj.automatic_knot_selection(data)
+    self.assertListEqual(actual_knots.tolist(), expected_knots)
+    self.assertIsNotNone(actual_model)
+
+  def test_aspline(self):
+    x = np.array([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    y = np.array([10, 2, 3, 4, 50, 6, 30, 4, 5, 6, 3, 4, 5, 6, 6])
+    input_knots = np.array([1.0, 3, 15])
+    result = knots.AKS().aspline(x, y, input_knots, pen=np.array([-10, 50, 0]))
+    np.testing.assert_allclose(
+        result["sel"],
+        [
+            np.array([5.17673881e-11, 1.00000000e00, 1.26217745e-19]),
+            np.array([1.41647864e-12, 1.00000000e00, 3.15544362e-20]),
+            np.array([1.0, 1.0, 1.0]),
+        ],
+    )
+    self.assertLen(result["knots_sel"], 3)
+    np.testing.assert_allclose(result["knots_sel"][0], np.array([3.0]))
+    np.testing.assert_allclose(result["knots_sel"][1], np.array([3.0]))
+    np.testing.assert_allclose(
+        result["knots_sel"][2], np.array([1.0, 3.0, 15.0])
+    )
+
+    np.testing.assert_allclose(
+        result["par"],
+        [
+            np.array([0.0, 2.68338214, 0.0, 18.35816252, 2.3545022]),
+            np.array([0.0, 2.68338214, 0.0, 18.35816252, 2.3545022]),
+            np.array([10.0, -1.35407537, 20.77037686, 0.04119194, 0.0]),
+        ],
+        rtol=1e-5,
+    ),
+    np.testing.assert_allclose(
+        result["sel_mat"],
+        np.array([[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]]),
+    )
+    np.testing.assert_allclose(
+        result["aic"], np.array([6.07028377, 6.07028377, 10.06504776])
+    )
+    np.testing.assert_allclose(
+        result["bic"], np.array([8.194435, 8.194435, 13.60529853])
+    )
+    np.testing.assert_allclose(
+        result["ebic"], np.array([12.79960525, 12.79960525, 13.60529853])
+    )
+
+  def test_calculate_xy_from_input_data(self):
+    aks_obj = knots.AKS()
+    x, y = aks_obj.calculate_xy_from_input_data(
+        test_utils.sample_input_data_from_dataset(
+            test_utils.random_dataset(
+                n_geos=1,
+                n_times=20,
+                n_media_times=20,
+                n_controls=2,
+                n_media_channels=5,
+            ),
+            "non_revenue",
+        )
+    )
+    self.assertListEqual(x.tolist(), list(range(0, 20)))
+    self.assertListEqual(
+        y.tolist(),
+        [
+            2.2627279108728477,
+            0.23631363080491555,
+            1.2752080884690158,
+            -0.5568927832723847,
+            1.0900254672561442,
+            1.1659889773033834,
+            -1.2555846027456177,
+            -0.4878882033108945,
+            -0.710828578320152,
+            -0.9461028701343918,
+            -1.1358022006132944,
+            -0.916229997265268,
+            -0.8039075798379829,
+            -0.4954278956685814,
+            -0.388120367674675,
+            -1.2567157354290128,
+            0.6854030057326468,
+            0.41937018236711265,
+            0.7154972479952508,
+            1.1029663034709385,
+        ],
+    )
 
 
 if __name__ == "__main__":
