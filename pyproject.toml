@@ -75,7 +75,7 @@ and-cuda = [
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
 
-# NEW: JAX backend dependencies.
+# JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
     "jax==0.4.26",
