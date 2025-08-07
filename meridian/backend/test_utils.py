@@ -42,3 +42,18 @@ def assert_allclose(
     AssertionError: If the two arrays are not equal within the given tolerance.
   """
   np.testing.assert_allclose(np.array(a), np.array(b), rtol=rtol, atol=atol)
+
+
+def assert_allequal(a: ArrayLike, b: ArrayLike):
+  """Backend-agnostic assertion to check if two array-like objects are equal.
+
+  This function converts both inputs to NumPy arrays before comparing them.
+
+  Args:
+    a: The first array-like object to compare.
+    b: The second array-like object to compare.
+
+  Raises:
+    AssertionError: If the two arrays are not equal.
+  """
+  np.testing.assert_array_equal(np.array(a), np.array(b))
