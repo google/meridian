@@ -1,0 +1,27 @@
+edition = "2023";
+
+package mmm.v1.marketing.analysis;
+
+import "mmm/v1/common/date_interval.proto";
+import "mmm/v1/marketing/analysis/media_analysis.proto";
+import "mmm/v1/marketing/analysis/non_media_analysis.proto";
+
+option java_multiple_files = true;
+
+// The marketing analysis.
+message MarketingAnalysis {
+  // The date interval that the analysis covers. Required.
+  common.DateInterval date_interval = 1;
+
+  // Analysis on different media channels. Required.
+  repeated MediaAnalysis media_analyses = 2;
+
+  // Analysis on different non-media factors.
+  repeated NonMediaAnalysis non_media_analyses = 3;
+}
+
+// A list of marketing analyses.
+message MarketingAnalysisList {
+  // The marketing analyses for different time ranges. Required.
+  repeated MarketingAnalysis marketing_analyses = 1;
+}

@@ -1,0 +1,17 @@
+edition = "2023";
+
+package mmm.v1.marketing.optimization;
+
+import "mmm/v1/marketing/optimization/budget_optimization.proto";
+import "mmm/v1/marketing/optimization/reach_frequency_optimization.proto";
+
+option java_multiple_files = true;
+
+// Marketing optimization contains all optimization related results.
+message MarketingOptimization {
+  // Budget optimization that contains results for different scenarios.
+  BudgetOptimization budget_optimization = 1;
+
+  // Reach frequency optimization that contains results for different scenarios.
+  ReachFrequencyOptimization reach_frequency_optimization = 2;
+}
