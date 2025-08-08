@@ -159,6 +159,19 @@ class TestAdstock(parameterized.TestCase):
         atol=1e-4,
     )
 
+  def test_alpha_one(self):
+    media_transformed = adstock_hill.AdstockTransformer(
+        alpha=tf.ones_like(self._ALPHA),
+        max_lag=self._N_MEDIA_TIMES - 1,
+        n_times_output=self._N_MEDIA_TIMES,
+    ).forward(self._MEDIA)
+    tf.debugging.assert_near(
+        media_transformed,
+        tf.cumsum(self._MEDIA, axis=-2) / self._N_MEDIA_TIMES,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+
   def test_media_all_ones(self):
     # Calculate adstock on a media vector of all ones and no lag history.
     media_transformed = adstock_hill.AdstockTransformer(
