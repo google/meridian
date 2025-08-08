@@ -5127,42 +5127,57 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         "organic_media_1",
         "organic_media_2",
         "organic_media_3",
+        "organic_rf_ch_0",
     ]
     self.assertSameElements(expected_channels, actual_channels)
 
-  def test_adstock_decay_organic_math_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media",
+          channel_name="organic_media_0",
+          expected_ci_hi=test_utils.ORGANIC_ADSTOCK_DECAY_CI_HI,
+          expected_ci_lo=test_utils.ORGANIC_ADSTOCK_DECAY_CI_LO,
+          expected_mean=test_utils.ORGANIC_ADSTOCK_DECAY_MEAN,
+      ),
+      dict(
+          testcase_name="organic_rf",
+          channel_name="organic_rf_ch_0",
+          expected_ci_hi=test_utils.ORGANIC_RF_ADSTOCK_DECAY_CI_HI,
+          expected_ci_lo=test_utils.ORGANIC_RF_ADSTOCK_DECAY_CI_LO,
+          expected_mean=test_utils.ORGANIC_RF_ADSTOCK_DECAY_MEAN,
+      ),
+  )
+  def test_adstock_decay_organic_channels_math_correct(
+      self, channel_name, expected_ci_hi, expected_ci_lo, expected_mean
+  ):
     adstock_decay_dataframe = self.analyzer_non_paid.adstock_decay(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
     )
 
-    target_organic_channel = "organic_media_0"
-    first_organic_channel_df = adstock_decay_dataframe[
-        adstock_decay_dataframe[constants.CHANNEL] == target_organic_channel
+    channel_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.CHANNEL] == channel_name
     ]
 
-    first_organic_channel_df = first_organic_channel_df.sort_values(
+    channel_df = channel_df.sort_values(
         by=[constants.DISTRIBUTION, constants.TIME_UNITS],
-        ascending=[
-            False,
-            True,
-        ],
+        ascending=[False, True],
     )
 
     self.assertAllClose(
-        list(first_organic_channel_df[constants.CI_HI])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_CI_HI,
+        list(channel_df[constants.CI_HI])[:5],
+        expected_ci_hi,
         atol=1e-3,
     )
 
     self.assertAllClose(
-        list(first_organic_channel_df[constants.CI_LO])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_CI_LO,
+        list(channel_df[constants.CI_LO])[:5],
+        expected_ci_lo,
         atol=1e-3,
     )
 
     self.assertAllClose(
-        list(first_organic_channel_df[constants.MEAN])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_MEAN,
+        list(channel_df[constants.MEAN])[:5],
+        expected_mean,
         atol=1e-3,
     )
 
