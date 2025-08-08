@@ -2022,7 +2022,7 @@ class Analyzer:
           tf.constant(
               non_media_treatments_baseline_normalized, dtype=tf.float32
           )[tf.newaxis, tf.newaxis, :],
-          self._meridian.non_media_treatments.shape,  # pytype: disable=attribute-error
+          data_tensors.non_media_treatments.shape,  # pytype: disable=attribute-error
       )
     else:
       non_media_treatments_baseline_normalized = None
