@@ -72,8 +72,7 @@ class ModelSpec:
       before Hill. This argument does not apply to RF channels. Default:
       `False`.
     max_lag: An integer indicating the maximum number of lag periods (≥ `0`) to
-      include in the Adstock calculation. Can also be set to `None`, which is
-      equivalent to infinite max lag. Default: `8`.
+      include in the Adstock calculation. Default: `8`.
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
@@ -209,7 +208,7 @@ class ModelSpec:
   )
   media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
   hill_before_adstock: bool = False
-  max_lag: int | None = 8
+  max_lag: int = 8
   unique_sigma_for_each_geo: bool = False
   media_prior_type: str | None = None
   rf_prior_type: str | None = None
