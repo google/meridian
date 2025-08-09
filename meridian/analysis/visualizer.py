@@ -1197,41 +1197,32 @@ class MediaEffects:
       include_ci: If `True`, plots the credible interval. Defaults to `True`.
 
     Returns:
-      A dictionary mapping channel type constants (`media`, `rf`, and
-      `organic_media`) to their respective Altair chart objects. Keys are only
-      present if charts for that type were generated (i.e., if the
-      corresponding channels exist in the data). Returns an empty dictionary if
-      no relevant channels are found.
+      A dictionary mapping channel type constants (`media`, `rf`,
+      `organic_media`, and `organic_rf`) to their respective Altair chart
+      objects. Keys are only present if charts for that type were generated
+      (i.e., if the corresponding channels exist in the data). Returns an empty
+      dictionary if no relevant channels are found.
     """
     hill_curves_dataframe = self.hill_curves_dataframe(
         confidence_level=confidence_level
     )
-    channel_types = list(set(hill_curves_dataframe[c.CHANNEL_TYPE]))
+    all_channel_types = set(hill_curves_dataframe[c.CHANNEL_TYPE])
     plots: dict[str, alt.Chart] = {}
 
-    if c.MEDIA in channel_types:
-      media_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.MEDIA
-      ]
-      plots[c.MEDIA] = self._plot_hill_curves_helper(
-          media_df, include_prior, include_ci
-      )
-
-    if c.RF in channel_types:
-      rf_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.RF
-      ]
-      plots[c.RF] = self._plot_hill_curves_helper(
-          rf_df, include_prior, include_ci
-      )
-
-    if c.ORGANIC_MEDIA in channel_types:
-      organic_media_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.ORGANIC_MEDIA
-      ]
-      plots[c.ORGANIC_MEDIA] = self._plot_hill_curves_helper(
-          organic_media_df, include_prior, include_ci
-      )
+    supported_channel_types = [
+        c.MEDIA,
+        c.RF,
+        c.ORGANIC_MEDIA,
+        c.ORGANIC_RF,
+    ]
+    for channel_type in supported_channel_types:
+      if channel_type in all_channel_types:
+        df_for_type = hill_curves_dataframe[
+            hill_curves_dataframe[c.CHANNEL_TYPE] == channel_type
+        ]
+        plots[channel_type] = self._plot_hill_curves_helper(
+            df_for_type, include_prior, include_ci
+        )
 
     return plots
 
@@ -1259,19 +1250,17 @@ class MediaEffects:
         column, or contains an unsupported channel type.
     """
     channel_type = df_channel_type[c.CHANNEL_TYPE].iloc[0]
-    if channel_type == c.MEDIA:
+    if channel_type in [c.MEDIA, c.ORGANIC_MEDIA]:
       x_axis_title = summary_text.HILL_X_AXIS_MEDIA_LABEL
       shaded_area_title = summary_text.HILL_SHADED_REGION_MEDIA_LABEL
-    elif channel_type == c.RF:
+    elif channel_type in [c.RF, c.ORGANIC_RF]:
       x_axis_title = summary_text.HILL_X_AXIS_RF_LABEL
       shaded_area_title = summary_text.HILL_SHADED_REGION_RF_LABEL
-    elif channel_type == c.ORGANIC_MEDIA:
-      x_axis_title = summary_text.HILL_X_AXIS_MEDIA_LABEL
-      shaded_area_title = summary_text.HILL_SHADED_REGION_MEDIA_LABEL
     else:
       raise ValueError(
           f"Unsupported channel type '{channel_type}' found in Hill curve data."
-          ' Expected one of: {c.MEDIA}, {c.RF}, {c.ORGANIC_MEDIA}.'
+          ' Expected one of: {c.MEDIA}, {c.RF}, {c.ORGANIC_MEDIA},'
+          ' {c.ORGANIC_RF}.'
       )
     domain_list = [
         c.POSTERIOR,
@@ -1433,8 +1422,8 @@ class MediaSummary:
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float denoting the fixed
         value which will be used as baseline for the given channel. If `None`,
-        the values defined with `ModelSpec.non_media_baseline_values`
-        will be used.
+        the values defined with `ModelSpec.non_media_baseline_values` will be
+        used.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
@@ -1654,8 +1643,8 @@ class MediaSummary:
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float denoting the fixed
         value which will be used as baseline for the given channel. If `None`,
-        the values defined with `ModelSpec.non_media_baseline_values`
-        will be used.
+        the values defined with `ModelSpec.non_media_baseline_values` will be
+        used.
     """
     self._confidence_level = confidence_level or self._confidence_level
     self._selected_times = selected_times
