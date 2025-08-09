@@ -902,8 +902,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media`, `reach`, or `organic_media` for computing
-        prior and posterior decayed effects.
+      channel_type: Specifies `media`, `reach`, `organic_media`, or
+        `organic_reach` for computing prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -914,23 +914,29 @@ class Analyzer:
       Pandas DataFrame containing the channel, time_units, distribution, ci_hi,
       ci_lo, and mean decayed effects for either media or RF channel types.
     """
-    if channel_type is constants.MEDIA:
+    if channel_type == constants.MEDIA:
       prior = self._meridian.inference_data.prior.alpha_m.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_m.values,
           (-1, self._meridian.n_media_channels),
       )
-    elif channel_type is constants.REACH:
+    elif channel_type == constants.REACH:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
           (-1, self._meridian.n_rf_channels),
       )
-    elif channel_type is constants.ORGANIC_MEDIA:
+    elif channel_type == constants.ORGANIC_MEDIA:
       prior = self._meridian.inference_data.prior.alpha_om.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_om.values,
           (-1, self._meridian.n_organic_media_channels),
+      )
+    elif channel_type == constants.ORGANIC_REACH:
+      prior = self._meridian.inference_data.prior.alpha_orf.values[0]
+      posterior = np.reshape(
+          self._meridian.inference_data.posterior.alpha_orf.values,
+          (-1, self._meridian.n_organic_rf_channels),
       )
     else:
       raise ValueError(
@@ -4198,60 +4204,45 @@ class Analyzer:
     }
     final_df_list = []
 
-    if self._meridian.n_media_channels > 0:
-      media_channel_values = (
-          self._meridian.input_data.media_channel.values
-          if self._meridian.input_data.media_channel is not None
-          else []
-      )
-      media_xr_coords = base_xr_coords | {
-          constants.CHANNEL: media_channel_values
-      }
-      adstock_df_m = self._get_adstock_dataframe(
-          constants.MEDIA,
-          l_range,
-          xr_dims,
-          media_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_m.empty:
-        final_df_list.append(adstock_df_m)
+    def _add_adstock_decay_for_channel(
+        n_channels: int,
+        channel_data: xr.DataArray | None,
+        adstock_channel_type: str,
+    ) -> None:
+      """Helper to compute and append adstock decay data for a channel type."""
+      if n_channels > 0:
+        channel_values = channel_data.values if channel_data is not None else []
+        xr_coords = base_xr_coords | {constants.CHANNEL: channel_values}
+        adstock_df = self._get_adstock_dataframe(
+            adstock_channel_type,
+            l_range,
+            xr_dims,
+            xr_coords,
+            confidence_level,
+        )
+        if not adstock_df.empty:
+          final_df_list.append(adstock_df)
 
-    if self._meridian.n_rf_channels > 0:
-      rf_channel_values = (
-          self._meridian.input_data.rf_channel.values
-          if self._meridian.input_data.rf_channel is not None
-          else []
-      )
-      rf_xr_coords = base_xr_coords | {constants.CHANNEL: rf_channel_values}
-      adstock_df_rf = self._get_adstock_dataframe(
-          constants.REACH,
-          l_range,
-          xr_dims,
-          rf_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_rf.empty:
-        final_df_list.append(adstock_df_rf)
-
-    if self._meridian.n_organic_media_channels > 0:
-      organic_media_channel_values = (
-          self._meridian.input_data.organic_media_channel.values
-          if self._meridian.input_data.organic_media_channel is not None
-          else []
-      )
-      organic_media_xr_coords = base_xr_coords | {
-          constants.CHANNEL: organic_media_channel_values
-      }
-      adstock_df_om = self._get_adstock_dataframe(
-          constants.ORGANIC_MEDIA,
-          l_range,
-          xr_dims,
-          organic_media_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_om.empty:
-        final_df_list.append(adstock_df_om)
+    _add_adstock_decay_for_channel(
+        self._meridian.n_media_channels,
+        self._meridian.input_data.media_channel,
+        constants.MEDIA,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_rf_channels,
+        self._meridian.input_data.rf_channel,
+        constants.REACH,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_organic_media_channels,
+        self._meridian.input_data.organic_media_channel,
+        constants.ORGANIC_MEDIA,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_organic_rf_channels,
+        self._meridian.input_data.organic_rf_channel,
+        constants.ORGANIC_REACH,
+    )
 
     final_df = pd.concat(final_df_list, ignore_index=True)
     # Adding an extra column that indicates whether time_units is an integer
