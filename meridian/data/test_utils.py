@@ -822,6 +822,7 @@ def random_kpi_da(
     controls: xr.DataArray | None = None,
     seed: int = 0,
     integer_geos: bool = False,
+    kpi_data_pattern: str = '',
 ) -> xr.DataArray:
   """Generates a sample `kpi` DataArray."""
 
@@ -857,6 +858,22 @@ def random_kpi_da(
 
   error = np.random.normal(0, 2, size=(n_geos, n_times))
   kpi = abs(media_portion + control_portion + error)
+  if kpi_data_pattern == 'flat':
+    first_col = kpi[:, 0]  # all rows will have value same as first col
+    kpi = (
+        first_col[:, np.newaxis]
+        + np.random.normal(scale=0.02, size=kpi.shape)
+        + 0.04
+    )
+  elif kpi_data_pattern == 'seasonal':
+    for row in kpi:
+      row.sort()
+    kpi = np.sin(kpi) + 5
+  elif kpi_data_pattern == 'peak':
+    peak_index = int(len(kpi[0]) / 2)
+    kpi[:] = kpi[0, 0]
+    for row in kpi:
+      row[peak_index] *= 3
 
   return xr.DataArray(
       kpi,
@@ -1175,6 +1192,7 @@ def random_dataset(
     seed: int = 0,
     remove_media_time: bool = False,
     integer_geos: bool = False,
+    kpi_data_pattern: str = '',
 ) -> xr.Dataset:
   """Generates a random dataset."""
   if n_media_channels:
@@ -1301,6 +1319,7 @@ def random_dataset(
       n_media_channels=n_media_channels or n_rf_channels or 0,
       n_controls=n_controls,
       integer_geos=integer_geos,
+      kpi_data_pattern=kpi_data_pattern,
   )
   population = random_population(
       n_geos=n_geos, seed=seed, integer_geos=integer_geos
