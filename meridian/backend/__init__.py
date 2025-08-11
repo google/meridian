@@ -153,6 +153,19 @@ def _jax_cast(x: Any, dtype: Any) -> "_jax.Array":
   return x.astype(dtype)
 
 
+def _jax_divide_no_nan(x, y):
+  """JAX implementation for divide_no_nan."""
+  import jax.numpy as jnp
+
+  return jnp.where(y != 0, jnp.divide(x, y), 0.0)
+
+
+def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
+  raise NotImplementedError(
+      "backend.numpy_function is not implemented for the JAX backend."
+  )
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -183,16 +196,29 @@ if _BACKEND == config.Backend.JAX:
   concatenate = ops.concatenate
   stack = ops.stack
   zeros = ops.zeros
+  zeros_like = ops.zeros_like
   ones = ops.ones
+  ones_like = ops.ones_like
   repeat = ops.repeat
+  tile = ops.tile
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
   cast = _jax_cast
+  expand_dims = ops.expand_dims
 
   einsum = ops.einsum
   exp = ops.exp
+  log = ops.log
+  cumsum = ops.cumsum
   reduce_sum = ops.sum
+  reduce_mean = ops.mean
+  reduce_std = ops.std
+  reduce_any = ops.any
+  is_nan = ops.isnan
+  divide = ops.divide
+  divide_no_nan = _jax_divide_no_nan
+  numpy_function = _jax_numpy_function
 
   float32 = ops.float32
   bool_ = ops.bool_
@@ -200,6 +226,14 @@ if _BACKEND == config.Backend.JAX:
 
   function = jax.jit
   allclose = ops.allclose
+
+  def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
+    raise NotImplementedError(
+        "JAX does not support a global, stateful random seed. `set_random_seed`"
+        " is not implemented. Instead, you must pass an explicit `seed`"
+        " integer directly to the sampling methods (e.g., `sample_prior`),"
+        " which will be used to create a JAX PRNGKey internally."
+    )
 
 elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
@@ -220,16 +254,29 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   concatenate = ops.concat
   stack = ops.stack
   zeros = ops.zeros
+  zeros_like = ops.zeros_like
   ones = ops.ones
+  ones_like = ops.ones_like
   repeat = ops.repeat
+  tile = ops.tile
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
   cast = ops.cast
+  expand_dims = ops.expand_dims
 
   einsum = ops.einsum
   exp = ops.math.exp
+  log = ops.math.log
+  cumsum = ops.cumsum
   reduce_sum = ops.reduce_sum
+  reduce_mean = ops.reduce_mean
+  reduce_std = ops.math.reduce_std
+  reduce_any = ops.reduce_any
+  is_nan = ops.math.is_nan
+  divide = ops.divide
+  divide_no_nan = ops.math.divide_no_nan
+  numpy_function = ops.numpy_function
 
   float32 = ops.float32
   bool_ = ops.bool
@@ -237,6 +284,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   function = ops.function
   allclose = ops.experimental.numpy.allclose
+
+  set_random_seed = tf_backend.keras.utils.set_random_seed
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
