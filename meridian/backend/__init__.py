@@ -192,6 +192,7 @@ if _BACKEND == config.Backend.JAX:
 
   einsum = ops.einsum
   exp = ops.exp
+  log = ops.log
   reduce_sum = ops.sum
 
   float32 = ops.float32
@@ -200,6 +201,14 @@ if _BACKEND == config.Backend.JAX:
 
   function = jax.jit
   allclose = ops.allclose
+
+  def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
+    raise NotImplementedError(
+        "JAX does not support a global, stateful random seed. `set_random_seed`"
+        " is not implemented. Instead, you must pass an explicit `seed`"
+        " integer directly to the sampling methods (e.g., `sample_prior`),"
+        " which will be used to create a JAX PRNGKey internally."
+    )
 
 elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
@@ -229,6 +238,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   einsum = ops.einsum
   exp = ops.math.exp
+  log = ops.math.log
   reduce_sum = ops.reduce_sum
 
   float32 = ops.float32
@@ -237,6 +247,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   function = ops.function
   allclose = ops.experimental.numpy.allclose
+
+  set_random_seed = tf_backend.keras.utils.set_random_seed
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")

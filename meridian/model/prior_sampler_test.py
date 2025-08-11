@@ -17,17 +17,16 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_sampler
 from meridian.model import spec
 import numpy as np
-import tensorflow as tf
 
 
 class PriorDistributionSamplerTest(
-    tf.test.TestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
 ):
@@ -70,6 +69,19 @@ class PriorDistributionSamplerTest(
     self.assertNotEqual(
         meridian.inference_data.prior, meridian2.inference_data.prior
     )
+
+  def test_prior_distribution_sampler_uses_seed(self):
+    model_spec = spec.ModelSpec()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    sampler = prior_sampler.PriorDistributionSampler(meridian)
+    with mock.patch.object(
+        backend, "set_random_seed", autospec=True
+    ) as mock_set_seed:
+      sampler(n_draws=1, seed=123)
+      mock_set_seed.assert_called_once_with(123)
 
   def test_sample_prior_media_and_rf_returns_correct_shape(self):
     self.enter_context(
@@ -587,7 +599,7 @@ class PriorDistributionSamplerTest(
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
-      prior_samples[param] = tf.zeros(mismatched_priors[param])
+      prior_samples[param] = backend.zeros(mismatched_priors[param])
     prior_coords = dict(prior_coords)
     prior_coords[coord] = np.arange(mismatched_coord_size)
 
