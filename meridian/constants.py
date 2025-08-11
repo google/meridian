@@ -752,3 +752,13 @@ WEEKLY = 'weekly'
 QUARTERLY = 'quarterly'
 TIME_GRANULARITIES = frozenset({WEEKLY, QUARTERLY})
 QUARTERLY_SUMMARY_THRESHOLD_WEEKS = 52
+
+# Automatic Knot Selection constants
+KNOTS_SELECTED = 'knots_selected'
+SELECTION_COEFS = 'selection_coefs'
+MODEL = 'model'
+REGRESSION_COEFS = 'regression_coefs'
+SELECTED_MATRIX = 'selected_matrix'
+AIC = 'aic'
+BIC = 'bic'
+EBIC = 'ebic'

@@ -231,7 +231,11 @@ class ModelTest(
           model_spec=spec.ModelSpec(knots=knots),
       ).knot_info
       mock_get_knot_info.assert_called_once_with(
-          self._N_TIMES, knots, is_national
+          self._N_TIMES,
+          knots,
+          False,
+          data,
+          is_national,
       )
 
   def test_validate_media_prior_type_mroi(self):
@@ -2715,6 +2719,22 @@ class NonPaidModelTest(
     )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
+
+  def test_aks_returns_correct_knot_info(self):
+    data, expected_knot_info = (
+        data_test_utils.sample_input_data_for_aks_with_expected_knot_info()
+    )
+    model_spec = spec.ModelSpec(enable_aks=True)
+    actual_knot_info = model.Meridian(
+        input_data=data, model_spec=model_spec
+    ).knot_info
+    self.assertEqual(actual_knot_info.n_knots, expected_knot_info.n_knots)
+    np.testing.assert_equal(
+        actual_knot_info.knot_locations, expected_knot_info.knot_locations
+    )
+    np.testing.assert_equal(
+        actual_knot_info.weights, expected_knot_info.weights
+    )
 
 
 if __name__ == "__main__":

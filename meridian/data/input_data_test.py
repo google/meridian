@@ -1597,6 +1597,44 @@ class InputDataTest(parameterized.TestCase):
     expected_sum = np.einsum("gtm,tm->m", self.rf_spend.values, factors)
     np.testing.assert_array_almost_equal(result, expected_sum)
 
+  def test_scaled_centered_kpi(self):
+    tensor = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=1,
+            n_times=20,
+            n_media_times=20,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    ).scaled_centered_kpi
+    self.assertLen(tensor, 1)
+    np.testing.assert_allclose(
+        tensor[0].tolist(),
+        [
+            2.2627279108728477,
+            0.23631363080491555,
+            1.2752080884690158,
+            -0.5568927832723847,
+            1.0900254672561442,
+            1.1659889773033834,
+            -1.2555846027456177,
+            -0.4878882033108945,
+            -0.710828578320152,
+            -0.9461028701343918,
+            -1.1358022006132944,
+            -0.916229997265268,
+            -0.8039075798379829,
+            -0.4954278956685814,
+            -0.388120367674675,
+            -1.2567157354290128,
+            0.6854030057326468,
+            0.41937018236711265,
+            0.7154972479952508,
+            1.1029663034709385,
+        ],
+    )
+
 
 class NonpaidInputDataTest(parameterized.TestCase):
   """Tests for non-paid InputData."""
