@@ -25,6 +25,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * Make `trim_grids()` a public method of `OptimizationGrid` and update it to
   remove rows of NaNs.
+* Fix prior sampling to use the provided seed instead of 1.
 
 * Raise a `ValueError` if any media channel have all zeros or all `NaN`
   impressions.
