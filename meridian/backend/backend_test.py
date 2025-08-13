@@ -66,6 +66,12 @@ class BackendTest(parameterized.TestCase):
         "under development and is not yet functional", str(cm.warning)
     )
 
+  def test_set_random_seed_raises_for_jax(self):
+    config.set_backend(config.Backend.JAX)
+    importlib.reload(backend)
+    with self.assertRaises(NotImplementedError):
+      backend.set_random_seed(0)
+
   @parameterized.named_parameters(
       ("numpy_int32", np.int32, "int32"),
       ("tf_float64", tf.float64, "float64"),
@@ -269,6 +275,180 @@ class BackendTest(parameterized.TestCase):
         backend.standardize_dtype(result.dtype),
         backend.standardize_dtype(expected.dtype),
     )
+
+  _argmax_test_cases = [
+      dict(
+          testcase_name="1d",
+          tensor_in=[1, 5, 2],
+          kwargs={},
+          expected=np.array(1),
+      ),
+      dict(
+          testcase_name="2d_no_axis",
+          tensor_in=[[1, 5, 2], [8, 3, 4]],
+          kwargs={},
+          expected=np.array([1, 0, 1]),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=[[1, 5, 2], [8, 3, 4]],
+          kwargs={"axis": 0},
+          expected=np.array([1, 0, 1]),
+      ),
+      dict(
+          testcase_name="2d_axis_1",
+          tensor_in=[[1, 5, 2], [8, 3, 4]],
+          kwargs={"axis": 1},
+          expected=np.array([1, 0]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_argmax_test_cases,
+  )
+  def test_argmax(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.argmax(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _fill_test_cases = [
+      dict(
+          testcase_name="simple_shape",
+          kwargs={"dims": (2, 3), "value": 5.0},
+          expected=np.full((2, 3), 5.0),
+      ),
+      dict(
+          testcase_name="int_value",
+          kwargs={"dims": [4], "value": 1},
+          expected=np.full([4], 1),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_fill_test_cases,
+  )
+  def test_fill(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.fill(**kwargs)
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _gather_test_cases = [
+      dict(
+          testcase_name="1d_tensor",
+          tensor_in=[10, 20, 30, 40],
+          indices=[0, 3, 1],
+          expected=np.array([10, 40, 20]),
+      ),
+      dict(
+          testcase_name="2d_tensor",
+          tensor_in=[[1, 2], [3, 4], [5, 6]],
+          indices=[2, 0],
+          expected=np.array([[5, 6], [1, 2]]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_gather_test_cases,
+  )
+  def test_gather(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    indices = backend.to_tensor(test_case["indices"])
+    expected = test_case["expected"]
+
+    result = backend.gather(tensor, indices)
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _boolean_mask_test_cases = [
+      dict(
+          testcase_name="1d",
+          tensor_in=[1, 2, 3, 4],
+          mask=[True, False, True, False],
+          expected=np.array([1, 3]),
+      ),
+      dict(
+          testcase_name="2d",
+          tensor_in=[[1, 2], [3, 4]],
+          mask=[[True, False], [False, True]],
+          expected=np.array([1, 4]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_boolean_mask_test_cases,
+  )
+  def test_boolean_mask(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    mask = backend.to_tensor(test_case["mask"])
+    expected = test_case["expected"]
+
+    result = backend.boolean_mask(tensor, mask)
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  @parameterized.named_parameters(
+      ("tensorflow", config.Backend.TENSORFLOW),
+      ("jax", config.Backend.JAX),
+  )
+  def test_unique_with_counts(self, backend_name):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    tensor_in = backend.to_tensor([1, 2, 1, 3, 2, 1])
+    expected_y = np.array([1, 2, 3])
+    expected_counts = np.array([3, 2, 1])
+
+    y, _, counts = backend.unique_with_counts(tensor_in)
+    self.assertIsInstance(y, backend.Tensor)
+    self.assertIsInstance(counts, backend.Tensor)
+    test_utils.assert_allclose(y, expected_y)
+    test_utils.assert_allclose(counts, expected_counts)
+
+  _get_indices_where_test_cases = [
+      dict(
+          testcase_name="1d",
+          condition=[True, False, True],
+          expected=np.array([[0], [2]]),
+      ),
+      dict(
+          testcase_name="2d",
+          condition=[[True, False], [False, True]],
+          expected=np.array([[0, 0], [1, 1]]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_get_indices_where_test_cases,
+  )
+  def test_get_indices_where(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    condition = backend.to_tensor(test_case["condition"])
+    expected = test_case["expected"]
+
+    result = backend.get_indices_where(condition)
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
 
 
 if __name__ == "__main__":
