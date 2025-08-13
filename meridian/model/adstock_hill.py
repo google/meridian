@@ -22,6 +22,7 @@ __all__ = [
     'AdstockHillTransformer',
     'AdstockTransformer',
     'HillTransformer',
+    'transform_non_negative_reals_distribution',
 ]
 
 
@@ -236,3 +237,47 @@ class HillTransformer(AdstockHillTransformer):
       representing Hill-transformed media.
     """
     return _hill(media=media, ec=self._ec, slope=self._slope)
+
+
+def transform_non_negative_reals_distribution(
+    distribution: backend.tfd.Distribution
+    ) -> backend.tfd.TransformedDistribution:
+  """Transforms a distribution with support on `[0, infinity)` to `(0, 1]`.
+
+  This allows for defining a prior on `alpha_*`, the exponent of the binomial
+  Adstock decay function, directly, and then translating it to a distribution
+  defined on the unit interval as Meridian expects. This transformation
+  `(x -> 1 / (1 + x))` is the inverse of the interval mapping the Meridian
+  performs `(x -> 1 / x - 1)` on alpha to define the binomial Adstock
+  decay function's exponent.
+
+  For example, to define a `LogNormal(0.2, 0.9)` prior on `alpha_*`:
+
+  ```python
+  import tensorflow_probability as tfp
+  alpha_star_prior = tfp.distributions.LogNormal(0.2, 0.9)
+  alpha_prior = transform_non_negative_reals_distribution(alpha_star_prior)
+  prior = prior_distribution.PriorDistribution(
+      alpha_m=alpha_prior,
+      ...
+  )
+  ```
+
+  Args:
+    distribution: A Tensorflow Probability distribution with support on `[0,
+      infinity)`.
+
+  Returns:
+    A Tensorflow Probability `TransformedDistribution` with support on `(0, 1]`,
+    such that the resultant prior on `alpha_*` is the input distribution.
+  """
+
+  bijector = backend.bijectors.Chain(
+      [backend.bijectors.Reciprocal(), backend.bijectors.Shift(1)]
+  )
+
+  return backend.tfd.TransformedDistribution(
+      distribution=distribution,
+      bijector=bijector,
+      name=f'{distribution.name}UnitIntervalMapped',
+  )
