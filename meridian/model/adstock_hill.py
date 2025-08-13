@@ -96,20 +96,20 @@ def _adstock(
         + (required_n_media_times - n_media_times,)
         + (media.shape[-1],)
     )
-    media = backend.concatenate([backend.ops.zeros(pad_shape), media], axis=-2)
+    media = backend.concatenate([backend.zeros(pad_shape), media], axis=-2)
 
   # Adstock calculation.
   window_list = [None] * window_size
   for i in range(window_size):
     window_list[i] = media[..., i : i + n_times_output, :]
-  windowed = backend.ops.stack(window_list)
-  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.ops.float32)
-  weights = backend.ops.expand_dims(alpha, -1) ** l_range
-  normalization_factors = backend.ops.reduce_sum(
+  windowed = backend.stack(window_list)
+  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float32)
+  weights = backend.expand_dims(alpha, -1) ** l_range
+  normalization_factors = backend.reduce_sum(
       weights, axis=-1, keepdims=True
   )
-  weights = backend.ops.divide(weights, normalization_factors)
-  return backend.ops.einsum('...mw,w...gtm->...gtm', weights, windowed)
+  weights = backend.divide(weights, normalization_factors)
+  return backend.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
 
 def _hill(
@@ -134,8 +134,8 @@ def _hill(
         '`media` contains a different number of channels than `slope` and `ec`.'
     )
 
-  t1 = media ** slope[..., backend.ops.newaxis, backend.ops.newaxis, :]
-  t2 = (ec**slope)[..., backend.ops.newaxis, backend.ops.newaxis, :]
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]
   return t1 / (t1 + t2)
 
 
@@ -254,8 +254,8 @@ def transform_non_negative_reals_distribution(
   For example, to define a `LogNormal(0.2, 0.9)` prior on `alpha_*`:
 
   ```python
-  import tensorflow_probability as tfp
-  alpha_star_prior = tfp.distributions.LogNormal(0.2, 0.9)
+  from meridian import backend
+  alpha_star_prior = backend.tfd.LogNormal(0.2, 0.9)
   alpha_prior = transform_non_negative_reals_distribution(alpha_star_prior)
   prior = prior_distribution.PriorDistribution(
       alpha_m=alpha_prior,
