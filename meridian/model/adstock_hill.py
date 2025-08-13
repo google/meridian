@@ -15,14 +15,252 @@
 """Function definitions for Adstock and Hill calculations."""
 
 import abc
+from collections.abc import Sequence
+import dataclasses
 from meridian import backend
+from meridian import constants
+import tensorflow as tf
 
 
 __all__ = [
+    'AdstockDecayFunction',
     'AdstockHillTransformer',
     'AdstockTransformer',
     'HillTransformer',
+    'compute_decay_weights',
 ]
+
+
+@dataclasses.dataclass
+class AdstockDecayFunction:
+  """Parameters to specify the Adstock decay function.
+
+  This class contains the adstock decay function to use for each channel
+  that the adstock transformation is applied to. Initializing this class
+  directly is not recommended and using
+  `AdstockDecayFunction.from_parameterization` and
+  `AdstockDecayFunction.from_mapping` is preferred.
+
+  Attributes:
+    media: A string or sequence of strings specifying the adstock function(s)
+      to use for media channels.
+    rf: A string or sequence of strings specifying the adstock function(s)
+      to use for reach and frequency channels.
+    organic_media: A string or sequence of strings specifying the adstock
+      function(s) to use for organic media channels.
+    organic_rf: A string or sequence of strings specifying the adstock
+      function(s) to use for organic reach and frequency channels.
+  """
+
+  media: str | Sequence[str] = constants.GEOMETRIC_DECAY
+  rf: str | Sequence[str] = constants.GEOMETRIC_DECAY
+  organic_media: str | Sequence[str] = constants.GEOMETRIC_DECAY
+  organic_rf: str | Sequence[str] = constants.GEOMETRIC_DECAY
+
+  @classmethod
+  def from_parameterization(
+      cls,
+      adstock_decay_function: str = constants.GEOMETRIC_DECAY,
+  ) -> 'AdstockDecayFunction':
+    """Create an `AdstockDecayParameterization` with the same value for all channels.
+
+    Arguments:
+      adstock_decay_function: A string denoting the adstock decay function
+      to use for all channels that the Adstock transformation is applied to.
+
+    Raises:
+      ValueError: If `adstock_decay_function` is not 'geometric' or 'binomial'.
+    """
+    adstock_decay_functions = dict.fromkeys(
+        constants.ADSTOCK_CHANNELS, adstock_decay_function
+        )
+    return cls(**adstock_decay_functions)
+
+  @classmethod
+  def from_channels(
+      cls,
+      media: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      rf: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      organic_media: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      organic_rf: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      ) -> 'AdstockDecayFunction':
+    """Create an `AdstockDecayFunction` from a mapping of channels to decay functions.
+
+    Arguments:
+      media: A string or sequence of strings specifying the adstock function(s)
+        to use for media channels.
+      rf: A string or sequence of strings specifying the adstock function(s)
+        to use for reach and frequency channels.
+      organic_media: A string or sequence of strings specifying the adstock
+        function(s) to use for organic media channels.
+      organic_rf: A string or sequence of strings specifying the adstock
+        function(s) to use for organic reach and frequency channels.
+    Raises:
+      ValueError: If any values are not 'geometric' or 'binomial'.
+    """
+    return cls(
+        media=media,
+        rf=rf,
+        organic_media=organic_media,
+        organic_rf=organic_rf
+        )
+
+  def __post_init__(self):
+    adstock_decay_functions = {
+        constants.MEDIA: self.media,
+        constants.RF: self.rf,
+        constants.ORGANIC_MEDIA: self.organic_media,
+        constants.ORGANIC_RF: self.organic_rf,
+    }
+
+    for v in adstock_decay_functions.values():
+      if isinstance(v, str):
+        _validate_adstock_decay_function(v)
+      else:
+        for vi in v:
+          _validate_adstock_decay_function(vi)
+
+  def verify_data_dims(
+      self,
+      n_media_channels: int,
+      n_rf_channels: int,
+      n_organic_media_channels: int,
+      n_organic_rf_channels: int
+  ):
+    """Verify dimensions are broadcastable with the number of channels."""
+
+    def _validate_channels(attr, n_channels, channel_name):
+      if not isinstance(attr, str) and len(attr) != n_channels:
+        raise ValueError(
+            f'Adstock decay parameterizations length ({len(attr)}) must '
+            f'match the number of {channel_name} channels ({n_channels}). '
+            'Consider passing a string to use the same parameterization for '
+            f'all {channel_name} channels.'
+        )
+
+    _validate_channels(self.media, n_media_channels, constants.MEDIA)
+    _validate_channels(self.rf, n_rf_channels, constants.RF)
+    _validate_channels(
+        self.organic_media, n_organic_media_channels, constants.ORGANIC_MEDIA
+        )
+    _validate_channels(
+        self.organic_rf, n_organic_rf_channels, constants.ORGANIC_RF
+        )
+
+
+def _validate_adstock_decay_function(adstock_decay_func: str):
+  if adstock_decay_func not in constants.ADSTOCK_DECAY_FUNCTIONS:
+    raise ValueError(
+        "Unrecognized adstock decay function value "
+        f"('{adstock_decay_func}')"
+    )
+
+
+def compute_decay_weights(
+    alpha: backend.Tensor,
+    l_range: backend.Tensor,
+    window_size: int,
+    decay_parameterization: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+    normalize: bool = True,
+) -> backend.Tensor:
+  """Computes decay weights using geometric and/or binomial decay.
+
+  This function always broadcasts the lag dimension (`l_range`) to the
+  trailing axis of the output tensor.
+
+  Args:
+    alpha: The parameter for the adstock decay function.
+    l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
+      0]`.
+    window_size: The number of time periods that go into the adstock weighted
+      average for each output time period.
+    decay_parameterization: String or sequence of strings indicating the decay
+      parameterization(s) to use for the Adstock calculation. Allowed values
+      are 'geometric' and 'binomial'.
+    normalize: A boolean indicating whether to normalize the weights.
+
+  Returns:
+    A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
+
+  Raises:
+    ValueError, if the shape of `decay_parameterization is not broadcastable to
+    the shape of `alpha`.
+
+  """
+
+  if isinstance(decay_parameterization, str):
+    # Same decay function for all channels
+    return _compute_parameterization_decay_weights(
+        alpha, l_range, decay_parameterization, normalize, window_size
+    )
+
+  binomial_weights = _compute_parameterization_decay_weights(
+      alpha, l_range, constants.BINOMIAL_DECAY, normalize, window_size
+  )
+  geometric_weights = _compute_parameterization_decay_weights(
+      alpha, l_range, constants.GEOMETRIC_DECAY, normalize, window_size
+  )
+
+  binomial_decay_mask = tf.reshape(
+      backend.to_tensor(decay_parameterization) == constants.BINOMIAL_DECAY,
+      (-1, 1),
+  )
+
+  try:
+    # pytype: disable=bad-return-type
+    return backend.where(
+        binomial_decay_mask, binomial_weights, geometric_weights
+    )
+    # pytype: enable=bad-return-type
+  except tf.errors.InvalidArgumentError as e:
+    raise ValueError(
+        f'The shape of alpha ({alpha.shape}) is incompatible with the length of'
+        f' decay_parameterization ({len(decay_parameterization)})'
+    ) from e
+
+
+def _compute_parameterization_decay_weights(
+    alpha: backend.Tensor,
+    l_range: backend.Tensor,
+    decay_parameterization: str,
+    normalize: bool,
+    window_size: int | None = None,
+) -> backend.Tensor:
+  """Computes decay weights using geometric decay.
+
+  This function always broadcasts the lag dimension (`l_range`) to the
+  trailing axis of the output tensor.
+
+  Args:
+      alpha: The parameter for the adstock decay function.
+      l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
+        0]`.
+      window_size: The number of time periods that go into the adstock weighted
+        average for each output time period.
+      decay_function: String indicating the decay function to use for the
+        Adstock calculation. Allowed values are 'geometric' and 'binomial'.
+        Default is 'geometric'.
+      normalize: A boolean indicating whether to normalize the weights.
+
+  Returns:
+      A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
+  """
+  expanded_alpha = backend.ops.expand_dims(alpha, -1)
+  match decay_parameterization:
+    case constants.GEOMETRIC_DECAY:
+      weights = expanded_alpha**l_range
+    case constants.BINOMIAL_DECAY:
+      mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
+      weights = (1 - l_range / window_size) ** mapped_alpha_binomial
+    case _:
+      raise ValueError(f'Unsupported decay function: {decay_parameterization}')
+
+  if normalize:
+    normalization_factors = backend.ops.reduce_sum(
+        weights, axis=-1, keepdims=True
+    )
+    return backend.ops.divide(weights, normalization_factors)
+  return weights
 
 
 def _validate_arguments(
@@ -59,6 +297,7 @@ def _adstock(
     alpha: backend.Tensor,
     max_lag: int,
     n_times_output: int,
+    decay_parameterization: str | Sequence[str] = constants.GEOMETRIC_DECAY,
 ) -> backend.Tensor:
   """Computes the Adstock function."""
   _validate_arguments(
@@ -102,13 +341,22 @@ def _adstock(
   for i in range(window_size):
     window_list[i] = media[..., i : i + n_times_output, :]
   windowed = backend.ops.stack(window_list)
-  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.ops.float32)
-  weights = backend.ops.expand_dims(alpha, -1) ** l_range
-  normalization_factors = backend.ops.reduce_sum(
-      weights, axis=-1, keepdims=True
+  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float32)
+  weights = compute_decay_weights(
+      alpha=alpha,
+      l_range=l_range,
+      window_size=window_size,
+      decay_parameterization=decay_parameterization,
+      normalize=True,
   )
-  weights = backend.ops.divide(weights, normalization_factors)
   return backend.ops.einsum('...mw,w...gtm->...gtm', weights, windowed)
+
+
+def _map_alpha_for_binomial_decay(x: backend.Tensor):
+  # Map x -> 1/x - 1 to map [0, 1] to [0, +inf].
+  # 0 -> +inf is a valid mapping and reflects the "no adstock" case.
+
+  return 1 / x - 1
 
 
 def _hill(
@@ -148,9 +396,15 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
 
 
 class AdstockTransformer(AdstockHillTransformer):
-  """Computes the Adstock transformation of media."""
+  """Class to compute the Adstock transformation of media."""
 
-  def __init__(self, alpha: backend.Tensor, max_lag: int, n_times_output: int):
+  def __init__(
+      self,
+      alpha: backend.Tensor,
+      max_lag: int,
+      n_times_output: int,
+      decay_function: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+  ):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
@@ -166,10 +420,14 @@ class AdstockTransformer(AdstockHillTransformer):
         correspond to the most recent time periods of the media argument. For
         example, `media[..., -n_times_output:, :]` represents the media
         execution of the output weeks.
+      decay_function: String or list of strings indicating the decay function(s)
+        to use for the Adstock calculation for each channel. Default is
+        geometric decay for all channels.
     """
     self._alpha = alpha
     self._max_lag = max_lag
     self._n_times_output = n_times_output
+    self._decay_function = decay_function
 
   def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
@@ -198,6 +456,7 @@ class AdstockTransformer(AdstockHillTransformer):
         alpha=self._alpha,
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
+        decay_parameterization=self._decay_function,
     )
 
 

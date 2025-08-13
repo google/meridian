@@ -16,12 +16,384 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import constants
 from meridian.model import adstock_hill
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
 tfd = tfp.distributions
+
+_DECAY_FUNCTIONS = [
+    dict(
+        testcase_name=constants.GEOMETRIC_DECAY,
+        decay_function=constants.GEOMETRIC_DECAY,
+    ),
+    dict(
+        testcase_name=constants.BINOMIAL_DECAY,
+        decay_function=constants.BINOMIAL_DECAY,
+    ),
+]
+
+_DECAY_WEIGHTS = [
+    # (function, alpha, expected_weights)
+    (
+        constants.GEOMETRIC_DECAY,
+        0.0,
+        (0.0, 0.0, 0.0, 0.0, 1.0),
+    ),
+    (constants.GEOMETRIC_DECAY, 0.5, (0.5**4, 0.5**3, 0.5**2, 0.5**1, 0.5**0)),
+]
+
+_BINOMIAL_0_0_WEIGHTS = (0.0, 0.0, 0.0, 0.0, 1.0)
+_BINOMIAL_0_25_WEIGHTS = (0.008, 0.064, 0.216, 0.512, 1.0)
+_BINOMIAL_0_5_WEIGHTS = (0.2, 0.4, 0.6, 0.8, 1.0)
+_BINOMIAL_0_6666_WEIGHTS = (
+    np.sqrt(0.2),
+    np.sqrt(0.4),
+    np.sqrt(0.6),
+    np.sqrt(0.8),
+    1.0,
+)
+_BINOMIAL_1_0_WEIGHTS = (1.0, 1.0, 1.0, 1.0, 1.0)
+
+_GEOMETRIC_0_0_WEIGHTS = (0.0, 0.0, 0.0, 0.0, 1.0)
+_GEOMETRIC_0_5_WEIGHTS = (0.5**4, 0.5**3, 0.5**2, 0.5**1, 1.0)
+_GEOMETRIC_1_0_WEIGHTS = (1.0, 1.0, 1.0, 1.0, 1.0)
+
+_MAX_LAG = 4
+
+
+class TestAdstockDecayFunction(parameterized.TestCase):
+  """Tests for adstock_hill.AdstockDecayFunction."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geometric",
+          decay_function=constants.GEOMETRIC_DECAY,
+      ),
+      dict(
+          testcase_name="binomial",
+          decay_function=constants.BINOMIAL_DECAY,
+      ),
+  )
+  def test_from_parameterization(self, decay_function):
+    adstock_decay_function = (
+        adstock_hill.AdstockDecayFunction.from_parameterization(
+            decay_function
+        )
+    )
+
+    self.assertEqual(adstock_decay_function.media, decay_function)
+    self.assertEqual(adstock_decay_function.rf, decay_function)
+    self.assertEqual(adstock_decay_function.organic_media, decay_function)
+    self.assertEqual(adstock_decay_function.organic_rf, decay_function)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="all_defined_all_scalar",
+          decay_function={
+              constants.MEDIA: constants.GEOMETRIC_DECAY,
+              constants.RF: constants.GEOMETRIC_DECAY,
+              constants.ORGANIC_MEDIA: constants.BINOMIAL_DECAY,
+              constants.ORGANIC_RF: constants.BINOMIAL_DECAY,
+          },
+      ),
+      dict(
+          testcase_name="all_defined_all_vector",
+          decay_function={
+              constants.MEDIA: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              constants.RF: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              constants.ORGANIC_MEDIA: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              constants.ORGANIC_RF: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              },
+      ),
+      dict(
+          testcase_name="all_defined_mixed_scalar_vector",
+          decay_function={
+              constants.MEDIA: constants.GEOMETRIC_DECAY,
+              constants.RF: constants.BINOMIAL_DECAY,
+              constants.ORGANIC_MEDIA: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              constants.ORGANIC_RF: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              },
+      ),
+      dict(
+          testcase_name="some_missing_all_scalar",
+          decay_function={
+              constants.MEDIA: constants.GEOMETRIC_DECAY,
+              constants.RF: constants.BINOMIAL_DECAY,
+              },
+      ),
+      dict(
+          testcase_name="some_missing_all_vector",
+          decay_function={
+              constants.ORGANIC_MEDIA: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              constants.ORGANIC_RF: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              },
+      ),
+      dict(
+          testcase_name="some_missing_mixed_scalar_vector",
+          decay_function={
+              constants.MEDIA: constants.GEOMETRIC_DECAY,
+              constants.ORGANIC_RF: [
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY,
+                  constants.GEOMETRIC_DECAY,
+                  constants.BINOMIAL_DECAY
+              ],
+              },
+      ),
+  )
+  def test_from_channels(self, decay_function):
+    adstock_decay_function = adstock_hill.AdstockDecayFunction.from_channels(
+        **decay_function
+    )
+
+    self.assertEqual(
+        adstock_decay_function.media,
+        decay_function.get(constants.MEDIA, constants.GEOMETRIC_DECAY),
+    )
+    self.assertEqual(
+        adstock_decay_function.rf,
+        decay_function.get(constants.RF, constants.GEOMETRIC_DECAY),
+    )
+    self.assertEqual(
+        adstock_decay_function.organic_media,
+        decay_function.get(constants.ORGANIC_MEDIA, constants.GEOMETRIC_DECAY),
+    )
+    self.assertEqual(
+        adstock_decay_function.organic_rf,
+        decay_function.get(constants.ORGANIC_RF, constants.GEOMETRIC_DECAY),
+    )
+
+
+class TestComputeDecayWeights(parameterized.TestCase):
+  """Tests for adstock_hill.compute_decay_weights()."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geometric_0.0",
+          alpha=0.0,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_0_0_WEIGHTS
+          ),
+      dict(
+          testcase_name="geometric_0.5",
+          alpha=0.5,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_0_5_WEIGHTS
+          ),
+      dict(
+          testcase_name="geometric_1.0",
+          alpha=1.0,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_1_0_WEIGHTS
+          ),
+      dict(
+          testcase_name="binomial_0.0",
+          alpha=0.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_0_WEIGHTS
+          ),
+      dict(
+          testcase_name="binomial_0.25",
+          alpha=0.25,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_25_WEIGHTS
+          ),
+      dict(
+          testcase_name="binomial_0.5",
+          alpha=0.5,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_5_WEIGHTS
+          ),
+      dict(
+          testcase_name="binomial_0.6666",
+          alpha=2.0/3.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_6666_WEIGHTS
+          ),
+      dict(
+          testcase_name="binomial_1.0",
+          alpha=1.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_1_0_WEIGHTS
+          ),
+  )
+  def test_compute_decay_weights_single_channel(
+      self,
+      alpha,
+      decay_function,
+      expected_weights
+      ):
+
+    l_range = tf.range(_MAX_LAG, -1, -1, dtype=tf.float32)
+
+    with self.subTest("unnormalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG+1,
+          decay_function,
+          normalize=False
+      )
+
+      tf.debugging.assert_near(weights, expected_weights, rtol=1e-5)
+
+    with self.subTest("normalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG+1,
+          decay_function,
+          normalize=True
+      )
+      tf.debugging.assert_near(
+          tf.math.reduce_sum(weights),
+          1.0,
+          rtol=1e-5
+          )
+      tf.debugging.assert_near(
+          weights / tf.math.reduce_max(weights),
+          expected_weights,
+          rtol=1e-5
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="all_geometric",
+          alpha=(0.0, 0.5, 1.0),
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=(
+              _GEOMETRIC_0_0_WEIGHTS,
+              _GEOMETRIC_0_5_WEIGHTS,
+              _GEOMETRIC_1_0_WEIGHTS)
+          ),
+      dict(
+          testcase_name="all_binomial",
+          alpha=(0.0, 0.25, 0.5, 2.0/3.0, 1.0),
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=(
+              _BINOMIAL_0_0_WEIGHTS,
+              _BINOMIAL_0_25_WEIGHTS,
+              _BINOMIAL_0_5_WEIGHTS,
+              _BINOMIAL_0_6666_WEIGHTS,
+              _BINOMIAL_1_0_WEIGHTS)
+          ),
+      dict(
+          testcase_name="mixed_binomial_geometric",
+          alpha=(0.0, 0.25, 0.5, 2.0/3.0, 1.0),
+          decay_function=(
+              constants.GEOMETRIC_DECAY,
+              constants.BINOMIAL_DECAY,
+              constants.GEOMETRIC_DECAY,
+              constants.BINOMIAL_DECAY,
+              constants.GEOMETRIC_DECAY,
+              ),
+          expected_weights=(
+              _GEOMETRIC_0_0_WEIGHTS,
+              _BINOMIAL_0_25_WEIGHTS,
+              _GEOMETRIC_0_5_WEIGHTS,
+              _BINOMIAL_0_6666_WEIGHTS,
+              _GEOMETRIC_1_0_WEIGHTS)
+          ),
+  )
+  def test_compute_decay_weights_multiple_channels(
+      self,
+      alpha,
+      decay_function,
+      expected_weights
+      ):
+
+    l_range = tf.range(_MAX_LAG, -1, -1, dtype=tf.float32)
+
+    with self.subTest("unnormalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG+1,
+          decay_function,
+          normalize=False
+      )
+
+      tf.debugging.assert_near(weights, expected_weights, rtol=1e-5)
+
+    with self.subTest("normalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG+1,
+          decay_function,
+          normalize=True
+      )
+
+      tf.debugging.assert_near(
+          tf.math.reduce_sum(weights, axis=1),
+          [1.0]*len(alpha),
+          rtol=1e-5
+          )
+      tf.debugging.assert_near(
+          weights / tf.math.reduce_max(weights, axis=1, keepdims=True),
+          expected_weights,
+          rtol=1e-5
+      )
+
+  def test_incompatible_alpha_decay_function_raises_error(self):
+    alpha = tf.convert_to_tensor([0.5, 0.5])
+    decay_function = [constants.GEOMETRIC_DECAY] * 3
+    l_range = tf.range(_MAX_LAG, -1, -1, dtype=tf.float32)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of alpha ((2,)) is incompatible with the length of "
+        "decay_parameterization (3)"
+    ):
+      _ = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG+1,
+          decay_function,
+      )
 
 
 class TestAdstock(parameterized.TestCase):
@@ -120,37 +492,46 @@ class TestAdstock(parameterized.TestCase):
     tf.debugging.assert_all_finite(media_transformed, message=msg)
     tf.debugging.assert_non_negative(media_transformed, message=msg)
 
-  def test_max_lag_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_max_lag_zero(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=0,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
-  def test_alpha_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_zero(self, decay_function: str):
+    """Alpha of zero is allowed, effectively no Adstock."""
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=tf.zeros_like(self._ALPHA),
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(media_transformed, self._MEDIA)
 
-  def test_media_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_media_zero(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(
         tf.zeros_like(self._MEDIA),
     )
     tf.debugging.assert_near(media_transformed, tf.zeros_like(self._MEDIA))
 
-  def test_alpha_close_to_one(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_close_to_one(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=0.99999 * tf.ones_like(self._ALPHA),
         max_lag=self._N_MEDIA_TIMES - 1,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(
         media_transformed,
@@ -159,11 +540,13 @@ class TestAdstock(parameterized.TestCase):
         atol=1e-4,
     )
 
-  def test_alpha_one(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_one(self, decay_function: str):
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=tf.ones_like(self._ALPHA),
         max_lag=self._N_MEDIA_TIMES - 1,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=decay_function,
     ).forward(self._MEDIA)
     tf.debugging.assert_near(
         media_transformed,
@@ -172,12 +555,13 @@ class TestAdstock(parameterized.TestCase):
         atol=1e-4,
     )
 
-  def test_media_all_ones(self):
+  def test_media_all_ones_geometric(self):
     # Calculate adstock on a media vector of all ones and no lag history.
     media_transformed = adstock_hill.AdstockTransformer(
         alpha=self._ALPHA,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_function=constants.GEOMETRIC_DECAY,
     ).forward(tf.ones_like(self._MEDIA))
     # n_nonzero_terms is a tensor with length containing the number of nonzero
     # terms in the adstock for each output time period.
@@ -206,7 +590,19 @@ class TestAdstock(parameterized.TestCase):
     )
     tf.debugging.assert_near(media_transformed, result)
 
-  def test_output(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name=constants.GEOMETRIC_DECAY,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_adstock=tf.constant([0.751, 0.435, 0.572]),
+      ),
+      dict(
+          testcase_name=constants.BINOMIAL_DECAY,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_adstock=tf.constant([0.742, 0.463, 0.567]),
+      ),
+  )
+  def test_output(self, decay_function: str, expected_adstock: tf.Tensor):
     """Test for valid adstock weights."""
     alpha = tf.constant([0.1, 0.5, 0.9])
     window_size = 5
@@ -221,8 +617,8 @@ class TestAdstock(parameterized.TestCase):
         alpha=alpha,
         max_lag=window_size - 1,
         n_times_output=1,
+        decay_function=decay_function,
     ).forward(media)
-    expected_adstock = tf.constant([0.751, 0.435, 0.572])
     tf.debugging.assert_near(adstock, expected_adstock, rtol=1e-2)
 
 
