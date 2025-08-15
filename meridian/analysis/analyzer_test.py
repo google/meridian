@@ -2141,13 +2141,13 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           media=tf.ones_like(self.meridian_media_and_rf.media_tensors.media)
       )
       self.analyzer_media_and_rf.response_curves(new_data=new_data)
-      self.assertEqual(mock_incremental_outcome.call_count, 11)
-      for i in range(1, 11):
+      self.assertEqual(mock_incremental_outcome.call_count, 10)
+      for i in range(10):
         _, kwargs = mock_incremental_outcome.call_args_list[i]
         self.assertIn("new_data", kwargs)
         self.assertIsNotNone(kwargs["new_data"].media)
         self.assertAllClose(
-            kwargs["new_data"].media, new_data.media * i * 0.2, atol=1e-6
+            kwargs["new_data"].media, new_data.media * (i + 1) * 0.2, atol=1e-6
         )
 
   def test_adstock_decay_effect_values(self):
