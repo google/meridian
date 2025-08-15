@@ -898,6 +898,7 @@ class Analyzer:
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      decay_function: str = constants.GEOMETRIC_DECAY,
   ) -> pd.DataFrame:
     """Computes decayed effect means and CIs for media or RF channels.
 
@@ -909,6 +910,9 @@ class Analyzer:
       xr_coords: A dictionary with the coordinates for the output dataset.
       confidence_level: Confidence level for computing credible intervals,
         represented as a value between zero and one.
+      decay_function: String indicating the decay function to use for the
+        Adstock calculation. Allowed values are 'geometric' and 'binomial'.
+        Default is 'geometric'.
 
     Returns:
       Pandas DataFrame containing the channel, time_units, distribution, ci_hi,
@@ -950,7 +954,7 @@ class Analyzer:
         alpha=tf.convert_to_tensor(prior[np.newaxis, ...], dtype=tf.float32),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
         window_size=window_size,
-        decay_function=self._meridian.model_spec.adstock_decay_function,
+        decay_function=decay_function,
         normalize=False,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
@@ -959,7 +963,7 @@ class Analyzer:
         ),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
         window_size=window_size,
-        decay_function=self._meridian.model_spec.adstock_decay_function,
+        decay_function=decay_function,
         normalize=False,
     )
 
