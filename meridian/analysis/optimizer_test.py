@@ -2876,6 +2876,23 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       # Check that no warnings were raised
       self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
 
+  def test_get_response_curves_with_new_data(self):
+    with mock.patch.object(
+        self.budget_optimizer_media_and_rf._analyzer, "response_curves"
+    ) as mock_response_curves:
+      new_data = analyzer.DataTensors(
+          media=tf.ones_like(self.meridian_media_and_rf.media_tensors.media)
+      )
+      optimization_results = self.budget_optimizer_media_and_rf.optimize(
+          new_data=new_data
+      )
+      optimization_results.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      self.assertIn("new_data", kwargs)
+      self.assertIsNotNone(kwargs["new_data"])
+      self.assertAllClose(kwargs["new_data"].media, new_data.media)
+
   def test_optimize_when_target_mroi_not_met_raises_warning(self):
     with self.assertWarnsRegex(
         UserWarning, 'Target marginal ROI constraint was not met.'

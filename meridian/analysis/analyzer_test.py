@@ -2130,6 +2130,26 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       )
       self.assertLessEqual(e, list(adstock_decay_dataframe[constants.CI_HI])[i])
 
+  def test_response_curves_with_new_data(self):
+    with mock.patch.object(
+        self.analyzer_media_and_rf, "incremental_outcome",
+    ) as mock_incremental_outcome:
+      mock_incremental_outcome.return_value = tf.ones(
+          (_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS + _N_RF_CHANNELS)
+      )
+      new_data = analyzer.DataTensors(
+          media=tf.ones_like(self.meridian_media_and_rf.media_tensors.media)
+      )
+      self.analyzer_media_and_rf.response_curves(new_data=new_data)
+      self.assertEqual(mock_incremental_outcome.call_count, 11)
+      for i in range(1, 11):
+        _, kwargs = mock_incremental_outcome.call_args_list[i]
+        self.assertIn("new_data", kwargs)
+        self.assertIsNotNone(kwargs["new_data"].media)
+        self.assertAllClose(
+            kwargs["new_data"].media, new_data.media * i * 0.2, atol=1e-6
+        )
+
   def test_adstock_decay_effect_values(self):
     adstock_decay_dataframe = self.analyzer_media_and_rf.adstock_decay(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL

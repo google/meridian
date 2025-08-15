@@ -464,6 +464,7 @@ class OptimizationResults:
       on optimal frequency.
     optimized_data: The optimized budget metrics.
     optimization_grid: The grid information used for optimization.
+    new_data: The new data used for optimization.
   """
 
   meridian: model.Meridian
@@ -477,6 +478,7 @@ class OptimizationResults:
   _nonoptimized_data_with_optimal_freq: xr.Dataset
   _optimized_data: xr.Dataset
   _optimization_grid: OptimizationGrid
+  new_data: analyzer.DataTensors | None = None
 
   # TODO: Move this, and the plotting methods, to a summarizer.
   @functools.cached_property
@@ -909,6 +911,7 @@ class OptimizationResults:
     # WARN: If `selected_times` is not None (i.e. a subset time range), this
     # response curve computation might take a significant amount of time.
     return self.analyzer.response_curves(
+        new_data=self.new_data,
         spend_multipliers=spend_multiplier,
         use_posterior=self.optimization_grid.use_posterior,
         selected_times=selected_times,
@@ -1597,6 +1600,7 @@ class BudgetOptimizer:
         _nonoptimized_data_with_optimal_freq=nonoptimized_data_with_optimal_freq,
         _optimized_data=optimized_data,
         _optimization_grid=optimization_grid,
+        new_data=new_data,
     )
 
   def create_optimization_tensors(

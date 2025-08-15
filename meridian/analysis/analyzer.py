@@ -3993,6 +3993,7 @@ class Analyzer:
 
   def response_curves(
       self,
+      new_data: DataTensors | None = None,
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
@@ -4018,6 +4019,11 @@ class Analyzer:
     `selected_times` are also scaled by the multiplier.)
 
     Args:
+      new_data: Optional `DataTensors` object with optional new tensors:
+        `media`, `reach`, `frequency`. If provided, the response curves are
+        calculated using the values of the tensors passed in `new_data` and the
+        original values of all the remaining tensors. If `None`, the response
+        curves are calculated using the original values of all the tensors.
       spend_multipliers: List of multipliers. Each channel's total spend is
         multiplied by these factors to obtain the values at which the curve is
         calculated for that channel.
@@ -4056,6 +4062,17 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
+    if new_data is None:
+      new_data = DataTensors()
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=[
+            constants.MEDIA,
+            constants.REACH,
+            constants.FREQUENCY,
+        ],
+        meridian=self._meridian,
+        allow_modified_times=True,
+    )
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       frequency = tf.ones_like(
           self._meridian.rf_tensors.frequency
@@ -4068,12 +4085,12 @@ class Analyzer:
           dtype=tf.float32,
       )
       reach = tf.math.divide_no_nan(
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
+          filled_data.reach * filled_data.frequency,
           frequency,
       )
     else:
-      frequency = self._meridian.rf_tensors.frequency
-      reach = self._meridian.rf_tensors.reach
+      frequency = filled_data.frequency
+      reach = filled_data.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
     incremental_outcome = np.zeros((
@@ -4087,9 +4104,9 @@ class Analyzer:
             (len(self._meridian.input_data.get_all_paid_channels()), 3)
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
-      new_data = _scale_tensors_by_multiplier(
+      scaled_data = _scale_tensors_by_multiplier(
           data=DataTensors(
-              media=self._meridian.media_tensors.media,
+              media=filled_data.media,
               reach=reach,
               frequency=frequency,
           ),
@@ -4098,7 +4115,7 @@ class Analyzer:
       )
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=new_data.filter_fields(constants.PAID_DATA),
+          new_data=scaled_data,
           inverse_transform_outcome=True,
           batch_size=batch_size,
           use_kpi=use_kpi,
