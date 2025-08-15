@@ -19,6 +19,7 @@ from absl.testing import parameterized
 from meridian import constants
 from meridian.data import input_data
 from meridian.data import test_utils
+import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -1240,6 +1241,28 @@ class InputDataTest(parameterized.TestCase):
         expected_paid_channels,
     )
 
+  def test_get_all_adstock_hill_channels(self):
+    data = input_data.InputData(
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        controls=self.lagged_controls,
+        kpi=self.lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+    channels = data.get_all_adstock_hill_channels()
+    expected_adstock_hill_channels = [
+        m.item() for m in self.lagged_media[constants.MEDIA_CHANNEL]
+    ] + [rf.item() for rf in self.lagged_reach[constants.RF_CHANNEL]]
+    self.assertSequenceEqual(
+        channels.tolist(),
+        expected_adstock_hill_channels,
+    )
+
   def test_get_paid_channels_argument_builder(self):
     data = input_data.InputData(
         media=self.lagged_media,
@@ -1698,6 +1721,133 @@ class NonpaidInputDataTest(parameterized.TestCase):
         channels.tolist(),
         expected_paid_channels,
     )
+
+  def test_get_all_adstock_hill_channels(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    channels = data.get_all_adstock_hill_channels()
+
+    expected_adstock_hill_channels = [m.item() for m in itertools.chain(
+        self.lagged_media[constants.MEDIA_CHANNEL],
+        self.lagged_organic_media[constants.ORGANIC_MEDIA_CHANNEL],
+        self.lagged_organic_reach[constants.ORGANIC_RF_CHANNEL]
+    )]
+
+    self.assertSequenceEqual(
+        channels.tolist(),
+        expected_adstock_hill_channels,
+    )
+
+  def test_get_organic_media_channels_argument_builder(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    organic_media_channels_arg_builder = (
+        data.get_organic_media_channels_argument_builder()
+    )
+
+    expected_organic_media_channels = [
+        m.item()
+        for m in self.lagged_organic_media[constants.ORGANIC_MEDIA_CHANNEL]
+    ]
+
+    self.assertSequenceEqual(
+        organic_media_channels_arg_builder._ordered_coords,
+        expected_organic_media_channels,
+    )
+
+  def test_get_organic_media_channels_argument_builder_no_organic_media_channels(
+      self,
+  ):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "There are no organic media channels in the input data.",
+    ):
+      data.get_organic_media_channels_argument_builder()
+
+  def test_get_organic_rf_channels_argument_builder(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    organic_rf_channels_arg_builder = (
+        data.get_organic_rf_channels_argument_builder()
+    )
+
+    expected_organic_rf_channels = [
+        m.item()
+        for m in self.lagged_organic_reach[constants.ORGANIC_RF_CHANNEL]
+    ]
+
+    self.assertSequenceEqual(
+        organic_rf_channels_arg_builder._ordered_coords,
+        expected_organic_rf_channels,
+    )
+
+  def test_get_organic_rf_channels_argument_builder_no_organic_rf_channels(
+      self,
+  ):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+    )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "There are no organic RF channels in the input data.",
+    ):
+      data.get_organic_rf_channels_argument_builder()
 
   def test_get_total_outcome_no_revenue(self):
     """Tests get_total_outcome when revenue_per_kpi is None."""
