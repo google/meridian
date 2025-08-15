@@ -528,6 +528,28 @@ class AKSTest(parameterized.TestCase):
     self.assertListEqual(actual_knots.tolist(), expected_knots)
     self.assertIsNotNone(actual_model)
 
+  def test_aks_no_input_data_raises(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If enable_aks is true then input data must be provided.",
+    ):
+      knots.get_knot_info(n_times=200, knots=None, enable_aks=True)
+
+  def test_aks_returns_correct_knot_info(self):
+    data, expected_knot_info = (
+        test_utils.sample_input_data_for_aks_with_expected_knot_info()
+    )
+    actual_knot_info = knots.get_knot_info(
+        n_times=117, knots=None, enable_aks=True, data=data
+    )
+    self.assertEqual(actual_knot_info.n_knots, expected_knot_info.n_knots)
+    np.testing.assert_equal(
+        actual_knot_info.knot_locations, expected_knot_info.knot_locations
+    )
+    np.testing.assert_equal(
+        actual_knot_info.weights, expected_knot_info.weights
+    )
+
   def test_aspline(self):
     x = np.array([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     y = np.array([10, 2, 3, 4, 50, 6, 30, 4, 5, 6, 3, 4, 5, 6, 6])

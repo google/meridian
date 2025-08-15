@@ -152,6 +152,8 @@ class KnotInfo:
 def get_knot_info(
     n_times: int,
     knots: int | Collection[int] | None,
+    enable_aks: bool = False,
+    data: input_data.InputData | None = None,
     is_national: bool = False,
 ) -> KnotInfo:
   """Returns the number of knots, knot locations, and weights.
@@ -169,6 +171,12 @@ def get_knot_info(
       coefficient used for all time periods. If `knots` is `None`, then the
       numbers of knots used is equal to the number of time periods. This is
       equivalent to each time period having its own regression coefficient.
+    enable_aks: A boolean indicating whether to use the Automatic Knot Selection
+      algorithm to select optimal number of knots for running the model instead
+      of the default 1 for national and n_times for non-national models.
+    data: An Optional InputData object used by the Automatic Knot Selection
+      algorithm to calculate optimal number of knots from the provided Input
+      Data.
     is_national: A boolean indicator whether to adapt the knot information for a
       national model.
 
@@ -177,8 +185,17 @@ def get_knot_info(
     weights used to multiply with the knot values to get time-varying
     coefficients.
   """
-
-  if isinstance(knots, int):
+  if enable_aks:
+    if data is None:
+      raise ValueError(
+          'If enable_aks is true then input data must be provided.'
+      )
+    else:
+      aks = AKS(data)
+      knots = aks.automatic_knot_selection().knots
+      n_knots = len(knots)
+      knot_locations = knots
+  elif isinstance(knots, int):
     if knots < 1:
       raise ValueError('If knots is an integer, it must be at least 1.')
     elif knots > n_times:
