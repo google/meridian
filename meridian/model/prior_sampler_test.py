@@ -17,17 +17,16 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_sampler
 from meridian.model import spec
 import numpy as np
-import tensorflow as tf
 
 
 class PriorDistributionSamplerTest(
-    tf.test.TestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
 ):
@@ -587,7 +586,7 @@ class PriorDistributionSamplerTest(
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
-      prior_samples[param] = tf.zeros(mismatched_priors[param])
+      prior_samples[param] = backend.zeros(mismatched_priors[param])
     prior_coords = dict(prior_coords)
     prior_coords[coord] = np.arange(mismatched_coord_size)
 

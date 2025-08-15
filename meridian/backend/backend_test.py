@@ -66,6 +66,12 @@ class BackendTest(parameterized.TestCase):
         "under development and is not yet functional", str(cm.warning)
     )
 
+  def test_set_random_seed_raises_for_jax(self):
+    config.set_backend(config.Backend.JAX)
+    importlib.reload(backend)
+    with self.assertRaises(NotImplementedError):
+      backend.set_random_seed(0)
+
   @parameterized.named_parameters(
       ("numpy_int32", np.int32, "int32"),
       ("tf_float64", tf.float64, "float64"),
