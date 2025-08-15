@@ -21,6 +21,7 @@ import immutabledict
 from meridian import constants as c
 from meridian.data import input_data
 from meridian.data import load
+from meridian.model import knots
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -822,6 +823,7 @@ def random_kpi_da(
     controls: xr.DataArray | None = None,
     seed: int = 0,
     integer_geos: bool = False,
+    kpi_data_pattern: str = '',
 ) -> xr.DataArray:
   """Generates a sample `kpi` DataArray."""
 
@@ -857,6 +859,22 @@ def random_kpi_da(
 
   error = np.random.normal(0, 2, size=(n_geos, n_times))
   kpi = abs(media_portion + control_portion + error)
+  if kpi_data_pattern == 'flat':
+    first_col = kpi[:, 0]  # all rows will have value same as first col
+    kpi = (
+        first_col[:, np.newaxis]
+        + np.random.normal(scale=0.02, size=kpi.shape)
+        + 0.04
+    )
+  elif kpi_data_pattern == 'seasonal':
+    for row in kpi:
+      row.sort()
+    kpi = np.sin(kpi) + 5
+  elif kpi_data_pattern == 'peak':
+    peak_index = int(len(kpi[0]) / 2)
+    kpi[:] = kpi[0, 0]
+    for row in kpi:
+      row[peak_index] *= 3
 
   return xr.DataArray(
       kpi,
@@ -1175,6 +1193,7 @@ def random_dataset(
     seed: int = 0,
     remove_media_time: bool = False,
     integer_geos: bool = False,
+    kpi_data_pattern: str = '',
 ) -> xr.Dataset:
   """Generates a random dataset."""
   if n_media_channels:
@@ -1301,6 +1320,7 @@ def random_dataset(
       n_media_channels=n_media_channels or n_rf_channels or 0,
       n_controls=n_controls,
       integer_geos=integer_geos,
+      kpi_data_pattern=kpi_data_pattern,
   )
   population = random_population(
       n_geos=n_geos, seed=seed, integer_geos=integer_geos
@@ -1773,3 +1793,33 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
       if n_organic_rf_channels
       else None,
   )
+
+
+def sample_input_data_for_aks_with_expected_knot_info() -> (
+    tuple[input_data.InputData, knots.KnotInfo]
+):
+  """Generates sample InputData and corresponding expected KnotInfo for testing.
+
+  Returns:
+    A tuple containing:
+      - InputData object with sample data.
+      - KnotInfo object with expected knot information.
+  """
+  data = sample_input_data_from_dataset(
+      random_dataset(
+          n_geos=20,
+          n_times=117,
+          n_media_times=117,
+          n_controls=2,
+          n_media_channels=5,
+      ),
+      'non_revenue',
+  )
+  expected_knot_info = knots.KnotInfo(
+      n_knots=6,
+      knot_locations=np.array([38, 39, 41, 48, 50, 55]),
+      weights=knots.l1_distance_weights(
+          117, np.array([38, 39, 41, 48, 50, 55])
+      ),
+  )
+  return data, expected_knot_info
