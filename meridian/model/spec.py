@@ -203,6 +203,11 @@ class ModelSpec:
       variables are scaled by population. Default: `None`.
     adstock_decay_function: A string to specify the Adstock decay function.
       Allowed values are 'geometric' and 'binomial'. Default is 'geometric'.
+    enable_aks: A boolean indicating whether to use the Automatic Knot Selection
+      algorithm to select optimal number of knots for running the model instead
+      of the default 1 for national and n_times for non-national models. If this
+      is set to true and the knots arg is provided, then an error will be
+      raised. Default: `False`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -229,6 +234,7 @@ class ModelSpec:
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
   adstock_decay_function: str = constants.GEOMETRIC_DECAY
+  enable_aks: bool = False
 
   def __post_init__(self):
     # Validate media_effects_dist.
@@ -313,6 +319,10 @@ class ModelSpec:
       raise ValueError("The `knots` parameter cannot be an empty list.")
     if isinstance(self.knots, int) and self.knots == 0:
       raise ValueError("The `knots` parameter cannot be zero.")
+    if self.knots is not None and self.enable_aks:
+      raise ValueError(
+          "The `knots` parameter cannot be set when `enable_aks` is True."
+      )
 
   @property
   def effective_media_prior_type(self) -> str:

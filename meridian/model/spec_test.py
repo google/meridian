@@ -324,6 +324,13 @@ class ModelSpecTest(parameterized.TestCase):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(knots=knots)
 
+  def test_spec_inits_knots_and_aks_fails(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The `knots` parameter cannot be set when `enable_aks` is True.",
+    ):
+      spec.ModelSpec(knots=10, enable_aks=True)
+
   def test_effective_media_prior_type_with_media_prior_type_set(self):
     """Tests effective_media_prior_type when media_prior_type is set."""
     model_spec = spec.ModelSpec(media_prior_type="mroi")
