@@ -298,7 +298,10 @@ if _BACKEND == config.Backend.JAX:
   import tensorflow_probability.substrates.jax as tfp_jax
 
   class _JaxErrors:
-    ResourceExhaustedError = MemoryError  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
+    ResourceExhaustedError = MemoryError
+    InvalidArgumentError = ValueError
+    # pylint: enable=invalid-name
 
   _ops = jax_ops
   errors = _JaxErrors()
@@ -319,6 +322,7 @@ if _BACKEND == config.Backend.JAX:
   ones = _ops.ones
   ones_like = _ops.ones_like
   repeat = _ops.repeat
+  reshape = _ops.reshape
   tile = _ops.tile
   where = _ops.where
   transpose = _ops.transpose
@@ -390,6 +394,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   ones = _ops.ones
   ones_like = _ops.ones_like
   repeat = _ops.repeat
+  reshape = _ops.reshape
   tile = _ops.tile
   where = _ops.where
   transpose = _ops.transpose

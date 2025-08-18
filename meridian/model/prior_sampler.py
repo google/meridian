@@ -125,6 +125,7 @@ class PriorDistributionSampler:
           alpha=media_vars[constants.ALPHA_M],
           ec=media_vars[constants.EC_M],
           slope=media_vars[constants.SLOPE_M],
+          decay_functions=mmm.adstock_decay_spec.media
       )
       linear_predictor_counterfactual_difference = (
           mmm.linear_predictor_counterfactual_difference_media(
@@ -219,6 +220,7 @@ class PriorDistributionSampler:
           alpha=rf_vars[constants.ALPHA_RF],
           ec=rf_vars[constants.EC_RF],
           slope=rf_vars[constants.SLOPE_RF],
+          decay_functions=mmm.adstock_decay_spec.rf,
       )
       linear_predictor_counterfactual_difference = (
           mmm.linear_predictor_counterfactual_difference_rf(
@@ -307,6 +309,7 @@ class PriorDistributionSampler:
           alpha=organic_media_vars[constants.ALPHA_OM],
           ec=organic_media_vars[constants.EC_OM],
           slope=organic_media_vars[constants.SLOPE_OM],
+          decay_functions=mmm.adstock_decay_spec.organic_media,
       )
       beta_om_value = mmm.calculate_beta_x(
           is_non_media=False,
@@ -391,6 +394,7 @@ class PriorDistributionSampler:
           alpha=organic_rf_vars[constants.ALPHA_ORF],
           ec=organic_rf_vars[constants.EC_ORF],
           slope=organic_rf_vars[constants.SLOPE_ORF],
+          decay_functions=mmm.adstock_decay_spec.organic_rf,
       )
       beta_orf_value = mmm.calculate_beta_x(
           is_non_media=False,

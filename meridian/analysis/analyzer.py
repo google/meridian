@@ -903,8 +903,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media`, `reach`, `organic_media`, or
-        `organic_reach` for computing prior and posterior decayed effects.
+      channel_type: Specifies `media`, `rf`, `organic_media`, or
+        `organic_rf` for computing prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -924,23 +924,31 @@ class Analyzer:
           self._meridian.inference_data.posterior.alpha_m.values,
           (-1, self._meridian.n_media_channels),
       )
-    elif channel_type == constants.REACH:
+      decay_functions = self._meridian.adstock_decay_spec.media
+    elif channel_type == constants.RF:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
           (-1, self._meridian.n_rf_channels),
       )
+      decay_functions = self._meridian.adstock_decay_spec.rf
     elif channel_type == constants.ORGANIC_MEDIA:
       prior = self._meridian.inference_data.prior.alpha_om.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_om.values,
           (-1, self._meridian.n_organic_media_channels),
       )
-    elif channel_type == constants.ORGANIC_REACH:
+      decay_functions = (
+          self._meridian.adstock_decay_spec.organic_media
+      )
+    elif channel_type == constants.ORGANIC_RF:
       prior = self._meridian.inference_data.prior.alpha_orf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_orf.values,
           (-1, self._meridian.n_organic_rf_channels),
+      )
+      decay_functions = (
+          self._meridian.adstock_decay_spec.organic_rf
       )
     else:
       raise ValueError(
@@ -951,7 +959,7 @@ class Analyzer:
         alpha=tf.convert_to_tensor(prior[np.newaxis, ...], dtype=tf.float32),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
         window_size=window_size,
-        decay_function=self._meridian.model_spec.adstock_decay_function,
+        decay_functions=decay_functions,
         normalize=False,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
@@ -960,7 +968,7 @@ class Analyzer:
         ),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
         window_size=window_size,
-        decay_function=self._meridian.model_spec.adstock_decay_function,
+        decay_functions=decay_functions,
         normalize=False,
     )
 
@@ -1204,6 +1212,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_m,
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
+              decay_functions=self._meridian.adstock_decay_spec.media,
               n_times_output=n_times_output,
           )
       )
@@ -1217,6 +1226,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_rf,
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
+              decay_functions=self._meridian.adstock_decay_spec.rf,
               n_times_output=n_times_output,
           )
       )
@@ -1228,6 +1238,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_om,
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
+              decay_functions=self._meridian.adstock_decay_spec.organic_media,
               n_times_output=n_times_output,
           )
       )
@@ -1240,6 +1251,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_orf,
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
+              decay_functions=self._meridian.adstock_decay_spec.organic_rf,
               n_times_output=n_times_output,
           )
       )
@@ -4244,7 +4256,7 @@ class Analyzer:
     _add_adstock_decay_for_channel(
         self._meridian.n_rf_channels,
         self._meridian.input_data.rf_channel,
-        constants.REACH,
+        constants.RF,
     )
     _add_adstock_decay_for_channel(
         self._meridian.n_organic_media_channels,
@@ -4254,7 +4266,7 @@ class Analyzer:
     _add_adstock_decay_for_channel(
         self._meridian.n_organic_rf_channels,
         self._meridian.input_data.organic_rf_channel,
-        constants.ORGANIC_REACH,
+        constants.ORGANIC_RF,
     )
 
     final_df = pd.concat(final_df_list, ignore_index=True)

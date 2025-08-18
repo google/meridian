@@ -222,6 +222,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        decay_functions=meridian.adstock_decay_spec.media
     )[0, :, :, :]
     beta_m = par[constants.BETA_GM][0, :, :]
     y_means = (
@@ -369,6 +370,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
     beta_rf = par[constants.BETA_GRF][0, :, :]
     y_means = (
@@ -527,6 +529,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        decay_functions=meridian.adstock_decay_spec.media
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,
@@ -534,6 +537,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
     combined_transformed_media = backend.concatenate(
         [transformed_media, transformed_reach], axis=-1

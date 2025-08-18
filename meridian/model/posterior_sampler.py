@@ -162,6 +162,7 @@ class PosteriorMCMCSampler:
             alpha=alpha_m,
             ec=ec_m,
             slope=slope_m,
+            decay_functions=mmm.adstock_decay_spec.media,
         )
         prior_type = mmm.model_spec.effective_media_prior_type
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -227,6 +228,7 @@ class PosteriorMCMCSampler:
             alpha=alpha_rf,
             ec=ec_rf,
             slope=slope_rf,
+            decay_functions=mmm.adstock_decay_spec.rf,
         )
 
         prior_type = mmm.model_spec.effective_rf_prior_type
@@ -292,6 +294,7 @@ class PosteriorMCMCSampler:
             alpha=alpha_om,
             ec=ec_om,
             slope=slope_om,
+            decay_functions=mmm.adstock_decay_spec.organic_media,
         )
         prior_type = mmm.model_spec.organic_media_prior_type
         if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -342,6 +345,7 @@ class PosteriorMCMCSampler:
             alpha=alpha_orf,
             ec=ec_orf,
             slope=slope_orf,
+            decay_functions=mmm.adstock_decay_spec.organic_rf,
         )
 
         prior_type = mmm.model_spec.organic_rf_prior_type

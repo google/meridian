@@ -584,6 +584,47 @@ NATIONAL_COORD_TO_COLUMNS_WO_POPULATION_W_GEO = dataclasses.replace(
     geo='geo',
 )
 
+ADSTOCK_DECAY_SPEC_CASES = dict(
+    media=(
+        {},
+        {
+            'ch_0': c.BINOMIAL_DECAY,
+            'ch_1': c.GEOMETRIC_DECAY,
+            'ch_2': c.GEOMETRIC_DECAY,
+        },
+    ),
+    rf=(
+        {},
+        {
+            'rf_ch_0': c.BINOMIAL_DECAY,
+            'rf_ch_1': c.GEOMETRIC_DECAY,
+            'rf_ch_2': c.GEOMETRIC_DECAY,
+            'rf_ch_3': c.BINOMIAL_DECAY,
+        },
+    ),
+    organic_media=(
+        {},
+        {
+            'organic_media_0': c.BINOMIAL_DECAY,
+            'organic_media_1': c.GEOMETRIC_DECAY,
+            'organic_media_2': c.GEOMETRIC_DECAY,
+            'organic_media_3': c.BINOMIAL_DECAY,
+            'organic_media_4': c.GEOMETRIC_DECAY,
+        },
+    ),
+    organic_rf=(
+        {},
+        {
+            'organic_rf_ch_0': c.BINOMIAL_DECAY,
+            'organic_rf_ch_1': c.GEOMETRIC_DECAY,
+            'organic_rf_ch_2': c.GEOMETRIC_DECAY,
+            'organic_rf_ch_3': c.BINOMIAL_DECAY,
+            'organic_rf_ch_4': c.BINOMIAL_DECAY,
+            'organic_rf_ch_5': c.GEOMETRIC_DECAY,
+        },
+    ),
+)
+
 
 def random_media_da(
     n_geos: int,
@@ -698,6 +739,7 @@ def random_media_spend_nd_da(
     n_media_channels: int | None = None,
     seed=0,
     integer_geos: bool = False,
+    explicit_media_channel_names: Sequence[str] | None = None,
 ) -> xr.DataArray:
   """Generates a sample N-dimensional `media_spend` DataArray.
 
@@ -716,7 +758,8 @@ def random_media_spend_nd_da(
     n_media_channels: Number of channels in the created `media_spend` array.
     seed: Random seed used by `np.random.seed()`.
     integer_geos: If True, the geos will be integers.
-
+    explicit_media_channel_names: If given, ignore `n_media_channels` and use
+      this as is.
   Returns:
     A DataArray containing the generated `media_spend` data with the given
     dimensions.
@@ -733,9 +776,12 @@ def random_media_spend_nd_da(
     coords['time'] = _sample_times(n_times=n_times)
   if n_media_channels is not None:
     dims.append('media_channel')
-    coords['media_channel'] = _sample_names(
-        prefix='ch_', n_names=n_media_channels
-    )
+    if explicit_media_channel_names is not None:
+      coords['media_channel'] = explicit_media_channel_names
+    else:
+      coords['media_channel'] = _sample_names(
+          prefix='ch_', n_names=n_media_channels
+      )
 
   if dims == ['geo', 'time', 'media_channel']:
     shape = (n_geos, n_times, n_media_channels)
@@ -1193,6 +1239,7 @@ def random_dataset(
     remove_media_time: bool = False,
     integer_geos: bool = False,
     kpi_data_pattern: str = '',
+    explicit_media_channel_names: Sequence[str] | None = None,
 ) -> xr.Dataset:
   """Generates a random dataset."""
   if n_media_channels:
@@ -1203,6 +1250,7 @@ def random_dataset(
         n_media_channels=n_media_channels,
         seed=seed,
         integer_geos=integer_geos,
+        explicit_media_channel_names=explicit_media_channel_names
     )
     media_spend = random_media_spend_nd_da(
         n_geos=n_geos,
@@ -1210,6 +1258,7 @@ def random_dataset(
         n_media_channels=n_media_channels,
         seed=seed,
         integer_geos=integer_geos,
+        explicit_media_channel_names=explicit_media_channel_names,
     )
   else:
     media = None
@@ -1663,6 +1712,7 @@ def sample_input_data_revenue(
     n_organic_media_channels: int | None = None,
     n_organic_rf_channels: int | None = None,
     seed: int = 0,
+    explicit_media_channel_names: Sequence[str] | None = None,
 ) -> input_data.InputData:
   """Generates sample InputData for `kpi_type='revenue'`."""
   dataset = random_dataset(
@@ -1677,6 +1727,7 @@ def sample_input_data_revenue(
       n_organic_rf_channels=n_organic_rf_channels,
       revenue_per_kpi_value=1.0,
       seed=seed,
+      explicit_media_channel_names=explicit_media_channel_names,
   )
   return input_data.InputData(
       kpi=dataset.kpi,

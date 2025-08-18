@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add per-channel adstock decay function definition.
 * Methods in the `analyzer` module now return backend-agnostic tensors.
 * Add `IndependentMultivariateDistribution` for per-channel distribution
   definition.
