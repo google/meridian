@@ -19,6 +19,7 @@ from typing import Sequence
 import warnings
 
 from meridian import constants
+from meridian.model import adstock_hill
 from meridian.model import prior_distribution
 import numpy as np
 
@@ -201,8 +202,10 @@ class ModelSpec:
       `(n_non_media_channels,)` indicating the non-media variables for which the
       non-media value will be scaled by population. If `None`, then no non-media
       variables are scaled by population. Default: `None`.
-    adstock_decay_function: A string to specify the Adstock decay function.
-      Allowed values are 'geometric' and 'binomial'. Default is 'geometric'.
+    adstock_decay_functions: An `AdstockDecayFunctions` object specifying the
+      adstock decay function for each media, RF, organic media and organic RF
+      channel. Each channel can support either 'geometric' or 'binomial' adstock
+      decay. Default: 'geometric' for all channels.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -228,7 +231,11 @@ class ModelSpec:
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
-  adstock_decay_function: str = constants.GEOMETRIC_DECAY
+  adstock_decay_functions: adstock_hill.AdstockDecayFunctions = dataclasses.field(
+      default_factory=lambda: adstock_hill.AdstockDecayFunctions.from_uniform_type(
+          constants.GEOMETRIC_DECAY
+      )
+  )
 
   def __post_init__(self):
     # Validate media_effects_dist.

@@ -1286,6 +1286,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          adstock_decay_functions=meridian.adstock_decay_functions.media,
       )
 
   def test_adstock_hill_media_n_times_output(self):
@@ -1304,6 +1305,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           slope=np.ones(shape=(self._N_MEDIA_CHANNELS)),
+          adstock_decay_functions=meridian.adstock_decay_functions.media,
           n_times_output=8,
       )
 
@@ -1360,6 +1362,7 @@ class ModelTest(
         alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
         ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
         slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+        adstock_decay_functions=meridian.adstock_decay_functions.media,
     )
 
     mock_hill.assert_called_once()
@@ -1384,6 +1387,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
           ec=np.ones(shape=(self._N_RF_CHANNELS,)),
           slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          adstock_decay_functions=meridian.adstock_decay_functions.rf,
       )
 
   def test_adstock_hill_rf_n_times_output(self):
@@ -1403,6 +1407,7 @@ class ModelTest(
           alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
           ec=np.ones(shape=(self._N_RF_CHANNELS,)),
           slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          adstock_decay_functions=meridian.adstock_decay_functions.rf,
           n_times_output=8,
       )
 
@@ -1445,6 +1450,7 @@ class ModelTest(
         alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
         ec=np.ones(shape=(self._N_RF_CHANNELS,)),
         slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+        adstock_decay_functions=meridian.adstock_decay_functions.rf,
     )
 
     expected_called_names = ["mock_hill", "mock_adstock"]
@@ -2083,6 +2089,7 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        adstock_decay_functions=meridian.adstock_decay_functions.media,
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,
@@ -2090,12 +2097,14 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        adstock_decay_functions=meridian.adstock_decay_functions.rf,
     )[0, :, :, :]
     transformed_organic_media = meridian.adstock_hill_media(
         media=meridian.organic_media_tensors.organic_media_scaled,
         alpha=par[constants.ALPHA_OM],
         ec=par[constants.EC_OM],
         slope=par[constants.SLOPE_OM],
+        adstock_decay_functions=meridian.adstock_decay_functions.organic_media,
     )[0, :, :, :]
     transformed_organic_reach = meridian.adstock_hill_rf(
         reach=meridian.organic_rf_tensors.organic_reach_scaled,
@@ -2103,6 +2112,7 @@ class NonPaidModelTest(
         alpha=par[constants.ALPHA_ORF],
         ec=par[constants.EC_ORF],
         slope=par[constants.SLOPE_ORF],
+        adstock_decay_functions=meridian.adstock_decay_functions.organic_rf,
     )[0, :, :, :]
     combined_transformed_media = tf.concat(
         [
@@ -2584,6 +2594,196 @@ class NonPaidModelTest(
     )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     self.assertAllClose(expected_baseline, actual_baseline)
+
+
+class AdstockDecayFunctionsFromChannelMappingTest(parameterized.TestCase):
+  @parameterized.product(**test_utils.ADSTOCK_DECAY_FUNCTION_CASES)
+  def test_from_channel(
+      self,
+      media,
+      rf,
+      organic_media,
+      organic_rf,
+  ):
+    """Test if adstock decay functions are explicitly passed for all channels."""
+
+    if not (media or rf):
+      self.skipTest("Invalid test case: Meridian requires paid media.")
+
+    input_data = test_utils.sample_input_data_revenue(
+        n_media_channels=len(media),
+        n_rf_channels=len(rf),
+        n_organic_media_channels=len(organic_media),
+        n_organic_rf_channels=len(organic_rf),
+    )
+
+    decay_function = media | rf | organic_media | organic_rf
+
+    adstock_decay_functions = (
+        adstock_hill.AdstockDecayFunctions.from_channel_function_mapping(
+            decay_function
+        )
+    )
+    model_spec = spec.ModelSpec(adstock_decay_functions=adstock_decay_functions)
+
+    mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
+
+    expected_media = list(media.values()) or constants.GEOMETRIC_DECAY
+    expected_rf = list(rf.values()) or constants.GEOMETRIC_DECAY
+    expected_organic_media = (
+        list(organic_media.values()) or constants.GEOMETRIC_DECAY
+    )
+    expected_organic_rf = list(organic_rf.values()) or constants.GEOMETRIC_DECAY
+
+    self.assertSequenceEqual(mmm.adstock_decay_functions.media, expected_media)
+    self.assertSequenceEqual(mmm.adstock_decay_functions.rf, expected_rf)
+    self.assertSequenceEqual(
+        mmm.adstock_decay_functions.organic_media, expected_organic_media
+    )
+    self.assertSequenceEqual(
+        mmm.adstock_decay_functions.organic_rf, expected_organic_rf
+    )
+
+  @parameterized.product(
+      **test_utils.ADSTOCK_DECAY_FUNCTION_CASES,
+      has_undefined_media_channel=(True, False),
+      has_undefined_rf_channel=(True, False),
+      has_undefined_organic_media_channel=(True, False),
+      has_undefined_organic_rf_channel=(True, False),
+      )
+  def test_from_channels_some_undefined(
+      self,
+      media,
+      rf,
+      organic_media,
+      organic_rf,
+      has_undefined_media_channel,
+      has_undefined_rf_channel,
+      has_undefined_organic_media_channel,
+      has_undefined_organic_rf_channel,
+  ):
+    """Test if adstock decay functions are not explicitly passed for all channels."""
+    if not (
+        media or rf or has_undefined_media_channel or has_undefined_rf_channel
+    ):
+      self.skipTest("Invalid test case: Meridian requires paid media.")
+
+    if not sum((
+        has_undefined_media_channel,
+        has_undefined_rf_channel,
+        has_undefined_organic_media_channel,
+        has_undefined_organic_rf_channel
+        )):
+      self.skipTest("Redundant test case: no undefined channels.")
+
+    input_data = test_utils.sample_input_data_revenue(
+        n_media_channels=len(media) + has_undefined_media_channel,
+        n_rf_channels=len(rf) + has_undefined_rf_channel,
+        n_organic_media_channels=len(organic_media)
+        + has_undefined_organic_media_channel,
+        n_organic_rf_channels=len(organic_rf)
+        + has_undefined_organic_rf_channel,
+    )
+
+    decay_function = media | rf | organic_media | organic_rf
+
+    adstock_decay_functions = (
+        adstock_hill.AdstockDecayFunctions.from_channel_function_mapping(
+            decay_function
+        )
+    )
+    model_spec = spec.ModelSpec(adstock_decay_functions=adstock_decay_functions)
+
+    mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
+
+    if media:
+      expected_media = list(media.values())
+
+      if has_undefined_media_channel:
+        expected_media.append(constants.GEOMETRIC_DECAY)
+    elif has_undefined_media_channel:
+      expected_media = [constants.GEOMETRIC_DECAY]
+    else:
+      expected_media = constants.GEOMETRIC_DECAY
+
+    if rf:
+      expected_rf = list(rf.values())
+
+      if has_undefined_rf_channel:
+        expected_rf.append(constants.GEOMETRIC_DECAY)
+    elif has_undefined_rf_channel:
+      expected_rf = [constants.GEOMETRIC_DECAY]
+    else:
+      expected_rf = constants.GEOMETRIC_DECAY
+
+    if organic_media:
+      expected_organic_media = list(organic_media.values())
+
+      if has_undefined_organic_media_channel:
+        expected_organic_media.append(constants.GEOMETRIC_DECAY)
+    elif has_undefined_organic_media_channel:
+      expected_organic_media = [constants.GEOMETRIC_DECAY]
+    else:
+      expected_organic_media = constants.GEOMETRIC_DECAY
+
+    if organic_rf:
+      expected_organic_rf = list(organic_rf.values())
+
+      if has_undefined_organic_rf_channel:
+        expected_organic_rf.append(constants.GEOMETRIC_DECAY)
+    elif has_undefined_organic_rf_channel:
+      expected_organic_rf = [constants.GEOMETRIC_DECAY]
+    else:
+      expected_organic_rf = constants.GEOMETRIC_DECAY
+
+    self.assertSequenceEqual(mmm.adstock_decay_functions.media, expected_media)
+    self.assertSequenceEqual(mmm.adstock_decay_functions.rf, expected_rf)
+    self.assertSequenceEqual(
+        mmm.adstock_decay_functions.organic_media, expected_organic_media
+    )
+    self.assertSequenceEqual(
+        mmm.adstock_decay_functions.organic_rf, expected_organic_rf
+    )
+
+  @parameterized.product(
+      **test_utils.ADSTOCK_DECAY_FUNCTION_CASES,
+      bad_channel=({
+          "nonexistent_channel": constants.GEOMETRIC_DECAY
+          },)
+      )
+  def test_from_channels_misnamed_channel_raises_error(
+      self,
+      media,
+      rf,
+      organic_media,
+      organic_rf,
+      bad_channel
+  ):
+    """Test if an exception is raised with an unrecognized channel."""
+    if not (media or rf):
+      self.skipTest("Invalid test case: Meridian requires paid media.")
+
+    input_data = test_utils.sample_input_data_revenue(
+      n_media_channels=len(media),
+      n_rf_channels=len(rf),
+      n_organic_media_channels=len(organic_media),
+      n_organic_rf_channels=len(organic_rf)
+      )
+
+    decay_function = media | rf | organic_media | organic_rf | bad_channel
+
+    adstock_decay_functions = adstock_hill.AdstockDecayFunctions.from_channel_function_mapping(
+        decay_function
+    )
+    model_spec = spec.ModelSpec(
+        adstock_decay_functions=adstock_decay_functions
+        )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Channel nonexistent_channel not found in data."
+        ):
+      _ = model.Meridian(input_data=input_data, model_spec=model_spec)
 
 
 if __name__ == "__main__":

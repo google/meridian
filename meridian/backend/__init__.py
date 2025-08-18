@@ -215,6 +215,7 @@ if _BACKEND == config.Backend.JAX:
   reduce_mean = ops.mean
   reduce_std = ops.std
   reduce_any = ops.any
+  reduce_max = ops.max
   is_nan = ops.isnan
   divide = ops.divide
   divide_no_nan = _jax_divide_no_nan
@@ -273,6 +274,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reduce_mean = ops.reduce_mean
   reduce_std = ops.math.reduce_std
   reduce_any = ops.reduce_any
+  reduce_max = ops.reduce_max
   is_nan = ops.math.is_nan
   divide = ops.divide
   divide_no_nan = ops.math.divide_no_nan
