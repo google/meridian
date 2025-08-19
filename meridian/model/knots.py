@@ -20,10 +20,12 @@ import copy
 import dataclasses
 import math
 from typing import Any
+from meridian.data import input_data
 import numpy as np
 # TODO: b/437393442 - migrate patsy
 from patsy import highlevel
 from statsmodels.regression import linear_model
+import tensorflow as tf
 
 
 __all__ = [
@@ -217,17 +219,139 @@ def get_knot_info(
 
 
 class AKS:
-  """Class for automatically selecting knots in Meridian Core Library."""
+  """This class defines functions for calculating Adaptive Spline (A-Spline) for knot selection in Meridian."""
 
   def __init__(self):
-    # TODO: b/434254634 - implement
-    raise NotImplementedError('Not implemented.')
+    self._base_pen = np.logspace(-1, 2, 100)
+    self._degree = 1
 
-  def automatic_knot_selection(self) -> tuple[list[float], linear_model.OLS]:
-    # TODO: b/434254634 - implement
-    raise NotImplementedError('Not implemented.')
+  def automatic_knot_selection(
+      self, data: input_data.InputData
+  ) -> tuple[np.ndarray[int, np.dtype[int]], linear_model.OLS]:
+    """Calculates the optimal number of knots for Meridian model using Automatic knot selection with A-spline.
 
-  def _aspline(
+    Args:
+      data: InputData object to calculate the knots from.
+
+    Returns:
+      Selected knots and the corresponding B-spline model.
+    """
+    x, y = self.calculate_xy_from_input_data(data)
+    knots, min_internal_knots, max_internal_knots = (
+        self._calculate_initial_knots(x, data)
+    )
+    geo_scaling_factor = 1 / np.sqrt(len(data.geo))
+    pen = geo_scaling_factor * self._base_pen
+
+    aspl = self.aspline(x=x, y=y, knots=knots, pen=pen)
+    n_knots = np.array([len(x) for x in aspl['knots_sel']])
+    feasible_idx = np.where(
+        (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)
+    )[0]
+    information_criterion = aspl['ebic'][feasible_idx]
+    knots_sel = [aspl['knots_sel'][i] for i in feasible_idx]
+    model = [aspl['model'][i] for i in feasible_idx]
+    opt_idx = max(
+        np.where(information_criterion == min(information_criterion))[0]
+    )
+
+    return knots_sel[opt_idx], model[opt_idx]
+
+  def calculate_xy_from_input_data(self, data: input_data.InputData):
+    """Calculates x and y from input data.
+
+    x is a flattened array of indexed time coordinates, repeated n_geos times.
+
+        e.g. [ 0, 1, 2, 3, ... , 0, 1, 2, 3, ...].
+      y is the flattened array of KPI values that have been population-scaled
+      and
+        mean-centered by geo.
+
+    Args:
+      data: Input data to calculate x and y from.
+
+    Returns:
+      Calculated x and y data.
+    """
+    n_geos = len(data.geo)
+    n_times = len(data.time)
+    kpi = data.kpi.values
+    pop = data.population.values
+
+    x = np.reshape(
+        np.repeat([range(n_times)], n_geos, axis=0), (n_geos * n_times,)
+    )
+    pop_scaled_kpi = tf.math.divide_no_nan(kpi, pop[:, tf.newaxis])
+    pop_scaled_mean = tf.reduce_mean(pop_scaled_kpi)
+    pop_scaled_stdev = tf.math.reduce_std(pop_scaled_kpi)
+    kpi_scaled = tf.math.divide_no_nan(
+        tf.math.divide_no_nan(kpi, pop[:, tf.newaxis]) - pop_scaled_mean,
+        pop_scaled_stdev,
+    )
+    y_tensor = kpi_scaled - (tf.reduce_mean(kpi_scaled, axis=1))[:, tf.newaxis]
+    y = tf.reshape(y_tensor, shape=(n_geos * n_times,)).numpy()
+
+    return x, y
+
+  def _calculate_initial_knots(
+      self, x: np.ndarray, data: input_data.InputData
+  ) -> tuple[np.ndarray, int, int]:
+    """Calculates initial knots based on unique x values.
+
+    Args:
+      x: A flattened array of indexed time coordinates, repeated n_geos times.
+        e.g. [ 0, 1, 2, 3, ... , 0, 1, 2, 3, ...].
+      data: InputData object.
+
+    Returns:
+      A tuple containing:
+        - The calculated knots.
+        - The minimum number of internal knots.
+        - The maximum number of internal knots.
+    """
+    x_vals_unique = np.unique(x)
+    min_x_data, max_x_data = x_vals_unique.min(), x_vals_unique.max()
+    knots = x_vals_unique[
+        (x_vals_unique > min_x_data) & (x_vals_unique < max_x_data)
+    ]
+    knots = np.sort(np.unique(knots))
+    knots = knots[:-1]
+    min_internal_knots = 1
+
+    n_medias = len(data.media_channel) if data.media_channel is not None else 0
+    n_non_media_treatments = (
+        len(data.non_media_channel) if data.non_media_channel is not None else 0
+    )
+    n_organic_media = (
+        len(data.organic_media_channel)
+        if data.organic_media_channel is not None
+        else 0
+    )
+    n_controls = (
+        len(data.control_variable) if data.control_variable is not None else 0
+    )
+
+    max_internal_knots = (
+        len(knots)
+        - n_medias
+        - n_non_media_treatments
+        - n_organic_media
+        - n_controls
+    )
+    if min_internal_knots > len(knots):
+      raise ValueError(
+          'The minimum number of internal knots cannot be greater than the'
+          ' total number of initial knots.'
+      )
+    if max_internal_knots < min_internal_knots:
+      raise ValueError(
+          'The maximum number of internal knots cannot be less than the minimum'
+          ' number of internal knots.'
+      )
+
+    return knots, min_internal_knots, max_internal_knots
+
+  def aspline(
       self,
       x: np.ndarray,
       y: np.ndarray,
@@ -265,13 +389,11 @@ class AKS:
         bic: A list of BIC values for every value of pen.
         ebic: A list of EBIC values for every value of pen.
     """
-    degree = 1
-
     bs_cmd = (
         'bs(x,knots=['
         + ','.join(map(str, knots))
         + '],degree='
-        + str(degree)
+        + str(self._degree)
         + ',include_intercept=True)-1'
     )
     xmat = highlevel.dmatrix(bs_cmd, {'x': x})
@@ -291,14 +413,15 @@ class AKS:
     model, x_sel, knots_sel, sel_ls, par_ls, aic, bic, ebic, dim, loglik = (
         [None] * len(pen) for _ in range(10)
     )
-    old_sel, w = [np.ones(ncol - degree - 1) for _ in range(2)]
+    old_sel, w = [np.ones(ncol - self._degree - 1) for _ in range(2)]
     par = np.ones(ncol)
     ind_pen = 0
     for _ in range(max_iter):
       par = self._wridge_solver(
-          xx_rot, xy, degree, pen[ind_pen], w, old_par=par
+          xx_rot, xy, self._degree, pen[ind_pen], w, old_par=par
       )
-      par_diff = np.diff(par, n=degree + 1)
+      par_diff = np.diff(par, n=self._degree + 1)
+
       w = 1 / (par_diff**2 + epsilon**2)
       sel = w * par_diff**2
       converge = max(abs(old_sel - sel)) < tol
@@ -306,19 +429,19 @@ class AKS:
         sel_ls[ind_pen] = sel
         knots_sel[ind_pen] = knots[sel > 0.99]
         bs_cmd_iter = (
-            f"bs(x,knots=[{','.join(map(str, knots_sel[ind_pen]))}],degree={degree},include_intercept=True)-1"
+            f"bs(x,knots=[{','.join(map(str, knots_sel[ind_pen]))}],degree={self._degree},include_intercept=True)-1"
         )
         design_mat = highlevel.dmatrix(bs_cmd_iter, {'x': x})
         x_sel[ind_pen] = design_mat
         bs_model = linear_model.OLS(y, x_sel[ind_pen]).fit()
         model[ind_pen] = bs_model
         coefs = np.zeros(ncol, dtype=np.float32)
-        idx = np.concat([sel > 0.99, np.repeat(True, degree + 1)])
+        idx = np.concat([sel > 0.99, np.repeat(True, self._degree + 1)])
         coefs[idx] = bs_model.params
         par_ls[ind_pen] = coefs
 
         loglik[ind_pen] = sum(bs_model.resid**2 / sigma0sq) / 2
-        dim[ind_pen] = len(knots_sel[ind_pen]) + degree + 1
+        dim[ind_pen] = len(knots_sel[ind_pen]) + self._degree + 1
         aic[ind_pen] = 2 * dim[ind_pen] + 2 * loglik[ind_pen]
         bic[ind_pen] = np.log(nrow) * dim[ind_pen] + 2 * loglik[ind_pen]
         ebic[ind_pen] = bic[ind_pen] + 2 * np.log(
@@ -501,19 +624,10 @@ class AKS:
       raise ValueError('rot_mat should be a rotated matrix!')
     if rot_mat[nrow - 1, 1] != 0:
       raise ValueError('rot_mat should be a rotated matrix!')
+    if len(rhs_mat) != nrow:
+      raise ValueError('Dimension problem!')
 
-    if rhs_mat.ndim == 1:
-      if len(rhs_mat) != nrow:
-        raise ValueError('Dimension problem!')
-      else:
-        return self._bandsolve_kernel(rot_mat, rhs_mat[:, np.newaxis])
-    elif rhs_mat.ndim == 2:
-      if rhs_mat.shape[0] != nrow:
-        raise ValueError('Dimension problem!')
-      else:
-        return self._bandsolve_kernel(rot_mat, rhs_mat[:, np.newaxis])
-    else:
-      raise ValueError('rhs_mat must either be a vector or a matrix')
+    return self._bandsolve_kernel(rot_mat, rhs_mat[:, np.newaxis])
 
   def _wridge_solver(
       self,
