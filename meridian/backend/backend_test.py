@@ -20,6 +20,7 @@ import importlib
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import jax
 import jax.numpy as jnp
 from meridian import backend
 from meridian.backend import config
@@ -49,11 +50,10 @@ class BackendTest(parameterized.TestCase):
 
     self.assertEqual(config.get_backend(), backend_name)
 
-    ops_name = getattr(backend.ops, "__name__", "")
     if backend_name == config.Backend.JAX:
-      self.assertIn("jax", ops_name)
+      self.assertIs(backend.Tensor, jax.Array)
     else:
-      self.assertIn("tensorflow", ops_name)
+      self.assertIs(backend.Tensor, tf.Tensor)
 
   def test_invalid_backend(self):
     with self.assertRaises(ValueError):
