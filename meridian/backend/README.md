@@ -28,11 +28,11 @@ Always start by importing the backend module:
 from meridian import backend
 ```
 
-### 2. Numerical Operations (`backend.ops`)
+### 2. Standardized Numerical Operations
 
-For any numerical operations that would typically use `tensorflow` or
-`jax.numpy`, use the `backend.ops` alias. This object will point to the correct
-library based on the active backend.
+For numerical operations, prefer the standardized functions available directly
+from the `backend` module (e.g., `backend.einsum`, `backend.concatenate`). These
+functions provide a consistent API that works across both TensorFlow and JAX.
 
 **Before (TensorFlow-specific):**
 
@@ -46,8 +46,8 @@ concatenated = tf.concat([part1, part2], axis=-1)
 
 ```python
 from meridian import backend
-result = backend.ops.einsum('gc,gtc->gt', gamma_gc, controls_scaled)
-concatenated = backend.ops.concatenate([part1, part2], axis=-1)
+result = backend.einsum('gc,gtc->gt', gamma_gc, controls_scaled)
+concatenated = backend.concatenate([part1, part2], axis=-1)
 ```
 
 ### 3. Probabilistic Distributions (`backend.tfd`)

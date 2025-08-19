@@ -1007,20 +1007,19 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     return backend.result_type(*dtypes)
 
   def _event_shape(self):
-    return backend.ops.TensorShape([])
+    return backend.TensorShape([])
 
   def _batch_shape_tensor(self):
     distribution_batch_shape_tensors = backend.concatenate(
         [dist.batch_shape_tensor() for dist in self._distributions],
         axis=0,
     )
-
-    return backend.ops.math.reduce_sum(
+    return backend.reduce_sum(
         distribution_batch_shape_tensors, keepdims=True
     )
 
   def _batch_shape(self):
-    return backend.ops.TensorShape(sum(self._distribution_batch_shapes))
+    return backend.TensorShape(sum(self._distribution_batch_shapes))
 
   def _sample_n(self, n, seed=None):
     return backend.concatenate(
@@ -1029,7 +1028,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _quantile(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.ops.split(
+    split_value = backend.split(
         value,
         self._distribution_batch_shapes, axis=-1
         )
@@ -1041,12 +1040,11 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _log_prob(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.ops.split(
+    split_value = backend.split(
         value,
         self._distribution_batch_shapes,
         axis=-1
         )
-
     log_probs = [
         dist.log_prob(sv) for dist, sv in zip(self._distributions, split_value)
     ]
@@ -1055,7 +1053,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _log_cdf(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.ops.split(
+    split_value = backend.split(
         value,
         self._distribution_batch_shapes,
         axis=-1
@@ -1098,7 +1096,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _broadcast_value(self, value: backend.Tensor) -> backend.Tensor:
     value = backend.to_tensor(value)
-    broadcast_shape = backend.ops.broadcast_dynamic_shape(
+    broadcast_shape = backend.broadcast_dynamic_shape(
         value.shape, self.batch_shape_tensor()
     )
     return backend.broadcast_to(value, broadcast_shape)

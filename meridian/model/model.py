@@ -35,8 +35,6 @@ from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model import transformers
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 
 __all__ = [
@@ -71,7 +69,7 @@ def _warn_setting_national_args(**kwargs):
 
 
 def _check_for_negative_effect(
-    dist: tfp.distributions.Distribution, media_effects_dist: str
+    dist: backend.tfd.Distribution, media_effects_dist: str
 ):
   """Checks for negative effect in the model."""
   if (
@@ -203,45 +201,45 @@ class Meridian:
     return media.build_organic_rf_tensors(self.input_data)
 
   @functools.cached_property
-  def kpi(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.kpi, dtype=tf.float32)
+  def kpi(self) -> backend.Tensor:
+    return backend.to_tensor(self.input_data.kpi, dtype=backend.float32)
 
   @functools.cached_property
-  def revenue_per_kpi(self) -> tf.Tensor | None:
+  def revenue_per_kpi(self) -> backend.Tensor | None:
     if self.input_data.revenue_per_kpi is None:
       return None
-    return tf.convert_to_tensor(
-        self.input_data.revenue_per_kpi, dtype=tf.float32
+    return backend.to_tensor(
+        self.input_data.revenue_per_kpi, dtype=backend.float32
     )
 
   @functools.cached_property
-  def controls(self) -> tf.Tensor | None:
+  def controls(self) -> backend.Tensor | None:
     if self.input_data.controls is None:
       return None
-    return tf.convert_to_tensor(self.input_data.controls, dtype=tf.float32)
+    return backend.to_tensor(self.input_data.controls, dtype=backend.float32)
 
   @functools.cached_property
-  def non_media_treatments(self) -> tf.Tensor | None:
+  def non_media_treatments(self) -> backend.Tensor | None:
     if self.input_data.non_media_treatments is None:
       return None
-    return tf.convert_to_tensor(
-        self.input_data.non_media_treatments, dtype=tf.float32
+    return backend.to_tensor(
+        self.input_data.non_media_treatments, dtype=backend.float32
     )
 
   @functools.cached_property
-  def population(self) -> tf.Tensor:
-    return tf.convert_to_tensor(self.input_data.population, dtype=tf.float32)
+  def population(self) -> backend.Tensor:
+    return backend.to_tensor(self.input_data.population, dtype=backend.float32)
 
   @functools.cached_property
-  def total_spend(self) -> tf.Tensor:
-    return tf.convert_to_tensor(
-        self.input_data.get_total_spend(), dtype=tf.float32
+  def total_spend(self) -> backend.Tensor:
+    return backend.to_tensor(
+        self.input_data.get_total_spend(), dtype=backend.float32
     )
 
   @functools.cached_property
-  def total_outcome(self) -> tf.Tensor:
-    return tf.convert_to_tensor(
-        self.input_data.get_total_outcome(), dtype=tf.float32
+  def total_outcome(self) -> backend.Tensor:
+    return backend.to_tensor(
+        self.input_data.get_total_outcome(), dtype=backend.float32
     )
 
   @property
@@ -313,8 +311,8 @@ class Meridian:
       return None
 
     if self.model_spec.control_population_scaling_id is not None:
-      controls_population_scaling_id = tf.convert_to_tensor(
-          self.model_spec.control_population_scaling_id, dtype=bool
+      controls_population_scaling_id = backend.to_tensor(
+          self.model_spec.control_population_scaling_id, dtype=backend.bool_
       )
     else:
       controls_population_scaling_id = None
@@ -333,8 +331,8 @@ class Meridian:
     if self.non_media_treatments is None:
       return None
     if self.model_spec.non_media_population_scaling_id is not None:
-      non_media_population_scaling_id = tf.convert_to_tensor(
-          self.model_spec.non_media_population_scaling_id, dtype=bool
+      non_media_population_scaling_id = backend.to_tensor(
+          self.model_spec.non_media_population_scaling_id, dtype=backend.bool_
       )
     else:
       non_media_population_scaling_id = None
@@ -350,7 +348,7 @@ class Meridian:
     return transformers.KpiTransformer(self.kpi, self.population)
 
   @functools.cached_property
-  def controls_scaled(self) -> tf.Tensor | None:
+  def controls_scaled(self) -> backend.Tensor | None:
     if self.controls is not None:
       # If `controls` is defined, then `controls_transformer` is also defined.
       return self.controls_transformer.forward(self.controls)  # pytype: disable=attribute-error
@@ -358,7 +356,7 @@ class Meridian:
       return None
 
   @functools.cached_property
-  def non_media_treatments_normalized(self) -> tf.Tensor | None:
+  def non_media_treatments_normalized(self) -> backend.Tensor | None:
     """Normalized non-media treatments.
 
     The non-media treatments values are scaled by population (for channels where
@@ -373,7 +371,7 @@ class Meridian:
       return None
 
   @functools.cached_property
-  def kpi_scaled(self) -> tf.Tensor:
+  def kpi_scaled(self) -> backend.Tensor:
     return self.kpi_transformer.forward(self.kpi)
 
   @functools.cached_property
@@ -417,14 +415,14 @@ class Meridian:
       # Geos are unique, so index is a 1-element array.
       return index[0]
     else:
-      return tf.argmax(self.population)
+      return backend.argmax(self.population)
 
   @functools.cached_property
-  def holdout_id(self) -> tf.Tensor | None:
+  def holdout_id(self) -> backend.Tensor | None:
     if self.model_spec.holdout_id is None:
       return None
-    tensor = tf.convert_to_tensor(self.model_spec.holdout_id, dtype=bool)
-    return tensor[tf.newaxis, ...] if self.is_national else tensor
+    tensor = backend.to_tensor(self.model_spec.holdout_id, dtype=backend.bool_)
+    return tensor[backend.newaxis, ...] if self.is_national else tensor
 
   @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
@@ -470,7 +468,7 @@ class Meridian:
   def compute_non_media_treatments_baseline(
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes the baseline for each non-media treatment channel.
 
     Args:
@@ -492,16 +490,19 @@ class Meridian:
     if non_media_baseline_values is None:
       non_media_baseline_values = self.model_spec.non_media_baseline_values
 
+    no_op_scaling_factor = backend.ones_like(self.population)[
+        :, backend.newaxis, backend.newaxis
+    ]
     if self.model_spec.non_media_population_scaling_id is not None:
-      scaling_factors = tf.where(
+      scaling_factors = backend.where(
           self.model_spec.non_media_population_scaling_id,
-          self.population[:, tf.newaxis, tf.newaxis],
-          tf.ones_like(self.population)[:, tf.newaxis, tf.newaxis],
+          self.population[:, backend.newaxis, backend.newaxis],
+          no_op_scaling_factor,
       )
     else:
-      scaling_factors = tf.ones_like(self.population)[:, tf.newaxis, tf.newaxis]
+      scaling_factors = no_op_scaling_factor
 
-    non_media_treatments_population_scaled = tf.math.divide_no_nan(
+    non_media_treatments_population_scaled = backend.divide_no_nan(
         self.non_media_treatments, scaling_factors
     )
 
@@ -529,15 +530,15 @@ class Meridian:
       baseline_value = non_media_baseline_values_filled[channel]
 
       if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
-        baseline_for_channel = tf.reduce_min(
+        baseline_for_channel = backend.reduce_min(
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
-        baseline_for_channel = tf.reduce_max(
+        baseline_for_channel = backend.reduce_max(
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = tf.cast(baseline_value, tf.float32)
+        baseline_for_channel = backend.cast(baseline_value, backend.float32)
       else:
         raise ValueError(
             f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
@@ -546,7 +547,7 @@ class Meridian:
 
       baseline_list.append(baseline_for_channel)
 
-    return tf.stack(baseline_list, axis=-1)
+    return backend.stack(baseline_list, axis=-1)
 
   def expand_selected_time_dims(
       self,
@@ -947,7 +948,7 @@ class Meridian:
 
   def _check_if_no_geo_variation(
       self,
-      scaled_data: tf.Tensor,
+      scaled_data: backend.Tensor,
       data_name: str,
       data_dims: Sequence[str],
       epsilon=1e-4,
@@ -955,16 +956,16 @@ class Meridian:
     """Raise an error if `n_knots == n_time` and data lacks geo variation."""
 
     # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = tf.where(tf.math.reduce_std(scaled_data, axis=0) < epsilon)[
-        :, 1
-    ]
-    col_idx_unique, _, counts = tf.unique_with_counts(col_idx_full)
+    col_idx_full = backend.get_indices_where(
+        backend.reduce_std(scaled_data, axis=0) < epsilon
+    )[:, 1]
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
     # We use the shape of scaled_data (instead of `n_time`) because the data may
     # be padded to account for lagged effects.
     data_n_time = scaled_data.shape[1]
-    mask = tf.equal(counts, data_n_time)
-    col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
-    dims_bad = tf.gather(data_dims, col_idx_bad)
+    mask = backend.equal(counts, data_n_time)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
 
     if col_idx_bad.shape[0] and self.knot_info.n_knots == self.n_times:
       raise ValueError(
@@ -1025,7 +1026,7 @@ class Meridian:
 
   def _check_if_no_time_variation(
       self,
-      scaled_data: tf.Tensor,
+      scaled_data: backend.Tensor,
       data_name: str,
       data_dims: Sequence[str],
       epsilon=1e-4,
@@ -1033,13 +1034,13 @@ class Meridian:
     """Raise an error if data lacks time variation."""
 
     # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = tf.where(tf.math.reduce_std(scaled_data, axis=1) < epsilon)[
-        :, 1
-    ]
-    col_idx_unique, _, counts = tf.unique_with_counts(col_idx_full)
-    mask = tf.equal(counts, self.n_geos)
-    col_idx_bad = tf.boolean_mask(col_idx_unique, mask)
-    dims_bad = tf.gather(data_dims, col_idx_bad)
+    col_idx_full = backend.get_indices_where(
+        backend.reduce_std(scaled_data, axis=1) < epsilon
+    )[:, 1]
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
+    mask = backend.equal(counts, self.n_geos)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
     if col_idx_bad.shape[0]:
       if self.is_national:
         raise ValueError(
@@ -1086,11 +1087,11 @@ class Meridian:
 
   def linear_predictor_counterfactual_difference_media(
       self,
-      media_transformed: tf.Tensor,
-      alpha_m: tf.Tensor,
-      ec_m: tf.Tensor,
-      slope_m: tf.Tensor,
-  ) -> tf.Tensor:
+      media_transformed: backend.Tensor,
+      alpha_m: backend.Tensor,
+      ec_m: backend.Tensor,
+      slope_m: backend.Tensor,
+  ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for non-RF media.
 
     For non-RF media variables (paid or organic), this function calculates the
@@ -1122,15 +1123,17 @@ class Meridian:
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
-    return tf.abs(media_transformed - media_transformed_counterfactual)
+    return backend.absolute(
+        media_transformed - media_transformed_counterfactual
+    )
 
   def linear_predictor_counterfactual_difference_rf(
       self,
-      rf_transformed: tf.Tensor,
-      alpha_rf: tf.Tensor,
-      ec_rf: tf.Tensor,
-      slope_rf: tf.Tensor,
-  ) -> tf.Tensor:
+      rf_transformed: backend.Tensor,
+      alpha_rf: backend.Tensor,
+      ec_rf: backend.Tensor,
+      slope_rf: backend.Tensor,
+  ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for RF media.
 
     For RF media variables (paid or organic), this function calculates the
@@ -1163,16 +1166,16 @@ class Meridian:
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
-    return tf.abs(rf_transformed - rf_transformed_counterfactual)
+    return backend.absolute(rf_transformed - rf_transformed_counterfactual)
 
   def calculate_beta_x(
       self,
       is_non_media: bool,
-      incremental_outcome_x: tf.Tensor,
-      linear_predictor_counterfactual_difference: tf.Tensor,
-      eta_x: tf.Tensor,
-      beta_gx_dev: tf.Tensor,
-  ) -> tf.Tensor:
+      incremental_outcome_x: backend.Tensor,
+      linear_predictor_counterfactual_difference: backend.Tensor,
+      eta_x: backend.Tensor,
+      beta_gx_dev: backend.Tensor,
+  ) -> backend.Tensor:
     """Calculates coefficient mean parameter for any treatment variable type.
 
     The "beta_x" in the function name refers to the coefficient mean parameter
@@ -1217,10 +1220,12 @@ class Meridian:
           self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
       )
     if self.revenue_per_kpi is None:
-      revenue_per_kpi = tf.ones([self.n_geos, self.n_times], dtype=tf.float32)
+      revenue_per_kpi = backend.ones(
+          [self.n_geos, self.n_times], dtype=backend.float32
+      )
     else:
       revenue_per_kpi = self.revenue_per_kpi
-    incremental_outcome_gx_over_beta_gx = tf.einsum(
+    incremental_outcome_gx_over_beta_gx = backend.einsum(
         "...gtx,gt,g,->...gx",
         linear_predictor_counterfactual_difference,
         revenue_per_kpi,
@@ -1228,24 +1233,24 @@ class Meridian:
         self.kpi_transformer.population_scaled_stdev,
     )
     if random_effects_normal:
-      numerator_term_x = tf.einsum(
+      numerator_term_x = backend.einsum(
           "...gx,...gx,...x->...x",
           incremental_outcome_gx_over_beta_gx,
           beta_gx_dev,
           eta_x,
       )
-      denominator_term_x = tf.einsum(
+      denominator_term_x = backend.einsum(
           "...gx->...x", incremental_outcome_gx_over_beta_gx
       )
       return (incremental_outcome_x - numerator_term_x) / denominator_term_x
     # For log-normal random effects, beta_x and eta_x are not mean & std.
     # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
-    denominator_term_x = tf.einsum(
+    denominator_term_x = backend.einsum(
         "...gx,...gx->...x",
         incremental_outcome_gx_over_beta_gx,
-        tf.math.exp(beta_gx_dev * eta_x[..., tf.newaxis, :]),
+        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
     )
-    return tf.math.log(incremental_outcome_x) - tf.math.log(denominator_term_x)
+    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
 
   def adstock_hill_media(
       self,
@@ -1451,7 +1456,7 @@ class Meridian:
       n_adapt: int,
       n_burnin: int,
       n_keep: int,
-      current_state: Mapping[str, tf.Tensor] | None = None,
+      current_state: Mapping[str, backend.Tensor] | None = None,
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
       max_tree_depth: int = 10,

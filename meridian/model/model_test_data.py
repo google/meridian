@@ -17,17 +17,17 @@
 import collections
 import os
 
+from meridian import backend
 from meridian import constants
 from meridian.data import test_utils
-import tensorflow as tf
 import xarray as xr
 
 
-def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> tf.Tensor:
-  """Converts a DataArray to a tf.Tensor with the correct MCMC format.
+def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> backend.Tensor:
+  """Converts a DataArray to a backend.Tensor with the correct MCMC format.
 
-  This function converts a DataArray to tf.Tensor, swaps first two dimensions
-  and adds the burnin part. This is needed to properly mock the
+  This function converts a DataArray to backend.Tensor, swaps first two
+  dimensions and adds the burnin part. This is needed to properly mock the
   _xla_windowed_adaptive_nuts() function output in the sample_posterior
   tests.
 
@@ -39,9 +39,9 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> tf.Tensor:
     A tensor in the same format as returned by the _xla_windowed_adaptive_nuts()
     function.
   """
-  tensor = tf.convert_to_tensor(array)
+  tensor = backend.to_tensor(array)
   perm = [1, 0] + [i for i in range(2, len(tensor.shape))]
-  transposed_tensor = tf.transpose(tensor, perm=perm)
+  transposed_tensor = backend.transpose(tensor, perm=perm)
 
   # Add the "burnin" part to the mocked output of _xla_windowed_adaptive_nuts
   # to make sure sample_posterior returns the correct "keep" part.
@@ -50,8 +50,8 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> tf.Tensor:
   else:
     pad_value = 0.0 if array.dtype.kind == "f" else 0
 
-  burnin = tf.fill([n_burnin] + transposed_tensor.shape[1:], pad_value)
-  return tf.concat(
+  burnin = backend.fill([n_burnin] + transposed_tensor.shape[1:], pad_value)
+  return backend.concatenate(
       [burnin, transposed_tensor],
       axis=0,
   )
@@ -114,13 +114,13 @@ class WithInputDataSamples:
   _N_MEDIA_CHANNELS = 3
   _N_RF_CHANNELS = 2
   _N_CONTROLS = 2
-  _ROI_CALIBRATION_PERIOD = tf.cast(
-      tf.ones((_N_MEDIA_TIMES_SHORT, _N_MEDIA_CHANNELS)),
-      dtype=tf.bool,
+  _ROI_CALIBRATION_PERIOD = backend.cast(
+      backend.ones((_N_MEDIA_TIMES_SHORT, _N_MEDIA_CHANNELS)),
+      dtype=backend.bool_,
   )
-  _RF_ROI_CALIBRATION_PERIOD = tf.cast(
-      tf.ones((_N_MEDIA_TIMES_SHORT, _N_RF_CHANNELS)),
-      dtype=tf.bool,
+  _RF_ROI_CALIBRATION_PERIOD = backend.cast(
+      backend.ones((_N_MEDIA_TIMES_SHORT, _N_RF_CHANNELS)),
+      dtype=backend.bool_,
   )
   _N_ORGANIC_MEDIA_CHANNELS = 4
   _N_ORGANIC_RF_CHANNELS = 1
@@ -265,18 +265,18 @@ class WithInputDataSamples:
     )
     test_prior_rf_only = xr.open_dataset(self._TEST_SAMPLE_PRIOR_RF_ONLY_PATH)
     self.test_dist_media_and_rf = collections.OrderedDict({
-        param: tf.convert_to_tensor(test_prior_media_and_rf[param])
+        param: backend.to_tensor(test_prior_media_and_rf[param])
         for param in constants.COMMON_PARAMETER_NAMES
         + constants.MEDIA_PARAMETER_NAMES
         + constants.RF_PARAMETER_NAMES
     })
     self.test_dist_media_only = collections.OrderedDict({
-        param: tf.convert_to_tensor(test_prior_media_only[param])
+        param: backend.to_tensor(test_prior_media_only[param])
         for param in constants.COMMON_PARAMETER_NAMES
         + constants.MEDIA_PARAMETER_NAMES
     })
     self.test_dist_media_only_no_controls = collections.OrderedDict({
-        param: tf.convert_to_tensor(test_prior_media_only_no_controls[param])
+        param: backend.to_tensor(test_prior_media_only_no_controls[param])
         for param in (
             set(
                 constants.COMMON_PARAMETER_NAMES
@@ -288,7 +288,7 @@ class WithInputDataSamples:
         )
     })
     self.test_dist_rf_only = collections.OrderedDict({
-        param: tf.convert_to_tensor(test_prior_rf_only[param])
+        param: backend.to_tensor(test_prior_rf_only[param])
         for param in constants.COMMON_PARAMETER_NAMES
         + constants.RF_PARAMETER_NAMES
     })
