@@ -31,9 +31,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Add organic RF support for adstock decay in analyzer.
 * Add organic RF support for Hill curves in analyzer.
 * Add organic RF support for `plot_hill_curves` in visualizer.
-
 * Raise a `ValueError` if any media channel have all zeros or all `NaN`
   impressions.
+* Methods in the `analyzer` module now return backend-agnostic tensors.
 
 ## [1.1.7] - 2025-07-16
 

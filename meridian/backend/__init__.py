@@ -29,6 +29,7 @@ from typing_extensions import Literal
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 if TYPE_CHECKING:
+  import dataclasses
   import jax as _jax
   import tensorflow as _tf
 
@@ -197,17 +198,21 @@ def _tf_unique_with_counts(x):
   return tf.unique_with_counts(x)
 
 
-def _jax_boolean_mask(tensor, mask):
-  """JAX implementation for boolean_mask."""
-  # JAX uses standard array indexing for boolean masking.
-  return tensor[mask]
+def _jax_boolean_mask(tensor, mask, axis=None):
+  """JAX implementation for boolean_mask that supports an axis argument."""
+  import jax.numpy as jnp
 
+  if axis is None:
+    axis = 0
+  tensor_swapped = jnp.moveaxis(tensor, axis, 0)
+  masked = tensor_swapped[mask]
+  return jnp.moveaxis(masked, 0, axis)
 
-def _tf_boolean_mask(tensor, mask):
+def _tf_boolean_mask(tensor, mask, axis=None):
   """TensorFlow implementation for boolean_mask."""
   import tensorflow as tf
 
-  return tf.boolean_mask(tensor, mask)
+  return tf.boolean_mask(tensor, mask, axis=axis)
 
 
 def _jax_gather(params, indices):
@@ -288,8 +293,8 @@ def _jax_tensor_shape(dims):
 _BACKEND = config.get_backend()
 
 # We expose standardized functions directly at the module level (backend.foo)
-# to provide a consistent, NumPy-like API across backends. The 'ops' object
-# remains available for accessing the full, raw backend library if necessary,
+# to provide a consistent, NumPy-like API across backends. The '_ops' object
+# is a private member for accessing the full, raw backend library if necessary,
 # but usage should prefer the top-level standardized functions.
 
 if _BACKEND == config.Backend.JAX:
@@ -297,66 +302,76 @@ if _BACKEND == config.Backend.JAX:
   import jax.numpy as jax_ops
   import tensorflow_probability.substrates.jax as tfp_jax
 
+  class ExtensionType:
+    """A JAX-compatible stand-in for tf.experimental.ExtensionType."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+      raise NotImplementedError(
+          "ExtensionType is not yet implemented for the JAX backend."
+      )
+
   class _JaxErrors:
     ResourceExhaustedError = MemoryError  # pylint: disable=invalid-name
 
-  ops = jax_ops
+  _ops = jax_ops
   errors = _JaxErrors()
   Tensor = jax.Array
   tfd = tfp_jax.distributions
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   random = tfp_jax.random
-  _convert_to_tensor = ops.asarray
+  mcmc = tfp_jax.mcmc
+  _convert_to_tensor = _ops.asarray
 
   # Standardized Public API
+  absolute = _ops.abs
   arange = _jax_arange
-  concatenate = ops.concatenate
-  stack = ops.stack
-  split = ops.split
-  zeros = ops.zeros
-  zeros_like = ops.zeros_like
-  ones = ops.ones
-  ones_like = ops.ones_like
-  repeat = ops.repeat
-  tile = ops.tile
-  where = ops.where
-  transpose = ops.transpose
-  broadcast_to = ops.broadcast_to
+  argmax = _jax_argmax
+  boolean_mask = _jax_boolean_mask
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
+  broadcast_to = _ops.broadcast_to
   cast = _jax_cast
-  expand_dims = ops.expand_dims
+  concatenate = _ops.concatenate
+  cumsum = _ops.cumsum
+  divide = _ops.divide
+  divide_no_nan = _jax_divide_no_nan
+  einsum = _ops.einsum
+  equal = _ops.equal
+  exp = _ops.exp
+  expand_dims = _ops.expand_dims
   fill = _jax_fill
   gather = _jax_gather
-  boolean_mask = _jax_boolean_mask
-  equal = ops.equal
   get_indices_where = _jax_get_indices_where
-
-  einsum = ops.einsum
-  exp = ops.exp
-  log = ops.log
-  absolute = ops.abs
-  argmax = _jax_argmax
-  cumsum = ops.cumsum
-  reduce_sum = ops.sum
-  reduce_mean = ops.mean
-  reduce_std = ops.std
-  reduce_any = ops.any
-  reduce_min = ops.min
-  reduce_max = ops.max
-  is_nan = ops.isnan
-  divide = ops.divide
-  divide_no_nan = _jax_divide_no_nan
-  unique_with_counts = _jax_unique_with_counts
+  is_nan = _ops.isnan
+  log = _ops.log
   numpy_function = _jax_numpy_function
+  ones = _ops.ones
+  ones_like = _ops.ones_like
+  rank = _ops.ndim
+  reduce_any = _ops.any
+  reduce_max = _ops.max
+  reduce_mean = _ops.mean
+  reduce_min = _ops.min
+  reduce_std = _ops.std
+  reduce_sum = _ops.sum
+  repeat = _ops.repeat
+  reshape = _ops.reshape
+  split = _ops.split
+  stack = _ops.stack
+  tile = _ops.tile
+  transpose = _ops.transpose
+  unique_with_counts = _jax_unique_with_counts
+  where = _ops.where
+  zeros = _ops.zeros
+  zeros_like = _ops.zeros_like
 
-  float32 = ops.float32
-  bool_ = ops.bool_
-  newaxis = ops.newaxis
+  float32 = _ops.float32
+  bool_ = _ops.bool_
+  newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
 
   function = jax.jit
-  allclose = ops.allclose
+  allclose = _ops.allclose
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     raise NotImplementedError(
@@ -370,64 +385,67 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
   import tensorflow_probability as tfp
 
-  ops = tf_backend
-  errors = ops.errors
+  _ops = tf_backend
+  errors = _ops.errors
 
   Tensor = tf_backend.Tensor
+  ExtensionType = _ops.experimental.ExtensionType
 
   tfd = tfp.distributions
   bijectors = tfp.bijectors
   experimental = tfp.experimental
   random = tfp.random
+  mcmc = tfp.mcmc
 
-  _convert_to_tensor = tf_backend.convert_to_tensor
+  _convert_to_tensor = _ops.convert_to_tensor
+  absolute = _ops.math.abs
   arange = _tf_arange
-  concatenate = ops.concat
-  stack = ops.stack
-  split = ops.split
-  zeros = ops.zeros
-  zeros_like = ops.zeros_like
-  ones = ops.ones
-  ones_like = ops.ones_like
-  repeat = ops.repeat
-  tile = ops.tile
-  where = ops.where
-  transpose = ops.transpose
-  broadcast_to = ops.broadcast_to
-  broadcast_dynamic_shape = ops.broadcast_dynamic_shape
-  cast = ops.cast
-  expand_dims = ops.expand_dims
+  argmax = _tf_argmax
+  boolean_mask = _tf_boolean_mask
+  broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
+  broadcast_to = _ops.broadcast_to
+  cast = _ops.cast
+  concatenate = _ops.concat
+  cumsum = _ops.cumsum
+  divide = _ops.divide
+  divide_no_nan = _ops.math.divide_no_nan
+  einsum = _ops.einsum
+  equal = _ops.equal
+  exp = _ops.math.exp
+  expand_dims = _ops.expand_dims
   fill = _tf_fill
   gather = _tf_gather
-  boolean_mask = _tf_boolean_mask
-  equal = ops.equal
   get_indices_where = _tf_get_indices_where
-
-  einsum = ops.einsum
-  exp = ops.math.exp
-  log = ops.math.log
-  absolute = ops.math.abs
-  argmax = _tf_argmax
-  cumsum = ops.cumsum
-  reduce_sum = ops.reduce_sum
-  reduce_mean = ops.reduce_mean
-  reduce_std = ops.math.reduce_std
-  reduce_any = ops.reduce_any
-  reduce_min = ops.reduce_min
-  reduce_max = ops.reduce_max
-  is_nan = ops.math.is_nan
-  divide = ops.divide
-  divide_no_nan = ops.math.divide_no_nan
+  is_nan = _ops.math.is_nan
+  log = _ops.math.log
+  numpy_function = _ops.numpy_function
+  ones = _ops.ones
+  ones_like = _ops.ones_like
+  rank = _ops.rank
+  reduce_any = _ops.reduce_any
+  reduce_max = _ops.reduce_max
+  reduce_mean = _ops.reduce_mean
+  reduce_min = _ops.reduce_min
+  reduce_std = _ops.math.reduce_std
+  reduce_sum = _ops.reduce_sum
+  repeat = _ops.repeat
+  reshape = _ops.reshape
+  split = _ops.split
+  stack = _ops.stack
+  tile = _ops.tile
+  transpose = _ops.transpose
   unique_with_counts = _tf_unique_with_counts
-  numpy_function = ops.numpy_function
+  where = _ops.where
+  zeros = _ops.zeros
+  zeros_like = _ops.zeros_like
 
-  float32 = ops.float32
-  bool_ = ops.bool
-  newaxis = ops.newaxis
-  TensorShape = ops.TensorShape
+  float32 = _ops.float32
+  bool_ = _ops.bool
+  newaxis = _ops.newaxis
+  TensorShape = _ops.TensorShape
 
-  function = ops.function
-  allclose = ops.experimental.numpy.allclose
+  function = _ops.function
+  allclose = _ops.experimental.numpy.allclose
 
   set_random_seed = tf_backend.keras.utils.set_random_seed
 
