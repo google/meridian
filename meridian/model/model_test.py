@@ -21,9 +21,11 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
+from meridian.backend import test_utils
 from meridian.data import input_data
-from meridian.data import test_utils
+from meridian.data import test_utils as data_test_utils
 from meridian.model import adstock_hill
 from meridian.model import knots as knots_module
 from meridian.model import model
@@ -31,13 +33,10 @@ from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 import xarray as xr
 
 
 class ModelTest(
-    tf.test.TestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
 ):
@@ -297,7 +296,7 @@ class ModelTest(
       dict(
           testcase_name="roi_m",
           prior_dist=prior_distribution.PriorDistribution(
-              roi_m=tfp.distributions.Normal(
+              roi_m=backend.tfd.Normal(
                   [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 0.9, name=constants.ROI_M
               )
           ),
@@ -306,21 +305,21 @@ class ModelTest(
       dict(
           testcase_name="roi_rf",
           prior_dist=prior_distribution.PriorDistribution(
-              roi_rf=tfp.distributions.Normal(0.0, 0.9, name=constants.ROI_RF)
+              roi_rf=backend.tfd.Normal(0.0, 0.9, name=constants.ROI_RF)
           ),
           dist_name=constants.ROI_RF,
       ),
       dict(
           testcase_name="mroi_m",
           prior_dist=prior_distribution.PriorDistribution(
-              mroi_m=tfp.distributions.Normal(0.5, 0.9, name=constants.MROI_M)
+              mroi_m=backend.tfd.Normal(0.5, 0.9, name=constants.MROI_M)
           ),
           dist_name=constants.MROI_M,
       ),
       dict(
           testcase_name="mroi_rf",
           prior_dist=prior_distribution.PriorDistribution(
-              mroi_rf=tfp.distributions.Normal(
+              mroi_rf=backend.tfd.Normal(
                   [0.0, 0.0, 0.0, 0.0], 0.9, name=constants.MROI_RF
               )
           ),
@@ -366,7 +365,7 @@ class ModelTest(
 
   def test_custom_priors_okay_with_array_params(self):
     my_prior = prior_distribution.PriorDistribution(
-        roi_m=tfp.distributions.LogNormal([1, 1], [1, 1])
+        roi_m=backend.tfd.LogNormal([1, 1], [1, 1])
     )
     meridian = model.Meridian(
         input_data=self.input_data_non_revenue_no_revenue_per_kpi,
@@ -483,7 +482,7 @@ class ModelTest(
       dict(
           testcase_name="custom_beta_m_prior_type_roi",
           custom_distributions={
-              constants.BETA_M: tfp.distributions.LogNormal(
+              constants.BETA_M: backend.tfd.LogNormal(
                   0.2, 0.8, name=constants.BETA_M
               )
           },
@@ -496,10 +495,10 @@ class ModelTest(
       dict(
           testcase_name="custom_mroi_rf_prior_type_roi",
           custom_distributions={
-              constants.MROI_M: tfp.distributions.LogNormal(
+              constants.MROI_M: backend.tfd.LogNormal(
                   0.2, 0.8, name=constants.MROI_M
               ),
-              constants.MROI_RF: tfp.distributions.LogNormal(
+              constants.MROI_RF: backend.tfd.LogNormal(
                   0.2, 0.8, name=constants.MROI_RF
               ),
           },
@@ -512,13 +511,13 @@ class ModelTest(
       dict(
           testcase_name="custom_beta_m_roi_m_prior_type_mroi",
           custom_distributions={
-              constants.BETA_M: tfp.distributions.LogNormal(
+              constants.BETA_M: backend.tfd.LogNormal(
                   0.7, 0.9, name=constants.BETA_M
               ),
-              constants.BETA_RF: tfp.distributions.LogNormal(
+              constants.BETA_RF: backend.tfd.LogNormal(
                   0.8, 0.9, name=constants.BETA_RF
               ),
-              constants.ROI_M: tfp.distributions.LogNormal(
+              constants.ROI_M: backend.tfd.LogNormal(
                   0.2, 0.1, name=constants.ROI_M
               ),
           },
@@ -531,7 +530,7 @@ class ModelTest(
       dict(
           testcase_name="custom_roi_rf_prior_type_coefficient",
           custom_distributions={
-              constants.ROI_RF: tfp.distributions.LogNormal(
+              constants.ROI_RF: backend.tfd.LogNormal(
                   0.2, 0.1, name=constants.ROI_RF
               )
           },
@@ -544,7 +543,7 @@ class ModelTest(
   )
   def test_warn_setting_ignored_priors(
       self,
-      custom_distributions: Mapping[str, tfp.distributions.Distribution],
+      custom_distributions: Mapping[str, backend.tfd.Distribution],
       ignored_priors: str,
       media_prior_type: str,
       rf_prior_type: str,
@@ -600,19 +599,19 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="media_only",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS
           ),
       ),
       dict(
           testcase_name="rf_only",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_rf_channels=input_data_samples._N_RF_CHANNELS
           ),
       ),
       dict(
           testcase_name="rf_and_media",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
           ),
@@ -620,66 +619,66 @@ class ModelTest(
   )
   def test_input_data_tensor_properties(self, data):
     meridian = model.Meridian(input_data=data)
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.kpi, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.kpi, dtype=backend.float32),
         meridian.kpi,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.revenue_per_kpi, dtype=backend.float32),
         meridian.revenue_per_kpi,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.controls, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.controls, dtype=backend.float32),
         meridian.controls,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.population, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.population, dtype=backend.float32),
         meridian.population,
     )
     if data.media is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.media, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.media, dtype=backend.float32),
           meridian.media_tensors.media,
       )
     if data.media_spend is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.media_spend, dtype=backend.float32),
           meridian.media_tensors.media_spend,
       )
     if data.reach is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.reach, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.reach, dtype=backend.float32),
           meridian.rf_tensors.reach,
       )
     if data.frequency is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.frequency, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.frequency, dtype=backend.float32),
           meridian.rf_tensors.frequency,
       )
     if data.rf_spend is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.rf_spend, dtype=backend.float32),
           meridian.rf_tensors.rf_spend,
       )
     if data.media_spend is not None and data.rf_spend is not None:
-      self.assertAllClose(
-          tf.concat(
+      test_utils.assert_allclose(
+          backend.concatenate(
               [
-                  tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
-                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+                  backend.to_tensor(data.media_spend, dtype=backend.float32),
+                  backend.to_tensor(data.rf_spend, dtype=backend.float32),
               ],
               axis=-1,
           ),
           meridian.total_spend,
       )
     elif data.media_spend is not None:
-      self.assertAllClose(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+      test_utils.assert_allclose(
+          backend.to_tensor(data.media_spend, dtype=backend.float32),
           meridian.total_spend,
       )
     else:
-      self.assertAllClose(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+      test_utils.assert_allclose(
+          backend.to_tensor(data.rf_spend, dtype=backend.float32),
           meridian.total_spend,
       )
 
@@ -713,7 +712,7 @@ class ModelTest(
       self, n_geos, media_effects_dist, expected_media_effects_dist
   ):
     meridian = model.Meridian(
-        input_data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        input_data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=n_geos, n_media_channels=self._N_MEDIA_CHANNELS
         ),
         model_spec=spec.ModelSpec(media_effects_dist=media_effects_dist),
@@ -753,7 +752,7 @@ class ModelTest(
       expected_unique_sigma_for_each_geo,
   ):
     meridian = model.Meridian(
-        input_data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        input_data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=n_geos, n_media_channels=self._N_MEDIA_CHANNELS
         ),
         model_spec=spec.ModelSpec(
@@ -767,19 +766,19 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="wrong_controls",
-          dataset=test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_CONTROLS,
+          dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
           dims_bad=np.array([b"control_0", b"control_1"]),
       ),
       dict(
           testcase_name="wrong_media",
-          dataset=test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_MEDIA,
+          dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
           dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
-          dataset=test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_REACH,
+          dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_REACH,
           data_name=constants.REACH,
           dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
       ),
@@ -798,7 +797,7 @@ class ModelTest(
         " or (2) drop the listed variables that do not vary across geos.",
     ):
       model.Meridian(
-          input_data=test_utils.sample_input_data_from_dataset(
+          input_data=data_test_utils.sample_input_data_from_dataset(
               dataset, kpi_type=constants.NON_REVENUE
           )
       )
@@ -806,37 +805,37 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="wrong_controls",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
           dims_bad=np.array([b"control_0", b"control_1"]),
       ),
       dict(
           testcase_name="wrong_non_media_treatments",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
           data_name=constants.NON_MEDIA_TREATMENTS,
           dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
       ),
       dict(
           testcase_name="wrong_media",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
           dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
           data_name=constants.REACH,
           dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
       ),
       dict(
           testcase_name="wrong_organic_media",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
           data_name=constants.ORGANIC_MEDIA,
           dims_bad=np.array([b"organic_media_channel_0"]),
       ),
       dict(
           testcase_name="wrong_organic_rf",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
           data_name=constants.ORGANIC_REACH,
           dims_bad=np.array([b"organic_rf_channel_1"]),
       ),
@@ -854,7 +853,7 @@ class ModelTest(
         " the listed variables that do not vary across time.",
     ):
       model.Meridian(
-          input_data=test_utils.sample_input_data_from_dataset(
+          input_data=data_test_utils.sample_input_data_from_dataset(
               dataset, kpi_type=constants.NON_REVENUE
           )
       )
@@ -862,37 +861,37 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="wrong_controls",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
           dims_bad=np.array([b"control_0", b"control_1"]),
       ),
       dict(
           testcase_name="wrong_non_media_treatments",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
           data_name=constants.NON_MEDIA_TREATMENTS,
           dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
       ),
       dict(
           testcase_name="wrong_media",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
           dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
           data_name=constants.REACH,
           dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
       ),
       dict(
           testcase_name="wrong_organic_media",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
           data_name=constants.ORGANIC_MEDIA,
           dims_bad=np.array([b"organic_media_channel_0"]),
       ),
       dict(
           testcase_name="wrong_organic_rf",
-          dataset=test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
+          dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
           data_name=constants.ORGANIC_REACH,
           dims_bad=np.array([b"organic_rf_channel_1"]),
       ),
@@ -909,7 +908,7 @@ class ModelTest(
         " listed variables that do not vary across time.",
     ):
       model.Meridian(
-          input_data=test_utils.sample_input_data_from_dataset(
+          input_data=data_test_utils.sample_input_data_from_dataset(
               national_dataset, kpi_type=constants.NON_REVENUE
           )
       )
@@ -1147,20 +1146,21 @@ class ModelTest(
         )
 
   def test_scaled_data_shape(self):
+    controls = self.input_data_with_media_and_rf.controls
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
-    self.assertIsNotNone(meridian.controls_scaled)
-    self.assertAllEqual(
+    self.assertIsNotNone(controls)
+    test_utils.assert_allequal(
         meridian.controls_scaled.shape,  # pytype: disable=attribute-error
-        self.input_data_with_media_and_rf.controls.shape,
-        msg=(
+        controls.shape,
+        err_msg=(
             "Shape of `_controls_scaled` does not match the shape of `controls`"
             " from the input data."
         ),
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.kpi_scaled.shape,
         self.input_data_with_media_and_rf.kpi.shape,
-        msg=(
+        err_msg=(
             "Shape of `_kpi_scaled` does not match the shape of"
             " `kpi` from the input data."
         ),
@@ -1174,10 +1174,10 @@ class ModelTest(
     self.assertIsNone(meridian.controls)
     self.assertIsNone(meridian.controls_transformer)
     self.assertIsNone(meridian.controls_scaled)
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.kpi_scaled.shape,
         self.input_data_with_media_and_rf.kpi.shape,
-        msg=(
+        err_msg=(
             "Shape of `_kpi_scaled` does not match the shape of"
             " `kpi` from the input data."
         ),
@@ -1185,7 +1185,7 @@ class ModelTest(
 
   def test_population_scaled_conrols_transformer_set(self):
     model_spec = spec.ModelSpec(
-        control_population_scaling_id=tf.convert_to_tensor(
+        control_population_scaling_id=backend.to_tensor(
             [True for _ in self.input_data_with_media_and_rf.control_variable]
         )
     )
@@ -1200,13 +1200,13 @@ class ModelTest(
             " transformer."
         ),
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.controls_transformer._population_scaling_factors.shape,  # pytype: disable=attribute-error
         [
             len(self.input_data_with_media_and_rf.geo),
             len(self.input_data_with_media_and_rf.control_variable),
         ],
-        msg=(
+        err_msg=(
             "Shape of `controls_transformer._population_scaling_factors` does"
             " not match (`n_geos`, `n_controls`)."
         ),
@@ -1218,12 +1218,12 @@ class ModelTest(
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
     atol = np.finfo(np.float32).eps * 100
-    self.assertAllClose(
+    test_utils.assert_allclose(
         meridian.controls_transformer.inverse(meridian.controls_scaled),  # pytype: disable=attribute-error
         self.input_data_with_media_and_rf.controls,
         atol=atol,
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         meridian.kpi_transformer.inverse(meridian.kpi_scaled),
         self.input_data_with_media_and_rf.kpi,
         atol=atol,
@@ -1303,7 +1303,7 @@ class ModelTest(
           media=meridian.media_tensors.media,
           alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          slope=np.ones(shape=(self._N_MEDIA_CHANNELS)),
+          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
           n_times_output=8,
       )
 
@@ -1470,9 +1470,9 @@ class ModelTest(
       if isinstance(getattr(mmm, attr), (int, bool)):
         with self.subTest(name=attr):
           self.assertEqual(getattr(mmm, attr), getattr(new_mmm, attr))
-      elif isinstance(getattr(mmm, attr), tf.Tensor):
+      elif isinstance(getattr(mmm, attr), backend.Tensor):
         with self.subTest(name=attr):
-          self.assertAllClose(getattr(mmm, attr), getattr(new_mmm, attr))
+          test_utils.assert_allclose(getattr(mmm, attr), getattr(new_mmm, attr))
 
   def test_load_error(self):
     with self.assertRaisesWithLiteralMatch(
@@ -1482,7 +1482,6 @@ class ModelTest(
 
 
 class NonPaidModelTest(
-    tf.test.TestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
 ):
@@ -1538,7 +1537,7 @@ class NonPaidModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="media_non_media_and_organic",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
               n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
@@ -1547,7 +1546,7 @@ class NonPaidModelTest(
       ),
       dict(
           testcase_name="rf_non_media_and_organic",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
               n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
@@ -1556,7 +1555,7 @@ class NonPaidModelTest(
       ),
       dict(
           testcase_name="media_rf_non_media_and_organic",
-          data=test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
               n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
@@ -1567,85 +1566,85 @@ class NonPaidModelTest(
   )
   def test_input_data_tensor_properties(self, data):
     meridian = model.Meridian(input_data=data)
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.kpi, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.kpi, dtype=backend.float32),
         meridian.kpi,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.revenue_per_kpi, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.revenue_per_kpi, dtype=backend.float32),
         meridian.revenue_per_kpi,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.controls, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.controls, dtype=backend.float32),
         meridian.controls,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.non_media_treatments, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.non_media_treatments, dtype=backend.float32),
         meridian.non_media_treatments,
     )
-    self.assertAllEqual(
-        tf.convert_to_tensor(data.population, dtype=tf.float32),
+    test_utils.assert_allequal(
+        backend.to_tensor(data.population, dtype=backend.float32),
         meridian.population,
     )
     if data.media is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.media, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.media, dtype=backend.float32),
           meridian.media_tensors.media,
       )
     if data.media_spend is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.media_spend, dtype=backend.float32),
           meridian.media_tensors.media_spend,
       )
     if data.reach is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.reach, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.reach, dtype=backend.float32),
           meridian.rf_tensors.reach,
       )
     if data.frequency is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.frequency, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.frequency, dtype=backend.float32),
           meridian.rf_tensors.frequency,
       )
     if data.rf_spend is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.rf_spend, dtype=backend.float32),
           meridian.rf_tensors.rf_spend,
       )
     if data.organic_media is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_media, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_media, dtype=backend.float32),
           meridian.organic_media_tensors.organic_media,
       )
     if data.organic_reach is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_reach, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_reach, dtype=backend.float32),
           meridian.organic_rf_tensors.organic_reach,
       )
     if data.organic_frequency is not None:
-      self.assertAllEqual(
-          tf.convert_to_tensor(data.organic_frequency, dtype=tf.float32),
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_frequency, dtype=backend.float32),
           meridian.organic_rf_tensors.organic_frequency,
       )
     if data.media_spend is not None and data.rf_spend is not None:
-      self.assertAllClose(
-          tf.concat(
+      test_utils.assert_allclose(
+          backend.concatenate(
               [
-                  tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
-                  tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+                  backend.to_tensor(data.media_spend, dtype=backend.float32),
+                  backend.to_tensor(data.rf_spend, dtype=backend.float32),
               ],
               axis=-1,
           ),
           meridian.total_spend,
       )
     elif data.media_spend is not None:
-      self.assertAllClose(
-          tf.convert_to_tensor(data.media_spend, dtype=tf.float32),
+      test_utils.assert_allclose(
+          backend.to_tensor(data.media_spend, dtype=backend.float32),
           meridian.total_spend,
       )
     else:
-      self.assertAllClose(
-          tf.convert_to_tensor(data.rf_spend, dtype=tf.float32),
+      test_utils.assert_allclose(
+          backend.to_tensor(data.rf_spend, dtype=backend.float32),
           meridian.total_spend,
       )
 
@@ -1730,12 +1729,14 @@ class NonPaidModelTest(
     self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
   def test_scaled_data_shape(self):
+    controls = self.input_data_non_media_and_organic.controls
     meridian = model.Meridian(input_data=self.input_data_non_media_and_organic)
     self.assertIsNotNone(meridian.controls_scaled)
-    self.assertAllEqual(
+    self.assertIsNotNone(controls)
+    test_utils.assert_allequal(
         meridian.controls_scaled.shape,  # pytype: disable=attribute-error
-        self.input_data_non_media_and_organic.controls.shape,
-        msg=(
+        controls.shape,
+        err_msg=(
             "Shape of `_controls_scaled` does not match the shape of `controls`"
             " from the input data."
         ),
@@ -1745,19 +1746,19 @@ class NonPaidModelTest(
         self.input_data_non_media_and_organic.non_media_treatments
     )
     # pytype: disable=attribute-error
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.non_media_treatments_normalized.shape,
         self.input_data_non_media_and_organic.non_media_treatments.shape,
-        msg=(
+        err_msg=(
             "Shape of `_non_media_treatments_scaled` does not match the shape"
             " of `non_media_treatments` from the input data."
         ),
     )
     # pytype: enable=attribute-error
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.kpi_scaled.shape,
         self.input_data_non_media_and_organic.kpi.shape,
-        msg=(
+        err_msg=(
             "Shape of `_kpi_scaled` does not match the shape of"
             " `kpi` from the input data."
         ),
@@ -1765,7 +1766,7 @@ class NonPaidModelTest(
 
   def test_population_scaled_non_media_transformer_set(self):
     model_spec = spec.ModelSpec(
-        non_media_population_scaling_id=tf.convert_to_tensor([
+        non_media_population_scaling_id=backend.to_tensor([
             True
             for _ in self.input_data_non_media_and_organic.non_media_channel
         ])
@@ -1782,13 +1783,13 @@ class NonPaidModelTest(
             " transformer."
         ),
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         meridian.non_media_transformer._population_scaling_factors.shape,
         [
             len(self.input_data_non_media_and_organic.geo),
             len(self.input_data_non_media_and_organic.non_media_channel),
         ],
-        msg=(
+        err_msg=(
             "Shape of"
             " `non_media_transformer._population_scaling_factors` does"
             " not match (`n_geos`, `n_non_media_channels`)."
@@ -1802,14 +1803,14 @@ class NonPaidModelTest(
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
     atol = np.finfo(np.float32).eps * 100
-    self.assertAllClose(
+    test_utils.assert_allclose(
         meridian.controls_transformer.inverse(meridian.controls_scaled),  # pytype: disable=attribute-error
         self.input_data_non_media_and_organic.controls,
         atol=atol,
     )
     self.assertIsNotNone(meridian.non_media_transformer)
     # pytype: disable=attribute-error
-    self.assertAllClose(
+    test_utils.assert_allclose(
         meridian.non_media_transformer.inverse(
             meridian.non_media_treatments_normalized
         ),
@@ -1817,7 +1818,7 @@ class NonPaidModelTest(
         atol=atol,
     )
     # pytype: enable=attribute-error
-    self.assertAllClose(
+    test_utils.assert_allclose(
         meridian.kpi_transformer.inverse(meridian.kpi_scaled),
         self.input_data_non_media_and_organic.kpi,
         atol=atol,
@@ -1826,40 +1827,40 @@ class NonPaidModelTest(
   def test_get_joint_dist_zeros(self):
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=tfp.distributions.Deterministic(0),
-            tau_g_excl_baseline=tfp.distributions.Deterministic(0),
-            beta_m=tfp.distributions.Deterministic(0),
-            beta_rf=tfp.distributions.Deterministic(0),
-            beta_om=tfp.distributions.Deterministic(0),
-            beta_orf=tfp.distributions.Deterministic(0),
-            contribution_m=tfp.distributions.Deterministic(0),
-            contribution_rf=tfp.distributions.Deterministic(0),
-            contribution_om=tfp.distributions.Deterministic(0),
-            contribution_orf=tfp.distributions.Deterministic(0),
-            contribution_n=tfp.distributions.Deterministic(0),
-            eta_m=tfp.distributions.Deterministic(0),
-            eta_rf=tfp.distributions.Deterministic(0),
-            eta_om=tfp.distributions.Deterministic(0),
-            eta_orf=tfp.distributions.Deterministic(0),
-            gamma_c=tfp.distributions.Deterministic(0),
-            xi_c=tfp.distributions.Deterministic(0),
-            gamma_n=tfp.distributions.Deterministic(0),
-            xi_n=tfp.distributions.Deterministic(0),
-            alpha_m=tfp.distributions.Deterministic(0),
-            alpha_rf=tfp.distributions.Deterministic(0),
-            alpha_om=tfp.distributions.Deterministic(0),
-            alpha_orf=tfp.distributions.Deterministic(0),
-            ec_m=tfp.distributions.Deterministic(0),
-            ec_rf=tfp.distributions.Deterministic(0),
-            ec_om=tfp.distributions.Deterministic(0),
-            ec_orf=tfp.distributions.Deterministic(0),
-            slope_m=tfp.distributions.Deterministic(0),
-            slope_rf=tfp.distributions.Deterministic(0),
-            slope_om=tfp.distributions.Deterministic(0),
-            slope_orf=tfp.distributions.Deterministic(0),
-            sigma=tfp.distributions.Deterministic(0),
-            roi_m=tfp.distributions.Deterministic(0),
-            roi_rf=tfp.distributions.Deterministic(0),
+            knot_values=backend.tfd.Deterministic(0),
+            tau_g_excl_baseline=backend.tfd.Deterministic(0),
+            beta_m=backend.tfd.Deterministic(0),
+            beta_rf=backend.tfd.Deterministic(0),
+            beta_om=backend.tfd.Deterministic(0),
+            beta_orf=backend.tfd.Deterministic(0),
+            contribution_m=backend.tfd.Deterministic(0),
+            contribution_rf=backend.tfd.Deterministic(0),
+            contribution_om=backend.tfd.Deterministic(0),
+            contribution_orf=backend.tfd.Deterministic(0),
+            contribution_n=backend.tfd.Deterministic(0),
+            eta_m=backend.tfd.Deterministic(0),
+            eta_rf=backend.tfd.Deterministic(0),
+            eta_om=backend.tfd.Deterministic(0),
+            eta_orf=backend.tfd.Deterministic(0),
+            gamma_c=backend.tfd.Deterministic(0),
+            xi_c=backend.tfd.Deterministic(0),
+            gamma_n=backend.tfd.Deterministic(0),
+            xi_n=backend.tfd.Deterministic(0),
+            alpha_m=backend.tfd.Deterministic(0),
+            alpha_rf=backend.tfd.Deterministic(0),
+            alpha_om=backend.tfd.Deterministic(0),
+            alpha_orf=backend.tfd.Deterministic(0),
+            ec_m=backend.tfd.Deterministic(0),
+            ec_rf=backend.tfd.Deterministic(0),
+            ec_om=backend.tfd.Deterministic(0),
+            ec_orf=backend.tfd.Deterministic(0),
+            slope_m=backend.tfd.Deterministic(0),
+            slope_rf=backend.tfd.Deterministic(0),
+            slope_om=backend.tfd.Deterministic(0),
+            slope_orf=backend.tfd.Deterministic(0),
+            sigma=backend.tfd.Deterministic(0),
+            roi_m=backend.tfd.Deterministic(0),
+            roi_rf=backend.tfd.Deterministic(0),
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
@@ -1872,9 +1873,9 @@ class NonPaidModelTest(
             self._N_DRAWS
         )
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         sample.y,
-        tf.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
+        backend.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
     )
 
   @parameterized.named_parameters(
@@ -2050,14 +2051,14 @@ class NonPaidModelTest(
     # Parameters that are derived from other parameters via Deterministic()
     # should have zero contribution to log_prob.
     for parname in derived_params:
-      self.assertAllEqual(log_prob_parts["unpinned"][parname][0], 0)
+      test_utils.assert_allequal(log_prob_parts["unpinned"][parname][0], 0)
 
     prior_distribution_logprobs = {}
     for parname in prior_distribution_params:
-      prior_distribution_logprobs[parname] = tf.reduce_sum(
+      prior_distribution_logprobs[parname] = backend.reduce_sum(
           getattr(meridian.prior_broadcast, parname).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           prior_distribution_logprobs[parname],
           log_prob_parts["unpinned"][parname][0],
       )
@@ -2072,10 +2073,10 @@ class NonPaidModelTest(
     ]
     coef_logprobs = {}
     for parname in coef_params:
-      coef_logprobs[parname] = tf.reduce_sum(
-          tfp.distributions.Normal(0, 1).log_prob(par[parname])
+      coef_logprobs[parname] = backend.reduce_sum(
+          backend.tfd.Normal(0, 1).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
@@ -2104,7 +2105,7 @@ class NonPaidModelTest(
         ec=par[constants.EC_ORF],
         slope=par[constants.SLOPE_ORF],
     )[0, :, :, :]
-    combined_transformed_media = tf.concat(
+    combined_transformed_media = backend.concatenate(
         [
             transformed_media,
             transformed_reach,
@@ -2114,7 +2115,7 @@ class NonPaidModelTest(
         axis=-1,
     )
 
-    combined_beta = tf.concat(
+    combined_beta = backend.concatenate(
         [
             par[constants.BETA_GM][0, :, :],
             par[constants.BETA_GRF][0, :, :],
@@ -2126,31 +2127,35 @@ class NonPaidModelTest(
     y_means = (
         par[constants.TAU_G][0, :, None]
         + par[constants.MU_T][0, None, :]
-        + tf.einsum("gtm,gm->gt", combined_transformed_media, combined_beta)
-        + tf.einsum(
+        + backend.einsum(
+            "gtm,gm->gt", combined_transformed_media, combined_beta
+        )
+        + backend.einsum(
             "gtc,gc->gt",
             meridian.controls_scaled,
             par[constants.GAMMA_GC][0, :, :],
         )
-        + tf.einsum(
+        + backend.einsum(
             "gtn,gn->gt",
             meridian.non_media_treatments_normalized,
             par[constants.GAMMA_GN][0, :, :],
         )
     )
-    y_means_logprob = tf.reduce_sum(
-        tfp.distributions.Normal(y_means, par[constants.SIGMA]).log_prob(
+    y_means_logprob = backend.reduce_sum(
+        backend.tfd.Normal(y_means, par[constants.SIGMA]).log_prob(
             meridian.kpi_scaled
         )
     )
-    self.assertAllClose(y_means_logprob, log_prob_parts["pinned"]["y"][0])
+    test_utils.assert_allclose(
+        y_means_logprob, log_prob_parts["pinned"]["y"][0]
+    )
 
-    tau_g_logprob = tf.reduce_sum(
+    tau_g_logprob = backend.reduce_sum(
         getattr(
             meridian.prior_broadcast, constants.TAU_G_EXCL_BASELINE
         ).log_prob(par[constants.TAU_G_EXCL_BASELINE])
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         tau_g_logprob,
         log_prob_parts["unpinned"][constants.TAU_G_EXCL_BASELINE][0],
     )
@@ -2161,7 +2166,7 @@ class NonPaidModelTest(
         + y_means_logprob
         + tau_g_logprob
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         posterior_unnormalized_logprob,
         meridian.posterior_sampler_callable._get_joint_dist().log_prob(par)[0],
         rtol=1e-3,
@@ -2337,7 +2342,7 @@ class NonPaidModelTest(
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
-      prior_samples[param] = tf.zeros(mismatched_priors[param])
+      prior_samples[param] = backend.zeros(mismatched_priors[param])
     prior_coords = dict(prior_coords)
     prior_coords[coord] = np.arange(mismatched_coord_size)
 
@@ -2466,7 +2471,7 @@ class NonPaidModelTest(
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
-      prior_samples[param] = tf.zeros(mismatched_priors[param])
+      prior_samples[param] = backend.zeros(mismatched_priors[param])
     prior_coords = dict(prior_coords)
     prior_coords[coord] = np.arange(mismatched_coord_size)
     prior_coords[constants.GEO] = np.arange(mismatched_coord_size)
@@ -2533,9 +2538,9 @@ class NonPaidModelTest(
         model_spec=spec.ModelSpec(non_media_baseline_values=None),
     )
     non_media_treatments = meridian.non_media_treatments
-    expected_baseline = tf.reduce_min(non_media_treatments, axis=[0, 1])
+    expected_baseline = backend.reduce_min(non_media_treatments, axis=[0, 1])
     actual_baseline = meridian.compute_non_media_treatments_baseline()
-    self.assertAllClose(expected_baseline, actual_baseline)
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
 
   def test_compute_non_media_treatments_baseline_strings(self):
     """Tests baseline calculation with 'min' and 'max' strings."""
@@ -2544,17 +2549,17 @@ class NonPaidModelTest(
         model_spec=spec.ModelSpec(non_media_baseline_values=["min", "max"]),
     )
     non_media_treatments = meridian.non_media_treatments
-    expected_baseline_min = tf.reduce_min(
+    expected_baseline_min = backend.reduce_min(
         non_media_treatments[..., 0], axis=[0, 1]
     )
-    expected_baseline_max = tf.reduce_max(
+    expected_baseline_max = backend.reduce_max(
         non_media_treatments[..., 1], axis=[0, 1]
     )
-    expected_baseline = tf.stack(
+    expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_max], axis=-1
     )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
-    self.assertAllClose(expected_baseline, actual_baseline)
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
 
   def test_compute_non_media_treatments_baseline_floats(self):
     """Tests baseline calculation with float values."""
@@ -2563,9 +2568,9 @@ class NonPaidModelTest(
         input_data=self.input_data_non_media_and_organic,
         model_spec=spec.ModelSpec(non_media_baseline_values=baseline_values),
     )
-    expected_baseline = tf.cast(baseline_values, tf.float32)
+    expected_baseline = backend.cast(baseline_values, backend.float32)
     actual_baseline = meridian.compute_non_media_treatments_baseline()
-    self.assertAllClose(expected_baseline, actual_baseline)
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
 
   def test_compute_non_media_treatments_baseline_mixed(self):
     """Tests baseline calculation with mixed float and string values."""
@@ -2575,15 +2580,15 @@ class NonPaidModelTest(
         model_spec=spec.ModelSpec(non_media_baseline_values=baseline_values),
     )
     non_media_treatments = meridian.non_media_treatments
-    expected_baseline_min = tf.reduce_min(
+    expected_baseline_min = backend.reduce_min(
         non_media_treatments[..., 0], axis=[0, 1]
     )
-    expected_baseline_float = tf.cast(baseline_values[1], tf.float32)
-    expected_baseline = tf.stack(
+    expected_baseline_float = backend.cast(baseline_values[1], backend.float32)
+    expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1
     )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
-    self.assertAllClose(expected_baseline, actual_baseline)
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
 
 
 if __name__ == "__main__":
