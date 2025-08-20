@@ -1059,12 +1059,19 @@ class Meridian:
             " time."
         )
 
+  def _kpi_has_variability(self):
+    """Returns True if the KPI has variability across geos and times."""
+    return self.kpi_transformer.population_scaled_stdev != 0
+
   def _validate_kpi_transformer(self):
     """Validates the KPI transformer."""
+    if self._kpi_has_variability():
+      return
+
     kpi = "kpi" if self.is_national else "population_scaled_kpi"
+
     if (
         self.n_media_channels > 0
-        and self.kpi_transformer.population_scaled_stdev == 0
         and self.model_spec.effective_media_prior_type
         in constants.PAID_MEDIA_ROI_PRIOR_TYPES
     ):
@@ -1075,13 +1082,42 @@ class Meridian:
       )
     if (
         self.n_rf_channels > 0
-        and self.kpi_transformer.population_scaled_stdev == 0
         and self.model_spec.effective_rf_prior_type
         in constants.PAID_MEDIA_ROI_PRIOR_TYPES
     ):
       raise ValueError(
           f"`{kpi}` cannot be constant with"
           f' `rf_prior_type` = "{self.model_spec.effective_rf_prior_type}".'
+      )
+    if (
+        self.n_organic_media_channels > 0
+        and self.model_spec.organic_media_prior_type
+        in [constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION]
+    ):
+      raise ValueError(
+          f"`{kpi}` cannot be constant with"
+          " `organic_media_prior_type` ="
+          f' "{self.model_spec.organic_media_prior_type}".'
+      )
+    if (
+        self.n_organic_rf_channels > 0
+        and self.model_spec.organic_rf_prior_type
+        in [constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION]
+    ):
+      raise ValueError(
+          f"`{kpi}` cannot be constant with"
+          " `organic_rf_prior_type` ="
+          f' "{self.model_spec.organic_rf_prior_type}".'
+      )
+    if (
+        self.n_non_media_channels > 0
+        and self.model_spec.non_media_treatments_prior_type
+        in [constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION]
+    ):
+      raise ValueError(
+          f"`{kpi}` cannot be constant with"
+          " `non_media_treatments_prior_type` ="
+          f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
 
   def linear_predictor_counterfactual_difference_media(
@@ -1522,6 +1558,14 @@ class Meridian:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
+    # TODO: b/440153300 - Move this check to EDA.
+    if not self._kpi_has_variability():
+      kpi = "kpi" if self.is_national else "population_scaled_kpi"
+      raise ValueError(
+          f"`{kpi}` is constant across all geos and times, indicating no signal"
+          " in the data. Please fix this data error."
+      )
+
     self.posterior_sampler_callable(
         n_chains=n_chains,
         n_adapt=n_adapt,
