@@ -449,6 +449,20 @@ class PriorDistribution:
       ),
   )
 
+  def __post_init__(self):
+    for param, bounds in _parameter_space_bounds.items():
+      prevent_deterministic_prior_at_bounds = (
+          _prevent_deterministic_prior_at_bounds[param]
+          if param in _prevent_deterministic_prior_at_bounds.keys()
+          else (False, False)
+      )
+      _validate_support(
+          param,
+          getattr(self, param),
+          bounds,
+          prevent_deterministic_prior_at_bounds,
+      )
+
   def __setstate__(self, state):
     # Override to support pickling.
     def _unpack_distribution_params(
@@ -1221,3 +1235,114 @@ def distributions_are_equal(
         return False
 
   return True
+
+def _validate_support(
+    parameter_name: str,
+    tfp_dist: backend.tfp.distributions.Distribution,
+    bounds: tuple[float, float],
+    prevent_deterministic_prior_at_bounds: tuple[bool, bool],
+) -> None:
+  """Validates that distribution support is within the parameter bounds.
+
+  Args:
+    parameter_name: Name of the parameter.
+    tfp_dist: The TFP distribution to validate.
+    bounds: Tuple containing the min and max values of the parameteter space.
+    prevent_deterministic_prior_at_bounds: Tuple of two booleans indicating
+      whether a deterministic prior is allowed at the lower and upper bounds,
+      respectively.
+
+  Raises:
+    ValueError: If the distribution support is not within the parameter bounds.
+  """
+  # Note that `tfp.distributions.BatchBroadcast` objects have a `distribution`
+  # attribute that points to a `tfp.distributions.Distribution` object.
+  if isinstance(tfp_dist, backend.tfp.distributions.BatchBroadcast):
+    tfp_dist = tfp_dist.distribution
+  # Note that `tfp.distributions.Deterministic` does not have a `quantile`
+  # method implemented, so the min and max values must be extracted from the
+  # `loc` attribute instead.
+  if isinstance(
+      tfp_dist,
+      backend.tfp.python.distributions.deterministic.Deterministic
+  ):
+    support_min_vals = tfp_dist.loc
+    support_max_vals = tfp_dist.loc
+    for i in (0, 1):
+      if (
+          prevent_deterministic_prior_at_bounds[i]
+          and np.any(tfp_dist.loc == bounds[i])
+      ):
+        raise ValueError(
+            f'{parameter_name} was assigned a point mass (deterministic) prior'
+            f' at {bounds[i]}, which is not allowed.'
+        )
+  else:
+    try:
+      support_min_vals = tfp_dist.quantile(0)
+      support_max_vals = tfp_dist.quantile(1)
+    except (AttributeError, NotImplementedError):
+      warnings.warn(
+          f'The prior distribution for {parameter_name} does not have a'
+          f' `quantile` method implemented, so the support range validation'
+          f' was skipped. Confirm that your prior for {parameter_name} is'
+          f' appropriate.'
+      )
+      return
+  if np.any(support_min_vals < bounds[0]):
+    raise ValueError(
+        f'{parameter_name} was assigned a prior distribution that allows values'
+        f' less than the parameter minimum {bounds[0]}.'
+    )
+  if np.any(support_max_vals > bounds[1]):
+    raise ValueError(
+        f'{parameter_name} was assigned a prior distribution that allows values'
+        f' greater than the parameter maximum {bounds[1]}.'
+    )
+
+# Dictionary of parameters that have a limited parameters space. The tuple
+# contains the lower and upper bounds, respectively.
+_parameter_space_bounds = {
+    'eta_m': (0, np.inf),
+    'eta_rf': (0, np.inf),
+    'eta_om': (0, np.inf),
+    'eta_orf': (0, np.inf),
+    'xi_c': (0, np.inf),
+    'xi_n': (0, np.inf),
+    'alpha_m': (0, 1),
+    'alpha_rf': (0, 1),
+    'alpha_om': (0, 1),
+    'alpha_orf': (0, 1),
+    'ec_m': (0, np.inf),
+    'ec_rf': (0, np.inf),
+    'ec_om': (0, np.inf),
+    'ec_orf': (0, np.inf),
+    'slope_m': (0, np.inf),
+    'slope_rf': (0, np.inf),
+    'slope_om': (0, np.inf),
+    'slope_orf': (0, np.inf),
+    'sigma': (0, np.inf),
+}
+
+# Dictionary of parameters that do not allow a deterministic prior at one or
+# more of the parameter space bounds. The boolean tuple indicates whether a
+# deterministic prior is allowed at the lower bound or upper bound,
+# respectively, where `True` means "not allowed". This check is specifically for
+# point mass at finite paramteter space bounds, since point mass at infinity is
+# generally problematic for all parameters. Note that `sigma` should generally
+# not have point mass at zero, but this is not checked here because unit tests
+# require the ability to simulate data with `sigma` set to zero.
+_prevent_deterministic_prior_at_bounds = {
+    'alpha_m': (False, True),
+    'alpha_rf': (False, True),
+    'alpha_om': (False, True),
+    'alpha_orf': (False, True),
+    'ec_m': (True, False),
+    'ec_rf': (True, False),
+    'ec_om': (True, False),
+    'ec_orf': (True, False),
+    'slope_m': (True, False),
+    'slope_rf': (True, False),
+    'slope_om': (True, False),
+    'slope_orf': (True, False),
+}
