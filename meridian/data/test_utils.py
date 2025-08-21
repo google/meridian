@@ -584,6 +584,47 @@ NATIONAL_COORD_TO_COLUMNS_WO_POPULATION_W_GEO = dataclasses.replace(
     geo='geo',
 )
 
+ADSTOCK_DECAY_FUNCTION_CASES = dict(
+    media=(
+        {},
+        {
+            "ch_0": c.BINOMIAL_DECAY,
+            "ch_1": c.GEOMETRIC_DECAY,
+            "ch_2": c.GEOMETRIC_DECAY,
+        },
+    ),
+    rf=(
+        {},
+        {
+            "rf_ch_0": c.BINOMIAL_DECAY,
+            "rf_ch_1": c.GEOMETRIC_DECAY,
+            "rf_ch_2": c.GEOMETRIC_DECAY,
+            "rf_ch_3": c.BINOMIAL_DECAY,
+        },
+    ),
+    organic_media=(
+        {},
+        {
+            "organic_media_0": c.BINOMIAL_DECAY,
+            "organic_media_1": c.GEOMETRIC_DECAY,
+            "organic_media_2": c.GEOMETRIC_DECAY,
+            "organic_media_3": c.BINOMIAL_DECAY,
+            "organic_media_4": c.GEOMETRIC_DECAY,
+        },
+    ),
+    organic_rf=(
+        {},
+        {
+            "organic_rf_ch_0": c.BINOMIAL_DECAY,
+            "organic_rf_ch_1": c.GEOMETRIC_DECAY,
+            "organic_rf_ch_2": c.GEOMETRIC_DECAY,
+            "organic_rf_ch_3": c.BINOMIAL_DECAY,
+            "organic_rf_ch_4": c.BINOMIAL_DECAY,
+            "organic_rf_ch_5": c.GEOMETRIC_DECAY,
+        },
+    ),
+)
+
 
 def random_media_da(
     n_geos: int,
