@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add automatic knot selection public API to core library.
 * Add aspline and other helper functions for AKS algorithm to core library.
 * Fix numerical stability of Adstock computation around `alpha = 1`.
 * Add `binomial` decay option to Adstock.

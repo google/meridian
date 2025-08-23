@@ -442,6 +442,30 @@ class InputData:
     """Checks whether the `rf_spend` array has a time dimension."""
     return self.rf_spend is not None and constants.TIME in self.rf_spend.coords
 
+  @property
+  def scaled_centered_kpi(self) -> np.ndarray:
+    """Calculates scaled and centered KPI values.
+
+    Returns:
+      An array of KPI values that have been population-scaled and
+    mean-centered by geo.
+    """
+    kpi = self.kpi.values
+    population = self.population.values[:, np.newaxis]
+
+    population_scaled_kpi = np.divide(
+        kpi, population, out=np.zeros_like(kpi), where=(population != 0)
+    )
+    population_scaled_mean = np.mean(population_scaled_kpi)
+    population_scaled_stdev = np.std(population_scaled_kpi)
+    kpi_scaled = np.divide(
+        population_scaled_kpi - population_scaled_mean,
+        population_scaled_stdev,
+        out=np.zeros_like(population_scaled_kpi - population_scaled_mean),
+        where=(population_scaled_stdev != 0),
+    )
+    return kpi_scaled - np.mean(kpi_scaled, axis=1, keepdims=True)
+
   def _validate_scenarios(self):
     """Verifies that calibration and analysis is set correctly."""
     n_geos = len(self.kpi.coords[constants.GEO])
