@@ -2113,7 +2113,7 @@ class BudgetOptimizer:
       )
     else:
       assert new_data.time is not None
-      new_times_str = new_data.time.numpy().astype(str).tolist()
+      new_times_str = np.asarray(new_data.time).astype(str).tolist()
       time_coordinates = tc.TimeCoordinates.from_dates(new_times_str)
       expanded_dates = time_coordinates.expand_selected_time_dims(
           start_date=start_date,
@@ -2337,7 +2337,7 @@ class BudgetOptimizer:
     }
 
     all_times = (
-        filled_data.time.numpy().astype(str).tolist()
+        np.asarray(filled_data.time).astype(str).tolist()
         if filled_data.time is not None
         else self._meridian.input_data.time.values.tolist()
     )
