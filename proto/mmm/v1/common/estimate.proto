@@ -1,0 +1,29 @@
+edition = "2023";
+
+package mmm.v1.common;
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// Contains an estimate value of estimand and associated quantified
+// uncertainties.
+message Estimate {
+  // The estimate value of an estimand. Required.
+  double value = 1;
+
+  // The uncertainty of an estimate quantified by probability interval.
+  message Uncertainty {
+    // The probability that a value is inside an interval bounded by lowerbound
+    // and upperbound. Required.
+    double probability = 1;
+
+    // The lowerbound of the interval. Required.
+    double lowerbound = 2;
+
+    // The upperbound of the interval. Required.
+    double upperbound = 3;
+  }
+
+  // The quantified uncertainties.
+  repeated Uncertainty uncertainties = 2;
+}
