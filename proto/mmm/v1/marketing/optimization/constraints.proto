@@ -1,0 +1,53 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing.optimization;
+
+import "mmm/v1/common/target_metric.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// The constraint of target metrics.
+message TargetMetricConstraint {
+  reserved 2, 3;
+
+  // The type of the target metric that is constrained. Required.
+  common.TargetMetric target_metric = 1;
+
+  // The constraint on the target metric value. Required.
+  // Whether this target value represents a lower or upper bound depends on the
+  // target metric set above.
+  double target_value = 4;
+}
+
+message BudgetConstraint {
+  // Required.
+  // Absolute minimum budget value.
+  double min_budget = 1;
+
+  // Required.
+  // Absolute maximum budget value.
+  double max_budget = 2;
+}
+
+message FrequencyConstraint {
+  // Required.
+  double min_frequency = 1;
+
+  // Required.
+  double max_frequency = 2;
+}
