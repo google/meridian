@@ -1,0 +1,17 @@
+edition = "2023";
+
+package mmm.v1.common;
+
+option java_multiple_files = true;
+
+// Different KPI types used in marketing performance and optimization.
+enum KpiType {
+  KPI_TYPE_UNSPECIFIED = 0;
+
+  // Some generic user-defined KPI unit.
+  NON_REVENUE = 1;
+
+  // KPI defined as revenue specifically, or some KPI unit after conversion
+  // to revenue.
+  REVENUE = 2;
+}
