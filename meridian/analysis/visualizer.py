@@ -19,6 +19,7 @@ import functools
 from typing import Mapping
 import warnings
 import altair as alt
+from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import formatter
@@ -26,8 +27,6 @@ from meridian.analysis import summary_text
 from meridian.model import model
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow_probability as tfp
 import xarray as xr
 
 
@@ -312,10 +311,10 @@ class ModelDiagnostics:
         k: v.values
         for k, v in self._meridian.inference_data.posterior.data_vars.items()
     }
-    for k, v in tfp.mcmc.potential_scale_reduction(
-        {k: tf.einsum('ij...->ji...', v) for k, v in mcmc_states.items()}
+    for k, v in backend.mcmc.potential_scale_reduction(
+        {k: backend.einsum('ij...->ji...', v) for k, v in mcmc_states.items()}
     ).items():
-      rhat_temp = v.numpy().flatten()
+      rhat_temp = np.asarray(v).flatten()
       rhat = pd.concat([
           rhat,
           pd.DataFrame({

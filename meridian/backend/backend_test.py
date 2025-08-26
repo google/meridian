@@ -452,6 +452,39 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _boolean_mask_with_axis_test_cases = [
+      dict(
+          testcase_name="axis_0",
+          tensor_in=[[1, 2], [3, 4], [5, 6]],
+          mask=[True, False, True],
+          axis=0,
+          expected=np.array([[1, 2], [5, 6]]),
+      ),
+      dict(
+          testcase_name="axis_1",
+          tensor_in=[[1, 2, 3], [4, 5, 6]],
+          mask=[False, True, True],
+          axis=1,
+          expected=np.array([[2, 3], [5, 6]]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_boolean_mask_with_axis_test_cases,
+  )
+  def test_boolean_mask_with_axis(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    mask = backend.to_tensor(test_case["mask"])
+    axis = test_case["axis"]
+    expected = test_case["expected"]
+
+    result = backend.boolean_mask(tensor, mask, axis=axis)
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
   @parameterized.named_parameters(
       ("tensorflow", config.Backend.TENSORFLOW),
       ("jax", config.Backend.JAX),
@@ -495,6 +528,17 @@ class BackendTest(parameterized.TestCase):
     result = backend.get_indices_where(condition)
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
+
+  def test_extension_type_raises_for_jax(self):
+    config.set_backend(config.Backend.JAX)
+    importlib.reload(backend)
+
+    class MyExtension(backend.ExtensionType):
+      foo: int
+      bar: str
+
+    with self.assertRaises(NotImplementedError):
+      MyExtension()
 
 
 if __name__ == "__main__":
