@@ -434,3 +434,17 @@ class WithInputDataSamples:
             seed=0,
         )
     )
+    self.input_data_non_media_and_organic_same_time_dims = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS,
+            n_times=self._N_TIMES,
+            n_media_times=self._N_TIMES,
+            n_controls=self._N_CONTROLS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
+            n_organic_media_channels=self._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=self._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
