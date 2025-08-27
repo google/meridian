@@ -22,7 +22,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.model import prior_distribution
 import numpy as np
-import tensorflow_probability as tfp
+
 
 _N_GEOS = 10
 _N_GEOS_NATIONAL = 1
@@ -1549,28 +1549,28 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       (
           'alpha_m_can_be_negative',
-          {'alpha_m': tfp.distributions.Uniform(-1, 1)},
+          {'alpha_m': backend.tfd.Uniform(-1, 1)},
       ),
       (
           'alpha_m_can_exceed_one',
-          {'alpha_m': tfp.distributions.Uniform(0, 2)},
+          {'alpha_m': backend.tfd.Uniform(0, 2)},
       ),
       (
           'alpha_m_deterministic_negative_one',
-          {'alpha_m': tfp.distributions.Deterministic(-1)},
+          {'alpha_m': backend.tfd.Deterministic(-1)},
       ),
       (
           'alpha_m_deterministic_two',
-          {'alpha_m': tfp.distributions.Deterministic(2)},
+          {'alpha_m': backend.tfd.Deterministic(2)},
       ),
       (
           'eta_m_can_be_negative',
-          {'eta_m': tfp.distributions.Normal(0, 1)},
-      )
+          {'eta_m': backend.tfd.Normal(0, 1)},
+      ),
   )
   def test_validate_support_raises_value_error(
       self,
-      prior_distribution_kwargs: dict[str, tfp.distributions.Distribution],
+      prior_distribution_kwargs: dict[str, backend.tfd.Distribution],
   ):
     with self.assertRaises(ValueError):
       prior_distribution.PriorDistribution(**prior_distribution_kwargs)
@@ -1619,12 +1619,12 @@ class PriorDistributionTest(parameterized.TestCase):
           f'{param_name} was assigned a point mass',
       ):
         prior_distribution.PriorDistribution(
-            **{param_name: tfp.distributions.Deterministic(deterministic_value)}
+            **{param_name: backend.tfd.Deterministic(deterministic_value)}
         )
     else:
       try:
         prior_distribution.PriorDistribution(
-            **{param_name: tfp.distributions.Deterministic(deterministic_value)}
+            **{param_name: backend.tfd.Deterministic(deterministic_value)}
         )
       except ValueError:
         self.fail(
@@ -1635,11 +1635,11 @@ class PriorDistributionTest(parameterized.TestCase):
   def test_quantile_not_implemented_raises_warning(self):
     with self.assertWarnsRegex(
         UserWarning,
-        'The prior distribution for alpha_m does not have a `quantile` method'
+        'The prior distribution for alpha_m does not have a `quantile` method',
     ):
-      # Note that `tfp.distributions.Categorical.quantile` raises a
+      # Note that `backend.tfd.Categorical.quantile` raises a
       # `NotImplementedError`.
-      dist = tfp.distributions.Categorical(probs=[0.5, 0.5])
+      dist = backend.tfd.Categorical(probs=[0.5, 0.5])
       prior_distribution.PriorDistribution(alpha_m=dist)
 
 
