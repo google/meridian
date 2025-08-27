@@ -20,14 +20,13 @@ import numbers
 from typing import Any, Optional
 import warnings
 
+from meridian import backend
 from meridian import constants
 from meridian.model import adstock_hill
 from meridian.model import model
 from meridian.model import transformers
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow_probability as tfp
 from typing_extensions import Self
 import xarray as xr
 
@@ -53,7 +52,7 @@ def _validate_non_media_baseline_values_numbers(
 
 
 # TODO: Refactor the related unit tests to be under DataTensors.
-class DataTensors(tf.experimental.ExtensionType):
+class DataTensors(backend.ExtensionType):
   """Container for data variable arguments of Analyzer methods.
 
   Attributes:
@@ -88,86 +87,100 @@ class DataTensors(tf.experimental.ExtensionType):
       for time dimension `T`.
   """
 
-  media: Optional[tf.Tensor]
-  media_spend: Optional[tf.Tensor]
-  reach: Optional[tf.Tensor]
-  frequency: Optional[tf.Tensor]
-  rf_impressions: Optional[tf.Tensor]
-  rf_spend: Optional[tf.Tensor]
-  organic_media: Optional[tf.Tensor]
-  organic_reach: Optional[tf.Tensor]
-  organic_frequency: Optional[tf.Tensor]
-  non_media_treatments: Optional[tf.Tensor]
-  controls: Optional[tf.Tensor]
-  revenue_per_kpi: Optional[tf.Tensor]
-  time: Optional[tf.Tensor]
+  media: Optional[backend.Tensor]
+  media_spend: Optional[backend.Tensor]
+  reach: Optional[backend.Tensor]
+  frequency: Optional[backend.Tensor]
+  rf_impressions: Optional[backend.Tensor]
+  rf_spend: Optional[backend.Tensor]
+  organic_media: Optional[backend.Tensor]
+  organic_reach: Optional[backend.Tensor]
+  organic_frequency: Optional[backend.Tensor]
+  non_media_treatments: Optional[backend.Tensor]
+  controls: Optional[backend.Tensor]
+  revenue_per_kpi: Optional[backend.Tensor]
+  time: Optional[backend.Tensor]
 
   def __init__(
       self,
-      media: Optional[tf.Tensor] = None,
-      media_spend: Optional[tf.Tensor] = None,
-      reach: Optional[tf.Tensor] = None,
-      frequency: Optional[tf.Tensor] = None,
-      rf_impressions: Optional[tf.Tensor] = None,
-      rf_spend: Optional[tf.Tensor] = None,
-      organic_media: Optional[tf.Tensor] = None,
-      organic_reach: Optional[tf.Tensor] = None,
-      organic_frequency: Optional[tf.Tensor] = None,
-      non_media_treatments: Optional[tf.Tensor] = None,
-      controls: Optional[tf.Tensor] = None,
-      revenue_per_kpi: Optional[tf.Tensor] = None,
-      time: Optional[Sequence[str] | tf.Tensor] = None,
+      media: Optional[backend.Tensor] = None,
+      media_spend: Optional[backend.Tensor] = None,
+      reach: Optional[backend.Tensor] = None,
+      frequency: Optional[backend.Tensor] = None,
+      rf_impressions: Optional[backend.Tensor] = None,
+      rf_spend: Optional[backend.Tensor] = None,
+      organic_media: Optional[backend.Tensor] = None,
+      organic_reach: Optional[backend.Tensor] = None,
+      organic_frequency: Optional[backend.Tensor] = None,
+      non_media_treatments: Optional[backend.Tensor] = None,
+      controls: Optional[backend.Tensor] = None,
+      revenue_per_kpi: Optional[backend.Tensor] = None,
+      time: Optional[Sequence[str] | backend.Tensor] = None,
   ):
-    self.media = tf.cast(media, tf.float32) if media is not None else None
-    self.media_spend = (
-        tf.cast(media_spend, tf.float32) if media_spend is not None else None
+    self.media = (
+        backend.cast(media, backend.float32) if media is not None else None
     )
-    self.reach = tf.cast(reach, tf.float32) if reach is not None else None
+    self.media_spend = (
+        backend.cast(media_spend, backend.float32)
+        if media_spend is not None
+        else None
+    )
+    self.reach = (
+        backend.cast(reach, backend.float32) if reach is not None else None
+    )
     self.frequency = (
-        tf.cast(frequency, tf.float32) if frequency is not None else None
+        backend.cast(frequency, backend.float32)
+        if frequency is not None
+        else None
     )
     self.rf_impressions = (
-        tf.cast(rf_impressions, tf.float32)
+        backend.cast(rf_impressions, backend.float32)
         if rf_impressions is not None
         else None
     )
     self.rf_spend = (
-        tf.cast(rf_spend, tf.float32) if rf_spend is not None else None
+        backend.cast(rf_spend, backend.float32)
+        if rf_spend is not None
+        else None
     )
     self.organic_media = (
-        tf.cast(organic_media, tf.float32)
+        backend.cast(organic_media, backend.float32)
         if organic_media is not None
         else None
     )
     self.organic_reach = (
-        tf.cast(organic_reach, tf.float32)
+        backend.cast(organic_reach, backend.float32)
         if organic_reach is not None
         else None
     )
     self.organic_frequency = (
-        tf.cast(organic_frequency, tf.float32)
+        backend.cast(organic_frequency, backend.float32)
         if organic_frequency is not None
         else None
     )
     self.non_media_treatments = (
-        tf.cast(non_media_treatments, tf.float32)
+        backend.cast(non_media_treatments, backend.float32)
         if non_media_treatments is not None
         else None
     )
     self.controls = (
-        tf.cast(controls, tf.float32) if controls is not None else None
+        backend.cast(controls, backend.float32)
+        if controls is not None
+        else None
     )
     self.revenue_per_kpi = (
-        tf.cast(revenue_per_kpi, tf.float32)
+        backend.cast(revenue_per_kpi, backend.float32)
         if revenue_per_kpi is not None
         else None
     )
-    self.time = tf.cast(time, tf.string) if time is not None else None
+    self.time = (
+        backend.to_tensor(time, dtype="string") if time is not None else None
+    )
 
   def __validate__(self):
     self._validate_n_dims()
 
-  def total_spend(self) -> tf.Tensor | None:
+  def total_spend(self) -> backend.Tensor | None:
     """Returns the total spend tensor.
 
     Returns:
@@ -180,7 +193,9 @@ class DataTensors(tf.experimental.ExtensionType):
       spend_tensors.append(self.media_spend)
     if self.rf_spend is not None:
       spend_tensors.append(self.rf_spend)
-    return tf.concat(spend_tensors, axis=-1) if spend_tensors else None
+    return (
+        backend.concatenate(spend_tensors, axis=-1) if spend_tensors else None
+    )
 
   def get_modified_times(self, meridian: model.Meridian) -> int | None:
     """Returns `n_times` of any tensor where `n_times` has been modified.
@@ -472,8 +487,8 @@ class DataTensors(tf.experimental.ExtensionType):
       elif var_name == constants.REVENUE_PER_KPI:
         old_tensor = meridian.revenue_per_kpi
       elif var_name == constants.TIME:
-        old_tensor = tf.convert_to_tensor(
-            meridian.input_data.time.values.tolist(), dtype=tf.string
+        old_tensor = backend.to_tensor(
+            meridian.input_data.time.values.tolist(), dtype="string"
         )
       else:
         continue
@@ -484,36 +499,36 @@ class DataTensors(tf.experimental.ExtensionType):
     return DataTensors(**output)
 
 
-class DistributionTensors(tf.experimental.ExtensionType):
+class DistributionTensors(backend.ExtensionType):
   """Container for parameters distributions arguments of Analyzer methods."""
 
-  alpha_m: Optional[tf.Tensor] = None
-  alpha_rf: Optional[tf.Tensor] = None
-  alpha_om: Optional[tf.Tensor] = None
-  alpha_orf: Optional[tf.Tensor] = None
-  ec_m: Optional[tf.Tensor] = None
-  ec_rf: Optional[tf.Tensor] = None
-  ec_om: Optional[tf.Tensor] = None
-  ec_orf: Optional[tf.Tensor] = None
-  slope_m: Optional[tf.Tensor] = None
-  slope_rf: Optional[tf.Tensor] = None
-  slope_om: Optional[tf.Tensor] = None
-  slope_orf: Optional[tf.Tensor] = None
-  beta_gm: Optional[tf.Tensor] = None
-  beta_grf: Optional[tf.Tensor] = None
-  beta_gom: Optional[tf.Tensor] = None
-  beta_gorf: Optional[tf.Tensor] = None
-  mu_t: Optional[tf.Tensor] = None
-  tau_g: Optional[tf.Tensor] = None
-  gamma_gc: Optional[tf.Tensor] = None
-  gamma_gn: Optional[tf.Tensor] = None
+  alpha_m: Optional[backend.Tensor] = None
+  alpha_rf: Optional[backend.Tensor] = None
+  alpha_om: Optional[backend.Tensor] = None
+  alpha_orf: Optional[backend.Tensor] = None
+  ec_m: Optional[backend.Tensor] = None
+  ec_rf: Optional[backend.Tensor] = None
+  ec_om: Optional[backend.Tensor] = None
+  ec_orf: Optional[backend.Tensor] = None
+  slope_m: Optional[backend.Tensor] = None
+  slope_rf: Optional[backend.Tensor] = None
+  slope_om: Optional[backend.Tensor] = None
+  slope_orf: Optional[backend.Tensor] = None
+  beta_gm: Optional[backend.Tensor] = None
+  beta_grf: Optional[backend.Tensor] = None
+  beta_gom: Optional[backend.Tensor] = None
+  beta_gorf: Optional[backend.Tensor] = None
+  mu_t: Optional[backend.Tensor] = None
+  tau_g: Optional[backend.Tensor] = None
+  gamma_gc: Optional[backend.Tensor] = None
+  gamma_gn: Optional[backend.Tensor] = None
 
 
 def _transformed_new_or_scaled(
-    new_variable: tf.Tensor | None,
+    new_variable: backend.Tensor | None,
     transformer: transformers.TensorTransformer | None,
-    scaled_variable: tf.Tensor | None,
-) -> tf.Tensor | None:
+    scaled_variable: backend.Tensor | None,
+) -> backend.Tensor | None:
   """Returns the transformed new variable or the scaled variable.
 
   If the `new_variable` is present, returns
@@ -535,7 +550,7 @@ def _transformed_new_or_scaled(
 
 
 def get_central_tendency_and_ci(
-    data: np.ndarray | tf.Tensor,
+    data: np.ndarray | backend.Tensor,
     confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
     axis: tuple[int, ...] = (0, 1),
     include_median=False,
@@ -551,7 +566,7 @@ def get_central_tendency_and_ci(
       the median in the output Dataset (default: False).
 
   Returns:
-    A numpy array or tf.Tensor containing central tendency and confidence
+    A numpy array or backend.Tensor containing central tendency and confidence
     intervals.
   """
   mean = np.mean(data, axis=axis, keepdims=False)
@@ -594,7 +609,7 @@ def _warn_if_geo_arg_in_kwargs(**kwargs):
       )
 
 
-def _check_n_dims(tensor: tf.Tensor, name: str, n_dims: int):
+def _check_n_dims(tensor: backend.Tensor, name: str, n_dims: int):
   """Raises an error if the tensor has the wrong number of dimensions."""
   if tensor.ndim != n_dims:
     raise ValueError(
@@ -753,8 +768,8 @@ def _scale_tensors_by_multiplier(
 
 
 def _central_tendency_and_ci_by_prior_and_posterior(
-    prior: tf.Tensor,
-    posterior: tf.Tensor,
+    prior: backend.Tensor,
+    posterior: backend.Tensor,
     metric_name: str,
     xr_dims: Sequence[str],
     xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
@@ -799,16 +814,16 @@ class Analyzer:
   def __init__(self, meridian: model.Meridian):
     self._meridian = meridian
     # Make the meridian object ready for methods in this analyzer that create
-    # tf.function computation graphs: it should be frozen for no more internal
-    # states mutation before those graphs execute.
+    # backend.function computation graphs: it should be frozen for no more
+    # internal states mutation before those graphs execute.
     self._meridian.populate_cached_properties()
 
-  @tf.function(jit_compile=True)
+  @backend.function(jit_compile=True)
   def _get_kpi_means(
       self,
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes batched KPI means.
 
     Note that the output array has the same number of time periods as the media
@@ -827,7 +842,7 @@ class Analyzer:
     Returns:
       Tensor representing computed kpi means.
     """
-    tau_gt = tf.expand_dims(dist_tensors.tau_g, -1) + tf.expand_dims(
+    tau_gt = backend.expand_dims(dist_tensors.tau_g, -1) + backend.expand_dims(
         dist_tensors.mu_t, -2
     )
     combined_media_transformed, combined_beta = (
@@ -837,17 +852,17 @@ class Analyzer:
         )
     )
 
-    result = tau_gt + tf.einsum(
+    result = tau_gt + backend.einsum(
         "...gtm,...gm->...gt", combined_media_transformed, combined_beta
     )
     if self._meridian.controls is not None:
-      result += tf.einsum(
+      result += backend.einsum(
           "...gtc,...gc->...gt",
           data_tensors.controls,
           dist_tensors.gamma_gc,
       )
     if data_tensors.non_media_treatments is not None:
-      result += tf.einsum(
+      result += backend.einsum(
           "...gtm,...gm->...gt",
           data_tensors.non_media_treatments,
           dist_tensors.gamma_gn,
@@ -947,26 +962,28 @@ class Analyzer:
       )
 
     decayed_effect_prior = adstock_hill.compute_decay_weights(
-        alpha=tf.convert_to_tensor(prior[np.newaxis, ...], dtype=tf.float32),
-        l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
+        alpha=backend.to_tensor(
+            prior[backend.newaxis, ...], dtype=backend.float32
+        ),
+        l_range=backend.to_tensor(l_range, dtype=backend.float32),
         window_size=window_size,
         decay_function=self._meridian.model_spec.adstock_decay_function,
         normalize=False,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
-        alpha=tf.convert_to_tensor(
-            posterior[np.newaxis, ...], dtype=tf.float32
+        alpha=backend.to_tensor(
+            posterior[backend.newaxis, ...], dtype=backend.float32
         ),
-        l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
+        l_range=backend.to_tensor(l_range, dtype=backend.float32),
         window_size=window_size,
         decay_function=self._meridian.model_spec.adstock_decay_function,
         normalize=False,
     )
 
-    decayed_effect_prior_transpose = tf.transpose(
+    decayed_effect_prior_transpose = backend.transpose(
         decayed_effect_prior, perm=[0, 1, 3, 2]
     )
-    decayed_effect_posterior_transpose = tf.transpose(
+    decayed_effect_posterior_transpose = backend.transpose(
         decayed_effect_posterior, perm=[0, 1, 3, 2]
     )
     adstock_dataset = _central_tendency_and_ci_by_prior_and_posterior(
@@ -1175,7 +1192,7 @@ class Analyzer:
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
       n_times_output: int | None = None,
-  ) -> tuple[tf.Tensor | None, tf.Tensor | None]:
+  ) -> tuple[backend.Tensor | None, backend.Tensor | None]:
     """Function for transforming media using adstock and hill functions.
 
     This transforms the media tensor using the adstock and hill functions, in
@@ -1244,20 +1261,20 @@ class Analyzer:
       )
       combined_betas.append(dist_tensors.beta_gorf)
 
-    combined_media_transformed = tf.concat(combined_medias, axis=-1)
-    combined_beta = tf.concat(combined_betas, axis=-1)
+    combined_media_transformed = backend.concatenate(combined_medias, axis=-1)
+    combined_beta = backend.concatenate(combined_betas, axis=-1)
     return combined_media_transformed, combined_beta
 
   def filter_and_aggregate_geos_and_times(
       self,
-      tensor: tf.Tensor,
+      tensor: backend.Tensor,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       flexible_time_dim: bool = False,
       has_media_dim: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Filters and/or aggregates geo and time dimensions of a tensor.
 
     Args:
@@ -1317,12 +1334,12 @@ class Analyzer:
         c + 1 for c in allowed_n_channels
     ]
     expected_shapes_w_media = [
-        tf.TensorShape(shape)
+        backend.TensorShape(shape)
         for shape in itertools.product(
             [mmm.n_geos], [n_times], allowed_channel_dim
         )
     ]
-    expected_shape_wo_media = tf.TensorShape([mmm.n_geos, n_times])
+    expected_shape_wo_media = backend.TensorShape([mmm.n_geos, n_times])
     if not flexible_time_dim:
       if tensor.shape[-3:] in expected_shapes_w_media:
         has_media_dim = True
@@ -1356,7 +1373,7 @@ class Analyzer:
             "meridian.InputData."
         )
       geo_mask = [x in selected_geos for x in mmm.input_data.geo]
-      tensor = tf.boolean_mask(tensor, geo_mask, axis=geo_dim)
+      tensor = backend.boolean_mask(tensor, geo_mask, axis=geo_dim)
 
     if selected_times is not None:
       _validate_selected_times(
@@ -1368,9 +1385,9 @@ class Analyzer:
       )
       if _is_str_list(selected_times):
         time_mask = [x in selected_times for x in mmm.input_data.time]
-        tensor = tf.boolean_mask(tensor, time_mask, axis=time_dim)
+        tensor = backend.boolean_mask(tensor, time_mask, axis=time_dim)
       elif _is_bool_list(selected_times):
-        tensor = tf.boolean_mask(tensor, selected_times, axis=time_dim)
+        tensor = backend.boolean_mask(tensor, selected_times, axis=time_dim)
 
     tensor_dims = "...gt" + "m" * has_media_dim
     output_dims = (
@@ -1378,7 +1395,7 @@ class Analyzer:
         + "t" * (not aggregate_times)
         + "m" * has_media_dim
     )
-    return tf.einsum(f"{tensor_dims}->...{output_dims}", tensor)
+    return backend.einsum(f"{tensor_dims}->...{output_dims}", tensor)
 
   def expected_outcome(
       self,
@@ -1391,7 +1408,7 @@ class Analyzer:
       inverse_transform_outcome: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either prior or posterior expected outcome.
 
     This calculates `E(Outcome|Media, RF, Organic media, Organic RF, Non-media
@@ -1510,7 +1527,7 @@ class Analyzer:
 
     n_draws = params.draw.size
     n_chains = params.chain.size
-    outcome_means = tf.zeros(
+    outcome_means = backend.zeros(
         (n_chains, 0, self._meridian.n_geos, self._meridian.n_times)
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
@@ -1526,7 +1543,7 @@ class Analyzer:
     for start_index in batch_starting_indices:
       stop_index = np.min([n_draws, start_index + batch_size])
       batch_dists = {
-          k: tf.convert_to_tensor(params[k][:, start_index:stop_index, ...])
+          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
           for k in param_list
       }
       dist_tensors = DistributionTensors(**batch_dists)
@@ -1537,7 +1554,9 @@ class Analyzer:
               dist_tensors=dist_tensors,
           )
       )
-    outcome_means = tf.concat([outcome_means, *outcome_means_temps], axis=1)
+    outcome_means = backend.concatenate(
+        [outcome_means, *outcome_means_temps], axis=1
+    )
     if inverse_transform_outcome:
       outcome_means = self._meridian.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
@@ -1580,7 +1599,7 @@ class Analyzer:
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
       non_media_treatments_baseline_normalized: Sequence[float] | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes incremental KPI distribution.
 
     Args:
@@ -1629,28 +1648,28 @@ class Analyzer:
             n_times_output=n_times_output,
         )
     )
-    combined_media_kpi = tf.einsum(
+    combined_media_kpi = backend.einsum(
         "...gtm,...gm->...gtm",
         combined_media_transformed,
         combined_beta,
     )
     if data_tensors.non_media_treatments is not None:
-      non_media_kpi = tf.einsum(
+      non_media_kpi = backend.einsum(
           "gtn,...gn->...gtn",
           data_tensors.non_media_treatments
           - non_media_treatments_baseline_normalized,
           dist_tensors.gamma_gn,
       )
-      return tf.concat([combined_media_kpi, non_media_kpi], axis=-1)
+      return backend.concatenate([combined_media_kpi, non_media_kpi], axis=-1)
     else:
       return combined_media_kpi
 
   def _inverse_outcome(
       self,
-      modeled_incremental_outcome: tf.Tensor,
+      modeled_incremental_outcome: backend.Tensor,
       use_kpi: bool,
-      revenue_per_kpi: tf.Tensor | None,
-  ) -> tf.Tensor:
+      revenue_per_kpi: backend.Tensor | None,
+  ) -> backend.Tensor:
     """Inverses incremental outcome (revenue or KPI).
 
     This method assumes that additive changes on the model kpi scale
@@ -1674,16 +1693,16 @@ class Analyzer:
     if revenue_per_kpi is None:
       revenue_per_kpi = self._meridian.revenue_per_kpi
     t1 = self._meridian.kpi_transformer.inverse(
-        tf.einsum("...m->m...", modeled_incremental_outcome)
+        backend.einsum("...m->m...", modeled_incremental_outcome)
     )
-    t2 = self._meridian.kpi_transformer.inverse(tf.zeros_like(t1))
-    kpi = tf.einsum("m...->...m", t1 - t2)
+    t2 = self._meridian.kpi_transformer.inverse(backend.zeros_like(t1))
+    kpi = backend.einsum("m...->...m", t1 - t2)
 
     if use_kpi:
       return kpi
-    return tf.einsum("gt,...gtm->...gtm", revenue_per_kpi, kpi)
+    return backend.einsum("gt,...gtm->...gtm", revenue_per_kpi, kpi)
 
-  @tf.function(jit_compile=True)
+  @backend.function(jit_compile=True)
   def _incremental_outcome_impl(
       self,
       data_tensors: DataTensors,
@@ -1695,7 +1714,7 @@ class Analyzer:
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes incremental outcome (revenue or KPI) on a batch of data.
 
     Args:
@@ -1802,7 +1821,7 @@ class Analyzer:
       by_reach: bool = True,
       include_non_paid_channels: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either the posterior or prior incremental outcome.
 
     This calculates the media outcome of each media channel for each posterior
@@ -2036,10 +2055,10 @@ class Analyzer:
           non_media_treatments_baseline_scaled,
           apply_population_scaling=False,
       )
-      non_media_treatments0 = tf.broadcast_to(
-          tf.constant(
-              non_media_treatments_baseline_normalized, dtype=tf.float32
-          )[tf.newaxis, tf.newaxis, :],
+      non_media_treatments0 = backend.broadcast_to(
+          backend.to_tensor(
+              non_media_treatments_baseline_normalized, dtype=backend.float32
+          )[backend.newaxis, backend.newaxis, :],
           data_tensors.non_media_treatments.shape,  # pytype: disable=attribute-error
       )
     else:
@@ -2106,7 +2125,7 @@ class Analyzer:
     for i, start_index in enumerate(batch_starting_indices):
       stop_index = np.min([n_draws, start_index + batch_size])
       batch_dists = {
-          k: tf.convert_to_tensor(params[k][:, start_index:stop_index, ...])
+          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
           for k in param_list
       }
       dist_tensors = DistributionTensors(**batch_dists)
@@ -2124,7 +2143,7 @@ class Analyzer:
             **dim_kwargs,
             **incremental_outcome_kwargs,
         )
-    return tf.concat(incremental_outcome_temps, axis=1)
+    return backend.concatenate(incremental_outcome_temps, axis=1)
 
   def _validate_geo_and_time_granularity(
       self,
@@ -2198,7 +2217,7 @@ class Analyzer:
       by_reach: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates the marginal ROI prior or posterior distribution.
 
     The marginal ROI (mROI) numerator is the change in expected outcome (`kpi`
@@ -2308,7 +2327,7 @@ class Analyzer:
             "dimension."
         )
       denominator = spend_inc
-    return tf.math.divide_no_nan(numerator, denominator)
+    return backend.divide_no_nan(numerator, denominator)
 
   def roi(
       self,
@@ -2319,7 +2338,7 @@ class Analyzer:
       aggregate_geos: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates ROI prior or posterior distribution for each media channel.
 
     The ROI numerator is the change in expected outcome (`kpi` or `kpi *
@@ -2424,7 +2443,7 @@ class Analyzer:
             "dimension."
         )
       denominator = spend
-    return tf.math.divide_no_nan(incremental_outcome, denominator)
+    return backend.divide_no_nan(incremental_outcome, denominator)
 
   def cpik(
       self,
@@ -2434,7 +2453,7 @@ class Analyzer:
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates the cost per incremental KPI distribution for each channel.
 
     The CPIK numerator is the total spend on the channel. The CPIK denominator
@@ -2499,11 +2518,11 @@ class Analyzer:
         aggregate_geos=aggregate_geos,
         batch_size=batch_size,
     )
-    return tf.math.divide_no_nan(1.0, roi)
+    return backend.divide_no_nan(1.0, roi)
 
   def _mean_and_ci_by_eval_set(
       self,
-      draws: tf.Tensor,
+      draws: backend.Tensor,
       split_by_holdout: bool,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
@@ -2674,7 +2693,7 @@ class Analyzer:
       self,
       non_media_baseline_values: Sequence[float] | None = None,
       **expected_outcome_kwargs,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either the posterior or prior expected outcome of baseline.
 
     This is a wrapper for expected_outcome() that automatically sets the
@@ -2708,43 +2727,47 @@ class Analyzer:
       dropped if `aggregate_geos=True` or `aggregate_time=True`, respectively.
     """
     new_media = (
-        tf.zeros_like(self._meridian.media_tensors.media)
+        backend.zeros_like(self._meridian.media_tensors.media)
         if self._meridian.media_tensors.media is not None
         else None
     )
     # Frequency is not needed because the reach is zero.
     new_reach = (
-        tf.zeros_like(self._meridian.rf_tensors.reach)
+        backend.zeros_like(self._meridian.rf_tensors.reach)
         if self._meridian.rf_tensors.reach is not None
         else None
     )
     new_organic_media = (
-        tf.zeros_like(self._meridian.organic_media_tensors.organic_media)
+        backend.zeros_like(self._meridian.organic_media_tensors.organic_media)
         if self._meridian.organic_media_tensors.organic_media is not None
         else None
     )
     new_organic_reach = (
-        tf.zeros_like(self._meridian.organic_rf_tensors.organic_reach)
+        backend.zeros_like(self._meridian.organic_rf_tensors.organic_reach)
         if self._meridian.organic_rf_tensors.organic_reach is not None
         else None
     )
     if self._meridian.non_media_treatments is not None:
       if self._meridian.model_spec.non_media_population_scaling_id is not None:
-        scaling_factors = tf.where(
+        scaling_factors = backend.where(
             self._meridian.model_spec.non_media_population_scaling_id,
-            self._meridian.population[:, tf.newaxis, tf.newaxis],
-            tf.ones_like(self._meridian.population)[:, tf.newaxis, tf.newaxis],
+            self._meridian.population[:, backend.newaxis, backend.newaxis],
+            backend.ones_like(self._meridian.population)[
+                :, backend.newaxis, backend.newaxis
+            ],
         )
       else:
-        scaling_factors = tf.ones_like(self._meridian.population)[
-            :, tf.newaxis, tf.newaxis
+        scaling_factors = backend.ones_like(self._meridian.population)[
+            :, backend.newaxis, backend.newaxis
         ]
 
       baseline = self._meridian.compute_non_media_treatments_baseline(
           non_media_baseline_values=non_media_baseline_values,
       )
-      new_non_media_treatments_population_scaled = tf.broadcast_to(
-          tf.constant(baseline, dtype=tf.float32)[tf.newaxis, tf.newaxis, :],
+      new_non_media_treatments_population_scaled = backend.broadcast_to(
+          backend.to_tensor(baseline, dtype=backend.float32)[
+              backend.newaxis, backend.newaxis, :
+          ],
           self._meridian.non_media_treatments.shape,
       )
       new_non_media_treatments = (
@@ -2772,7 +2795,7 @@ class Analyzer:
       include_non_paid_channels: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
       **kwargs,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Aggregates the incremental outcome of the media channels.
 
     Args:
@@ -2824,11 +2847,11 @@ class Analyzer:
         non_media_baseline_values=non_media_baseline_values,
         **kwargs,
     )
-    incremental_outcome_total = tf.reduce_sum(
+    incremental_outcome_total = backend.reduce_sum(
         incremental_outcome_m, axis=-1, keepdims=True
     )
 
-    return tf.concat(
+    return backend.concatenate(
         [incremental_outcome_m, incremental_outcome_total],
         axis=-1,
     )
@@ -2958,10 +2981,10 @@ class Analyzer:
         include_non_paid_channels=include_non_paid_channels,
         **dim_kwargs,
     )
-    impressions_with_total = tf.concat(
+    impressions_with_total = backend.concatenate(
         [
             aggregated_impressions,
-            tf.reduce_sum(aggregated_impressions, -1, keepdims=True),
+            backend.reduce_sum(aggregated_impressions, -1, keepdims=True),
         ],
         axis=-1,
     )
@@ -3145,12 +3168,15 @@ class Analyzer:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
-        tensor=tf.concat(spend_list, axis=-1),
+        tensor=backend.concatenate(spend_list, axis=-1),
         flexible_time_dim=True,
         **dim_kwargs,
     )
-    spend_with_total = tf.concat(
-        [aggregated_spend, tf.reduce_sum(aggregated_spend, -1, keepdims=True)],
+    spend_with_total = backend.concatenate(
+        [
+            aggregated_spend,
+            backend.reduce_sum(aggregated_spend, -1, keepdims=True),
+        ],
         axis=-1,
     )
     spend_data = self._compute_spend_data_aggregate(
@@ -3238,7 +3264,7 @@ class Analyzer:
       aggregate_times: bool = True,
       optimal_frequency: Sequence[float] | None = None,
       include_non_paid_channels: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes aggregated impressions values in the data across all channels.
 
     Args:
@@ -3295,7 +3321,9 @@ class Analyzer:
       if optimal_frequency is None:
         new_frequency = data_tensors.frequency
       else:
-        new_frequency = tf.ones_like(data_tensors.frequency) * optimal_frequency
+        new_frequency = (
+            backend.ones_like(data_tensors.frequency) * optimal_frequency
+        )
       impressions_list.append(
           data_tensors.reach[:, -n_times:, :] * new_frequency[:, -n_times:, :]
       )
@@ -3308,7 +3336,8 @@ class Analyzer:
           new_organic_frequency = data_tensors.organic_frequency
         else:
           new_organic_frequency = (
-              tf.ones_like(data_tensors.organic_frequency) * optimal_frequency
+              backend.ones_like(data_tensors.organic_frequency)
+              * optimal_frequency
           )
         impressions_list.append(
             data_tensors.organic_reach[:, -n_times:, :]
@@ -3318,7 +3347,7 @@ class Analyzer:
         impressions_list.append(data_tensors.non_media_treatments)
 
     return self.filter_and_aggregate_geos_and_times(
-        tensor=tf.concat(impressions_list, axis=-1),
+        tensor=backend.concatenate(impressions_list, axis=-1),
         selected_geos=selected_geos,
         selected_times=selected_times,
         aggregate_geos=aggregate_geos,
@@ -3420,7 +3449,7 @@ class Analyzer:
         use_posterior=True, use_kpi=use_kpi, **outcome_kwargs
     )
 
-    baseline_expected_outcome_prior = tf.expand_dims(
+    baseline_expected_outcome_prior = backend.expand_dims(
         self._calculate_baseline_expected_outcome(
             use_posterior=False,
             use_kpi=use_kpi,
@@ -3429,7 +3458,7 @@ class Analyzer:
         ),
         axis=-1,
     )
-    baseline_expected_outcome_posterior = tf.expand_dims(
+    baseline_expected_outcome_posterior = backend.expand_dims(
         self._calculate_baseline_expected_outcome(
             use_posterior=True,
             use_kpi=use_kpi,
@@ -3581,10 +3610,10 @@ class Analyzer:
     n_times = (
         filled_data.get_modified_times(self._meridian) or self._meridian.n_times
     )
-    dummy_media = tf.ones(
+    dummy_media = backend.ones(
         (self._meridian.n_geos, n_media_times, self._meridian.n_media_channels)
     )
-    dummy_media_spend = tf.ones(
+    dummy_media_spend = backend.ones(
         (self._meridian.n_geos, n_times, self._meridian.n_media_channels)
     )
 
@@ -3600,7 +3629,7 @@ class Analyzer:
     metric_grid = np.zeros((len(freq_grid), self._meridian.n_rf_channels, 4))
 
     for i, freq in enumerate(freq_grid):
-      new_frequency = tf.ones_like(filled_data.rf_impressions) * freq
+      new_frequency = backend.ones_like(filled_data.rf_impressions) * freq
       new_reach = filled_data.rf_impressions / new_frequency
       new_roi_data = DataTensors(
           reach=new_reach,
@@ -3630,9 +3659,9 @@ class Analyzer:
     )
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
-    optimal_frequency_tensor = tf.convert_to_tensor(
-        tf.ones_like(filled_data.rf_impressions) * optimal_frequency,
-        tf.float32,
+    optimal_frequency_tensor = backend.to_tensor(
+        backend.ones_like(filled_data.rf_impressions) * optimal_frequency,
+        backend.float32,
     )
     optimal_reach = filled_data.rf_impressions / optimal_frequency_tensor
 
@@ -3796,10 +3825,12 @@ class Analyzer:
       input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
     else:
       input_tensor = self._meridian.kpi
-    actual = self.filter_and_aggregate_geos_and_times(
-        tensor=input_tensor,
-        **dims_kwargs,
-    ).numpy()
+    actual = np.asarray(
+        self.filter_and_aggregate_geos_and_times(
+            tensor=input_tensor,
+            **dims_kwargs,
+        )
+    )
     expected = np.mean(
         self.expected_outcome(
             batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
@@ -3906,7 +3937,7 @@ class Analyzer:
 
     return holdout_id
 
-  def get_rhat(self) -> Mapping[str, tf.Tensor]:
+  def get_rhat(self) -> Mapping[str, backend.Tensor]:
     """Computes the R-hat values for each parameter in the model.
 
     Returns:
@@ -3922,12 +3953,12 @@ class Analyzer:
           "sample_posterior() must be called prior to calling this method."
       )
 
-    def _transpose_first_two_dims(x: tf.Tensor) -> tf.Tensor:
+    def _transpose_first_two_dims(x: backend.Tensor) -> backend.Tensor:
       n_dim = len(x.shape)
       perm = [1, 0] + list(range(2, n_dim))
-      return tf.transpose(x, perm)
+      return backend.transpose(x, perm)
 
-    rhat = tfp.mcmc.potential_scale_reduction({
+    rhat = backend.mcmc.potential_scale_reduction({
         k: _transpose_first_two_dims(v)
         for k, v in self._meridian.inference_data.posterior.data_vars.items()
     })
@@ -4075,17 +4106,17 @@ class Analyzer:
         "aggregate_times": True,
     }
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
-      frequency = tf.ones_like(
+      frequency = backend.ones_like(
           self._meridian.rf_tensors.frequency
-      ) * tf.convert_to_tensor(
+      ) * backend.to_tensor(
           self.optimal_freq(
               selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
-          dtype=tf.float32,
+          dtype=backend.float32,
       )
-      reach = tf.math.divide_no_nan(
+      reach = backend.divide_no_nan(
           self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
           frequency,
       )
@@ -4101,7 +4132,7 @@ class Analyzer:
     ))
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
-        incremental_outcome[i, :, :] = tf.zeros(
+        incremental_outcome[i, :, :] = backend.zeros(
             (len(self._meridian.input_data.get_all_paid_channels()), 3)
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
@@ -4128,7 +4159,7 @@ class Analyzer:
       )
 
     if self._meridian.n_media_channels > 0 and self._meridian.n_rf_channels > 0:
-      spend = tf.concat(
+      spend = backend.concatenate(
           [
               self._meridian.media_tensors.media_spend,
               self._meridian.rf_tensors.rf_spend,
@@ -4140,12 +4171,12 @@ class Analyzer:
     else:
       spend = self._meridian.rf_tensors.rf_spend
 
-    if tf.rank(spend) == 3:
+    if backend.rank(spend) == 3:
       spend = self.filter_and_aggregate_geos_and_times(
           tensor=spend,
           **dim_kwargs,
       )
-    spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
+    spend_einsum = backend.einsum("k,m->km", np.array(spend_multipliers), spend)
     xr_coords = {
         constants.CHANNEL: self._meridian.input_data.get_all_paid_channels(),
         constants.METRIC: [
@@ -4370,7 +4401,7 @@ class Analyzer:
     }
     # Expanding the linspace by one dimension since the HillTransformer requires
     # 3-dimensional input as (geo, time, channel).
-    expanded_linspace = tf.expand_dims(linspace, axis=0)
+    expanded_linspace = backend.expand_dims(linspace, axis=0)
     # Including [:, :, 0, :, :] in the output of the Hill Function to reduce the
     # tensors by the geo dimension. Original Hill dimension shape is (n_chains,
     # n_draws, n_geos, n_times, n_channels), and we want to plot the
@@ -4412,16 +4443,16 @@ class Analyzer:
     media_units_arr = []
     if transformer is not None:
       population_scaled_median = transformer.population_scaled_median_m
-      x_range_full_shape = linspace * tf.transpose(
-          population_scaled_median[:, np.newaxis]
+      x_range_full_shape = linspace * backend.transpose(
+          population_scaled_median[:, backend.newaxis]
       )
     else:
       x_range_full_shape = linspace
 
     # Flatten this into a list.
-    x_range_list = (
-        tf.reshape(tf.transpose(x_range_full_shape), [-1]).numpy().tolist()
-    )
+    x_range_list = np.asarray(
+        backend.reshape(backend.transpose(x_range_full_shape), [-1])
+    ).tolist()
 
     # Doubles each value in the list to account for alternating prior
     # and posterior.
@@ -4437,7 +4468,7 @@ class Analyzer:
   def _get_channel_hill_histogram_dataframe(
       self,
       channel_type: str,
-      data_to_histogram: tf.Tensor,
+      data_to_histogram: backend.Tensor,
       channel_names: Sequence[str],
       n_bins: int,
   ) -> pd.DataFrame:
@@ -4467,7 +4498,7 @@ class Analyzer:
     }
 
     for i, channel_name in enumerate(channel_names):
-      channel_data_np = data_to_histogram[:, i].numpy()
+      channel_data_np = np.asarray(data_to_histogram[:, i])
       channel_data_np = channel_data_np[~np.isnan(channel_data_np)]
       if channel_data_np.size == 0:
         continue
@@ -4529,7 +4560,7 @@ class Analyzer:
     if self._meridian.input_data.rf_channel is not None:
       frequency = self._meridian.rf_tensors.frequency
       if frequency is not None:
-        reshaped_frequency = tf.reshape(
+        reshaped_frequency = backend.reshape(
             frequency, (n_geos * n_media_times, self._meridian.n_rf_channels)
         )
         rf_hist_data = self._get_channel_hill_histogram_dataframe(
@@ -4547,7 +4578,7 @@ class Analyzer:
       if transformer is not None and scaled is not None:
         population_scaled_median = transformer.population_scaled_median_m
         scaled_media_units = scaled * population_scaled_median
-        reshaped_scaled_media_units = tf.reshape(
+        reshaped_scaled_media_units = backend.reshape(
             scaled_media_units,
             (n_geos * n_media_times, self._meridian.n_media_channels),
         )
@@ -4567,7 +4598,7 @@ class Analyzer:
       if transformer_om is not None and scaled_om is not None:
         population_scaled_median_om = transformer_om.population_scaled_median_m
         scaled_organic_media_units = scaled_om * population_scaled_median_om
-        reshaped_scaled_organic_media_units = tf.reshape(
+        reshaped_scaled_organic_media_units = backend.reshape(
             scaled_organic_media_units,
             (n_geos * n_media_times, self._meridian.n_organic_media_channels),
         )
@@ -4583,7 +4614,7 @@ class Analyzer:
     if self._meridian.input_data.organic_rf_channel is not None:
       frequency = self._meridian.organic_rf_tensors.organic_frequency
       if frequency is not None:
-        reshaped_frequency = tf.reshape(
+        reshaped_frequency = backend.reshape(
             frequency,
             (n_geos * n_media_times, self._meridian.n_organic_rf_channels),
         )
@@ -4659,11 +4690,11 @@ class Analyzer:
 
   def _compute_roi_aggregate(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
-      spend_with_total: tf.Tensor,
+      spend_with_total: backend.Tensor,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       metric_name: str = constants.ROI,
   ) -> xr.Dataset:
@@ -4680,8 +4711,8 @@ class Analyzer:
 
   def _compute_spend_data_aggregate(
       self,
-      spend_with_total: tf.Tensor,
-      impressions_with_total: tf.Tensor,
+      spend_with_total: backend.Tensor,
+      impressions_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
   ) -> xr.Dataset:
@@ -4717,9 +4748,9 @@ class Analyzer:
 
   def _compute_effectiveness_aggregate(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
-      impressions_with_total: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
+      impressions_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -4736,9 +4767,9 @@ class Analyzer:
 
   def _compute_cpik_aggregate(
       self,
-      incremental_kpi_prior: tf.Tensor,
-      incremental_kpi_posterior: tf.Tensor,
-      spend_with_total: tf.Tensor,
+      incremental_kpi_prior: backend.Tensor,
+      incremental_kpi_posterior: backend.Tensor,
+      spend_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -4755,17 +4786,19 @@ class Analyzer:
 
   def _compute_pct_of_contribution(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
-      expected_outcome_prior: tf.Tensor,
-      expected_outcome_posterior: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
+      expected_outcome_prior: backend.Tensor,
+      expected_outcome_posterior: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Computes the parts of `MediaSummary` related to mean expected outcome."""
-    mean_expected_outcome_prior = tf.reduce_mean(expected_outcome_prior, (0, 1))
-    mean_expected_outcome_posterior = tf.reduce_mean(
+    mean_expected_outcome_prior = backend.reduce_mean(
+        expected_outcome_prior, (0, 1)
+    )
+    mean_expected_outcome_posterior = backend.reduce_mean(
         expected_outcome_posterior, (0, 1)
     )
 
@@ -4919,8 +4952,8 @@ class Analyzer:
   def _impute_and_aggregate_spend(
       self,
       selected_times: Sequence[str] | Sequence[bool] | None,
-      media_execution_values: tf.Tensor,
-      channel_spend: tf.Tensor,
+      media_execution_values: backend.Tensor,
+      channel_spend: backend.Tensor,
       channel_names: Sequence[str],
   ) -> xr.DataArray:
     """Imputes and aggregates the spend over the selected time period.
@@ -4953,11 +4986,13 @@ class Analyzer:
     }
 
     if channel_spend.ndim == 3:
-      aggregated_spend = self.filter_and_aggregate_geos_and_times(
-          channel_spend,
-          has_media_dim=True,
-          **dim_kwargs,
-      ).numpy()
+      aggregated_spend = np.asarray(
+          self.filter_and_aggregate_geos_and_times(
+              channel_spend,
+              has_media_dim=True,
+              **dim_kwargs,
+          )
+      )
     # channel_spend.ndim can only be 3 or 1.
     else:
       # media spend can have more time points than the model time points
@@ -4973,11 +5008,11 @@ class Analyzer:
           media_exe_values,
           **dim_kwargs,
       )
-      imputed_cpmu = tf.math.divide_no_nan(
+      imputed_cpmu = backend.divide_no_nan(
           channel_spend,
           np.sum(media_exe_values, (0, 1)),
       )
-      aggregated_spend = (target_media_exe_values * imputed_cpmu).numpy()
+      aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)
 
     return xr.DataArray(
         data=aggregated_spend,
