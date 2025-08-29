@@ -2477,6 +2477,98 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           selected_times, include_media=False, include_rf=False
       )
 
+  @parameterized.product(
+      use_posterior=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_negative_baseline_probability_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    prob = self.analyzer_media_and_rf.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    self.assertEqual(prob.shape, ())
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="prior",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=0.6,
+      ),
+      dict(
+          testcase_name="prior_selected_times",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.7,
+      ),
+      dict(
+          testcase_name="prior_selected_geos",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=0.4,
+      ),
+      dict(
+          testcase_name="prior_selected_geos_times",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.6,
+      ),
+      dict(
+          testcase_name="posterior",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_times",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos_times",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.05,
+      ),
+  )
+  def test_negative_baseline_probability_returns_correct_values(
+      self, use_posterior, selected_geos, selected_times, expected_value,
+  ):
+    prob = self.analyzer_media_and_rf.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    self.assertAllClose(
+        prob,
+        expected_value,
+        atol=1e-5,
+        rtol=1e-5,
+    )
+
 
 class AnalyzerNationalTest(tf.test.TestCase, parameterized.TestCase):
 
