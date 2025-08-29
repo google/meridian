@@ -29,6 +29,7 @@ from typing_extensions import Literal
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 if TYPE_CHECKING:
+  import dataclasses
   import jax as _jax
   import tensorflow as _tf
 
@@ -197,17 +198,22 @@ def _tf_unique_with_counts(x):
   return tf.unique_with_counts(x)
 
 
-def _jax_boolean_mask(tensor, mask):
-  """JAX implementation for boolean_mask."""
-  # JAX uses standard array indexing for boolean masking.
-  return tensor[mask]
+def _jax_boolean_mask(tensor, mask, axis=None):
+  """JAX implementation for boolean_mask that supports an axis argument."""
+  import jax.numpy as jnp
+
+  if axis is None:
+    axis = 0
+  tensor_swapped = jnp.moveaxis(tensor, axis, 0)
+  masked = tensor_swapped[mask]
+  return jnp.moveaxis(masked, 0, axis)
 
 
-def _tf_boolean_mask(tensor, mask):
+def _tf_boolean_mask(tensor, mask, axis=None):
   """TensorFlow implementation for boolean_mask."""
   import tensorflow as tf
 
-  return tf.boolean_mask(tensor, mask)
+  return tf.boolean_mask(tensor, mask, axis=axis)
 
 
 def _jax_gather(params, indices):
@@ -297,6 +303,14 @@ if _BACKEND == config.Backend.JAX:
   import jax.numpy as jax_ops
   import tensorflow_probability.substrates.jax as tfp_jax
 
+  class ExtensionType:
+    """A JAX-compatible stand-in for tf.experimental.ExtensionType."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+      raise NotImplementedError(
+          "ExtensionType is not yet implemented for the JAX backend."
+      )
+
   class _JaxErrors:
     # pylint: disable=invalid-name
     ResourceExhaustedError = MemoryError
@@ -310,10 +324,14 @@ if _BACKEND == config.Backend.JAX:
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   random = tfp_jax.random
+  mcmc = tfp_jax.mcmc
   _convert_to_tensor = _ops.asarray
 
   # Standardized Public API
+  absolute = _ops.abs
   arange = _jax_arange
+  argmax = _jax_argmax
+  boolean_mask = _jax_boolean_mask
   concatenate = _ops.concatenate
   stack = _ops.stack
   split = _ops.split
@@ -328,31 +346,41 @@ if _BACKEND == config.Backend.JAX:
   transpose = _ops.transpose
   broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
+  broadcast_to = _ops.broadcast_to
   cast = _jax_cast
+  concatenate = _ops.concatenate
+  cumsum = _ops.cumsum
+  divide = _ops.divide
+  divide_no_nan = _jax_divide_no_nan
+  einsum = _ops.einsum
+  equal = _ops.equal
+  exp = _ops.exp
   expand_dims = _ops.expand_dims
   fill = _jax_fill
   gather = _jax_gather
-  boolean_mask = _jax_boolean_mask
-  equal = _ops.equal
   get_indices_where = _jax_get_indices_where
-
-  einsum = _ops.einsum
-  exp = _ops.exp
-  log = _ops.log
-  absolute = _ops.abs
-  argmax = _jax_argmax
-  cumsum = _ops.cumsum
-  reduce_sum = _ops.sum
-  reduce_mean = _ops.mean
-  reduce_std = _ops.std
-  reduce_any = _ops.any
-  reduce_min = _ops.min
-  reduce_max = _ops.max
   is_nan = _ops.isnan
-  divide = _ops.divide
-  divide_no_nan = _jax_divide_no_nan
-  unique_with_counts = _jax_unique_with_counts
+  log = _ops.log
   numpy_function = _jax_numpy_function
+  ones = _ops.ones
+  ones_like = _ops.ones_like
+  rank = _ops.ndim
+  reduce_any = _ops.any
+  reduce_max = _ops.max
+  reduce_mean = _ops.mean
+  reduce_min = _ops.min
+  reduce_std = _ops.std
+  reduce_sum = _ops.sum
+  repeat = _ops.repeat
+  reshape = _ops.reshape
+  split = _ops.split
+  stack = _ops.stack
+  tile = _ops.tile
+  transpose = _ops.transpose
+  unique_with_counts = _jax_unique_with_counts
+  where = _ops.where
+  zeros = _ops.zeros
+  zeros_like = _ops.zeros_like
 
   float32 = _ops.float32
   bool_ = _ops.bool_
@@ -378,14 +406,19 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   errors = _ops.errors
 
   Tensor = tf_backend.Tensor
+  ExtensionType = _ops.experimental.ExtensionType
 
   tfd = tfp.distributions
   bijectors = tfp.bijectors
   experimental = tfp.experimental
   random = tfp.random
+  mcmc = tfp.mcmc
 
   _convert_to_tensor = _ops.convert_to_tensor
+  absolute = _ops.math.abs
   arange = _tf_arange
+  argmax = _tf_argmax
+  boolean_mask = _tf_boolean_mask
   concatenate = _ops.concat
   stack = _ops.stack
   split = _ops.split
@@ -400,31 +433,41 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   transpose = _ops.transpose
   broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
+  broadcast_to = _ops.broadcast_to
   cast = _ops.cast
+  concatenate = _ops.concat
+  cumsum = _ops.cumsum
+  divide = _ops.divide
+  divide_no_nan = _ops.math.divide_no_nan
+  einsum = _ops.einsum
+  equal = _ops.equal
+  exp = _ops.math.exp
   expand_dims = _ops.expand_dims
   fill = _tf_fill
   gather = _tf_gather
-  boolean_mask = _tf_boolean_mask
-  equal = _ops.equal
   get_indices_where = _tf_get_indices_where
-
-  einsum = _ops.einsum
-  exp = _ops.math.exp
-  log = _ops.math.log
-  absolute = _ops.math.abs
-  argmax = _tf_argmax
-  cumsum = _ops.cumsum
-  reduce_sum = _ops.reduce_sum
-  reduce_mean = _ops.reduce_mean
-  reduce_std = _ops.math.reduce_std
-  reduce_any = _ops.reduce_any
-  reduce_min = _ops.reduce_min
-  reduce_max = _ops.reduce_max
   is_nan = _ops.math.is_nan
-  divide = _ops.divide
-  divide_no_nan = _ops.math.divide_no_nan
-  unique_with_counts = _tf_unique_with_counts
+  log = _ops.math.log
   numpy_function = _ops.numpy_function
+  ones = _ops.ones
+  ones_like = _ops.ones_like
+  rank = _ops.rank
+  reduce_any = _ops.reduce_any
+  reduce_max = _ops.reduce_max
+  reduce_mean = _ops.reduce_mean
+  reduce_min = _ops.reduce_min
+  reduce_std = _ops.math.reduce_std
+  reduce_sum = _ops.reduce_sum
+  repeat = _ops.repeat
+  reshape = _ops.reshape
+  split = _ops.split
+  stack = _ops.stack
+  tile = _ops.tile
+  transpose = _ops.transpose
+  unique_with_counts = _tf_unique_with_counts
+  where = _ops.where
+  zeros = _ops.zeros
+  zeros_like = _ops.zeros_like
 
   float32 = _ops.float32
   bool_ = _ops.bool
