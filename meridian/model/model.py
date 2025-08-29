@@ -299,6 +299,8 @@ class Meridian:
     return knots.get_knot_info(
         n_times=self.n_times,
         knots=self.model_spec.knots,
+        enable_aks=self.model_spec.enable_aks,
+        data=self.input_data,
         is_national=self.is_national,
     )
 
