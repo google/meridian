@@ -1398,7 +1398,7 @@ class Analyzer:
       use_posterior: bool = True,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       inverse_transform_outcome: bool = True,
@@ -1454,9 +1454,10 @@ class Analyzer:
         original tensors from `input_data`.
       selected_geos: Optional list of containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of dates to include.
-        The values accepted here must match time dimension coordinates from
-        `InputData.time`. By default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data or number of time periods in the `new_data` args, if provided.
+        By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -1754,7 +1755,7 @@ class Analyzer:
         are included.
       selected_times: An optional string list containing a subset of
         `InputData.time` to include or a boolean list with length equal to the
-        number of time periods in `new_media` (if provided). By default, all
+        number of time periods in KPI data in `data_tensors`. By default, all
         time periods are included.
       aggregate_geos: If True, then incremental outcome is summed over all
         regions.
@@ -2142,7 +2143,7 @@ class Analyzer:
   def _validate_geo_and_time_granularity(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -3342,7 +3343,7 @@ class Analyzer:
   def baseline_summary_metrics(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
@@ -3354,8 +3355,9 @@ class Analyzer:
     Args:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of times to include. By
-        default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -3484,8 +3486,8 @@ class Analyzer:
       freq_grid: Sequence[float] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      selected_geos: Sequence[str | int] | None = None,
-      selected_times: Sequence[str | int | bool] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3740,7 +3742,7 @@ class Analyzer:
   def predictive_accuracy(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Calculates `R-Squared`, `MAPE`, and `wMAPE` goodness of fit metrics.
@@ -3769,8 +3771,9 @@ class Analyzer:
     Args:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of dates to include. By
-        default, all time periods are included.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       batch_size: Integer representing the maximum draws per chain in each
         batch. By default, `batch_size` is `100`. The calculation is run in
         batches to avoid memory exhaustion. If a memory error occurs, try
@@ -4029,7 +4032,7 @@ class Analyzer:
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       by_reach: bool = True,
       use_optimal_frequency: bool = False,
       use_kpi: bool = False,
@@ -4044,7 +4047,7 @@ class Analyzer:
 
     A list of multipliers is applied to each media channel's total historical
     spend within `selected_geos` and `selected_times` to obtain the x-axis
-    values. The y-axis values are the incremental ouctcome generated by each
+    values. The y-axis values are the incremental outcome generated by each
     channel within `selected_geos` and `selected_times` under the counterfactual
     where media units in each geo and time period are scaled by the
     corresponding multiplier. (Media units for time periods prior to
@@ -4058,9 +4061,9 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of time dimensions to
-        include. By default, all time periods are included. Time dimension
-        strings and integers must align with the `Meridian.n_times`.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -4804,15 +4807,16 @@ class Analyzer:
 
   def get_historical_spend(
       self,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       include_media: bool = True,
       include_rf: bool = True,
   ) -> xr.DataArray:
     """Deprecated. Gets the aggregated historical spend based on the time.
 
     Args:
-      selected_times: The time period to get the historical spends. If None, the
-        historical spends will be aggregated over all time points.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4856,8 +4860,9 @@ class Analyzer:
         of all the remaining tensors.  If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
         then all tensors must be provided with the same number of time periods.
-      selected_times: The time period to get the aggregated spends. If None, the
-        spend will be aggregated over all time periods.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4948,7 +4953,9 @@ class Analyzer:
     argument, its values only affect the output when imputation is required.
 
     Args:
-      selected_times: The time period to get the aggregated spend.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
