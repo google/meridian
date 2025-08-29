@@ -2477,6 +2477,245 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           selected_times, include_media=False, include_rf=False
       )
 
+  def test_response_curves_selected_times_wrong_length(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Boolean `selected_times` must have the same number of elements as "
+        "there are time period coordinates in the input data.",
+    ):
+      self.analyzer_media_and_rf.response_curves(
+          selected_times=[True] * (_N_TIMES - 1)
+      )
+
+  def test_response_curves_new_data_selected_times_wrong_length(self):
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -n_new_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -n_new_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -n_new_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -n_new_times:
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -n_new_times:, :
+        ],
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
+        " provided with a different number of time periods than in `InputData`,"
+        " then `selected_times` must be a list of booleans with length equal to"
+        " the number of time periods in the new data.",
+    ):
+      self.analyzer_media_and_rf.response_curves(
+          new_data=new_data, selected_times=[True] * _N_TIMES
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_times(self, use_optimal_frequency):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -n_new_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -n_new_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -n_new_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -n_new_times:
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -n_new_times:, :
+        ],
+    )
+    response_curve_data = self.analyzer_media_and_rf.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertNotIn(constants.TIME, response_curve_data.coords)
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
+    # Spend for multiplier 1.0 should match the aggregated spend from new_data.
+    expected_spend = self.analyzer_media_and_rf.get_aggregated_spend(
+        new_data=new_data
+    )
+    self.assertAllClose(
+        response_curve_data[constants.SPEND].sel(spend_multiplier=1.0),
+        expected_spend.data,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=new_data.reach * new_data.frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+      )
+      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = tf.ones_like(new_data.frequency) * tf.convert_to_tensor(
+          optimal_frequency, dtype=tf.float32
+      )
+      reach = tf.math.divide_no_nan(
+          new_data.reach * new_data.frequency, frequency
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    self.assertAllClose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_data_same_times(self, use_optimal_frequency):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    # Modify only the media tensor, keep other tensors the same.
+    new_media = self.meridian_media_and_rf.media_tensors.media * 2
+    new_data = analyzer.DataTensors(
+        media=new_media,
+    )
+    response_curve_data = self.analyzer_media_and_rf.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+    original_response_curve_data = self.analyzer_media_and_rf.response_curves(
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Spend should be the same as original because spend tensors were not modified.
+    self.assertAllClose(
+        response_curve_data[constants.SPEND].values,
+        original_response_curve_data[constants.SPEND].values,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=self.meridian_media_and_rf.rf_tensors.reach
+          * self.meridian_media_and_rf.rf_tensors.frequency,
+          media_spend=self.meridian_media_and_rf.media_tensors.media_spend,
+          rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend,
+          revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi,
+      )
+      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = tf.ones_like(
+          self.meridian_media_and_rf.rf_tensors.frequency
+      ) * tf.convert_to_tensor(optimal_frequency, dtype=tf.float32)
+      reach = tf.math.divide_no_nan(
+          self.meridian_media_and_rf.rf_tensors.reach
+          * self.meridian_media_and_rf.rf_tensors.frequency,
+          frequency,
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    self.assertAllClose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
 
 class AnalyzerNationalTest(tf.test.TestCase, parameterized.TestCase):
 
