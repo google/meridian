@@ -21,6 +21,7 @@ import immutabledict
 from meridian import constants as c
 from meridian.data import input_data
 from meridian.data import load
+from meridian.model import knots
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -1843,3 +1844,33 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
       if n_organic_rf_channels
       else None,
   )
+
+
+def sample_input_data_for_aks_with_expected_knot_info() -> (
+    tuple[input_data.InputData, knots.KnotInfo]
+):
+  """Generates sample InputData and corresponding expected KnotInfo for testing.
+
+  Returns:
+    A tuple containing:
+      - InputData object with sample data.
+      - KnotInfo object with expected knot information.
+  """
+  data = sample_input_data_from_dataset(
+      random_dataset(
+          n_geos=20,
+          n_times=117,
+          n_media_times=117,
+          n_controls=2,
+          n_media_channels=5,
+      ),
+      'non_revenue',
+  )
+  expected_knot_info = knots.KnotInfo(
+      n_knots=6,
+      knot_locations=np.array([38, 39, 41, 48, 50, 55]),
+      weights=knots.l1_distance_weights(
+          117, np.array([38, 39, 41, 48, 50, 55])
+      ),
+  )
+  return data, expected_knot_info
