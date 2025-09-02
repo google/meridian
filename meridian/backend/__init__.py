@@ -15,7 +15,7 @@
 """Backend Abstraction Layer for Meridian."""
 
 import os
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING, Tuple, Union
 
 from meridian.backend import config
 import numpy as np
@@ -32,6 +32,8 @@ if TYPE_CHECKING:
   import dataclasses
   import jax as _jax
   import tensorflow as _tf
+
+  TensorShapeInstance = Union[_tf.TensorShape, Tuple[int, ...]]
 
 
 def standardize_dtype(dtype: Any) -> str:
