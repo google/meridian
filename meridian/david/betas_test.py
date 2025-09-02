@@ -1,57 +1,103 @@
 import sys
 import types
 
+import sys
+import types
+
 import numpy as np
+import pandas as pd
 import tensorflow_probability as tfp
 from absl.testing import absltest
 
-# Provide a minimal altair stub if the real library isn't available.
-try:
-  import altair as alt  # noqa: F401
-except ModuleNotFoundError:
-  alt = types.ModuleType('altair')
+# Provide a minimal altair stub for tests.
+alt = types.ModuleType('altair')
 
-  class Chart:
-    def __init__(self, df):
-      self.data = df
-      self.mark_bar_args = None
-      self.encode_args = None
-      self.properties_args = None
 
-    def mark_bar(self, **kwargs):
-      self.mark_bar_args = kwargs
-      return self
+class Chart:
+  def __init__(self, df):
+    self.data = df
+    self.mark_bar_args = None
+    self.mark_line_args = None
+    self.encode_args = None
+    self.properties_args = None
 
-    def encode(self, *args, **kwargs):
-      self.encode_args = (args, kwargs)
-      return self
+  def mark_bar(self, **kwargs):
+    self.mark_bar_args = kwargs
+    return self
 
-    def properties(self, **kwargs):
-      self.properties_args = kwargs
-      return self
+  def mark_line(self, **kwargs):
+    self.mark_line_args = kwargs
+    return self
 
-  def X(field, **kwargs):
-    return {"field": field, **kwargs}
+  def encode(self, *args, **kwargs):
+    self.encode_args = (args, kwargs)
+    return self
 
-  def Bin(**kwargs):
-    return kwargs
+  def properties(self, **kwargs):
+    self.properties_args = kwargs
+    return self
 
-  class _DataTransformers:
-    def __init__(self):
-      self.disable_called = False
 
-    def disable_max_rows(self):
-      self.disable_called = True
+def X(field, **kwargs):
+  return {"field": field, **kwargs}
 
-  alt.data_transformers = _DataTransformers()
 
-  alt.Chart = Chart
-  alt.X = X
-  alt.Bin = Bin
-  sys.modules['altair'] = alt
+def Y(field, **kwargs):
+  return {"field": field, **kwargs}
+
+
+def Color(field, **kwargs):
+  return {"field": field, **kwargs}
+
+
+def Bin(**kwargs):
+  return kwargs
+
+
+class _DataTransformers:
+  def __init__(self):
+    self.disable_called = False
+
+  def disable_max_rows(self):
+    self.disable_called = True
+
+
+alt.data_transformers = _DataTransformers()
+
+alt.Chart = Chart
+alt.X = X
+alt.Y = Y
+alt.Color = Color
+alt.Bin = Bin
+class TitleParams(dict):
+  def __init__(self, **kw):
+    super().__init__(**kw)
+
+alt.TitleParams = TitleParams
+class FacetChart(Chart):
+  pass
+
+
+class LayerChart(Chart):
+  pass
+
+
+class HConcatChart(Chart):
+  pass
+
+
+class VConcatChart(Chart):
+  pass
+
+alt.FacetChart = FacetChart
+alt.LayerChart = LayerChart
+alt.HConcatChart = HConcatChart
+alt.VConcatChart = VConcatChart
+sys.modules['altair'] = alt
 
 from meridian.david import betas
 from meridian.model import model as meridian_model
+from meridian import constants as c
 
 
 tfpd = tfp.distributions
@@ -374,6 +420,55 @@ class OptimalFreqSafeTest(absltest.TestCase):
     np.testing.assert_array_equal(
         ds.isel_args['rf_channel'], np.array([False, True])
     )
+
+
+class ViewTransformedVariableTest(absltest.TestCase):
+
+  class DA:
+    def __init__(self, values, dims):
+      self.values = np.array(values)
+      self.dims = dims
+
+  class DummyMeridian:
+    def __init__(self):
+      posterior = types.SimpleNamespace(
+          alpha_m=ViewTransformedVariableTest.DA([[[0.0]]], ('chain', 'draw', 'channel')),
+          ec_m=ViewTransformedVariableTest.DA([[[1.0]]], ('chain', 'draw', 'channel')),
+          slope_m=ViewTransformedVariableTest.DA([[[1.0]]], ('chain', 'draw', 'channel')),
+      )
+      self.inference_data = types.SimpleNamespace(posterior=posterior)
+      self.n_times = 2
+      self.n_rf_channels = 0
+      self.input_data = types.SimpleNamespace(
+          geo=types.SimpleNamespace(values=np.array(['G0'])),
+          time=types.SimpleNamespace(values=np.array([0, 1])),
+          media=types.SimpleNamespace(
+              coords={
+                  c.MEDIA_CHANNEL: types.SimpleNamespace(values=np.array(['Ch0']))
+              }
+          ),
+      )
+      media_scaled = ViewTransformedVariableTest.DA(
+          np.array([[[1.0], [2.0]]]), ('geo', 'time', 'channel')
+      )
+      self.media_tensors = types.SimpleNamespace(media_scaled=media_scaled)
+
+    def adstock_hill_media(self, media, alpha, ec, slope, n_times_output):
+      return media
+
+  def test_returns_dataframe_and_chart(self):
+    m = self.DummyMeridian()
+    df, chart = betas.view_transformed_variable(m, 'Ch0')
+    self.assertIsInstance(df, pd.DataFrame)
+    self.assertIsInstance(chart, alt.Chart)
+    expected = pd.DataFrame({
+        'time': [0, 1],
+        'channel': ['Ch0', 'Ch0'],
+        'block': ['MEDIA', 'MEDIA'],
+        'value': np.array([1.0, 2.0], dtype=np.float32),
+    })
+    pd.testing.assert_frame_equal(df, expected)
+    self.assertIs(chart.data, df)
 
 
 if __name__ == '__main__':

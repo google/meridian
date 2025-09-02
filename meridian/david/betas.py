@@ -244,14 +244,195 @@ def optimal_freq_safe(
     frequencies and channels.
   """
   out = ana.optimal_freq(**kw)
+  isel_kw = {}
 
   if selected_freqs is not None:
     freq_mask = np.isin(out.frequency.values, selected_freqs)
-    out = out.isel(frequency=freq_mask)
+    isel_kw['frequency'] = freq_mask
 
   if selected_channels is not None:
     channel_mask = np.isin(out.rf_channel.values, selected_channels)
-    out = out.isel(rf_channel=channel_mask)
+    isel_kw['rf_channel'] = channel_mask
+
+  if isel_kw:
+    out = out.isel(**isel_kw)
 
   return out
+
+
+def _posterior_mean_da(da: Any) -> np.ndarray:
+  """Return mean of posterior draws across chain/draw/sample dims."""
+  dims = list(getattr(da, 'dims', []))
+  values = np.asarray(getattr(da, 'values', da))
+  axes = [dims.index(d) for d in ('chain', 'draw', 'sample') if d in dims]
+  if axes:
+    values = values.mean(axis=tuple(axes))
+  return values
+
+
+def _tensor_from_da(da: Any) -> np.ndarray:
+  """Convert a DataArray-like object to a float32 numpy array."""
+  return np.asarray(getattr(da, 'values', da), dtype=np.float32)
+
+
+def _broadcast_param(param: np.ndarray, target_rank: int) -> np.ndarray:
+  """Ensure ``param`` has rank 1 (channel) and broadcast to ``target_rank``."""
+  arr = np.asarray(param)
+  if arr.ndim == 1:
+    arr = arr.reshape((1, 1, -1))  # geo×time×channel broadcast
+  while arr.ndim < target_rank:
+    arr = np.expand_dims(arr, 0)
+  return arr
+
+
+def _transform_block(
+    meridian: meridian_model.Meridian,
+    media: np.ndarray | None,
+    reach: np.ndarray | None,
+    frequency: np.ndarray | None,
+    alpha: np.ndarray,
+    ec: np.ndarray,
+    slope: np.ndarray,
+    tag: str,
+    geo_coords: Sequence[str],
+    time_coords: Sequence[Any],
+    channel_coords: Sequence[str],
+) -> pd.DataFrame | None:
+  """Apply adstock/hill combo and return tidy DataFrame."""
+  if media is None and reach is None:
+    return None
+
+  if media is not None and reach is None:
+    transformed = meridian.adstock_hill_media(
+        media=media,
+        alpha=_broadcast_param(alpha, media.ndim),
+        ec=_broadcast_param(ec, media.ndim),
+        slope=_broadcast_param(slope, media.ndim),
+        n_times_output=meridian.n_times,
+    )
+  else:
+    transformed = meridian.adstock_hill_rf(
+        reach=reach,
+        frequency=frequency,
+        alpha=_broadcast_param(alpha, reach.ndim),
+        ec=_broadcast_param(ec, reach.ndim),
+        slope=_broadcast_param(slope, reach.ndim),
+        n_times_output=meridian.n_times,
+    )
+
+  tidy = (
+      pd.DataFrame(
+          transformed.reshape(-1, transformed.shape[-1]),
+          columns=channel_coords,
+      )
+      .assign(geo=np.repeat(geo_coords, meridian.n_times))
+      .assign(time=np.tile(time_coords, len(geo_coords)))
+      .melt(id_vars=['geo', 'time'], var_name='channel', value_name='value')
+      .assign(block=tag)
+  )
+  return tidy
+
+
+def _transformed_predictors(
+    meridian: meridian_model.Meridian,
+    use_posterior: bool = True,
+    aggregate_geos: bool = True,
+    selected_channels: Sequence[str] | None = None,
+) -> tuple[pd.DataFrame, alt.Chart]:
+  """Return DataFrame and Altair chart of transformed predictors."""
+  idata = meridian.inference_data
+  group = 'posterior' if (use_posterior and hasattr(idata, 'posterior')) else 'prior'
+  posterior = getattr(idata, group)
+
+  def _param(name: str) -> np.ndarray:
+    return _tensor_from_da(_posterior_mean_da(getattr(posterior, name)))
+
+  alpha_m = _param('alpha_m')
+  ec_m = _param('ec_m')
+  slope_m = _param('slope_m')
+
+  if getattr(meridian, 'n_rf_channels', 0) > 0:
+    alpha_rf = _param('alpha_rf')
+    ec_rf = _param('ec_rf')
+    slope_rf = _param('slope_rf')
+  else:
+    alpha_rf = ec_rf = slope_rf = None
+
+  geo_coords = meridian.input_data.geo.values
+  time_coords = meridian.input_data.time.values
+  media_coords = meridian.input_data.media.coords[c.MEDIA_CHANNEL].values
+
+  media_scaled = _tensor_from_da(meridian.media_tensors.media_scaled)
+  df_parts: list[pd.DataFrame] = []
+
+  df_media = _transform_block(
+      meridian,
+      media=media_scaled,
+      reach=None,
+      frequency=None,
+      alpha=alpha_m,
+      ec=ec_m,
+      slope=slope_m,
+      tag='MEDIA',
+      geo_coords=geo_coords,
+      time_coords=time_coords,
+      channel_coords=media_coords,
+  )
+  df_parts.append(df_media)
+
+  if getattr(meridian, 'n_rf_channels', 0) > 0:
+    reach_scaled = _tensor_from_da(meridian.rf_tensors.reach_scaled)
+    frequency_scaled = _tensor_from_da(meridian.rf_tensors.frequency_scaled)
+    rf_coords = meridian.input_data.reach.coords[c.RF_CHANNEL].values
+    df_rf = _transform_block(
+        meridian,
+        media=None,
+        reach=reach_scaled,
+        frequency=frequency_scaled,
+        alpha=alpha_rf,
+        ec=ec_rf,
+        slope=slope_rf,
+        tag='RF',
+        geo_coords=geo_coords,
+        time_coords=time_coords,
+        channel_coords=rf_coords,
+    )
+    df_parts.append(df_rf)
+
+  df = pd.concat([d for d in df_parts if d is not None], ignore_index=True)
+
+  if selected_channels is not None:
+    df = df[df['channel'].isin(selected_channels)]
+
+  if aggregate_geos:
+    df = (
+        df.groupby(['time', 'channel', 'block'], as_index=False)
+        .agg(value=('value', 'sum'))
+    )
+
+  base = alt.Chart(df).encode(
+      x=alt.X('time:T', title='Date'),
+      y=alt.Y('value:Q', title='Transformed value', stack=None),
+      color=alt.Color('channel:N', title='Channel'),
+      tooltip=['channel', 'value', 'time:T'],
+  )
+  chart = base.mark_line().properties(width=600, height=400)
+  return df, chart
+
+
+def view_transformed_variable(
+    meridian: meridian_model.Meridian,
+    channel: str,
+    *,
+    use_posterior: bool = True,
+    aggregate_geos: bool = True,
+) -> tuple[pd.DataFrame, alt.Chart]:
+  """Return DataFrame and chart of the transformed predictor for ``channel``."""
+  return _transformed_predictors(
+      meridian,
+      use_posterior=use_posterior,
+      aggregate_geos=aggregate_geos,
+      selected_channels=[channel],
+  )
+
 
