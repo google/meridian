@@ -95,6 +95,19 @@ alt.HConcatChart = HConcatChart
 alt.VConcatChart = VConcatChart
 sys.modules['altair'] = alt
 
+class TensorStub:
+  """Minimal stand-in for a TensorFlow Tensor.
+
+  Provides ``shape`` and ``__array__`` so it can be converted to a NumPy
+  array, but intentionally lacks ``reshape`` to mimic TensorFlow's API."""
+
+  def __init__(self, values):
+    self._values = np.asarray(values)
+    self.shape = self._values.shape
+
+  def __array__(self, dtype=None):
+    return np.asarray(self._values, dtype=dtype)
+
 from meridian.david import betas
 from meridian.model import model as meridian_model
 from meridian import constants as c
@@ -490,7 +503,7 @@ class ViewTransformedVariableTest(absltest.TestCase):
       self.media_tensors = types.SimpleNamespace(media_scaled=media_scaled)
 
     def adstock_hill_media(self, media, alpha, ec, slope, n_times_output):
-      return media
+      return TensorStub(media)
 
   def test_returns_dataframe_and_chart(self):
     m = self.DummyMeridian()
@@ -501,6 +514,50 @@ class ViewTransformedVariableTest(absltest.TestCase):
         'time': [0, 1],
         'channel': ['Ch0', 'Ch0'],
         'block': ['MEDIA', 'MEDIA'],
+        'value': np.array([1.0, 2.0], dtype=np.float32),
+    })
+    pd.testing.assert_frame_equal(df, expected)
+    self.assertIs(chart.data, df)
+
+
+class ViewTransformedVariableRfTest(absltest.TestCase):
+
+  class DummyMeridian(ViewTransformedVariableTest.DummyMeridian):
+    def __init__(self):
+      super().__init__()
+      self.n_rf_channels = 1
+      self.input_data.reach = types.SimpleNamespace(
+          coords={
+              c.RF_CHANNEL: types.SimpleNamespace(values=np.array(['Rf0']))
+          }
+      )
+      posterior = self.inference_data.posterior
+      posterior.alpha_rf = ViewTransformedVariableTest.DA([[[0.0]]], ('chain', 'draw', 'channel'))
+      posterior.ec_rf = ViewTransformedVariableTest.DA([[[1.0]]], ('chain', 'draw', 'channel'))
+      posterior.slope_rf = ViewTransformedVariableTest.DA([[[1.0]]], ('chain', 'draw', 'channel'))
+      reach_scaled = ViewTransformedVariableTest.DA(
+          np.array([[[1.0], [2.0]]]), ('geo', 'time', 'channel')
+      )
+      frequency = ViewTransformedVariableTest.DA(
+          np.array([[[0.5], [0.5]]]), ('geo', 'time', 'channel')
+      )
+      self.rf_tensors = types.SimpleNamespace(
+          reach_scaled=reach_scaled,
+          frequency=frequency,
+      )
+
+    def adstock_hill_rf(self, reach, frequency, alpha, ec, slope, n_times_output):
+      return TensorStub(reach)
+
+  def test_handles_rf_frequency(self):
+    m = self.DummyMeridian()
+    df, chart = betas.view_transformed_variable(m, 'Rf0')
+    self.assertIsInstance(df, pd.DataFrame)
+    self.assertIsInstance(chart, alt.Chart)
+    expected = pd.DataFrame({
+        'time': [0, 1],
+        'channel': ['Rf0', 'Rf0'],
+        'block': ['RF', 'RF'],
         'value': np.array([1.0, 2.0], dtype=np.float32),
     })
     pd.testing.assert_frame_equal(df, expected)

@@ -406,9 +406,12 @@ def _transform_block(
         n_times_output=meridian.n_times,
     )
 
+  # ``transformed`` may be a TensorFlow Tensor which lacks ``reshape``.
+  # Convert to a NumPy array before reshaping.
+  vals = np.asarray(transformed)
   tidy = (
       pd.DataFrame(
-          transformed.reshape(-1, transformed.shape[-1]),
+          vals.reshape(-1, vals.shape[-1]),
           columns=channel_coords,
       )
       .assign(geo=np.repeat(geo_coords, meridian.n_times))
@@ -468,13 +471,13 @@ def _transformed_predictors(
 
   if getattr(meridian, 'n_rf_channels', 0) > 0:
     reach_scaled = _tensor_from_da(meridian.rf_tensors.reach_scaled)
-    frequency_scaled = _tensor_from_da(meridian.rf_tensors.frequency_scaled)
+    frequency = _tensor_from_da(meridian.rf_tensors.frequency)
     rf_coords = meridian.input_data.reach.coords[c.RF_CHANNEL].values
     df_rf = _transform_block(
         meridian,
         media=None,
         reach=reach_scaled,
-        frequency=frequency_scaled,
+        frequency=frequency,
         alpha=alpha_rf,
         ec=ec_rf,
         slope=slope_rf,
