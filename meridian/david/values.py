@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import pandas as pd
+import tensorflow as tf
 import xarray as xr
 
 from meridian.analysis import analyzer
@@ -36,7 +37,23 @@ def get_budget_optimisation_data(
 ) -> pd.DataFrame:
   """Returns optimal frequency metrics as a table."""
   ana = analyzer.Analyzer(mmm)
+
+  rf_tensors = getattr(mmm, "rf_tensors", None)
+  input_data = getattr(mmm, "input_data", None)
+  new_data = analyzer.DataTensors(
+      rf_impressions=tf.cast(rf_tensors.rf_impressions, tf.float32)
+      if getattr(rf_tensors, "rf_impressions", None) is not None
+      else None,
+      rf_spend=tf.cast(rf_tensors.rf_spend, tf.float32)
+      if getattr(rf_tensors, "rf_spend", None) is not None
+      else None,
+      revenue_per_kpi=tf.cast(input_data.revenue_per_kpi, tf.float32)
+      if getattr(input_data, "revenue_per_kpi", None) is not None
+      else None,
+  )
+
   rf_ds: xr.Dataset = ana.optimal_freq(
+      new_data=new_data,
       selected_times=selected_times,
       use_kpi=use_kpi,
       confidence_level=confidence_level,

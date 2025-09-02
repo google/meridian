@@ -1,4 +1,5 @@
 import pandas as pd
+import tensorflow as tf
 import xarray as xr
 from absl.testing import absltest
 
@@ -25,7 +26,17 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.mmm = object()
+    class DummyMMM:
+      pass
+
+    self.mmm = DummyMMM()
+    self.mmm.rf_tensors = mock.Mock(
+        rf_impressions=tf.constant([[[1.0]]], dtype=tf.float64),
+        rf_spend=tf.constant([[[2.0]]], dtype=tf.float64),
+    )
+    self.mmm.input_data = mock.Mock(
+        revenue_per_kpi=tf.constant([[3.0]], dtype=tf.float64)
+    )
     self.rf_ds = xr.Dataset(
         coords={
             values.C.FREQUENCY: [1, 2],
@@ -52,8 +63,15 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
           confidence_level=0.9,
       )
       MockAnalyzer.assert_called_once_with(self.mmm)
-      MockAnalyzer.return_value.optimal_freq.assert_called_once_with(
-          selected_times=['t'], use_kpi=True, confidence_level=0.9)
+      MockAnalyzer.return_value.optimal_freq.assert_called_once()
+      _, kwargs = MockAnalyzer.return_value.optimal_freq.call_args
+      self.assertEqual(kwargs['selected_times'], ['t'])
+      self.assertTrue(kwargs['use_kpi'])
+      self.assertEqual(kwargs['confidence_level'], 0.9)
+      new_data = kwargs['new_data']
+      self.assertEqual(new_data.rf_impressions.dtype, tf.float32)
+      self.assertEqual(new_data.rf_spend.dtype, tf.float32)
+      self.assertEqual(new_data.revenue_per_kpi.dtype, tf.float32)
 
     expected = pd.DataFrame({
         values.C.RF_CHANNEL: ['B', 'B'],
