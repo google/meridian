@@ -555,7 +555,7 @@ def get_central_tendency_and_ci(
     axis: tuple[int, ...] = (0, 1),
     include_median=False,
 ) -> np.ndarray:
-  """Calculates central tendency and confidence intervals for the given data.
+  """Calculates mean and credible intervals for the given data.
 
   Args:
     data: Data for the metric.
@@ -566,8 +566,8 @@ def get_central_tendency_and_ci(
       the median in the output Dataset (default: False).
 
   Returns:
-    A numpy array or backend.Tensor containing central tendency and confidence
-    intervals.
+    A numpy array or backend.Tensor containing the mean and credible intervals
+    for the given data. Optionally, it also includes the median.
   """
   mean = np.mean(data, axis=axis, keepdims=False)
   ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)
