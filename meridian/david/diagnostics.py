@@ -16,8 +16,14 @@ import numpy as np
 import pandas as pd
 from scipy.stats import jarque_bera as _jarque_bera
 from scipy.stats import kurtosis as _kurtosis
-from statsmodels.stats.diagnostic import het_breuschpagan as _breusch_pagan
-from statsmodels.tsa.stattools import adfuller as _adfuller
+try:  # pragma: no cover - optional dependency
+    from statsmodels.stats.diagnostic import het_breuschpagan as _breusch_pagan
+except Exception:  # pragma: no cover
+    _breusch_pagan = None
+try:  # pragma: no cover - optional dependency
+    from statsmodels.tsa.stattools import adfuller as _adfuller
+except Exception:  # pragma: no cover
+    _adfuller = None
 
 
 # --------------------------------------------------------------------
@@ -107,11 +113,157 @@ def compute_vif(X: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
 # --------------------------------------------------------------------
 
 
-def durbin_watson(residuals: np.ndarray) -> float:
-    """First-order autocorrelation diagnostic."""
-    residuals = np.asarray(residuals).ravel()
-    diff = np.diff(residuals)
-    return float(np.sum(diff**2) / np.sum(residuals**2))
+def durbin_watson(
+    residuals,
+    *,
+    time_dim: str | None = None,
+    by: tuple[str, ...] | None = None,
+    reduce_over: tuple[str, ...] = ("chain", "draw"),
+    skipna: bool = True,
+):
+    """Durbin–Watson statistic with xarray-aware conveniences.
+
+    Parameters
+    ----------
+    residuals :
+        - np.ndarray (as before): flattened DW over the vector.
+        - xr.DataArray: DW computed along the time dimension, vectorized across
+          other dims (e.g., per-geo). Chain/draw dims are averaged out by default.
+        - tuple of (y, yhat) as np.ndarray or xr.DataArray: residuals computed
+          internally as (y - yhat). If xarray, arrays are auto-aligned.
+    time_dim : str, optional
+        Name of the temporal dimension to difference along when ``residuals`` is
+        an xr.DataArray. If ``None``, try to infer from ("time", "media_time", "geo_time").
+        If no time-like dim is found, falls back to flattening behavior.
+    by : tuple[str, ...], optional
+        When residuals are an xr.DataArray, return DW per-group over these dims.
+        If ``None`` (default), returns a scalar by averaging DW across all groups.
+    reduce_over : tuple[str, ...]
+        Dims to average out *before* computing DW (useful for ("chain", "draw")).
+        Ignored for numpy input.
+    skipna : bool
+        If True, drop NaNs along the time dimension before computing DW.
+
+    Returns
+    -------
+    float or xr.DataArray
+        - float if numpy input, or if ``by is None`` (average across groups).
+        - xr.DataArray with dims ``by`` if provided.
+
+    Notes
+    -----
+    • For xr.DataArray input: DW is computed per-series along ``time_dim`` and
+      then averaged across any remaining dims unless ``by`` is specified.
+    • A small epsilon is added to the denominator to guard against division by zero.
+    """
+    import numpy as _np
+    import xarray as _xr
+
+    EPS = 1e-12
+
+    # Allow passing (y, yhat)
+    if isinstance(residuals, tuple) and len(residuals) == 2:
+        y, yhat = residuals
+        # xarray-aware alignment
+        if isinstance(y, _xr.DataArray) and isinstance(yhat, _xr.DataArray):
+            y, yhat = _xr.align(y, yhat, join="inner")
+            residuals = y - yhat
+        else:
+            residuals = _np.asarray(y) - _np.asarray(yhat)
+
+    # Numpy / list path: preserve legacy behavior
+    if not hasattr(residuals, "dims"):  # not an xarray.DataArray
+        r = _np.asarray(residuals).ravel()
+        diff = _np.diff(r)
+        denom = _np.sum(r**2) + EPS
+        return float(_np.sum(diff**2) / denom)
+
+    # Xarray path
+    da = residuals  # type: ignore[assignment]
+    # Reduce chain/draw if present
+    for d in reduce_over:
+        if d in da.dims:
+            da = da.mean(d)
+
+    # Find or infer time dimension
+    if time_dim is None:
+        try:
+            time_dim = _infer_time_dim(da)  # uses helper already defined in this module
+        except ValueError:
+            # Fall back to legacy "flatten everything" behavior
+            r = _np.asarray(da.values).ravel()
+            diff = _np.diff(r)
+            denom = _np.sum(r**2) + EPS
+            return float(_np.sum(diff**2) / denom)
+
+    # Optionally drop NaNs along time dimension
+    if skipna:
+        da = da.dropna(dim=time_dim, how="any")
+
+    def _dw_1d(x):
+        x = _np.asarray(x)
+        diff = _np.diff(x)
+        denom = _np.sum(x**2) + EPS
+        return _np.sum(diff**2) / denom
+
+    # Vectorize DW over all dims except time_dim
+    result = _xr.apply_ufunc(
+        _dw_1d,
+        da,
+        input_core_dims=[[time_dim]],
+        output_core_dims=[[]],
+        vectorize=True,
+        dask="parallelized",
+    ).rename("durbin_watson")
+
+    if by is None:
+        # Average DW across all remaining dims to return a scalar
+        if result.dims:
+            result = result.mean(result.dims)  # type: ignore[arg-type]
+        return float(result.values)
+
+    # Keep only the requested grouping dims; average the rest
+    reduce_dims = tuple(d for d in result.dims if d not in by)
+    if reduce_dims:
+        result = result.mean(reduce_dims)
+    # Ensure result has exactly the 'by' dims (may be scalar if by dims are missing)
+    return result
+
+
+def durbin_watson_from_idata(
+    idata: az.InferenceData,
+    *,
+    target_priority: tuple[str, ...] = ("kpi", "revenue"),
+    time_dim: str | None = None,
+    by: tuple[str, ...] | None = None,
+    reduce_over: tuple[str, ...] = ("chain", "draw"),
+):
+    """DW from ArviZ InferenceData posterior predictive (mean over chains/draws).
+
+    Example: ``durbin_watson_from_idata(mmm.inference_data, by=("geo",))``
+    """
+    import xarray as _xr
+
+    if not hasattr(idata, "posterior_predictive"):
+        raise AttributeError("InferenceData has no posterior_predictive group.")
+
+    target = next(
+        (v for v in target_priority if v in idata.posterior_predictive.data_vars),
+        None,
+    )
+    if target is None:
+        raise KeyError(
+            f"None of {target_priority} found in posterior_predictive; "
+            f"available: {list(idata.posterior_predictive.data_vars)}"
+        )
+
+    yhat = idata.posterior_predictive[target].mean(dim=reduce_over)
+    yobs = idata.observed_data[target]
+    yobs, yhat = _xr.align(yobs, yhat, join="inner")
+
+    return durbin_watson(
+        yobs - yhat, time_dim=time_dim, by=by, reduce_over=(), skipna=True
+    )
 
 
 # --------------------------------------------------------------------
@@ -167,6 +319,8 @@ def mass_above_threshold(
 
 def augmented_dickey_fuller(series: np.ndarray):
     """Returns the ADF statistic and p-value."""
+    if _adfuller is None:  # pragma: no cover - optional dependency
+        raise ModuleNotFoundError("statsmodels is required for augmented_dickey_fuller")
     stat, pvalue, *_ = _adfuller(np.asarray(series).ravel())
     return float(stat), float(pvalue)
 
@@ -252,6 +406,10 @@ def breusch_pagan_godfrey(
     residuals: np.ndarray, exog: Union[np.ndarray, pd.DataFrame]
 ) -> Dict[str, float]:
     """Tests residuals for heteroscedasticity with respect to ``exog``."""
+    if _breusch_pagan is None:  # pragma: no cover - optional dependency
+        raise ModuleNotFoundError(
+            "statsmodels is required for breusch_pagan_godfrey"
+        )
     if isinstance(exog, pd.DataFrame):
         X = exog.values
     else:

@@ -48,11 +48,67 @@ class ComputeVifTest(absltest.TestCase):
 
 class DurbinWatsonTest(absltest.TestCase):
 
-    def test_statistic(self):
+    def test_statistic_numpy(self):
         residuals = np.array([0.5, 0.1, -0.3, 0.2])
         diff = np.diff(residuals)
         expected = np.sum(diff**2) / np.sum(residuals**2)
         self.assertAlmostEqual(diagnostics.durbin_watson(residuals), expected)
+
+    def test_tuple_input(self):
+        y = np.array([0.5, 0.1, -0.3, 0.2])
+        yhat = np.array([0.4, 0.2, -0.2, 0.3])
+        residuals = y - yhat
+        diff = np.diff(residuals)
+        expected = np.sum(diff**2) / np.sum(residuals**2)
+        self.assertAlmostEqual(diagnostics.durbin_watson((y, yhat)), expected)
+
+    def test_xarray_group(self):
+        resid = xr.DataArray(
+            np.array([
+                [0.5, 0.1, -0.3, 0.2],
+                [1.0, 1.2, 1.1, 0.9],
+            ]),
+            dims=("geo", "time"),
+            coords={"geo": ["g1", "g2"], "time": np.arange(4)},
+        )
+        result_geo = diagnostics.durbin_watson(resid, by=("geo",))
+        expected_geo = []
+        for row in resid.values:
+            diff = np.diff(row)
+            expected_geo.append(np.sum(diff**2) / np.sum(row**2))
+        np.testing.assert_allclose(result_geo.values, np.array(expected_geo))
+
+        result_scalar = diagnostics.durbin_watson(resid)
+        self.assertAlmostEqual(result_scalar, float(np.mean(expected_geo)))
+
+
+class DurbinWatsonFromIdataTest(absltest.TestCase):
+
+    def test_from_idata(self):
+        yobs = xr.DataArray(
+            np.array([
+                [0.5, 0.1, -0.3, 0.2],
+                [1.0, 1.2, 1.1, 0.9],
+            ]),
+            dims=("geo", "time"),
+            coords={"geo": ["g1", "g2"], "time": np.arange(4)},
+        )
+        pp = np.array(
+            [[[[0.4, 0.2, -0.2, 0.3], [0.9, 1.1, 1.0, 0.8]]]]
+        )  # shape (chain, draw, geo, time)
+        idata = az.from_dict(
+            posterior_predictive={"kpi": pp},
+            observed_data={"kpi": yobs},
+            coords={"geo": ["g1", "g2"], "time": np.arange(4)},
+            dims={"kpi": ["geo", "time"]},
+        )
+        result = diagnostics.durbin_watson_from_idata(idata, by=("geo",))
+
+        yhat_mean = xr.DataArray(pp, dims=("chain", "draw", "geo", "time")).mean(
+            dim=("chain", "draw")
+        )
+        expected = diagnostics.durbin_watson((yobs, yhat_mean), by=("geo",))
+        np.testing.assert_allclose(result.values, expected.values)
 
 
 class JarqueBeraTest(absltest.TestCase):
@@ -82,6 +138,8 @@ class MassAboveThresholdTest(absltest.TestCase):
 class AugmentedDickeyFullerTest(absltest.TestCase):
 
     def test_statistic(self):
+        if diagnostics._adfuller is None:
+            self.skipTest("statsmodels not installed")
         series = np.array([0.0, 0.1, 0.05, 0.2, 0.15])
         stat, p = diagnostics.augmented_dickey_fuller(series)
         self.assertTrue(np.isfinite(stat))
@@ -148,6 +206,8 @@ class InferTimeDimTest(absltest.TestCase):
 class BreuschPaganGodfreyTest(absltest.TestCase):
 
     def test_statistic(self):
+        if diagnostics._breusch_pagan is None:
+            self.skipTest("statsmodels not installed")
         residuals = np.array([0.5, 0.1, -0.3, 0.2])
         exog = pd.DataFrame({"x1": [1, 2, 3, 4], "x2": [4, 3, 2, 1]})
         result = diagnostics.breusch_pagan_godfrey(residuals, exog)
