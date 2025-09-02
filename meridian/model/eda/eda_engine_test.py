@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants
@@ -24,8 +25,8 @@ import xarray as xr
 
 class EDAEngineTest(
     parameterized.TestCase,
-    model_test_data.WithInputDataSamples,
     tf.test.TestCase,
+    model_test_data.WithInputDataSamples,
 ):
 
   def setUp(self):
@@ -101,6 +102,51 @@ class EDAEngineTest(
     self.assertIsInstance(true_media_da, xr.DataArray)
     self.assertAllClose(media_da.values, true_media_da.values[:, start:, :])
 
+  # --- Test cases for media_raw_da_national ---
+  def test_media_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(
+        self.input_data_non_media_and_organic_same_time_dims
+    )
+    engine = eda_engine.EDAEngine(meridian)
+    media_raw_da_national = engine.media_raw_da_national
+    self.assertIsInstance(media_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        media_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        media_raw_da_national.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
+    )
+
+    # Check values
+    true_media_raw_da = meridian.input_data.media
+    self.assertIsNotNone(true_media_raw_da)
+    expected_da = true_media_raw_da.sum(dim=constants.GEO)
+    self.assertAllClose(media_raw_da_national.values, expected_da.values)
+
+  def test_media_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    media_raw_da_national = engine.media_raw_da_national
+    self.assertIsInstance(media_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        media_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    expected_media_raw_da = engine.media_raw_da
+    self.assertIsInstance(expected_media_raw_da, xr.DataArray)
+    self.assertAllClose(
+        media_raw_da_national.values, expected_media_raw_da.values
+    )
+
   # --- Test cases for media_scaled_da ---
   @parameterized.named_parameters(
       dict(
@@ -135,6 +181,67 @@ class EDAEngineTest(
     start = meridian.n_media_times - meridian.n_times
     self.assertAllClose(
         media_da.values, meridian.media_tensors.media_scaled[:, start:, :]
+    )
+
+  # --- Test cases for media_scaled_da_national ---
+  def test_media_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(
+        self.input_data_non_media_and_organic_same_time_dims
+    )
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_scale_factor = 2.0
+    with mock.patch.object(
+        eda_engine.transformers,
+        "MediaTransformer",
+        autospec=True,
+    ) as mock_transformer_cls:
+      mock_transformer = mock_transformer_cls.return_value
+      mock_transformer.forward.side_effect = (
+          lambda x: tf.cast(x, tf.float32) * mock_scale_factor
+      )
+
+      media_scaled_da_national = engine.media_scaled_da_national
+      self.assertIsInstance(media_scaled_da_national, xr.DataArray)
+      self.assertEqual(
+          media_scaled_da_national.shape,
+          (
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      )
+      self.assertCountEqual(
+          media_scaled_da_national.coords.keys(),
+          [constants.TIME, constants.MEDIA_CHANNEL],
+      )
+
+      # Check values
+      true_media_raw_da = meridian.input_data.media
+      self.assertIsNotNone(true_media_raw_da)
+      expected_da = true_media_raw_da.sum(dim=constants.GEO)
+      scaled_expected_values = expected_da.values * mock_scale_factor
+      self.assertAllClose(
+          media_scaled_da_national.values,
+          scaled_expected_values,
+      )
+
+  def test_media_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    media_scaled_da_national = engine.media_scaled_da_national
+    self.assertIsInstance(media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    expected_media_scaled_da = engine.media_scaled_da
+    self.assertIsInstance(expected_media_scaled_da, xr.DataArray)
+    self.assertAllClose(
+        media_scaled_da_national.values, expected_media_scaled_da.values
     )
 
   # --- Test cases for media_spend_da ---
@@ -249,6 +356,115 @@ class EDAEngineTest(
         meridian.organic_media_tensors.organic_media_scaled[:, start:, :],
     )
 
+  # --- Test cases for organic_media_raw_da_national ---
+  def test_organic_media_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(
+        self.input_data_non_media_and_organic_same_time_dims
+    )
+    engine = eda_engine.EDAEngine(meridian)
+    organic_media_raw_da_national = engine.organic_media_raw_da_national
+    self.assertIsInstance(organic_media_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_media_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_media_raw_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
+    )
+
+    # Check values
+    true_organic_media_raw_da = meridian.input_data.organic_media
+    self.assertIsNotNone(true_organic_media_raw_da)
+    expected_da = true_organic_media_raw_da.sum(dim=constants.GEO)
+    self.assertAllClose(
+        organic_media_raw_da_national.values, expected_da.values
+    )
+
+  def test_organic_media_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_media_raw_da_national = engine.organic_media_raw_da_national
+    self.assertIsInstance(organic_media_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_media_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+        ),
+    )
+    expected_organic_media_raw_da = engine.organic_media_raw_da
+    self.assertIsInstance(expected_organic_media_raw_da, xr.DataArray)
+    self.assertAllClose(
+        organic_media_raw_da_national.values,
+        expected_organic_media_raw_da.values,
+    )
+
+  # --- Test cases for organic_media_scaled_da_national ---
+  def test_organic_media_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(
+        self.input_data_non_media_and_organic_same_time_dims
+    )
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_scale_factor = 2.0
+    with mock.patch.object(
+        eda_engine.transformers,
+        "MediaTransformer",
+        autospec=True,
+    ) as mock_transformer_cls:
+      mock_transformer = mock_transformer_cls.return_value
+      mock_transformer.forward.side_effect = (
+          lambda x: tf.cast(x, tf.float32) * mock_scale_factor
+      )
+
+      organic_media_scaled_da_national = engine.organic_media_scaled_da_national
+      self.assertIsInstance(organic_media_scaled_da_national, xr.DataArray)
+      self.assertEqual(
+          organic_media_scaled_da_national.shape,
+          (
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+          ),
+      )
+      self.assertCountEqual(
+          organic_media_scaled_da_national.coords.keys(),
+          [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
+      )
+
+      # Check values
+      true_organic_media_raw_da = meridian.input_data.organic_media
+      self.assertIsNotNone(true_organic_media_raw_da)
+      expected_da = true_organic_media_raw_da.sum(dim=constants.GEO)
+      scaled_expected_values = expected_da.values * mock_scale_factor
+      self.assertAllClose(
+          organic_media_scaled_da_national.values, scaled_expected_values
+      )
+
+  def test_organic_media_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_media_scaled_da_national = engine.organic_media_scaled_da_national
+    self.assertIsInstance(organic_media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+        ),
+    )
+    expected_organic_media_scaled_da = engine.organic_media_scaled_da
+    self.assertIsInstance(expected_organic_media_scaled_da, xr.DataArray)
+    self.assertAllClose(
+        organic_media_scaled_da_national.values,
+        expected_organic_media_scaled_da.values,
+    )
+
   # --- Test cases for non_media_scaled_da ---
   @parameterized.named_parameters(
       dict(
@@ -319,6 +535,49 @@ class EDAEngineTest(
     )
     self.assertAllClose(rf_spend_da.values, meridian.rf_tensors.rf_spend)
 
+  # --- Test cases for rf_spend_da_national ---
+  def test_rf_spend_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_spend_da_national = engine.rf_spend_da_national
+    self.assertIsInstance(rf_spend_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_spend_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        rf_spend_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # Check values
+    true_rf_spend_da = meridian.input_data.rf_spend
+    self.assertIsNotNone(true_rf_spend_da)
+    expected_da = true_rf_spend_da.sum(dim=constants.GEO)
+    self.assertAllClose(rf_spend_da_national.values, expected_da.values)
+
+  def test_rf_spend_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_spend_da_national = engine.rf_spend_da_national
+    self.assertIsInstance(rf_spend_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_spend_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_rf_spend_da = engine.rf_spend_da
+    self.assertIsInstance(expected_rf_spend_da, xr.DataArray)
+    self.assertAllClose(
+        rf_spend_da_national.values, expected_rf_spend_da.values
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
@@ -336,6 +595,16 @@ class EDAEngineTest(
           property_name="media_scaled_da",
       ),
       dict(
+          testcase_name="media_raw_da_national",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_raw_da_national",
+      ),
+      dict(
+          testcase_name="media_scaled_da_national",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_scaled_da_national",
+      ),
+      dict(
           testcase_name="media_spend_da",
           input_data_fixture="input_data_with_rf_only",
           property_name="media_spend_da",
@@ -351,6 +620,16 @@ class EDAEngineTest(
           property_name="organic_media_scaled_da",
       ),
       dict(
+          testcase_name="organic_media_raw_da_national",
+          input_data_fixture="input_data_with_media_and_rf",
+          property_name="organic_media_raw_da_national",
+      ),
+      dict(
+          testcase_name="organic_media_scaled_da_national",
+          input_data_fixture="input_data_with_media_and_rf",
+          property_name="organic_media_scaled_da_national",
+      ),
+      dict(
           testcase_name="non_media_scaled_da",
           input_data_fixture="input_data_with_media_and_rf",
           property_name="non_media_scaled_da",
@@ -359,6 +638,11 @@ class EDAEngineTest(
           testcase_name="rf_spend_da",
           input_data_fixture="input_data_with_media_only",
           property_name="rf_spend_da",
+      ),
+      dict(
+          testcase_name="rf_spend_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="rf_spend_da_national",
       ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
