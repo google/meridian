@@ -276,29 +276,32 @@ def plot_posterior_coef(
     width: int = 400,
     height: int = 200,
 ) -> alt.Chart:
-  """Histogram of posterior draws for one coefficient on the log scale."""
+  """Histogram of posterior draws for one coefficient.
+
+  Uses a generic column name to avoid Vega-Lite field parsing issues when
+  ``parameter`` contains characters like brackets. This ensures compatibility
+  with environments that do not honour field quoting.
+  """
   _check_fitted(mmm)
   samples = get_posterior_coef_samples(mmm, parameter, index)
 
-  import pandas as pd, altair as alt
+  # Use a safe column name so Altair/Vega-Lite always recognise the field.
+  samples = np.asarray(samples).astype(float)
+  df = pd.DataFrame({"value": samples})
+
   alt.data_transformers.disable_max_rows()  # avoid silent truncation
-
-  col_name = f"{parameter}[{index}]"
-  df = pd.DataFrame({col_name: samples})
-
-  field = f"`{col_name}`:Q"
 
   return (
       alt.Chart(df)
       .mark_bar(opacity=0.7)
       .encode(
-          x=alt.X(field, bin=alt.Bin(maxbins=maxbins)),
-          y="count()",
+          x=alt.X("value:Q", bin=alt.Bin(maxbins=maxbins), title="Value"),
+          y=alt.Y("count()", title="Count"),
       )
       .properties(
           width=width,
           height=height,
-          title=f"Posterior of {col_name} (log scale)",
+          title=f"Posterior of {parameter}[{index}]",
       )
   )
 

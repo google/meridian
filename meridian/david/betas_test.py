@@ -420,14 +420,14 @@ class PlotPosteriorCoefTest(absltest.TestCase):
     m = DummyMeridian(posterior)
     chart = betas.plot_posterior_coef(m, 'a', 1, maxbins=20, width=300, height=100)
     self.assertIsInstance(chart, alt.Chart)
-    self.assertEqual(chart.properties_args.get('title'), 'Posterior of a[1] (log scale)')
+    self.assertEqual(chart.properties_args.get('title'), 'Posterior of a[1]')
     self.assertEqual(chart.properties_args.get('width'), 300)
     self.assertEqual(chart.properties_args.get('height'), 100)
-    self.assertEqual(list(chart.data.columns), ['a[1]'])
-    # Ensure encoding used the provided maxbins and quoted field name.
+    self.assertEqual(list(chart.data.columns), ['value'])
+    # Ensure encoding used the provided maxbins and safe field name.
     _, enc_kwargs = chart.encode_args
     self.assertEqual(enc_kwargs['x']['bin']['maxbins'], 20)
-    self.assertEqual(enc_kwargs['x']['field'], '`a[1]`:Q')
+    self.assertEqual(enc_kwargs['x']['field'], 'value:Q')
 
 
 class OptimalFreqSafeTest(absltest.TestCase):
