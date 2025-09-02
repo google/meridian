@@ -169,6 +169,18 @@ def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
   )
 
 
+def _jax_make_tensor_proto(*args, **kwargs):  # pylint: disable=unused-argument
+  raise NotImplementedError(
+      "backend.make_tensor_proto is not implemented for the JAX backend."
+  )
+
+
+def _jax_make_ndarray(*args, **kwargs):  # pylint: disable=unused-argument
+  raise NotImplementedError(
+      "backend.make_ndarray is not implemented for the JAX backend."
+  )
+
+
 def _jax_get_indices_where(condition):
   """JAX implementation for get_indices_where."""
   import jax.numpy as jnp
@@ -182,6 +194,13 @@ def _tf_get_indices_where(condition):
 
   return tf.where(condition)
 
+
+def _jax_tile(*args, **kwargs):
+  """JAX wrapper for tile that supports the `multiples` keyword argument."""
+  import jax.numpy as jnp
+  if 'multiples' in kwargs:
+    kwargs['reps'] = kwargs.pop('multiples')
+  return jnp.tile(*args, **kwargs)
 
 def _jax_unique_with_counts(x):
   """JAX implementation for unique_with_counts."""
@@ -331,6 +350,7 @@ if _BACKEND == config.Backend.JAX:
 
   # Standardized Public API
   absolute = _ops.abs
+  allclose = _ops.allclose
   arange = _jax_arange
   argmax = _jax_argmax
   boolean_mask = _jax_boolean_mask
@@ -359,10 +379,13 @@ if _BACKEND == config.Backend.JAX:
   exp = _ops.exp
   expand_dims = _ops.expand_dims
   fill = _jax_fill
+  function = jax.jit
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
   is_nan = _ops.isnan
   log = _ops.log
+  make_ndarray = _jax_make_ndarray
+  make_tensor_proto = _jax_make_tensor_proto
   numpy_function = _jax_numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -377,7 +400,7 @@ if _BACKEND == config.Backend.JAX:
   reshape = _ops.reshape
   split = _ops.split
   stack = _ops.stack
-  tile = _ops.tile
+  tile = _jax_tile
   transpose = _ops.transpose
   unique_with_counts = _jax_unique_with_counts
   where = _ops.where
@@ -388,9 +411,6 @@ if _BACKEND == config.Backend.JAX:
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
-
-  function = jax.jit
-  allclose = _ops.allclose
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     raise NotImplementedError(
@@ -418,6 +438,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   _convert_to_tensor = _ops.convert_to_tensor
   absolute = _ops.math.abs
+  allclose = _ops.experimental.numpy.allclose
   arange = _tf_arange
   argmax = _tf_argmax
   boolean_mask = _tf_boolean_mask
@@ -446,10 +467,13 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   exp = _ops.math.exp
   expand_dims = _ops.expand_dims
   fill = _tf_fill
+  function = _ops.function
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
   is_nan = _ops.math.is_nan
   log = _ops.math.log
+  make_ndarray = _ops.make_ndarray
+  make_tensor_proto = _ops.make_tensor_proto
   numpy_function = _ops.numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -462,6 +486,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reduce_sum = _ops.reduce_sum
   repeat = _ops.repeat
   reshape = _ops.reshape
+  set_random_seed = tf_backend.keras.utils.set_random_seed
   split = _ops.split
   stack = _ops.stack
   tile = _ops.tile
@@ -475,11 +500,6 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   bool_ = _ops.bool
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape
-
-  function = _ops.function
-  allclose = _ops.experimental.numpy.allclose
-
-  set_random_seed = tf_backend.keras.utils.set_random_seed
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
