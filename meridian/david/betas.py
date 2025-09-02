@@ -181,6 +181,92 @@ def fit_parameter_coef_distribution(
   return estimate_distribution(samples, prior_slice)
 
 
+def inspect_t_stat(
+    mmm: meridian_model.Meridian,
+    channel_index: int,
+    *,
+    scale: str = "auto",
+    geo_index: int | None = None,
+) -> Mapping[str, float]:
+  """Return t/z statistics for a beta coefficient.
+
+  Parameters
+  ----------
+  mmm:
+    Fitted :class:`Meridian` model instance.
+  channel_index:
+    Index of the media channel to inspect.
+  scale:
+    ``"auto"`` (default) chooses the coefficient scale based on the
+    model's ``media_effects_dist``. Use ``"linear"`` to force computation on
+    the linear coefficient (``beta_gm``) or ``"log"`` to operate on the
+    log-scale mean parameter (``beta_m``).
+  geo_index:
+    Optional geo index to inspect. When ``None`` and the model has multiple
+    geos, the coefficients are averaged over geos within each draw.
+
+  Returns
+  -------
+  Mapping[str, float]
+    A dictionary with mean, standard deviation (``sd``), standard error
+    (``se``), z-score (``z``), t-statistic (``t``) and the probability that the
+    coefficient is greater than zero.
+  """
+  _check_fitted(mmm)
+
+  if scale not in {"auto", "linear", "log"}:
+    raise ValueError("scale must be 'auto', 'linear' or 'log'")
+
+  use_linear = scale in {"auto", "linear"}
+  if mmm.media_effects_dist == c.MEDIA_EFFECTS_NORMAL:
+    samples = get_posterior_coef_samples(mmm, c.BETA_M, channel_index)
+    ess_source = c.BETA_M
+  else:  # log-normal effects
+    if use_linear:
+      arr = mmm.inference_data.posterior[c.BETA_GM].values
+      if arr.ndim == 4:  # chain, draw, geo, channel
+        if geo_index is None:
+          samples = arr.mean(axis=2)[..., channel_index].reshape(-1)
+        else:
+          samples = arr[..., geo_index, channel_index].reshape(-1)
+      else:  # national model: chain, draw, channel
+        samples = arr[..., channel_index].reshape(-1)
+      ess_source = c.BETA_GM
+    else:
+      samples = get_posterior_coef_samples(mmm, c.BETA_M, channel_index)
+      ess_source = c.BETA_M
+
+  try:
+    import arviz as az  # type: ignore
+    da = mmm.inference_data.posterior[ess_source]
+    if hasattr(da, "dims"):
+      if ess_source == c.BETA_GM and "geo" in da.dims:
+        if geo_index is None:
+          da = da.mean("geo")
+        else:
+          da = da.isel(geo=geo_index)
+      if da.dims:
+        da = da.isel({da.dims[-1]: channel_index})
+    ess = float(az.ess(da).values)  # type: ignore[arg-type]
+  except Exception:  # pragma: no cover - arviz optional
+    ess = samples.size
+
+  mean = float(np.mean(samples))
+  sd = float(np.std(samples, ddof=1))
+  se = float(sd / np.sqrt(max(ess, 1)))
+  z = float(mean / sd) if sd > 0 else np.nan
+  t = float(mean / se) if se > 0 else np.nan
+  p_gt0 = float((samples > 0).mean())
+  return {
+      "mean": mean,
+      "sd": sd,
+      "se": se,
+      "z": z,
+      "t": t,
+      "p(beta>0)": p_gt0,
+  }
+
+
 def plot_posterior_coef(
     mmm: meridian_model.Meridian,
     parameter: str,

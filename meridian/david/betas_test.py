@@ -127,7 +127,13 @@ class DummyInferenceData:
 
 
 class DummyMeridian:
-  def __init__(self, posterior=None, priors=None, channels=None):
+  def __init__(
+      self,
+      posterior=None,
+      priors=None,
+      channels=None,
+      media_effects_dist=c.MEDIA_EFFECTS_NORMAL,
+  ):
     self.inference_data = DummyInferenceData(posterior)
     self.prior_broadcast = types.SimpleNamespace(**(priors or {}))
     if channels is not None:
@@ -135,6 +141,7 @@ class DummyMeridian:
     else:
       media_channel = None
     self.input_data = types.SimpleNamespace(media_channel=media_channel)
+    self.media_effects_dist = media_effects_dist
 
 
 class CheckFittedTest(absltest.TestCase):
@@ -362,6 +369,35 @@ class GetBetaChannelNamesTest(absltest.TestCase):
   def test_no_channels_returns_empty(self):
     m = DummyMeridian({'a': [[1.0]]})
     self.assertEqual(betas.get_beta_channel_names(m), [])
+
+
+class InspectTStatTest(absltest.TestCase):
+
+  def test_normal_effects(self):
+    posterior = {c.BETA_M: [[[1.0, 2.0], [3.0, 4.0]]]}
+    m = DummyMeridian(posterior, channels=['A', 'B'])
+    result = betas.inspect_t_stat(m, 0)
+    self.assertAlmostEqual(result['mean'], 2.0)
+    self.assertAlmostEqual(result['sd'], np.sqrt(2.0))
+    self.assertAlmostEqual(result['t'], 2.0)
+    self.assertEqual(result['p(beta>0)'], 1.0)
+
+  def test_log_normal_linear_and_log(self):
+    posterior = {
+        c.BETA_M: [[[0.0, 0.0], [1.0, 1.0]]],
+        c.BETA_GM: [[[[1.0, 2.0]], [[3.0, 4.0]]]],
+    }
+    m = DummyMeridian(
+        posterior,
+        channels=['A', 'B'],
+        media_effects_dist=c.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+    res_lin = betas.inspect_t_stat(m, 0)
+    self.assertAlmostEqual(res_lin['mean'], 2.0)
+    self.assertAlmostEqual(res_lin['t'], 2.0)
+    res_log = betas.inspect_t_stat(m, 0, scale='log')
+    self.assertAlmostEqual(res_log['mean'], 0.5)
+    self.assertAlmostEqual(res_log['t'], 1.0)
 
 
 class PlotPosteriorCoefTest(absltest.TestCase):
