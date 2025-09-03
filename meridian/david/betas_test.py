@@ -550,6 +550,20 @@ class ViewTransformedVariableTest(absltest.TestCase):
     pd.testing.assert_frame_equal(df, expected)
     self.assertIs(chart.data, df)
 
+  def test_optionally_plots_raw_variable(self):
+    m = self.DummyMeridian()
+    df, chart = betas.view_transformed_variable(m, 'Ch0', show_raw=True)
+    self.assertIsInstance(chart, alt.LayerChart)
+    self.assertEqual(len(chart.layer), 2)
+    self.assertIs(chart.layer[0].data, df)
+    expected_raw = pd.DataFrame({
+        'time': [0, 1],
+        'raw_value': np.array([1.0, 2.0], dtype=np.float32),
+    })
+    pd.testing.assert_frame_equal(chart.layer[1].data, expected_raw)
+    y_args = chart.layer[1].encode_args[1]['y']
+    self.assertEqual(y_args['axis']['orient'], 'right')
+
 
 class ViewTransformedVariableRfTest(absltest.TestCase):
 
@@ -593,6 +607,16 @@ class ViewTransformedVariableRfTest(absltest.TestCase):
     })
     pd.testing.assert_frame_equal(df, expected)
     self.assertIs(chart.data, df)
+
+  def test_optionally_plots_raw_variable(self):
+    m = self.DummyMeridian()
+    df, chart = betas.view_transformed_variable(m, 'Rf0', show_raw=True)
+    self.assertIsInstance(chart, alt.LayerChart)
+    expected_raw = pd.DataFrame({
+        'time': [0, 1],
+        'raw_value': np.array([1.0, 2.0], dtype=np.float32),
+    })
+    pd.testing.assert_frame_equal(chart.layer[1].data, expected_raw)
 
 
 if __name__ == '__main__':

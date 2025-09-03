@@ -518,14 +518,73 @@ def view_transformed_variable(
     *,
     use_posterior: bool = True,
     aggregate_geos: bool = True,
+    show_raw: bool = False,
 ) -> tuple[pd.DataFrame, alt.Chart]:
-  """Return DataFrame and chart of the transformed predictor for ``channel``."""
-  return _transformed_predictors(
+  """Return DataFrame and chart of the transformed predictor for ``channel``.
+
+  If ``show_raw`` is ``True``, the untransformed predictor is overlaid on the
+  same chart with an independent y-axis on the right-hand side.
+  """
+
+  df, chart = _transformed_predictors(
       meridian,
       use_posterior=use_posterior,
       aggregate_geos=aggregate_geos,
       selected_channels=[channel],
   )
+
+  if not show_raw:
+    return df, chart
+
+  # Determine whether ``channel`` refers to media or RF reach/frequency and
+  # extract the corresponding raw values prior to adstock/hill transformation.
+  geo_coords = meridian.input_data.geo.values
+  time_coords = meridian.input_data.time.values
+
+  media_channels = meridian.input_data.media.coords[c.MEDIA_CHANNEL].values
+  raw_array = None
+  if channel in media_channels:
+    media = _tensor_from_da(meridian.media_tensors.media_scaled)
+    idx = int(np.where(media_channels == channel)[0][0])
+    raw_array = media[:, :, idx]
+  elif getattr(meridian, 'n_rf_channels', 0) > 0:
+    rf_channels = meridian.input_data.reach.coords[c.RF_CHANNEL].values
+    if channel in rf_channels:
+      reach = _tensor_from_da(meridian.rf_tensors.reach_scaled)
+      idx = int(np.where(rf_channels == channel)[0][0])
+      raw_array = reach[:, :, idx]
+
+  if raw_array is None:
+    return df, chart
+
+  raw_df = (
+      pd.DataFrame(raw_array, index=geo_coords, columns=time_coords)
+      .stack()
+      .rename('raw_value')
+      .reset_index()
+      .rename(columns={'level_0': 'geo', 'level_1': 'time'})
+  )
+  if aggregate_geos:
+    raw_df = raw_df.groupby('time', as_index=False).agg(raw_value=('raw_value', 'sum'))
+
+  raw_chart = (
+      alt.Chart(raw_df)
+      .mark_line(color='black')
+      .encode(
+          x=alt.X('time:T', title='Date'),
+          y=alt.Y('raw_value:Q', axis={'title': 'Raw value', 'orient': 'right'}),
+          tooltip=['raw_value', 'time:T'],
+      )
+  )
+
+  try:
+    chart = (chart + raw_chart).resolve_scale(y='independent')
+  except Exception:  # pragma: no cover - for altair stubs without layering
+    layer_chart = alt.LayerChart(None)
+    layer_chart.layer = [chart, raw_chart]
+    chart = layer_chart
+
+  return df, chart
 
 
 def plot_posterior_coef_as_normal(
