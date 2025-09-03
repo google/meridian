@@ -72,10 +72,8 @@ class TestAdstockDecayFunction(parameterized.TestCase):
 
   @parameterized.named_parameters(*_DECAY_FUNCTIONS)
   def test_from_uniform_type(self, decay_functions):
-    adstock_decay_function = (
-        adstock_hill.AdstockDecaySpec.from_consistent_type(
-            decay_functions
-        )
+    adstock_decay_function = adstock_hill.AdstockDecaySpec.from_consistent_type(
+        decay_functions
     )
 
     self.assertEqual(adstock_decay_function.media, decay_functions)
@@ -92,88 +90,71 @@ class TestComputeDecayWeights(parameterized.TestCase):
           testcase_name="geometric_0.0",
           alpha=0.0,
           decay_function=constants.GEOMETRIC_DECAY,
-          expected_weights=_GEOMETRIC_0_0_WEIGHTS
-          ),
+          expected_weights=_GEOMETRIC_0_0_WEIGHTS,
+      ),
       dict(
           testcase_name="geometric_0.5",
           alpha=0.5,
           decay_function=constants.GEOMETRIC_DECAY,
-          expected_weights=_GEOMETRIC_0_5_WEIGHTS
-          ),
+          expected_weights=_GEOMETRIC_0_5_WEIGHTS,
+      ),
       dict(
           testcase_name="geometric_1.0",
           alpha=1.0,
           decay_function=constants.GEOMETRIC_DECAY,
-          expected_weights=_GEOMETRIC_1_0_WEIGHTS
-          ),
+          expected_weights=_GEOMETRIC_1_0_WEIGHTS,
+      ),
       dict(
           testcase_name="binomial_0.0",
           alpha=0.0,
           decay_function=constants.BINOMIAL_DECAY,
-          expected_weights=_BINOMIAL_0_0_WEIGHTS
-          ),
+          expected_weights=_BINOMIAL_0_0_WEIGHTS,
+      ),
       dict(
           testcase_name="binomial_0.25",
           alpha=0.25,
           decay_function=constants.BINOMIAL_DECAY,
-          expected_weights=_BINOMIAL_0_25_WEIGHTS
-          ),
+          expected_weights=_BINOMIAL_0_25_WEIGHTS,
+      ),
       dict(
           testcase_name="binomial_0.5",
           alpha=0.5,
           decay_function=constants.BINOMIAL_DECAY,
-          expected_weights=_BINOMIAL_0_5_WEIGHTS
-          ),
+          expected_weights=_BINOMIAL_0_5_WEIGHTS,
+      ),
       dict(
           testcase_name="binomial_0.6666",
-          alpha=2.0/3.0,
+          alpha=2.0 / 3.0,
           decay_function=constants.BINOMIAL_DECAY,
-          expected_weights=_BINOMIAL_0_6666_WEIGHTS
-          ),
+          expected_weights=_BINOMIAL_0_6666_WEIGHTS,
+      ),
       dict(
           testcase_name="binomial_1.0",
           alpha=1.0,
           decay_function=constants.BINOMIAL_DECAY,
-          expected_weights=_BINOMIAL_1_0_WEIGHTS
-          ),
+          expected_weights=_BINOMIAL_1_0_WEIGHTS,
+      ),
   )
   def test_compute_decay_weights_single_channel(
-      self,
-      alpha,
-      decay_function,
-      expected_weights
-      ):
+      self, alpha, decay_function, expected_weights
+  ):
 
     l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
 
     with self.subTest("unnormalized"):
       weights = adstock_hill.compute_decay_weights(
-          alpha,
-          l_range,
-          _MAX_LAG+1,
-          decay_function,
-          normalize=False
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=False
       )
 
       test_utils.assert_allclose(weights, expected_weights, rtol=1e-5)
 
     with self.subTest("normalized"):
       weights = adstock_hill.compute_decay_weights(
-          alpha,
-          l_range,
-          _MAX_LAG+1,
-          decay_function,
-          normalize=True
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=True
       )
+      test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)
       test_utils.assert_allclose(
-          backend.reduce_sum(weights),
-          1.0,
-          rtol=1e-5
-          )
-      test_utils.assert_allclose(
-          weights / backend.reduce_max(weights),
-          expected_weights,
-          rtol=1e-5
+          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5
       )
 
   @parameterized.named_parameters(
@@ -184,75 +165,65 @@ class TestComputeDecayWeights(parameterized.TestCase):
           expected_weights=(
               _GEOMETRIC_0_0_WEIGHTS,
               _GEOMETRIC_0_5_WEIGHTS,
-              _GEOMETRIC_1_0_WEIGHTS)
+              _GEOMETRIC_1_0_WEIGHTS,
           ),
+      ),
       dict(
           testcase_name="all_binomial",
-          alpha=(0.0, 0.25, 0.5, 2.0/3.0, 1.0),
+          alpha=(0.0, 0.25, 0.5, 2.0 / 3.0, 1.0),
           decay_function=constants.BINOMIAL_DECAY,
           expected_weights=(
               _BINOMIAL_0_0_WEIGHTS,
               _BINOMIAL_0_25_WEIGHTS,
               _BINOMIAL_0_5_WEIGHTS,
               _BINOMIAL_0_6666_WEIGHTS,
-              _BINOMIAL_1_0_WEIGHTS)
+              _BINOMIAL_1_0_WEIGHTS,
           ),
+      ),
       dict(
           testcase_name="mixed_binomial_geometric",
-          alpha=(0.0, 0.25, 0.5, 2.0/3.0, 1.0),
+          alpha=(0.0, 0.25, 0.5, 2.0 / 3.0, 1.0),
           decay_function=(
               constants.GEOMETRIC_DECAY,
               constants.BINOMIAL_DECAY,
               constants.GEOMETRIC_DECAY,
               constants.BINOMIAL_DECAY,
               constants.GEOMETRIC_DECAY,
-              ),
+          ),
           expected_weights=(
               _GEOMETRIC_0_0_WEIGHTS,
               _BINOMIAL_0_25_WEIGHTS,
               _GEOMETRIC_0_5_WEIGHTS,
               _BINOMIAL_0_6666_WEIGHTS,
-              _GEOMETRIC_1_0_WEIGHTS)
+              _GEOMETRIC_1_0_WEIGHTS,
           ),
+      ),
   )
   def test_compute_decay_weights_multiple_channels(
-      self,
-      alpha,
-      decay_function,
-      expected_weights
-      ):
+      self, alpha, decay_function, expected_weights
+  ):
 
     l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
 
     with self.subTest("unnormalized"):
       weights = adstock_hill.compute_decay_weights(
-          alpha,
-          l_range,
-          _MAX_LAG+1,
-          decay_function,
-          normalize=False
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=False
       )
 
       test_utils.assert_allclose(weights, expected_weights, rtol=1e-5)
 
     with self.subTest("normalized"):
       weights = adstock_hill.compute_decay_weights(
-          alpha,
-          l_range,
-          _MAX_LAG+1,
-          decay_function,
-          normalize=True
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=True
       )
 
       test_utils.assert_allclose(
-          backend.reduce_sum(weights, axis=1),
-          [1.0]*len(alpha),
-          rtol=1e-5
-          )
+          backend.reduce_sum(weights, axis=1), [1.0] * len(alpha), rtol=1e-5
+      )
       test_utils.assert_allclose(
           weights / backend.reduce_max(weights, axis=1, keepdims=True),
           expected_weights,
-          rtol=1e-5
+          rtol=1e-5,
       )
 
   def test_incompatible_alpha_decay_function_raises_error(self):
@@ -263,12 +234,12 @@ class TestComputeDecayWeights(parameterized.TestCase):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "The shape of `alpha` ((2,)) is incompatible with the length of "
-        "`decay_functions` (3)"
+        "`decay_functions` (3)",
     ):
       _ = adstock_hill.compute_decay_weights(
           alpha,
           l_range,
-          _MAX_LAG+1,
+          _MAX_LAG + 1,
           decay_function,
       )
 
