@@ -44,6 +44,18 @@ def test_durbin_watson_from_idata_posterior_predictive():
   assert np.isclose(dw, _expected_dw(yobs, np.ones(3)))
 
 
+def test_durbin_watson_from_idata_manual_observed():
+  yobs = _base_observed()
+  yhat = xr.DataArray(
+      np.ones((2, 2, 3)), dims=("chain", "draw", "time")
+  )
+  idata = az.InferenceData(
+      posterior_predictive=xr.Dataset({"kpi": yhat})
+  )
+  dw = diagnostics.durbin_watson_from_idata(idata, observed=yobs)
+  assert np.isclose(dw, _expected_dw(yobs, np.ones(3)))
+
+
 def test_durbin_watson_from_idata_predictions_fallback():
   yobs = _base_observed()
   yhat = xr.DataArray(np.ones((2, 3)), dims=("draw", "time"))
