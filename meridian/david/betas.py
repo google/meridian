@@ -528,3 +528,64 @@ def view_transformed_variable(
   )
 
 
+def plot_posterior_coef_as_normal(
+    mmm: meridian_model.Meridian,
+    parameter: str,
+    index: int,
+    *,
+    maxbins: int = 50,
+    width: int = 400,
+    height: int = 200,
+    epsilon: float = 1e-9,
+) -> alt.Chart:
+  """Histogram after log-transforming positive posterior draws.
+
+  The helper is meant for strictly-positive, right-skewed parameters
+  (e.g. *log-normal* ``beta_gm``). It:
+
+  1.  Retrieves the raw draws with :func:`get_posterior_coef_samples`.
+  2.  Applies ``np.log`` (or ``np.log(value + ε)`` if any sample \u2264 0).
+  3.  Returns an Altair bar chart whose shape should now be approximately
+      Normal.
+
+  Parameters
+  ----------
+  mmm, parameter, index
+      Same meaning as :func:`plot_posterior_coef`.
+  maxbins, width, height
+      Passed straight to Altair for visual tweaking.
+  epsilon
+      Safety constant to avoid ``log(0)`` \u2192 ``-inf``.
+
+  Notes
+  -----
+  \u2022 If the original parameter is already centred and symmetric
+    (e.g. ``beta_m``), the chart will look essentially identical.
+  """
+  samples = get_posterior_coef_samples(mmm, parameter, index).astype(float)
+
+  if np.any(samples <= 0):
+    samples = np.log(samples + epsilon)
+  else:
+    samples = np.log(samples)
+
+  df = pd.DataFrame({"value": samples})
+  alt.data_transformers.disable_max_rows()
+
+  return (
+      alt.Chart(df)
+      .mark_bar(opacity=0.7)
+      .encode(
+          x=alt.X("value:Q",
+                  bin=alt.Bin(maxbins=maxbins),
+                  title="log(value)"),
+          y=alt.Y("count()", title="Count"),
+      )
+      .properties(
+          width=width,
+          height=height,
+          title=f"Log-transformed posterior of {parameter}[{index}]",
+      )
+  )
+
+
