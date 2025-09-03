@@ -1135,6 +1135,30 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     return batch_shapes
 
 
+def lognormal_dist_from_mean_std(
+    mean: float | Sequence[float],
+    std: float | Sequence[float]
+    ) -> backend.tfd.LogNormal:
+  """Define a lognormal distribution from its mean and standard deviation.
+
+  This function parameterizes lognormal distributions by their mean and
+  standard deviation.
+
+  Args:
+    mean: A float or array-like object defining the distribution mean.
+    std: A float or arraay-like object defining the distribution standard
+      deviation.
+
+  Returns:
+    A `backend.tfd.LogNormal` object with the input mean and standard deviation.
+  """
+
+  mu = np.log(mean) - 0.5 * np.log(np.divide(std, mean) ** 2 + 1)
+  sigma = np.sqrt(np.log(np.divide(std, mean) ** 2 + 1))
+
+  return backend.tfd.LogNormal(mu, sigma)
+
+
 def _convert_to_deterministic_0_distribution(
     distribution: backend.tfd.Distribution,
 ) -> backend.tfd.Distribution:
