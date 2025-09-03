@@ -288,6 +288,146 @@ def get_actual_vs_fitted_data_fixed(
   return fit_ds.to_dataframe().reset_index()
 
 
+# ---------------------------------------------------------------------------
+# High-level, notebook-friendly Hill helpers
+# ---------------------------------------------------------------------------
+
+def _autodetect_hill_params_and_names(mmm):
+  """Best-effort discovery of Hill params (ec, slope) and channel names on `mmm`."""
+  ht = getattr(mmm, "hill_transformer", None) or getattr(mmm, "hill", None)
+  ec = getattr(ht, "ec", None) if ht is not None else getattr(mmm, "ec", None)
+  slope = getattr(ht, "slope", None) if ht is not None else getattr(mmm, "slope", None)
+
+  channel_names = (
+      getattr(mmm, "media_channel_names", None)
+      or getattr(mmm, "channel_names", None)
+      or getattr(getattr(mmm, "input_data", None), "media_channel_names", None)
+  )
+  try:
+    if channel_names is not None:
+      channel_names = list(map(str, list(channel_names)))
+  except Exception:
+    channel_names = None
+
+  return ec, slope, channel_names
+
+
+def hill_for_channel(
+    mmm,
+    channel: int | str,
+    *,
+    media_grid: ArrayLike | str | None = "auto",
+    quantiles: Seq[float] = (0.05, 0.5, 0.95),
+    flatten_samples: bool = True,
+    grid_multiplier: float = 5.0,
+    grid_points: int = 200,
+    channel_names: Seq[str] | None = None,
+) -> Dict[str, Any]:
+  """All-in-one: posterior + curve for a single channel.
+
+  Returns:
+    {
+      "channel_index": int,
+      "channel_name": Optional[str],
+      "posterior": <output of extract_hill_posterior>,
+      "curve": Optional[dict(media, mean, quantiles)],
+      "curve_df": Optional[pd.DataFrame]
+    }
+  """
+  ec, slope, auto_names = _autodetect_hill_params_and_names(mmm)
+  if channel_names is None:
+    channel_names = auto_names
+
+  post = extract_hill_posterior(
+      transformer=None,
+      ec=ec,
+      slope=slope,
+      channel=channel,
+      channel_names=channel_names,
+      flatten_samples=flatten_samples,
+      quantiles=quantiles,
+  )
+
+  # Choose a sensible grid if requested
+  curve = None
+  curve_df = None
+  if isinstance(media_grid, str) and media_grid == "auto":
+    median_ec = post["summary"]["ec"]["quantiles"].get(0.5, float(np.median(post["samples"]["ec"])))
+    grid_max = float(grid_multiplier * median_ec) if np.isfinite(median_ec) and median_ec > 0 else 100.0
+    media_grid = np.linspace(0.0, grid_max, grid_points, dtype=float)
+
+  if media_grid is not None:
+    curve = hill_curve_quantiles(
+        media_grid=media_grid,
+        ec_samples=post["samples"]["ec"],
+        slope_samples=post["samples"]["slope"],
+        quantiles=quantiles,
+    )
+    # Tidy frame with conventional column names
+    cols = {
+        "media": curve["media"],
+        "response_mean": curve["mean"],
+    }
+    for q in quantiles:
+        cols[f"response_q{int(round(100*q)):02d}"] = curve["quantiles"][float(q)]
+    curve_df = pd.DataFrame(cols)
+
+  return {
+      "channel_index": post["channel_index"],
+      "channel_name": post["channel_name"],
+      "posterior": post,
+      "curve": curve,
+      "curve_df": curve_df,
+  }
+
+
+def hill_curve_df(mmm, channel: int | str, **kwargs) -> pd.DataFrame:
+  """One-liner: just give me a tidy curve DataFrame for a channel."""
+  out = hill_for_channel(mmm, channel, **kwargs)
+  if out["curve_df"] is None:
+    raise ValueError("No curve grid was produced. Pass media_grid='auto' or an array.")
+  return out["curve_df"]
+
+
+def plot_hill(
+    mmm,
+    channel: int | str,
+    *,
+    media_grid: ArrayLike | str | None = "auto",
+    quantiles: Seq[float] = (0.05, 0.95),
+    title: Optional[str] = None,
+    ax: Any | None = None,
+    **kwargs,
+):
+  """One-liner plot: mean + interval for a channel."""
+  try:
+    import matplotlib.pyplot as plt
+  except Exception as e:
+    raise ImportError("matplotlib is required for plot_hill(...)") from e
+
+  # Ensure we also compute the median for labeling even if not requested
+  qs = sorted(set([0.5, *quantiles]))
+  out = hill_for_channel(mmm, channel, media_grid=media_grid, quantiles=qs, **kwargs)
+  curve = out["curve"]
+  if curve is None:
+    raise ValueError("No curve data available; supply media_grid='auto' or an explicit grid.")
+
+  low, high = min(quantiles), max(quantiles)
+  if ax is None:
+    _, ax = plt.subplots(figsize=(6, 4))
+
+  ax.plot(curve["media"], curve["mean"], label="Mean response")
+  ax.fill_between(curve["media"], curve["quantiles"][float(low)], curve["quantiles"][float(high)],
+                  alpha=0.25, label=f"{int(round((high-low)*100))}% interval")
+
+  ax.set_xlabel("Media (same scale as Hill input)")
+  ax.set_ylabel("Saturated response (0..1)")
+  label = out["channel_name"] if out["channel_name"] is not None else f"channel {out['channel_index']}"
+  ax.set_title(title or f"Hill curve – {label}")
+  ax.legend()
+  return ax
+
+
 if __name__ == "__main__":
   curves = get_curve_parameter_data(mmm)
   curves.to_csv("hill_curve_parameters.csv", index=False)
