@@ -1771,9 +1771,11 @@ class Analyzer:
       selected_geos: Contains a subset of geos to include. By default, all geos
         are included.
       selected_times: An optional string list containing a subset of
-        `InputData.time` to include or a boolean list with length equal to the
-        number of time periods in `new_media` (if provided). By default, all
-        time periods are included.
+        `input_data.time` to include or a boolean list with length equal to the
+        number of time periods in `data_tensors` if time is modified in
+        `data_tensors`, or `input_data.n_times` otherwise. If time in
+        `data_tensors` is modified, then only the boolean list can be used as
+        `selected_times`. By default, all time periods are included.
       aggregate_geos: If True, then incremental outcome is summed over all
         regions.
       aggregate_times: If True, then incremental outcome is summed over all time
@@ -1816,6 +1818,7 @@ class Analyzer:
         has_media_dim=True,
     )
 
+  # TODO: b/407847021 - Add support for `new_data.time`.
   def incremental_outcome(
       self,
       use_posterior: bool = True,
@@ -1918,26 +1921,27 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. The incremental outcome corresponds to
-        incremental KPI generated during the `selected_times` arg by media
-        executed during the `media_selected_times` arg. Note that if
-        `use_kpi=False`, then `selected_times` can only include the time periods
-        that have `revenue_per_kpi` input data. By default, all time periods are
-        included where `revenue_per_kpi` data is available.
+        `new_data` if time is modified in `new_data`, or `input_data.n_times`
+        otherwise. The incremental outcome corresponds to incremental KPI
+        generated during the `selected_times` arg by media executed during the
+        `media_selected_times` arg. Note that if `use_kpi=False`, then
+        `selected_times` can only include the time periods that have
+        `revenue_per_kpi` input data. By default, all time periods are included
+        where `revenue_per_kpi` data is available.
       media_selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        `new_data`, if provided. If `new_data` is provided,
-        `media_selected_times` can select any subset of time periods in
-        `new_data`. If `new_data` is not provided, `media_selected_times`
-        selects from `InputData.time`. The incremental outcome corresponds to
-        incremental KPI generated during the `selected_times` arg by treatment
-        variables executed during the `media_selected_times` arg. For each
-        channel, the incremental outcome is defined as the difference between
-        expected KPI when treatment variables execution is scaled by
-        `scaling_factor1` and `scaling_factor0` during these specified time
-        periods. By default, the difference is between treatment variables at
-        historical execution levels, or as provided in `new_data`, versus zero
-        execution. Defaults to include all time periods.
+        KPI data or number of time periods in the `new_data` args, if provided.
+        If `new_data` is provided, `media_selected_times` can select any subset
+        of time periods in `new_data`. If `new_data` is not provided,
+        `media_selected_times` selects from `InputData.time`. The incremental
+        outcome corresponds to incremental KPI generated during the
+        `selected_times` arg by treatment variables executed during the
+        `media_selected_times` arg. For each channel, the incremental outcome is
+        defined as the difference between expected KPI when treatment variables
+        execution is scaled by `scaling_factor1` and `scaling_factor0` during
+        these specified time periods. By default, the difference is between
+        treatment variables at historical execution levels, or as provided in
+        `new_data`, versus zero execution. Defaults to include all time periods.
       aggregate_geos: Boolean. If `True`, then incremental outcome is summed
         over all regions.
       aggregate_times: Boolean. If `True`, then incremental outcome is summed
@@ -2160,7 +2164,7 @@ class Analyzer:
   def _validate_geo_and_time_granularity(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -2168,8 +2172,9 @@ class Analyzer:
     Args:
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional. Contains a subset of times to include. By
-        default, all time periods are included.
+      selected_times: Optional. Contains a subset of times to include or
+        booleans with length `input_data.n_times`. By default, all time periods
+        are included.
       aggregate_geos: If `True`, then expected revenue is summed over all
         regions.
 
@@ -3512,8 +3517,8 @@ class Analyzer:
       freq_grid: Sequence[float] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      selected_geos: Sequence[str | int] | None = None,
-      selected_times: Sequence[str | int | bool] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3561,8 +3566,8 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. By default, all time periods are
-        included.
+        `new_data` if time is modified in `new_data`, or `input_data.n_times`
+        otherwise. By default, all time periods are included.
       confidence_level: Confidence level for prior and posterior credible
         intervals, represented as a value between zero and one.
 
@@ -4072,7 +4077,7 @@ class Analyzer:
 
     A list of multipliers is applied to each media channel's total historical
     spend within `selected_geos` and `selected_times` to obtain the x-axis
-    values. The y-axis values are the incremental ouctcome generated by each
+    values. The y-axis values are the incremental outcome generated by each
     channel within `selected_geos` and `selected_times` under the counterfactual
     where media units in each geo and time period are scaled by the
     corresponding multiplier. (Media units for time periods prior to
@@ -4086,9 +4091,8 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of time dimensions to
-        include. By default, all time periods are included. Time dimension
-        strings and integers must align with the `Meridian.n_times`.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -4886,8 +4890,9 @@ class Analyzer:
         of all the remaining tensors.  If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
         then all tensors must be provided with the same number of time periods.
-      selected_times: The time period to get the aggregated spends. If None, the
-        spend will be aggregated over all time periods.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4978,7 +4983,9 @@ class Analyzer:
     argument, its values only affect the output when imputation is required.
 
     Args:
-      selected_times: The time period to get the aggregated spend.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
