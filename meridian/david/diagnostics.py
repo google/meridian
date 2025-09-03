@@ -293,7 +293,18 @@ def mass_above_threshold(
     """Probability that a coefficient exceeds a threshold."""
     da = idata.posterior[var_name]
     if coord:
-        da = da.sel(**coord)
+        try:
+            da = da.sel(**coord)
+        except KeyError as err:  # pragma: no cover - xarray raises KeyError
+            dim, val = next(iter(coord.items()))
+            if dim not in da.dims:
+                raise KeyError(
+                    f"Dimension {dim!r} not found; available dims: {list(da.dims)}"
+                ) from err
+            choices = list(da[dim].values)
+            raise KeyError(
+                f"Value {val!r} not found in coordinate {dim!r}; choices: {choices}"
+            ) from err
     samples = da.values.reshape(-1)
 
     if log_space:
