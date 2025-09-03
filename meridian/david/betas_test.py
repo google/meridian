@@ -430,6 +430,37 @@ class PlotPosteriorCoefTest(absltest.TestCase):
     self.assertEqual(enc_kwargs['x']['field'], 'value:Q')
 
 
+class PlotPosteriorCoefAsNormalTest(absltest.TestCase):
+
+  def test_returns_log_chart(self):
+    posterior = {'a': [[[1.0, 4.0]]]}  # shape (1,1,2)
+    m = DummyMeridian(posterior)
+    chart = betas.plot_posterior_coef_as_normal(
+        m,
+        'a',
+        1,
+        maxbins=10,
+        width=200,
+        height=100,
+    )
+    self.assertIsInstance(chart, alt.Chart)
+    self.assertEqual(
+        chart.properties_args.get('title'),
+        'Log-transformed posterior of a[1]'
+    )
+    np.testing.assert_allclose(chart.data['value'].to_numpy(), np.log([4.0]))
+    _, enc_kwargs = chart.encode_args
+    self.assertEqual(enc_kwargs['x']['bin']['maxbins'], 10)
+    self.assertEqual(enc_kwargs['x']['field'], 'value:Q')
+
+  def test_handles_nonpositive_values(self):
+    posterior = {'a': [[[0.0]]]}  # shape (1,1,1)
+    m = DummyMeridian(posterior)
+    chart = betas.plot_posterior_coef_as_normal(m, 'a', 0, epsilon=1e-6)
+    self.assertTrue(np.isfinite(chart.data['value'][0]))
+    self.assertAlmostEqual(chart.data['value'][0], np.log(1e-6))
+
+
 class OptimalFreqSafeTest(absltest.TestCase):
 
   class DummyDataset:
