@@ -67,6 +67,7 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
     self.mmm.rf_tensors = mock.Mock(
         rf_impressions=tf.constant([[[1.0]]], dtype=tf.float64),
         rf_spend=tf.constant([[[2.0]]], dtype=tf.float64),
+        frequency=tf.constant([[[3.0]]], dtype=tf.float64),
     )
     self.mmm.input_data = mock.Mock(
         revenue_per_kpi=tf.constant([[3.0]], dtype=tf.float64)
@@ -102,6 +103,9 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
       self.assertEqual(kwargs['selected_times'], ['t'])
       self.assertTrue(kwargs['use_kpi'])
       self.assertEqual(kwargs['confidence_level'], 0.9)
+      freq_grid = kwargs['freq_grid']
+      self.assertIsInstance(freq_grid, np.ndarray)
+      self.assertEqual(freq_grid.dtype, np.float32)
       new_data = kwargs['new_data']
       self.assertEqual(new_data.rf_impressions.dtype, tf.float32)
       self.assertEqual(new_data.rf_spend.dtype, tf.float32)
