@@ -237,9 +237,14 @@ def durbin_watson_from_idata(
     time_dim: str | None = None,
     by: tuple[str, ...] | None = None,
     reduce_over: tuple[str, ...] = ("chain", "draw"),
+    observed: xr.DataArray | None = None,
 ):
-    """DW from an InferenceData, preferring posterior_predictive but falling back
-    to ``predictions`` or deterministic posterior variables (e.g., kpi_hat, mu_kpi).
+    """DW from an InferenceData.
+
+    Prefer ``posterior_predictive`` but fall back to ``predictions`` or
+    deterministic posterior variables (e.g., ``kpi_hat``, ``mu_kpi``). When the
+    InferenceData lacks an ``observed_data`` group, ``observed`` may be supplied
+    directly.
 
     Example
     -------
@@ -253,6 +258,9 @@ def durbin_watson_from_idata(
         return da.mean(keep) if keep else da
 
     def _pick_observed_var():
+        if observed is not None:
+            name = getattr(observed, "name", None) or target_priority[0]
+            return name, observed
         if not hasattr(idata, "observed_data"):
             raise AttributeError("InferenceData has no observed_data group.")
         for v in target_priority:

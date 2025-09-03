@@ -110,6 +110,35 @@ class DurbinWatsonFromIdataTest(absltest.TestCase):
         expected = diagnostics.durbin_watson((yobs, yhat_mean), by=("geo",))
         np.testing.assert_allclose(result.values, expected.values)
 
+    def test_from_idata_manual_observed(self):
+        yobs = xr.DataArray(
+            np.array(
+                [
+                    [0.5, 0.1, -0.3, 0.2],
+                    [1.0, 1.2, 1.1, 0.9],
+                ]
+            ),
+            dims=("geo", "time"),
+            coords={"geo": ["g1", "g2"], "time": np.arange(4)},
+        )
+        pp = np.array(
+            [[[[0.4, 0.2, -0.2, 0.3], [0.9, 1.1, 1.0, 0.8]]]]
+        )  # shape (chain, draw, geo, time)
+        idata = az.from_dict(
+            posterior_predictive={"kpi": pp},
+            coords={"geo": ["g1", "g2"], "time": np.arange(4)},
+            dims={"kpi": ["geo", "time"]},
+        )
+        result = diagnostics.durbin_watson_from_idata(
+            idata, observed=yobs, by=("geo",)
+        )
+
+        yhat_mean = xr.DataArray(pp, dims=("chain", "draw", "geo", "time")).mean(
+            dim=("chain", "draw")
+        )
+        expected = diagnostics.durbin_watson((yobs, yhat_mean), by=("geo",))
+        np.testing.assert_allclose(result.values, expected.values)
+
 
 class JarqueBeraTest(absltest.TestCase):
 
