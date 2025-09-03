@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix channel data misalignment in `Analyzer.hill_curves` when input channels are not in alphabetical order.
 * Add `negative_baseline_probability` method to `Analyzer` class.
 * Add per-channel adstock decay function definition.
 * Methods in the `analyzer` module now return backend-agnostic tensors.

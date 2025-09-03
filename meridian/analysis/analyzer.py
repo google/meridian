@@ -917,8 +917,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media`, `rf`, `organic_media`, or
-        `organic_rf` for computing prior and posterior decayed effects.
+      channel_type: Specifies `media`, `rf`, `organic_media`, or `organic_rf`
+        for computing prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -952,18 +952,14 @@ class Analyzer:
           self._meridian.inference_data.posterior.alpha_om.values,
           (-1, self._meridian.n_organic_media_channels),
       )
-      decay_functions = (
-          self._meridian.adstock_decay_spec.organic_media
-      )
+      decay_functions = self._meridian.adstock_decay_spec.organic_media
     elif channel_type == constants.ORGANIC_RF:
       prior = self._meridian.inference_data.prior.alpha_orf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_orf.values,
           (-1, self._meridian.n_organic_rf_channels),
       )
-      decay_functions = (
-          self._meridian.adstock_decay_spec.organic_rf
-      )
+      decay_functions = self._meridian.adstock_decay_spec.organic_rf
     else:
       raise ValueError(
           f"Unsupported channel type for adstock decay: '{channel_type}'. "
@@ -4439,21 +4435,29 @@ class Analyzer:
         xr_coords,
         confidence_level,
     )
-    df = (
+
+    df_raw = (
         hill_dataset[constants.HILL_SATURATION_LEVEL]
         .to_dataframe()
         .reset_index()
-        .pivot(
-            index=[
-                constants.CHANNEL,
-                constants.MEDIA_UNITS,
-                constants.DISTRIBUTION,
-            ],
-            columns=constants.METRIC,
-            values=constants.HILL_SATURATION_LEVEL,
-        )
-        .reset_index()
     )
+
+    # Ensure the channel order matches the tensor order (defined by 'channels')
+    # by using a Categorical type before pivoting. This prevents pivot from
+    # sorting alphabetically, which can cause misalignment between channel names
+    # and the calculated media units derived later from the tensor order.
+    df_raw[constants.CHANNEL] = pd.Categorical(
+        df_raw[constants.CHANNEL], categories=channels
+    )
+    df = df_raw.pivot(
+        index=[
+            constants.CHANNEL,
+            constants.MEDIA_UNITS,
+            constants.DISTRIBUTION,
+        ],
+        columns=constants.METRIC,
+        values=constants.HILL_SATURATION_LEVEL,
+    ).reset_index()
 
     # Fill media_units or frequency x-axis with the correct range.
     media_units_arr = []

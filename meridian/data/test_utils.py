@@ -637,6 +637,7 @@ def random_media_da(
     explicit_geo_names: Sequence[str] | None = None,
     explicit_time_index: Sequence[str] | None = None,
     explicit_media_channel_names: Sequence[str] | None = None,
+    media_value_scales: list[tuple[float, float]] | None = None,
     array_name: str = 'media',
     channel_variable_name: str = 'media_channel',
     channel_prefix: str = 'ch_',
@@ -655,6 +656,8 @@ def random_media_da(
     explicit_time_index: If given, ignore `date_format` and use this as is
     explicit_media_channel_names: If given, ignore `n_media_channels` and use
       this as is
+    media_value_scales: A list of (mean, std) tuples, one for each media
+      channel, to control the scale of the generated random values.
     array_name: The name of the array to be created
     channel_variable_name: The name of the channel variable
     channel_prefix: The prefix of the channel names
@@ -670,11 +673,28 @@ def random_media_da(
   if n_times < n_media_times:
     start_date -= datetime.timedelta(weeks=(n_media_times - n_times))
 
-  media = np.round(
-      abs(
-          np.random.normal(5, 5, size=(n_geos, n_media_times, n_media_channels))
+  if media_value_scales:
+    if len(media_value_scales) != n_media_channels:
+      raise ValueError(
+          'Length of media_value_scales must match n_media_channels.'
       )
-  )
+    channel_data = []
+    for mean, std in media_value_scales:
+      channel_data.append(
+          np.round(
+              abs(np.random.normal(mean, std, size=(n_geos, n_media_times)))
+          )
+      )
+    media = np.stack(channel_data, axis=-1)
+  else:
+    media = np.round(
+        abs(
+            np.random.normal(
+                5, 5, size=(n_geos, n_media_times, n_media_channels)
+            )
+        )
+    )
+
   if explicit_geo_names is None:
     geos = sample_geos(n_geos, integer_geos)
   else:
@@ -761,6 +781,7 @@ def random_media_spend_nd_da(
     integer_geos: If True, the geos will be integers.
     explicit_media_channel_names: If given, ignore `n_media_channels` and use
       this as is.
+
   Returns:
     A DataArray containing the generated `media_spend` data with the given
     dimensions.
@@ -955,14 +976,18 @@ def constant_revenue_per_kpi(
 
 
 def random_population(
-    n_geos: int, seed: int = 0, integer_geos: bool = False
+    n_geos: int,
+    seed: int = 0,
+    integer_geos: bool = False,
+    constant_value: float | None = None,
 ) -> xr.DataArray:
   """Generates a sample `population` DataArray."""
 
   np.random.seed(seed)
-
-  population = np.round(10 + abs(np.random.normal(3000, 100, size=n_geos)))
-
+  if constant_value is not None:
+    population = np.full(n_geos, constant_value)
+  else:
+    population = np.round(10 + abs(np.random.normal(3000, 100, size=n_geos)))
   return xr.DataArray(
       population,
       dims=['geo'],
@@ -1234,13 +1259,15 @@ def random_dataset(
     n_organic_media_channels: int | None = None,
     n_organic_rf_channels: int | None = None,
     n_media_channels: int | None = None,
+    explicit_media_channel_names: Sequence[str] | None = None,
+    media_value_scales: list[tuple[float, float]] | None = None,
     n_rf_channels: int | None = None,
     revenue_per_kpi_value: float | None = 3.14,
+    constant_population_value: float | None = None,
     seed: int = 0,
     remove_media_time: bool = False,
     integer_geos: bool = False,
     kpi_data_pattern: str = '',
-    explicit_media_channel_names: Sequence[str] | None = None,
 ) -> xr.Dataset:
   """Generates a random dataset."""
   if n_media_channels:
@@ -1251,15 +1278,16 @@ def random_dataset(
         n_media_channels=n_media_channels,
         seed=seed,
         integer_geos=integer_geos,
-        explicit_media_channel_names=explicit_media_channel_names
+        explicit_media_channel_names=explicit_media_channel_names,
+        media_value_scales=media_value_scales,
     )
     media_spend = random_media_spend_nd_da(
         n_geos=n_geos,
         n_times=n_times,
         n_media_channels=n_media_channels,
+        explicit_media_channel_names=explicit_media_channel_names,
         seed=seed,
         integer_geos=integer_geos,
-        explicit_media_channel_names=explicit_media_channel_names,
     )
   else:
     media = None
@@ -1372,7 +1400,10 @@ def random_dataset(
       kpi_data_pattern=kpi_data_pattern,
   )
   population = random_population(
-      n_geos=n_geos, seed=seed, integer_geos=integer_geos
+      n_geos=n_geos,
+      seed=seed,
+      integer_geos=integer_geos,
+      constant_value=constant_population_value,
   )
 
   dataset = xr.combine_by_coords(

@@ -13,10 +13,10 @@
 # limitations under the License.
 
 from collections.abc import Sequence
+import dataclasses
 import os
 from unittest import mock
 import warnings
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
@@ -5692,6 +5692,204 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
   backend_test_utils.assert_allclose(
       calculated_n, param_n, rtol=rtol, atol=atol
   )
+
+
+class AnalyzerDataShapeTest(parameterized.TestCase):
+  """Tests for Analyzer behavior with specific data shapes, independent of global setups."""
+
+  def test_hill_curves_scaling_and_alignment_with_disparate_magnitudes(
+      self,
+  ):
+    n_geos = 3
+    n_times = 10
+    n_media_times = 12
+    n_draws = 50
+
+    channel_names = ["Z-Search", "A-Social"]
+
+    base_dataset = data_test_utils.random_dataset(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_controls=1,
+        n_media_channels=2,
+        explicit_media_channel_names=channel_names,
+        constant_population_value=1.0,  # Key condition: Population=1
+        revenue_per_kpi_value=1.0,
+        seed=123,
+    )
+
+    rng = np.random.default_rng(seed=0)
+
+    # Channel 1 ("Z-Search"): low impression values (e.g., 80k - 120k)
+    search_impressions = (
+        80_000 + rng.random(size=(n_geos, n_media_times)) * 40_000
+    )
+
+    # Channel 2 ("A-Social"): high impression values (e.g., 7M - 8M)
+    social_impressions = (
+        7_000_000 + rng.random(size=(n_geos, n_media_times)) * 1_000_000
+    )
+
+    actual_max_low = search_impressions.max()
+    actual_max_high = social_impressions.max()
+
+    media_values = np.stack([search_impressions, social_impressions], axis=-1)
+
+    media_da = xr.DataArray(
+        media_values,
+        dims=["geo", "media_time", "media_channel"],
+        coords={
+            "geo": base_dataset.geo.values,
+            "media_time": base_dataset.media_time.values,
+            "media_channel": channel_names,
+        },
+        name="media",
+    )
+
+    search_spend = 80 + rng.random(size=(n_geos, n_times)) * 40
+    social_spend = 7000 + rng.random(size=(n_geos, n_times)) * 1000
+    spend_values = np.stack([search_spend, social_spend], axis=-1)
+
+    media_spend_da = xr.DataArray(
+        spend_values,
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": base_dataset.geo.values,
+            "time": base_dataset.time.values,
+            "media_channel": channel_names,
+        },
+        name="media_spend",
+    )
+    base_input_data = data_test_utils.sample_input_data_from_dataset(
+        base_dataset, kpi_type=constants.NON_REVENUE
+    )
+    input_data_obj = dataclasses.replace(
+        base_input_data,
+        media=media_da,
+        media_spend=media_spend_da,
+    )
+
+    model_spec = spec.ModelSpec(max_lag=4)
+    mmm = model.Meridian(input_data=input_data_obj, model_spec=model_spec)
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+    mmm.sample_prior(n_draws)
+    mmm.sample_joint_dist_unpinned_as_posterior(n_draws)
+
+    mmm_analyzer = analyzer.Analyzer(mmm)
+    hill_df = mmm_analyzer.hill_curves()
+
+    max_units_low = hill_df[
+        (hill_df[constants.CHANNEL] == "Z-Search")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    max_units_high = hill_df[
+        (hill_df[constants.CHANNEL] == "A-Social")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    np.testing.assert_allclose(
+        max_units_low,
+        actual_max_low,
+        rtol=1e-5,
+        err_msg=(
+            "X-axis range for low-scale channel does not match input data max."
+        ),
+    )
+    np.testing.assert_allclose(
+        max_units_high,
+        actual_max_high,
+        rtol=1e-5,
+        err_msg=(
+            "X-axis range for high-scale channel does not match input data max."
+        ),
+    )
+
+  def test_hill_curves_channel_alignment_correct_with_non_alphabetical_order(
+      self,
+  ):
+    n_geos = 2
+    n_times = 10
+    n_media_times = 12
+    n_draws = 50
+
+    # Input Order (Tensor Order): ['Channel_B', 'Channel_A']
+    channel_names = ["Channel_B", "Channel_A"]
+
+    # Scales corresponding to Input Order:
+    # Channel_B (Index 0): Mean 100 (Low)
+    # Channel_A (Index 1): Mean 10000 (High)
+    scale_b = (100, 10)
+    scale_a = (10000, 1000)
+    media_scales = [scale_b, scale_a]
+
+    dataset = data_test_utils.random_dataset(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_controls=1,
+        n_media_channels=2,
+        explicit_media_channel_names=channel_names,
+        constant_population_value=1.0,  # Key condition: Population=1
+        media_value_scales=media_scales,
+        revenue_per_kpi_value=1.0,
+        seed=1,
+    )
+    input_data_obj = data_test_utils.sample_input_data_from_dataset(
+        dataset, kpi_type=constants.NON_REVENUE
+    )
+
+    assert input_data_obj.media is not None, "media should not be None"
+    actual_max_a = (
+        input_data_obj.media.sel(media_channel="Channel_A").max().item()
+    )
+    actual_max_b = (
+        input_data_obj.media.sel(media_channel="Channel_B").max().item()
+    )
+
+    model_spec = spec.ModelSpec(max_lag=2)
+    mmm = model.Meridian(input_data=input_data_obj, model_spec=model_spec)
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+    mmm.sample_prior(n_draws)
+    mmm.sample_joint_dist_unpinned_as_posterior(n_draws)
+
+    mmm_analyzer = analyzer.Analyzer(mmm)
+    hill_df = mmm_analyzer.hill_curves()
+
+    output_channels = (
+        hill_df[hill_df[constants.MEAN].notna()][constants.CHANNEL]
+        .unique()
+        .tolist()
+    )
+
+    max_units_a = hill_df[
+        (hill_df[constants.CHANNEL] == "Channel_A")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    max_units_b = hill_df[
+        (hill_df[constants.CHANNEL] == "Channel_B")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    self.assertListEqual(
+        output_channels,
+        channel_names,
+        msg=(
+            "Channel order in the output DataFrame does not match the input"
+            " tensor order."
+        ),
+    )
+
+    np.testing.assert_allclose(max_units_a, actual_max_a, rtol=1e-5)
+    np.testing.assert_allclose(max_units_b, actual_max_b, rtol=1e-5)
 
 
 class AnalyzerCustomPriorTest(parameterized.TestCase):
