@@ -134,6 +134,18 @@ class MassAboveThresholdTest(absltest.TestCase):
         self.assertAlmostEqual(result["prob_above"], prob)
         self.assertEqual(result["meets_cred"], prob >= 0.95)
 
+    def test_missing_coord_value_raises(self):
+        arr = np.array([[[0.9, 1.1], [1.2, 0.8]]])  # shape (chain, draw, media)
+        idata = az.from_dict(
+            posterior={"beta_m": arr},
+            coords={"media_channel": ["a", "b"]},
+            dims={"beta_m": ["media_channel"]},
+        )
+        with self.assertRaisesRegex(KeyError, "media_channel"):
+            diagnostics.mass_above_threshold(
+                idata, "beta_m", coord={"media_channel": "c"}
+            )
+
 
 class AugmentedDickeyFullerTest(absltest.TestCase):
 
