@@ -1388,9 +1388,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     max_lag = 15
     n_new_times = 15
     total_times = max_lag + n_new_times
-    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
-    start_date = times[-n_new_times]
-    end_date = times[-1]
+    weekly_step = np.timedelta64(1, 'W')
+    new_times = np.datetime_as_string(
+        np.arange(
+            np.datetime64('2025-01-06'),
+            np.datetime64('2025-01-06') + total_times * weekly_step,
+            weekly_step,
+        )
+    ).tolist()
     new_data = analyzer.DataTensors(
         media=self.meridian_media_and_rf.media_tensors.media[
             ..., -total_times:, :
@@ -1410,17 +1415,30 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
             ..., -total_times:
         ],
-        time=times[-total_times:],
+        time=new_times,
     )
     actual = self.budget_optimizer_media_and_rf.optimize(
         new_data=new_data,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=new_times[-n_new_times],
+        end_date=new_times[-1],
     )
+    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    start_date = times[-n_new_times]
+    end_date = times[-1]
     expected = self.budget_optimizer_media_and_rf.optimize(
         start_date=start_date,
         end_date=end_date,
     )
+    expected.nonoptimized_data.attrs[c.START_DATE] = new_times[-n_new_times]
+    expected.nonoptimized_data.attrs[c.END_DATE] = new_times[-1]
+    expected._nonoptimized_data_with_optimal_freq.attrs[c.START_DATE] = (
+        new_times[-n_new_times]
+    )
+    expected._nonoptimized_data_with_optimal_freq.attrs[c.END_DATE] = new_times[
+        -1
+    ]
+    expected.optimized_data.attrs[c.START_DATE] = new_times[-n_new_times]
+    expected.optimized_data.attrs[c.END_DATE] = new_times[-1]
     _verify_actual_vs_expected_budget_data(
         actual.nonoptimized_data, expected.nonoptimized_data
     )

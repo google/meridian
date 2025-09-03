@@ -1533,7 +1533,8 @@ class BudgetOptimizer:
         use_kpi=use_kpi,
         hist_spend=optimization_grid.historical_spend,
         spend=spend.non_optimized,
-        selected_times=optimization_grid.selected_times,
+        start_date=start_date,
+        end_date=end_date,
         confidence_level=confidence_level,
         batch_size=batch_size,
         use_historical_budget=use_historical_budget,
@@ -1544,7 +1545,8 @@ class BudgetOptimizer:
         use_kpi=use_kpi,
         hist_spend=optimization_grid.historical_spend,
         spend=spend.non_optimized,
-        selected_times=optimization_grid.selected_times,
+        start_date=start_date,
+        end_date=end_date,
         optimal_frequency=optimization_grid.optimal_frequency,
         confidence_level=confidence_level,
         batch_size=batch_size,
@@ -1563,7 +1565,8 @@ class BudgetOptimizer:
         use_kpi=use_kpi,
         hist_spend=optimization_grid.historical_spend,
         spend=spend.optimized,
-        selected_times=optimization_grid.selected_times,
+        start_date=start_date,
+        end_date=end_date,
         optimal_frequency=optimization_grid.optimal_frequency,
         attrs=constraints,
         confidence_level=confidence_level,
@@ -2206,7 +2209,8 @@ class BudgetOptimizer:
       new_data: analyzer.DataTensors | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
       optimal_frequency: Sequence[float] | None = None,
       attrs: Mapping[str, Any] | None = None,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
@@ -2218,6 +2222,9 @@ class BudgetOptimizer:
     filled_data = new_data.validate_and_fill_missing_data(
         c.PAID_DATA + (c.TIME,),
         self._meridian,
+    )
+    selected_times = self._validate_selected_times(
+        start_date=start_date, end_date=end_date, new_data=new_data
     )
     spend_tensor = backend.to_tensor(spend, dtype=backend.float32)
     hist_spend = backend.to_tensor(hist_spend, dtype=backend.float32)
@@ -2336,21 +2343,11 @@ class BudgetOptimizer:
         c.CPIK: ([c.CHANNEL, c.METRIC], cpik),
     }
 
-    all_times = (
-        np.asarray(filled_data.time).astype(str).tolist()
-        if filled_data.time is not None
-        else self._meridian.input_data.time.values.tolist()
-    )
-    if selected_times is not None and all(
-        isinstance(time, bool) for time in selected_times
-    ):
-      selected_times = [
-          time for time, selected in zip(all_times, selected_times) if selected
-      ]
+    all_times = np.asarray(filled_data.time).astype(str).tolist()
 
     attributes = {
-        c.START_DATE: min(selected_times) if selected_times else all_times[0],
-        c.END_DATE: max(selected_times) if selected_times else all_times[-1],
+        c.START_DATE: start_date if start_date else all_times[0],
+        c.END_DATE: end_date if end_date else all_times[-1],
         c.BUDGET: budget,
         c.PROFIT: total_incremental_outcome - budget,
         c.TOTAL_INCREMENTAL_OUTCOME: total_incremental_outcome,
