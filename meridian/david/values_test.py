@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 import xarray as xr
@@ -6,6 +7,39 @@ from absl.testing import absltest
 from meridian.david import values
 
 mock = absltest.mock
+
+
+class ExtractHillPosteriorTest(absltest.TestCase):
+
+  def test_extracts_channel_parameters(self):
+    ec = np.array([[1.0, 2.0], [3.0, 4.0]])
+    slope = np.array([[0.1, 0.2], [0.3, 0.4]])
+    res = values.extract_hill_posterior(
+        ec=ec,
+        slope=slope,
+        channel="b",
+        channel_names=["a", "b"],
+    )
+    self.assertEqual(res["channel_index"], 1)
+    self.assertEqual(res["channel_name"], "b")
+    np.testing.assert_array_equal(res["samples"]["ec"], np.array([2.0, 4.0]))
+    np.testing.assert_array_equal(res["samples"]["slope"], np.array([0.2, 0.4]))
+    self.assertAlmostEqual(res["summary"]["ec"]["mean"], 3.0)
+    self.assertAlmostEqual(res["summary"]["slope"]["mean"], 0.3)
+
+
+class HillCurveQuantilesTest(absltest.TestCase):
+
+  def test_evaluates_curve(self):
+    media = np.linspace(0, 1.0, 3)
+    ec_samples = np.array([1.0, 2.0])
+    slope_samples = np.array([2.0, 2.0])
+    res = values.hill_curve_quantiles(
+        media, ec_samples, slope_samples, quantiles=(0.5,)
+    )
+    self.assertEqual(res["media"].shape, (3,))
+    self.assertIn(0.5, res["quantiles"])
+    self.assertEqual(res["mean"].shape, (3,))
 
 
 class GetCurveParameterDataTest(absltest.TestCase):
