@@ -193,9 +193,23 @@ def get_budget_optimisation_data(
       if getattr(input_data, "revenue_per_kpi", None) is not None
       else None,
   )
+  # Construct a float32 frequency grid to avoid mixed-precision errors in
+  # ``Analyzer.optimal_freq``.  Use the maximum frequency from the model data when
+  # available, otherwise fall back to a reasonable default.
+  rf_freq = getattr(rf_tensors, "frequency", None)
+  max_frequency = None
+  if rf_freq is not None:
+    try:
+      max_frequency = float(tf.reduce_max(tf.cast(rf_freq, tf.float32)).numpy())
+    except Exception:  # numpy arrays or other array-like
+      max_frequency = float(np.max(np.array(rf_freq, dtype=np.float32)))
+  if not max_frequency or not np.isfinite(max_frequency):
+    max_frequency = 50.0
+  freq_grid = np.arange(1.0, max_frequency, 0.1, dtype=np.float32)
 
   rf_ds: xr.Dataset = ana.optimal_freq(
       new_data=new_data,
+      freq_grid=freq_grid,
       selected_times=selected_times,
       use_kpi=use_kpi,
       confidence_level=confidence_level,
