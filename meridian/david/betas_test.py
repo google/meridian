@@ -413,6 +413,34 @@ class InspectTStatTest(absltest.TestCase):
     self.assertAlmostEqual(res_log['t'], 1.0)
 
 
+class InspectTStatNormalisedTest(absltest.TestCase):
+
+  def test_falls_back_for_normal_effects(self):
+    posterior = {c.BETA_M: [[[1.0, 2.0], [3.0, 4.0]]]}
+    m = DummyMeridian(posterior, channels=['A', 'B'])
+    expected = betas.inspect_t_stat(m, 1)
+    result = betas.inspect_t_stat_normalised(m, 1)
+    for key in expected:
+      self.assertAlmostEqual(result[key], expected[key])
+
+  def test_log_normal_transformation(self):
+    posterior = {c.BETA_GM: [[[1.0], [4.0]]]}  # shape (1,2,1)
+    m = DummyMeridian(posterior, channels=['A'], media_effects_dist=c.MEDIA_EFFECTS_LOG_NORMAL)
+    result = betas.inspect_t_stat_normalised(m, 0)
+    draws = np.log(np.array([1.0, 4.0]))
+    mean = draws.mean()
+    sd = draws.std(ddof=1)
+    se = sd / np.sqrt(draws.size)
+    z = mean / sd
+    t = mean / se
+    self.assertAlmostEqual(result['mean'], mean)
+    self.assertAlmostEqual(result['sd'], sd)
+    self.assertAlmostEqual(result['se'], se)
+    self.assertAlmostEqual(result['z'], z)
+    self.assertAlmostEqual(result['t'], t)
+    self.assertEqual(result['p(log-beta>0)'], 0.5)
+
+
 class PlotPosteriorCoefTest(absltest.TestCase):
 
   def test_returns_chart(self):
