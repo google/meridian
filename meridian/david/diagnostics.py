@@ -238,31 +238,86 @@ def durbin_watson_from_idata(
     by: tuple[str, ...] | None = None,
     reduce_over: tuple[str, ...] = ("chain", "draw"),
 ):
-    """DW from ArviZ InferenceData posterior predictive (mean over chains/draws).
+    """DW from an InferenceData, preferring posterior_predictive but falling back
+    to ``predictions`` or deterministic posterior variables (e.g., kpi_hat, mu_kpi).
 
-    Example: ``durbin_watson_from_idata(mmm.inference_data, by=("geo",))``
+    Example
+    -------
+    >>> durbin_watson_from_idata(mmm.inference_data, by=("geo",))
     """
+
     import xarray as _xr
 
-    if not hasattr(idata, "posterior_predictive"):
-        raise AttributeError("InferenceData has no posterior_predictive group.")
+    def _mean_over(da: _xr.DataArray, dims: tuple[str, ...]):
+        keep = [d for d in dims if d in da.dims]
+        return da.mean(keep) if keep else da
 
-    target = next(
-        (v for v in target_priority if v in idata.posterior_predictive.data_vars),
-        None,
-    )
-    if target is None:
+    def _pick_observed_var():
+        if not hasattr(idata, "observed_data"):
+            raise AttributeError("InferenceData has no observed_data group.")
+        for v in target_priority:
+            if v in idata.observed_data.data_vars:
+                return v, idata.observed_data[v]
         raise KeyError(
-            f"None of {target_priority} found in posterior_predictive; "
-            f"available: {list(idata.posterior_predictive.data_vars)}"
+            f"None of {target_priority} found in observed_data; "
+            f"available: {list(idata.observed_data.data_vars)}"
         )
 
-    yhat = idata.posterior_predictive[target].mean(dim=reduce_over)
-    yobs = idata.observed_data[target]
-    yobs, yhat = _xr.align(yobs, yhat, join="inner")
+    def _pick_predicted_da(target_name: str) -> _xr.DataArray:
+        # 1) posterior_predictive (ArviZ standard)
+        if hasattr(idata, "posterior_predictive"):
+            pp = idata.posterior_predictive
+            if target_name in pp.data_vars:
+                return _mean_over(pp[target_name], reduce_over)
 
+        # 2) predictions group (some pipelines put yhat here)
+        if hasattr(idata, "predictions"):
+            pr = idata.predictions
+            if target_name in pr.data_vars:
+                return _mean_over(pr[target_name], reduce_over)
+
+        # 3) deterministic variables in posterior with common naming
+        candidates = [
+            f"{target_name}_hat",
+            f"{target_name}_pred",
+            f"{target_name}_yhat",
+            f"yhat_{target_name}",
+            f"mu_{target_name}",
+            f"{target_name}_mu",
+            f"expected_{target_name}",
+            f"{target_name}_expected",
+        ]
+        if hasattr(idata, "posterior"):
+            post = idata.posterior
+            for name in candidates:
+                if name in post.data_vars:
+                    da = post[name]
+                    if any(d in da.dims for d in ("time", "media_time", "geo_time")):
+                        return _mean_over(da, reduce_over)
+
+        # 4) As a last resort, if the posterior itself has a time-like var with the same name
+        if hasattr(idata, "posterior") and target_name in idata.posterior.data_vars:
+            da = idata.posterior[target_name]
+            if any(d in da.dims for d in ("time", "media_time", "geo_time")):
+                return _mean_over(da, reduce_over)
+
+        raise AttributeError(
+            "Could not locate predictions for "
+            f"{target_name!r}. Tried posterior_predictive, predictions, and common "
+            "deterministic posterior names like '*_hat', 'mu_*'. "
+            "Consider enabling posterior predictive sampling or storing yhat."
+        )
+
+    target_name, yobs = _pick_observed_var()
+    yhat = _pick_predicted_da(target_name)
+
+    yobs, yhat = _xr.align(yobs, yhat, join="inner")
     return durbin_watson(
-        yobs - yhat, time_dim=time_dim, by=by, reduce_over=(), skipna=True
+        yobs - yhat,
+        time_dim=time_dim,
+        by=by,
+        reduce_over=(),  # already reduced
+        skipna=True,
     )
 
 
