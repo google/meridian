@@ -29,9 +29,10 @@ class EDAEngineTest(
     model_test_data.WithInputDataSamples,
 ):
 
-  def setUp(self):
-    super().setUp()
-    model_test_data.WithInputDataSamples.setup(self)
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
 
   # --- Test cases for controls_scaled_da ---
   @parameterized.named_parameters(

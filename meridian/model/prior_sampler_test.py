@@ -33,19 +33,21 @@ class PriorDistributionSamplerTest(
 
   input_data_samples = model_test_data.WithInputDataSamples
 
-  def setUp(self):
-    super().setUp()
-    model_test_data.WithInputDataSamples.setup(self)
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
 
   def test_sample_prior_seed_same_seed(self):
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
     meridian2 = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian2.sample_prior(n_draws=self._N_DRAWS, seed=1)
@@ -55,13 +57,14 @@ class PriorDistributionSamplerTest(
 
   def test_sample_prior_different_seed(self):
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
     meridian2 = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian2.sample_prior(n_draws=self._N_DRAWS, seed=2)
@@ -94,8 +97,9 @@ class PriorDistributionSamplerTest(
     )
 
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
@@ -163,8 +167,9 @@ class PriorDistributionSamplerTest(
     )
 
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
@@ -224,8 +229,9 @@ class PriorDistributionSamplerTest(
     )
 
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only_no_controls,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
@@ -282,8 +288,9 @@ class PriorDistributionSamplerTest(
     )
 
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
@@ -340,15 +347,16 @@ class PriorDistributionSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
     inference_data = meridian.inference_data
 
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -368,15 +376,16 @@ class PriorDistributionSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
     inference_data = meridian.inference_data
 
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -396,15 +405,16 @@ class PriorDistributionSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_prior(n_draws=self._N_DRAWS)
     inference_data = meridian.inference_data
 
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -589,8 +599,9 @@ class PriorDistributionSamplerTest(
   ):
     """Checks prior validation fails with incorrect coordinates."""
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     prior_samples = meridian.prior_sampler_callable._sample_prior(self._N_DRAWS)
@@ -617,7 +628,7 @@ class PriorDistributionSamplerTest(
         f" {mismatched_coord_size}",
     ):
       _ = model.Meridian(
-          input_data=self.short_input_data_with_media_and_rf,
+          input_data=input_data,
           model_spec=model_spec,
           inference_data=inference_data,
       )

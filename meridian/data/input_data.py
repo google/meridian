@@ -466,6 +466,30 @@ class InputData:
     )
     return kpi_scaled - np.mean(kpi_scaled, axis=1, keepdims=True)
 
+  def copy(self, deep: bool = True) -> "InputData":
+    """Returns a copy of the InputData instance.
+
+    Args:
+      deep: If True, a deep copy is made, meaning all xarray.DataArray objects
+        are also deepcopied. If False, a shallow copy is made.
+
+    Returns:
+      A new InputData instance.
+    """
+    if not deep:
+      return dataclasses.replace(self)
+
+    copied_fields = {}
+    for field in dataclasses.fields(self):
+      value = getattr(self, field.name)
+      if isinstance(value, xr.DataArray):
+        copied_fields[field.name] = value.copy(deep=True)
+      else:
+        # For other types, dataclasses.replace does a shallow copy.
+        copied_fields[field.name] = value
+
+    return InputData(**copied_fields)
+
   def _validate_scenarios(self):
     """Verifies that calibration and analysis is set correctly."""
     n_geos = len(self.kpi.coords[constants.GEO])

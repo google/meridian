@@ -37,9 +37,10 @@ class PosteriorMCMCSamplerTest(
 
   input_data_samples = model_test_data.WithInputDataSamples
 
-  def setUp(self):
-    super().setUp()
-    model_test_data.WithInputDataSamples.setup(self)
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
 
   def test_get_joint_dist_zeros(self):
     model_spec = spec.ModelSpec(
@@ -60,8 +61,9 @@ class PosteriorMCMCSamplerTest(
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     sample = (
@@ -93,8 +95,9 @@ class PosteriorMCMCSamplerTest(
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
+    input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only_no_controls,
+        input_data=input_data,
         model_spec=model_spec,
     )
     sample = (
@@ -138,9 +141,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -285,9 +289,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -434,9 +439,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -607,8 +613,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -734,8 +741,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -853,8 +861,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only_no_controls,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -904,8 +913,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1022,8 +1032,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1144,8 +1155,9 @@ class PosteriorMCMCSamplerTest(
             ),
         )
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=spec.ModelSpec(),
     )
 
@@ -1176,8 +1188,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1189,7 +1202,7 @@ class PosteriorMCMCSamplerTest(
     )
     inference_data = meridian.inference_data
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -1216,8 +1229,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1229,7 +1243,7 @@ class PosteriorMCMCSamplerTest(
     )
     inference_data = meridian.inference_data
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -1434,8 +1448,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1473,7 +1488,7 @@ class PosteriorMCMCSamplerTest(
         f" {expected_coord_size}, got {mismatched_coord_size}",
     ):
       _ = model.Meridian(
-          input_data=self.short_input_data_with_media_and_rf,
+          input_data=input_data,
           model_spec=model_spec,
           inference_data=inference_data,
       )
@@ -1500,8 +1515,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_posterior(
@@ -1538,8 +1554,9 @@ class PosteriorMCMCSamplerTest(
         " for details.",
     ):
       model_spec = spec.ModelSpec()
+      input_data = self.short_input_data_with_media_and_rf
       meridian = model.Meridian(
-          input_data=self.short_input_data_with_media_and_rf,
+          input_data=input_data,
           model_spec=model_spec,
       )
       meridian.sample_posterior(
@@ -1577,8 +1594,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1625,8 +1643,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
