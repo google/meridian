@@ -72,6 +72,7 @@ import json
 from typing import Any, Callable
 
 import arviz as az
+from meridian import backend
 from meridian.analysis import visualizer
 import mlflow
 from mlflow.utils.autologging_utils import autologging_integration, safe_patch
@@ -81,7 +82,6 @@ from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.version import __version__
 import numpy as np
-import tensorflow_probability as tfp
 
 
 FLAVOR_NAME = "meridian"
@@ -123,7 +123,7 @@ def _log_priors(model_spec: spec.ModelSpec) -> None:
     field_value = getattr(priors, field.name)
 
     # Stringify Distributions and numpy arrays.
-    if isinstance(field_value, tfp.distributions.Distribution):
+    if isinstance(field_value, backend.tfd.Distribution):
       field_value = str(field_value)
     elif isinstance(field_value, np.ndarray):
       field_value = json.dumps(field_value.tolist())
