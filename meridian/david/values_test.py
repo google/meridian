@@ -42,6 +42,49 @@ class HillCurveQuantilesTest(absltest.TestCase):
     self.assertEqual(res["mean"].shape, (3,))
 
 
+class HillForChannelTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    class DummyMMM:
+      pass
+
+    self.mmm = DummyMMM()
+    self.mmm.ec = np.array([[1.0, 2.0], [3.0, 4.0]])
+    self.mmm.slope = np.array([[0.1, 0.2], [0.3, 0.4]])
+    self.mmm.media_channel_names = ["a", "b"]
+
+  def test_returns_posterior_and_curve_df(self):
+    res = values.hill_for_channel(
+        self.mmm,
+        "b",
+        media_grid=np.array([0.0, 1.0]),
+        quantiles=(0.5,),
+    )
+    self.assertEqual(res["channel_index"], 1)
+    self.assertEqual(res["channel_name"], "b")
+    self.assertIsInstance(res["curve_df"], pd.DataFrame)
+    self.assertListEqual(list(res["curve_df"].columns), ["media", "response_mean", "response_q50"])
+    self.assertEqual(len(res["curve_df"]), 2)
+
+
+class HillCurveDFTest(absltest.TestCase):
+
+  def test_returns_dataframe(self):
+    class DummyMMM:
+      pass
+
+    mmm = DummyMMM()
+    mmm.ec = np.array([[1.0, 2.0]])
+    mmm.slope = np.array([[0.1, 0.2]])
+    mmm.media_channel_names = ["a", "b"]
+
+    df = values.hill_curve_df(mmm, "b", media_grid=np.array([0.0, 1.0]), quantiles=(0.5,))
+    self.assertIsInstance(df, pd.DataFrame)
+    self.assertListEqual(list(df.columns), ["media", "response_mean", "response_q50"])
+    self.assertEqual(len(df), 2)
+
+
 class GetCurveParameterDataTest(absltest.TestCase):
 
   def test_calls_analyzer_and_returns_dataframe(self):
