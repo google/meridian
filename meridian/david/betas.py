@@ -267,6 +267,101 @@ def inspect_t_stat(
   }
 
 
+def inspect_t_stat_normalised(
+    mmm: meridian_model.Meridian,
+    channel_index: int,
+    *,
+    geo_index: int | None = None,
+    epsilon: float = 1e-9,
+) -> Mapping[str, float]:
+  """t/z stats after log-transforming a strictly-positive coefficient.
+
+  This helper is intended for models fitted with *log-normal* media effects
+  (``media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL``). It computes
+  summary statistics on the log of the geometric-mean coefficient (``beta_gm``),
+  matching the normalised histograms produced by
+  :func:`plot_posterior_coef_as_normal`.
+
+  When the model uses normal media effects the function simply falls back to
+  :func:`inspect_t_stat` on the linear scale.
+
+  Parameters
+  ----------
+  mmm:
+    Fitted :class:`Meridian` instance.
+  channel_index:
+    Index of the media channel to inspect.
+  geo_index:
+    Optional geo index to inspect. ``None`` averages across geos within each
+    draw.
+  epsilon:
+    Small constant added to draws ``<= 0`` before taking ``log`` to avoid
+    ``-inf``.
+
+  Returns
+  -------
+  Mapping[str, float]
+    Dictionary with ``mean``, ``sd``, ``se``, ``z``, ``t`` and the probability
+    that the log-coefficient is positive (``p(log-beta>0)``).
+  """
+
+  from meridian import constants as c
+
+  if mmm.media_effects_dist == c.MEDIA_EFFECTS_NORMAL:
+    return inspect_t_stat(
+        mmm,
+        channel_index=channel_index,
+        scale="linear",
+        geo_index=geo_index,
+    )
+
+  arr = mmm.inference_data.posterior[c.BETA_GM].values
+  if arr.ndim == 4:  # chain, draw, geo, channel
+    if geo_index is None:
+      draws = arr.mean(axis=2)[..., channel_index].reshape(-1)
+    else:
+      draws = arr[..., geo_index, channel_index].reshape(-1)
+  else:  # national model: chain, draw, channel
+    draws = arr[..., channel_index].reshape(-1)
+
+  draws = np.asarray(draws, dtype=float)
+  if np.any(draws <= 0):
+    draws = np.log(draws + epsilon)
+  else:
+    draws = np.log(draws)
+
+  try:
+    import arviz as az  # type: ignore
+    da = mmm.inference_data.posterior[c.BETA_GM]
+    if hasattr(da, "dims"):
+      if "geo" in da.dims:
+        if geo_index is None:
+          da = da.mean("geo")
+        else:
+          da = da.isel(geo=geo_index)
+      if da.dims:
+        da = da.isel({da.dims[-1]: channel_index})
+    ess = float(az.ess(da).values)  # type: ignore[arg-type]
+  except Exception:  # pragma: no cover - arviz optional
+    ess = draws.size
+
+  mean = float(np.mean(draws))
+  sd = float(np.std(draws, ddof=1))
+  se = float(sd / np.sqrt(max(ess, 1)))
+  z = float(mean / sd) if sd > 0 else np.nan
+  t = float(mean / se) if se > 0 else np.nan
+  p_gt0 = float((draws > 0).mean())
+
+  return {
+      "mean": mean,
+      "sd": sd,
+      "se": se,
+      "z": z,
+      "t": t,
+      "p(log-beta>0)": p_gt0,
+  }
+
+
 def plot_posterior_coef(
     mmm: meridian_model.Meridian,
     parameter: str,
