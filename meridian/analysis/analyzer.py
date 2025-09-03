@@ -2722,8 +2722,8 @@ class Analyzer:
 
     Args:
       non_media_baseline_values: Optional list of shape
-        `(n_non_media_channels,)`. Each element is a float which means that the
-        fixed value will be used as baseline for the given channel. It is
+        `(n_non_media_channels,)`. Each element is a float denoting a fixed
+        value that will be used as the baseline for the given channel. It is
         expected that they are scaled by population for the channels where
         `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
         `model_spec.non_media_baseline_values` is used, which defaults to the
@@ -5031,3 +5031,73 @@ class Analyzer:
         dims=[constants.CHANNEL],
         coords={constants.CHANNEL: channel_names},
     )
+
+  def negative_baseline_probability(
+      self,
+      non_media_baseline_values: Sequence[float] | None = None,
+      use_posterior: bool = True,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
+      use_kpi: bool = False,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> np.floating:
+    """Calculates either prior or posterior negative baseline probability.
+
+    This calculates either the prior or posterior probability that the baseline,
+    aggregated over the supplied time window, is negative.
+
+    The baseline is calculated by computing `expected_outcome` with the
+    following assumptions:
+      1) `media` is set to all zeros,
+      2) `reach` is set to all zeros,
+      3) `organic_media` is set to all zeros,
+      4) `organic_reach` is set to all zeros,
+      5) `non_media_treatments` is set to the counterfactual values according
+      to the `non_media_baseline_values` argument,
+      6) `controls` are set to historical values.
+
+    Args:
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is a float denoting a fixed
+        value that will be used as the baseline for the given channel. It is
+        expected that they are scaled by population for the channels where
+        `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
+        `model_spec.non_media_baseline_values` is used, which defaults to the
+        minimum value for each non_media treatment channel.
+      use_posterior: Boolean. If `True`, then the expected outcome posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      selected_geos: Optional list of containing a subset of geos to include. By
+        default, all geos are included.
+      selected_times: Optional list of containing a subset of dates to include.
+        The values accepted here must match time dimension coordinates from
+        `InputData.time`. By default, all time periods are included.
+      use_kpi: Boolean. If `use_kpi = True`, the expected KPI is calculated;
+        otherwise the expected revenue `(kpi * revenue_per_kpi)` is calculated.
+        It is required that `use_kpi = True` if `revenue_per_kpi` is not defined
+        or if `inverse_transform_outcome = False`.
+      batch_size: Integer representing the maximum draws per chain in each
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
+
+    Returns:
+      A float representing the prior or posterior negative baseline probability
+      over the supplied time window.
+    Raises:
+      NotFittedModelError: if `sample_posterior()` (for `use_posterior=True`)
+        or `sample_prior()` (for `use_posterior=False`) has not been called
+        prior to calling this method.
+    """
+
+    baseline_draws = self._calculate_baseline_expected_outcome(
+        non_media_baseline_values=non_media_baseline_values,
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=True,
+        aggregate_times=True,
+        use_kpi=use_kpi,
+        batch_size=batch_size,
+    )
+    return np.mean(baseline_draws < 0)
