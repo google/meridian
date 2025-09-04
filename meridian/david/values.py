@@ -178,9 +178,26 @@ def get_budget_optimisation_data(
     confidence_level: float = 0.90,
 ) -> pd.DataFrame:
   """Returns optimal frequency metrics as a table."""
-  ana = analyzer.Analyzer(mmm)
-
   rf_tensors = getattr(mmm, "rf_tensors", None)
+  # Gracefully handle models without reach/frequency tensors by returning an
+  # empty DataFrame with the expected columns. This avoids downstream
+  # ``Analyzer`` calls that would otherwise fail when RF data is absent.
+  has_impr = (
+      getattr(rf_tensors, "rf_impressions", None) is not None
+      if rf_tensors is not None
+      else False
+  )
+  has_spend = (
+      getattr(rf_tensors, "rf_spend", None) is not None
+      if rf_tensors is not None
+      else False
+  )
+  if not (has_impr or has_spend):
+    return pd.DataFrame(
+        columns=[C.RF_CHANNEL, C.FREQUENCY, C.ROI, C.OPTIMAL_FREQUENCY]
+    )
+
+  ana = analyzer.Analyzer(mmm)
   input_data = getattr(mmm, "input_data", None)
   new_data = analyzer.DataTensors(
       rf_impressions=tf.cast(rf_tensors.rf_impressions, tf.float32)
@@ -431,9 +448,18 @@ def plot_hill(
 if __name__ == "__main__":
   curves = get_curve_parameter_data(mmm)
   curves.to_csv("hill_curve_parameters.csv", index=False)
-
-  opt = get_budget_optimisation_data(mmm, selected_channels=["YouTube"])
-  opt.to_csv("rf_budget_optimisation.csv", index=False)
+  rf_tensors = getattr(mmm, "rf_tensors", None)
+  has_rf = rf_tensors is not None and (
+      getattr(rf_tensors, "rf_impressions", None) is not None
+      or getattr(rf_tensors, "rf_spend", None) is not None
+  )
+  if has_rf:
+    opt = get_budget_optimisation_data(mmm, selected_channels=["YouTube"])
+    opt.to_csv("rf_budget_optimisation.csv", index=False)
+  else:
+    print(
+        "Skipping RF budget optimisation export: no reach/frequency tensors on the model."
+    )
 
   avf = get_actual_vs_fitted_data_fixed(mmm, aggregate_geos=True)
   avf.to_csv("actual_vs_fitted.csv", index=False)

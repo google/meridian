@@ -164,6 +164,25 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
                          values.C.ROI, values.C.OPTIMAL_FREQUENCY]]
     pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
+  def test_returns_empty_dataframe_when_no_rf_data(self):
+    class DummyMMM:
+      pass
+
+    mmm = DummyMMM()
+    # No rf_tensors or rf data present
+    mmm.rf_tensors = mock.Mock(rf_impressions=None, rf_spend=None)
+
+    result = values.get_budget_optimisation_data(mmm)
+    expected = pd.DataFrame(
+        columns=[
+            values.C.RF_CHANNEL,
+            values.C.FREQUENCY,
+            values.C.ROI,
+            values.C.OPTIMAL_FREQUENCY,
+        ]
+    )
+    pd.testing.assert_frame_equal(result, expected)
+
 
 
 class GetActualVsFittedDataFixedTest(absltest.TestCase):
