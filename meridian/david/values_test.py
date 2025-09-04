@@ -129,59 +129,104 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
             values.C.OPTIMAL_FREQUENCY: ([values.C.RF_CHANNEL], [1, 2]),
         },
     )
+    self.sum_ds = xr.Dataset(
+        coords={
+            values.C.CHANNEL: ['A', 'B', 'C', values.C.ALL_CHANNELS],
+            values.C.METRIC: [values.C.MEAN],
+        },
+        data_vars={
+            values.C.ROI: (
+                [values.C.CHANNEL, values.C.METRIC],
+                [[1], [2], [3], [4]],
+            ),
+        },
+    )
 
-  def test_returns_dataframe_with_selected_channel(self):
+  def test_returns_dataframe_with_rf_and_non_rf_channels(self):
     with mock.patch.object(values.analyzer, 'Analyzer') as MockAnalyzer:
       MockAnalyzer.return_value.optimal_freq.return_value = self.rf_ds
+      MockAnalyzer.return_value.summary_metrics.return_value = self.sum_ds
       result = values.get_budget_optimisation_data(
           self.mmm,
-          selected_channels=['B'],
+          selected_channels=['B', 'C'],
           selected_times=['t'],
           use_kpi=True,
           confidence_level=0.9,
       )
       MockAnalyzer.assert_called_once_with(self.mmm)
       MockAnalyzer.return_value.optimal_freq.assert_called_once()
-      _, kwargs = MockAnalyzer.return_value.optimal_freq.call_args
-      self.assertEqual(kwargs['selected_times'], ['t'])
-      self.assertTrue(kwargs['use_kpi'])
-      self.assertEqual(kwargs['confidence_level'], 0.9)
-      freq_grid = kwargs['freq_grid']
+      MockAnalyzer.return_value.summary_metrics.assert_called_once()
+
+      _, opt_kwargs = MockAnalyzer.return_value.optimal_freq.call_args
+      self.assertEqual(opt_kwargs['selected_times'], ['t'])
+      self.assertTrue(opt_kwargs['use_kpi'])
+      self.assertEqual(opt_kwargs['confidence_level'], 0.9)
+      freq_grid = opt_kwargs['freq_grid']
       self.assertIsInstance(freq_grid, np.ndarray)
       self.assertEqual(freq_grid.dtype, np.float32)
-      new_data = kwargs['new_data']
+      new_data = opt_kwargs['new_data']
       self.assertEqual(new_data.rf_impressions.dtype, tf.float32)
       self.assertEqual(new_data.rf_spend.dtype, tf.float32)
       self.assertEqual(new_data.revenue_per_kpi.dtype, tf.float32)
 
+      _, sum_kwargs = MockAnalyzer.return_value.summary_metrics.call_args
+      self.assertTrue(np.allclose(sum_kwargs['optimal_frequency'], np.array([1, 2], dtype=np.float32)))
+      self.assertEqual(sum_kwargs['selected_times'], ['t'])
+      self.assertTrue(sum_kwargs['use_kpi'])
+      self.assertEqual(sum_kwargs['confidence_level'], 0.9)
+      self.assertFalse(sum_kwargs['include_non_paid_channels'])
+
     expected = pd.DataFrame({
-        values.C.RF_CHANNEL: ['B', 'B'],
-        values.C.FREQUENCY: [1, 2],
-        values.C.ROI: [20, 40],
-        values.C.OPTIMAL_FREQUENCY: [2, 2],
+        values.C.RF_CHANNEL: ['B', 'B', 'C'],
+        values.C.FREQUENCY: [1, 2, np.nan],
+        values.C.ROI: [20, 40, 3],
+        values.C.OPTIMAL_FREQUENCY: [2, 2, np.nan],
     })
     expected = expected[[values.C.RF_CHANNEL, values.C.FREQUENCY,
                          values.C.ROI, values.C.OPTIMAL_FREQUENCY]]
     pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
-  def test_returns_empty_dataframe_when_no_rf_data(self):
+  def test_returns_non_rf_rows_when_no_rf_channels(self):
     class DummyMMM:
       pass
 
     mmm = DummyMMM()
-    # No rf_tensors or rf data present
-    mmm.rf_tensors = mock.Mock(rf_impressions=None, rf_spend=None)
-
-    result = values.get_budget_optimisation_data(mmm)
-    expected = pd.DataFrame(
-        columns=[
-            values.C.RF_CHANNEL,
-            values.C.FREQUENCY,
-            values.C.ROI,
-            values.C.OPTIMAL_FREQUENCY,
-        ]
+    mmm.rf_tensors = mock.Mock(rf_impressions=None, rf_spend=None, frequency=None)
+    mmm.input_data = mock.Mock(
+        revenue_per_kpi=tf.constant([[3.0]], dtype=tf.float64)
     )
-    pd.testing.assert_frame_equal(result, expected)
+
+    sum_ds = xr.Dataset(
+        coords={
+            values.C.CHANNEL: ['C'],
+            values.C.METRIC: [values.C.MEAN],
+        },
+        data_vars={
+            values.C.ROI: ([values.C.CHANNEL, values.C.METRIC], [[5]]),
+        },
+    )
+
+    with mock.patch.object(values.analyzer, 'Analyzer') as MockAnalyzer:
+      MockAnalyzer.return_value.optimal_freq.side_effect = Exception('no rf')
+      MockAnalyzer.return_value.summary_metrics.return_value = sum_ds
+      result = values.get_budget_optimisation_data(mmm)
+      MockAnalyzer.assert_called_once_with(mmm)
+      MockAnalyzer.return_value.optimal_freq.assert_called_once()
+      MockAnalyzer.return_value.summary_metrics.assert_called_once()
+      _, sum_kwargs = MockAnalyzer.return_value.summary_metrics.call_args
+      self.assertIsNone(sum_kwargs['optimal_frequency'])
+      self.assertFalse(sum_kwargs['include_non_paid_channels'])
+
+    expected = pd.DataFrame({
+        values.C.RF_CHANNEL: ['C'],
+        values.C.FREQUENCY: [np.nan],
+        values.C.ROI: [5],
+        values.C.OPTIMAL_FREQUENCY: [np.nan],
+    })
+    expected = expected[[values.C.RF_CHANNEL, values.C.FREQUENCY,
+                         values.C.ROI, values.C.OPTIMAL_FREQUENCY]]
+    expected.columns.name = values.C.METRIC
+    pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
 
 
