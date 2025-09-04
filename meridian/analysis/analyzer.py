@@ -34,6 +34,7 @@ __all__ = [
     "Analyzer",
     "DataTensors",
     "DistributionTensors",
+    "get_central_tendency_and_ci",
 ]
 
 
@@ -524,31 +525,6 @@ class DistributionTensors(backend.ExtensionType):
   gamma_gn: Optional[backend.Tensor] = None
 
 
-def _transformed_new_or_scaled(
-    new_variable: backend.Tensor | None,
-    transformer: transformers.TensorTransformer | None,
-    scaled_variable: backend.Tensor | None,
-) -> backend.Tensor | None:
-  """Returns the transformed new variable or the scaled variable.
-
-  If the `new_variable` is present, returns
-  `transformer.forward(new_variable)`. Otherwise, returns the
-  `scaled_variable`.
-
-  Args:
-    new_variable: Optional tensor to be transformed..
-    transformer: Optional DataTransformer.
-    scaled_variable: Tensor to be returned if `new_variable` is None.
-
-  Returns:
-    The transformed new variable (if the new variable is present) or the
-    original scaled variable from the input data otherwise.
-  """
-  if new_variable is None or transformer is None:
-    return scaled_variable
-  return transformer.forward(new_variable)
-
-
 def get_central_tendency_and_ci(
     data: np.ndarray | backend.Tensor,
     confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -578,6 +554,31 @@ def get_central_tendency_and_ci(
     return np.stack([mean, median, ci_lo, ci_hi], axis=-1)
   else:
     return np.stack([mean, ci_lo, ci_hi], axis=-1)
+
+
+def _transformed_new_or_scaled(
+    new_variable: backend.Tensor | None,
+    transformer: transformers.TensorTransformer | None,
+    scaled_variable: backend.Tensor | None,
+) -> backend.Tensor | None:
+  """Returns the transformed new variable or the scaled variable.
+
+  If the `new_variable` is present, returns
+  `transformer.forward(new_variable)`. Otherwise, returns the
+  `scaled_variable`.
+
+  Args:
+    new_variable: Optional tensor to be transformed..
+    transformer: Optional DataTransformer.
+    scaled_variable: Tensor to be returned if `new_variable` is None.
+
+  Returns:
+    The transformed new variable (if the new variable is present) or the
+    original scaled variable from the input data otherwise.
+  """
+  if new_variable is None or transformer is None:
+    return scaled_variable
+  return transformer.forward(new_variable)
 
 
 def _calc_rsquared(expected, actual):

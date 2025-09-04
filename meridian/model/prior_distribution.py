@@ -33,6 +33,7 @@ import numpy as np
 __all__ = [
     'IndependentMultivariateDistribution',
     'PriorDistribution',
+    'distributions_are_equal',
 ]
 
 
@@ -1135,6 +1136,43 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     return batch_shapes
 
 
+def distributions_are_equal(
+    a: backend.tfd.Distribution, b: backend.tfd.Distribution
+) -> bool:
+  """Determine if two distributions are equal."""
+  if type(a) != type(b):  # pylint: disable=unidiomatic-typecheck
+    return False
+
+  a_params = a.parameters.copy()
+  b_params = b.parameters.copy()
+
+  if constants.DISTRIBUTION in a_params and constants.DISTRIBUTION in b_params:
+    if not distributions_are_equal(
+        a_params[constants.DISTRIBUTION], b_params[constants.DISTRIBUTION]
+    ):
+      return False
+    del a_params[constants.DISTRIBUTION]
+    del b_params[constants.DISTRIBUTION]
+
+  if constants.DISTRIBUTION in a_params or constants.DISTRIBUTION in b_params:
+    return False
+
+  if a_params.keys() != b_params.keys():
+    return False
+
+  for key in a_params.keys():
+    if isinstance(
+        a_params[key], (backend.Tensor, np.ndarray, float, int)
+    ) and isinstance(b_params[key], (backend.Tensor, np.ndarray, float, int)):
+      if not backend.allclose(a_params[key], b_params[key]):
+        return False
+    else:
+      if a_params[key] != b_params[key]:
+        return False
+
+  return True
+
+
 def _convert_to_deterministic_0_distribution(
     distribution: backend.tfd.Distribution,
 ) -> backend.tfd.Distribution:
@@ -1196,43 +1234,6 @@ def _get_total_media_contribution_prior(
       dtype=backend.float32,
   )
   return backend.tfd.LogNormal(lognormal_mu, lognormal_sigma, name=name)
-
-
-def distributions_are_equal(
-    a: backend.tfd.Distribution, b: backend.tfd.Distribution
-) -> bool:
-  """Determine if two distributions are equal."""
-  if type(a) != type(b):  # pylint: disable=unidiomatic-typecheck
-    return False
-
-  a_params = a.parameters.copy()
-  b_params = b.parameters.copy()
-
-  if constants.DISTRIBUTION in a_params and constants.DISTRIBUTION in b_params:
-    if not distributions_are_equal(
-        a_params[constants.DISTRIBUTION], b_params[constants.DISTRIBUTION]
-    ):
-      return False
-    del a_params[constants.DISTRIBUTION]
-    del b_params[constants.DISTRIBUTION]
-
-  if constants.DISTRIBUTION in a_params or constants.DISTRIBUTION in b_params:
-    return False
-
-  if a_params.keys() != b_params.keys():
-    return False
-
-  for key in a_params.keys():
-    if isinstance(
-        a_params[key], (backend.Tensor, np.ndarray, float, int)
-    ) and isinstance(b_params[key], (backend.Tensor, np.ndarray, float, int)):
-      if not backend.allclose(a_params[key], b_params[key]):
-        return False
-    else:
-      if a_params[key] != b_params[key]:
-        return False
-
-  return True
 
 
 def _validate_support(

@@ -2680,6 +2680,71 @@ class BudgetOptimizer:
     return reshaped_tensor * reshaped_population
 
 
+def get_optimization_bounds(
+    n_channels: int,
+    spend: np.ndarray,
+    round_factor: int,
+    spend_constraint_lower: _SpendConstraint,
+    spend_constraint_upper: _SpendConstraint,
+) -> tuple[np.ndarray, np.ndarray]:
+  """Get optimization bounds from spend and spend constraints.
+
+  Args:
+    n_channels: Integer number of total channels.
+    spend: np.ndarray with size `n_total_channels` containing media-level spend
+      for all media and RF channels.
+    round_factor: Integer number of digits to round optimization bounds.
+    spend_constraint_lower: Numeric list of size `n_total_channels` or float
+      (same constraint for all media) indicating the lower bound of media-level
+      spend. The lower bound of media-level spend is `(1 -
+      spend_constraint_lower) * budget * allocation)`. The value must be between
+      0-1.
+    spend_constraint_upper: Numeric list of size `n_total_channels` or float
+      (same constraint for all media) indicating the upper bound of media-level
+      spend. The upper bound of media-level spend is `(1 +
+      spend_constraint_upper) * budget * allocation)`.
+
+  Returns:
+    lower_bound: np.ndarray of size `n_total_channels` containing the treated
+      lower bound spend for each media and RF channel.
+    upper_bound: np.ndarray of size `n_total_channels` containing the treated
+      upper bound spend for each media and RF channel.
+  """
+  spend_bounds = _get_spend_bounds(
+      n_channels=n_channels,
+      spend_constraint_lower=spend_constraint_lower,
+      spend_constraint_upper=spend_constraint_upper,
+  )
+  rounded_spend = np.round(spend, round_factor).astype(int)
+  lower = np.round((spend_bounds[0] * rounded_spend), round_factor).astype(int)
+  upper = np.round(spend_bounds[1] * rounded_spend, round_factor).astype(int)
+  return (lower, upper)
+
+
+def get_round_factor(budget: float, gtol: float) -> int:
+  """Gets the number of integer digits to round off of budget.
+
+  Args:
+    budget: Float number for total advertising budget.
+    gtol: Float indicating the acceptable relative error for the budget used in
+      the grid setup. The budget will be rounded by `10*n`, where `n` is the
+      smallest int such that `(budget - rounded_budget) <= (budget * gtol)`.
+      `gtol` must be less than 1.
+
+  Returns:
+    Integer number of digits to round budget to.
+  """
+  tolerance = budget * gtol
+  if gtol >= 1.0:
+    raise ValueError('gtol must be less than one.')
+  elif budget <= 0.0:
+    raise ValueError('`budget` must be greater than zero.')
+  elif tolerance < 1.0:
+    return 0
+  else:
+    return -int(math.log10(tolerance)) - 1
+
+
 def _validate_pct_of_spend(
     n_channels: int,
     hist_spend: np.ndarray,
@@ -2766,71 +2831,6 @@ def _get_spend_bounds(
       (1 + spend_const_upper),
   )
   return spend_bounds
-
-
-def get_optimization_bounds(
-    n_channels: int,
-    spend: np.ndarray,
-    round_factor: int,
-    spend_constraint_lower: _SpendConstraint,
-    spend_constraint_upper: _SpendConstraint,
-) -> tuple[np.ndarray, np.ndarray]:
-  """Get optimization bounds from spend and spend constraints.
-
-  Args:
-    n_channels: Integer number of total channels.
-    spend: np.ndarray with size `n_total_channels` containing media-level spend
-      for all media and RF channels.
-    round_factor: Integer number of digits to round optimization bounds.
-    spend_constraint_lower: Numeric list of size `n_total_channels` or float
-      (same constraint for all media) indicating the lower bound of media-level
-      spend. The lower bound of media-level spend is `(1 -
-      spend_constraint_lower) * budget * allocation)`. The value must be between
-      0-1.
-    spend_constraint_upper: Numeric list of size `n_total_channels` or float
-      (same constraint for all media) indicating the upper bound of media-level
-      spend. The upper bound of media-level spend is `(1 +
-      spend_constraint_upper) * budget * allocation)`.
-
-  Returns:
-    lower_bound: np.ndarray of size `n_total_channels` containing the treated
-      lower bound spend for each media and RF channel.
-    upper_bound: np.ndarray of size `n_total_channels` containing the treated
-      upper bound spend for each media and RF channel.
-  """
-  spend_bounds = _get_spend_bounds(
-      n_channels=n_channels,
-      spend_constraint_lower=spend_constraint_lower,
-      spend_constraint_upper=spend_constraint_upper,
-  )
-  rounded_spend = np.round(spend, round_factor).astype(int)
-  lower = np.round((spend_bounds[0] * rounded_spend), round_factor).astype(int)
-  upper = np.round(spend_bounds[1] * rounded_spend, round_factor).astype(int)
-  return (lower, upper)
-
-
-def get_round_factor(budget: float, gtol: float) -> int:
-  """Gets the number of integer digits to round off of budget.
-
-  Args:
-    budget: Float number for total advertising budget.
-    gtol: Float indicating the acceptable relative error for the budget used in
-      the grid setup. The budget will be rounded by `10*n`, where `n` is the
-      smallest int such that `(budget - rounded_budget) <= (budget * gtol)`.
-      `gtol` must be less than 1.
-
-  Returns:
-    Integer number of digits to round budget to.
-  """
-  tolerance = budget * gtol
-  if gtol >= 1.0:
-    raise ValueError('gtol must be less than one.')
-  elif budget <= 0.0:
-    raise ValueError('`budget` must be greater than zero.')
-  elif tolerance < 1.0:
-    return 0
-  else:
-    return -int(math.log10(tolerance)) - 1
 
 
 def _validate_budget(
