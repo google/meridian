@@ -284,10 +284,9 @@ def helper_get_curve_parameter_values(
     media_in_model: Mapping[str, str] | None = None,
 ):
   """Extract Hill parameter draws or summaries for ``channel_friendly``."""
-  from .values import _autodetect_hill_params_and_names, extract_hill_posterior
 
   friendly_to_raw = {v: k for k, v in (media_in_model or {}).items()}
-  ec, slope, channel_names = _autodetect_hill_params_and_names(mmm)
+  ec, slope, channel_names = values._autodetect_hill_params_and_names(mmm)
   candidates = [channel_friendly]
   if channel_friendly in friendly_to_raw:
     candidates.append(friendly_to_raw[channel_friendly])
@@ -301,7 +300,7 @@ def helper_get_curve_parameter_values(
           break
     if chan is None:
       chan = candidates[0]
-    post = extract_hill_posterior(
+    post = values.extract_hill_posterior(
         ec=ec, slope=slope, channel=chan, channel_names=channel_names
     )
     summary = post["summary"]
