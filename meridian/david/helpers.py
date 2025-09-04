@@ -16,7 +16,19 @@ from meridian import constants as C
 c = C  # convenience alias
 from meridian.analysis import analyzer
 
-from . import betas, diagnostics, values
+try:
+  # If helpers.py is part of a package (e.g., mypkg.helpers)
+  from . import betas, diagnostics, values
+except ImportError:
+  # If helpers.py is imported as a top-level module
+  import importlib
+  import os
+  import sys
+
+  sys.path.append(os.path.dirname(__file__))
+  betas = importlib.import_module("betas")
+  diagnostics = importlib.import_module("diagnostics")
+  values = importlib.import_module("values")
 
 
 # ---------------------------------------------------------------------------
