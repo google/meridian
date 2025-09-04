@@ -17,6 +17,9 @@
 # pylint: disable=g-import-not-at-top
 
 import importlib
+import os
+import sys
+import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -29,6 +32,97 @@ import numpy as np
 import tensorflow as tf
 
 
+class BackendInitializationTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._original_environ = os.environ.copy()
+    self._original_modules = sys.modules.copy()
+
+    # Unload backend modules from Python's cache. This is to ensure that the
+    # module's initialization logic is re-run for each test under different
+    # environment variable conditions.
+    modules_to_unload = ["meridian.backend.config", "meridian.backend"]
+    for mod_name in modules_to_unload:
+      if mod_name in sys.modules:
+        del sys.modules[mod_name]
+
+  def tearDown(self):
+    super().tearDown()
+    # Restore the original environment variables.
+    os.environ.clear()
+    os.environ.update(self._original_environ)
+
+    # Restore the original modules.
+    sys.modules.update(self._original_modules)
+
+    # Reload the backend modules to a clean, default state for subsequent tests.
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      importlib.reload(config)
+      importlib.reload(backend)
+
+  def _import_backend_modules(self):
+    from meridian.backend import config as config_mod  # pylint: disable=reimported
+    from meridian import backend as backend_mod  # pylint: disable=reimported
+
+    return config_mod, backend_mod
+
+  def test_default_backend(self):
+    if "MERIDIAN_BACKEND" in os.environ:
+      del os.environ["MERIDIAN_BACKEND"]
+
+    config_mod, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
+    self.assertIs(backend_mod.Tensor, tf.Tensor)
+
+  @parameterized.named_parameters(
+      ("lowercase", "tensorflow"),
+      ("uppercase", "TENSORFLOW"),
+  )
+  def test_env_var_tensorflow(self, env_value):
+    os.environ["MERIDIAN_BACKEND"] = env_value
+
+    config_mod, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
+    self.assertIs(backend_mod.Tensor, tf.Tensor)
+
+  @parameterized.named_parameters(
+      ("lowercase", "jax"),
+      ("uppercase", "JAX"),
+  )
+  def test_env_var_jax(self, env_value):
+    os.environ["MERIDIAN_BACKEND"] = env_value
+
+    # We expect the UserWarning during import because JAX is selected
+    with self.assertWarns(UserWarning) as cm:
+      config_mod, backend_mod = self._import_backend_modules()
+
+    self.assertIn("under development", str(cm.warning))
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
+    self.assertIs(backend_mod.Tensor, jax.Array)
+
+  def test_env_var_invalid(self):
+    os.environ["MERIDIAN_BACKEND"] = "pytorch"
+
+    with self.assertWarns(RuntimeWarning) as cm:
+      config_mod, backend_mod = self._import_backend_modules()
+
+    self.assertIn(
+        "Invalid MERIDIAN_BACKEND environment variable: 'pytorch'",
+        str(cm.warning),
+    )
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
+    self.assertIs(backend_mod.Tensor, tf.Tensor)
+
+
+_TF = config.Backend.TENSORFLOW.value
+_JAX = config.Backend.JAX.value
+_ALL_BACKENDS = [_TF, _JAX]
+
+
 class BackendTest(parameterized.TestCase):
 
   def setUp(self):
@@ -37,38 +131,86 @@ class BackendTest(parameterized.TestCase):
 
   def tearDown(self):
     super().tearDown()
-    config.set_backend(self._original_backend)
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      config.set_backend(self._original_backend)
+
+    importlib.reload(backend)
+
+  def _set_backend_for_test(self, backend_name: str):
+    expected_backend = config.Backend(backend_name)
+
+    if (
+        expected_backend == config.Backend.JAX
+        and config.get_backend() != config.Backend.JAX
+    ):
+      with self.assertWarns(UserWarning):
+        config.set_backend(backend_name)
+    else:
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        config.set_backend(backend_name)
+
     importlib.reload(backend)
 
   @parameterized.named_parameters(
-      ("tensorflow", config.Backend.TENSORFLOW),
-      ("jax", config.Backend.JAX),
+      ("tensorflow_enum", _TF, _TF, True),
+      ("jax_enum", _JAX, _JAX, True),
+      ("tensorflow_str", _TF, _TF, False),
+      ("jax_str_caps", "JAX", _JAX, False),
   )
-  def test_set_backend(self, backend_name):
-    config.set_backend(backend_name)
+  def test_set_backend(self, input_value, expected_str, is_enum_input):
+    expected_backend = config.Backend(expected_str)
+
+    if is_enum_input:
+      backend_selection = config.Backend(input_value)
+    else:
+      backend_selection = input_value
+
+    if (
+        expected_backend == config.Backend.JAX
+        and config.get_backend() != config.Backend.JAX
+    ):
+      with self.assertWarns(UserWarning):
+        config.set_backend(backend_selection)
+    else:
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        config.set_backend(backend_selection)
+
     importlib.reload(backend)
 
-    self.assertEqual(config.get_backend(), backend_name)
+    self.assertEqual(config.get_backend(), expected_backend)
 
-    if backend_name == config.Backend.JAX:
+    if expected_backend == config.Backend.JAX:
       self.assertIs(backend.Tensor, jax.Array)
     else:
       self.assertIs(backend.Tensor, tf.Tensor)
 
-  def test_invalid_backend(self):
-    with self.assertRaises(ValueError):
+  def test_invalid_backend_string(self):
+    with self.assertRaisesRegex(ValueError, "Invalid backend string"):
       config.set_backend("invalid_backend")
 
+  def test_invalid_backend_type(self):
+    with self.assertRaisesRegex(
+        ValueError, "Backend must be a Backend enum member or a string."
+    ):
+      config.set_backend(123)
+
   def test_set_backend_to_jax_raises_warning(self):
-    with self.assertWarns(UserWarning) as cm:
+    self._set_backend_for_test(_TF)
+    self._set_backend_for_test(_JAX)
+
+  def test_set_backend_to_jax_idempotent_warning(self):
+    self._set_backend_for_test(_JAX)
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
       config.set_backend(config.Backend.JAX)
-    self.assertIn(
-        "under development and is not yet functional", str(cm.warning)
-    )
+      self.assertEmpty(w)
 
   def test_set_random_seed_raises_for_jax(self):
-    config.set_backend(config.Backend.JAX)
-    importlib.reload(backend)
+    self._set_backend_for_test(_JAX)
     with self.assertRaises(NotImplementedError):
       backend.set_random_seed(0)
 
@@ -76,7 +218,6 @@ class BackendTest(parameterized.TestCase):
       ("numpy_int32", np.int32, "int32"),
       ("tf_float64", tf.float64, "float64"),
       ("jax_bfloat16", jnp.bfloat16, "bfloat16"),
-      # We use np.dtype().name to ensure the test is platform-agnostic.
       ("python_int", int, np.dtype(int).name),
       ("python_float", float, np.dtype(float).name),
       ("string", "float32", "float32"),
@@ -124,17 +265,16 @@ class BackendTest(parameterized.TestCase):
     self.assertEqual(backend.result_type(*types), expected)
 
   @parameterized.named_parameters(
-      ("tensorflow", config.Backend.TENSORFLOW),
-      ("jax", config.Backend.JAX),
+      ("tensorflow", _TF),
+      ("jax", _JAX),
   )
   def test_to_tensor_from_list(self, backend_name):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
 
     py_list = [1.0, 2.0, 3.0]
     list_tensor = backend.to_tensor(py_list)
 
-    if backend_name == config.Backend.JAX:
+    if backend_name == _JAX:
       self.assertIsInstance(list_tensor, jax.Array)
       self.assertEqual(list_tensor.dtype, jnp.float32)
 
@@ -149,17 +289,16 @@ class BackendTest(parameterized.TestCase):
       self.assertEqual(tensor_f64.dtype, tf.float64)
 
   @parameterized.named_parameters(
-      ("tensorflow", config.Backend.TENSORFLOW),
-      ("jax", config.Backend.JAX),
+      ("tensorflow", _TF),
+      ("jax", _JAX),
   )
   def test_to_tensor_from_numpy(self, backend_name):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
 
     np_array = np.array([4.0, 5.0, 6.0], dtype=np.float64)
     np_tensor = backend.to_tensor(np_array)
 
-    if backend_name == config.Backend.JAX:
+    if backend_name == _JAX:
       self.assertIsInstance(np_tensor, jax.Array)
       # JAX downcasts float64 NumPy arrays to float32 by default
       self.assertEqual(np_tensor.dtype, jnp.float32)
@@ -189,12 +328,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_concatenate_test_cases,
   )
   def test_concatenate(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensors = [backend.to_tensor(t) for t in test_case["tensors_in"]]
     kwargs = test_case["kwargs"]
     expected = test_case["expected"]
@@ -226,12 +364,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_broadcast_dynamic_shape_test_cases,
   )
   def test_broadcast_dynamic_shape(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     shape_x = test_case["shape_x"]
     shape_y = test_case["shape_y"]
     expected = test_case["expected"]
@@ -247,12 +384,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_tensor_shape_test_cases,
   )
   def test_tensor_shape(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     dims = test_case["dims"]
     expected = test_case["expected"]
 
@@ -300,19 +436,18 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_arange_test_cases,
   )
   def test_arange(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
 
     args = test_case["args"]
     kwargs = test_case["kwargs"]
     expected = test_case["expected"]
 
     # JAX disables 64-bit precision by default and will silently downcast.
-    if backend_name == config.Backend.JAX:
+    if backend_name == _JAX:
       if expected.dtype == np.int64:
         expected = expected.astype(np.int32)
       elif expected.dtype == np.float64:
@@ -350,12 +485,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_argmax_test_cases,
   )
   def test_argmax(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     kwargs = test_case["kwargs"]
     expected = test_case["expected"]
@@ -379,12 +513,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_fill_test_cases,
   )
   def test_fill(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     kwargs = test_case["kwargs"]
     expected = test_case["expected"]
 
@@ -408,12 +541,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_gather_test_cases,
   )
   def test_gather(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     indices = backend.to_tensor(test_case["indices"])
     expected = test_case["expected"]
@@ -438,12 +570,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_boolean_mask_test_cases,
   )
   def test_boolean_mask(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     mask = backend.to_tensor(test_case["mask"])
     expected = test_case["expected"]
@@ -470,12 +601,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_boolean_mask_with_axis_test_cases,
   )
   def test_boolean_mask_with_axis(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     mask = backend.to_tensor(test_case["mask"])
     axis = test_case["axis"]
@@ -486,12 +616,11 @@ class BackendTest(parameterized.TestCase):
     test_utils.assert_allclose(result, expected)
 
   @parameterized.named_parameters(
-      ("tensorflow", config.Backend.TENSORFLOW),
-      ("jax", config.Backend.JAX),
+      ("tensorflow", _TF),
+      ("jax", _JAX),
   )
   def test_unique_with_counts(self, backend_name):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     tensor_in = backend.to_tensor([1, 2, 1, 3, 2, 1])
     expected_y = np.array([1, 2, 3])
     expected_counts = np.array([3, 2, 1])
@@ -516,12 +645,11 @@ class BackendTest(parameterized.TestCase):
   ]
 
   @parameterized.product(
-      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      backend_name=_ALL_BACKENDS,
       test_case=_get_indices_where_test_cases,
   )
   def test_get_indices_where(self, backend_name, test_case):
-    config.set_backend(backend_name)
-    importlib.reload(backend)
+    self._set_backend_for_test(backend_name)
     condition = backend.to_tensor(test_case["condition"])
     expected = test_case["expected"]
 
@@ -530,8 +658,7 @@ class BackendTest(parameterized.TestCase):
     test_utils.assert_allclose(result, expected)
 
   def test_extension_type_raises_for_jax(self):
-    config.set_backend(config.Backend.JAX)
-    importlib.reload(backend)
+    self._set_backend_for_test(_JAX)
 
     class MyExtension(backend.ExtensionType):
       foo: int
