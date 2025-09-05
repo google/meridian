@@ -175,13 +175,13 @@ class PriorDistribution:
     xi_n: Prior distribution on the hierarchical standard deviation of
       `gamma_gn` which is the coefficient on non-media channel `n` for geo `g`.
       Hierarchy is defined over geos. Default distribution is `HalfNormal(5.0)`.
-    alpha_m: Prior distribution on the `geometric decay` Adstock parameter for
+    alpha_m: Prior distribution on the Adstock decay parameter for
       media input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_rf: Prior distribution on the `geometric decay` Adstock parameter for
+    alpha_rf: Prior distribution on the Adstock decay parameter for
       RF input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_om: Prior distribution on the `geometric decay` Adstock parameter for
+    alpha_om: Prior distribution on the Adstock decay parameter for
       organic media input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_orf: Prior distribution on the `geometric decay` Adstock parameter for
+    alpha_orf: Prior distribution on the Adstock decay parameter for
       organic RF input. Default distribution is `Uniform(0.0, 1.0)`.
     ec_m: Prior distribution on the `half-saturation` Hill parameter for media
       input. Default distribution is `TruncatedNormal(0.8, 0.8, 0.1, 10)`.
