@@ -1,0 +1,27 @@
+edition = "2023";
+
+package mmm.v1.common;
+
+option java_multiple_files = true;
+
+// Target metrics for marketing performance optimizations.
+// Note that each of these metric variants can be interpreted in terms of either
+// revenue or non-revenue KPI _type_. See: `common.KpiType`.
+enum TargetMetric {
+  TARGET_METRIC_UNSPECIFIED = 0;
+
+  // Any KPI type (revenue if the model data can be converted to revenue, or
+  // some generic KPI otherwise).
+  KPI = 1;
+
+  // ROI = net KPI change / spend.
+  ROI = 2;
+
+  // Marginal ROI is defined at channel level and is applied across all
+  // channels.
+  // mROI = changed in incremental KPI / spend.
+  MARGINAL_ROI = 3;
+
+  // CPIK = total spend / change in incremental KPI.
+  COST_PER_INCREMENTAL_KPI = 4;
+}
