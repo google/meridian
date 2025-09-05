@@ -1898,5 +1898,44 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
     np.testing.assert_allclose(variance, expected_variance, rtol=1e-5)
 
 
+class TestLognormalDistFromMeanStd(parameterized.TestCase):
+
+  @parameterized.product(
+      mean=(1.0, 2.0, 3.0),
+      std=(1.0, 2.0, 3.0),
+      input_type=(float, int, np.float32, backend.to_tensor)
+  )
+  def test_correct_mean_std_scalar(
+      self, mean, std, input_type
+  ):
+    mean = input_type(mean)
+    std = input_type(std)
+
+    dist = prior_distribution.lognormal_dist_from_mean_std(mean, std)
+
+    np.testing.assert_allclose(dist.mean(), mean, rtol=1e-5)
+    np.testing.assert_allclose(dist.stddev(), std, rtol=1e-5)
+
+  @parameterized.product(
+      mean=((1.0,), (1.0, 2.0,)),
+      std=((2.0,), (2.0, 3.0,)),
+      input_type=(tuple, list, np.array, backend.to_tensor)
+  )
+  def test_correct_mean_std_array(
+      self, mean, std, input_type
+  ):
+    mean = input_type(mean)
+    std = input_type(std)
+
+    dist = prior_distribution.lognormal_dist_from_mean_std(mean, std)
+
+    expected_len = max(len(mean), len(std))
+    expected_mean = np.broadcast_to(mean, expected_len)
+    expected_std = np.broadcast_to(std, expected_len)
+
+    np.testing.assert_allclose(dist.mean(), expected_mean, rtol=1e-5)
+    np.testing.assert_allclose(dist.stddev(), expected_std, rtol=1e-5)
+
+
 if __name__ == '__main__':
   absltest.main()

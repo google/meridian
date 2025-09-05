@@ -34,6 +34,7 @@ __all__ = [
     'IndependentMultivariateDistribution',
     'PriorDistribution',
     'distributions_are_equal',
+    'lognormal_dist_from_mean_std',
 ]
 
 
@@ -1171,6 +1172,32 @@ def distributions_are_equal(
         return False
 
   return True
+
+
+def lognormal_dist_from_mean_std(
+    mean: float | Sequence[float], std: float | Sequence[float]
+) -> backend.tfd.LogNormal:
+  """Define a lognormal distribution from its mean and standard deviation.
+
+  This function parameterizes lognormal distributions by their mean and
+  standard deviation.
+
+  Args:
+    mean: A positive float or array-like object defining the distribution mean.
+    std: A non-negative float or array-like object defining the distribution
+      standard deviation.
+
+  Returns:
+    A `backend.tfd.LogNormal` object with the input mean and standard deviation.
+  """
+
+  mean = np.asarray(mean)
+  std = np.asarray(std)
+
+  mu = np.log(mean) - 0.5 * np.log((std / mean) ** 2 + 1)
+  sigma = np.sqrt(np.log((std / mean) ** 2 + 1))
+
+  return backend.tfd.LogNormal(mu, sigma)
 
 
 def _convert_to_deterministic_0_distribution(
