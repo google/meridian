@@ -675,43 +675,66 @@ def _validate_flexible_selected_times(
     selected_times: Sequence[str] | Sequence[bool] | None,
     media_selected_times: Sequence[str] | Sequence[bool] | None,
     new_n_media_times: int,
+    new_time: Sequence[str] | None = None,
 ):
   """Raises an error if selected times or media selected times is invalid.
 
-  This checks that the `selected_times` and `media_selected_times` arguments
-  are lists of booleans with the same number of elements as `new_n_media_times`.
-  This is only relevant if the time dimension of any of the variables in
-  `new_data` used in the analysis is modified.
+  This checks that (1) the `selected_times` and `media_selected_times` arguments
+  are lists of booleans with the same number of elements as `new_n_media_times`,
+  or (2) the `selected_times` and `media_selected_times` arguments are lists of
+  strings and the `new_time` list is provided and `selected_times` and
+  `media_selected_times` are subsets of `new_time`. This is only relevant if the
+  time dimension of any of the variables in `new_data` used in the analysis is
+  modified.
 
   Args:
     selected_times: Optional list of times to validate.
     media_selected_times: Optional list of media times to validate.
     new_n_media_times: The number of time periods in the new data.
+    new_time: The optional time dimension of the new data.
   """
   if selected_times and (
-      not _is_bool_list(selected_times)
-      or len(selected_times) != new_n_media_times
+      not (
+          _is_bool_list(selected_times)
+          and len(selected_times) == new_n_media_times
+      )
+      and not (
+          _is_str_list(selected_times)
+          and new_time is not None
+          and set(selected_times) <= set(new_time)
+      )
   ):
     raise ValueError(
         "If `media`, `reach`, `frequency`, `organic_media`,"
         " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
         " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then `selected_times` must be a list"
+        " periods than in `InputData`, then (1) `selected_times` must be a list"
         " of booleans with length equal to the number of time periods in"
-        " the new data."
+        " the new data, or (2) `selected_times` must be a list of strings and"
+        " `new_time` must be provided and `selected_times` must be a subset of"
+        " `new_time`."
     )
 
   if media_selected_times and (
-      not _is_bool_list(media_selected_times)
-      or len(media_selected_times) != new_n_media_times
+      not (
+          _is_bool_list(media_selected_times)
+          and len(media_selected_times) == new_n_media_times
+      )
+      and not (
+          _is_str_list(media_selected_times)
+          and new_time is not None
+          and set(media_selected_times) <= set(new_time)
+      )
   ):
     raise ValueError(
         "If `media`, `reach`, `frequency`, `organic_media`,"
         " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
         " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then `media_selected_times` must be"
+        " periods than in `InputData`, then (1) `media_selected_times` must be"
         " a list of booleans with length equal to the number of time"
-        " periods in the new data."
+        " periods in the new data, or (2) `media_selected_times` must be a list"
+        " of strings and `new_time` must be provided and"
+        " `media_selected_times` must be a subset of `new_time`."
     )
 
 
@@ -4056,6 +4079,7 @@ class Analyzer:
 
   def response_curves(
       self,
+      new_data: DataTensors | None = None,
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
@@ -4081,6 +4105,15 @@ class Analyzer:
     `selected_times` are also scaled by the multiplier.)
 
     Args:
+      new_data: Optional `DataTensors` object with optional new tensors:
+        `media`, `reach`, `frequency`, `media_spend`, `rf_spend`,
+        `revenue_per_kpi`, `times`. If provided, the response curves are
+        calculated using the values of the tensors passed in `new_data` and the
+        original values of all the remaining tensors. If `None`, the response
+        curves are calculated using the original values of all the tensors. If
+        any of the tensors in `new_data` is provided with a different number of
+        time periods than in `InputData`, then all tensors must be provided with
+        the same number of time periods and the `time` tensor must be provided.
       spend_multipliers: List of multipliers. Each channel's total spend is
         multiplied by these factors to obtain the values at which the curve is
         calculated for that channel.
@@ -4088,8 +4121,11 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of dates to include. By
-        default, all time periods are included.
+      selected_times: Optional list containing a subset of dates to include. If
+        `new_data` is provided with modified time periods, then `selected_times`
+        must be a subset of `new_data.times`. Otherwise, `selected_times` must
+        be a subset of `self._meridian.input_data.time`. By default, all time
+        periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -4118,11 +4154,48 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
+    if new_data is None:
+      new_data = DataTensors()
+    # TODO: b/442920356 - Support flexible time without providing exact dates.
+    required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=required_tensors_names,
+        meridian=self._meridian,
+        allow_modified_times=True,
+    )
+    new_n_media_times = filled_data.get_modified_times(self._meridian)
+
+    if new_n_media_times is None:
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=self._meridian.input_data.time,
+          n_times=self._meridian.n_times,
+          arg_name="selected_times",
+          comparison_arg_name="the input data",
+      )
+    else:
+      new_time = np.asarray(filled_data.time).astype(str).tolist()
+      _validate_flexible_selected_times(
+          selected_times=selected_times,
+          media_selected_times=None,
+          new_n_media_times=new_n_media_times,
+          new_time=new_time,
+      )
+      # TODO: b/407847021 - Switch to Sequence[str] once it is supported.
+      if selected_times is not None:
+        dim_kwargs["selected_times"] = [x in selected_times for x in new_time]
+
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
-      frequency = backend.ones_like(
-          self._meridian.rf_tensors.frequency
-      ) * backend.to_tensor(
+      opt_freq_data = DataTensors(
+          media=filled_data.media,
+          rf_impressions=filled_data.reach * filled_data.frequency,
+          media_spend=filled_data.media_spend,
+          rf_spend=filled_data.rf_spend,
+          revenue_per_kpi=filled_data.revenue_per_kpi,
+      )
+      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(
           self.optimal_freq(
+              new_data=opt_freq_data,
               selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
@@ -4130,12 +4203,12 @@ class Analyzer:
           dtype=backend.float32,
       )
       reach = backend.divide_no_nan(
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
+          filled_data.reach * filled_data.frequency,
           frequency,
       )
     else:
-      frequency = self._meridian.rf_tensors.frequency
-      reach = self._meridian.rf_tensors.reach
+      frequency = filled_data.frequency
+      reach = filled_data.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
     incremental_outcome = np.zeros((
@@ -4149,18 +4222,19 @@ class Analyzer:
             (len(self._meridian.input_data.get_all_paid_channels()), 3)
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
-      new_data = _scale_tensors_by_multiplier(
+      scaled_data = _scale_tensors_by_multiplier(
           data=DataTensors(
-              media=self._meridian.media_tensors.media,
+              media=filled_data.media,
               reach=reach,
               frequency=frequency,
+              revenue_per_kpi=filled_data.revenue_per_kpi,
           ),
           multiplier=multiplier,
           by_reach=by_reach,
       )
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=new_data.filter_fields(constants.PAID_DATA),
+          new_data=scaled_data.filter_fields(constants.PAID_DATA),
           inverse_transform_outcome=True,
           batch_size=batch_size,
           use_kpi=use_kpi,
@@ -4171,22 +4245,11 @@ class Analyzer:
           inc_outcome_temp, confidence_level
       )
 
-    if self._meridian.n_media_channels > 0 and self._meridian.n_rf_channels > 0:
-      spend = backend.concatenate(
-          [
-              self._meridian.media_tensors.media_spend,
-              self._meridian.rf_tensors.rf_spend,
-          ],
-          axis=-1,
-      )
-    elif self._meridian.n_media_channels > 0:
-      spend = self._meridian.media_tensors.media_spend
-    else:
-      spend = self._meridian.rf_tensors.rf_spend
-
-    if backend.rank(spend) == 3:
+    spend = filled_data.total_spend()
+    if spend is not None and spend.ndim == 3:
       spend = self.filter_and_aggregate_geos_and_times(
           tensor=spend,
+          flexible_time_dim=True,
           **dim_kwargs,
       )
     spend_einsum = backend.einsum("k,m->km", np.array(spend_multipliers), spend)
