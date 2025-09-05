@@ -447,26 +447,44 @@ class PosteriorMCMCSampler:
 
   def __init__(self, meridian: "model.Meridian"):
     self._meridian = meridian
+    self._joint_dist = None
+
+  def __getstate__(self):
+    state = self.__dict__.copy()
+    # Exclude unpickleable objects.
+    if "_joint_dist" in state:
+      del state["_joint_dist"]
+    return state
+
+  def __setstate__(self, state):
+    self.__dict__.update(state)
+    self._joint_dist = None
 
   @property
   def model(self) -> "model.Meridian":
     return self._meridian
 
+  def _joint_dist_unpinned_fn(self):
+    return _joint_dist_unpinned(self.model)
+
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
-    """Returns a `JointDistributionCoroutineAutoBatched` function for MCMC."""
+    """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     mmm = self.model
     mmm.populate_cached_properties()
-    fn = lambda: _joint_dist_unpinned(mmm)
-    return backend.tfd.JointDistributionCoroutineAutoBatched(fn)
+    return backend.tfd.JointDistributionCoroutineAutoBatched(
+        self._joint_dist_unpinned_fn
+    )
 
   def _get_joint_dist(self) -> backend.tfd.Distribution:
-    mmm = self.model
-    y = (
-        backend.where(mmm.holdout_id, 0.0, mmm.kpi_scaled)
-        if mmm.holdout_id is not None
-        else mmm.kpi_scaled
-    )
-    return self._get_joint_dist_unpinned().experimental_pin(y=y)
+    if self._joint_dist is None:
+      mmm = self.model
+      y = (
+          backend.where(mmm.holdout_id, 0.0, mmm.kpi_scaled)
+          if mmm.holdout_id is not None
+          else mmm.kpi_scaled
+      )
+      self._joint_dist = self._get_joint_dist_unpinned().experimental_pin(y=y)
+    return self._joint_dist
 
   def __call__(
       self,
@@ -555,6 +573,9 @@ class PosteriorMCMCSampler:
     seed = backend.random.sanitize_seed(seed) if seed is not None else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
+
+    # Clear joint distribution cache prior to sampling.
+    self._joint_dist = None
 
     states = []
     traces = []
