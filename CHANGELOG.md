@@ -23,15 +23,17 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-* Fix channel data misalignment in `Analyzer.hill_curves` when input channels are not in alphabetical order.
+## [1.2.0] - 2025-09-04
+
+* Fix channel data misalignment in `Analyzer.hill_curves` when input channels
+  are not in alphabetical order.
 * Add `negative_baseline_probability` method to `Analyzer` class.
 * Add per-channel adstock decay function definition.
 * Methods in the `analyzer` module now return backend-agnostic tensors.
 * Validate distribution support ranges for custom priors.
 * Add `IndependentMultivariateDistribution` for per-channel distribution
   definition.
-* Add automatic knot selection public API to core library.
-* Add aspline and other helper functions for AKS algorithm to core library.
+* Add automatic knot selection (AKS) to modeling.
 * Fix numerical stability of Adstock computation around `alpha = 1`.
 * Add `binomial` decay option to Adstock.
 * Make `trim_grids()` a public method of `OptimizationGrid` and update it to
@@ -374,4 +376,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.5]: https://github.com/google/meridian/releases/tag/v1.1.5
 [1.1.6]: https://github.com/google/meridian/releases/tag/v1.1.6
 [1.1.7]: https://github.com/google/meridian/releases/tag/v1.1.7
-[Unreleased]: https://github.com/google/meridian/compare/v1.1.7...HEAD
+[1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.2.0...HEAD
