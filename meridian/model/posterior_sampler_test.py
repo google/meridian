@@ -1028,6 +1028,13 @@ class PosteriorMCMCSamplerTest(
             ),
         )
     )
+    mock_get_joint_dist_unpinned = self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "_get_joint_dist_unpinned",
+            autospec=True,
+        )
+    )
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
@@ -1058,6 +1065,7 @@ class PosteriorMCMCSamplerTest(
         parallel_iterations=10,
         seed=None,
     )
+    mock_get_joint_dist_unpinned.assert_called_once()
     n_total_chains = self._N_CHAINS * 2
     knots_shape = (n_total_chains, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (n_total_chains, self._N_KEEP, self._N_CONTROLS)
@@ -1664,6 +1672,48 @@ class PosteriorMCMCSamplerTest(
 
     test_utils.assert_allequal(kwargs0["seed"], [123, 123])
     test_utils.assert_allequal(kwargs1["seed"], [124, 124])
+
+  def test_sample_posterior_sequential_joint_distribution_cached(self):
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler,
+            "_xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    mock_get_joint_dist_unpinned = self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "_get_joint_dist_unpinned",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "ExperimentalPin", ["experimental_pin"]
+            )(
+                experimental_pin=lambda y: y,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=[self._N_CHAINS, self._N_CHAINS],
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+    mock_get_joint_dist_unpinned.assert_called_once()
 
 
 if __name__ == "__main__":
