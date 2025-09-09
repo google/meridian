@@ -1169,9 +1169,10 @@ def lognormal_dist_from_mean_std(
   standard deviation.
 
   Args:
-    mean: A positive float or array-like object defining the distribution mean.
-    std: A non-negative float or array-like object defining the distribution
-      standard deviation.
+    mean: A float or array-like object defining the distribution mean. Must be
+      positive.
+    std: A float or array-like object defining the distribution standard
+      deviation. Must be non-negative.
 
   Returns:
     A `backend.tfd.LogNormal` object with the input mean and standard deviation.
@@ -1182,6 +1183,60 @@ def lognormal_dist_from_mean_std(
 
   mu = np.log(mean) - 0.5 * np.log((std / mean) ** 2 + 1)
   sigma = np.sqrt(np.log((std / mean) ** 2 + 1))
+
+  return backend.tfd.LogNormal(mu, sigma)
+
+
+def lognormal_dist_from_range(
+    low: float | Sequence[float],
+    high: float | Sequence[float],
+    mass_percent: float | Sequence[float] = 0.95,
+) -> backend.tfd.LogNormal:
+  """Define a LogNormal distribution from a specified range.
+
+  This function parameterizes lognormal distributions by the bounds of a range,
+  so that the specificed probability mass falls within the bounds defined by
+  `low` and `high`. The probability mass is symmetric about the median. For
+  example, to define a lognormal distribution with a 95% probability mass of
+  (1, 10), use:
+
+  ```python
+  lognormal = lognormal_dist_from_range(1.0, 10.0, mass_percent=0.95)
+  ```
+
+  Args:
+    low: Float or array-like denoting the lower bound of the range. Values must
+      be non-negative.
+    high: Float or array-like denoting the upper bound of range. Values must be
+      non-negative.
+    mass_percent: Float or array-like denoting the probability mass. Values must
+      be between 0 and 1 (exlusive). Default: 0.95.
+
+  Returns:
+    A `backend.tfd.LogNormal` object with the input percentage mass falling
+      within the given range.
+  """
+  low = np.asarray(low)
+  high = np.asarray(high)
+  mass_percent = np.asarray(mass_percent)
+
+  if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
+    raise ValueError("'low' and 'high' values must be non-negative and satisfy "
+                     "high > low.")
+
+  if not ((0.0 < mass_percent).all() and (mass_percent < 1.0).all()):  # pytype: disable=attribute-error
+    raise ValueError(
+        "'mass_percent' values must be between 0 and 1, exclusive."
+        )
+
+  normal = backend.tfd.Normal(0, 1)
+  mass_lower = 0.5 - (mass_percent / 2)
+  mass_upper = 0.5 + (mass_percent / 2)
+
+  sigma = np.log(high / low) / (
+      normal.quantile(mass_upper) - normal.quantile(mass_lower)
+  )
+  mu = np.log(high) - normal.quantile(mass_upper) * sigma
 
   return backend.tfd.LogNormal(mu, sigma)
 
