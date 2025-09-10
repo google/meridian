@@ -1016,6 +1016,504 @@ class EDAEngineTest(
         expected_rf_impressions_scaled_da.values,
     )
 
+  # --- Test cases for organic_reach_raw_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_organic_reach_raw_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    organic_reach_da = engine.organic_reach_raw_da
+    self.assertIsInstance(organic_reach_da, xr.DataArray)
+    self.assertEqual(organic_reach_da.shape, expected_shape)
+    self.assertCountEqual(
+        organic_reach_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    true_organic_reach_da = meridian.input_data.organic_reach
+    self.assertIsInstance(true_organic_reach_da, xr.DataArray)
+    self.assertAllClose(
+        organic_reach_da.values, true_organic_reach_da.values[:, start:, :]
+    )
+
+  # --- Test cases for organic_reach_raw_da_national ---
+  def test_organic_reach_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_reach_raw_da_national = engine.organic_reach_raw_da_national
+    self.assertIsInstance(organic_reach_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_reach_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_reach_raw_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+
+    # Check values
+    organic_reach_raw_da = engine.organic_reach_raw_da
+    self.assertIsInstance(organic_reach_raw_da, xr.DataArray)
+    expected_values = organic_reach_raw_da.sum(dim=constants.GEO).values
+    self.assertAllClose(organic_reach_raw_da_national.values, expected_values)
+
+  def test_organic_reach_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_reach_raw_da_national = engine.organic_reach_raw_da_national
+    self.assertIsInstance(organic_reach_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_reach_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    expected_da = engine.organic_reach_raw_da
+    self.assertIsInstance(expected_da, xr.DataArray)
+    self.assertAllClose(
+        organic_reach_raw_da_national.values, expected_da.values
+    )
+
+  # --- Test cases for organic_reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_organic_reach_scaled_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    organic_reach_da = engine.organic_reach_scaled_da
+    self.assertIsInstance(organic_reach_da, xr.DataArray)
+    self.assertEqual(organic_reach_da.shape, expected_shape)
+    self.assertCountEqual(
+        organic_reach_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+
+    expected_da = engine.organic_reach_raw_da
+    self.assertIsInstance(expected_da, xr.DataArray)
+
+    self.assertAllClose(
+        organic_reach_da.values,
+        expected_da.values * self.mock_scale_factor,
+    )
+
+  # --- Test cases for organic_reach_scaled_da_national ---
+  def test_organic_reach_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+
+    organic_reach_scaled_da_national = engine.organic_reach_scaled_da_national
+    self.assertIsInstance(organic_reach_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_reach_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_reach_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+
+    # Check values
+    organic_reach_raw_da = engine.organic_reach_raw_da
+    self.assertIsInstance(organic_reach_raw_da, xr.DataArray)
+    organic_reach_raw_da_national = organic_reach_raw_da.sum(dim=constants.GEO)
+    # Scale the raw values by the mock scale factor
+    expected_values = (
+        organic_reach_raw_da_national.values * self.mock_scale_factor
+    )
+    self.assertAllClose(
+        organic_reach_scaled_da_national.values, expected_values
+    )
+
+  def test_organic_reach_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_reach_scaled_da_national = engine.organic_reach_scaled_da_national
+    self.assertIsInstance(organic_reach_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_reach_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    expected_da = engine.organic_reach_scaled_da
+    self.assertIsInstance(expected_da, xr.DataArray)
+
+    self.assertAllClose(
+        organic_reach_scaled_da_national.values,
+        expected_da.values,
+    )
+
+  # --- Test cases for organic_frequency_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_organic_frequency_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    organic_frequency_da = engine.organic_frequency_da
+    self.assertIsInstance(organic_frequency_da, xr.DataArray)
+    self.assertEqual(organic_frequency_da.shape, expected_shape)
+    self.assertCountEqual(
+        organic_frequency_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    true_organic_frequency_da = meridian.input_data.organic_frequency
+    self.assertIsInstance(true_organic_frequency_da, xr.DataArray)
+    self.assertAllClose(
+        organic_frequency_da.values,
+        true_organic_frequency_da.values[:, start:, :],
+    )
+
+  # --- Test cases for organic_frequency_da_national ---
+  def test_organic_frequency_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_frequency_da_national = engine.organic_frequency_da_national
+    self.assertIsInstance(organic_frequency_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_frequency_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_frequency_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+
+    # Check values
+    organic_reach_raw_da_national = engine.organic_reach_raw_da_national
+    self.assertIsInstance(organic_reach_raw_da_national, xr.DataArray)
+    expected_impressions_raw_da_national = (
+        engine.organic_rf_impressions_raw_da_national
+    )
+    self.assertIsInstance(expected_impressions_raw_da_national, xr.DataArray)
+
+    actual_impressions_raw_da = (
+        organic_reach_raw_da_national * organic_frequency_da_national
+    )
+    self.assertAllClose(
+        actual_impressions_raw_da.values,
+        expected_impressions_raw_da_national.values,
+    )
+
+  def test_organic_frequency_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_frequency_da_national = engine.organic_frequency_da_national
+    self.assertIsInstance(organic_frequency_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_frequency_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+
+    expected_da = engine.organic_frequency_da
+    self.assertIsInstance(expected_da, xr.DataArray)
+    self.assertAllClose(
+        organic_frequency_da_national.values, expected_da.values
+    )
+
+  # --- Test cases for organic_rf_impressions_raw_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_organic_rf_impressions_raw_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_raw_da = engine.organic_rf_impressions_raw_da
+    self.assertIsInstance(organic_rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(organic_rf_impressions_raw_da.shape, expected_shape)
+    self.assertCountEqual(
+        organic_rf_impressions_raw_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+    # Check values: organic_rf_impressions_raw_da = organic_reach_raw_da *
+    # organic_frequency_da
+    organic_reach_raw_da = engine.organic_reach_raw_da
+    organic_frequency_da = engine.organic_frequency_da
+    self.assertIsNotNone(organic_reach_raw_da)
+    self.assertIsNotNone(organic_frequency_da)
+    expected_values = organic_reach_raw_da.values * organic_frequency_da.values
+    self.assertAllClose(organic_rf_impressions_raw_da.values, expected_values)
+
+  # --- Test cases for organic_rf_impressions_raw_da_national ---
+  def test_organic_rf_impressions_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_raw_da_national = (
+        engine.organic_rf_impressions_raw_da_national
+    )
+    self.assertIsInstance(organic_rf_impressions_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_rf_impressions_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_rf_impressions_raw_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+    # Check values: sum of geo-level raw impressions
+    organic_rf_impressions_raw_da = engine.organic_rf_impressions_raw_da
+    self.assertIsInstance(organic_rf_impressions_raw_da, xr.DataArray)
+    expected_values = organic_rf_impressions_raw_da.sum(
+        dim=constants.GEO
+    ).values
+    self.assertAllClose(
+        organic_rf_impressions_raw_da_national.values, expected_values
+    )
+
+  def test_organic_rf_impressions_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_raw_da_national = (
+        engine.organic_rf_impressions_raw_da_national
+    )
+    self.assertIsInstance(organic_rf_impressions_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_rf_impressions_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    expected_organic_rf_impressions_raw_da = (
+        engine.organic_rf_impressions_raw_da
+    )
+    self.assertIsInstance(expected_organic_rf_impressions_raw_da, xr.DataArray)
+    self.assertAllClose(
+        organic_rf_impressions_raw_da_national.values,
+        expected_organic_rf_impressions_raw_da.values,
+    )
+
+  # --- Test cases for organic_rf_impressions_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_organic_rf_impressions_scaled_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    def mock_media_transformer_init(media, population):
+      del media  # Unused.
+      mock_instance = mock.MagicMock()
+      # Simplified scaling: tensor * mean(population) * mock_scale_factor
+      mean_population = tf.reduce_mean(population)
+      scale_factor = mean_population * self.mock_scale_factor
+      mock_instance.forward.side_effect = (
+          lambda tensor: tf.cast(tensor, tf.float32) * scale_factor
+      )
+      return mock_instance
+
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.transformers,
+            "MediaTransformer",
+            side_effect=mock_media_transformer_init,
+        )
+    )
+
+    # Re-initialize engine to use the mocked MediaTransformer.
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_scaled_da = engine.organic_rf_impressions_scaled_da
+    self.assertIsNotNone(organic_rf_impressions_scaled_da)
+
+    self.assertIsInstance(organic_rf_impressions_scaled_da, xr.DataArray)
+    self.assertEqual(organic_rf_impressions_scaled_da.shape, expected_shape)
+    self.assertCountEqual(
+        organic_rf_impressions_scaled_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+
+    # Expected values calculation: raw values * mean(population) *
+    # mock_scale_factor
+    mean_population = (
+        1 if meridian.is_national else tf.reduce_mean(meridian.population)
+    )
+    expected_scale = mean_population * self.mock_scale_factor
+    organic_rf_impressions_raw_da = engine.organic_rf_impressions_raw_da
+    self.assertIsNotNone(organic_rf_impressions_raw_da)
+    expected_values = organic_rf_impressions_raw_da.values * expected_scale
+    self.assertAllClose(
+        organic_rf_impressions_scaled_da.values, expected_values
+    )
+
+  # --- Test cases for organic_rf_impressions_scaled_da_national ---
+  def test_organic_rf_impressions_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_scaled_da_national = (
+        engine.organic_rf_impressions_scaled_da_national
+    )
+    self.assertIsInstance(
+        organic_rf_impressions_scaled_da_national, xr.DataArray
+    )
+    self.assertEqual(
+        organic_rf_impressions_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_rf_impressions_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
+    # Check values: scaled version of organic_rf_impressions_raw_da_national
+    organic_rf_impressions_raw_da_national = (
+        engine.organic_rf_impressions_raw_da_national
+    )
+    self.assertIsInstance(organic_rf_impressions_raw_da_national, xr.DataArray)
+    expected_values = (
+        organic_rf_impressions_raw_da_national.values * self.mock_scale_factor
+    )
+    self.assertAllClose(
+        organic_rf_impressions_scaled_da_national.values, expected_values
+    )
+
+  def test_organic_rf_impressions_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    organic_rf_impressions_scaled_da_national = (
+        engine.organic_rf_impressions_scaled_da_national
+    )
+    self.assertIsInstance(
+        organic_rf_impressions_scaled_da_national, xr.DataArray
+    )
+    self.assertEqual(
+        organic_rf_impressions_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+        ),
+    )
+    expected_organic_rf_impressions_scaled_da = (
+        engine.organic_rf_impressions_scaled_da
+    )
+    self.assertIsInstance(
+        expected_organic_rf_impressions_scaled_da, xr.DataArray
+    )
+    self.assertAllClose(
+        organic_rf_impressions_scaled_da_national.values,
+        expected_organic_rf_impressions_scaled_da.values,
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
@@ -1132,6 +1630,56 @@ class EDAEngineTest(
           input_data_fixture="input_data_with_media_only",
           property_name="rf_impressions_scaled_da_national",
       ),
+      dict(
+          testcase_name="organic_reach_raw_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_reach_raw_da",
+      ),
+      dict(
+          testcase_name="organic_reach_raw_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_reach_raw_da_national",
+      ),
+      dict(
+          testcase_name="organic_reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_reach_scaled_da",
+      ),
+      dict(
+          testcase_name="organic_reach_scaled_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_reach_scaled_da_national",
+      ),
+      dict(
+          testcase_name="organic_frequency_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_frequency_da",
+      ),
+      dict(
+          testcase_name="organic_frequency_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_frequency_da_national",
+      ),
+      dict(
+          testcase_name="organic_rf_impressions_raw_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_rf_impressions_raw_da",
+      ),
+      dict(
+          testcase_name="organic_rf_impressions_raw_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_rf_impressions_raw_da_national",
+      ),
+      dict(
+          testcase_name="organic_rf_impressions_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_rf_impressions_scaled_da",
+      ),
+      dict(
+          testcase_name="organic_rf_impressions_scaled_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="organic_rf_impressions_scaled_da_national",
+      ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
     meridian = model.Meridian(getattr(self, input_data_fixture))
@@ -1171,6 +1719,16 @@ class EDAEngineTest(
         engine.rf_impressions_raw_da_national,
         engine.rf_impressions_scaled_da,
         engine.rf_impressions_scaled_da_national,
+        engine.organic_reach_raw_da,
+        engine.organic_reach_raw_da_national,
+        engine.organic_reach_scaled_da,
+        engine.organic_reach_scaled_da_national,
+        engine.organic_frequency_da,
+        engine.organic_frequency_da_national,
+        engine.organic_rf_impressions_raw_da,
+        engine.organic_rf_impressions_raw_da_national,
+        engine.organic_rf_impressions_scaled_da,
+        engine.organic_rf_impressions_scaled_da_national,
     ]
 
     for prop in properties_to_test:

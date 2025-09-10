@@ -265,6 +265,76 @@ class EDAEngine:
       return None
     return self._rf_data.rf_impressions_scaled_da_national
 
+  @functools.cached_property
+  def _organic_rf_data(self) -> ReachFrequencyData | None:
+    if self._meridian.input_data.organic_reach is None:
+      return None
+    return self._get_rf_data(
+        self._meridian.input_data.organic_reach,
+        self._meridian.input_data.organic_frequency,
+        is_organic=True,
+    )
+
+  @property
+  def organic_reach_raw_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_raw_da
+
+  @property
+  def organic_reach_scaled_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_scaled_da
+
+  @property
+  def organic_reach_raw_da_national(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_raw_da_national
+
+  @property
+  def organic_reach_scaled_da_national(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_scaled_da_national
+
+  @property
+  def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_scaled_da
+
+  @property
+  def organic_rf_impressions_scaled_da_national(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_scaled_da_national
+
+  @property
+  def organic_frequency_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.frequency_da
+
+  @property
+  def organic_frequency_da_national(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.frequency_da_national
+
+  @property
+  def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_raw_da
+
+  @property
+  def organic_rf_impressions_raw_da_national(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_raw_da_national
+
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
     # This should not happen. If it does, it means this function is mis-used.
