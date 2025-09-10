@@ -14,6 +14,7 @@
 
 """Meridian EDA Engine."""
 
+import dataclasses
 import functools
 from typing import Callable, Dict, Optional, TypeAlias
 from meridian import constants
@@ -26,6 +27,37 @@ import xarray as xr
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ReachFrequencyData:
+  """Holds reach and frequency data arrays.
+
+  Attributes:
+    reach_raw_da: Raw reach data.
+    reach_scaled_da: Scaled reach data.
+    reach_raw_da_national: National raw reach data.
+    reach_scaled_da_national: National scaled reach data.
+    frequency_da: Frequency data.
+    frequency_da_national: National frequency data.
+    rf_impressions_scaled_da: Scaled reach * frequency impressions data.
+    rf_impressions_scaled_da_national: National scaled reach * frequency
+      impressions data.
+    rf_impressions_raw_da: Raw reach * frequency impressions data.
+    rf_impressions_raw_da_national: National raw reach * frequency impressions
+      data.
+  """
+
+  reach_raw_da: xr.DataArray
+  reach_scaled_da: xr.DataArray
+  reach_raw_da_national: xr.DataArray
+  reach_scaled_da_national: xr.DataArray
+  frequency_da: xr.DataArray
+  frequency_da_national: xr.DataArray
+  rf_impressions_scaled_da: xr.DataArray
+  rf_impressions_scaled_da_national: xr.DataArray
+  rf_impressions_raw_da: xr.DataArray
+  rf_impressions_raw_da_national: xr.DataArray
 
 
 class EDAEngine:
@@ -163,6 +195,76 @@ class EDAEngine:
           self._meridian.input_data.rf_spend, None
       )
 
+  @functools.cached_property
+  def _rf_data(self) -> ReachFrequencyData | None:
+    if self._meridian.input_data.reach is None:
+      return None
+    return self._get_rf_data(
+        self._meridian.input_data.reach,
+        self._meridian.input_data.frequency,
+        is_organic=False,
+    )
+
+  @property
+  def reach_raw_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_raw_da
+
+  @property
+  def reach_scaled_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_scaled_da
+
+  @property
+  def reach_raw_da_national(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_raw_da_national
+
+  @property
+  def reach_scaled_da_national(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_scaled_da_national
+
+  @property
+  def frequency_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.frequency_da
+
+  @property
+  def frequency_da_national(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.frequency_da_national
+
+  @property
+  def rf_impressions_raw_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_raw_da
+
+  @property
+  def rf_impressions_raw_da_national(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_raw_da_national
+
+  @property
+  def rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_scaled_da
+
+  @property
+  def rf_impressions_scaled_da_national(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_scaled_da_national
+
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
     # This should not happen. If it does, it means this function is mis-used.
@@ -183,15 +285,17 @@ class EDAEngine:
       population: tf.Tensor = tf.constant([1.0], dtype=tf.float32),
   ):
     """Scales xarray values with a TensorTransformer."""
+    da = xarray.copy()
+
     if transformer_class is None:
-      return xarray
+      return da
     elif transformer_class is transformers.CenteringAndScalingTransformer:
       xarray_transformer = transformers.CenteringAndScalingTransformer(
-          tensor=xarray.values, population=population
+          tensor=da.values, population=population
       )
     elif transformer_class is transformers.MediaTransformer:
       xarray_transformer = transformers.MediaTransformer(
-          media=xarray.values, population=population
+          media=da.values, population=population
       )
     else:
       raise ValueError(
@@ -200,8 +304,8 @@ class EDAEngine:
           + '.\nMust be one of: CenteringAndScalingTransformer or'
           ' MediaTransformer.'
       )
-    xarray.values = xarray_transformer.forward(xarray.values)
-    return xarray
+    da.values = xarray_transformer.forward(da.values)
+    return da
 
   def _aggregate_variables(
       self,
@@ -281,6 +385,99 @@ class EDAEngine:
     da_national = self._scale_xarray(da_national, transformer_class)
 
     return da_national.sel({constants.GEO: temp_geo_dim}, drop=True)
+
+  def _get_rf_data(
+      self,
+      reach_raw_da: xr.DataArray,
+      freq_raw_da: xr.DataArray,
+      is_organic: bool,
+  ) -> ReachFrequencyData:
+    """Get impressions and frequencies data arrays for RF channels."""
+    if is_organic:
+      scaled_reach_values = (
+          self._meridian.organic_rf_tensors.organic_reach_scaled
+      )
+    else:
+      scaled_reach_values = self._meridian.rf_tensors.reach_scaled
+    reach_scaled_da = _data_array_like(
+        da=reach_raw_da, values=scaled_reach_values
+    )
+    # Truncate the media time for reach and scaled reach.
+    reach_raw_da = self._truncate_media_time(reach_raw_da)
+    reach_scaled_da = self._truncate_media_time(reach_scaled_da)
+
+    # The geo level frequency
+    frequency_da = self._truncate_media_time(freq_raw_da)
+
+    # The raw geo level impression
+    # It's equal to reach * frequency.
+    impressions_raw_da = reach_raw_da * frequency_da
+    impressions_raw_da.name = (
+        constants.ORGANIC_PREFIX if is_organic else ''
+    ) + constants.RF_IMPRESSIONS
+    impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
+
+    if self._meridian.is_national:
+      reach_raw_da_national = reach_raw_da
+      reach_scaled_da_national = reach_scaled_da
+      impressions_raw_da_national = impressions_raw_da
+      frequency_da_national = frequency_da
+
+      # Scaled impressions
+      impressions_scaled_da = self._scale_xarray(
+          impressions_raw_da, transformers.MediaTransformer
+      )
+      impressions_scaled_da_national = impressions_scaled_da
+    else:
+      reach_raw_da_national = self._aggregate_and_scale_geo_da(
+          reach_raw_da, None
+      )
+      reach_scaled_da_national = self._aggregate_and_scale_geo_da(
+          reach_raw_da, transformers.MediaTransformer
+      )
+      impressions_raw_da_national = self._aggregate_and_scale_geo_da(
+          impressions_raw_da, None
+      )
+
+      # National frequency is a weighted average of geo frequencies,
+      # weighted by reach.
+      frequency_da_national = xr.where(
+          reach_raw_da_national == 0.0,
+          0.0,
+          impressions_raw_da_national / reach_raw_da_national,
+      )
+      frequency_da_national.name = (
+          constants.ORGANIC_PREFIX if is_organic else ''
+      ) + constants.FREQUENCY
+      frequency_da_national.values = tf.cast(
+          frequency_da_national.values, tf.float32
+      )
+
+      # Scale the impressions by population
+      impressions_scaled_da = self._scale_xarray(
+          impressions_raw_da,
+          transformers.MediaTransformer,
+          population=self._meridian.population,
+      )
+
+      # Scale the national impressions
+      impressions_scaled_da_national = self._aggregate_and_scale_geo_da(
+          impressions_raw_da,
+          transformers.MediaTransformer,
+      )
+
+    return ReachFrequencyData(
+        reach_raw_da=reach_raw_da,
+        reach_scaled_da=reach_scaled_da,
+        reach_raw_da_national=reach_raw_da_national,
+        reach_scaled_da_national=reach_scaled_da_national,
+        frequency_da=frequency_da,
+        frequency_da_national=frequency_da_national,
+        rf_impressions_scaled_da=impressions_scaled_da,
+        rf_impressions_scaled_da_national=impressions_scaled_da_national,
+        rf_impressions_raw_da=impressions_raw_da,
+        rf_impressions_raw_da_national=impressions_raw_da_national,
+    )
 
 
 def _data_array_like(

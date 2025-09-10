@@ -34,6 +34,21 @@ class EDAEngineTest(
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
 
+  def setUp(self):
+    super().setUp()
+    self.mock_scale_factor = 2.0
+    mock_transformer_cls = self.enter_context(
+        mock.patch.object(
+            eda_engine.transformers,
+            "MediaTransformer",
+            autospec=True,
+        )
+    )
+    mock_transformer = mock_transformer_cls.return_value
+    mock_transformer.forward.side_effect = (
+        lambda x: tf.cast(x, tf.float32) * self.mock_scale_factor
+    )
+
   # --- Test cases for controls_scaled_da ---
   @parameterized.named_parameters(
       dict(
@@ -191,40 +206,29 @@ class EDAEngineTest(
     )
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_scale_factor = 2.0
-    with mock.patch.object(
-        eda_engine.transformers,
-        "MediaTransformer",
-        autospec=True,
-    ) as mock_transformer_cls:
-      mock_transformer = mock_transformer_cls.return_value
-      mock_transformer.forward.side_effect = (
-          lambda x: tf.cast(x, tf.float32) * mock_scale_factor
-      )
+    media_scaled_da_national = engine.media_scaled_da_national
+    self.assertIsInstance(media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        media_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
+    )
 
-      media_scaled_da_national = engine.media_scaled_da_national
-      self.assertIsInstance(media_scaled_da_national, xr.DataArray)
-      self.assertEqual(
-          media_scaled_da_national.shape,
-          (
-              model_test_data.WithInputDataSamples._N_TIMES,
-              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
-          ),
-      )
-      self.assertCountEqual(
-          media_scaled_da_national.coords.keys(),
-          [constants.TIME, constants.MEDIA_CHANNEL],
-      )
-
-      # Check values
-      true_media_raw_da = meridian.input_data.media
-      self.assertIsNotNone(true_media_raw_da)
-      expected_da = true_media_raw_da.sum(dim=constants.GEO)
-      scaled_expected_values = expected_da.values * mock_scale_factor
-      self.assertAllClose(
-          media_scaled_da_national.values,
-          scaled_expected_values,
-      )
+    # Check values
+    true_media_raw_da = meridian.input_data.media
+    self.assertIsNotNone(true_media_raw_da)
+    expected_da = true_media_raw_da.sum(dim=constants.GEO)
+    scaled_expected_values = expected_da.values * self.mock_scale_factor
+    self.assertAllClose(
+        media_scaled_da_national.values,
+        scaled_expected_values,
+    )
 
   def test_media_scaled_da_national_with_national_data(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
@@ -412,39 +416,28 @@ class EDAEngineTest(
     )
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_scale_factor = 2.0
-    with mock.patch.object(
-        eda_engine.transformers,
-        "MediaTransformer",
-        autospec=True,
-    ) as mock_transformer_cls:
-      mock_transformer = mock_transformer_cls.return_value
-      mock_transformer.forward.side_effect = (
-          lambda x: tf.cast(x, tf.float32) * mock_scale_factor
-      )
+    organic_media_scaled_da_national = engine.organic_media_scaled_da_national
+    self.assertIsInstance(organic_media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        organic_media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        organic_media_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
+    )
 
-      organic_media_scaled_da_national = engine.organic_media_scaled_da_national
-      self.assertIsInstance(organic_media_scaled_da_national, xr.DataArray)
-      self.assertEqual(
-          organic_media_scaled_da_national.shape,
-          (
-              model_test_data.WithInputDataSamples._N_TIMES,
-              model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
-          ),
-      )
-      self.assertCountEqual(
-          organic_media_scaled_da_national.coords.keys(),
-          [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
-      )
-
-      # Check values
-      true_organic_media_raw_da = meridian.input_data.organic_media
-      self.assertIsNotNone(true_organic_media_raw_da)
-      expected_da = true_organic_media_raw_da.sum(dim=constants.GEO)
-      scaled_expected_values = expected_da.values * mock_scale_factor
-      self.assertAllClose(
-          organic_media_scaled_da_national.values, scaled_expected_values
-      )
+    # Check values
+    true_organic_media_raw_da = meridian.input_data.organic_media
+    self.assertIsNotNone(true_organic_media_raw_da)
+    expected_da = true_organic_media_raw_da.sum(dim=constants.GEO)
+    scaled_expected_values = expected_da.values * self.mock_scale_factor
+    self.assertAllClose(
+        organic_media_scaled_da_national.values, scaled_expected_values
+    )
 
   def test_organic_media_scaled_da_national_with_national_data(self):
     meridian = model.Meridian(self.national_input_data_non_media_and_organic)
@@ -579,6 +572,450 @@ class EDAEngineTest(
         rf_spend_da_national.values, expected_rf_spend_da.values
     )
 
+  # --- Test cases for reach_raw_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_reach_raw_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    reach_da = engine.reach_raw_da
+    self.assertIsInstance(reach_da, xr.DataArray)
+    self.assertEqual(reach_da.shape, expected_shape)
+    self.assertCountEqual(
+        reach_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    true_reach_da = meridian.input_data.reach
+    self.assertIsInstance(true_reach_da, xr.DataArray)
+    self.assertAllClose(reach_da.values, true_reach_da.values[:, start:, :])
+
+  # --- Test cases for reach_raw_da_national ---
+  def test_reach_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    reach_raw_da_national = engine.reach_raw_da_national
+    self.assertIsInstance(reach_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        reach_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        reach_raw_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # Check values
+    reach_raw_da = engine.reach_raw_da
+    self.assertIsInstance(reach_raw_da, xr.DataArray)
+    expected_values = reach_raw_da.sum(dim=constants.GEO).values
+    self.assertAllClose(reach_raw_da_national.values, expected_values)
+
+  def test_reach_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    reach_raw_da_national = engine.reach_raw_da_national
+    self.assertIsInstance(reach_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        reach_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_reach_raw_da = engine.reach_raw_da
+    self.assertIsInstance(expected_reach_raw_da, xr.DataArray)
+    self.assertAllClose(
+        reach_raw_da_national.values, expected_reach_raw_da.values
+    )
+
+  # --- Test cases for reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_reach_scaled_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    reach_da = engine.reach_scaled_da
+    self.assertIsInstance(reach_da, xr.DataArray)
+    self.assertEqual(reach_da.shape, expected_shape)
+    self.assertCountEqual(
+        reach_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    self.assertAllClose(
+        reach_da.values, meridian.rf_tensors.reach_scaled[:, start:, :]
+    )
+
+  # --- Test cases for reach_scaled_da_national ---
+  def test_reach_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    reach_scaled_da_national = engine.reach_scaled_da_national
+    self.assertIsInstance(reach_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        reach_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        reach_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # Check values
+    reach_raw_da = engine.reach_raw_da
+    self.assertIsInstance(reach_raw_da, xr.DataArray)
+    reach_raw_da_national = reach_raw_da.sum(dim=constants.GEO)
+    # Scale the raw values by the mock scale factor
+    expected_values = reach_raw_da_national.values * self.mock_scale_factor
+    self.assertAllClose(reach_scaled_da_national.values, expected_values)
+
+  def test_reach_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    reach_scaled_da_national = engine.reach_scaled_da_national
+    self.assertIsInstance(reach_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        reach_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_reach_scaled_da = engine.reach_scaled_da
+    self.assertIsInstance(expected_reach_scaled_da, xr.DataArray)
+    expected_values = expected_reach_scaled_da.values
+    self.assertAllClose(reach_scaled_da_national.values, expected_values)
+
+  # --- Test cases for frequency_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_frequency_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    frequency_da = engine.frequency_da
+    self.assertIsInstance(frequency_da, xr.DataArray)
+    self.assertEqual(frequency_da.shape, expected_shape)
+    self.assertCountEqual(
+        frequency_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    self.assertAllClose(
+        frequency_da.values, meridian.rf_tensors.frequency[:, start:, :]
+    )
+
+  # --- Test cases for frequency_da_national ---
+  def test_frequency_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    frequency_da_national = engine.frequency_da_national
+    self.assertIsInstance(frequency_da_national, xr.DataArray)
+    self.assertEqual(
+        frequency_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        frequency_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # Check values
+    reach_raw_da_national = engine.reach_raw_da_national
+    self.assertIsInstance(reach_raw_da_national, xr.DataArray)
+    expected_impressions_raw_da_national = engine.rf_impressions_raw_da_national
+    self.assertIsInstance(expected_impressions_raw_da_national, xr.DataArray)
+
+    actual_impressions_raw_da = reach_raw_da_national * frequency_da_national
+    self.assertAllClose(
+        actual_impressions_raw_da.values,
+        expected_impressions_raw_da_national.values,
+    )
+
+  def test_frequency_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    frequency_da_national = engine.frequency_da_national
+    self.assertIsInstance(frequency_da_national, xr.DataArray)
+    self.assertEqual(
+        frequency_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_frequency_da = engine.frequency_da
+    self.assertIsInstance(expected_frequency_da, xr.DataArray)
+    self.assertAllClose(
+        frequency_da_national.values, expected_frequency_da.values
+    )
+
+  # --- Test cases for rf_impressions_raw_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_rf_impressions_raw_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_raw_da = engine.rf_impressions_raw_da
+    self.assertIsInstance(rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(rf_impressions_raw_da.shape, expected_shape)
+    self.assertCountEqual(
+        rf_impressions_raw_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+    # Check values: rf_impressions_raw_da = reach_raw_da * frequency_da
+    reach_raw_da = engine.reach_raw_da
+    frequency_da = engine.frequency_da
+    self.assertIsNotNone(reach_raw_da)
+    self.assertIsNotNone(frequency_da)
+    expected_values = reach_raw_da.values * frequency_da.values
+    self.assertAllClose(rf_impressions_raw_da.values, expected_values)
+
+  # --- Test cases for rf_impressions_raw_da_national ---
+  def test_rf_impressions_raw_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_raw_da_national = engine.rf_impressions_raw_da_national
+    self.assertIsInstance(rf_impressions_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_impressions_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        rf_impressions_raw_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+    # Check values: sum of geo-level raw impressions
+    rf_impressions_raw_da = engine.rf_impressions_raw_da
+    self.assertIsInstance(rf_impressions_raw_da, xr.DataArray)
+    expected_values = rf_impressions_raw_da.sum(dim=constants.GEO).values
+    self.assertAllClose(rf_impressions_raw_da_national.values, expected_values)
+
+  def test_rf_impressions_raw_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_raw_da_national = engine.rf_impressions_raw_da_national
+    self.assertIsInstance(rf_impressions_raw_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_impressions_raw_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_rf_impressions_raw_da = engine.rf_impressions_raw_da
+    self.assertIsInstance(expected_rf_impressions_raw_da, xr.DataArray)
+    self.assertAllClose(
+        rf_impressions_raw_da_national.values,
+        expected_rf_impressions_raw_da.values,
+    )
+
+  # --- Test cases for rf_impressions_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+      ),
+  )
+  def test_rf_impressions_scaled_da_present(
+      self, input_data_fixture, expected_shape
+  ):
+    def mock_media_transformer_init(media, population):
+      del media  # Unused.
+      mock_instance = mock.MagicMock()
+      # Simplified scaling: tensor * mean(population) * mock_scale_factor
+      mean_population = tf.reduce_mean(population)
+      scale_factor = mean_population * self.mock_scale_factor
+      mock_instance.forward.side_effect = (
+          lambda tensor: tf.cast(tensor, tf.float32) * scale_factor
+      )
+      return mock_instance
+
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.transformers,
+            "MediaTransformer",
+            side_effect=mock_media_transformer_init,
+        )
+    )
+
+    # Re-initialize engine to use the mocked MediaTransformer.
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_scaled_da = engine.rf_impressions_scaled_da
+    self.assertIsNotNone(rf_impressions_scaled_da)
+
+    self.assertIsInstance(rf_impressions_scaled_da, xr.DataArray)
+    self.assertEqual(rf_impressions_scaled_da.shape, expected_shape)
+    self.assertCountEqual(
+        rf_impressions_scaled_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # Expected values calculation: raw values * mean(population) *
+    # mock_scale_factor
+    mean_population = (
+        1 if meridian.is_national else tf.reduce_mean(meridian.population)
+    )
+    expected_scale = mean_population * self.mock_scale_factor
+    rf_impressions_raw_da = engine.rf_impressions_raw_da
+    self.assertIsNotNone(rf_impressions_raw_da)
+    expected_values = rf_impressions_raw_da.values * expected_scale
+    self.assertAllClose(rf_impressions_scaled_da.values, expected_values)
+
+  # --- Test cases for rf_impressions_scaled_da_national ---
+  def test_rf_impressions_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_scaled_da_national = engine.rf_impressions_scaled_da_national
+    self.assertIsInstance(rf_impressions_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_impressions_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        rf_impressions_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+    # Check values: scaled version of rf_impressions_raw_da_national
+    rf_impressions_raw_da_national = engine.rf_impressions_raw_da_national
+    self.assertIsInstance(rf_impressions_raw_da_national, xr.DataArray)
+    expected_values = (
+        rf_impressions_raw_da_national.values * self.mock_scale_factor
+    )
+    self.assertAllClose(
+        rf_impressions_scaled_da_national.values, expected_values
+    )
+
+  def test_rf_impressions_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    rf_impressions_scaled_da_national = engine.rf_impressions_scaled_da_national
+    self.assertIsInstance(rf_impressions_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        rf_impressions_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+        ),
+    )
+    expected_rf_impressions_scaled_da = engine.rf_impressions_scaled_da
+    self.assertIsInstance(expected_rf_impressions_scaled_da, xr.DataArray)
+    self.assertAllClose(
+        rf_impressions_scaled_da_national.values,
+        expected_rf_impressions_scaled_da.values,
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
@@ -645,6 +1082,56 @@ class EDAEngineTest(
           input_data_fixture="input_data_with_media_only",
           property_name="rf_spend_da_national",
       ),
+      dict(
+          testcase_name="reach_raw_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="reach_raw_da",
+      ),
+      dict(
+          testcase_name="reach_raw_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="reach_raw_da_national",
+      ),
+      dict(
+          testcase_name="reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="reach_scaled_da",
+      ),
+      dict(
+          testcase_name="reach_scaled_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="reach_scaled_da_national",
+      ),
+      dict(
+          testcase_name="frequency_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="frequency_da",
+      ),
+      dict(
+          testcase_name="frequency_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="frequency_da_national",
+      ),
+      dict(
+          testcase_name="rf_impressions_raw_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="rf_impressions_raw_da",
+      ),
+      dict(
+          testcase_name="rf_impressions_raw_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="rf_impressions_raw_da_national",
+      ),
+      dict(
+          testcase_name="rf_impressions_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="rf_impressions_scaled_da",
+      ),
+      dict(
+          testcase_name="rf_impressions_scaled_da_national",
+          input_data_fixture="input_data_with_media_only",
+          property_name="rf_impressions_scaled_da_national",
+      ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
     meridian = model.Meridian(getattr(self, input_data_fixture))
@@ -667,9 +1154,23 @@ class EDAEngineTest(
 
     properties_to_test = [
         engine.media_raw_da,
+        engine.media_raw_da_national,
         engine.media_scaled_da,
+        engine.media_scaled_da_national,
         engine.organic_media_raw_da,
+        engine.organic_media_raw_da_national,
         engine.organic_media_scaled_da,
+        engine.organic_media_scaled_da_national,
+        engine.reach_raw_da,
+        engine.reach_raw_da_national,
+        engine.reach_scaled_da,
+        engine.reach_scaled_da_national,
+        engine.frequency_da,
+        engine.frequency_da_national,
+        engine.rf_impressions_raw_da,
+        engine.rf_impressions_raw_da_national,
+        engine.rf_impressions_scaled_da,
+        engine.rf_impressions_scaled_da_national,
     ]
 
     for prop in properties_to_test:

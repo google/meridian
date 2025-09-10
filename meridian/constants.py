@@ -54,6 +54,8 @@ DATE_FORMAT = '%Y-%m-%d'
 # Example: "2024 Apr"
 QUARTER_FORMAT = '%Y %b'
 
+ORGANIC_PREFIX = 'organic_'
+
 # Input data variables.
 KPI = 'kpi'
 REVENUE_PER_KPI = 'revenue_per_kpi'
@@ -65,10 +67,10 @@ REACH = 'reach'
 FREQUENCY = 'frequency'
 RF_IMPRESSIONS = 'rf_impressions'
 RF_SPEND = 'rf_spend'
-ORGANIC_MEDIA = 'organic_media'
-ORGANIC_RF = 'organic_rf'
-ORGANIC_REACH = 'organic_reach'
-ORGANIC_FREQUENCY = 'organic_frequency'
+ORGANIC_MEDIA = ORGANIC_PREFIX + MEDIA
+# ORGANIC_RF is defined below.
+ORGANIC_REACH = ORGANIC_PREFIX + REACH
+ORGANIC_FREQUENCY = ORGANIC_PREFIX + FREQUENCY
 NON_MEDIA_TREATMENTS = 'non_media_treatments'
 REVENUE = 'revenue'
 NON_REVENUE = 'non_revenue'
@@ -126,8 +128,8 @@ NON_REVENUE_DATA = IMPRESSIONS_DATA + (CONTROLS,)
 # Scaled input data variables.
 MEDIA_SCALED = 'media_scaled'
 REACH_SCALED = 'reach_scaled'
-ORGANIC_MEDIA_SCALED = 'organic_media_scaled'
-ORGANIC_REACH_SCALED = 'organic_reach_scaled'
+ORGANIC_MEDIA_SCALED = ORGANIC_PREFIX + MEDIA_SCALED
+ORGANIC_REACH_SCALED = ORGANIC_PREFIX + REACH_SCALED
 NON_MEDIA_TREATMENTS_SCALED = 'non_media_treatments_scaled'
 CONTROLS_SCALED = 'controls_scaled'
 
@@ -144,9 +146,9 @@ MEDIA_CHANNEL = 'media_channel'
 RF_CHANNEL = 'rf_channel'
 CHANNEL = 'channel'
 RF = 'rf'
-ORGANIC_RF = 'organic_rf'
-ORGANIC_MEDIA_CHANNEL = 'organic_media_channel'
-ORGANIC_RF_CHANNEL = 'organic_rf_channel'
+ORGANIC_RF = ORGANIC_PREFIX + RF
+ORGANIC_MEDIA_CHANNEL = ORGANIC_PREFIX + MEDIA_CHANNEL
+ORGANIC_RF_CHANNEL = ORGANIC_PREFIX + RF_CHANNEL
 NON_MEDIA_CHANNEL = 'non_media_channel'
 CONTROL_VARIABLE = 'control_variable'
 REQUIRED_INPUT_DATA_COORD_NAMES = (
