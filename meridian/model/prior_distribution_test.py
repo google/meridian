@@ -1903,11 +1903,9 @@ class TestLognormalDistFromMeanStd(parameterized.TestCase):
   @parameterized.product(
       mean=(1.0, 2.0, 3.0),
       std=(1.0, 2.0, 3.0),
-      input_type=(float, int, np.float32, backend.to_tensor)
+      input_type=(float, int, np.float32, backend.to_tensor),
   )
-  def test_correct_mean_std_scalar(
-      self, mean, std, input_type
-  ):
+  def test_correct_mean_std_scalar(self, mean, std, input_type):
     mean = input_type(mean)
     std = input_type(std)
 
@@ -1917,13 +1915,23 @@ class TestLognormalDistFromMeanStd(parameterized.TestCase):
     np.testing.assert_allclose(dist.stddev(), std, rtol=1e-5)
 
   @parameterized.product(
-      mean=((1.0,), (1.0, 2.0,)),
-      std=((2.0,), (2.0, 3.0,)),
-      input_type=(tuple, list, np.array, backend.to_tensor)
+      mean=(
+          (1.0,),
+          (
+              1.0,
+              2.0,
+          ),
+      ),
+      std=(
+          (2.0,),
+          (
+              2.0,
+              3.0,
+          ),
+      ),
+      input_type=(tuple, list, np.array, backend.to_tensor),
   )
-  def test_correct_mean_std_array(
-      self, mean, std, input_type
-  ):
+  def test_correct_mean_std_array(self, mean, std, input_type):
     mean = input_type(mean)
     std = input_type(std)
 

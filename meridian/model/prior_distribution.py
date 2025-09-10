@@ -19,6 +19,7 @@ used by the Meridian model object.
 """
 
 from __future__ import annotations
+
 from collections.abc import MutableMapping, Sequence
 import dataclasses
 from typing import Any
@@ -26,7 +27,6 @@ import warnings
 
 from meridian import backend
 from meridian import constants
-
 import numpy as np
 
 
@@ -176,14 +176,14 @@ class PriorDistribution:
     xi_n: Prior distribution on the hierarchical standard deviation of
       `gamma_gn` which is the coefficient on non-media channel `n` for geo `g`.
       Hierarchy is defined over geos. Default distribution is `HalfNormal(5.0)`.
-    alpha_m: Prior distribution on the Adstock decay parameter for
+    alpha_m: Prior distribution on the Adstock decay parameter for media input.
+      Default distribution is `Uniform(0.0, 1.0)`.
+    alpha_rf: Prior distribution on the Adstock decay parameter for RF input.
+      Default distribution is `Uniform(0.0, 1.0)`.
+    alpha_om: Prior distribution on the Adstock decay parameter for organic
       media input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_rf: Prior distribution on the Adstock decay parameter for
-      RF input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_om: Prior distribution on the Adstock decay parameter for
-      organic media input. Default distribution is `Uniform(0.0, 1.0)`.
-    alpha_orf: Prior distribution on the Adstock decay parameter for
-      organic RF input. Default distribution is `Uniform(0.0, 1.0)`.
+    alpha_orf: Prior distribution on the Adstock decay parameter for organic RF
+      input. Default distribution is `Uniform(0.0, 1.0)`.
     ec_m: Prior distribution on the `half-saturation` Hill parameter for media
       input. Default distribution is `TruncatedNormal(0.8, 0.8, 0.1, 10)`.
     ec_rf: Prior distribution on the `half-saturation` Hill parameter for RF
@@ -1001,8 +1001,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     """Check for deterministic distributions and raise an error if found."""
 
     if any(
-        isinstance(dist, backend.tfd.Deterministic)
-        for dist in distributions
+        isinstance(dist, backend.tfd.Deterministic) for dist in distributions
     ):
       raise ValueError(
           f'{self.__class__.__name__} cannot contain `Deterministic` '
@@ -1030,9 +1029,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
         [dist.batch_shape_tensor() for dist in self._distributions],
         axis=0,
     )
-    return backend.reduce_sum(
-        distribution_batch_shape_tensors, keepdims=True
-    )
+    return backend.reduce_sum(distribution_batch_shape_tensors, keepdims=True)
 
   def _batch_shape(self):
     return backend.TensorShape(sum(self._distribution_batch_shapes))
@@ -1044,10 +1041,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _quantile(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.split(
-        value,
-        self._distribution_batch_shapes, axis=-1
-        )
+    split_value = backend.split(value, self._distribution_batch_shapes, axis=-1)
     quantiles = [
         dist.quantile(sv) for dist, sv in zip(self._distributions, split_value)
     ]
@@ -1056,11 +1050,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _log_prob(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.split(
-        value,
-        self._distribution_batch_shapes,
-        axis=-1
-        )
+    split_value = backend.split(value, self._distribution_batch_shapes, axis=-1)
     log_probs = [
         dist.log_prob(sv) for dist, sv in zip(self._distributions, split_value)
     ]
@@ -1069,11 +1059,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _log_cdf(self, value):
     value = self._broadcast_value(value)
-    split_value = backend.split(
-        value,
-        self._distribution_batch_shapes,
-        axis=-1
-        )
+    split_value = backend.split(value, self._distribution_batch_shapes, axis=-1)
 
     log_cdfs = [
         dist.log_cdf(sv) for dist, sv in zip(self._distributions, split_value)
@@ -1290,15 +1276,13 @@ def _validate_support(
   # method implemented, so the min and max values must be extracted from the
   # `loc` attribute instead.
   if isinstance(
-      tfp_dist,
-      backend.tfp.python.distributions.deterministic.Deterministic
+      tfp_dist, backend.tfp.python.distributions.deterministic.Deterministic
   ):
     support_min_vals = tfp_dist.loc
     support_max_vals = tfp_dist.loc
     for i in (0, 1):
-      if (
-          prevent_deterministic_prior_at_bounds[i]
-          and np.any(tfp_dist.loc == bounds[i])
+      if prevent_deterministic_prior_at_bounds[i] and np.any(
+          tfp_dist.loc == bounds[i]
       ):
         raise ValueError(
             f'{parameter_name} was assigned a point mass (deterministic) prior'
@@ -1311,9 +1295,9 @@ def _validate_support(
     except (AttributeError, NotImplementedError):
       warnings.warn(
           f'The prior distribution for {parameter_name} does not have a'
-          f' `quantile` method implemented, so the support range validation'
+          ' `quantile` method implemented, so the support range validation'
           f' was skipped. Confirm that your prior for {parameter_name} is'
-          f' appropriate.'
+          ' appropriate.'
       )
       return
   if np.any(support_min_vals < bounds[0]):
@@ -1326,6 +1310,7 @@ def _validate_support(
         f'{parameter_name} was assigned a prior distribution that allows values'
         f' greater than the parameter maximum {bounds[1]}.'
     )
+
 
 # Dictionary of parameters that have a limited parameters space. The tuple
 # contains the lower and upper bounds, respectively.
