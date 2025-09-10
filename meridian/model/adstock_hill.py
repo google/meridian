@@ -145,8 +145,9 @@ def compute_decay_weights(
       alpha, l_range, window_size, constants.GEOMETRIC_DECAY, normalize,
   )
 
+  is_binomial = [s == constants.BINOMIAL_DECAY for s in decay_functions]
   binomial_decay_mask = backend.reshape(
-      backend.to_tensor(decay_functions) == constants.BINOMIAL_DECAY,
+      backend.to_tensor(is_binomial, dtype=backend.bool_),
       (-1, 1),
   )
 

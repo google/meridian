@@ -18,7 +18,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import backend
 from meridian import constants
-from meridian.backend import config
 from meridian.backend import test_utils
 from meridian.model import adstock_hill
 import numpy as np
@@ -203,21 +202,6 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
   def test_compute_decay_weights_multiple_channels(
       self, alpha, decay_function, expected_weights
   ):
-    # TODO: Update adstock hill to support boolean masking with
-    # string tensors.
-    if config.get_backend() == config.Backend.JAX and isinstance(
-        decay_function, (list, tuple)
-    ):
-      with self.assertRaisesRegex(TypeError, "not a valid JAX array type"):
-        _ = adstock_hill.compute_decay_weights(
-            alpha=backend.to_tensor(alpha, dtype=backend.float32),
-            l_range=backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32),
-            window_size=_MAX_LAG + 1,
-            decay_functions=decay_function,
-            normalize=False,
-        )
-      return
-
     l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
 
     with self.subTest("unnormalized"):
@@ -246,28 +230,17 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
     decay_function = [constants.GEOMETRIC_DECAY] * 3
     l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
 
-    # TODO: Update adstock hill to support boolean masking with
-    # string tensors.
-    if config.get_backend() == config.Backend.JAX:
-      with self.assertRaises(TypeError):
-        _ = adstock_hill.compute_decay_weights(
-            alpha,
-            l_range,
-            _MAX_LAG + 1,
-            decay_function,
-        )
-    else:
-      with self.assertRaisesWithLiteralMatch(
-          ValueError,
-          "The shape of `alpha` ((2,)) is incompatible with the length of "
-          "`decay_functions` (3)",
-      ):
-        _ = adstock_hill.compute_decay_weights(
-            alpha,
-            l_range,
-            _MAX_LAG + 1,
-            decay_function,
-        )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of `alpha` ((2,)) is incompatible with the length of "
+        "`decay_functions` (3)",
+    ):
+      _ = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG + 1,
+          decay_function,
+      )
 
 
 class TestAdstock(test_utils.MeridianTestCase):
