@@ -26,7 +26,7 @@ import altair as alt
 import jinja2
 from meridian import backend
 from meridian import constants as c
-from meridian.analysis import analyzer
+from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.data import time_coordinates as tc
@@ -471,7 +471,7 @@ class OptimizationResults:
 
   meridian: model.Meridian
   # The analyzer bound to the model above.
-  analyzer: analyzer.Analyzer
+  analyzer: analyzer_module.Analyzer
   spend_ratio: np.ndarray  # spend / historical spend
   spend_bounds: tuple[np.ndarray, np.ndarray]
 
@@ -1276,7 +1276,7 @@ class BudgetOptimizer:
 
   def __init__(self, meridian: model.Meridian):
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(self._meridian)
+    self._analyzer = analyzer_module.Analyzer(self._meridian)
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""
@@ -1288,7 +1288,7 @@ class BudgetOptimizer:
 
   def optimize(
       self,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       # TODO: b/409550413 - Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
@@ -1526,7 +1526,7 @@ class BudgetOptimizer:
     use_historical_budget = budget is None or np.isclose(
         budget, np.sum(optimization_grid.historical_spend)
     )
-    new_data = new_data or analyzer.DataTensors()
+    new_data = new_data or analyzer_module.DataTensors()
     nonoptimized_data = self._create_budget_dataset(
         new_data=new_data.filter_fields(c.PAID_DATA + (c.TIME,)),
         use_posterior=use_posterior,
@@ -1617,7 +1617,7 @@ class BudgetOptimizer:
       rf_spend: backend.Tensor | None = None,
       revenue_per_kpi: backend.Tensor | None = None,
       use_optimal_frequency: bool = True,
-  ) -> analyzer.DataTensors:
+  ) -> analyzer_module.DataTensors:
     """Creates a `DataTensors` for optimizations from CPM and flighting data.
 
     CPM is broken down into cost per media unit, `cpmu`, for the media channels
@@ -1739,11 +1739,11 @@ class BudgetOptimizer:
     if revenue_per_kpi is not None:
       tensors[c.REVENUE_PER_KPI] = revenue_per_kpi
     tensors[c.TIME] = backend.to_tensor(time)
-    return analyzer.DataTensors(**tensors)
+    return analyzer_module.DataTensors(**tensors)
 
   def _validate_grid(
       self,
-      new_data: analyzer.DataTensors | None,
+      new_data: analyzer_module.DataTensors | None,
       use_posterior: bool,
       start_date: tc.Date,
       end_date: tc.Date,
@@ -1799,7 +1799,7 @@ class BudgetOptimizer:
       return False
 
     if new_data is None:
-      new_data = analyzer.DataTensors()
+      new_data = analyzer_module.DataTensors()
     required_tensors = c.PERFORMANCE_DATA + (c.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors, meridian=self._meridian
@@ -1961,7 +1961,7 @@ class BudgetOptimizer:
     """
     self._validate_model_fit(use_posterior)
     if new_data is None:
-      new_data = analyzer.DataTensors()
+      new_data = analyzer_module.DataTensors()
 
     if selected_times is not None:
       warnings.warn(
@@ -2008,7 +2008,7 @@ class BudgetOptimizer:
         )
     )
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
-      opt_freq_data = analyzer.DataTensors(
+      opt_freq_data = analyzer_module.DataTensors(
           rf_impressions=filled_data.reach * filled_data.frequency,
           rf_spend=filled_data.rf_spend,
           revenue_per_kpi=filled_data.revenue_per_kpi,
@@ -2102,13 +2102,13 @@ class BudgetOptimizer:
       self,
       start_date: tc.Date,
       end_date: tc.Date,
-      new_data: analyzer.DataTensors | None,
+      new_data: analyzer_module.DataTensors | None,
   ) -> Sequence[str] | Sequence[bool] | None:
     """Validates and returns the selected times."""
     if start_date is None and end_date is None:
       return None
 
-    new_data = new_data or analyzer.DataTensors()
+    new_data = new_data or analyzer_module.DataTensors()
     if new_data.get_modified_times(self._meridian) is None:
       return self._meridian.expand_selected_time_dims(
           start_date=start_date,
@@ -2129,7 +2129,7 @@ class BudgetOptimizer:
       self,
       hist_spend: np.ndarray,
       spend: np.ndarray,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       optimal_frequency: Sequence[float] | None = None,
   ) -> tuple[
       backend.Tensor | None,
@@ -2165,7 +2165,7 @@ class BudgetOptimizer:
     Returns:
       Tuple of backend.tensors (new_media, new_reach, new_frequency).
     """
-    new_data = new_data or analyzer.DataTensors()
+    new_data = new_data or analyzer_module.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
         c.PAID_CHANNELS,
         self._meridian,
@@ -2206,7 +2206,7 @@ class BudgetOptimizer:
       self,
       hist_spend: np.ndarray,
       spend: np.ndarray,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
       start_date: tc.Date = None,
@@ -2218,7 +2218,7 @@ class BudgetOptimizer:
       use_historical_budget: bool = True,
   ) -> xr.Dataset:
     """Creates the budget dataset."""
-    new_data = new_data or analyzer.DataTensors()
+    new_data = new_data or analyzer_module.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
         c.PAID_DATA + (c.TIME,),
         self._meridian,
@@ -2237,7 +2237,7 @@ class BudgetOptimizer:
         )
     )
     budget = np.sum(spend_tensor)
-    inc_outcome_data = analyzer.DataTensors(
+    inc_outcome_data = analyzer_module.DataTensors(
         media=new_media,
         reach=new_reach,
         frequency=new_frequency,
@@ -2269,7 +2269,7 @@ class BudgetOptimizer:
     # shape (n_channels, n_metrics) where n_metrics = 4 for (mean, median,
     # ci_lo, and ci_hi)
     incremental_outcome_with_mean_median_and_ci = (
-        analyzer.get_central_tendency_and_ci(
+        analyzer_module.get_central_tendency_and_ci(
             data=incremental_outcome,
             confidence_level=confidence_level,
             include_median=True,
@@ -2281,7 +2281,7 @@ class BudgetOptimizer:
     )
 
     aggregated_impressions = self._analyzer.get_aggregated_impressions(
-        new_data=analyzer.DataTensors(
+        new_data=analyzer_module.DataTensors(
             media=new_media, reach=new_reach, frequency=new_frequency
         ),
         selected_times=selected_times,
@@ -2292,7 +2292,7 @@ class BudgetOptimizer:
         include_non_paid_channels=False,
     )
     effectiveness_with_mean_median_and_ci = (
-        analyzer.get_central_tendency_and_ci(
+        analyzer_module.get_central_tendency_and_ci(
             data=backend.divide_no_nan(
                 incremental_outcome, aggregated_impressions
             ),
@@ -2301,12 +2301,12 @@ class BudgetOptimizer:
         )
     )
 
-    roi = analyzer.get_central_tendency_and_ci(
+    roi = analyzer_module.get_central_tendency_and_ci(
         data=backend.divide_no_nan(incremental_outcome, spend_tensor),
         confidence_level=confidence_level,
         include_median=True,
     )
-    marginal_roi = analyzer.get_central_tendency_and_ci(
+    marginal_roi = analyzer_module.get_central_tendency_and_ci(
         data=backend.divide_no_nan(
             mroi_numerator, spend_tensor * incremental_increase
         ),
@@ -2314,7 +2314,7 @@ class BudgetOptimizer:
         include_median=True,
     )
 
-    cpik = analyzer.get_central_tendency_and_ci(
+    cpik = analyzer_module.get_central_tendency_and_ci(
         data=backend.divide_no_nan(spend_tensor, incremental_outcome),
         confidence_level=confidence_level,
         include_median=True,
@@ -2374,7 +2374,7 @@ class BudgetOptimizer:
       i: int,
       incremental_outcome_grid: np.ndarray,
       multipliers_grid: backend.Tensor,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
@@ -2416,7 +2416,7 @@ class BudgetOptimizer:
         reducing `batch_size`. The calculation will generally be faster with
         larger `batch_size` values.
     """
-    new_data = new_data or analyzer.DataTensors()
+    new_data = new_data or analyzer_module.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
         c.PAID_DATA, self._meridian
     )
@@ -2455,7 +2455,7 @@ class BudgetOptimizer:
         np.asarray(
             self._analyzer.incremental_outcome(
                 use_posterior=use_posterior,
-                new_data=analyzer.DataTensors(
+                new_data=analyzer_module.DataTensors(
                     media=new_media,
                     reach=new_reach,
                     frequency=new_frequency,
@@ -2477,7 +2477,7 @@ class BudgetOptimizer:
       spend_bound_lower: np.ndarray,
       spend_bound_upper: np.ndarray,
       step_size: int,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
