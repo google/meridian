@@ -110,6 +110,7 @@ class EDAEngine:
     if self._meridian.is_national:
       return self.media_raw_da
     else:
+      # Note that media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
           self.media_raw_da,
           None,
@@ -122,6 +123,7 @@ class EDAEngine:
     if self._meridian.is_national:
       return self.media_scaled_da
     else:
+      # Note that media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
           self.media_raw_da,
           transformers.MediaTransformer,
@@ -150,6 +152,7 @@ class EDAEngine:
     if self._meridian.is_national:
       return self.organic_media_raw_da
     else:
+      # Note that organic media is summable by assumption.
       return self._aggregate_and_scale_geo_da(self.organic_media_raw_da, None)
 
   @functools.cached_property
@@ -159,6 +162,7 @@ class EDAEngine:
     if self._meridian.is_national:
       return self.organic_media_scaled_da
     else:
+      # Note that organic media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
           self.organic_media_raw_da,
           transformers.MediaTransformer,
@@ -334,6 +338,35 @@ class EDAEngine:
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.rf_impressions_raw_da_national
+
+  @functools.cached_property
+  def geo_population_da(self) -> xr.DataArray | None:
+    if self._meridian.is_national:
+      return None
+    return xr.DataArray(
+        self._meridian.population,
+        coords={constants.GEO: self._meridian.input_data.geo.values},
+        dims=[constants.GEO],
+        name=constants.POPULATION,
+    )
+
+  @functools.cached_property
+  def kpi_scaled_da(self) -> xr.DataArray:
+    return _data_array_like(
+        da=self._meridian.input_data.kpi,
+        values=self._meridian.kpi_scaled,
+    )
+
+  @functools.cached_property
+  def kpi_scaled_da_national(self) -> xr.DataArray:
+    if self._meridian.is_national:
+      return self.kpi_scaled_da
+    else:
+      # Note that kpi is summable by assumption.
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.kpi,
+          transformers.CenteringAndScalingTransformer,
+      )
 
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""

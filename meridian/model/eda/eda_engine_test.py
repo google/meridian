@@ -37,15 +37,24 @@ class EDAEngineTest(
   def setUp(self):
     super().setUp()
     self.mock_scale_factor = 2.0
-    mock_transformer_cls = self.enter_context(
+    mock_media_transformer_cls = self.enter_context(
+        mock.patch.object(
+            eda_engine.transformers, "MediaTransformer", autospec=True
+        )
+    )
+    mock_media_transformer = mock_media_transformer_cls.return_value
+    mock_media_transformer.forward.side_effect = (
+        lambda x: tf.cast(x, tf.float32) * self.mock_scale_factor
+    )
+    mock_scaling_transformer_cls = self.enter_context(
         mock.patch.object(
             eda_engine.transformers,
-            "MediaTransformer",
+            "CenteringAndScalingTransformer",
             autospec=True,
         )
     )
-    mock_transformer = mock_transformer_cls.return_value
-    mock_transformer.forward.side_effect = (
+    mock_scaling_transformer = mock_scaling_transformer_cls.return_value
+    mock_scaling_transformer.forward.side_effect = (
         lambda x: tf.cast(x, tf.float32) * self.mock_scale_factor
     )
 
@@ -1514,6 +1523,83 @@ class EDAEngineTest(
         expected_organic_rf_impressions_scaled_da.values,
     )
 
+  # --- Test cases for geo_population_da ---
+  def test_geo_population_da_present(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    population_da = engine.geo_population_da
+    self.assertIsInstance(population_da, xr.DataArray)
+    self.assertEqual(
+        population_da.shape,
+        (model_test_data.WithInputDataSamples._N_GEOS,),
+    )
+    self.assertCountEqual(population_da.coords.keys(), [constants.GEO])
+    self.assertAllClose(population_da.values, meridian.population)
+
+  # --- Test cases for kpi_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+          ),
+      ),
+  )
+  def test_kpi_scaled_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    kpi_da = engine.kpi_scaled_da
+    self.assertIsInstance(kpi_da, xr.DataArray)
+    self.assertEqual(kpi_da.shape, expected_shape)
+    self.assertCountEqual(kpi_da.coords.keys(), [constants.GEO, constants.TIME])
+    self.assertAllClose(kpi_da.values, meridian.kpi_scaled)
+
+  # --- Test cases for kpi_scaled_da_national ---
+  def test_kpi_scaled_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    kpi_scaled_da_national = engine.kpi_scaled_da_national
+    self.assertIsInstance(kpi_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        kpi_scaled_da_national.shape,
+        (model_test_data.WithInputDataSamples._N_TIMES,),
+    )
+    self.assertCountEqual(
+        kpi_scaled_da_national.coords.keys(), [constants.TIME]
+    )
+
+    # Check values
+    expected_da = meridian.input_data.kpi.sum(dim=constants.GEO)
+    scaled_expected_values = expected_da.values * self.mock_scale_factor
+    self.assertAllClose(kpi_scaled_da_national.values, scaled_expected_values)
+
+  def test_kpi_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    kpi_scaled_da_national = engine.kpi_scaled_da_national
+    self.assertIsInstance(kpi_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        kpi_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+        ),
+    )
+    self.assertAllClose(
+        kpi_scaled_da_national.values, engine.kpi_scaled_da.values
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
@@ -1679,6 +1765,11 @@ class EDAEngineTest(
           testcase_name="organic_rf_impressions_scaled_da_national",
           input_data_fixture="input_data_with_media_only",
           property_name="organic_rf_impressions_scaled_da_national",
+      ),
+      dict(
+          testcase_name="geo_population_da",
+          input_data_fixture="national_input_data_media_and_rf",
+          property_name="geo_population_da",
       ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
