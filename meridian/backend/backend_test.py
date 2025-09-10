@@ -673,6 +673,52 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _split_test_cases = [
+      dict(
+          testcase_name="by_num_sections_even",
+          tensor_in=np.arange(6),
+          split_arg=3,
+          kwargs={"axis": 0},
+          expected=[np.array([0, 1]), np.array([2, 3]), np.array([4, 5])],
+      ),
+      dict(
+          testcase_name="by_sizes",
+          tensor_in=np.arange(7),
+          split_arg=[1, 3, 3],
+          kwargs={"axis": 0},
+          expected=[np.array([0]), np.array([1, 2, 3]), np.array([4, 5, 6])],
+      ),
+      dict(
+          testcase_name="by_sizes_2d_axis1",
+          tensor_in=np.arange(12).reshape(2, 6),
+          split_arg=[2, 1, 3],
+          kwargs={"axis": 1},
+          expected=[
+              np.array([[0, 1], [6, 7]]),
+              np.array([[2], [8]]),
+              np.array([[3, 4, 5], [9, 10, 11]]),
+          ],
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_split_test_cases,
+  )
+  def test_split(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    split_arg = test_case["split_arg"]
+    kwargs = test_case["kwargs"]
+    expected_list = test_case["expected"]
+
+    result_list = backend.split(tensor, split_arg, **kwargs)
+
+    self.assertLen(result_list, len(expected_list))
+    for result, expected in zip(result_list, expected_list):
+      self.assertIsInstance(result, backend.Tensor)
+      test_utils.assert_allclose(result, expected)
+
   def test_extension_type_raises_for_jax(self):
     self._set_backend_for_test(_JAX)
 
@@ -682,6 +728,148 @@ class BackendTest(parameterized.TestCase):
 
     with self.assertRaises(NotImplementedError):
       MyExtension()
+
+  _nanmedian_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.array(3.0),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([2.0, 15.0]),
+      ),
+      dict(
+          testcase_name="2d_axis_1",
+          tensor_in=np.array([[1.0, 10.0, np.nan], [np.nan, 20.0, 30.0]]),
+          kwargs={"axis": 1},
+          expected=np.array([5.5, 25.0]),
+      ),
+      dict(
+          testcase_name="all_nan",
+          tensor_in=np.array([np.nan, np.nan]),
+          kwargs={},
+          expected=np.array(np.nan),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nanmedian_test_cases,
+  )
+  def test_nanmedian(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nanmedian(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+
+class BackendFunctionWrappersTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._original_backend = config.get_backend()
+
+  def tearDown(self):
+    super().tearDown()
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      config.set_backend(self._original_backend)
+    importlib.reload(backend)
+
+  def _set_backend_for_test(self, backend_name: str):
+    if config.get_backend().value != backend_name:
+      if backend_name == "jax":
+        with self.assertWarns(UserWarning):
+          config.set_backend(backend_name)
+      else:
+        config.set_backend(backend_name)
+      importlib.reload(backend)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_function_wrapper_simple_decorator(self, backend_name):
+    self._set_backend_for_test(backend_name)
+
+    # Explicitly setting static_argnums=() ensures that JAX does not default
+    # to making the first argument static, which is correct for this plain
+    # function.
+    @backend.function(static_argnums=())
+    def add_one(x):
+      return x + 1
+
+    result = add_one(backend.to_tensor(5))
+    test_utils.assert_allclose(result, 6)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_function_wrapper_ignores_cross_backend_args(self, backend_name):
+    self._set_backend_for_test(backend_name)
+
+    # This tests that TF ignores JAX args (static_arg*) and JAX ignores TF args (jit_compile).
+    # We must set static_argnums=() because this is a standalone function.
+    @backend.function(
+        jit_compile=True,
+        static_argnames="should_be_ignored_by_tf",
+        static_argnums=(),
+    )
+    def add_one(
+        x,
+        should_be_ignored_by_tf=False,
+    ):
+      if should_be_ignored_by_tf:
+        return x + 2
+      return x + 1
+
+    result = add_one(backend.to_tensor(5))
+    test_utils.assert_allclose(result, 6)
+
+  def test_jax_function_handles_static_args_on_methods(self):
+    self._set_backend_for_test(_JAX)
+
+    class MyProcessor:
+
+      def __init__(self, increment):
+        self._increment = increment
+
+      @backend.function(static_argnames="as_static")
+      def process(self, x, as_static: bool):
+        if as_static:
+          return x + self._increment
+        else:
+          return x - self._increment
+
+    processor = MyProcessor(increment=10)
+    result = processor.process(backend.to_tensor(5), as_static=True)
+    test_utils.assert_allclose(result, 15)
+
+  def test_jax_function_implicit_static_self(self):
+    self._set_backend_for_test(_JAX)
+
+    class SimpleAdder:
+
+      def __init__(self, bias):
+        self.bias = bias
+
+      @backend.function
+      def add_bias(self, x):
+        return x + self.bias
+
+    adder = SimpleAdder(bias=5.0)
+    result = adder.add_bias(backend.to_tensor(10.0))
+    test_utils.assert_allclose(result, 15.0)
+
+    # Since self is static, changing an attribute is ignored by the compiled
+    # function.
+    adder.bias = 100.0
+    result2 = adder.add_bias(backend.to_tensor(10.0))
+    test_utils.assert_allclose(result2, 15.0)
 
 
 if __name__ == "__main__":
