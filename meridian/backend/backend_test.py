@@ -616,6 +616,22 @@ class BackendTest(parameterized.TestCase):
     test_utils.assert_allclose(result, expected)
 
   @parameterized.named_parameters(
+      dict(
+          testcase_name="positional_arg",
+          call=lambda t: backend.tile(t, [2]),
+          expected=np.array([4, 5, 4, 5]),
+      ),
+      dict(
+          testcase_name="keyword_arg_multiples",
+          call=lambda t: backend.tile(t, multiples=[2]),
+          expected=np.array([4, 5, 4, 5]),
+      ),
+  )
+  def test_tile_signature_compatibility(self, call, expected):
+    tiled_tensor = call(backend.to_tensor([4, 5]))
+    test_utils.assert_allequal(tiled_tensor, expected)
+
+  @parameterized.named_parameters(
       ("tensorflow", _TF),
       ("jax", _JAX),
   )

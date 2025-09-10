@@ -28,6 +28,12 @@ from typing_extensions import Literal
 # extensive boilerplate.
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
+_DEFAULT_FLOAT = "float32"
+_DEFAULT_INT = "int64"
+
+_TENSORFLOW_TILE_KEYWORD = "multiples"
+_JAX_TILE_KEYWORD = "reps"
+
 if TYPE_CHECKING:
   import dataclasses
   import jax as _jax
@@ -88,8 +94,8 @@ def result_type(*types: Any) -> str:
       standardized_types.append(str(t))
 
   if any("float" in t for t in standardized_types):
-    return "float32"
-  return "int64"
+    return _DEFAULT_FLOAT
+  return _DEFAULT_INT
 
 
 def _resolve_dtype(dtype: Optional[Any], *args: Any) -> str:
@@ -193,6 +199,15 @@ def _tf_get_indices_where(condition):
   import tensorflow as tf
 
   return tf.where(condition)
+
+
+def _jax_tile(*args, **kwargs):
+  """JAX wrapper for tile that supports the `multiples` keyword argument."""
+  import jax.numpy as jnp
+
+  if _TENSORFLOW_TILE_KEYWORD in kwargs:
+    kwargs[_JAX_TILE_KEYWORD] = kwargs.pop(_TENSORFLOW_TILE_KEYWORD)
+  return jnp.tile(*args, **kwargs)
 
 
 def _jax_unique_with_counts(x):
@@ -393,7 +408,7 @@ if _BACKEND == config.Backend.JAX:
   reshape = _ops.reshape
   split = _ops.split
   stack = _ops.stack
-  tile = _ops.tile
+  tile = _jax_tile
   transpose = _ops.transpose
   unique_with_counts = _jax_unique_with_counts
   where = _ops.where
