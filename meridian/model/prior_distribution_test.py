@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 import copy
 from typing import Any
 import warnings
@@ -20,6 +20,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import backend
 from meridian import constants as c
+from meridian.backend import test_utils
 from meridian.model import prior_distribution
 import numpy as np
 
@@ -44,22 +45,22 @@ _INDEPENDENT_TEST_CASES = dict(
     ],
     distributions=[
         (
-            backend.tfd.Uniform(0.0, 1.0),
-            backend.tfd.Uniform(1.0, 2.0),
-            backend.tfd.Uniform(2.0, 3.0),
+            lambda: backend.tfd.Uniform(0.0, 1.0),
+            lambda: backend.tfd.Uniform(1.0, 2.0),
+            lambda: backend.tfd.Uniform(2.0, 3.0),
         ),
         (
-            backend.tfd.Uniform([0.0, 1.0], [1.0, 2.0]),
-            backend.tfd.Uniform(2.0, 3.0),
+            lambda: backend.tfd.Uniform([0.0, 1.0], [1.0, 2.0]),
+            lambda: backend.tfd.Uniform(2.0, 3.0),
         ),
         (
-            backend.tfd.HalfNormal(1),
-            backend.tfd.Gamma(2, 2),
-            backend.tfd.TruncatedNormal(0, 1, 1, 2),
+            lambda: backend.tfd.HalfNormal(1),
+            lambda: backend.tfd.Gamma(2, 2),
+            lambda: backend.tfd.TruncatedNormal(0, 1, 1, 2),
         ),
         (
-            backend.tfd.HalfNormal(1),
-            backend.tfd.TruncatedNormal([0, 0], [1, 1], [1, 2], [2, 3]),
+            lambda: backend.tfd.HalfNormal(1),
+            lambda: backend.tfd.TruncatedNormal([0, 0], [1, 1], [1, 2], [2, 3]),
         ),
     ],
     expected_distribution_batch_shapes=[[1, 1, 1], [2, 1], [1, 1, 1], [1, 2]],
@@ -150,7 +151,7 @@ _INDEPENDENT_TEST_CASES = dict(
 )
 
 
-class PriorDistributionTest(parameterized.TestCase):
+class PriorDistributionTest(test_utils.MeridianTestCase):
 
   def setUp(self):
     super().setUp()
@@ -643,28 +644,31 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='scalar_deterministic',
-          slope_m=backend.tfd.Deterministic(0.7, 0.4, name=c.SLOPE_M),
+          get_slope_m=lambda: backend.tfd.Deterministic(
+              0.7, 0.4, name=c.SLOPE_M
+          ),
       ),
       dict(
           testcase_name='scalar_non_deterministic',
-          slope_m=backend.tfd.LogNormal(1.0, 0.4, name=c.SLOPE_M),
+          get_slope_m=lambda: backend.tfd.LogNormal(1.0, 0.4, name=c.SLOPE_M),
       ),
       dict(
           testcase_name='list_deterministic',
-          slope_m=backend.tfd.Deterministic(
+          get_slope_m=lambda: backend.tfd.Deterministic(
               [1.0, 1.1, 1.2, 1.3, 1.4, 1.5], 0.9, name=c.SLOPE_M
           ),
       ),
       dict(
           testcase_name='list_non_deterministic',
-          slope_m=backend.tfd.LogNormal(
+          get_slope_m=lambda: backend.tfd.LogNormal(
               [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 0.9, name=c.SLOPE_M
           ),
       ),
   )
   def test_broadcast_custom_slope_m_raises_warning(
-      self, slope_m: prior_distribution.PriorDistribution
+      self, get_slope_m: Callable[[], prior_distribution.PriorDistribution]
   ):
+    slope_m = get_slope_m()
     distribution = prior_distribution.PriorDistribution(slope_m=slope_m)
     with warnings.catch_warnings(record=True) as warns:
       # Cause all warnings to always be triggered.
@@ -697,7 +701,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='roi_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               roi_m=backend.tfd.LogNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ROI_M
               )
@@ -705,7 +709,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='alpha_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_m=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_M
               )
@@ -713,7 +717,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='ec_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_m=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_M
               )
@@ -721,7 +725,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='slope_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_m=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_M
               )
@@ -729,7 +733,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='eta_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_m=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_M
               )
@@ -737,7 +741,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='beta_m',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_m=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_M
               )
@@ -745,8 +749,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_media_channels(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the  number of media channels '
@@ -773,7 +778,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='roi_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               roi_rf=backend.tfd.LogNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ROI_RF
               )
@@ -781,7 +786,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='alpha_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_rf=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_RF
               )
@@ -789,7 +794,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='ec_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_rf=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_RF
               )
@@ -797,7 +802,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='slope_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_rf=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_RF
               )
@@ -805,7 +810,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='eta_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_rf=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_RF
               )
@@ -813,7 +818,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='beta_rf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_rf=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_RF
               )
@@ -821,8 +826,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_rf_channels(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the number of RF channels (4), '
@@ -848,7 +854,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='alpha_om',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_om=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_OM
               )
@@ -856,7 +862,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='ec_om',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_om=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_OM
               )
@@ -864,7 +870,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='slope_om',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_om=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_OM
               )
@@ -872,7 +878,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='eta_om',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_om=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_OM
               )
@@ -880,7 +886,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='beta_om',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_om=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_OM
               )
@@ -888,8 +894,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_organic_media_channels(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the  number of organic media '
@@ -916,7 +923,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='alpha_orf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_orf=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_ORF
               )
@@ -924,7 +931,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='ec_orf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_orf=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_ORF
               )
@@ -932,7 +939,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='slope_orf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_orf=backend.tfd.Deterministic(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_ORF
               )
@@ -940,7 +947,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='eta_orf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_orf=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_ORF
               )
@@ -948,7 +955,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='beta_orf',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_orf=backend.tfd.HalfNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_ORF
               )
@@ -956,8 +963,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_organic_rf_channels(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the number of organic RF channels '
@@ -984,7 +992,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='gamma_c',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               gamma_c=backend.tfd.LogNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.GAMMA_C
               )
@@ -992,7 +1000,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='xi_c',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               xi_c=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.XI_C
               )
@@ -1000,8 +1008,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_controls(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the number of control variables '
@@ -1028,7 +1037,7 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='gamma_n',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               gamma_n=backend.tfd.LogNormal(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.GAMMA_N
               )
@@ -1036,7 +1045,7 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='xi_n',
-          distribution=prior_distribution.PriorDistribution(
+          get_distribution=lambda: prior_distribution.PriorDistribution(
               xi_n=backend.tfd.Uniform(
                   [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.XI_N
               )
@@ -1044,8 +1053,9 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
   )
   def test_custom_priors_dont_match_non_media(
-      self, distribution: prior_distribution.PriorDistribution
+      self, get_distribution: Callable[[], prior_distribution.PriorDistribution]
   ):
+    distribution = get_distribution()
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         'Custom priors length (5) must match the number of non-media channels '
@@ -1072,64 +1082,72 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='with_deteremenistic_0',
-          tau_g_excl_baseline=backend.tfd.Deterministic(
+          get_tau_g_excl_baseline=lambda: backend.tfd.Deterministic(
               0, name='tau_g_excl_baseline'
           ),
-          eta_m=backend.tfd.Deterministic(0, name=c.ETA_M),
-          eta_rf=backend.tfd.Deterministic(0, name=c.ETA_RF),
-          eta_om=backend.tfd.Deterministic(0, name=c.ETA_OM),
-          eta_orf=backend.tfd.Deterministic(0, name=c.ETA_ORF),
-          xi_c=backend.tfd.Deterministic(0, name=c.XI_C),
-          xi_n=backend.tfd.Deterministic(0, name=c.XI_N),
+          get_eta_m=lambda: backend.tfd.Deterministic(0, name=c.ETA_M),
+          get_eta_rf=lambda: backend.tfd.Deterministic(0, name=c.ETA_RF),
+          get_eta_om=lambda: backend.tfd.Deterministic(0, name=c.ETA_OM),
+          get_eta_orf=lambda: backend.tfd.Deterministic(0, name=c.ETA_ORF),
+          get_xi_c=lambda: backend.tfd.Deterministic(0, name=c.XI_C),
+          get_xi_n=lambda: backend.tfd.Deterministic(0, name=c.XI_N),
           number_of_warnings=0,
       ),
       dict(
           testcase_name='with_deteremenistic_1',
-          tau_g_excl_baseline=backend.tfd.Deterministic(
+          get_tau_g_excl_baseline=lambda: backend.tfd.Deterministic(
               1, name='tau_g_excl_baseline'
           ),
-          eta_m=backend.tfd.Deterministic(1, name=c.ETA_M),
-          eta_rf=backend.tfd.Deterministic(1, name=c.ETA_RF),
-          eta_om=backend.tfd.Deterministic(1, name=c.ETA_OM),
-          eta_orf=backend.tfd.Deterministic(1, name=c.ETA_ORF),
-          xi_c=backend.tfd.Deterministic(1, name=c.XI_C),
-          xi_n=backend.tfd.Deterministic(1, name=c.XI_N),
+          get_eta_m=lambda: backend.tfd.Deterministic(1, name=c.ETA_M),
+          get_eta_rf=lambda: backend.tfd.Deterministic(1, name=c.ETA_RF),
+          get_eta_om=lambda: backend.tfd.Deterministic(1, name=c.ETA_OM),
+          get_eta_orf=lambda: backend.tfd.Deterministic(1, name=c.ETA_ORF),
+          get_xi_c=lambda: backend.tfd.Deterministic(1, name=c.XI_C),
+          get_xi_n=lambda: backend.tfd.Deterministic(1, name=c.XI_N),
           number_of_warnings=7,
       ),
       dict(
           testcase_name='with_non_deteremenistic_defaults',
-          tau_g_excl_baseline=None,
-          eta_m=None,
-          eta_rf=None,
-          eta_om=None,
-          eta_orf=None,
-          xi_c=None,
-          xi_n=None,
+          get_tau_g_excl_baseline=None,
+          get_eta_m=None,
+          get_eta_rf=None,
+          get_eta_om=None,
+          get_eta_orf=None,
+          get_xi_c=None,
+          get_xi_n=None,
           number_of_warnings=7,
       ),
   )
   def test_broadcast_national_distribution(
       self,
-      tau_g_excl_baseline: backend.tfd.Distribution,
-      eta_m: backend.tfd.Distribution,
-      eta_rf: backend.tfd.Distribution,
-      eta_om: backend.tfd.Distribution,
-      eta_orf: backend.tfd.Distribution,
-      xi_c: backend.tfd.Distribution,
-      xi_n: backend.tfd.Distribution,
+      get_tau_g_excl_baseline: Callable[[], backend.tfd.Distribution],
+      get_eta_m: Callable[[], backend.tfd.Distribution],
+      get_eta_rf: Callable[[], backend.tfd.Distribution],
+      get_eta_om: Callable[[], backend.tfd.Distribution],
+      get_eta_orf: Callable[[], backend.tfd.Distribution],
+      get_xi_c: Callable[[], backend.tfd.Distribution],
+      get_xi_n: Callable[[], backend.tfd.Distribution],
       number_of_warnings: int,
   ):
     tau_g_excl_baseline = (
-        self.sample_distributions['tau_g_excl_baseline']
-        if not tau_g_excl_baseline
-        else tau_g_excl_baseline
+        self.sample_distributions[c.TAU_G_EXCL_BASELINE]
+        if not get_tau_g_excl_baseline
+        else get_tau_g_excl_baseline()
     )
-    eta_m = self.sample_distributions[c.ETA_M] if not eta_m else eta_m
-    eta_rf = self.sample_distributions[c.ETA_RF] if not eta_rf else eta_rf
-    eta_om = self.sample_distributions[c.ETA_OM] if not eta_om else eta_om
-    eta_orf = self.sample_distributions[c.ETA_ORF] if not eta_orf else eta_orf
-    xi_c = self.sample_distributions[c.XI_C] if not xi_c else xi_c
-    xi_n = self.sample_distributions[c.XI_N] if not xi_n else xi_n
+    eta_m = self.sample_distributions[c.ETA_M] if not get_eta_m else get_eta_m()
+    eta_rf = (
+        self.sample_distributions[c.ETA_RF] if not get_eta_rf else get_eta_rf()
+    )
+    eta_om = (
+        self.sample_distributions[c.ETA_OM] if not get_eta_om else get_eta_om()
+    )
+    eta_orf = (
+        self.sample_distributions[c.ETA_ORF]
+        if not get_eta_orf
+        else get_eta_orf()
+    )
+    xi_c = self.sample_distributions[c.XI_C] if not get_xi_c else get_xi_c()
+    xi_n = self.sample_distributions[c.XI_N] if not get_xi_n else get_xi_n()
 
     # Create prior distribution with given parameters.
     distribution = prior_distribution.PriorDistribution(
@@ -1481,30 +1499,30 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='same',
-          a=backend.tfd.Deterministic(0, name='name_1'),
-          b=backend.tfd.Deterministic(0, name='name_1'),
+          get_a=lambda: backend.tfd.Deterministic(0, name='name_1'),
+          get_b=lambda: backend.tfd.Deterministic(0, name='name_1'),
           expected_result=True,
       ),
       dict(
           testcase_name='same_type_different_name',
-          a=backend.tfd.Deterministic(1, name='name_1'),
-          b=backend.tfd.Deterministic(1, name='name_2'),
+          get_a=lambda: backend.tfd.Deterministic(1, name='name_1'),
+          get_b=lambda: backend.tfd.Deterministic(1, name='name_2'),
           expected_result=False,
       ),
       dict(
           testcase_name='same_type_different_params',
-          a=backend.tfd.LogNormal(0.7, 0.4, name='name_1'),
-          b=backend.tfd.LogNormal(0.7, 0.6, name='name_1'),
+          get_a=lambda: backend.tfd.LogNormal(0.7, 0.4, name='name_1'),
+          get_b=lambda: backend.tfd.LogNormal(0.7, 0.6, name='name_1'),
           expected_result=False,
       ),
       dict(
           testcase_name='same_complex_distributions',
-          a=backend.tfd.TransformedDistribution(
+          get_a=lambda: backend.tfd.TransformedDistribution(
               backend.tfd.LogNormal(0.7, 0.4),
               backend.bijectors.Shift(0.1),
               name='name_1',
           ),
-          b=backend.tfd.TransformedDistribution(
+          get_b=lambda: backend.tfd.TransformedDistribution(
               backend.tfd.LogNormal(0.7, 0.4),
               backend.bijectors.Shift(0.1),
               name='name_1',
@@ -1513,35 +1531,49 @@ class PriorDistributionTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='different_outer_complex_distributions',
-          a=backend.tfd.BatchBroadcast(backend.tfd.HalfNormal(5.0), 3),
-          b=backend.tfd.BatchBroadcast(backend.tfd.HalfNormal(5.0), 7),
+          get_a=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.HalfNormal(5.0), 3
+          ),
+          get_b=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.HalfNormal(5.0), 7
+          ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_inner_complex_distributions',
-          a=backend.tfd.BatchBroadcast(backend.tfd.HalfNormal(5.0), 3),
-          b=backend.tfd.BatchBroadcast(backend.tfd.Uniform(0.0, 1.0), 3),
+          get_a=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.HalfNormal(5.0), 3
+          ),
+          get_b=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.Uniform(0.0, 1.0), 3
+          ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_simple_and_complex_distributions',
-          a=backend.tfd.HalfNormal(5.0),
-          b=backend.tfd.BatchBroadcast(backend.tfd.HalfNormal(5.0), 3),
+          get_a=lambda: backend.tfd.HalfNormal(5.0),
+          get_b=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.HalfNormal(5.0), 3
+          ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_complex_and_simple_distributions',
-          a=backend.tfd.BatchBroadcast(backend.tfd.HalfNormal(5.0), 7),
-          b=backend.tfd.HalfNormal(5.0),
+          get_a=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.HalfNormal(5.0), 7
+          ),
+          get_b=lambda: backend.tfd.HalfNormal(5.0),
           expected_result=False,
       ),
   )
   def test_distributions_are_equal(
       self,
-      a: backend.tfd.Distribution,
-      b: backend.tfd.Distribution,
+      get_a: Callable[[], backend.tfd.Distribution],
+      get_b: Callable[[], backend.tfd.Distribution],
       expected_result: bool,
   ):
+    a = get_a()
+    b = get_b()
     self.assertEqual(
         prior_distribution.distributions_are_equal(a, b), expected_result
     )
@@ -1549,29 +1581,36 @@ class PriorDistributionTest(parameterized.TestCase):
   @parameterized.named_parameters(
       (
           'alpha_m_can_be_negative',
-          {'alpha_m': backend.tfd.Uniform(-1, 1)},
+          'alpha_m',
+          lambda: backend.tfd.Uniform(-1, 1),
       ),
       (
           'alpha_m_can_exceed_one',
-          {'alpha_m': backend.tfd.Uniform(0, 2)},
+          'alpha_m',
+          lambda: backend.tfd.Uniform(0, 2),
       ),
       (
           'alpha_m_deterministic_negative_one',
-          {'alpha_m': backend.tfd.Deterministic(-1)},
+          'alpha_m',
+          lambda: backend.tfd.Deterministic(-1),
       ),
       (
           'alpha_m_deterministic_two',
-          {'alpha_m': backend.tfd.Deterministic(2)},
+          'alpha_m',
+          lambda: backend.tfd.Deterministic(2),
       ),
       (
           'eta_m_can_be_negative',
-          {'eta_m': backend.tfd.Normal(0, 1)},
+          'eta_m',
+          lambda: backend.tfd.Normal(0, 1),
       ),
   )
   def test_validate_support_raises_value_error(
       self,
-      prior_distribution_kwargs: dict[str, backend.tfd.Distribution],
+      param_name: str,
+      get_dist: Callable[[], backend.tfd.Distribution],
   ):
+    prior_distribution_kwargs = {param_name: get_dist()}
     with self.assertRaises(ValueError):
       prior_distribution.PriorDistribution(**prior_distribution_kwargs)
 
@@ -1643,7 +1682,7 @@ class PriorDistributionTest(parameterized.TestCase):
       prior_distribution.PriorDistribution(alpha_m=dist)
 
 
-class TestIndependentMultivariateDistribution(parameterized.TestCase):
+class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
 
   def test_contains_deterministic_fail(self):
     distributions = [
@@ -1669,9 +1708,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
       )
   )
   def test_batch_shape_tensor(self, distributions):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
 
     np.testing.assert_array_equal(
         distribution.batch_shape_tensor(), backend.to_tensor([3])
@@ -1687,9 +1725,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_distribution_batch_shapes(
       self, distributions, expected_distribution_batch_shapes
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     self.assertEqual(
         distribution._distribution_batch_shapes,
         expected_distribution_batch_shapes,
@@ -1720,7 +1757,7 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
     distribution = prior_distribution.IndependentMultivariateDistribution(
         [backend.tfd.Normal(-10, 1), backend.tfd.Normal(10, 1)]
     )
-    sample = distribution.sample(**sample_kwargs)
+    sample = self.sample(distribution, **sample_kwargs)
     self.assertEqual(sample.shape, expected_shape)
 
   @parameterized.named_parameters(
@@ -1733,9 +1770,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_independent_distribution_support_lower_bound(
       self, distributions, expected_quantile_0
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
 
     with self.subTest('0d'):
       lower_bound = distribution.quantile(0.0)
@@ -1756,9 +1792,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_independent_distribution_support_upper_bound(
       self, distributions, expected_quantile_1
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     with self.subTest('0d'):
       upper_bound = distribution.quantile(1.0)
       np.testing.assert_allclose(upper_bound, expected_quantile_1, rtol=1e-5)
@@ -1772,22 +1807,21 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
       (
           dict(
               value=1.0,
-              expected_broadcasted_value=backend.to_tensor([1.0, 1.0, 1.0]),
+              expected_broadcasted_value=np.array([1.0, 1.0, 1.0]),
           ),
           dict(
               value=[1.0],
-              expected_broadcasted_value=backend.to_tensor([1.0, 1.0, 1.0]),
+              expected_broadcasted_value=np.array([1.0, 1.0, 1.0]),
           ),
           dict(
               value=[0.0, 0.5, 1.0],
-              expected_broadcasted_value=backend.to_tensor([0.0, 0.5, 1.0]),
+              expected_broadcasted_value=np.array([0.0, 0.5, 1.0]),
           ),
           dict(
               value=[[0.0], [1.0]],
-              expected_broadcasted_value=backend.to_tensor([
-                  [0.0, 0.0, 0.0],
-                  [1.0, 1.0, 1.0],
-              ]),
+              expected_broadcasted_value=np.array(
+                  [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
+              ),
           ),
       ),
       distributions=_INDEPENDENT_TEST_CASES['distributions'],
@@ -1798,9 +1832,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
       expected_broadcasted_value,
       distributions,
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     broadcasted_value = distribution._broadcast_value(value)
     np.testing.assert_array_equal(
         broadcasted_value.shape, expected_broadcasted_value.shape
@@ -1818,9 +1851,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_independent_distributions_log_prob(
       self, distributions, expected_log_prob
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
 
     value = [
         [-1.0, -1.0, -1.0],
@@ -1848,9 +1880,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_independent_distributions_log_cdf(
       self, distributions, expected_log_cdf
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     value = [
         [-1.0, -1.0, -1.0],
         [-0.5, 0.5, 1.5],
@@ -1875,9 +1906,8 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
       )
   )
   def test_independent_distributions_mean(self, distributions, expected_mean):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     mean = distribution.mean()
     np.testing.assert_allclose(mean, expected_mean, rtol=1e-5)
 
@@ -1891,14 +1921,13 @@ class TestIndependentMultivariateDistribution(parameterized.TestCase):
   def test_independent_distributions_variance(
       self, distributions, expected_variance
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        distributions
-    )
+    dists = [d() for d in distributions]
+    distribution = prior_distribution.IndependentMultivariateDistribution(dists)
     variance = distribution.variance()
     np.testing.assert_allclose(variance, expected_variance, rtol=1e-5)
 
 
-class TestLognormalDistFromMeanStd(parameterized.TestCase):
+class TestLognormalDistFromMeanStd(test_utils.MeridianTestCase):
 
   @parameterized.product(
       mean=(1.0, 2.0, 3.0),

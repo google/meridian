@@ -73,10 +73,8 @@ class MediaTransformer(TensorTransformer):
     )
     # Tensor of medians of the positive portion of `media`. Used as a component
     # for scaling.
-    self._population_scaled_median_m = backend.numpy_function(
-        func=lambda x: np.nanmedian(x, axis=[0, 1]),
-        inp=[population_scaled_media_nan],
-        Tout=backend.float32,
+    self._population_scaled_median_m = backend.nanmedian(
+        population_scaled_media_nan, axis=(0, 1)
     )
     if backend.reduce_any(backend.is_nan(self._population_scaled_median_m)):
       raise ValueError(
@@ -145,7 +143,9 @@ class CenteringAndScalingTransformer(TensorTransformer):
       self._means = backend.reduce_mean(tensor, axis=(0, 1))
       self._stdevs = backend.reduce_std(tensor, axis=(0, 1))
 
-  @backend.function(jit_compile=True)
+  @backend.function(
+      jit_compile=True, static_argnames="apply_population_scaling"
+  )
   def forward(
       self, tensor: backend.Tensor, apply_population_scaling: bool = True
   ) -> backend.Tensor:
