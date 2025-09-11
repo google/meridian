@@ -2269,12 +2269,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       expected_start_date,
       expected_end_date,
   ):
-    budget_optimizer = self.budget_optimizer_media_and_rf
-    mock_validate_selected_times = self.enter_context(
+    mock_expand_selected_times = self.enter_context(
         mock.patch.object(
-            budget_optimizer,
-            '_validate_selected_times',
-            side_effect=budget_optimizer._validate_selected_times,
+            optimizer,
+            '_expand_selected_times',
+            side_effect=optimizer._expand_selected_times,
         )
     )
     with self.assertWarnsRegex(
@@ -2289,7 +2288,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           # Set larger gtol to avoid timeouts.
           gtol=0.1,
       )
-      mock_validate_selected_times.assert_called_with(
+      mock_expand_selected_times.assert_called_with(
+          meridian=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2321,12 +2321,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       expected_start_date,
       expected_end_date,
   ):
-    budget_optimizer = self.budget_optimizer_media_only
-    mock_validate_selected_times = self.enter_context(
+    mock_expand_selected_times = self.enter_context(
         mock.patch.object(
-            budget_optimizer,
-            '_validate_selected_times',
-            side_effect=budget_optimizer._validate_selected_times,
+            optimizer,
+            '_expand_selected_times',
+            side_effect=optimizer._expand_selected_times,
         )
     )
     with self.assertWarnsRegex(
@@ -2341,7 +2340,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           # Set larger gtol to avoid timeouts.
           gtol=0.1,
       )
-      mock_validate_selected_times.assert_called_with(
+      mock_expand_selected_times.assert_called_with(
+          meridian=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2543,6 +2543,37 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       budget_optimizer_media_and_rf.optimize(optimization_grid=grid)
 
     mock_create_optimization_grid_media_and_rf.assert_called_once()
+
+  def test_optimize_validate_grid_selected_times_mismatch_raises(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    grid = budget_optimizer.create_optimization_grid(
+        start_date='2021-01-25', end_date='2021-02-01', gtol=0.01
+    )
+    grid = dataclasses.replace(
+        grid, selected_times=['2021-01-25', '2021-02-08']
+    )
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r"The `selected_times` value used for validation \(\['2021-01-25',"
+        r" '2021-02-01'\]\)"
+        r' is different from the `selected_times` value of the grid'
+        r" \(\['2021-01-25', '2021-02-08'\]\).",
+    ):
+      budget_optimizer._validate_grid(
+          new_data=None,
+          use_posterior=True,
+          start_date='2021-01-25',
+          end_date='2021-02-01',
+          budget=None,
+          pct_of_spend=None,
+          spend_constraint_lower=0.3,
+          spend_constraint_upper=0.3,
+          gtol=0.01,
+          use_optimal_frequency=True,
+          use_kpi=False,
+          optimization_grid=grid,
+      )
 
   def test_optimize_with_wrong_new_data_grid_new_grid_created(self):
     start_date = '2025-04-07'  # new_data start date
@@ -2955,6 +2986,9 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
     meridian.input_data.kpi_type = c.REVENUE
     meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
+    meridian.rf_tensors.rf_impressions = mock.create_autospec(
+        backend.Tensor, instance=True, shape=(n_geos, n_times, _N_RF_CHANNELS)
+    )
 
     self.meridian = meridian
     self.budget_optimizer = optimizer.BudgetOptimizer(meridian)

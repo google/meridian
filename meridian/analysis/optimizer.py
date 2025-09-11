@@ -114,7 +114,11 @@ class OptimizationGrid:
       does not contain reach and frequency data, or if the model does contain
       reach and frequency data, but historical frequency is used for the
       optimization scenario.
-    selected_times: The time coordinates from the model used in this grid.
+    selected_times: The time coordinates from the model used in this grid. If
+      new data with modified time coordinates is used for optimization, this is
+      a list of booleans indicating which time coordinates are selected.
+      Otherwise, this is a list of strings indicating the time coordinates used
+      in this grid.
   """
 
   _grid_dataset: xr.Dataset
@@ -128,7 +132,7 @@ class OptimizationGrid:
   gtol: float
   round_factor: int
   optimal_frequency: np.ndarray | None
-  selected_times: Sequence[str] | None
+  selected_times: Sequence[str] | Sequence[bool] | None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -894,9 +898,11 @@ class OptimizationResults:
       returned this result.
     """
     channels = self.optimized_data.channel.values
-    selected_times = self.meridian.expand_selected_time_dims(
+    selected_times = _expand_selected_times(
+        meridian=self.meridian,
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
+        new_data=None,
     )
     _, ubounds = self.spend_bounds
     upper_bound = (
@@ -1815,11 +1821,19 @@ class BudgetOptimizer:
       return False
 
     n_channels = len(optimization_grid.channels)
-    selected_times = self._validate_selected_times(
+    selected_times = _expand_selected_times(
+        meridian=self._meridian,
         start_date=start_date,
         end_date=end_date,
         new_data=new_data,
     )
+    if selected_times != optimization_grid.selected_times:
+      raise ValueError(
+          f'The `selected_times` value used for validation ({selected_times})'
+          ' is different from the `selected_times` value of the grid'
+          f' ({optimization_grid.selected_times}).'
+      )
+
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
         selected_times=selected_times,
@@ -1978,7 +1992,8 @@ class BudgetOptimizer:
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors, meridian=self._meridian
     )
-    selected_times = self._validate_selected_times(
+    selected_times = _expand_selected_times(
+        meridian=self._meridian,
         start_date=start_date,
         end_date=end_date,
         new_data=filled_data,
@@ -2098,33 +2113,6 @@ class BudgetOptimizer:
         attrs={c.SPEND_STEP_SIZE: spend_step_size},
     )
 
-  def _validate_selected_times(
-      self,
-      start_date: tc.Date,
-      end_date: tc.Date,
-      new_data: analyzer_module.DataTensors | None,
-  ) -> Sequence[str] | Sequence[bool] | None:
-    """Validates and returns the selected times."""
-    if start_date is None and end_date is None:
-      return None
-
-    new_data = new_data or analyzer_module.DataTensors()
-    if new_data.get_modified_times(self._meridian) is None:
-      return self._meridian.expand_selected_time_dims(
-          start_date=start_date,
-          end_date=end_date,
-      )
-    else:
-      assert new_data.time is not None
-      new_times_str = np.asarray(new_data.time).astype(str).tolist()
-      time_coordinates = tc.TimeCoordinates.from_dates(new_times_str)
-      expanded_dates = time_coordinates.expand_selected_time_dims(
-          start_date=start_date,
-          end_date=end_date,
-      )
-      expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
-      return [x in expanded_str for x in new_times_str]
-
   def _get_incremental_outcome_tensors(
       self,
       hist_spend: np.ndarray,
@@ -2223,8 +2211,11 @@ class BudgetOptimizer:
         c.PAID_DATA + (c.TIME,),
         self._meridian,
     )
-    selected_times = self._validate_selected_times(
-        start_date=start_date, end_date=end_date, new_data=new_data
+    selected_times = _expand_selected_times(
+        meridian=self._meridian,
+        start_date=start_date,
+        end_date=end_date,
+        new_data=new_data,
     )
     spend_tensor = backend.to_tensor(spend, dtype=backend.float32)
     hist_spend = backend.to_tensor(hist_spend, dtype=backend.float32)
@@ -2958,3 +2949,53 @@ def _expand_tensor(tensor: backend.Tensor, required_shape: tuple[int, ...]):
       f'Cannot expand tensor with shape {tensor.shape} to target'
       f' {required_shape}.'
   )
+
+
+def _expand_selected_times(
+    meridian: model.Meridian,
+    start_date: tc.Date,
+    end_date: tc.Date,
+    new_data: analyzer_module.DataTensors | None,
+) -> Sequence[str] | Sequence[bool] | None:
+  """Creates selected_times from start_date and end_date.
+
+  This function creates `selected_times` argument based on `start_date`,
+  `end_date` and `new_data`. If `new_data` is not used or used with unmodified
+  times, dates are selected from `meridian.input_data.time`. In the flexible
+  time scenario, when `new_data` is provided with modified times, dates are
+  selected from `new_data.time`. In this case, `new_data.time` must be provided
+  and the function returns a list of booleans.
+
+  Args:
+    meridian: The `Meridian` object with original data.
+    start_date: Start date of the selected time period.
+    end_date: End date of the selected time period.
+    new_data: The optional `DataTensors` object. If times are modified in
+      `new_data`, then `new_data.time` must be provided.
+
+  Returns:
+    If both `start_date` and `end_date` are `None`, returns `None`. If
+    `new_data` is not used or used with unmodified times, returns a list of
+    strings with selected dates. If `new_data` is used with modified times,
+    returns a list of booleans.
+  """
+  if start_date is None and end_date is None:
+    return None
+
+  new_data = new_data or analyzer_module.DataTensors()
+  if new_data.get_modified_times(meridian) is None:
+    return meridian.expand_selected_time_dims(
+        start_date=start_date,
+        end_date=end_date,
+    )
+  else:
+    assert new_data.time is not None
+    new_times_str = np.asarray(new_data.time).astype(str).tolist()
+    time_coordinates = tc.TimeCoordinates.from_dates(new_times_str)
+    expanded_dates = time_coordinates.expand_selected_time_dims(
+        start_date=start_date,
+        end_date=end_date,
+    )
+    expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
+
+    return [x in expanded_str for x in new_times_str]
