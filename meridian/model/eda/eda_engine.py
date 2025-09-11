@@ -60,11 +60,33 @@ class ReachFrequencyData:
   rf_impressions_raw_da_national: xr.DataArray
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class AggregationConfig:
+  """Configuration for custom aggregation functions.
+
+  Attributes:
+    control_variables: A dictionary mapping control variable names to
+      aggregation functions. Defaults to `np.sum` if a variable is not
+      specified.
+    non_media_treatments: A dictionary mapping non-media variable names to
+      aggregation functions. Defaults to `np.sum` if a variable is not
+      specified.
+  """
+
+  control_variables: AggregationMap = dataclasses.field(default_factory=dict)
+  non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
+
+
 class EDAEngine:
   """Meridian EDA Engine."""
 
-  def __init__(self, meridian: model.Meridian):
+  def __init__(
+      self,
+      meridian: model.Meridian,
+      agg_config: AggregationConfig = AggregationConfig(),
+  ):
     self._meridian = meridian
+    self._agg_config = agg_config
 
   @functools.cached_property
   def controls_scaled_da(self) -> xr.DataArray | None:
@@ -75,6 +97,20 @@ class EDAEngine:
         values=self._meridian.controls_scaled,
     )
     return controls_scaled_da
+
+  @functools.cached_property
+  def controls_scaled_da_national(self) -> xr.DataArray | None:
+    if self._meridian.input_data.controls is None:
+      return None
+    if self._meridian.is_national:
+      return self.controls_scaled_da
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.controls,
+          transformers.CenteringAndScalingTransformer,
+          constants.CONTROL_VARIABLE,
+          self._agg_config.control_variables,
+      )
 
   @functools.cached_property
   def media_raw_da(self) -> xr.DataArray | None:
@@ -102,6 +138,18 @@ class EDAEngine:
     )
     # No need to truncate the media time for media spend.
     return media_spend_da
+
+  @functools.cached_property
+  def media_spend_da_national(self) -> xr.DataArray | None:
+    if self._meridian.input_data.media_spend is None:
+      return None
+    if self._meridian.is_national:
+      return self.media_spend_da
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.media_spend,
+          None,
+      )
 
   @functools.cached_property
   def media_raw_da_national(self) -> xr.DataArray | None:
@@ -177,6 +225,20 @@ class EDAEngine:
         values=self._meridian.non_media_treatments_normalized,
     )
     return non_media_scaled_da
+
+  @functools.cached_property
+  def non_media_scaled_da_national(self) -> xr.DataArray | None:
+    if self._meridian.input_data.non_media_treatments is None:
+      return None
+    if self._meridian.is_national:
+      return self.non_media_scaled_da
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.non_media_treatments,
+          transformers.CenteringAndScalingTransformer,
+          constants.NON_MEDIA_CHANNEL,
+          self._agg_config.non_media_treatments,
+      )
 
   @functools.cached_property
   def rf_spend_da(self) -> xr.DataArray | None:

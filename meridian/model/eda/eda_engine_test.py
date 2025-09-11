@@ -19,6 +19,7 @@ from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model.eda import eda_engine
+import numpy as np
 import tensorflow as tf
 import xarray as xr
 
@@ -90,6 +91,88 @@ class EDAEngineTest(
         [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
     )
     self.assertAllClose(controls_scaled_da.values, meridian.controls_scaled)
+
+  # --- Test cases for controls_scaled_da_national ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_default_agg",
+          agg_config=eda_engine.AggregationConfig(),
+          expected_values_func=lambda da: da.sum(dim=constants.GEO),
+      ),
+      dict(
+          testcase_name="geo_custom_agg_mean",
+          agg_config=eda_engine.AggregationConfig(
+              control_variables={
+                  "control_0": np.mean,
+                  "control_1": np.mean,
+              }
+          ),
+          expected_values_func=lambda da: da.mean(dim=constants.GEO),
+      ),
+      dict(
+          testcase_name="geo_custom_agg_mix",
+          agg_config=eda_engine.AggregationConfig(
+              control_variables={"control_0": np.mean}
+          ),
+          expected_values_func=lambda da: xr.concat(
+              [
+                  da.sel({constants.CONTROL_VARIABLE: "control_0"}).mean(
+                      dim=constants.GEO
+                  ),
+                  da.sel({constants.CONTROL_VARIABLE: "control_1"}).sum(
+                      dim=constants.GEO
+                  ),
+              ],
+              dim=constants.CONTROL_VARIABLE,
+          ).transpose(constants.TIME, constants.CONTROL_VARIABLE),
+      ),
+  )
+  def test_controls_scaled_da_national_with_geo_data(
+      self, agg_config, expected_values_func
+  ):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian, agg_config=agg_config)
+
+    controls_scaled_da_national = engine.controls_scaled_da_national
+    self.assertIsInstance(controls_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        controls_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_CONTROLS,
+        ),
+    )
+    self.assertCountEqual(
+        controls_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.CONTROL_VARIABLE],
+    )
+
+    # Check values
+    self.assertIsInstance(meridian.input_data.controls, xr.DataArray)
+    expected_da = expected_values_func(meridian.input_data.controls)
+    scaled_expected_values = expected_da.values * self.mock_scale_factor
+    self.assertAllClose(
+        controls_scaled_da_national.values, scaled_expected_values
+    )
+
+  def test_controls_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    controls_scaled_da_national = engine.controls_scaled_da_national
+    self.assertIsInstance(controls_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        controls_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_CONTROLS,
+        ),
+    )
+    expected_controls_scaled_da = engine.controls_scaled_da
+    self.assertIsInstance(expected_controls_scaled_da, xr.DataArray)
+    self.assertAllClose(
+        controls_scaled_da_national.values, expected_controls_scaled_da.values
+    )
 
   # --- Test cases for media_raw_da ---
   @parameterized.named_parameters(
@@ -290,6 +373,49 @@ class EDAEngineTest(
         [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
     )
     self.assertAllClose(media_da.values, meridian.media_tensors.media_spend)
+
+  # --- Test cases for media_spend_da_national ---
+  def test_media_spend_da_national_with_geo_data(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    media_spend_da_national = engine.media_spend_da_national
+    self.assertIsInstance(media_spend_da_national, xr.DataArray)
+    self.assertEqual(
+        media_spend_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        media_spend_da_national.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
+    )
+
+    # Check values
+    true_media_spend_da = meridian.input_data.media_spend
+    self.assertIsInstance(true_media_spend_da, xr.DataArray)
+    expected_da = true_media_spend_da.sum(dim=constants.GEO)
+    self.assertAllClose(media_spend_da_national.values, expected_da.values)
+
+  def test_media_spend_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    media_spend_da_national = engine.media_spend_da_national
+    self.assertIsInstance(media_spend_da_national, xr.DataArray)
+    self.assertEqual(
+        media_spend_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+        ),
+    )
+    expected_media_spend_da = engine.media_spend_da
+    self.assertIsInstance(expected_media_spend_da, xr.DataArray)
+    self.assertAllClose(
+        media_spend_da_national.values, expected_media_spend_da.values
+    )
 
   # --- Test cases for organic_media_raw_da ---
   @parameterized.named_parameters(
@@ -503,6 +629,82 @@ class EDAEngineTest(
     )
     self.assertAllClose(
         non_media_da.values, meridian.non_media_treatments_normalized
+    )
+
+  # --- Test cases for non_media_scaled_da_national ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_default_agg",
+          agg_config=eda_engine.AggregationConfig(),
+          expected_values_func=lambda da: da.sum(dim=constants.GEO),
+      ),
+      dict(
+          testcase_name="geo_custom_agg_mean",
+          agg_config=eda_engine.AggregationConfig(
+              non_media_treatments={
+                  "non_media_0": np.mean,
+              }
+          ),
+          expected_values_func=lambda da: xr.concat(
+              [
+                  da.sel({constants.NON_MEDIA_CHANNEL: "non_media_0"}).mean(
+                      dim=constants.GEO
+                  ),
+                  da.sel({constants.NON_MEDIA_CHANNEL: "non_media_1"}).sum(
+                      dim=constants.GEO
+                  ),
+              ],
+              dim=constants.NON_MEDIA_CHANNEL,
+          ).transpose(constants.TIME, constants.NON_MEDIA_CHANNEL),
+      ),
+  )
+  def test_non_media_scaled_da_national_with_geo_data(
+      self, agg_config, expected_values_func
+  ):
+    meridian = model.Meridian(self.input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian, agg_config=agg_config)
+
+    non_media_scaled_da_national = engine.non_media_scaled_da_national
+    self.assertIsInstance(non_media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        non_media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        non_media_scaled_da_national.coords.keys(),
+        [constants.TIME, constants.NON_MEDIA_CHANNEL],
+    )
+
+    # Check values
+    self.assertIsInstance(
+        meridian.input_data.non_media_treatments, xr.DataArray
+    )
+    expected_da = expected_values_func(meridian.input_data.non_media_treatments)
+    scaled_expected_values = expected_da.values * self.mock_scale_factor
+    self.assertAllClose(
+        non_media_scaled_da_national.values, scaled_expected_values
+    )
+
+  def test_non_media_scaled_da_national_with_national_data(self):
+    meridian = model.Meridian(self.national_input_data_non_media_and_organic)
+    engine = eda_engine.EDAEngine(meridian)
+    non_media_scaled_da_national = engine.non_media_scaled_da_national
+    self.assertIsInstance(non_media_scaled_da_national, xr.DataArray)
+    self.assertEqual(
+        non_media_scaled_da_national.shape,
+        (
+            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+            model_test_data.WithInputDataSamples._N_TIMES,
+            model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
+        ),
+    )
+    expected_non_media_scaled_da = engine.non_media_scaled_da
+    self.assertIsInstance(expected_non_media_scaled_da, xr.DataArray)
+    self.assertAllClose(
+        non_media_scaled_da_national.values, expected_non_media_scaled_da.values
     )
 
   # --- Test cases for rf_spend_da ---
@@ -1607,6 +1809,11 @@ class EDAEngineTest(
           property_name="controls_scaled_da",
       ),
       dict(
+          testcase_name="controls_scaled_da_national",
+          input_data_fixture="input_data_with_media_and_rf_no_controls",
+          property_name="controls_scaled_da_national",
+      ),
+      dict(
           testcase_name="media_raw_da",
           input_data_fixture="input_data_with_rf_only",
           property_name="media_raw_da",
@@ -1632,6 +1839,11 @@ class EDAEngineTest(
           property_name="media_spend_da",
       ),
       dict(
+          testcase_name="media_spend_da_national",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_spend_da_national",
+      ),
+      dict(
           testcase_name="organic_media_raw_da",
           input_data_fixture="input_data_with_media_and_rf",
           property_name="organic_media_raw_da",
@@ -1655,6 +1867,11 @@ class EDAEngineTest(
           testcase_name="non_media_scaled_da",
           input_data_fixture="input_data_with_media_and_rf",
           property_name="non_media_scaled_da",
+      ),
+      dict(
+          testcase_name="non_media_scaled_da_national",
+          input_data_fixture="input_data_with_media_and_rf",
+          property_name="non_media_scaled_da_national",
       ),
       dict(
           testcase_name="rf_spend_da",
