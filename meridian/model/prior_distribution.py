@@ -773,7 +773,7 @@ class PriorDistribution:
     )
     if (
         not isinstance(self.slope_m, backend.tfd.Deterministic)
-        or (np.isscalar(self.slope_m.loc.numpy()) and self.slope_m.loc != 1.0)
+        or (backend.rank(self.slope_m.loc) == 0 and self.slope_m.loc != 1.0)
         or (
             self.slope_m.batch_shape.as_list()
             and any(x != 1.0 for x in self.slope_m.loc)
@@ -792,7 +792,7 @@ class PriorDistribution:
     )
     if (
         not isinstance(self.slope_om, backend.tfd.Deterministic)
-        or (np.isscalar(self.slope_om.loc.numpy()) and self.slope_om.loc != 1.0)
+        or (backend.rank(self.slope_om.loc) == 0 and self.slope_om.loc != 1.0)
         or (
             self.slope_om.batch_shape.as_list()
             and any(x != 1.0 for x in self.slope_om.loc)
@@ -1270,14 +1270,12 @@ def _validate_support(
   """
   # Note that `tfp.distributions.BatchBroadcast` objects have a `distribution`
   # attribute that points to a `tfp.distributions.Distribution` object.
-  if isinstance(tfp_dist, backend.tfp.distributions.BatchBroadcast):
+  if isinstance(tfp_dist, backend.tfd.BatchBroadcast):
     tfp_dist = tfp_dist.distribution
   # Note that `tfp.distributions.Deterministic` does not have a `quantile`
   # method implemented, so the min and max values must be extracted from the
   # `loc` attribute instead.
-  if isinstance(
-      tfp_dist, backend.tfp.python.distributions.deterministic.Deterministic
-  ):
+  if isinstance(tfp_dist, backend.tfd.Deterministic):
     support_min_vals = tfp_dist.loc
     support_max_vals = tfp_dist.loc
     for i in (0, 1):

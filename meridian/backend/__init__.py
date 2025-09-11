@@ -201,6 +201,17 @@ def _tf_get_indices_where(condition):
   return tf.where(condition)
 
 
+def _jax_split(value, num_or_size_splits, axis=0):
+  """JAX implementation for split that accepts size splits."""
+  import jax.numpy as jnp
+
+  if not isinstance(num_or_size_splits, int):
+    indices = jnp.cumsum(jnp.array(num_or_size_splits))[:-1]
+    return jnp.split(value, indices, axis=axis)
+
+  return jnp.split(value, num_or_size_splits, axis=axis)
+
+
 def _jax_tile(*args, **kwargs):
   """JAX wrapper for tile that supports the `multiples` keyword argument."""
   import jax.numpy as jnp
@@ -364,7 +375,7 @@ if _BACKEND == config.Backend.JAX:
   boolean_mask = _jax_boolean_mask
   concatenate = _ops.concatenate
   stack = _ops.stack
-  split = _ops.split
+  split = _jax_split
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like
   ones = _ops.ones
@@ -406,7 +417,6 @@ if _BACKEND == config.Backend.JAX:
   reduce_sum = _ops.sum
   repeat = _ops.repeat
   reshape = _ops.reshape
-  split = _ops.split
   stack = _ops.stack
   tile = _jax_tile
   transpose = _ops.transpose
@@ -495,7 +505,6 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   repeat = _ops.repeat
   reshape = _ops.reshape
   set_random_seed = tf_backend.keras.utils.set_random_seed
-  split = _ops.split
   stack = _ops.stack
   tile = _ops.tile
   transpose = _ops.transpose

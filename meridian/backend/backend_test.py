@@ -673,6 +673,52 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _split_test_cases = [
+      dict(
+          testcase_name="by_num_sections_even",
+          tensor_in=np.arange(6),
+          split_arg=3,
+          kwargs={"axis": 0},
+          expected=[np.array([0, 1]), np.array([2, 3]), np.array([4, 5])],
+      ),
+      dict(
+          testcase_name="by_sizes",
+          tensor_in=np.arange(7),
+          split_arg=[1, 3, 3],
+          kwargs={"axis": 0},
+          expected=[np.array([0]), np.array([1, 2, 3]), np.array([4, 5, 6])],
+      ),
+      dict(
+          testcase_name="by_sizes_2d_axis1",
+          tensor_in=np.arange(12).reshape(2, 6),
+          split_arg=[2, 1, 3],
+          kwargs={"axis": 1},
+          expected=[
+              np.array([[0, 1], [6, 7]]),
+              np.array([[2], [8]]),
+              np.array([[3, 4, 5], [9, 10, 11]]),
+          ],
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_split_test_cases,
+  )
+  def test_split(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    split_arg = test_case["split_arg"]
+    kwargs = test_case["kwargs"]
+    expected_list = test_case["expected"]
+
+    result_list = backend.split(tensor, split_arg, **kwargs)
+
+    self.assertLen(result_list, len(expected_list))
+    for result, expected in zip(result_list, expected_list):
+      self.assertIsInstance(result, backend.Tensor)
+      test_utils.assert_allclose(result, expected)
+
   def test_extension_type_raises_for_jax(self):
     self._set_backend_for_test(_JAX)
 
