@@ -114,7 +114,11 @@ class OptimizationGrid:
       does not contain reach and frequency data, or if the model does contain
       reach and frequency data, but historical frequency is used for the
       optimization scenario.
-    selected_times: The time coordinates from the model used in this grid.
+    selected_times: The time coordinates from the model used in this grid. If
+      new data with modified time coordinates is used for optimization, this
+      is a list of booleans indicating which time coordinates are selected.
+      Otherwise, this is a list of strings indicating the time coordinates used
+      in this grid.
   """
 
   _grid_dataset: xr.Dataset
@@ -128,7 +132,7 @@ class OptimizationGrid:
   gtol: float
   round_factor: int
   optimal_frequency: np.ndarray | None
-  selected_times: Sequence[str] | None
+  selected_times: Sequence[str] | Sequence[bool] | None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
