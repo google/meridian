@@ -1665,6 +1665,55 @@ class PosteriorMCMCSamplerTest(
     test_utils.assert_allequal(kwargs0["seed"], [123, 123])
     test_utils.assert_allequal(kwargs1["seed"], [124, 124])
 
+  @parameterized.named_parameters(
+      dict(testcase_name="n_chains_is_list", n_chains_type=list),
+      dict(testcase_name="n_chains_is_int", n_chains_type=int),
+  )
+  def test_sample_posterior_joint_distribution_cached(self, n_chains_type):
+    n_chains = (
+        [self._N_CHAINS, self._N_CHAINS]
+        if n_chains_type == list
+        else self._N_CHAINS
+    )
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler,
+            "_xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    mock_get_joint_dist_unpinned = self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "_get_joint_dist_unpinned",
+            autospec=True,
+            return_value=mock.MagicMock(
+                experimental_pin=lambda y: y,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=n_chains,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+    mock_get_joint_dist_unpinned.assert_called_once()
+
 
 if __name__ == "__main__":
   absltest.main()
