@@ -276,7 +276,7 @@ class AKS:
     feasible_idx = np.where(
         (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)
     )[0]
-    information_criterion = aspline[constants.EBIC][feasible_idx]
+    information_criterion = aspline[constants.AIC][feasible_idx]
     knots_sel = [aspline[constants.KNOTS_SELECTED][i] for i in feasible_idx]
     model = [aspline[constants.MODEL][i] for i in feasible_idx]
     opt_idx = max(
