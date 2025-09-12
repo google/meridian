@@ -4183,7 +4183,8 @@ class Analyzer:
       )
       # TODO: b/407847021 - Switch to Sequence[str] once it is supported.
       if selected_times is not None:
-        dim_kwargs["selected_times"] = [x in selected_times for x in new_time]
+        selected_times = [x in selected_times for x in new_time]
+        dim_kwargs["selected_times"] = selected_times
 
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = DataTensors(

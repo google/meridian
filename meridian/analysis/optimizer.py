@@ -471,6 +471,8 @@ class OptimizationResults:
       on optimal frequency.
     optimized_data: The optimized budget metrics.
     optimization_grid: The grid information used for optimization.
+    new_data: The optional `DataTensors` container that was used to create this
+      budget allocation.
   """
 
   meridian: model.Meridian
@@ -484,6 +486,10 @@ class OptimizationResults:
   _nonoptimized_data_with_optimal_freq: xr.Dataset
   _optimized_data: xr.Dataset
   _optimization_grid: OptimizationGrid
+
+  # The optional `DataTensors` container to use if optimization was performed
+  # on data different from the original `input_data`.
+  new_data: analyzer_module.DataTensors | None = None
 
   # TODO: Move this, and the plotting methods, to a summarizer.
   @functools.cached_property
@@ -902,7 +908,8 @@ class OptimizationResults:
         meridian=self.meridian,
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
-        new_data=None,
+        new_data=self.new_data,
+        return_flexible_str=True,
     )
     _, ubounds = self.spend_bounds
     upper_bound = (
@@ -918,6 +925,7 @@ class OptimizationResults:
     # WARN: If `selected_times` is not None (i.e. a subset time range), this
     # response curve computation might take a significant amount of time.
     return self.analyzer.response_curves(
+        new_data=self.new_data,
         spend_multipliers=spend_multiplier,
         use_posterior=self.optimization_grid.use_posterior,
         selected_times=selected_times,
@@ -1601,6 +1609,7 @@ class BudgetOptimizer:
     )
 
     return OptimizationResults(
+        new_data=new_data,
         meridian=self._meridian,
         analyzer=self._analyzer,
         spend_ratio=spend_ratio,
@@ -2949,6 +2958,7 @@ def _expand_selected_times(
     start_date: tc.Date,
     end_date: tc.Date,
     new_data: analyzer_module.DataTensors | None,
+    return_flexible_str: bool = False,
 ) -> Sequence[str] | Sequence[bool] | None:
   """Creates selected_times from start_date and end_date.
 
@@ -2965,12 +2975,15 @@ def _expand_selected_times(
     end_date: End date of the selected time period.
     new_data: The optional `DataTensors` object. If times are modified in
       `new_data`, then `new_data.time` must be provided.
+    return_flexible_str: Whether to return a list of strings or a list of
+      booleans in case time is modified in `new_data`.
 
   Returns:
     If both `start_date` and `end_date` are `None`, returns `None`. If
     `new_data` is not used or used with unmodified times, returns a list of
     strings with selected dates. If `new_data` is used with modified times,
-    returns a list of booleans.
+    returns a list of strings or a list of booleans depending on the
+    `return_flexible_str` argument.
   """
   if start_date is None and end_date is None:
     return None
@@ -2989,6 +3002,12 @@ def _expand_selected_times(
         start_date=start_date,
         end_date=end_date,
     )
-    expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
-
-    return [x in expanded_str for x in new_times_str]
+    if return_flexible_str:
+      if expanded_dates is None:
+        expanded_dates = time_coordinates.all_dates
+      expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
+      return [x for x in new_times_str if x in expanded_str]
+    # TODO: Remove once every method uses `new_data.time`.
+    else:
+      expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
+      return [x in expanded_str for x in new_times_str]

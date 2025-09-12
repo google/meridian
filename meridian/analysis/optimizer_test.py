@@ -2935,6 +2935,65 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       # Check that no warnings were raised
       self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
 
+  def test_get_response_curves_new_times_data_correct(self):
+    meridian = self.budget_optimizer_media_and_rf._meridian
+    max_lag = meridian.model_spec.max_lag
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    new_data_end_date = meridian.input_data.time.values[-1]
+    selected_times_start_date = meridian.input_data.time.values[-n_new_times]
+    selected_times = meridian.input_data.time.values[-n_new_times:].tolist()
+
+    new_data_times = meridian.input_data.time.values[-total_times:].tolist()
+    new_data = analyzer.DataTensors(
+        media=meridian.media_tensors.media[..., -total_times:, :],
+        media_spend=meridian.media_tensors.media_spend[..., -total_times:, :],
+        reach=meridian.rf_tensors.reach[..., -total_times:, :],
+        frequency=meridian.rf_tensors.frequency[..., -total_times:, :],
+        rf_spend=meridian.rf_tensors.rf_spend[..., -total_times:, :],
+        revenue_per_kpi=meridian.revenue_per_kpi[..., -total_times:],
+        time=new_data_times,
+    )
+
+    with mock.patch.object(
+        analyzer.Analyzer,
+        'response_curves',
+        wraps=self.budget_optimizer_media_and_rf._analyzer.response_curves,
+    ) as mock_response_curves:
+      # Create OptimizationResults with new_data and selected_times
+      optimization_results_new_data = (
+          self.budget_optimizer_media_and_rf.optimize(
+              new_data=new_data,
+              start_date=selected_times_start_date,
+              end_date=new_data_end_date,
+          )
+      )
+      optimization_results_new_data.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      kwargs_new_data_times = (
+          np.asarray(kwargs['new_data'].time).astype(str).tolist()
+      )
+      self.assertEqual(kwargs_new_data_times, new_data_times)
+      self.assertEqual(
+          kwargs['selected_times'],
+          selected_times,
+      )
+
+      mock_response_curves.reset_mock()
+
+      # Create OptimizationResults with old data and selected_times
+      optimization_results_old_data = (
+          self.budget_optimizer_media_and_rf.optimize(
+              start_date=selected_times_start_date,
+              end_date=new_data_end_date,
+          )
+      )
+      optimization_results_old_data.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      self.assertEqual(kwargs['selected_times'], selected_times)
+
 
 class OptimizerPlotsTest(absltest.TestCase):
 

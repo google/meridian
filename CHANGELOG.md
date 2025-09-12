@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix `response_curves` when optimized data timeframe is outside of modeled
+  data timeframe.
 * Add `lognormal_dist_from_mean_std` helper function.
 
 ## [1.2.0] - 2025-09-04
