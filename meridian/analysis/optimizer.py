@@ -438,16 +438,9 @@ class OptimizationResults:
   """The optimized budget allocation.
 
   This is a dataclass object containing datasets output from `BudgetOptimizer`.
-  These datasets include:
 
-  - `nonoptimized_data`: The non-optimized budget metrics (based on historical
-    frequency).
-  - `nonoptimized_data_with_optimal_freq`: The non-optimized budget metrics
-    based on optimal frequency.
-  - `optimized_data`: The optimized budget metrics.
-  - `optimization_grid`: The grid information used for optimization.
-
-  The metrics (data variables) are: ROI, mROI, incremental outcome, CPIK.
+  The performance metrics (data variables) are: ROI, mROI, incremental outcome,
+  CPIK, and effectiveness.
 
   Additionally, some intermediate values and referecences to the source fitted
   model and analyzer are also stored here. These are useful for visualizing and
@@ -457,15 +450,17 @@ class OptimizationResults:
     meridian: The fitted Meridian model that was used to create this budget
       allocation.
     analyzer: The analyzer bound to the model above.
-    spend_ratio: The spend ratio used to scale the non-optimized budget metrics
-      to the optimized budget metrics.
-    spend_bounds: The spend bounds used to scale the non-optimized budget
-      metrics to the optimized budget metrics.
-    nonoptimized_data: The non-optimized budget metrics (based on historical
-      frequency).
-    nonoptimized_data_with_optimal_freq: The non-optimized budget metrics based
-      on optimal frequency.
-    optimized_data: The optimized budget metrics.
+    spend_ratio: The spend ratio used to scale the non-optimized performance
+      metrics to the optimized performance metrics.
+    spend_bounds: The spend bounds used to scale the non-optimized performance
+      metrics to the optimized performance metrics.
+    nonoptimized_data: Performance metrics under the non-optimized budget. For
+      R&F channels, the non-optimized frequency is used.
+    nonoptimized_data_with_optimal_freq: Performance metrics under the
+      non-optimized budget. For R&F channels, the optimal frequency is used if
+      frequency was optimized.
+    optimized_data: Performance metrics under the optimized budget. For R&F
+      channels, the optimizal frequency is used if frequency was optimized.
     optimization_grid: The grid information used for optimization.
   """
 
@@ -497,10 +492,10 @@ class OptimizationResults:
 
   @property
   def nonoptimized_data(self) -> xr.Dataset:
-    """Dataset holding the non-optimized budget metrics.
+    """Dataset holding the non-optimized performance metrics.
 
     For channels that have reach and frequency data, their performance metrics
-    (ROI, mROI, incremental outcome, CPIK) are based on historical frequency.
+    are based on historical frequency.
 
     The dataset contains the following:
 
@@ -519,10 +514,10 @@ class OptimizationResults:
 
   @property
   def nonoptimized_data_with_optimal_freq(self) -> xr.Dataset:
-    """Dataset holding the non-optimized budget metrics.
+    """Dataset holding the non-optimized performance metrics.
 
     For channels that have reach and frequency data, their performance metrics
-    (ROI, mROI, incremental outcome, CPIK) are based on optimal frequency.
+    are based on optimal frequency.
 
     The dataset contains the following:
 
@@ -537,10 +532,10 @@ class OptimizationResults:
 
   @property
   def optimized_data(self) -> xr.Dataset:
-    """Dataset holding the optimized budget metrics.
+    """Dataset holding the optimized performance metrics.
 
     For channels that have reach and frequency data, their performance metrics
-    (ROI, mROI, incremental outcome) are based on optimal frequency.
+    are based on optimal frequency.
 
     The dataset contains the following:
 
