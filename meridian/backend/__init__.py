@@ -14,12 +14,14 @@
 
 """Backend Abstraction Layer for Meridian."""
 
+import functools
 import os
-from typing import Any, Optional, TYPE_CHECKING, Tuple, Union
+from typing import Any, Optional, Tuple, TYPE_CHECKING, Union
 
 from meridian.backend import config
 import numpy as np
 from typing_extensions import Literal
+
 
 # The conditional imports in this module are a deliberate design choice for the
 # backend abstraction layer. The TFP-on-JAX substrate provides a nearly
@@ -33,6 +35,10 @@ _DEFAULT_INT = "int64"
 
 _TENSORFLOW_TILE_KEYWORD = "multiples"
 _JAX_TILE_KEYWORD = "reps"
+
+_ARG_JIT_COMPILE = "jit_compile"
+_ARG_STATIC_ARGNUMS = "static_argnums"
+_ARG_STATIC_ARGNAMES = "static_argnames"
 
 if TYPE_CHECKING:
   import dataclasses
@@ -167,6 +173,74 @@ def _jax_divide_no_nan(x, y):
   import jax.numpy as jnp
 
   return jnp.where(y != 0, jnp.divide(x, y), 0.0)
+
+
+def _jax_function_wrapper(func=None, **kwargs):
+  """A wrapper for jax.jit that handles TF-like args and static args.
+
+  This wrapper provides compatibility with TensorFlow's `tf.function` arguments
+  and improves ergonomics when decorating class methods in JAX.
+
+  By default, if neither `static_argnums` nor `static_argnames` are provided, it
+  defaults `static_argnums` to `(0,)`. This assumes the function is a method
+  where the first argument (`self` or `cls`) should be treated as static.
+
+  To disable this behavior for plain functions, explicitly provide an empty
+  tuple: `@backend.function(static_argnums=())`.
+
+  Args:
+    func: The function to wrap.
+    **kwargs: Keyword arguments passed to jax.jit. TF-specific arguments (like
+      `jit_compile`) are ignored.
+
+  Returns:
+    The wrapped function or a decorator.
+  """
+  jit_kwargs = kwargs.copy()
+
+  jit_kwargs.pop(_ARG_JIT_COMPILE, None)
+
+  if _ARG_STATIC_ARGNUMS in jit_kwargs:
+    if not jit_kwargs[_ARG_STATIC_ARGNUMS]:
+      jit_kwargs.pop(_ARG_STATIC_ARGNUMS)
+  else:
+    jit_kwargs[_ARG_STATIC_ARGNUMS] = (0,)
+
+  decorator = functools.partial(jax.jit, **jit_kwargs)
+
+  if func:
+    return decorator(func)
+  return decorator
+
+
+def _tf_function_wrapper(func=None, **kwargs):
+  """A wrapper for tf.function that ignores JAX-specific arguments."""
+  import tensorflow as tf
+
+  kwargs.pop(_ARG_STATIC_ARGNAMES, None)
+  kwargs.pop(_ARG_STATIC_ARGNUMS, None)
+
+  decorator = tf.function(**kwargs)
+
+  if func:
+    return decorator(func)
+  return decorator
+
+
+def _jax_nanmedian(a, axis=None):
+  """JAX implementation for nanmedian."""
+  import jax.numpy as jnp
+
+  return jnp.nanmedian(a, axis=axis)
+
+
+def _tf_nanmedian(a, axis=None):
+  """TensorFlow implementation for nanmedian using numpy_function."""
+  import tensorflow as tf
+
+  return tf.numpy_function(
+      lambda x: np.nanmedian(x, axis=axis).astype(x.dtype), [a], a.dtype
+  )
 
 
 def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
@@ -398,13 +472,14 @@ if _BACKEND == config.Backend.JAX:
   exp = _ops.exp
   expand_dims = _ops.expand_dims
   fill = _jax_fill
-  function = jax.jit
+  function = _jax_function_wrapper
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
   is_nan = _ops.isnan
   log = _ops.log
   make_ndarray = _jax_make_ndarray
   make_tensor_proto = _jax_make_tensor_proto
+  nanmedian = _jax_nanmedian
   numpy_function = _jax_numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -485,13 +560,14 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   exp = _ops.math.exp
   expand_dims = _ops.expand_dims
   fill = _tf_fill
-  function = _ops.function
+  function = _tf_function_wrapper
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
   is_nan = _ops.math.is_nan
   log = _ops.math.log
   make_ndarray = _ops.make_ndarray
   make_tensor_proto = _ops.make_tensor_proto
+  nanmedian = _tf_nanmedian
   numpy_function = _ops.numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
