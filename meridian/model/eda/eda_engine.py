@@ -100,10 +100,16 @@ class EDAEngine:
 
   @functools.cached_property
   def controls_scaled_da_national(self) -> xr.DataArray | None:
+    """Returns the national controls data array."""
     if self._meridian.input_data.controls is None:
       return None
     if self._meridian.is_national:
-      return self.controls_scaled_da
+      if self.controls_scaled_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'controls_scaled_da is None when controls is not None.'
+        )
+      return self.controls_scaled_da.squeeze(constants.GEO)
     else:
       return self._aggregate_and_scale_geo_da(
           self._meridian.input_data.controls,
@@ -141,10 +147,16 @@ class EDAEngine:
 
   @functools.cached_property
   def media_spend_da_national(self) -> xr.DataArray | None:
+    """Returns the national media spend data array."""
     if self._meridian.input_data.media_spend is None:
       return None
     if self._meridian.is_national:
-      return self.media_spend_da
+      if self.media_spend_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'media_spend_da is None when media_spend is not None.'
+        )
+      return self.media_spend_da.squeeze(constants.GEO)
     else:
       return self._aggregate_and_scale_geo_da(
           self._meridian.input_data.media_spend,
@@ -156,7 +168,7 @@ class EDAEngine:
     if self.media_raw_da is None:
       return None
     if self._meridian.is_national:
-      return self.media_raw_da
+      return self.media_raw_da.squeeze(constants.GEO)
     else:
       # Note that media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
@@ -169,7 +181,7 @@ class EDAEngine:
     if self.media_scaled_da is None:
       return None
     if self._meridian.is_national:
-      return self.media_scaled_da
+      return self.media_scaled_da.squeeze(constants.GEO)
     else:
       # Note that media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
@@ -198,7 +210,7 @@ class EDAEngine:
     if self.organic_media_raw_da is None:
       return None
     if self._meridian.is_national:
-      return self.organic_media_raw_da
+      return self.organic_media_raw_da.squeeze(constants.GEO)
     else:
       # Note that organic media is summable by assumption.
       return self._aggregate_and_scale_geo_da(self.organic_media_raw_da, None)
@@ -208,7 +220,7 @@ class EDAEngine:
     if self.organic_media_scaled_da is None:
       return None
     if self._meridian.is_national:
-      return self.organic_media_scaled_da
+      return self.organic_media_scaled_da.squeeze(constants.GEO)
     else:
       # Note that organic media is summable by assumption.
       return self._aggregate_and_scale_geo_da(
@@ -228,10 +240,16 @@ class EDAEngine:
 
   @functools.cached_property
   def non_media_scaled_da_national(self) -> xr.DataArray | None:
+    """Returns the national non-media treatment data array."""
     if self._meridian.input_data.non_media_treatments is None:
       return None
     if self._meridian.is_national:
-      return self.non_media_scaled_da
+      if self.non_media_scaled_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'non_media_scaled_da is None when non_media_treatments is not None.'
+        )
+      return self.non_media_scaled_da.squeeze(constants.GEO)
     else:
       return self._aggregate_and_scale_geo_da(
           self._meridian.input_data.non_media_treatments,
@@ -255,7 +273,10 @@ class EDAEngine:
     if self._meridian.input_data.rf_spend is None:
       return None
     if self._meridian.is_national:
-      return self.rf_spend_da
+      if self.rf_spend_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError('rf_spend_da is None when rf_spend is not None.')
+      return self.rf_spend_da.squeeze(constants.GEO)
     else:
       return self._aggregate_and_scale_geo_da(
           self._meridian.input_data.rf_spend, None
@@ -422,7 +443,7 @@ class EDAEngine:
   @functools.cached_property
   def kpi_scaled_da_national(self) -> xr.DataArray:
     if self._meridian.is_national:
-      return self.kpi_scaled_da
+      return self.kpi_scaled_da.squeeze(constants.GEO)
     else:
       # Note that kpi is summable by assumption.
       return self._aggregate_and_scale_geo_da(
@@ -583,16 +604,18 @@ class EDAEngine:
     impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
 
     if self._meridian.is_national:
-      reach_raw_da_national = reach_raw_da
-      reach_scaled_da_national = reach_scaled_da
-      impressions_raw_da_national = impressions_raw_da
-      frequency_da_national = frequency_da
+      reach_raw_da_national = reach_raw_da.squeeze(constants.GEO)
+      reach_scaled_da_national = reach_scaled_da.squeeze(constants.GEO)
+      impressions_raw_da_national = impressions_raw_da.squeeze(constants.GEO)
+      frequency_da_national = frequency_da.squeeze(constants.GEO)
 
       # Scaled impressions
       impressions_scaled_da = self._scale_xarray(
           impressions_raw_da, transformers.MediaTransformer
       )
-      impressions_scaled_da_national = impressions_scaled_da
+      impressions_scaled_da_national = impressions_scaled_da.squeeze(
+          constants.GEO
+      )
     else:
       reach_raw_da_national = self._aggregate_and_scale_geo_da(
           reach_raw_da, None

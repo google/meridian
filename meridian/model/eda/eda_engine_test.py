@@ -163,12 +163,15 @@ class EDAEngineTest(
     self.assertEqual(
         controls_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_CONTROLS,
         ),
     )
     expected_controls_scaled_da = engine.controls_scaled_da
+    self.assertIsNotNone(expected_controls_scaled_da)
+    expected_controls_scaled_da = expected_controls_scaled_da.squeeze(
+        constants.GEO
+    )
     self.assertIsInstance(expected_controls_scaled_da, xr.DataArray)
     self.assertAllClose(
         controls_scaled_da_national.values, expected_controls_scaled_da.values
@@ -244,12 +247,13 @@ class EDAEngineTest(
     self.assertEqual(
         media_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
     )
     expected_media_raw_da = engine.media_raw_da
+    self.assertIsNotNone(expected_media_raw_da)
+    expected_media_raw_da = expected_media_raw_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_media_raw_da, xr.DataArray)
     self.assertAllClose(
         media_raw_da_national.values, expected_media_raw_da.values
@@ -330,12 +334,13 @@ class EDAEngineTest(
     self.assertEqual(
         media_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
     )
     expected_media_scaled_da = engine.media_scaled_da
+    self.assertIsNotNone(expected_media_scaled_da)
+    expected_media_scaled_da = expected_media_scaled_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_media_scaled_da, xr.DataArray)
     self.assertAllClose(
         media_scaled_da_national.values, expected_media_scaled_da.values
@@ -406,12 +411,13 @@ class EDAEngineTest(
     self.assertEqual(
         media_spend_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
     )
     expected_media_spend_da = engine.media_spend_da
+    self.assertIsNotNone(expected_media_spend_da)
+    expected_media_spend_da = expected_media_spend_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_media_spend_da, xr.DataArray)
     self.assertAllClose(
         media_spend_da_national.values, expected_media_spend_da.values
@@ -532,12 +538,15 @@ class EDAEngineTest(
     self.assertEqual(
         organic_media_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     expected_organic_media_raw_da = engine.organic_media_raw_da
+    self.assertIsNotNone(expected_organic_media_raw_da)
+    expected_organic_media_raw_da = expected_organic_media_raw_da.squeeze(
+        constants.GEO
+    )
     self.assertIsInstance(expected_organic_media_raw_da, xr.DataArray)
     self.assertAllClose(
         organic_media_raw_da_national.values,
@@ -582,12 +591,15 @@ class EDAEngineTest(
     self.assertEqual(
         organic_media_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     expected_organic_media_scaled_da = engine.organic_media_scaled_da
+    self.assertIsNotNone(expected_organic_media_scaled_da)
+    expected_organic_media_scaled_da = expected_organic_media_scaled_da.squeeze(
+        constants.GEO
+    )
     self.assertIsInstance(expected_organic_media_scaled_da, xr.DataArray)
     self.assertAllClose(
         organic_media_scaled_da_national.values,
@@ -696,12 +708,15 @@ class EDAEngineTest(
     self.assertEqual(
         non_media_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
         ),
     )
     expected_non_media_scaled_da = engine.non_media_scaled_da
+    self.assertIsNotNone(expected_non_media_scaled_da)
+    expected_non_media_scaled_da = expected_non_media_scaled_da.squeeze(
+        constants.GEO
+    )
     self.assertIsInstance(expected_non_media_scaled_da, xr.DataArray)
     self.assertAllClose(
         non_media_scaled_da_national.values, expected_non_media_scaled_da.values
@@ -772,12 +787,13 @@ class EDAEngineTest(
     self.assertEqual(
         rf_spend_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_rf_spend_da = engine.rf_spend_da
+    self.assertIsNotNone(expected_rf_spend_da)
+    expected_rf_spend_da = expected_rf_spend_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_rf_spend_da, xr.DataArray)
     self.assertAllClose(
         rf_spend_da_national.values, expected_rf_spend_da.values
@@ -851,12 +867,13 @@ class EDAEngineTest(
     self.assertEqual(
         reach_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_reach_raw_da = engine.reach_raw_da
+    self.assertIsNotNone(expected_reach_raw_da)
+    expected_reach_raw_da = expected_reach_raw_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_reach_raw_da, xr.DataArray)
     self.assertAllClose(
         reach_raw_da_national.values, expected_reach_raw_da.values
@@ -933,12 +950,13 @@ class EDAEngineTest(
     self.assertEqual(
         reach_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_reach_scaled_da = engine.reach_scaled_da
+    self.assertIsNotNone(expected_reach_scaled_da)
+    expected_reach_scaled_da = expected_reach_scaled_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_reach_scaled_da, xr.DataArray)
     expected_values = expected_reach_scaled_da.values
     self.assertAllClose(reach_scaled_da_national.values, expected_values)
@@ -1017,12 +1035,13 @@ class EDAEngineTest(
     self.assertEqual(
         frequency_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_frequency_da = engine.frequency_da
+    self.assertIsNotNone(expected_frequency_da)
+    expected_frequency_da = expected_frequency_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_frequency_da, xr.DataArray)
     self.assertAllClose(
         frequency_da_national.values, expected_frequency_da.values
@@ -1100,12 +1119,15 @@ class EDAEngineTest(
     self.assertEqual(
         rf_impressions_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_rf_impressions_raw_da = engine.rf_impressions_raw_da
+    self.assertIsNotNone(expected_rf_impressions_raw_da)
+    expected_rf_impressions_raw_da = expected_rf_impressions_raw_da.squeeze(
+        constants.GEO
+    )
     self.assertIsInstance(expected_rf_impressions_raw_da, xr.DataArray)
     self.assertAllClose(
         rf_impressions_raw_da_national.values,
@@ -1215,12 +1237,15 @@ class EDAEngineTest(
     self.assertEqual(
         rf_impressions_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
     expected_rf_impressions_scaled_da = engine.rf_impressions_scaled_da
+    self.assertIsNotNone(expected_rf_impressions_scaled_da)
+    expected_rf_impressions_scaled_da = (
+        expected_rf_impressions_scaled_da.squeeze(constants.GEO)
+    )
     self.assertIsInstance(expected_rf_impressions_scaled_da, xr.DataArray)
     self.assertAllClose(
         rf_impressions_scaled_da_national.values,
@@ -1299,12 +1324,13 @@ class EDAEngineTest(
     self.assertEqual(
         organic_reach_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
     expected_da = engine.organic_reach_raw_da
+    self.assertIsNotNone(expected_da)
+    expected_da = expected_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_da, xr.DataArray)
     self.assertAllClose(
         organic_reach_raw_da_national.values, expected_da.values
@@ -1391,12 +1417,13 @@ class EDAEngineTest(
     self.assertEqual(
         organic_reach_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
     expected_da = engine.organic_reach_scaled_da
+    self.assertIsNotNone(expected_da)
+    expected_da = expected_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_da, xr.DataArray)
 
     self.assertAllClose(
@@ -1487,13 +1514,14 @@ class EDAEngineTest(
     self.assertEqual(
         organic_frequency_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
 
     expected_da = engine.organic_frequency_da
+    self.assertIsNotNone(expected_da)
+    expected_da = expected_da.squeeze(constants.GEO)
     self.assertIsInstance(expected_da, xr.DataArray)
     self.assertAllClose(
         organic_frequency_da_national.values, expected_da.values
@@ -1580,13 +1608,16 @@ class EDAEngineTest(
     self.assertEqual(
         organic_rf_impressions_raw_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
     expected_organic_rf_impressions_raw_da = (
         engine.organic_rf_impressions_raw_da
+    )
+    self.assertIsNotNone(expected_organic_rf_impressions_raw_da)
+    expected_organic_rf_impressions_raw_da = (
+        expected_organic_rf_impressions_raw_da.squeeze(constants.GEO)
     )
     self.assertIsInstance(expected_organic_rf_impressions_raw_da, xr.DataArray)
     self.assertAllClose(
@@ -1709,13 +1740,16 @@ class EDAEngineTest(
     self.assertEqual(
         organic_rf_impressions_scaled_da_national.shape,
         (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
     expected_organic_rf_impressions_scaled_da = (
         engine.organic_rf_impressions_scaled_da
+    )
+    self.assertIsNotNone(expected_organic_rf_impressions_scaled_da)
+    expected_organic_rf_impressions_scaled_da = (
+        expected_organic_rf_impressions_scaled_da.squeeze(constants.GEO)
     )
     self.assertIsInstance(
         expected_organic_rf_impressions_scaled_da, xr.DataArray
@@ -1793,13 +1827,11 @@ class EDAEngineTest(
     self.assertIsInstance(kpi_scaled_da_national, xr.DataArray)
     self.assertEqual(
         kpi_scaled_da_national.shape,
-        (
-            model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
-            model_test_data.WithInputDataSamples._N_TIMES,
-        ),
+        (model_test_data.WithInputDataSamples._N_TIMES,),
     )
     self.assertAllClose(
-        kpi_scaled_da_national.values, engine.kpi_scaled_da.values
+        kpi_scaled_da_national.values,
+        engine.kpi_scaled_da.squeeze(constants.GEO).values,
     )
 
   @parameterized.named_parameters(
