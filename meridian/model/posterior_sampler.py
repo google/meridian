@@ -451,8 +451,8 @@ class PosteriorMCMCSampler:
       # sampled posterior parameter values.
       if holdout_id is not None:
         y_pred_holdout = backend.where(holdout_id, 0.0, y_pred)
-        test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32)
-        sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)
+        sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32)
+        sigma_gt_holdout = backend.where(holdout_id, sd, sigma_gt)
         yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
       else:
         yield backend.tfd.Normal(y_pred, sigma_gt, name="y")
