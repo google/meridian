@@ -62,6 +62,7 @@ class Summarizer:
   def __init__(self, meridian: model.Meridian):
     """Initialize the visualizer classes that are not time-dependent."""
     self._meridian = meridian
+    self._use_kpi = False
 
   @functools.cached_property
   def _model_fit(self):
@@ -77,6 +78,7 @@ class Summarizer:
       filepath: str,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
+      use_kpi: bool = False,
   ):
     """Generates and saves the HTML results summary output.
 
@@ -86,7 +88,9 @@ class Summarizer:
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format.
       end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
+      use_kpi: Whether to use KPI or revenue in the summary.
     """
+    self._use_kpi = use_kpi
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
       f.write(self._gen_model_results_summary(start_date, end_date))
@@ -457,6 +461,7 @@ class Summarizer:
                 selected_times=(
                     frozenset(selected_times) if selected_times else None
                 ),
+                use_kpi=self._use_kpi,
                 plot_separately=False,
                 include_ci=False,
                 num_channels_displayed=7,
@@ -525,8 +530,8 @@ class Summarizer:
     ).optimal_frequency
 
   def _kpi_or_revenue(self) -> str:
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      outcome_str = c.REVENUE
-    else:
+    if self._use_kpi or self._meridian.input_data.revenue_per_kpi is None:
       outcome_str = c.KPI.upper()
+    else:
+      outcome_str = c.REVENUE
     return outcome_str

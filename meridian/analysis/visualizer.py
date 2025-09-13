@@ -863,6 +863,7 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
+      use_kpi: bool = False,
   ) -> xr.Dataset:
     """Dataset holding the calculated response curves data.
 
@@ -886,12 +887,14 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, use the KPI as the outcome. Otherwise, use the
+        revenue per KPI.
 
     Returns:
       A Dataset displaying the response curves data.
     """
     selected_times_list = list(selected_times) if selected_times else None
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
     return self._analyzer.response_curves(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=confidence_level,
@@ -961,6 +964,7 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
+      use_kpi: bool = False,
       plot_separately: bool = True,
       include_ci: bool = True,
       num_channels_displayed: int | None = None,
@@ -1021,11 +1025,13 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
+        use_kpi=use_kpi,
     )
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      y_axis_label = summary_text.INC_OUTCOME_LABEL
-    else:
-      y_axis_label = summary_text.INC_KPI_LABEL
+    y_axis_label = (
+        summary_text.INC_KPI_LABEL
+        if use_kpi or self._meridian.input_data.revenue_per_kpi is None
+        else summary_text.INC_OUTCOME_LABEL
+    )
     base = (
         alt.Chart(response_curves_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_calculate(
@@ -1333,6 +1339,7 @@ class MediaEffects:
       selected_times: frozenset[str] | None = None,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       by_reach: bool = True,
+      use_kpi: bool = False,
   ) -> pd.DataFrame:
     """Returns DataFrame with top channels by spend for the layered plot.
 
@@ -1347,6 +1354,7 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, use KPI instead of revenue.
 
     Returns:
       A DataFrame containing the top chosen channels
@@ -1357,6 +1365,7 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
+        use_kpi=use_kpi,
     )
     list_sorted_channels_cost = list(
         data.sel(spend_multiplier=1)
