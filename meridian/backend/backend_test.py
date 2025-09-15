@@ -342,6 +342,37 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _transpose_test_cases = [
+      dict(
+          testcase_name="2d_default_no_perm",
+          tensor_in=np.array([[1, 2, 3], [4, 5, 6]]),
+          kwargs={},
+          expected=np.array([[1, 4], [2, 5], [3, 6]]),
+      ),
+      dict(
+          testcase_name="3d_with_perm_keyword",
+          tensor_in=np.arange(24).reshape((2, 3, 4)),
+          kwargs={"perm": [2, 0, 1]},
+          expected=np.transpose(
+              np.arange(24).reshape((2, 3, 4)), axes=(2, 0, 1)
+          ),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS, test_case=_transpose_test_cases
+  )
+  def test_transpose(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.transpose(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
   _broadcast_dynamic_shape_test_cases = [
       dict(
           testcase_name="broadcast_scalar_to_vector",

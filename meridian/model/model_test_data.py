@@ -52,7 +52,9 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> backend.Tensor:
   else:
     pad_value = 0.0 if array.dtype.kind == "f" else 0
 
-  burnin = backend.fill([n_burnin] + transposed_tensor.shape[1:], pad_value)
+  burnin = backend.fill(
+      [n_burnin] + list(transposed_tensor.shape[1:]), pad_value
+  )
   return backend.concatenate(
       [burnin, transposed_tensor],
       axis=0,
@@ -122,17 +124,12 @@ class WithInputDataSamples:
   _N_MEDIA_CHANNELS = 3
   _N_RF_CHANNELS = 2
   _N_CONTROLS = 2
-  _ROI_CALIBRATION_PERIOD = backend.cast(
-      backend.ones((_N_MEDIA_TIMES_SHORT, _N_MEDIA_CHANNELS)),
-      dtype=backend.bool_,
-  )
-  _RF_ROI_CALIBRATION_PERIOD = backend.cast(
-      backend.ones((_N_MEDIA_TIMES_SHORT, _N_RF_CHANNELS)),
-      dtype=backend.bool_,
-  )
   _N_ORGANIC_MEDIA_CHANNELS = 4
   _N_ORGANIC_RF_CHANNELS = 1
   _N_NON_MEDIA_CHANNELS = 2
+
+  _ROI_CALIBRATION_PERIOD: backend.Tensor
+  _RF_ROI_CALIBRATION_PERIOD: backend.Tensor
 
   # Private class variables to hold the base test data.
   _input_data_non_revenue_no_revenue_per_kpi: input_data.InputData
@@ -170,6 +167,15 @@ class WithInputDataSamples:
   @classmethod
   def setup(cls):
     """Sets up input data samples."""
+    cls._ROI_CALIBRATION_PERIOD = backend.cast(
+        backend.ones((cls._N_MEDIA_TIMES_SHORT, cls._N_MEDIA_CHANNELS)),
+        dtype=backend.bool_,
+    )
+    cls._RF_ROI_CALIBRATION_PERIOD = backend.cast(
+        backend.ones((cls._N_MEDIA_TIMES_SHORT, cls._N_RF_CHANNELS)),
+        dtype=backend.bool_,
+    )
+
     cls._input_data_non_revenue_no_revenue_per_kpi = (
         test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
             n_geos=cls._N_GEOS,

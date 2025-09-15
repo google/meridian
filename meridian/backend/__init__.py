@@ -404,6 +404,12 @@ def _jax_tensor_shape(dims):
   return tuple(dims)
 
 
+def _jax_transpose(a, perm=None):
+  """JAX wrapper for transpose to support the 'perm' keyword argument."""
+  import jax.numpy as jnp
+
+  return jnp.transpose(a, axes=perm)
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -458,7 +464,6 @@ if _BACKEND == config.Backend.JAX:
   reshape = _ops.reshape
   tile = _ops.tile
   where = _ops.where
-  transpose = _ops.transpose
   broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
@@ -494,7 +499,7 @@ if _BACKEND == config.Backend.JAX:
   reshape = _ops.reshape
   stack = _ops.stack
   tile = _jax_tile
-  transpose = _ops.transpose
+  transpose = _jax_transpose
   unique_with_counts = _jax_unique_with_counts
   where = _ops.where
   zeros = _ops.zeros
@@ -546,7 +551,6 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reshape = _ops.reshape
   tile = _ops.tile
   where = _ops.where
-  transpose = _ops.transpose
   broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
