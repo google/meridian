@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Iterable, MutableMapping
 import copy
 from typing import Any
 import warnings
@@ -1972,6 +1972,156 @@ class TestLognormalDistFromMeanStd(test_utils.MeridianTestCase):
 
     np.testing.assert_allclose(dist.mean(), expected_mean, rtol=1e-5)
     np.testing.assert_allclose(dist.stddev(), expected_std, rtol=1e-5)
+
+
+class TestLognormalDistFromRange(parameterized.TestCase):
+
+  @parameterized.product(
+      (
+          dict(low=0.1, high=1.0),
+          dict(low=1.0, high=10.0),
+      ),
+      mass_percent=(0.1, 0.8, 0.9, 0.95),
+      input_type=(float, np.float32, backend.to_tensor),
+  )
+  def test_correct_quantile_scalar(
+      self,
+      low,
+      high,
+      mass_percent,
+      input_type,
+  ):
+    low = input_type(low)
+    high = input_type(high)
+
+    dist = prior_distribution.lognormal_dist_from_range(low, high, mass_percent)
+
+    mass_lower = 0.5 - mass_percent / 2
+    mass_upper = 0.5 + mass_percent / 2
+
+    np.testing.assert_allclose(dist.quantile(mass_lower), low, rtol=1e-5)
+    np.testing.assert_allclose(dist.quantile(mass_upper), high, rtol=1e-5)
+
+  @parameterized.product(
+      (
+          dict(low=0.1, high=(1.0,)),
+          dict(low=0.1, high=(1.0, 2.0, 3.0)),
+          dict(low=(0.1,), high=(1.0,)),
+          dict(low=(0.1,), high=(1.0, 2.0, 3.0)),
+          dict(low=(0.1,), high=1.0),
+          dict(low=(0.1, 0.2, 0.3), high=1.0),
+          dict(low=(0.1, 0.2, 0.3), high=(1.0,)),
+          dict(low=(0.1, 0.2, 0.3), high=(1.0, 2.0, 3.0)),
+      ),
+      mass_percent=(0.1, 0.8, 0.9, (0.95,), (0.8, 0.9, 0.95)),
+      input_type=(tuple, list, np.array, backend.to_tensor)
+  )
+  def test_correct_quantile_array(
+      self,
+      low,
+      high,
+      mass_percent,
+      input_type,
+  ):
+
+    low = input_type(low) if isinstance(low, Iterable) else low
+    high = input_type(high) if isinstance(high, Iterable) else high
+    mass_percent = (
+        input_type(mass_percent)
+        if isinstance(mass_percent, Iterable)
+        else mass_percent
+    )
+
+    expected_len = 1
+
+    for var in (low, high, mass_percent):
+      try:
+        expected_len = max(expected_len, len(var))
+      except TypeError:
+        pass
+
+    expected_low = np.broadcast_to(low, expected_len)
+    expected_high = np.broadcast_to(high, expected_len)
+
+    dist = prior_distribution.lognormal_dist_from_range(
+        low, high, mass_percent=mass_percent
+        )
+
+    mass_lower = 0.5 - (np.asarray(mass_percent) / 2)
+    mass_upper = 0.5 + (np.asarray(mass_percent) / 2)
+
+    np.testing.assert_allclose(
+        dist.quantile(mass_lower), expected_low, rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        dist.quantile(mass_upper), expected_high, rtol=1e-5
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='low_negative',
+          low=-0.1,
+          high=0.5,
+          ),
+      dict(
+          testcase_name='low_zero',
+          low=0.0,
+          high=0.5,
+          ),
+      dict(
+          testcase_name='high_less_than_low',
+          low=1.0,
+          high=0.5,
+          ),
+      dict(
+          testcase_name='array_low_negative',
+          low=(-0.1, 0.1),
+          high=0.5,
+          ),
+      dict(
+          testcase_name='array_low_zero',
+          low=(0.0, 0.1),
+          high=0.5,
+          ),
+      dict(
+          testcase_name='array_high_less_than_low',
+          low=(0.5, 1.0),
+          high=(1.0, 0.75),
+          ),
+  )
+  def test_out_of_bounds_low_high_raises_error(self, low, high):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "'low' and 'high' values must be non-negative and satisfy high > low."
+    ):
+      _ = prior_distribution.lognormal_dist_from_range(low, high)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='negative',
+          mass_percent=-0.1,
+          ),
+      dict(
+          testcase_name='greater_than_1',
+          mass_percent=1.1,
+          ),
+      dict(
+          testcase_name='array_negative',
+          mass_percent=(-0.1, 0.5),
+      ),
+      dict(
+          testcase_name='array_greater_than_1',
+          mass_percent=(1.1, 0.5),
+      ),
+  )
+  def test_out_of_bounds_mass_percent_raises_error(self, mass_percent):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "'mass_percent' values must be between 0 and 1, exclusive."
+    ):
+      _ = prior_distribution.lognormal_dist_from_range(
+          1.0, 2.0, mass_percent=mass_percent
+      )
 
 
 if __name__ == '__main__':
