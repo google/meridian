@@ -190,14 +190,14 @@ def _compute_single_decay_function_weights(
       A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
   """
   expanded_alpha = backend.expand_dims(alpha, -1)
-  match decay_function:
-    case constants.GEOMETRIC_DECAY:
-      weights = expanded_alpha**l_range
-    case constants.BINOMIAL_DECAY:
-      mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
-      weights = (1 - l_range / window_size) ** mapped_alpha_binomial
-    case _:
-      raise ValueError(f'Unsupported decay function: {decay_function}')
+
+  if decay_function == constants.GEOMETRIC_DECAY:
+    weights = expanded_alpha**l_range
+  elif decay_function == constants.BINOMIAL_DECAY:
+    mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
+    weights = (1 - l_range / window_size) ** mapped_alpha_binomial
+  else:
+    raise ValueError(f'Unsupported decay function: {decay_function}')
 
   if normalize:
     normalization_factors = backend.reduce_sum(weights, axis=-1, keepdims=True)
