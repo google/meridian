@@ -78,6 +78,370 @@ def _xla_windowed_adaptive_nuts(**kwargs):
   return backend.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
 
 
+def _joint_dist_unpinned(mmm: "model.Meridian"):
+  """Returns unpinned joint distribution."""
+
+  # This lists all the derived properties and states of this Meridian object
+  # that are referenced by the joint distribution coroutine.
+  # That is, these are the list of captured parameters.
+  prior_broadcast = mmm.prior_broadcast
+  baseline_geo_idx = mmm.baseline_geo_idx
+  knot_info = mmm.knot_info
+  n_geos = mmm.n_geos
+  n_times = mmm.n_times
+  n_media_channels = mmm.n_media_channels
+  n_rf_channels = mmm.n_rf_channels
+  n_organic_media_channels = mmm.n_organic_media_channels
+  n_organic_rf_channels = mmm.n_organic_rf_channels
+  n_controls = mmm.n_controls
+  n_non_media_channels = mmm.n_non_media_channels
+  holdout_id = mmm.holdout_id
+  media_tensors = mmm.media_tensors
+  rf_tensors = mmm.rf_tensors
+  organic_media_tensors = mmm.organic_media_tensors
+  organic_rf_tensors = mmm.organic_rf_tensors
+  controls_scaled = mmm.controls_scaled
+  non_media_treatments_normalized = mmm.non_media_treatments_normalized
+  media_effects_dist = mmm.media_effects_dist
+  adstock_hill_media_fn = mmm.adstock_hill_media
+  adstock_hill_rf_fn = mmm.adstock_hill_rf
+  total_outcome = mmm.total_outcome
+
+  # Sample directly from prior.
+  knot_values = yield prior_broadcast.knot_values
+  sigma = yield prior_broadcast.sigma
+
+  tau_g_excl_baseline = yield backend.tfd.Sample(
+      prior_broadcast.tau_g_excl_baseline,
+      name=constants.TAU_G_EXCL_BASELINE,
+  )
+  tau_g = yield _get_tau_g(
+      tau_g_excl_baseline=tau_g_excl_baseline,
+      baseline_geo_idx=baseline_geo_idx,
+  )
+  mu_t = yield backend.tfd.Deterministic(
+      backend.einsum(
+          "k,kt->t",
+          knot_values,
+          backend.to_tensor(knot_info.weights),
+      ),
+      name=constants.MU_T,
+  )
+
+  tau_gt = tau_g[:, backend.newaxis] + mu_t
+  combined_media_transformed = backend.zeros(
+      shape=(n_geos, n_times, 0), dtype=backend.float32
+  )
+  combined_beta = backend.zeros(shape=(n_geos, 0), dtype=backend.float32)
+  if media_tensors.media is not None:
+    alpha_m = yield prior_broadcast.alpha_m
+    ec_m = yield prior_broadcast.ec_m
+    eta_m = yield prior_broadcast.eta_m
+    slope_m = yield prior_broadcast.slope_m
+    beta_gm_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_media_channels],
+        name=constants.BETA_GM_DEV,
+    )
+    media_transformed = adstock_hill_media_fn(
+        media=media_tensors.media_scaled,
+        alpha=alpha_m,
+        ec=ec_m,
+        slope=slope_m,
+        decay_functions=mmm.adstock_decay_spec.media,
+    )
+    prior_type = mmm.model_spec.effective_media_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      beta_m = yield prior_broadcast.beta_m
+    else:
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+        treatment_parameter_m = yield prior_broadcast.roi_m
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+        treatment_parameter_m = yield prior_broadcast.mroi_m
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+        treatment_parameter_m = yield prior_broadcast.contribution_m
+      else:
+        raise ValueError(f"Unsupported prior type: {prior_type}")
+      incremental_outcome_m = (
+          treatment_parameter_m * media_tensors.prior_denominator
+      )
+      linear_predictor_counterfactual_difference = (
+          mmm.linear_predictor_counterfactual_difference_media(
+              media_transformed=media_transformed,
+              alpha_m=alpha_m,
+              ec_m=ec_m,
+              slope_m=slope_m,
+          )
+      )
+      beta_m_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_m,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=eta_m,
+          beta_gx_dev=beta_gm_dev,
+      )
+      beta_m = yield backend.tfd.Deterministic(
+          beta_m_value, name=constants.BETA_M
+      )
+
+    beta_eta_combined = beta_m + eta_m * beta_gm_dev
+    beta_gm_value = (
+        beta_eta_combined
+        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else backend.exp(beta_eta_combined)
+    )
+    beta_gm = yield backend.tfd.Deterministic(
+        beta_gm_value, name=constants.BETA_GM
+    )
+    combined_media_transformed = backend.concatenate(
+        [combined_media_transformed, media_transformed], axis=-1
+    )
+    combined_beta = backend.concatenate([combined_beta, beta_gm], axis=-1)
+
+  if rf_tensors.reach is not None:
+    alpha_rf = yield prior_broadcast.alpha_rf
+    ec_rf = yield prior_broadcast.ec_rf
+    eta_rf = yield prior_broadcast.eta_rf
+    slope_rf = yield prior_broadcast.slope_rf
+    beta_grf_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_rf_channels],
+        name=constants.BETA_GRF_DEV,
+    )
+    rf_transformed = adstock_hill_rf_fn(
+        reach=rf_tensors.reach_scaled,
+        frequency=rf_tensors.frequency,
+        alpha=alpha_rf,
+        ec=ec_rf,
+        slope=slope_rf,
+        decay_functions=mmm.adstock_decay_spec.rf,
+    )
+
+    prior_type = mmm.model_spec.effective_rf_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      beta_rf = yield prior_broadcast.beta_rf
+    else:
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+        treatment_parameter_rf = yield prior_broadcast.roi_rf
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+        treatment_parameter_rf = yield prior_broadcast.mroi_rf
+      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+        treatment_parameter_rf = yield prior_broadcast.contribution_rf
+      else:
+        raise ValueError(f"Unsupported prior type: {prior_type}")
+      incremental_outcome_rf = (
+          treatment_parameter_rf * rf_tensors.prior_denominator
+      )
+      linear_predictor_counterfactual_difference = (
+          mmm.linear_predictor_counterfactual_difference_rf(
+              rf_transformed=rf_transformed,
+              alpha_rf=alpha_rf,
+              ec_rf=ec_rf,
+              slope_rf=slope_rf,
+          )
+      )
+      beta_rf_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_rf,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=eta_rf,
+          beta_gx_dev=beta_grf_dev,
+      )
+      beta_rf = yield backend.tfd.Deterministic(
+          beta_rf_value, name=constants.BETA_RF
+      )
+
+    beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
+    beta_grf_value = (
+        beta_eta_combined
+        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else backend.exp(beta_eta_combined)
+    )
+    beta_grf = yield backend.tfd.Deterministic(
+        beta_grf_value, name=constants.BETA_GRF
+    )
+    combined_media_transformed = backend.concatenate(
+        [combined_media_transformed, rf_transformed], axis=-1
+    )
+    combined_beta = backend.concatenate([combined_beta, beta_grf], axis=-1)
+
+  if organic_media_tensors.organic_media is not None:
+    alpha_om = yield prior_broadcast.alpha_om
+    ec_om = yield prior_broadcast.ec_om
+    eta_om = yield prior_broadcast.eta_om
+    slope_om = yield prior_broadcast.slope_om
+    beta_gom_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_organic_media_channels],
+        name=constants.BETA_GOM_DEV,
+    )
+    organic_media_transformed = adstock_hill_media_fn(
+        media=organic_media_tensors.organic_media_scaled,
+        alpha=alpha_om,
+        ec=ec_om,
+        slope=slope_om,
+        decay_functions=mmm.adstock_decay_spec.organic_media,
+    )
+    prior_type = mmm.model_spec.organic_media_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      beta_om = yield prior_broadcast.beta_om
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      contribution_om = yield prior_broadcast.contribution_om
+      incremental_outcome_om = contribution_om * total_outcome
+      beta_om_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_om,
+          linear_predictor_counterfactual_difference=organic_media_transformed,
+          eta_x=eta_om,
+          beta_gx_dev=beta_gom_dev,
+      )
+      beta_om = yield backend.tfd.Deterministic(
+          beta_om_value, name=constants.BETA_OM
+      )
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
+
+    beta_eta_combined = beta_om + eta_om * beta_gom_dev
+    beta_gom_value = (
+        beta_eta_combined
+        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else backend.exp(beta_eta_combined)
+    )
+    beta_gom = yield backend.tfd.Deterministic(
+        beta_gom_value, name=constants.BETA_GOM
+    )
+    combined_media_transformed = backend.concatenate(
+        [combined_media_transformed, organic_media_transformed], axis=-1
+    )
+    combined_beta = backend.concatenate([combined_beta, beta_gom], axis=-1)
+
+  if organic_rf_tensors.organic_reach is not None:
+    alpha_orf = yield prior_broadcast.alpha_orf
+    ec_orf = yield prior_broadcast.ec_orf
+    eta_orf = yield prior_broadcast.eta_orf
+    slope_orf = yield prior_broadcast.slope_orf
+    beta_gorf_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_organic_rf_channels],
+        name=constants.BETA_GORF_DEV,
+    )
+    organic_rf_transformed = adstock_hill_rf_fn(
+        reach=organic_rf_tensors.organic_reach_scaled,
+        frequency=organic_rf_tensors.organic_frequency,
+        alpha=alpha_orf,
+        ec=ec_orf,
+        slope=slope_orf,
+        decay_functions=mmm.adstock_decay_spec.organic_rf,
+    )
+
+    prior_type = mmm.model_spec.organic_rf_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      beta_orf = yield prior_broadcast.beta_orf
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      contribution_orf = yield prior_broadcast.contribution_orf
+      incremental_outcome_orf = contribution_orf * total_outcome
+      beta_orf_value = mmm.calculate_beta_x(
+          is_non_media=False,
+          incremental_outcome_x=incremental_outcome_orf,
+          linear_predictor_counterfactual_difference=organic_rf_transformed,
+          eta_x=eta_orf,
+          beta_gx_dev=beta_gorf_dev,
+      )
+      beta_orf = yield backend.tfd.Deterministic(
+          beta_orf_value, name=constants.BETA_ORF
+      )
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
+
+    beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
+    beta_gorf_value = (
+        beta_eta_combined
+        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else backend.exp(beta_eta_combined)
+    )
+    beta_gorf = yield backend.tfd.Deterministic(
+        beta_gorf_value, name=constants.BETA_GORF
+    )
+    combined_media_transformed = backend.concatenate(
+        [combined_media_transformed, organic_rf_transformed], axis=-1
+    )
+    combined_beta = backend.concatenate([combined_beta, beta_gorf], axis=-1)
+
+  sigma_gt = backend.transpose(backend.broadcast_to(sigma, [n_times, n_geos]))
+  y_pred_combined_media = tau_gt + backend.einsum(
+      "gtm,gm->gt", combined_media_transformed, combined_beta
+  )
+  # Omit gamma_c, xi_c, and gamma_gc from joint distribution output if
+  # there are no control variables in the model.
+  if n_controls:
+    gamma_c = yield prior_broadcast.gamma_c
+    xi_c = yield prior_broadcast.xi_c
+    gamma_gc_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_controls],
+        name=constants.GAMMA_GC_DEV,
+    )
+    gamma_gc = yield backend.tfd.Deterministic(
+        gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
+    )
+    y_pred_combined_media += backend.einsum(
+        "gtc,gc->gt", controls_scaled, gamma_gc
+    )
+
+  if mmm.non_media_treatments is not None:
+    xi_n = yield prior_broadcast.xi_n
+    gamma_gn_dev = yield backend.tfd.Sample(
+        backend.tfd.Normal(0, 1),
+        [n_geos, n_non_media_channels],
+        name=constants.GAMMA_GN_DEV,
+    )
+    prior_type = mmm.model_spec.non_media_treatments_prior_type
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+      gamma_n = yield prior_broadcast.gamma_n
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      contribution_n = yield prior_broadcast.contribution_n
+      incremental_outcome_n = contribution_n * total_outcome
+      baseline_scaled = mmm.non_media_transformer.forward(  # pytype: disable=attribute-error
+          mmm.compute_non_media_treatments_baseline()
+      )
+      linear_predictor_counterfactual_difference = (
+          non_media_treatments_normalized - baseline_scaled
+      )
+      gamma_n_value = mmm.calculate_beta_x(
+          is_non_media=True,
+          incremental_outcome_x=incremental_outcome_n,
+          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+          eta_x=xi_n,
+          beta_gx_dev=gamma_gn_dev,
+      )
+      gamma_n = yield backend.tfd.Deterministic(
+          gamma_n_value, name=constants.GAMMA_N
+      )
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
+    gamma_gn = yield backend.tfd.Deterministic(
+        gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
+    )
+    y_pred = y_pred_combined_media + backend.einsum(
+        "gtn,gn->gt", non_media_treatments_normalized, gamma_gn
+    )
+  else:
+    y_pred = y_pred_combined_media
+
+  # If there are any holdout observations, the holdout KPI values will
+  # be replaced with zeros using `experimental_pin`. For these
+  # observations, we set the posterior mean equal to zero and standard
+  # deviation to `1/sqrt(2pi)`, so the log-density is 0 regardless of the
+  # sampled posterior parameter values.
+  if holdout_id is not None:
+    y_pred_holdout = backend.where(holdout_id, 0.0, y_pred)
+    test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32)
+    sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)
+    yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
+  else:
+    yield backend.tfd.Normal(y_pred, sigma_gt, name="y")
+
+
 class PosteriorMCMCSampler:
   """A callable that samples from posterior distributions using MCMC."""
 
@@ -92,372 +456,8 @@ class PosteriorMCMCSampler:
     """Returns a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     mmm = self.model
     mmm.populate_cached_properties()
-
-    # This lists all the derived properties and states of this Meridian object
-    # that are referenced by the joint distribution coroutine.
-    # That is, these are the list of captured parameters.
-    prior_broadcast = mmm.prior_broadcast
-    baseline_geo_idx = mmm.baseline_geo_idx
-    knot_info = mmm.knot_info
-    n_geos = mmm.n_geos
-    n_times = mmm.n_times
-    n_media_channels = mmm.n_media_channels
-    n_rf_channels = mmm.n_rf_channels
-    n_organic_media_channels = mmm.n_organic_media_channels
-    n_organic_rf_channels = mmm.n_organic_rf_channels
-    n_controls = mmm.n_controls
-    n_non_media_channels = mmm.n_non_media_channels
-    holdout_id = mmm.holdout_id
-    media_tensors = mmm.media_tensors
-    rf_tensors = mmm.rf_tensors
-    organic_media_tensors = mmm.organic_media_tensors
-    organic_rf_tensors = mmm.organic_rf_tensors
-    controls_scaled = mmm.controls_scaled
-    non_media_treatments_normalized = mmm.non_media_treatments_normalized
-    media_effects_dist = mmm.media_effects_dist
-    adstock_hill_media_fn = mmm.adstock_hill_media
-    adstock_hill_rf_fn = mmm.adstock_hill_rf
-    total_outcome = mmm.total_outcome
-
-    @backend.tfd.JointDistributionCoroutineAutoBatched
-    def joint_dist_unpinned():
-      # Sample directly from prior.
-      knot_values = yield prior_broadcast.knot_values
-      sigma = yield prior_broadcast.sigma
-
-      tau_g_excl_baseline = yield backend.tfd.Sample(
-          prior_broadcast.tau_g_excl_baseline,
-          name=constants.TAU_G_EXCL_BASELINE,
-      )
-      tau_g = yield _get_tau_g(
-          tau_g_excl_baseline=tau_g_excl_baseline,
-          baseline_geo_idx=baseline_geo_idx,
-      )
-      mu_t = yield backend.tfd.Deterministic(
-          backend.einsum(
-              "k,kt->t",
-              knot_values,
-              backend.to_tensor(knot_info.weights),
-          ),
-          name=constants.MU_T,
-      )
-
-      tau_gt = tau_g[:, backend.newaxis] + mu_t
-      combined_media_transformed = backend.zeros(
-          shape=(n_geos, n_times, 0), dtype=backend.float32
-      )
-      combined_beta = backend.zeros(shape=(n_geos, 0), dtype=backend.float32)
-      if media_tensors.media is not None:
-        alpha_m = yield prior_broadcast.alpha_m
-        ec_m = yield prior_broadcast.ec_m
-        eta_m = yield prior_broadcast.eta_m
-        slope_m = yield prior_broadcast.slope_m
-        beta_gm_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_media_channels],
-            name=constants.BETA_GM_DEV,
-        )
-        media_transformed = adstock_hill_media_fn(
-            media=media_tensors.media_scaled,
-            alpha=alpha_m,
-            ec=ec_m,
-            slope=slope_m,
-            decay_functions=mmm.adstock_decay_spec.media,
-        )
-        prior_type = mmm.model_spec.effective_media_prior_type
-        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-          beta_m = yield prior_broadcast.beta_m
-        else:
-          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-            treatment_parameter_m = yield prior_broadcast.roi_m
-          elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-            treatment_parameter_m = yield prior_broadcast.mroi_m
-          elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-            treatment_parameter_m = yield prior_broadcast.contribution_m
-          else:
-            raise ValueError(f"Unsupported prior type: {prior_type}")
-          incremental_outcome_m = (
-              treatment_parameter_m * media_tensors.prior_denominator
-          )
-          linear_predictor_counterfactual_difference = (
-              mmm.linear_predictor_counterfactual_difference_media(
-                  media_transformed=media_transformed,
-                  alpha_m=alpha_m,
-                  ec_m=ec_m,
-                  slope_m=slope_m,
-              )
-          )
-          beta_m_value = mmm.calculate_beta_x(
-              is_non_media=False,
-              incremental_outcome_x=incremental_outcome_m,
-              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-              eta_x=eta_m,
-              beta_gx_dev=beta_gm_dev,
-          )
-          beta_m = yield backend.tfd.Deterministic(
-              beta_m_value, name=constants.BETA_M
-          )
-
-        beta_eta_combined = beta_m + eta_m * beta_gm_dev
-        beta_gm_value = (
-            beta_eta_combined
-            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else backend.exp(beta_eta_combined)
-        )
-        beta_gm = yield backend.tfd.Deterministic(
-            beta_gm_value, name=constants.BETA_GM
-        )
-        combined_media_transformed = backend.concatenate(
-            [combined_media_transformed, media_transformed], axis=-1
-        )
-        combined_beta = backend.concatenate([combined_beta, beta_gm], axis=-1)
-
-      if rf_tensors.reach is not None:
-        alpha_rf = yield prior_broadcast.alpha_rf
-        ec_rf = yield prior_broadcast.ec_rf
-        eta_rf = yield prior_broadcast.eta_rf
-        slope_rf = yield prior_broadcast.slope_rf
-        beta_grf_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_rf_channels],
-            name=constants.BETA_GRF_DEV,
-        )
-        rf_transformed = adstock_hill_rf_fn(
-            reach=rf_tensors.reach_scaled,
-            frequency=rf_tensors.frequency,
-            alpha=alpha_rf,
-            ec=ec_rf,
-            slope=slope_rf,
-            decay_functions=mmm.adstock_decay_spec.rf,
-        )
-
-        prior_type = mmm.model_spec.effective_rf_prior_type
-        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-          beta_rf = yield prior_broadcast.beta_rf
-        else:
-          if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-            treatment_parameter_rf = yield prior_broadcast.roi_rf
-          elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-            treatment_parameter_rf = yield prior_broadcast.mroi_rf
-          elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-            treatment_parameter_rf = yield prior_broadcast.contribution_rf
-          else:
-            raise ValueError(f"Unsupported prior type: {prior_type}")
-          incremental_outcome_rf = (
-              treatment_parameter_rf * rf_tensors.prior_denominator
-          )
-          linear_predictor_counterfactual_difference = (
-              mmm.linear_predictor_counterfactual_difference_rf(
-                  rf_transformed=rf_transformed,
-                  alpha_rf=alpha_rf,
-                  ec_rf=ec_rf,
-                  slope_rf=slope_rf,
-              )
-          )
-          beta_rf_value = mmm.calculate_beta_x(
-              is_non_media=False,
-              incremental_outcome_x=incremental_outcome_rf,
-              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-              eta_x=eta_rf,
-              beta_gx_dev=beta_grf_dev,
-          )
-          beta_rf = yield backend.tfd.Deterministic(
-              beta_rf_value, name=constants.BETA_RF
-          )
-
-        beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-        beta_grf_value = (
-            beta_eta_combined
-            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else backend.exp(beta_eta_combined)
-        )
-        beta_grf = yield backend.tfd.Deterministic(
-            beta_grf_value, name=constants.BETA_GRF
-        )
-        combined_media_transformed = backend.concatenate(
-            [combined_media_transformed, rf_transformed], axis=-1
-        )
-        combined_beta = backend.concatenate([combined_beta, beta_grf], axis=-1)
-
-      if organic_media_tensors.organic_media is not None:
-        alpha_om = yield prior_broadcast.alpha_om
-        ec_om = yield prior_broadcast.ec_om
-        eta_om = yield prior_broadcast.eta_om
-        slope_om = yield prior_broadcast.slope_om
-        beta_gom_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_organic_media_channels],
-            name=constants.BETA_GOM_DEV,
-        )
-        organic_media_transformed = adstock_hill_media_fn(
-            media=organic_media_tensors.organic_media_scaled,
-            alpha=alpha_om,
-            ec=ec_om,
-            slope=slope_om,
-            decay_functions=mmm.adstock_decay_spec.organic_media,
-        )
-        prior_type = mmm.model_spec.organic_media_prior_type
-        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-          beta_om = yield prior_broadcast.beta_om
-        elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_om = yield prior_broadcast.contribution_om
-          incremental_outcome_om = contribution_om * total_outcome
-          beta_om_value = mmm.calculate_beta_x(
-              is_non_media=False,
-              incremental_outcome_x=incremental_outcome_om,
-              linear_predictor_counterfactual_difference=organic_media_transformed,
-              eta_x=eta_om,
-              beta_gx_dev=beta_gom_dev,
-          )
-          beta_om = yield backend.tfd.Deterministic(
-              beta_om_value, name=constants.BETA_OM
-          )
-        else:
-          raise ValueError(f"Unsupported prior type: {prior_type}")
-
-        beta_eta_combined = beta_om + eta_om * beta_gom_dev
-        beta_gom_value = (
-            beta_eta_combined
-            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else backend.exp(beta_eta_combined)
-        )
-        beta_gom = yield backend.tfd.Deterministic(
-            beta_gom_value, name=constants.BETA_GOM
-        )
-        combined_media_transformed = backend.concatenate(
-            [combined_media_transformed, organic_media_transformed], axis=-1
-        )
-        combined_beta = backend.concatenate([combined_beta, beta_gom], axis=-1)
-
-      if organic_rf_tensors.organic_reach is not None:
-        alpha_orf = yield prior_broadcast.alpha_orf
-        ec_orf = yield prior_broadcast.ec_orf
-        eta_orf = yield prior_broadcast.eta_orf
-        slope_orf = yield prior_broadcast.slope_orf
-        beta_gorf_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_organic_rf_channels],
-            name=constants.BETA_GORF_DEV,
-        )
-        organic_rf_transformed = adstock_hill_rf_fn(
-            reach=organic_rf_tensors.organic_reach_scaled,
-            frequency=organic_rf_tensors.organic_frequency,
-            alpha=alpha_orf,
-            ec=ec_orf,
-            slope=slope_orf,
-            decay_functions=mmm.adstock_decay_spec.organic_rf,
-        )
-
-        prior_type = mmm.model_spec.organic_rf_prior_type
-        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-          beta_orf = yield prior_broadcast.beta_orf
-        elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_orf = yield prior_broadcast.contribution_orf
-          incremental_outcome_orf = contribution_orf * total_outcome
-          beta_orf_value = mmm.calculate_beta_x(
-              is_non_media=False,
-              incremental_outcome_x=incremental_outcome_orf,
-              linear_predictor_counterfactual_difference=organic_rf_transformed,
-              eta_x=eta_orf,
-              beta_gx_dev=beta_gorf_dev,
-          )
-          beta_orf = yield backend.tfd.Deterministic(
-              beta_orf_value, name=constants.BETA_ORF
-          )
-        else:
-          raise ValueError(f"Unsupported prior type: {prior_type}")
-
-        beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
-        beta_gorf_value = (
-            beta_eta_combined
-            if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-            else backend.exp(beta_eta_combined)
-        )
-        beta_gorf = yield backend.tfd.Deterministic(
-            beta_gorf_value, name=constants.BETA_GORF
-        )
-        combined_media_transformed = backend.concatenate(
-            [combined_media_transformed, organic_rf_transformed], axis=-1
-        )
-        combined_beta = backend.concatenate([combined_beta, beta_gorf], axis=-1)
-
-      sigma_gt = backend.transpose(
-          backend.broadcast_to(sigma, [n_times, n_geos])
-      )
-      y_pred_combined_media = tau_gt + backend.einsum(
-          "gtm,gm->gt", combined_media_transformed, combined_beta
-      )
-      # Omit gamma_c, xi_c, and gamma_gc from joint distribution output if
-      # there are no control variables in the model.
-      if n_controls:
-        gamma_c = yield prior_broadcast.gamma_c
-        xi_c = yield prior_broadcast.xi_c
-        gamma_gc_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_controls],
-            name=constants.GAMMA_GC_DEV,
-        )
-        gamma_gc = yield backend.tfd.Deterministic(
-            gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
-        )
-        y_pred_combined_media += backend.einsum(
-            "gtc,gc->gt", controls_scaled, gamma_gc
-        )
-
-      if mmm.non_media_treatments is not None:
-        xi_n = yield prior_broadcast.xi_n
-        gamma_gn_dev = yield backend.tfd.Sample(
-            backend.tfd.Normal(0, 1),
-            [n_geos, n_non_media_channels],
-            name=constants.GAMMA_GN_DEV,
-        )
-        prior_type = mmm.model_spec.non_media_treatments_prior_type
-        if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-          gamma_n = yield prior_broadcast.gamma_n
-        elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-          contribution_n = yield prior_broadcast.contribution_n
-          incremental_outcome_n = contribution_n * total_outcome
-          baseline_scaled = mmm.non_media_transformer.forward(  # pytype: disable=attribute-error
-              mmm.compute_non_media_treatments_baseline()
-          )
-          linear_predictor_counterfactual_difference = (
-              non_media_treatments_normalized - baseline_scaled
-          )
-          gamma_n_value = mmm.calculate_beta_x(
-              is_non_media=True,
-              incremental_outcome_x=incremental_outcome_n,
-              linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-              eta_x=xi_n,
-              beta_gx_dev=gamma_gn_dev,
-          )
-          gamma_n = yield backend.tfd.Deterministic(
-              gamma_n_value, name=constants.GAMMA_N
-          )
-        else:
-          raise ValueError(f"Unsupported prior type: {prior_type}")
-        gamma_gn = yield backend.tfd.Deterministic(
-            gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
-        )
-        y_pred = y_pred_combined_media + backend.einsum(
-            "gtn,gn->gt", non_media_treatments_normalized, gamma_gn
-        )
-      else:
-        y_pred = y_pred_combined_media
-
-      # If there are any holdout observations, the holdout KPI values will
-      # be replaced with zeros using `experimental_pin`. For these
-      # observations, we set the posterior mean equal to zero and standard
-      # deviation to `1/sqrt(2pi)`, so the log-density is 0 regardless of the
-      # sampled posterior parameter values.
-      if holdout_id is not None:
-        y_pred_holdout = backend.where(holdout_id, 0.0, y_pred)
-        test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32)
-        sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)
-        yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
-      else:
-        yield backend.tfd.Normal(y_pred, sigma_gt, name="y")
-
-    return joint_dist_unpinned
+    fn = lambda: _joint_dist_unpinned(mmm)
+    return backend.tfd.JointDistributionCoroutineAutoBatched(fn)
 
   def _get_joint_dist(self) -> backend.tfd.Distribution:
     mmm = self.model
