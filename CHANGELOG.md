@@ -27,6 +27,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
   functions.
 * Fix `response_curves` when optimized data timeframe is outside of modeled
   data timeframe.
+* Change AKS algorithm to use AIC instead of EBIC.
 
 ## [1.2.0] - 2025-09-04
 
