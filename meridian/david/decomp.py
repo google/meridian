@@ -5,11 +5,17 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 
-__all__ = ["control_contribution"]
+__all__ = [
+    "control_contribution",
+    "control_contribution_data",
+    "control_contribution_chart",
+]
 
 
 _METRICS = ("mean", "median", "ci_low", "ci_high")
@@ -197,3 +203,110 @@ def control_contribution(
           "confidence_level": confidence_level,
       },
   )
+
+
+def control_contribution_data(
+    analyzer: Any,
+    control: str | int,
+    *,
+    use_posterior: bool = True,
+    use_kpi: bool = False,
+    selected_geos: Sequence[Any] | Iterable[bool] | None = None,
+    selected_times: Sequence[Any] | Iterable[bool] | None = None,
+    aggregate_geos: bool = True,
+    aggregate_times: bool = False,
+    confidence_level: float = 0.90,
+) -> pd.DataFrame:
+  """Return contribution statistics as a :class:`pandas.DataFrame`.
+
+  The default arguments match a typical time-series view where all geos are
+  aggregated and metrics are broken out by time using a 90% credible
+  interval.
+  """
+
+  da = control_contribution(
+      analyzer,
+      control,
+      use_posterior=use_posterior,
+      use_kpi=use_kpi,
+      selected_geos=selected_geos,
+      selected_times=selected_times,
+      aggregate_geos=aggregate_geos,
+      aggregate_times=aggregate_times,
+      confidence_level=confidence_level,
+  )
+
+  subset = da.sel(metric=["mean", "ci_low", "ci_high"])
+  df = subset.to_dataframe(name="value").unstack("metric")
+  df.columns = df.columns.get_level_values(-1)
+  df = df.rename(columns={"mean": "contribution"})
+  df.attrs = dict(da.attrs)
+  return df
+
+
+def control_contribution_chart(
+    analyzer: Any,
+    control: str | int,
+    *,
+    use_posterior: bool = True,
+    use_kpi: bool = False,
+    selected_geos: Sequence[Any] | Iterable[bool] | None = None,
+    selected_times: Sequence[Any] | Iterable[bool] | None = None,
+    aggregate_geos: bool = True,
+    aggregate_times: bool = False,
+    confidence_level: float = 0.90,
+    ax: plt.Axes | None = None,
+    figsize: tuple[float, float] = (10.0, 4.0),
+) -> tuple[plt.Figure, plt.Axes]:
+  """Plot contribution over time with its credible interval."""
+
+  if aggregate_times:
+    raise ValueError("control_contribution_chart requires aggregate_times=False.")
+
+  df = control_contribution_data(
+      analyzer,
+      control,
+      use_posterior=use_posterior,
+      use_kpi=use_kpi,
+      selected_geos=selected_geos,
+      selected_times=selected_times,
+      aggregate_geos=aggregate_geos,
+      aggregate_times=aggregate_times,
+      confidence_level=confidence_level,
+  )
+
+  if "contribution" not in df.columns or "ci_low" not in df.columns or "ci_high" not in df.columns:
+    raise ValueError("Contribution DataFrame is missing required metrics for plotting.")
+
+  time_index = df.index
+  if isinstance(time_index, pd.MultiIndex):
+    if "time" not in time_index.names:
+      raise ValueError("control_contribution_chart requires a 'time' index level.")
+    time_values = time_index.get_level_values("time")
+  else:
+    time_values = time_index
+
+  control_name = df.attrs.get("control_variable", str(control))
+  level_pct = int(round(confidence_level * 100))
+
+  if ax is None:
+    fig, ax = plt.subplots(figsize=figsize)
+  else:
+    fig = ax.figure
+
+  ax.plot(time_values, df["contribution"].values, label=f"{control_name} (mean)")
+  ax.fill_between(
+      time_values,
+      df["ci_low"].values,
+      df["ci_high"].values,
+      alpha=0.2,
+      label=f"{level_pct}% credible interval",
+  )
+  ax.set_ylabel("contribution")
+  ax.set_title("Contribution over time")
+  ax.legend()
+  ax.set_xlabel(None)
+  ax.tick_params(axis="x", which="both", labelbottom=False)
+  fig.tight_layout()
+
+  return fig, ax
