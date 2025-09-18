@@ -172,7 +172,14 @@ def control_contribution(
     coords["geo"] = [geos[i] for i in geo_idx]
     dims.append("geo")
   if not aggregate_times:
-    coords["time"] = [times[i] for i in time_idx]
+    time_labels = [times[i] for i in time_idx]
+    # xarray expects coordinate labels to be simple scalars; guard against
+    # ragged or otherwise incompatible objects (e.g. tz-aware timestamps).
+    try:
+      _ = np.asarray(time_labels)
+    except Exception:  # pragma: no cover - defensive fallback
+      time_labels = [str(label) for label in time_labels]
+    coords["time"] = time_labels
     dims.append("time")
   coords["metric"] = list(_METRICS)
   dims.append("metric")
