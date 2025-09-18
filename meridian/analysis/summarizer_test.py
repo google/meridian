@@ -195,6 +195,7 @@ class SummarizerTest(parameterized.TestCase):
       summarizer_outcome: summarizer.Summarizer,
       start_date: dt.datetime | None = _EARLIEST_DATE,
       end_date: dt.datetime | None = _LATEST_DATE,
+      use_kpi: bool = False,
   ) -> ET.Element:
     outfile_path = tempfile.mkdtemp() + '/summary'
     outfile_name = 'sum.html'
@@ -206,6 +207,7 @@ class SummarizerTest(parameterized.TestCase):
           filepath=outfile_path,
           start_date=start_date.strftime(c.DATE_FORMAT) if start_date else None,
           end_date=end_date.strftime(c.DATE_FORMAT) if end_date else None,
+          use_kpi=use_kpi,
       )
 
       with open(fpath, 'r') as f:
@@ -446,6 +448,115 @@ class SummarizerTest(parameterized.TestCase):
   def test_card_chart_info(self, card_id, expected_chart_tuples):
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         summarizer_outcome=self.summarizer_revenue,
+    )
+    card = test_utils.get_child_element(
+        summary_html_dom, 'body/cards/card', attribs={'id': card_id}
+    )
+
+    charts = []
+    for chart in card.findall('charts/chart'):
+      chart_embed = test_utils.get_child_element(chart, 'chart-embed')
+      chart_id = chart_embed.attrib['id']
+      try:
+        chart_description_text = test_utils.get_child_element(
+            chart, 'chart-description'
+        ).text
+      except AssertionError:
+        chart_description_text = None
+      if chart_description_text is None:
+        charts.append((chart_id,))
+      else:
+        self.assertIsNotNone(chart_description_text)
+        chart_description_text = chart_description_text.strip()
+        charts.append((chart_id, chart_description_text))
+
+    self.assertEqual(set(expected_chart_tuples), set(charts))
+
+  @parameterized.parameters([
+      (
+          summary_text.MODEL_FIT_CARD_ID,
+          [
+              (
+                  summary_text.EXPECTED_ACTUAL_OUTCOME_CHART_ID,
+                  summary_text.EXPECTED_ACTUAL_OUTCOME_CHART_DESCRIPTION_FORMAT.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+          ],
+      ),
+      (
+          summary_text.CHANNEL_CONTRIB_CARD_ID,
+          [
+              (
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
+                  summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+              (
+                  summary_text.CHANNEL_CONTRIB_RANK_CHART_ID,
+                  summary_text.CHANNEL_CONTRIB_RANK_CHART_DESCRIPTION.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+              (
+                  summary_text.CHANNEL_DRIVERS_CHART_ID,
+                  summary_text.CHANNEL_DRIVERS_CHART_DESCRIPTION.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+              (
+                  summary_text.SPEND_OUTCOME_CHART_ID,
+                  summary_text.SPEND_OUTCOME_CHART_DESCRIPTION.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+              (
+                  summary_text.OUTCOME_CONTRIBUTION_CHART_ID,
+                  summary_text.OUTCOME_CONTRIBUTION_CHART_DESCRIPTION.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+          ],
+      ),
+      (
+          summary_text.PERFORMANCE_BREAKDOWN_CARD_ID,
+          [
+              (
+                  summary_text.ROI_EFFECTIVENESS_CHART_ID,
+                  summary_text.ROI_EFFECTIVENESS_CHART_DESCRIPTION,
+              ),
+              (
+                  summary_text.ROI_MARGINAL_CHART_ID,
+                  summary_text.ROI_MARGINAL_CHART_DESCRIPTION,
+              ),
+              (summary_text.ROI_CHANNEL_CHART_ID,),
+              (
+                  summary_text.CPIK_CHANNEL_CHART_ID,
+                  summary_text.CPIK_CHANNEL_CHART_DESCRIPTION,
+              ),
+          ],
+      ),
+      (
+          summary_text.RESPONSE_CURVES_CARD_ID,
+          [
+              (
+                  summary_text.RESPONSE_CURVES_CHART_ID,
+                  summary_text.RESPONSE_CURVES_CHART_DESCRIPTION_FORMAT.format(
+                      outcome=c.KPI.upper()
+                  ),
+              ),
+              (
+                  summary_text.OPTIMAL_FREQUENCY_CHART_ID,
+                  summary_text.OPTIMAL_FREQ_CHART_DESCRIPTION,
+              ),
+          ],
+      ),
+  ])
+  def test_card_chart_info_use_kpi(self, card_id, expected_chart_tuples):
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer_outcome=self.summarizer_revenue,
+        use_kpi=True,
     )
     card = test_utils.get_child_element(
         summary_html_dom, 'body/cards/card', attribs={'id': card_id}
@@ -750,6 +861,7 @@ class SummarizerTest(parameterized.TestCase):
               '2022-07-23',
               '2022-07-30',
           ]),
+          use_kpi=False,
           plot_separately=False,
           include_ci=False,
           num_channels_displayed=7,
@@ -942,6 +1054,7 @@ class SummarizerTest(parameterized.TestCase):
             template_env=self.mock_template_env,
             media_summary=media_summary,
             selected_times=None,
+            use_kpi=False,
         )
     else:
       arg_selected_times = [f'time_{i}' for i in range(num_time_points)]
@@ -949,6 +1062,7 @@ class SummarizerTest(parameterized.TestCase):
           template_env=self.mock_template_env,
           media_summary=media_summary,
           selected_times=arg_selected_times,
+          use_kpi=False,
       )
 
     media_summary.plot_channel_contribution_area_chart.assert_called_once_with(
@@ -1085,6 +1199,7 @@ class SummarizerTest(parameterized.TestCase):
           selected_times=frozenset(
               self.summarizer_revenue._meridian.input_data.time.values
           ),
+          use_kpi=False,
           plot_separately=False,
           include_ci=False,
           num_channels_displayed=7,

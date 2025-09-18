@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add `use_kpi` arg to `output_model_results_summary`.
 * Add `lognormal_dist_from_mean_std` and `lognormal_dist_from_ci` helper
   functions.
 * Fix `response_curves` when optimized data timeframe is outside of modeled
