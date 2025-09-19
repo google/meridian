@@ -1475,19 +1475,19 @@ class Analyzer:
         calculated.
       new_data: An optional `DataTensors` container with optional new tensors:
         `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, `controls`. If `None`,
-        expected outcome is calculated conditional on the original values of the
-        data tensors that the Meridian object was initialized with. If
-        `new_data` argument is used, expected outcome is calculated conditional
-        on the values of the tensors passed in `new_data` and on the original
-        values of the remaining unset tensors. For example,
+        `organic_frequency`, `non_media_treatments`, `revenue_per_kpi`,
+        `controls`. If `None`, expected outcome is calculated conditional on the
+        original values of the data tensors that the Meridian object was
+        initialized with. If `new_data` argument is used, expected outcome is
+        calculated conditional on the values of the tensors passed in `new_data`
+        and on the original values of the remaining unset tensors. For example,
         `expected_outcome(new_data=DataTensors(reach=new_reach,
         frequency=new_frequency))` calculates expected outcome conditional on
         the original `media`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments` and `controls` tensors and
-        on the new given values for `reach` and `frequency` tensors. The new
-        tensors' dimensions must match the dimensions of the corresponding
-        original tensors from `input_data`.
+        `organic_frequency`, `non_media_treatments`, `revenue_per_kpi`, and
+        `controls` tensors and on the new given values for `reach` and
+        `frequency` tensors. The new tensors' dimensions must match the
+        dimensions of the corresponding original tensors from `input_data`.
       selected_geos: Optional list of containing a subset of geos to include. By
         default, all geos are included.
       selected_times: Optional list of containing a subset of dates to include.
@@ -1521,7 +1521,6 @@ class Analyzer:
         or `sample_prior()` (for `use_posterior=False`) has not been called
         prior to calling this method.
     """
-
     self._check_revenue_data_exists(use_kpi)
     self._check_kpi_transformation(inverse_transform_outcome, use_kpi)
     if self._meridian.is_national:
@@ -1538,7 +1537,9 @@ class Analyzer:
     if new_data is None:
       new_data = DataTensors()
 
-    required_fields = constants.NON_REVENUE_DATA
+    required_fields = (
+        constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
+    )
     filled_tensors = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_fields,
         meridian=self._meridian,
@@ -1592,7 +1593,7 @@ class Analyzer:
     if inverse_transform_outcome:
       outcome_means = self._meridian.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
-        outcome_means *= self._meridian.revenue_per_kpi
+        outcome_means *= filled_tensors.revenue_per_kpi
 
     return self.filter_and_aggregate_geos_and_times(
         outcome_means,
@@ -3146,16 +3147,19 @@ class Analyzer:
     ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
 
     if new_data.get_modified_times(self._meridian) is None:
+      expected_outcome_fields = list(
+          constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
+      )
       expected_outcome_prior = self.expected_outcome(
           use_posterior=False,
-          new_data=new_data.filter_fields(constants.NON_REVENUE_DATA),
+          new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
           **dim_kwargs,
           **batched_kwargs,
       )
       expected_outcome_posterior = self.expected_outcome(
           use_posterior=True,
-          new_data=new_data.filter_fields(constants.NON_REVENUE_DATA),
+          new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
           **dim_kwargs,
           **batched_kwargs,
