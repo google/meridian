@@ -14,9 +14,10 @@
 
 """Backend Abstraction Layer for Meridian."""
 
+import abc
 import functools
 import os
-from typing import Any, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 
 from meridian.backend import config
 import numpy as np
@@ -40,12 +41,17 @@ _ARG_JIT_COMPILE = "jit_compile"
 _ARG_STATIC_ARGNUMS = "static_argnums"
 _ARG_STATIC_ARGNAMES = "static_argnames"
 
+_DEFAULT_SEED_DTYPE = "int32"
+_MAX_INT32 = np.iinfo(np.int32).max
+
 if TYPE_CHECKING:
   import dataclasses
   import jax as _jax
   import tensorflow as _tf
 
   TensorShapeInstance = Union[_tf.TensorShape, Tuple[int, ...]]
+
+SeedType = Any
 
 
 def standardize_dtype(dtype: Any) -> str:
@@ -410,6 +416,7 @@ def _jax_transpose(a, perm=None):
 
   return jnp.transpose(a, axes=perm)
 
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -437,13 +444,60 @@ if _BACKEND == config.Backend.JAX:
     InvalidArgumentError = ValueError
     # pylint: enable=invalid-name
 
+  class _JaxRandom:
+    """Provides JAX-based random number generation utilities.
+
+    This class mirrors the structure needed by `RNGHandler` for JAX.
+    """
+
+    @staticmethod
+    def prng_key(seed):
+      return jax.random.PRNGKey(seed)
+
+    @staticmethod
+    def split(key):
+      return jax.random.split(key)
+
+    @staticmethod
+    def generator_from_seed(seed):
+      raise NotImplementedError("JAX backend does not use Generators.")
+
+    @staticmethod
+    def stateless_split(seed: Any, num: int = 2):
+      raise NotImplementedError(
+          "Direct stateless splitting from an integer seed is not the primary"
+          " pattern used in the JAX backend. Use `backend.random.split(key)`"
+          " instead."
+      )
+
+    @staticmethod
+    def stateless_randint(key, shape, minval, maxval, dtype=jax_ops.int32):
+      """Wrapper for jax.random.randint."""
+      return jax.random.randint(
+          key, shape, minval=minval, maxval=maxval, dtype=dtype
+      )
+
+    @staticmethod
+    def stateless_uniform(
+        key, shape, dtype=jax_ops.float32, minval=0.0, maxval=1.0
+    ):
+      """Replacement for tfp_jax.random.stateless_uniform using jax.random.uniform."""
+      return jax.random.uniform(
+          key, shape=shape, dtype=dtype, minval=minval, maxval=maxval
+      )
+
+    @staticmethod
+    def sanitize_seed(seed):
+      return tfp_jax.random.sanitize_seed(seed)
+
+  random = _JaxRandom()
+
   _ops = jax_ops
   errors = _JaxErrors()
   Tensor = jax.Array
   tfd = tfp_jax.distributions
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
-  random = tfp_jax.random
   mcmc = tfp_jax.mcmc
   _convert_to_tensor = _ops.asarray
 
@@ -528,10 +582,64 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   Tensor = tf_backend.Tensor
   ExtensionType = _ops.experimental.ExtensionType
 
+  class _TfRandom:
+    """Provides TensorFlow-based random number generation utilities.
+
+    This class mirrors the structure needed by `RNGHandler` for TensorFlow.
+    """
+
+    @staticmethod
+    def prng_key(seed):
+      raise NotImplementedError(
+          "TensorFlow backend does not use explicit PRNG keys for"
+          " standard sampling."
+      )
+
+    @staticmethod
+    def split(key):
+      raise NotImplementedError(
+          "TensorFlow backend does not implement explicit key splitting."
+      )
+
+    @staticmethod
+    def generator_from_seed(seed):
+      return tf_backend.random.Generator.from_seed(seed)
+
+    @staticmethod
+    def stateless_split(
+        seed: "tf_backend.Tensor", num: int = 2
+    ) -> "tf_backend.Tensor":
+      return tf_backend.random.experimental.stateless_split(seed, num=num)
+
+    @staticmethod
+    def stateless_randint(
+        seed: "tf_backend.Tensor",
+        shape: "TensorShapeInstance",
+        minval: int,
+        maxval: int,
+        dtype: Any = _DEFAULT_SEED_DTYPE,
+    ) -> "tf_backend.Tensor":
+      return tf_backend.random.stateless_uniform(
+          shape=shape, seed=seed, minval=minval, maxval=maxval, dtype=dtype
+      )
+
+    @staticmethod
+    def stateless_uniform(
+        seed, shape, minval=0, maxval=None, dtype=tf_backend.float32
+    ):
+      return tf_backend.random.stateless_uniform(
+          shape=shape, seed=seed, minval=minval, maxval=maxval, dtype=dtype
+      )
+
+    @staticmethod
+    def sanitize_seed(seed):
+      return tfp.random.sanitize_seed(seed)
+
+  random = _TfRandom()
+
   tfd = tfp.distributions
   bijectors = tfp.bijectors
   experimental = tfp.experimental
-  random = tfp.random
   mcmc = tfp.mcmc
 
   _convert_to_tensor = _ops.convert_to_tensor
@@ -601,6 +709,253 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
 # pylint: enable=g-import-not-at-top,g-bad-import-order
+
+
+def _extract_int_seed(s: Any) -> Optional[int]:
+  """Attempts to extract a scalar Python integer from various input types.
+
+  Args:
+    s: The input seed, which can be an int, Tensor, or array-like object.
+
+  Returns:
+    A Python integer if a scalar integer can be extracted, otherwise None.
+  """
+  try:
+    if isinstance(s, int):
+      return s
+
+    value = np.asarray(s)
+
+    if value.ndim == 0 and np.issubdtype(value.dtype, np.integer):
+      return int(value)
+  # A broad exception is used here because the input `s` can be of many types
+  # (e.g., JAX PRNGKey) which may cause np.asarray or other operations to fail
+  # in unpredictable ways. The goal is to safely attempt extraction and fail
+  # gracefully.
+  except Exception:  # pylint: disable=broad-except
+    pass
+  return None
+
+
+class _BaseRNGHandler(abc.ABC):
+  """A backend-agnostic abstract base class for random number generation state.
+
+  This handler provides a stateful-style interface for consuming randomness,
+  abstracting away the differences between JAX's stateless PRNG keys and
+  TensorFlow's paradigms.
+
+  Attributes:
+    _seed_input: The original seed object provided during initialization.
+    _int_seed: A Python integer extracted from the seed, if possible.
+  """
+
+  def __init__(self, seed: SeedType):
+    """Initializes the RNG handler.
+
+    Args:
+      seed: The initial seed. The accepted type depends on the backend. For JAX,
+        this must be an integer. For TensorFlow, this can be an integer, a
+        sequence of two integers, or a Tensor. If None, the handler becomes a
+        no-op, returning None for all seed requests.
+    """
+    self._seed_input = seed
+    self._int_seed: Optional[int] = _extract_int_seed(seed)
+
+  @abc.abstractmethod
+  def get_kernel_seed(self) -> Any:
+    """Provides a backend-appropriate sanitized seed/key for an MCMC kernel.
+
+    This method exposes the current state of the handler in the format expected
+    by the backend's MCMC machinery. It does not advance the internal state.
+
+    Returns:
+      A backend-specific seed object (e.g., a JAX PRNGKey or a TF Tensor).
+    """
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def get_next_seed(self) -> Any:
+    """Provides the appropriate seed object for the next sequential operation.
+
+    This is primarily used for prior sampling and typically advances the
+    internal state.
+
+    Returns:
+      A backend-specific seed object for a single random operation.
+    """
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def advance_handler(self) -> "_BaseRNGHandler":
+    """Creates a new, independent RNGHandler for a subsequent operation.
+
+    This method is used to generate a new handler derived deterministically
+    from the current handler's state.
+
+    Returns:
+      A new, independent `RNGHandler` instance.
+    """
+    raise NotImplementedError
+
+
+class _JaxRNGHandler(_BaseRNGHandler):
+  """JAX implementation of the RNGHandler using explicit key splitting."""
+
+  def __init__(self, seed: SeedType):
+    """Initializes the JAX RNG handler.
+
+    Args:
+      seed: The initial seed, which must be a Python integer, a scalar integer
+        Tensor/array, or None.
+
+    Raises:
+      ValueError: If the provided seed is not a scalar integer or None.
+    """
+    super().__init__(seed)
+    self._key: Optional["_jax.Array"] = None
+
+    if seed is None:
+      return
+
+    if self._int_seed is None:
+      raise ValueError(
+          "JAX backend requires a seed that is an integer or a scalar array,"
+          f" but got: {type(seed)} with value {seed!r}"
+      )
+
+    self._key = random.prng_key(self._int_seed)
+
+  def get_kernel_seed(self) -> Any:
+    if self._key is None:
+      return None
+    return random.sanitize_seed(self._key)
+
+  def get_next_seed(self) -> Any:
+    if self._key is None:
+      return None
+    self._key, subkey = random.split(self._key)
+    return subkey
+
+  def advance_handler(self) -> "_JaxRNGHandler":
+    if self._key is None:
+      return _JaxRNGHandler(None)
+
+    self._key, subkey_for_new_handler = random.split(self._key)
+    new_seed_tensor = random.stateless_randint(
+        key=subkey_for_new_handler,
+        shape=(),
+        minval=0,
+        maxval=_MAX_INT32,
+        dtype=_DEFAULT_SEED_DTYPE,
+    )
+    return _JaxRNGHandler(np.asarray(new_seed_tensor).item())
+
+
+# TODO: Replace with _TFRNGHandler
+class _TFLegacyRNGHandler(_BaseRNGHandler):
+  """TensorFlow implementation.
+
+  TODO: This class should be removed and replaced with a correct,
+  stateful `tf.random.Generator`-based implementation.
+  """
+
+  def __init__(self, seed: SeedType, *, _sanitized_seed: Optional[Any] = None):
+    """Initializes the TensorFlow legacy RNG handler.
+
+    Args:
+      seed: The initial seed. Can be an integer, a sequence of two integers, a
+        corresponding Tensor, or None.
+      _sanitized_seed: For internal use only. If provided, this pre-computed
+        seed tensor is used directly, and the standard initialization logic for
+        the public `seed` argument is bypassed.
+
+    Raises:
+      ValueError: If `seed` is a sequence with a length other than 2.
+    """
+    super().__init__(seed)
+    self._tf_sanitized_seed: Optional[Any] = None
+
+    if _sanitized_seed is not None:
+      # Internal path: A pre-sanitized seed was provided by a trusted source
+      # so we adopt it directly.
+      self._tf_sanitized_seed = _sanitized_seed
+      return
+
+    if seed is None:
+      return
+
+    if isinstance(seed, Sequence) and len(seed) != 2:
+      raise ValueError(
+          "Invalid seed: Must be either a single integer (stateful seed) or a"
+          " pair of two integers (stateless seed). See"
+          " [tfp.random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)"
+          " for details."
+      )
+
+    if isinstance(seed, int):
+      seed_to_sanitize = (seed, seed)
+    else:
+      seed_to_sanitize = seed
+
+    self._tf_sanitized_seed = random.sanitize_seed(seed_to_sanitize)
+
+  def get_kernel_seed(self) -> Any:
+    return self._tf_sanitized_seed
+
+  def get_next_seed(self) -> Any:
+    """Returns the original integer seed to preserve prior sampling behavior.
+
+    Returns:
+      The original integer seed provided during initialization.
+
+    Raises:
+      RuntimeError: If the handler was not initialized with a scalar integer
+        seed, which is required for the legacy prior sampling path.
+    """
+    if self._seed_input is None:
+      return None
+
+    if self._int_seed is None:
+      raise RuntimeError(
+          "RNGHandler was not initialized with a scalar integer seed, cannot"
+          " provide seed for TensorFlow prior sampling."
+      )
+    return self._int_seed
+
+  def advance_handler(self) -> "_TFLegacyRNGHandler":
+    """Creates a new handler by incrementing the sanitized seed by 1.
+
+    Returns:
+      A new `_TFLegacyRNGHandler` instance with an incremented seed state.
+
+    Raises:
+      RuntimeError: If the handler's sanitized seed was not initialized.
+    """
+    if self._seed_input is None:
+      return _TFLegacyRNGHandler(None)
+
+    if self._tf_sanitized_seed is None:
+      # Should be caught during init, but included for defensive programming.
+      raise RuntimeError("RNGHandler sanitized seed not initialized.")
+
+    new_sanitized_seed = self._tf_sanitized_seed + 1
+
+    # Create a new handler instance, passing the original seed input (to
+    # preserve state like `_int_seed`) and injecting the new sanitized seed
+    # via the private constructor argument.
+    return _TFLegacyRNGHandler(
+        self._seed_input, _sanitized_seed=new_sanitized_seed
+    )
+
+
+if _BACKEND == config.Backend.JAX:
+  RNGHandler = _JaxRNGHandler
+elif _BACKEND == config.Backend.TENSORFLOW:
+  RNGHandler = (
+      _TFLegacyRNGHandler  # TODO: Replace with _TFRNGHandler
+  )
+else:
+  raise ImportError(f"RNGHandler not implemented for backend: {_BACKEND}")
 
 
 def to_tensor(data: Any, dtype: Optional[Any] = None) -> Tensor:  # type: ignore
