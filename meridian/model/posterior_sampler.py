@@ -72,7 +72,7 @@ def _get_tau_g(
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
-@backend.function(autograph=False, jit_compile=True)
+@backend.function(autograph=False, jit_compile=True, static_argnums=())
 def _xla_windowed_adaptive_nuts(**kwargs):
   """XLA wrapper for windowed_adaptive_nuts."""
   return backend.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
