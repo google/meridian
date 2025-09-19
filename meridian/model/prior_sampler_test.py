@@ -604,7 +604,9 @@ class PriorDistributionSamplerTest(
         input_data=input_data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(self._N_DRAWS)
+    prior_samples = meridian.prior_sampler_callable._sample_prior(
+        self._N_DRAWS, seed=0
+    )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 
