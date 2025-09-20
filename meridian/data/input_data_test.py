@@ -1636,6 +1636,12 @@ class InputDataTest(parameterized.TestCase):
         ],
     )
 
+  def test_scaled_centered_kpi_supports_dtype_int(self):
+    data = test_utils.sample_input_data_revenue(n_media_channels=5)
+    data.kpi = data.kpi.astype(int)
+    data.population = data.population.astype(int)
+    self.assertNotEmpty(data.scaled_centered_kpi)
+
 
 class NonpaidInputDataTest(parameterized.TestCase):
   """Tests for non-paid InputData."""
