@@ -450,18 +450,23 @@ class InputData:
       An array of KPI values that have been population-scaled and
     mean-centered by geo.
     """
-    kpi = self.kpi.values
-    population = self.population.values[:, np.newaxis]
+    # Convert to float64 to prevent casting errors with integer data
+    kpi = self.kpi.values.astype(np.float64)
+    population = self.population.values[:, np.newaxis].astype(np.float64)
 
+    # Use float64 arrays for all operations to prevent dtype casting errors
     population_scaled_kpi = np.divide(
-        kpi, population, out=np.zeros_like(kpi), where=(population != 0)
+        kpi, population, out=np.zeros_like(kpi, dtype=np.float64), where=(population != 0)
     )
     population_scaled_mean = np.mean(population_scaled_kpi)
     population_scaled_stdev = np.std(population_scaled_kpi)
+    
+    # Ensure consistent float64 dtype throughout
+    numerator = population_scaled_kpi - population_scaled_mean
     kpi_scaled = np.divide(
-        population_scaled_kpi - population_scaled_mean,
+        numerator,
         population_scaled_stdev,
-        out=np.zeros_like(population_scaled_kpi - population_scaled_mean),
+        out=np.zeros_like(numerator, dtype=np.float64),
         where=(population_scaled_stdev != 0),
     )
     return kpi_scaled - np.mean(kpi_scaled, axis=1, keepdims=True)
