@@ -2970,6 +2970,26 @@ class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
     ):
       _ = mmm.adstock_decay_spec
 
+  def test_from_empty_spec_returns_geometric_decay(self):
+    """Test if an empty spec returns geometric decay."""
+    inp_data = data_test_utils.sample_input_data_revenue(
+        n_media_channels=5,
+        n_rf_channels=2,
+        n_organic_media_channels=4,
+        n_organic_rf_channels=1,
+        n_non_media_channels=3,
+    )
+
+    model_spec = spec.ModelSpec(adstock_decay_spec=None)
+    mmm = model.Meridian(input_data=inp_data, model_spec=model_spec)
+    self.assertEqual(mmm.adstock_decay_spec.media, constants.GEOMETRIC_DECAY)
+    self.assertEqual(mmm.adstock_decay_spec.rf, constants.GEOMETRIC_DECAY)
+    self.assertEqual(
+        mmm.adstock_decay_spec.organic_media, constants.GEOMETRIC_DECAY
+    )
+    self.assertEqual(
+        mmm.adstock_decay_spec.organic_rf, constants.GEOMETRIC_DECAY
+    )
 
 if __name__ == "__main__":
   absltest.main()

@@ -429,6 +429,11 @@ class Meridian:
   @functools.cached_property
   def adstock_decay_spec(self) -> adstock_hill.AdstockDecaySpec:
     """Returns `AdstockDecaySpec` object with correctly mapped channels."""
+    if self.model_spec.adstock_decay_spec is None:
+      return adstock_hill.AdstockDecaySpec.from_consistent_type(
+          constants.DEFAULT_DECAY
+      )
+
     if isinstance(self.model_spec.adstock_decay_spec, str):
       return adstock_hill.AdstockDecaySpec.from_consistent_type(
           self.model_spec.adstock_decay_spec
@@ -444,7 +449,8 @@ class Meridian:
           f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
           " either contain only channel_names"
           f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media', 'organic_rf'}."
+          " be one or more of {'media', 'rf', 'organic_media',"
+          " 'organic_rf'}."
       ) from e
 
   @functools.cached_property

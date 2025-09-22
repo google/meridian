@@ -202,15 +202,14 @@ class ModelSpec:
       `(n_non_media_channels,)` indicating the non-media variables for which the
       non-media value will be scaled by population. If `None`, then no non-media
       variables are scaled by population. Default: `None`.
-    adstock_decay_spec: A string or mapping specifying the adstock decay
-      function for each media, RF, organic media and organic RF channel.
-      * If a string, must be either `'geometric'` or `'binomial'`, specifying
-        that decay function for all channels.
-      * If a mapping, keys should be channel names and values should be
-        `'geometric'` or `'binomial'`, with each key-value pair denoting the
-        adstock decay function to use for that channel. Channels that are not
-        specified in the mapping default to using 'geometric'.
-      Default: `'geometric'`.
+    adstock_decay_spec: An optional string or mapping specifying the adstock
+      decay function for each media, RF, organic media and organic RF channel.
+      If a string, must be either `'geometric'` or `'binomial'`, specifying that
+      decay function for all channels. If a mapping, keys should be channel
+      names and values should be `'geometric'` or `'binomial'`, with each
+      key-value pair denoting the adstock decay function to use for that
+      channel. Channels that are not specified in the mapping default to using
+      'geometric'. If `None`, the default `'geometric'` function is used.
     enable_aks: A boolean indicating whether to use the Automatic Knot Selection
       algorithm to select an optimal number of knots for running the model
       instead of the default 1 for national models and n_times for geo models.
@@ -241,7 +240,7 @@ class ModelSpec:
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
-  adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
+  adstock_decay_spec: str | Mapping[str, str] | None = None
   enable_aks: bool = False
 
   def __post_init__(self):
