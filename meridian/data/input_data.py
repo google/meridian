@@ -454,14 +454,19 @@ class InputData:
     population = self.population.values[:, np.newaxis]
 
     population_scaled_kpi = np.divide(
-        kpi, population, out=np.zeros_like(kpi), where=(population != 0)
+        kpi,
+        population,
+        out=np.zeros_like(kpi, dtype=float),
+        where=(population != 0),
     )
     population_scaled_mean = np.mean(population_scaled_kpi)
     population_scaled_stdev = np.std(population_scaled_kpi)
     kpi_scaled = np.divide(
         population_scaled_kpi - population_scaled_mean,
         population_scaled_stdev,
-        out=np.zeros_like(population_scaled_kpi - population_scaled_mean),
+        out=np.zeros_like(
+            population_scaled_kpi - population_scaled_mean, dtype=float
+        ),
         where=(population_scaled_stdev != 0),
     )
     return kpi_scaled - np.mean(kpi_scaled, axis=1, keepdims=True)
