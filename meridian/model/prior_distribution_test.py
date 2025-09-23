@@ -1892,11 +1892,11 @@ class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
 
     with self.subTest('2d'):
       log_cdf = distribution.log_cdf(value)
-      np.testing.assert_allclose(log_cdf, expected_log_cdf, rtol=1e-5)
+      test_utils.assert_allclose(log_cdf, expected_log_cdf, rtol=1e-5)
 
     with self.subTest('3d'):
       log_cdf = distribution.log_cdf([value])
-      np.testing.assert_allclose(log_cdf, (expected_log_cdf,), rtol=1e-5)
+      test_utils.assert_allclose(log_cdf, (expected_log_cdf,), rtol=1e-5)
 
   @parameterized.named_parameters(
       *zip(
