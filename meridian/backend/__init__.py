@@ -563,6 +563,7 @@ if _BACKEND == config.Backend.JAX:
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
+  int32 = _ops.int32
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     raise NotImplementedError(
@@ -705,6 +706,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   bool_ = _ops.bool
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape
+  int32 = _ops.int32
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
