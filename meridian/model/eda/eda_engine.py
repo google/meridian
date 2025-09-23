@@ -451,6 +451,48 @@ class EDAEngine:
           transformers.CenteringAndScalingTransformer,
       )
 
+  @functools.cached_property
+  def treatment_control_scaled_ds(self) -> xr.Dataset:
+    """Returns a Dataset containing all scaled treatments and controls.
+
+    This includes media, RF impressions, organic media, organic RF impressions,
+    non-media treatments, and control variables, all at the geo level.
+    """
+    to_merge = [
+        da
+        for da in [
+            self.media_scaled_da,
+            self.rf_impressions_scaled_da,
+            self.organic_media_scaled_da,
+            self.organic_rf_impressions_scaled_da,
+            self.controls_scaled_da,
+            self.non_media_scaled_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
+
+  @functools.cached_property
+  def treatment_control_scaled_ds_national(self) -> xr.Dataset:
+    """Returns a Dataset containing all scaled treatments and controls.
+
+    This includes media, RF impressions, organic media, organic RF impressions,
+    non-media treatments, and control variables, all at the national level.
+    """
+    to_merge_national = [
+        da
+        for da in [
+            self.media_scaled_da_national,
+            self.rf_impressions_scaled_da_national,
+            self.organic_media_scaled_da_national,
+            self.organic_rf_impressions_scaled_da_national,
+            self.controls_scaled_da_national,
+            self.non_media_scaled_da_national,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge_national, join='inner')
+
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
     # This should not happen. If it does, it means this function is mis-used.
@@ -599,8 +641,10 @@ class EDAEngine:
     # It's equal to reach * frequency.
     impressions_raw_da = reach_raw_da * frequency_da
     impressions_raw_da.name = (
-        constants.ORGANIC_PREFIX if is_organic else ''
-    ) + constants.RF_IMPRESSIONS
+        constants.ORGANIC_RF_IMPRESSIONS
+        if is_organic
+        else constants.RF_IMPRESSIONS
+    )
     impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
 
     if self._meridian.is_national:
