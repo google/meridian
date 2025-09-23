@@ -1604,6 +1604,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           'eta_m',
           lambda: backend.tfd.Normal(0, 1),
       ),
+      (
+          'eta_m_can_be_negative_truncated_normal',
+          'eta_m',
+          lambda: backend.tfd.TruncatedNormal(0, 1, -1, 1),
+      ),
   )
   def test_validate_support_raises_value_error(
       self,
@@ -1670,6 +1675,25 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
             f'Assigning Deterministic({deterministic_value}) prior to'
             f' {param_name} raises an unexpected ValueError.'
         )
+
+  def test_truncated_normal_with_extreme_bounds(self):
+    # Test TruncatedNormal distributions where the bounds are at extreme
+    # percentiles of the untruncated distribution. TruncatedNormal is handled as
+    # a special case because the `quantile` method fails to return the correct
+    # support range in these cases. The distributions in this test were chosen
+    # because the quantile method returns the following incorrect results:
+    # 1) `tfd.TruncatedNormal(50, 0.5, 1, 51).quantile(0)` returns -inf
+    # 2) `tfd.TruncatedNormal(50, 0.5, 49, 100).quantile(1)` return inf
+    try:
+      prior_distribution.PriorDistribution(
+          eta_m=backend.tfd.TruncatedNormal(50, 0.5, 1, 51),
+          eta_rf=backend.tfd.TruncatedNormal(50, 0.5, 49, 100),
+      )
+    except ValueError:
+      self.fail(
+          'TruncatedNormal distribution with extreme bounds raised an'
+          ' unexpected ValueError.'
+      )
 
   def test_quantile_not_implemented_raises_warning(self):
     with self.assertWarnsRegex(

@@ -1341,6 +1341,15 @@ def _validate_support(
             f'{parameter_name} was assigned a point mass (deterministic) prior'
             f' at {bounds[i]}, which is not allowed.'
         )
+  elif isinstance(tfp_dist, backend.tfd.TruncatedNormal):
+    # TruncatedNormal quantile method is not reliable, particularly when the
+    # `low` or `high` value falls into extreme percentile of the untruncated
+    # distribution. Note that
+    # `TruncatedNormal.experimental_default_event_space_bijector()([-inf, inf])`
+    # returns the correct support range, so this method could be used if the
+    # `quantile` method is found to be unreliable for other distributions.
+    support_min_vals = tfp_dist.low
+    support_max_vals = tfp_dist.high
   else:
     try:
       support_min_vals = tfp_dist.quantile(0)
