@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.2.1] - 2025-09-22
+
 * Add `use_kpi` arg to `output_model_results_summary`.
 * Add `lognormal_dist_from_mean_std` and `lognormal_dist_from_ci` helper
   functions.
@@ -385,4 +387,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.6]: https://github.com/google/meridian/releases/tag/v1.1.6
 [1.1.7]: https://github.com/google/meridian/releases/tag/v1.1.7
 [1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.2.0...HEAD
+[1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.2.1...HEAD
