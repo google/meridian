@@ -70,15 +70,13 @@ class PriorDistributionSampler:
   def _sample_media_priors(
       self,
       n_draws: int,
-      seed: int | None = None,
+      rng_handler: backend.RNGHandler,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the media variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
 
     Returns:
       A mapping of media parameter names to a tensor of shape `[n_draws, n_geos,
@@ -89,31 +87,47 @@ class PriorDistributionSampler:
 
     prior = mmm.prior_broadcast
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
     media_vars = {
-        constants.ALPHA_M: prior.alpha_m.sample(**sample_kwargs),
-        constants.EC_M: prior.ec_m.sample(**sample_kwargs),
-        constants.ETA_M: prior.eta_m.sample(**sample_kwargs),
-        constants.SLOPE_M: prior.slope_m.sample(**sample_kwargs),
+        constants.ALPHA_M: prior.alpha_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.EC_M: prior.ec_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.ETA_M: prior.eta_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.SLOPE_M: prior.slope_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
     }
     beta_gm_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [mmm.n_geos, mmm.n_media_channels],
         name=constants.BETA_GM_DEV,
-    ).sample(**sample_kwargs)
+    ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
     prior_type = mmm.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      media_vars[constants.BETA_M] = prior.beta_m.sample(**sample_kwargs)
+      media_vars[constants.BETA_M] = prior.beta_m.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
     else:
       if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_m = prior.roi_m.sample(**sample_kwargs)
+        treatment_parameter_m = prior.roi_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         media_vars[constants.ROI_M] = treatment_parameter_m
       elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_m = prior.mroi_m.sample(**sample_kwargs)
+        treatment_parameter_m = prior.mroi_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         media_vars[constants.MROI_M] = treatment_parameter_m
       elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_m = prior.contribution_m.sample(**sample_kwargs)
+        treatment_parameter_m = prior.contribution_m.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         media_vars[constants.CONTRIBUTION_M] = treatment_parameter_m
       else:
         raise ValueError(f"Unsupported prior type: {prior_type}")
@@ -125,7 +139,7 @@ class PriorDistributionSampler:
           alpha=media_vars[constants.ALPHA_M],
           ec=media_vars[constants.EC_M],
           slope=media_vars[constants.SLOPE_M],
-          decay_functions=mmm.adstock_decay_spec.media
+          decay_functions=mmm.adstock_decay_spec.media,
       )
       linear_predictor_counterfactual_difference = (
           mmm.linear_predictor_counterfactual_difference_media(
@@ -164,15 +178,13 @@ class PriorDistributionSampler:
   def _sample_rf_priors(
       self,
       n_draws: int,
-      seed: int | None = None,
+      rng_handler: backend.RNGHandler,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the RF variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
 
     Returns:
       A mapping of RF parameter names to a tensor of shape
@@ -183,31 +195,47 @@ class PriorDistributionSampler:
 
     prior = mmm.prior_broadcast
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
     rf_vars = {
-        constants.ALPHA_RF: prior.alpha_rf.sample(**sample_kwargs),
-        constants.EC_RF: prior.ec_rf.sample(**sample_kwargs),
-        constants.ETA_RF: prior.eta_rf.sample(**sample_kwargs),
-        constants.SLOPE_RF: prior.slope_rf.sample(**sample_kwargs),
+        constants.ALPHA_RF: prior.alpha_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.EC_RF: prior.ec_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.ETA_RF: prior.eta_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.SLOPE_RF: prior.slope_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
     }
     beta_grf_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [mmm.n_geos, mmm.n_rf_channels],
         name=constants.BETA_GRF_DEV,
-    ).sample(**sample_kwargs)
+    ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
     prior_type = mmm.model_spec.effective_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      rf_vars[constants.BETA_RF] = prior.beta_rf.sample(**sample_kwargs)
+      rf_vars[constants.BETA_RF] = prior.beta_rf.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
     else:
       if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_rf = prior.roi_rf.sample(**sample_kwargs)
+        treatment_parameter_rf = prior.roi_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         rf_vars[constants.ROI_RF] = treatment_parameter_rf
       elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_rf = prior.mroi_rf.sample(**sample_kwargs)
+        treatment_parameter_rf = prior.mroi_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         rf_vars[constants.MROI_RF] = treatment_parameter_rf
       elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_rf = prior.contribution_rf.sample(**sample_kwargs)
+        treatment_parameter_rf = prior.contribution_rf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         rf_vars[constants.CONTRIBUTION_RF] = treatment_parameter_rf
       else:
         raise ValueError(f"Unsupported prior type: {prior_type}")
@@ -260,15 +288,13 @@ class PriorDistributionSampler:
   def _sample_organic_media_priors(
       self,
       n_draws: int,
-      seed: int | None = None,
+      rng_handler: backend.RNGHandler,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of organic media variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
 
     Returns:
       A mapping of organic media parameter names to a tensor of shape
@@ -279,27 +305,37 @@ class PriorDistributionSampler:
 
     prior = mmm.prior_broadcast
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
     organic_media_vars = {
-        constants.ALPHA_OM: prior.alpha_om.sample(**sample_kwargs),
-        constants.EC_OM: prior.ec_om.sample(**sample_kwargs),
-        constants.ETA_OM: prior.eta_om.sample(**sample_kwargs),
-        constants.SLOPE_OM: prior.slope_om.sample(**sample_kwargs),
+        constants.ALPHA_OM: prior.alpha_om.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.EC_OM: prior.ec_om.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.ETA_OM: prior.eta_om.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.SLOPE_OM: prior.slope_om.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
     }
     beta_gom_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [mmm.n_geos, mmm.n_organic_media_channels],
         name=constants.BETA_GOM_DEV,
-    ).sample(**sample_kwargs)
+    ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
     prior_type = mmm.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
-          **sample_kwargs
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
       )
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       organic_media_vars[constants.CONTRIBUTION_OM] = (
-          prior.contribution_om.sample(**sample_kwargs)
+          prior.contribution_om.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
       )
       incremental_outcome_om = (
           organic_media_vars[constants.CONTRIBUTION_OM] * mmm.total_outcome
@@ -344,15 +380,13 @@ class PriorDistributionSampler:
   def _sample_organic_rf_priors(
       self,
       n_draws: int,
-      seed: int | None = None,
+      rng_handler: backend.RNGHandler,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the organic RF variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
 
     Returns:
       A mapping of organic RF parameter names to a tensor of shape
@@ -363,27 +397,37 @@ class PriorDistributionSampler:
 
     prior = mmm.prior_broadcast
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
     organic_rf_vars = {
-        constants.ALPHA_ORF: prior.alpha_orf.sample(**sample_kwargs),
-        constants.EC_ORF: prior.ec_orf.sample(**sample_kwargs),
-        constants.ETA_ORF: prior.eta_orf.sample(**sample_kwargs),
-        constants.SLOPE_ORF: prior.slope_orf.sample(**sample_kwargs),
+        constants.ALPHA_ORF: prior.alpha_orf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.EC_ORF: prior.ec_orf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.ETA_ORF: prior.eta_orf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.SLOPE_ORF: prior.slope_orf.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
     }
     beta_gorf_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [mmm.n_geos, mmm.n_organic_rf_channels],
         name=constants.BETA_GORF_DEV,
-    ).sample(**sample_kwargs)
+    ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
     prior_type = mmm.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(
-          **sample_kwargs
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
       )
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       organic_rf_vars[constants.CONTRIBUTION_ORF] = (
-          prior.contribution_orf.sample(**sample_kwargs)
+          prior.contribution_orf.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
       )
       incremental_outcome_orf = (
           organic_rf_vars[constants.CONTRIBUTION_ORF] * mmm.total_outcome
@@ -429,15 +473,13 @@ class PriorDistributionSampler:
   def _sample_non_media_treatments_priors(
       self,
       n_draws: int,
-      seed: int | None = None,
+      rng_handler: backend.RNGHandler,
   ) -> Mapping[str, backend.Tensor]:
     """Draws from the prior distributions of the non-media treatment variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
 
     Returns:
       A mapping of non-media treatment parameter names to a tensor of shape
@@ -448,23 +490,27 @@ class PriorDistributionSampler:
 
     prior = mmm.prior_broadcast
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
+
     non_media_treatments_vars = {
-        constants.XI_N: prior.xi_n.sample(**sample_kwargs),
+        constants.XI_N: prior.xi_n.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
     }
     gamma_gn_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [mmm.n_geos, mmm.n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
-    ).sample(**sample_kwargs)
+    ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
     prior_type = mmm.model_spec.non_media_treatments_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       non_media_treatments_vars[constants.GAMMA_N] = prior.gamma_n.sample(
-          **sample_kwargs
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
       )
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       non_media_treatments_vars[constants.CONTRIBUTION_N] = (
-          prior.contribution_n.sample(**sample_kwargs)
+          prior.contribution_n.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
       )
       incremental_outcome_n = (
           non_media_treatments_vars[constants.CONTRIBUTION_N]
@@ -509,16 +555,23 @@ class PriorDistributionSampler:
     if seed is not None:
       backend.set_random_seed(seed)
 
+    rng_handler = backend.RNGHandler(seed)
+
     prior = mmm.prior_broadcast
     # `sample_shape` is prepended to the shape of each BatchBroadcast in `prior`
     # when it is sampled.
     sample_shape = [1, n_draws]
-    sample_kwargs = {constants.SAMPLE_SHAPE: sample_shape, constants.SEED: seed}
 
-    tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(**sample_kwargs)
+    tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(
+        sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+    )
     base_vars = {
-        constants.KNOT_VALUES: prior.knot_values.sample(**sample_kwargs),
-        constants.SIGMA: prior.sigma.sample(**sample_kwargs),
+        constants.KNOT_VALUES: prior.knot_values.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
+        constants.SIGMA: prior.sigma.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        ),
         constants.TAU_G: (
             _get_tau_g(
                 tau_g_excl_baseline=tau_g_excl_baseline,
@@ -540,15 +593,19 @@ class PriorDistributionSampler:
     # there are no control variables in the model.
     if mmm.n_controls:
       base_vars |= {
-          constants.GAMMA_C: prior.gamma_c.sample(**sample_kwargs),
-          constants.XI_C: prior.xi_c.sample(**sample_kwargs),
+          constants.GAMMA_C: prior.gamma_c.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          ),
+          constants.XI_C: prior.xi_c.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          ),
       }
 
       gamma_gc_dev = backend.tfd.Sample(
           backend.tfd.Normal(0, 1),
           [mmm.n_geos, mmm.n_controls],
           name=constants.GAMMA_GC_DEV,
-      ).sample(**sample_kwargs)
+      ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
       base_vars[constants.GAMMA_GC] = backend.tfd.Deterministic(
           base_vars[constants.GAMMA_C][..., backend.newaxis, :]
           + base_vars[constants.XI_C][..., backend.newaxis, :] * gamma_gc_dev,
@@ -556,27 +613,27 @@ class PriorDistributionSampler:
       ).sample()
 
     media_vars = (
-        self._sample_media_priors(n_draws, seed)
+        self._sample_media_priors(n_draws, rng_handler)
         if mmm.media_tensors.media is not None
         else {}
     )
     rf_vars = (
-        self._sample_rf_priors(n_draws, seed)
+        self._sample_rf_priors(n_draws, rng_handler)
         if mmm.rf_tensors.reach is not None
         else {}
     )
     organic_media_vars = (
-        self._sample_organic_media_priors(n_draws, seed)
+        self._sample_organic_media_priors(n_draws, rng_handler)
         if mmm.organic_media_tensors.organic_media is not None
         else {}
     )
     organic_rf_vars = (
-        self._sample_organic_rf_priors(n_draws, seed)
+        self._sample_organic_rf_priors(n_draws, rng_handler)
         if mmm.organic_rf_tensors.organic_reach is not None
         else {}
     )
     non_media_treatments_vars = (
-        self._sample_non_media_treatments_priors(n_draws, seed)
+        self._sample_non_media_treatments_priors(n_draws, rng_handler)
         if mmm.non_media_treatments_normalized is not None
         else {}
     )
