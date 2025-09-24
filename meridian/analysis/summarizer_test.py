@@ -109,6 +109,9 @@ class SummarizerTest(parameterized.TestCase):
     self.reach_frequency = self.reach_frequency_class()
 
     self.summarizer_revenue = summarizer.Summarizer(self.mock_meridian_revenue)
+    self.summarizer_revenue_use_kpi = summarizer.Summarizer(
+        self.mock_meridian_revenue, use_kpi=True
+    )
     self.summarizer_kpi = summarizer.Summarizer(self.mock_meridian_kpi)
 
     self._stub_plotters()
@@ -127,6 +130,17 @@ class SummarizerTest(parameterized.TestCase):
     self.media_summary_patcher.stop()
     self.media_effects_patcher.stop()
     self.reach_frequency_patcher.stop()
+
+  def test_init_warns_if_use_kpi_false_but_no_revenue_per_kpi(self):
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Revenue per KPI is not available, `use_kpi=False` will be ignored.',
+    ):
+      summarizer.Summarizer(self.mock_meridian_kpi, use_kpi=False)
+
+  def test_init_warns_if_use_kpi_true_with_revenue_model(self):
+    with self.assertWarnsRegex(UserWarning, 'Using KPI with a revenue model.'):
+      summarizer.Summarizer(self.mock_meridian_revenue, use_kpi=True)
 
   def _stub_plotters(self):
     self.model_fit.plot_model_fit().to_json.return_value = '{}'
@@ -195,7 +209,6 @@ class SummarizerTest(parameterized.TestCase):
       summarizer_outcome: summarizer.Summarizer,
       start_date: dt.datetime | None = _EARLIEST_DATE,
       end_date: dt.datetime | None = _LATEST_DATE,
-      use_kpi: bool = False,
   ) -> ET.Element:
     outfile_path = tempfile.mkdtemp() + '/summary'
     outfile_name = 'sum.html'
@@ -207,7 +220,6 @@ class SummarizerTest(parameterized.TestCase):
           filepath=outfile_path,
           start_date=start_date.strftime(c.DATE_FORMAT) if start_date else None,
           end_date=end_date.strftime(c.DATE_FORMAT) if end_date else None,
-          use_kpi=use_kpi,
       )
 
       with open(fpath, 'r') as f:
@@ -555,8 +567,7 @@ class SummarizerTest(parameterized.TestCase):
   ])
   def test_card_chart_info_use_kpi(self, card_id, expected_chart_tuples):
     summary_html_dom = self._get_output_model_results_summary_html_dom(
-        summarizer_outcome=self.summarizer_revenue,
-        use_kpi=True,
+        summarizer_outcome=self.summarizer_revenue_use_kpi,
     )
     card = test_utils.get_child_element(
         summary_html_dom, 'body/cards/card', attribs={'id': card_id}
@@ -821,6 +832,7 @@ class SummarizerTest(parameterized.TestCase):
             '2022-08-20',
             '2022-08-27',
         ],
+        use_kpi=False,
     )
 
   def test_media_effects_with_custom_date_range(self):
@@ -847,7 +859,9 @@ class SummarizerTest(parameterized.TestCase):
           start_date=dt.datetime(2022, 6, 4),
           end_date=dt.datetime(2022, 7, 30),
       )
-      self.media_effects_class.assert_called_with(self.mock_meridian_revenue)
+      self.media_effects_class.assert_called_with(
+          self.mock_meridian_revenue, use_kpi=False
+      )
       plot.assert_called_with(
           confidence_level=c.DEFAULT_CONFIDENCE_LEVEL,
           selected_times=frozenset([
@@ -861,7 +875,6 @@ class SummarizerTest(parameterized.TestCase):
               '2022-07-23',
               '2022-07-30',
           ]),
-          use_kpi=False,
           plot_separately=False,
           include_ci=False,
           num_channels_displayed=7,
@@ -900,6 +913,7 @@ class SummarizerTest(parameterized.TestCase):
             '2022-07-23',
             '2022-07-30',
         ],
+        use_kpi=False,
     )
 
   def test_channel_contrib_card_plotters_called(self):
@@ -1054,7 +1068,6 @@ class SummarizerTest(parameterized.TestCase):
             template_env=self.mock_template_env,
             media_summary=media_summary,
             selected_times=None,
-            use_kpi=False,
         )
     else:
       arg_selected_times = [f'time_{i}' for i in range(num_time_points)]
@@ -1062,7 +1075,6 @@ class SummarizerTest(parameterized.TestCase):
           template_env=self.mock_template_env,
           media_summary=media_summary,
           selected_times=arg_selected_times,
-          use_kpi=False,
       )
 
     media_summary.plot_channel_contribution_area_chart.assert_called_once_with(
@@ -1199,7 +1211,6 @@ class SummarizerTest(parameterized.TestCase):
           selected_times=frozenset(
               self.summarizer_revenue._meridian.input_data.time.values
           ),
-          use_kpi=False,
           plot_separately=False,
           include_ci=False,
           num_channels_displayed=7,

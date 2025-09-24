@@ -57,6 +57,8 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     cls.meridian = mock.create_autospec(
         model.Meridian, instance=True, input_data=cls.input_data
     )
+    cls.meridian.input_data.kpi_type = c.REVENUE
+    cls.meridian.input_data.revenue_per_kpi = None
     inference_data = az.InferenceData()
     inference_data.prior = xr.open_dataset(
         os.path.join(_TEST_DATA_DIR, "sample_prior_media_and_rf.nc")
@@ -76,18 +78,26 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     cls.model_diagnostics = visualizer.ModelDiagnostics(cls.meridian)
 
   def test_predictive_accuracy_called_correctly(self):
+    self.mock_analyzer_method.reset_mock()
     self.model_diagnostics.predictive_accuracy_table()
-    self.mock_analyzer_method.assert_called_once()
+    self.mock_analyzer_method.assert_called_once_with(
+        selected_geos=None,
+        selected_times=None,
+        use_kpi=True,
+        batch_size=c.DEFAULT_BATCH_SIZE,
+    )
 
   def test_predictive_accuracy_selected_geos_times_called_correctly(self):
+    self.mock_analyzer_method.reset_mock()
     self.model_diagnostics.predictive_accuracy_table(
         selected_geos=["geo 1", "geo 2"],
         selected_times=["2021-02-22", "2021-03-01"],
     )
-    self.mock_analyzer_method.assert_called_with(
+    self.mock_analyzer_method.assert_called_once_with(
         selected_geos=["geo 1", "geo 2"],
         selected_times=["2021-02-22", "2021-03-01"],
-        batch_size=100,
+        use_kpi=True,
+        batch_size=c.DEFAULT_BATCH_SIZE,
     )
 
   @parameterized.named_parameters(
@@ -180,6 +190,57 @@ class ModelDiagnosticsTest(parameterized.TestCase):
       self.model_diagnostics.predictive_accuracy_table(
           column_var=c.MU_T,
       )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_kpi_false_with_revenue",
+          use_kpi_init=False,
+          has_revenue_per_kpi=True,
+          expected_use_kpi_in_analyzer=False,
+      ),
+      dict(
+          testcase_name="use_kpi_false_no_revenue",
+          use_kpi_init=False,
+          has_revenue_per_kpi=False,
+          expected_use_kpi_in_analyzer=True,
+      ),
+      dict(
+          testcase_name="use_kpi_true_with_revenue",
+          use_kpi_init=True,
+          has_revenue_per_kpi=True,
+          expected_use_kpi_in_analyzer=True,
+      ),
+      dict(
+          testcase_name="use_kpi_true_no_revenue",
+          use_kpi_init=True,
+          has_revenue_per_kpi=False,
+          expected_use_kpi_in_analyzer=True,
+      ),
+  )
+  def test_init_use_kpi_logic(
+      self, use_kpi_init, has_revenue_per_kpi, expected_use_kpi_in_analyzer
+  ):
+    self.mock_analyzer_method.reset_mock()
+    input_data_mock = mock.create_autospec(input_data.InputData, instance=True)
+    input_data_mock.kpi_type = c.NON_REVENUE
+    meridian = mock.create_autospec(
+        model.Meridian, instance=True, input_data=input_data_mock
+    )
+    if has_revenue_per_kpi:
+      meridian.input_data.revenue_per_kpi = mock.Mock()
+    else:
+      meridian.input_data.revenue_per_kpi = None
+
+    model_diagnostics = visualizer.ModelDiagnostics(
+        meridian, use_kpi=use_kpi_init
+    )
+    model_diagnostics.predictive_accuracy_table()
+    self.mock_analyzer_method.assert_called_once_with(
+        selected_geos=None,
+        selected_times=None,
+        use_kpi=expected_use_kpi_in_analyzer,
+        batch_size=c.DEFAULT_BATCH_SIZE,
+    )
 
   def test_distribution_pre_fitting_raises_exception(self):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
@@ -692,6 +753,8 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     cls.meridian = mock.create_autospec(
         model.Meridian, instance=True, input_data=cls.input_data
     )
+    cls.meridian.input_data.kpi_type = c.REVENUE
+    cls.meridian.input_data.revenue_per_kpi = None
     cls.mock_optimal_frequency_data = (
         test_utils.generate_optimal_frequency_data()
     )
@@ -712,20 +775,20 @@ class ReachAndFrequencyTest(parameterized.TestCase):
         self.meridian, selected_times=times1, use_kpi=False
     )
     self.mock_optimal_freq_method.assert_called_with(
-        selected_times=times1, use_kpi=False
+        selected_times=times1, use_kpi=True
     )
     reach_and_frequency.update_optimal_reach_and_frequency_selected_times(
         selected_times=None
     )
     self.mock_optimal_freq_method.assert_called_with(
-        selected_times=None, use_kpi=False
+        selected_times=None, use_kpi=True
     )
     times2 = ["2023-02-01", "2023-06-30"]
     reach_and_frequency.update_optimal_reach_and_frequency_selected_times(
         selected_times=times2
     )
     self.mock_optimal_freq_method.assert_called_with(
-        selected_times=times2, use_kpi=False
+        selected_times=times2, use_kpi=True
     )
 
   def test_reach_and_frequency_plot_optimal_freq_correct_line(self):
