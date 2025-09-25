@@ -65,9 +65,12 @@ class ModelSpec:
       to the actual shape of the parameter vector. See `paid_media_prior_type`
       for related details.
     media_effects_dist: A string to specify the distribution of media random
-      effects across geos. This attribute is not used with a national-level
-      model. Allowed values: `'normal'` or `'log_normal'`. Default:
-      `'log_normal'`.
+      effects across geos. Allowed values for a geo-level model: `'normal'` or
+      `'log_normal'`. Allowed values for a national-level model: `'normal'`.
+      Although national-level models do not use random effects, the normal
+      distribution effects interpretation of regression coefficients which is
+      important for prior setting. Default: `'log_normal'`. For a national-level
+      model, `media_effects_dist` is automatically set to 'normal'.
     hill_before_adstock: A boolean indicating whether to apply the Hill function
       before the Adstock function, instead of the default order of Adstock
       before Hill. This argument does not apply to RF channels. Default:
