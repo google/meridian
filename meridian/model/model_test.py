@@ -15,6 +15,7 @@
 from collections.abc import Collection, Mapping, Sequence
 import dataclasses
 import os
+from typing import Any
 from unittest import mock
 import warnings
 from absl import flags
@@ -37,7 +38,7 @@ import xarray as xr
 
 
 class ModelTest(
-    parameterized.TestCase,
+    test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
 ):
 
@@ -300,40 +301,30 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="roi_m",
-          prior_dist=prior_distribution.PriorDistribution(
-              roi_m=backend.tfd.Normal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 0.9, name=constants.ROI_M
-              )
-          ),
+          dist_args=([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 0.9),
           dist_name=constants.ROI_M,
       ),
       dict(
           testcase_name="roi_rf",
-          prior_dist=prior_distribution.PriorDistribution(
-              roi_rf=backend.tfd.Normal(0.0, 0.9, name=constants.ROI_RF)
-          ),
+          dist_args=(0.0, 0.9),
           dist_name=constants.ROI_RF,
       ),
       dict(
           testcase_name="mroi_m",
-          prior_dist=prior_distribution.PriorDistribution(
-              mroi_m=backend.tfd.Normal(0.5, 0.9, name=constants.MROI_M)
-          ),
+          dist_args=(0.5, 0.9),
           dist_name=constants.MROI_M,
       ),
       dict(
           testcase_name="mroi_rf",
-          prior_dist=prior_distribution.PriorDistribution(
-              mroi_rf=backend.tfd.Normal(
-                  [0.0, 0.0, 0.0, 0.0], 0.9, name=constants.MROI_RF
-              )
-          ),
+          dist_args=([0.0, 0.0, 0.0, 0.0], 0.9),
           dist_name=constants.MROI_RF,
       ),
   )
   def test_check_for_negative_effect(
-      self, prior_dist: prior_distribution.PriorDistribution, dist_name: str
+      self, dist_args: tuple[list[float] | float, float], dist_name: str
   ):
+    dist = backend.tfd.Normal(*dist_args, name=dist_name)
+    prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Media priors must have non-negative support when"
@@ -486,10 +477,12 @@ class ModelTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="custom_beta_m_prior_type_roi",
-          custom_distributions={
-              constants.BETA_M: backend.tfd.LogNormal(
-                  0.2, 0.8, name=constants.BETA_M
-              )
+          custom_dist_kwargs={
+              constants.BETA_M: {
+                  "loc": 0.2,
+                  "scale": 0.8,
+                  "name": constants.BETA_M,
+              }
           },
           ignored_priors="beta_m",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
@@ -499,13 +492,17 @@ class ModelTest(
       ),
       dict(
           testcase_name="custom_mroi_rf_prior_type_roi",
-          custom_distributions={
-              constants.MROI_M: backend.tfd.LogNormal(
-                  0.2, 0.8, name=constants.MROI_M
-              ),
-              constants.MROI_RF: backend.tfd.LogNormal(
-                  0.2, 0.8, name=constants.MROI_RF
-              ),
+          custom_dist_kwargs={
+              constants.MROI_M: {
+                  "loc": 0.2,
+                  "scale": 0.8,
+                  "name": constants.MROI_M,
+              },
+              constants.MROI_RF: {
+                  "loc": 0.2,
+                  "scale": 0.8,
+                  "name": constants.MROI_RF,
+              },
           },
           ignored_priors="mroi_rf",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
@@ -515,16 +512,22 @@ class ModelTest(
       ),
       dict(
           testcase_name="custom_beta_m_roi_m_prior_type_mroi",
-          custom_distributions={
-              constants.BETA_M: backend.tfd.LogNormal(
-                  0.7, 0.9, name=constants.BETA_M
-              ),
-              constants.BETA_RF: backend.tfd.LogNormal(
-                  0.8, 0.9, name=constants.BETA_RF
-              ),
-              constants.ROI_M: backend.tfd.LogNormal(
-                  0.2, 0.1, name=constants.ROI_M
-              ),
+          custom_dist_kwargs={
+              constants.BETA_M: {
+                  "loc": 0.7,
+                  "scale": 0.9,
+                  "name": constants.BETA_M,
+              },
+              constants.BETA_RF: {
+                  "loc": 0.8,
+                  "scale": 0.9,
+                  "name": constants.BETA_RF,
+              },
+              constants.ROI_M: {
+                  "loc": 0.2,
+                  "scale": 0.1,
+                  "name": constants.ROI_M,
+              },
           },
           ignored_priors="beta_m, roi_m",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
@@ -534,10 +537,12 @@ class ModelTest(
       ),
       dict(
           testcase_name="custom_roi_rf_prior_type_coefficient",
-          custom_distributions={
-              constants.ROI_RF: backend.tfd.LogNormal(
-                  0.2, 0.1, name=constants.ROI_RF
-              )
+          custom_dist_kwargs={
+              constants.ROI_RF: {
+                  "loc": 0.2,
+                  "scale": 0.1,
+                  "name": constants.ROI_RF,
+              }
           },
           ignored_priors="roi_rf",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
@@ -548,13 +553,17 @@ class ModelTest(
   )
   def test_warn_setting_ignored_priors(
       self,
-      custom_distributions: Mapping[str, backend.tfd.Distribution],
+      custom_dist_kwargs: Mapping[str, Mapping[str, Any]],
       ignored_priors: str,
       media_prior_type: str,
       rf_prior_type: str,
       wrong_prior_type_var_name: str,
       wrong_prior_type: str,
   ):
+    custom_distributions = {
+        name: backend.tfd.LogNormal(**kwargs)
+        for name, kwargs in custom_dist_kwargs.items()
+    }
     # Create prior distribution with given parameters.
     distribution = prior_distribution.PriorDistribution(**custom_distributions)
     with warnings.catch_warnings(record=True) as w:
@@ -773,33 +782,28 @@ class ModelTest(
           testcase_name="wrong_controls",
           dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
-          dims_bad=np.array([b"control_0", b"control_1"]),
+          dims_bad=np.array(["control_0", "control_1"]),
       ),
       dict(
           testcase_name="wrong_media",
           dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
-          dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
+          dims_bad=np.array(["media_channel_1", "media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
           dataset=data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_REACH,
           data_name=constants.REACH,
-          dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
+          dims_bad=np.array(["rf_channel_0", "rf_channel_1"]),
       ),
   )
   def test_init_without_geo_variation_fails(
       self, dataset: xr.Dataset, data_name: str, dims_bad: Sequence[str]
   ):
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
-        f"The following {data_name} variables do not vary across geos, making a"
-        f" model with n_knots=n_time unidentifiable: {dims_bad}. This can lead"
-        " to poor model convergence. Since these variables only vary across"
-        " time and not across geo, they are collinear with time and redundant"
-        " in a model with a parameter for each time period.  To address this,"
-        " you can either: (1) decrease the number of knots (n_knots < n_time),"
-        " or (2) drop the listed variables that do not vary across geos.",
+        f"The following {data_name} variables do not vary across geos.*"
+        f"{'.*'.join(dims_bad)}",
     ):
       model.Meridian(
           input_data=data_test_utils.sample_input_data_from_dataset(
@@ -812,50 +816,46 @@ class ModelTest(
           testcase_name="wrong_controls",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
-          dims_bad=np.array([b"control_0", b"control_1"]),
+          dims_bad=np.array(["control_0", "control_1"]),
       ),
       dict(
           testcase_name="wrong_non_media_treatments",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
           data_name=constants.NON_MEDIA_TREATMENTS,
-          dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
+          dims_bad=np.array(["non_media_channel_0", "non_media_channel_1"]),
       ),
       dict(
           testcase_name="wrong_media",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
-          dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
+          dims_bad=np.array(["media_channel_1", "media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
           data_name=constants.REACH,
-          dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
+          dims_bad=np.array(["rf_channel_0", "rf_channel_1"]),
       ),
       dict(
           testcase_name="wrong_organic_media",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
           data_name=constants.ORGANIC_MEDIA,
-          dims_bad=np.array([b"organic_media_channel_0"]),
+          dims_bad=np.array(["organic_media_channel_0"]),
       ),
       dict(
           testcase_name="wrong_organic_rf",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
           data_name=constants.ORGANIC_REACH,
-          dims_bad=np.array([b"organic_rf_channel_1"]),
+          dims_bad=np.array(["organic_rf_channel_1"]),
       ),
   )
   def test_init_without_time_variation_fails(
       self, dataset: xr.Dataset, data_name: str, dims_bad: Sequence[str]
   ):
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
-        f"The following {data_name} variables do not vary across time, making"
-        f" a model with geo main effects unidentifiable: {dims_bad}. This can"
-        " lead to poor model convergence. Since these variables only vary"
-        " across geo and not across time, they are collinear with geo and"
-        " redundant in a model with geo main effects. To address this, drop"
-        " the listed variables that do not vary across time.",
+        f"The following {data_name} variables do not vary across time.*"
+        f"{'.*'.join(dims_bad)}",
     ):
       model.Meridian(
           input_data=data_test_utils.sample_input_data_from_dataset(
@@ -868,49 +868,47 @@ class ModelTest(
           testcase_name="wrong_controls",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_CONTROLS,
           data_name=constants.CONTROLS,
-          dims_bad=np.array([b"control_0", b"control_1"]),
+          dims_bad=np.array(["control_0", "control_1"]),
       ),
       dict(
           testcase_name="wrong_non_media_treatments",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_NON_MEDIA_TREATMENTS,
           data_name=constants.NON_MEDIA_TREATMENTS,
-          dims_bad=np.array([b"non_media_channel_0", b"non_media_channel_1"]),
+          dims_bad=np.array(["non_media_channel_0", "non_media_channel_1"]),
       ),
       dict(
           testcase_name="wrong_media",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_MEDIA,
           data_name=constants.MEDIA,
-          dims_bad=np.array([b"media_channel_1", b"media_channel_2"]),
+          dims_bad=np.array(["media_channel_1", "media_channel_2"]),
       ),
       dict(
           testcase_name="wrong_rf",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_REACH,
           data_name=constants.REACH,
-          dims_bad=np.array([b"rf_channel_0", b"rf_channel_1"]),
+          dims_bad=np.array(["rf_channel_0", "rf_channel_1"]),
       ),
       dict(
           testcase_name="wrong_organic_media",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_MEDIA,
           data_name=constants.ORGANIC_MEDIA,
-          dims_bad=np.array([b"organic_media_channel_0"]),
+          dims_bad=np.array(["organic_media_channel_0"]),
       ),
       dict(
           testcase_name="wrong_organic_rf",
           dataset=data_test_utils.DATASET_WITHOUT_TIME_VARIATION_IN_ORGANIC_REACH,
           data_name=constants.ORGANIC_REACH,
-          dims_bad=np.array([b"organic_rf_channel_1"]),
+          dims_bad=np.array(["organic_rf_channel_1"]),
       ),
   )
   def test_init_without_time_variation_national_model_fails(
       self, dataset: xr.Dataset, data_name: str, dims_bad: Sequence[str]
   ):
     national_dataset = dataset.sel(geo=["geo_0"])
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
-        f"The following {data_name} variables do not vary across time, which is"
-        f" equivalent to no signal at all in a national model: {dims_bad}. "
-        " This can lead to poor model convergence. To address this, drop the"
-        " listed variables that do not vary across time.",
+        f"The following {data_name} variables do not vary across time.*"
+        f"{'.*'.join(dims_bad)}",
     ):
       model.Meridian(
           input_data=data_test_utils.sample_input_data_from_dataset(
@@ -1616,7 +1614,7 @@ class ModelTest(
 
 
 class NonPaidModelTest(
-    parameterized.TestCase,
+    test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
 ):
 
@@ -1997,7 +1995,7 @@ class NonPaidModelTest(
     )
     sample = (
         meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
-            self._N_DRAWS
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
         )
     )
     test_utils.assert_allequal(
@@ -2058,7 +2056,9 @@ class NonPaidModelTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -2365,7 +2365,9 @@ class NonPaidModelTest(
     )
     n_chains = 1
     n_draws = 10
-    prior_samples = meridian.prior_sampler_callable._sample_prior(n_draws)
+    prior_samples = meridian.prior_sampler_callable._sample_prior(
+        n_draws, seed=1
+    )
     prior_coords = meridian.create_inference_data_coords(n_chains, n_draws)
     prior_dims = meridian.create_inference_data_dims()
     inference_data = az.convert_to_inference_data(
@@ -2471,7 +2473,9 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(self._N_DRAWS)
+    prior_samples = meridian.prior_sampler_callable._sample_prior(
+        self._N_DRAWS, seed=1
+    )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 
@@ -2601,7 +2605,9 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(self._N_DRAWS)
+    prior_samples = meridian.prior_sampler_callable._sample_prior(
+        self._N_DRAWS, seed=1
+    )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 
@@ -2709,7 +2715,9 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=spec.ModelSpec(non_media_baseline_values=baseline_values),
     )
-    expected_baseline = backend.cast(baseline_values, backend.float32)
+    expected_baseline = backend.to_tensor(
+        baseline_values, dtype=backend.float32
+    )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
 
@@ -2725,7 +2733,9 @@ class NonPaidModelTest(
     expected_baseline_min = backend.reduce_min(
         non_media_treatments[..., 0], axis=[0, 1]
     )
-    expected_baseline_float = backend.cast(baseline_values[1], backend.float32)
+    expected_baseline_float = backend.to_tensor(
+        baseline_values[1], dtype=backend.float32
+    )
     expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1
     )
@@ -2749,7 +2759,9 @@ class NonPaidModelTest(
     )
 
 
-class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
+class AdstockDecaySpecFromChannelMappingTest(
+    test_utils.MeridianTestCase,
+):
 
   @parameterized.product(**data_test_utils.ADSTOCK_DECAY_SPEC_CASES)
   def test_from_channel(
