@@ -561,16 +561,7 @@ class PosteriorMCMCSampler:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
-    if seed is not None and isinstance(seed, Sequence) and len(seed) != 2:
-      raise ValueError(
-          "Invalid seed: Must be either a single integer (stateful seed) or a"
-          " pair of two integers (stateless seed). See"
-          " [tfp.random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)"
-          " for details."
-      )
-    if seed is not None and isinstance(seed, int):
-      seed = (seed, seed)
-    seed = backend.random.sanitize_seed(seed) if seed is not None else None
+    rng_handler = backend.RNGHandler(seed)
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
 
@@ -580,6 +571,8 @@ class PosteriorMCMCSampler:
     states = []
     traces = []
     for n_chains_batch in n_chains_list:
+      kernel_seed = rng_handler.get_kernel_seed()
+
       try:
         mcmc = _xla_windowed_adaptive_nuts(
             n_draws=n_burnin + n_keep,
@@ -593,7 +586,7 @@ class PosteriorMCMCSampler:
             max_energy_diff=max_energy_diff,
             unrolled_leapfrog_steps=unrolled_leapfrog_steps,
             parallel_iterations=parallel_iterations,
-            seed=seed,
+            seed=kernel_seed,
             **pins,
         )
       except backend.errors.ResourceExhaustedError as error:
@@ -602,8 +595,7 @@ class PosteriorMCMCSampler:
             " integers as `n_chains` to sample chains serially (see"
             " https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error)"
         ) from error
-      if seed is not None:
-        seed += 1
+      rng_handler = rng_handler.advance_handler()
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
 
