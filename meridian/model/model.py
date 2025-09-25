@@ -444,7 +444,8 @@ class Meridian:
           f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
           " either contain only channel_names"
           f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media', 'organic_rf'}."
+          " be one or more of {'media', 'rf', 'organic_media',"
+          " 'organic_rf'}."
       ) from e
 
   @functools.cached_property
@@ -561,7 +562,9 @@ class Meridian:
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = backend.cast(baseline_value, backend.float32)
+        baseline_for_channel = backend.to_tensor(
+            baseline_value, dtype=backend.float32
+        )
       else:
         raise ValueError(
             f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
