@@ -47,28 +47,28 @@ class ReachFrequencyData:
   Attributes:
     reach_raw_da: Raw reach data.
     reach_scaled_da: Scaled reach data.
-    reach_raw_da_national: National raw reach data.
-    reach_scaled_da_national: National scaled reach data.
+    national_reach_raw_da: National raw reach data.
+    national_reach_scaled_da: National scaled reach data.
     frequency_da: Frequency data.
-    frequency_da_national: National frequency data.
+    national_frequency_da: National frequency data.
     rf_impressions_scaled_da: Scaled reach * frequency impressions data.
-    rf_impressions_scaled_da_national: National scaled reach * frequency
+    national_rf_impressions_scaled_da: National scaled reach * frequency
       impressions data.
     rf_impressions_raw_da: Raw reach * frequency impressions data.
-    rf_impressions_raw_da_national: National raw reach * frequency impressions
+    national_rf_impressions_raw_da: National raw reach * frequency impressions
       data.
   """
 
   reach_raw_da: xr.DataArray
   reach_scaled_da: xr.DataArray
-  reach_raw_da_national: xr.DataArray
-  reach_scaled_da_national: xr.DataArray
+  national_reach_raw_da: xr.DataArray
+  national_reach_scaled_da: xr.DataArray
   frequency_da: xr.DataArray
-  frequency_da_national: xr.DataArray
+  national_frequency_da: xr.DataArray
   rf_impressions_scaled_da: xr.DataArray
-  rf_impressions_scaled_da_national: xr.DataArray
+  national_rf_impressions_scaled_da: xr.DataArray
   rf_impressions_raw_da: xr.DataArray
-  rf_impressions_raw_da_national: xr.DataArray
+  national_rf_impressions_raw_da: xr.DataArray
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -212,8 +212,8 @@ class EDAEngine:
     return controls_scaled_da
 
   @functools.cached_property
-  def controls_scaled_da_national(self) -> xr.DataArray | None:
-    """Returns the national controls data array."""
+  def national_controls_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled controls data array."""
     if self._meridian.input_data.controls is None:
       return None
     if self._meridian.is_national:
@@ -259,7 +259,7 @@ class EDAEngine:
     return media_spend_da
 
   @functools.cached_property
-  def media_spend_da_national(self) -> xr.DataArray | None:
+  def national_media_spend_da(self) -> xr.DataArray | None:
     """Returns the national media spend data array."""
     if self._meridian.input_data.media_spend is None:
       return None
@@ -277,7 +277,8 @@ class EDAEngine:
       )
 
   @functools.cached_property
-  def media_raw_da_national(self) -> xr.DataArray | None:
+  def national_media_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw media data array."""
     if self.media_raw_da is None:
       return None
     if self._meridian.is_national:
@@ -290,7 +291,8 @@ class EDAEngine:
       )
 
   @functools.cached_property
-  def media_scaled_da_national(self) -> xr.DataArray | None:
+  def national_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled media data array."""
     if self.media_scaled_da is None:
       return None
     if self._meridian.is_national:
@@ -319,7 +321,8 @@ class EDAEngine:
     return self._truncate_media_time(organic_media_scaled_da)
 
   @functools.cached_property
-  def organic_media_raw_da_national(self) -> xr.DataArray | None:
+  def national_organic_media_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic media data array."""
     if self.organic_media_raw_da is None:
       return None
     if self._meridian.is_national:
@@ -329,7 +332,8 @@ class EDAEngine:
       return self._aggregate_and_scale_geo_da(self.organic_media_raw_da, None)
 
   @functools.cached_property
-  def organic_media_scaled_da_national(self) -> xr.DataArray | None:
+  def national_organic_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic media data array."""
     if self.organic_media_scaled_da is None:
       return None
     if self._meridian.is_national:
@@ -352,8 +356,8 @@ class EDAEngine:
     return non_media_scaled_da
 
   @functools.cached_property
-  def non_media_scaled_da_national(self) -> xr.DataArray | None:
-    """Returns the national non-media treatment data array."""
+  def national_non_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled non-media treatment data array."""
     if self._meridian.input_data.non_media_treatments is None:
       return None
     if self._meridian.is_national:
@@ -382,7 +386,8 @@ class EDAEngine:
     return rf_spend_da
 
   @functools.cached_property
-  def rf_spend_da_national(self) -> xr.DataArray | None:
+  def national_rf_spend_da(self) -> xr.DataArray | None:
+    """Returns the national RF spend data array."""
     if self._meridian.input_data.rf_spend is None:
       return None
     if self._meridian.is_national:
@@ -418,16 +423,18 @@ class EDAEngine:
     return self._rf_data.reach_scaled_da
 
   @property
-  def reach_raw_da_national(self) -> xr.DataArray | None:
+  def national_reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_raw_da_national
+    return self._rf_data.national_reach_raw_da
 
   @property
-  def reach_scaled_da_national(self) -> xr.DataArray | None:
+  def national_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_scaled_da_national
+    return self._rf_data.national_reach_scaled_da
 
   @property
   def frequency_da(self) -> xr.DataArray | None:
@@ -436,10 +443,11 @@ class EDAEngine:
     return self._rf_data.frequency_da
 
   @property
-  def frequency_da_national(self) -> xr.DataArray | None:
+  def national_frequency_da(self) -> xr.DataArray | None:
+    """Returns the national frequency data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.frequency_da_national
+    return self._rf_data.national_frequency_da
 
   @property
   def rf_impressions_raw_da(self) -> xr.DataArray | None:
@@ -448,10 +456,11 @@ class EDAEngine:
     return self._rf_data.rf_impressions_raw_da
 
   @property
-  def rf_impressions_raw_da_national(self) -> xr.DataArray | None:
+  def national_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.rf_impressions_raw_da_national
+    return self._rf_data.national_rf_impressions_raw_da
 
   @property
   def rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -460,10 +469,11 @@ class EDAEngine:
     return self._rf_data.rf_impressions_scaled_da
 
   @property
-  def rf_impressions_scaled_da_national(self) -> xr.DataArray | None:
+  def national_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.rf_impressions_scaled_da_national
+    return self._rf_data.national_rf_impressions_scaled_da
 
   @functools.cached_property
   def _organic_rf_data(self) -> ReachFrequencyData | None:
@@ -488,16 +498,18 @@ class EDAEngine:
     return self._organic_rf_data.reach_scaled_da
 
   @property
-  def organic_reach_raw_da_national(self) -> xr.DataArray | None:
+  def national_organic_reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_raw_da_national
+    return self._organic_rf_data.national_reach_raw_da
 
   @property
-  def organic_reach_scaled_da_national(self) -> xr.DataArray | None:
+  def national_organic_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_scaled_da_national
+    return self._organic_rf_data.national_reach_scaled_da
 
   @property
   def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -506,10 +518,11 @@ class EDAEngine:
     return self._organic_rf_data.rf_impressions_scaled_da
 
   @property
-  def organic_rf_impressions_scaled_da_national(self) -> xr.DataArray | None:
+  def national_organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic RF impressions data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.rf_impressions_scaled_da_national
+    return self._organic_rf_data.national_rf_impressions_scaled_da
 
   @property
   def organic_frequency_da(self) -> xr.DataArray | None:
@@ -518,10 +531,11 @@ class EDAEngine:
     return self._organic_rf_data.frequency_da
 
   @property
-  def organic_frequency_da_national(self) -> xr.DataArray | None:
+  def national_organic_frequency_da(self) -> xr.DataArray | None:
+    """Returns the national organic frequency data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.frequency_da_national
+    return self._organic_rf_data.national_frequency_da
 
   @property
   def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
@@ -530,10 +544,11 @@ class EDAEngine:
     return self._organic_rf_data.rf_impressions_raw_da
 
   @property
-  def organic_rf_impressions_raw_da_national(self) -> xr.DataArray | None:
+  def national_organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic RF impressions data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.rf_impressions_raw_da_national
+    return self._organic_rf_data.national_rf_impressions_raw_da
 
   @functools.cached_property
   def geo_population_da(self) -> xr.DataArray | None:
@@ -554,7 +569,8 @@ class EDAEngine:
     )
 
   @functools.cached_property
-  def kpi_scaled_da_national(self) -> xr.DataArray:
+  def national_kpi_scaled_da(self) -> xr.DataArray:
+    """Returns the national scaled KPI data array."""
     if self._meridian.is_national:
       return self.kpi_scaled_da.squeeze(constants.GEO)
     else:
@@ -586,7 +602,7 @@ class EDAEngine:
     return xr.merge(to_merge, join='inner')
 
   @functools.cached_property
-  def treatment_control_scaled_ds_national(self) -> xr.Dataset:
+  def national_treatment_control_scaled_ds(self) -> xr.Dataset:
     """Returns a Dataset containing all scaled treatments and controls.
 
     This includes media, RF impressions, organic media, organic RF impressions,
@@ -595,12 +611,12 @@ class EDAEngine:
     to_merge_national = [
         da
         for da in [
-            self.media_scaled_da_national,
-            self.rf_impressions_scaled_da_national,
-            self.organic_media_scaled_da_national,
-            self.organic_rf_impressions_scaled_da_national,
-            self.controls_scaled_da_national,
-            self.non_media_scaled_da_national,
+            self.national_media_scaled_da,
+            self.national_rf_impressions_scaled_da,
+            self.national_organic_media_scaled_da,
+            self.national_organic_rf_impressions_scaled_da,
+            self.national_controls_scaled_da,
+            self.national_non_media_scaled_da,
         ]
         if da is not None
     ]
@@ -761,41 +777,41 @@ class EDAEngine:
     impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
 
     if self._meridian.is_national:
-      reach_raw_da_national = reach_raw_da.squeeze(constants.GEO)
-      reach_scaled_da_national = reach_scaled_da.squeeze(constants.GEO)
-      impressions_raw_da_national = impressions_raw_da.squeeze(constants.GEO)
-      frequency_da_national = frequency_da.squeeze(constants.GEO)
+      national_reach_raw_da = reach_raw_da.squeeze(constants.GEO)
+      national_reach_scaled_da = reach_scaled_da.squeeze(constants.GEO)
+      national_impressions_raw_da = impressions_raw_da.squeeze(constants.GEO)
+      national_frequency_da = frequency_da.squeeze(constants.GEO)
 
       # Scaled impressions
       impressions_scaled_da = self._scale_xarray(
           impressions_raw_da, transformers.MediaTransformer
       )
-      impressions_scaled_da_national = impressions_scaled_da.squeeze(
+      national_impressions_scaled_da = impressions_scaled_da.squeeze(
           constants.GEO
       )
     else:
-      reach_raw_da_national = self._aggregate_and_scale_geo_da(
+      national_reach_raw_da = self._aggregate_and_scale_geo_da(
           reach_raw_da, None
       )
-      reach_scaled_da_national = self._aggregate_and_scale_geo_da(
+      national_reach_scaled_da = self._aggregate_and_scale_geo_da(
           reach_raw_da, transformers.MediaTransformer
       )
-      impressions_raw_da_national = self._aggregate_and_scale_geo_da(
+      national_impressions_raw_da = self._aggregate_and_scale_geo_da(
           impressions_raw_da, None
       )
 
       # National frequency is a weighted average of geo frequencies,
       # weighted by reach.
-      frequency_da_national = xr.where(
-          reach_raw_da_national == 0.0,
+      national_frequency_da = xr.where(
+          national_reach_raw_da == 0.0,
           0.0,
-          impressions_raw_da_national / reach_raw_da_national,
+          national_impressions_raw_da / national_reach_raw_da,
       )
-      frequency_da_national.name = (
+      national_frequency_da.name = (
           constants.ORGANIC_PREFIX if is_organic else ''
       ) + constants.FREQUENCY
-      frequency_da_national.values = tf.cast(
-          frequency_da_national.values, tf.float32
+      national_frequency_da.values = tf.cast(
+          national_frequency_da.values, tf.float32
       )
 
       # Scale the impressions by population
@@ -806,7 +822,7 @@ class EDAEngine:
       )
 
       # Scale the national impressions
-      impressions_scaled_da_national = self._aggregate_and_scale_geo_da(
+      national_impressions_scaled_da = self._aggregate_and_scale_geo_da(
           impressions_raw_da,
           transformers.MediaTransformer,
       )
@@ -814,14 +830,14 @@ class EDAEngine:
     return ReachFrequencyData(
         reach_raw_da=reach_raw_da,
         reach_scaled_da=reach_scaled_da,
-        reach_raw_da_national=reach_raw_da_national,
-        reach_scaled_da_national=reach_scaled_da_national,
+        national_reach_raw_da=national_reach_raw_da,
+        national_reach_scaled_da=national_reach_scaled_da,
         frequency_da=frequency_da,
-        frequency_da_national=frequency_da_national,
+        national_frequency_da=national_frequency_da,
         rf_impressions_scaled_da=impressions_scaled_da,
-        rf_impressions_scaled_da_national=impressions_scaled_da_national,
+        national_rf_impressions_scaled_da=national_impressions_scaled_da,
         rf_impressions_raw_da=impressions_raw_da,
-        rf_impressions_raw_da_national=impressions_raw_da_national,
+        national_rf_impressions_raw_da=national_impressions_raw_da,
     )
 
   def _pairwise_corr_for_geo_data(
@@ -933,7 +949,7 @@ class EDAEngine:
     findings = []
 
     corr_mat = _compute_correlation_matrix(
-        self.treatment_control_scaled_ds_national, dims=constants.TIME
+        self.national_treatment_control_scaled_ds, dims=constants.TIME
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
         corr_mat, _PAIRWISE_NATIONAL_CORR_THRESHOLD
