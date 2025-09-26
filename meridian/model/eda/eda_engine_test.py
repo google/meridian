@@ -19,7 +19,9 @@ from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_outcome
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import xarray as xr
 
@@ -2408,6 +2410,312 @@ class EDAEngineTest(
       )
       self.assertNotIn(constants.MEDIA_TIME, prop.coords)
       self.assertIn(constants.TIME, prop.coords)
+
+  def _create_mock_single_var_dataset_for_corr_test(
+      self, data: np.ndarray, var_name: str = "media"
+  ):
+    """Helper to create a dataset for correlation testing."""
+    n_geos, n_times, n_vars = data.shape
+    geos = [f"geo{i}" for i in range(n_geos)]
+    times = pd.date_range(start="2023-01-01", periods=n_times, freq="W")
+    var_coords = [f"{var_name}_{i+1}" for i in range(n_vars)]
+    var_dim_name = f"{var_name}_dim"
+    coords = {"time": times, "geo": geos, var_dim_name: var_coords}
+    dims = ["geo", "time", var_dim_name]
+
+    xarray_data_vars = {var_name: (dims, data)}
+
+    return xr.Dataset(data_vars=xarray_data_vars, coords=coords)
+
+  def test_check_pairwise_corr_geo_one_error(self):
+    # Create data where media_1 and media_2 are perfectly correlated
+    data = np.array([
+        [[1, 1], [2, 2], [3, 3]],
+        [[4, 4], [5, 5], [6, 6]],
+    ])  # Shape (2, 3, 2)
+    mock_ds = self._create_mock_single_var_dataset_for_corr_test(data)
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 2)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertIn(
+        "perfect pairwise correlation across all times and geos",
+        finding.explanation,
+    )
+
+    overall_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+    )
+    self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
+    self.assertIn("media_2", overall_result.extreme_corr_var_pairs.to_string())
+    self.assertEqual(
+        overall_result.extreme_corr_threshold,
+        eda_engine._PAIRWISE_OVERALL_CORR_THRESHOLD,
+    )
+
+  def test_check_pairwise_corr_geo_one_attention(self):
+    # Create data where media_1 and media_2 are perfectly correlated per geo but
+    # not overall.
+    data = np.array([
+        [[1, 1], [2, 2], [3, 3]],
+        [[4, 7], [5, 8], [6, 9]],
+    ])  # Shape (2, 3, 2)
+    mock_ds = self._create_mock_single_var_dataset_for_corr_test(data)
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 2)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertIn(
+        "perfect pairwise correlation in certain geo(s)",
+        finding.explanation,
+    )
+    geo_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+    )
+    self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
+    self.assertIn("media_2", geo_result.extreme_corr_var_pairs.to_string())
+    self.assertEqual(
+        geo_result.extreme_corr_threshold,
+        eda_engine._PAIRWISE_GEO_CORR_THRESHOLD,
+    )
+
+  def test_check_pairwise_corr_geo_info_only(self):
+    # No high correlations
+    data = np.array([
+        [[1, 10], [2, 2], [3, 13]],
+        [[4, 4], [5, 15], [6, 6]],
+    ])  # Shape (2, 3, 2)
+    mock_ds = self._create_mock_single_var_dataset_for_corr_test(data)
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 2)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
+    self.assertIn(
+        "Please review the computed pairwise correlations",
+        finding.explanation,
+    )
+
+    overall_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+    )
+    geo_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+    )
+
+    pd.testing.assert_frame_equal(
+        overall_result.extreme_corr_var_pairs,
+        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
+    )
+    pd.testing.assert_frame_equal(
+        geo_result.extreme_corr_var_pairs,
+        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
+    )
+
+  def test_check_pairwise_corr_geo_high_overall_corr(self):
+    # Create data where media_1 and control_1 are perfectly correlated across
+    # all geos.
+    media_data = np.array([
+        [[1], [2], [3]],
+        [[4], [5], [6]],
+    ])  # Shape (2, 3, 1)
+    control_data = np.array([
+        [[2], [4], [6]],
+        [[8], [10], [12]],
+    ])  # Shape (2, 3, 1)
+    mock_media_ds = self._create_mock_single_var_dataset_for_corr_test(
+        media_data, "media"
+    )
+    mock_control_ds = self._create_mock_single_var_dataset_for_corr_test(
+        control_data, "control"
+    )
+    mock_ds = xr.merge([mock_media_ds, mock_control_ds])
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 2)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertIn(
+        "perfect pairwise correlation across all times and geos",
+        finding.explanation,
+    )
+    overall_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+    )
+    self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
+    self.assertIn(
+        "control_1", overall_result.extreme_corr_var_pairs.to_string()
+    )
+
+  def test_check_pairwise_corr_geo_high_corr_in_one_geo(self):
+    # Create data where media_1 and control_1 are perfectly correlated in geo1
+    # but not geo2.
+    media_data = np.array([
+        [[1], [2], [3]],
+        [[4], [5], [6]],
+    ])  # Shape (2, 3, 1)
+    control_data = np.array([
+        [[2], [4], [6]],
+        [[8], [11], [14]],
+    ])  # Shape (2, 3, 1)
+    mock_media_ds = self._create_mock_single_var_dataset_for_corr_test(
+        media_data, "media"
+    )
+    mock_control_ds = self._create_mock_single_var_dataset_for_corr_test(
+        control_data, "control"
+    )
+    mock_ds = xr.merge([mock_media_ds, mock_control_ds])
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 2)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertIn(
+        "perfect pairwise correlation in certain geo(s)",
+        finding.explanation,
+    )
+    geo_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+    )
+    self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
+    self.assertIn("control_1", geo_result.extreme_corr_var_pairs.to_string())
+    self.assertIn("geo0", geo_result.extreme_corr_var_pairs.to_string())
+
+  def test_check_pairwise_corr_geo_correlation_values(self):
+    # Create data to test correlation computations.
+    # geo0: media_1 = [1, 2, 3], control_1 = [1, 2, 3] -> corr = 1.0
+    # geo1: media_1 = [4, 5, 6], control_1 = [6, 5, 4] -> corr = -1.0
+    media_data = np.array([
+        [[1], [2], [3]],
+        [[4], [5], [6]],
+    ])  # Shape (2, 3, 1)
+    control_data = np.array([
+        [[1], [2], [3]],
+        [[6], [5], [4]],
+    ])  # Shape (2, 3, 1)
+    mock_media_ds = self._create_mock_single_var_dataset_for_corr_test(
+        media_data, "media"
+    )
+    mock_control_ds = self._create_mock_single_var_dataset_for_corr_test(
+        control_data, "control"
+    )
+    mock_ds = xr.merge([mock_media_ds, mock_control_ds])
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with mock.patch.object(
+        eda_engine.EDAEngine,
+        "treatment_control_scaled_ds",
+        new_callable=mock.PropertyMock,
+        return_value=mock_ds,
+    ):
+      outcome = engine.check_pairwise_corr_geo()
+
+    expected_overall_corr = np.corrcoef(
+        media_data.flatten(), control_data.flatten()
+    )[0, 1]
+
+    # Expected geo correlations:
+    expected_geo_corr = np.array([
+        # geo0: media_1 = [1, 2, 3], control_1 = [1, 2, 3] -> corr = 1.0
+        np.corrcoef(media_data[0, :, 0], control_data[0, :, 0])[0, 1],
+        # geo1: media_1 = [4, 5, 6], control_1 = [6, 5, 4] -> corr = -1.0
+        np.corrcoef(media_data[1, :, 0], control_data[1, :, 0])[0, 1],
+    ])
+
+    overall_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+    )
+    geo_result = next(
+        res
+        for res in outcome.pairwise_corr_results
+        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+    )
+    overall_corr_mat = overall_result.corr_matrix
+    geo_corr_mat = geo_result.corr_matrix
+
+    # Check overall correlation
+    self.assertAllClose(
+        overall_corr_mat.sel(var1="media_1", var2="control_1").values,
+        expected_overall_corr,
+    )
+
+    # Check geo correlations
+    self.assertAllClose(
+        geo_corr_mat.sel(var1="media_1", var2="control_1").values,
+        expected_geo_corr,
+    )
 
 
 if __name__ == "__main__":

@@ -16,17 +16,27 @@
 
 import dataclasses
 import functools
-from typing import Callable, Dict, Optional, TypeAlias
+from typing import Callable, Dict, Optional, Sequence, TypeAlias
 from meridian import constants
 from meridian.model import model
 from meridian.model import transformers
+from meridian.model.eda import eda_outcome
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import xarray as xr
 
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
+_CORRELATION_COL_NAME = 'correlation'
+_CORR_VAR1 = 'var1'
+_CORR_VAR2 = 'var2'
+_PAIRWISE_OVERALL_CORR_THRESHOLD = 0.999
+_PAIRWISE_GEO_CORR_THRESHOLD = 0.999
+_EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
+    columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
+)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -75,6 +85,108 @@ class AggregationConfig:
 
   control_variables: AggregationMap = dataclasses.field(default_factory=dict)
   non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
+
+
+def _data_array_like(
+    *, da: xr.DataArray, values: np.ndarray | tf.Tensor
+) -> xr.DataArray:
+  """Returns a DataArray from `values` with the same structure as `da`.
+
+  Args:
+    da: The DataArray whose structure (dimensions, coordinates, name, and attrs)
+      will be used for the new DataArray.
+    values: The numpy array or tensorflow tensor to use as the values for the
+      new DataArray.
+
+  Returns:
+    A new DataArray with the provided `values` and the same structure as `da`.
+  """
+  return xr.DataArray(
+      values,
+      coords=da.coords,
+      dims=da.dims,
+      name=da.name,
+      attrs=da.attrs,
+  )
+
+
+def _stack_variables(ds: xr.Dataset, coord_name: str) -> xr.DataArray:
+  """Stacks data variables other than time and geo into a single variable."""
+  dims = []
+  coords = []
+  sample_dims = []
+  # Dimensions have the same names as the coordinates.
+  for dim in ds.dims:
+    if dim in [constants.TIME, constants.GEO]:
+      sample_dims.append(dim)
+      continue
+    dims.append(dim)
+    coords.extend(ds.coords[dim].values.tolist())
+
+  da = ds.to_stacked_array(coord_name, sample_dims=sample_dims)
+  da = da.reset_index(dims).assign_coords({coord_name: coords})
+  return da
+
+
+def _compute_correlation_matrix(
+    dataset: xr.Dataset, dims: str | Sequence[str]
+) -> xr.DataArray:
+  """Computes the correlation matrix for a dataset.
+
+  Args:
+    dataset: An xr.Dataset containing variables for which to compute
+      correlations.
+    dims: Dimensions along which to compute correlations. Can only be TIME or
+      GEO.
+
+  Returns:
+    An xr.DataArray containing the correlation matrix.
+  """
+  # Create two versions for correlation
+  da1 = _stack_variables(dataset, _CORR_VAR1)
+  da2 = _stack_variables(dataset, _CORR_VAR2)
+
+  # Compute pairwise correlation across dims. Other dims are broadcasted.
+  corr_mat_da = xr.corr(da1, da2, dim=dims)
+  return corr_mat_da
+
+
+def _get_upper_triangle_corr_mat(corr_mat_da: xr.DataArray) -> xr.DataArray:
+  """Gets the upper triangle of a correlation matrix.
+
+  Args:
+    corr_mat_da: An xr.DataArray containing the correlation matrix.
+
+  Returns:
+    An xr.DataArray containing only the elements in the upper triangle of the
+    correlation matrix, with other elements masked as NaN.
+  """
+  n_vars = corr_mat_da.sizes[_CORR_VAR1]
+  mask_np = np.triu(np.ones((n_vars, n_vars), dtype=bool), k=1)
+  mask = xr.DataArray(
+      mask_np,
+      dims=[_CORR_VAR1, _CORR_VAR2],
+      coords={
+          _CORR_VAR1: corr_mat_da[_CORR_VAR1],
+          _CORR_VAR2: corr_mat_da[_CORR_VAR2],
+      },
+  )
+  return corr_mat_da.where(mask)
+
+
+def _find_extreme_corr_pairs(
+    extreme_corr_da: xr.DataArray, extreme_corr_threshold: float
+) -> pd.DataFrame:
+  """Finds extreme correlation pairs in a correlation matrix."""
+  corr_tri = _get_upper_triangle_corr_mat(extreme_corr_da)
+  extreme_corr_da = corr_tri.where(abs(corr_tri) > extreme_corr_threshold)
+
+  df = extreme_corr_da.to_dataframe(name=_CORRELATION_COL_NAME).dropna()
+  if df.empty:
+    return _EMPTY_DF_FOR_EXTREME_CORR_PAIRS.copy()
+  return df.sort_values(
+      by=_CORRELATION_COL_NAME, ascending=False, inplace=False
+  )
 
 
 class EDAEngine:
@@ -511,7 +623,7 @@ class EDAEngine:
       xarray: xr.DataArray,
       transformer_class: Optional[type[transformers.TensorTransformer]],
       population: tf.Tensor = tf.constant([1.0], dtype=tf.float32),
-  ):
+  ) -> xr.DataArray:
     """Scales xarray values with a TensorTransformer."""
     da = xarray.copy()
 
@@ -711,25 +823,102 @@ class EDAEngine:
         rf_impressions_raw_da_national=impressions_raw_da_national,
     )
 
+  def _pairwise_corr_for_geo_data(
+      self, dims: str | Sequence[str], extreme_corr_threshold: float
+  ) -> tuple[xr.DataArray, pd.DataFrame]:
+    """Get pairwise correlation among treatments and controls for geo data."""
+    corr_mat = _compute_correlation_matrix(
+        self.treatment_control_scaled_ds, dims=dims
+    )
+    extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
+        corr_mat, extreme_corr_threshold
+    )
+    return corr_mat, extreme_corr_var_pairs_df
 
-def _data_array_like(
-    *, da: xr.DataArray, values: np.ndarray | tf.Tensor
-) -> xr.DataArray:
-  """Returns a DataArray from `values` with the same structure as `da`.
+  def check_pairwise_corr_geo(self) -> eda_outcome.PairwiseCorrOutcome:
+    """Checks pairwise correlation among treatments and controls for geo data.
 
-  Args:
-    da: The DataArray whose structure (dimensions, coordinates, name, and attrs)
-      will be used for the new DataArray.
-    values: The numpy array or tensorflow tensor to use as the values for the
-      new DataArray.
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    findings = []
 
-  Returns:
-    A new DataArray with the provided `values` and the same structure as `da`.
-  """
-  return xr.DataArray(
-      values,
-      coords=da.coords,
-      dims=da.dims,
-      name=da.name,
-      attrs=da.attrs,
-  )
+    overall_corr_mat, overall_extreme_corr_var_pairs_df = (
+        self._pairwise_corr_for_geo_data(
+            dims=[constants.GEO, constants.TIME],
+            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+        )
+    )
+    if not overall_extreme_corr_var_pairs_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have perfect pairwise correlation across all'
+                  ' times and geos. For each pair of perfectly-correlated'
+                  ' variables, please remove one of the variables from the'
+                  ' model.\n'
+                  + overall_extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+
+    geo_corr_mat, geo_extreme_corr_var_pairs_df = (
+        self._pairwise_corr_for_geo_data(
+            dims=constants.TIME,
+            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+        )
+    )
+    # Overall correlation and per-geo correlation findings are mutually
+    # exclusive, and overall correlation finding takes precedence.
+    if (
+        overall_extreme_corr_var_pairs_df.empty
+        and not geo_extreme_corr_var_pairs_df.empty
+    ):
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=(
+                  'Some variables have perfect pairwise correlation in certain'
+                  ' geo(s). Consider checking your data, and/or combining these'
+                  ' variables if they also have high pairwise correlations in'
+                  ' other geos.\n'
+                  + geo_extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+
+    # If there are no findings, add a INFO level finding indicating that no
+    # severe correlations were found and what it means for user's data.
+    if not findings:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed pairwise correlations. Note that'
+                  ' high pairwise correlation may cause model identifiability'
+                  ' and convergence issues. Consider combining the variables if'
+                  ' high correlation exists.'
+              ),
+          )
+      )
+
+    pairwise_corr_results = [
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            corr_matrix=overall_corr_mat,
+            extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+        ),
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.GEO,
+            corr_matrix=geo_corr_mat,
+            extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+        ),
+    ]
+
+    return eda_outcome.PairwiseCorrOutcome(
+        findings=findings,
+        pairwise_corr_results=pairwise_corr_results,
+    )

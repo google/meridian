@@ -16,7 +16,6 @@
 
 import dataclasses
 import enum
-from typing import List
 import pandas as pd
 import xarray as xr
 
@@ -61,30 +60,49 @@ class EDAOutcome:
       findings: A list of all individual issues discovered by the check.
   """
 
-  findings: List[EDAFinding]
+  findings: list[EDAFinding]
+
+
+@enum.unique
+class CorrelationAnalysisLevel(enum.Enum):
+  """Enumeration for the level of a correlation analysis.
+
+  Attributes:
+    OVERALL: Computed across all geos and time.
+    GEO: Computed across time, for each geo.
+  """
+
+  OVERALL = 1
+  GEO = 2
 
 
 @dataclasses.dataclass(frozen=True)
-class PairwiseCorrEDAOutcome(EDAOutcome):
+class PairwiseCorrResult:
+  """Encapsulates results from a single pairwise correlation analysis.
+
+  Attributes:
+    level: The level of the correlation analysis.
+    corr_matrix: Pairwise correlation matrix.
+    extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
+      correlation threshold.
+    extreme_corr_threshold: The threshold used to identify extreme correlation
+      pairs.
+  """
+
+  level: CorrelationAnalysisLevel
+  corr_matrix: xr.DataArray
+  extreme_corr_var_pairs: pd.DataFrame
+  extreme_corr_threshold: float
+
+
+@dataclasses.dataclass(frozen=True)
+class PairwiseCorrOutcome(EDAOutcome):
   """Encapsulates results from the pairwise correlation EDA check.
 
   Attributes:
-      findings: A list of all individual findings related to pairwise
-        correlations.
-      overall_corr_mat: Pairwise correlation matrix computed across all geos and
-        time.
-      geo_corr_mat: Pairwise correlation matrix computed across time, for each
-        geo.
-      overall_extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
-        correlation threshold across all geos and time. Columns are 'var1',
-        'var2', and 'correlation'.
-      geo_extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
-        correlation threshold within specific geos. Contains 'geo', 'var1',
-        'var2', and 'correlation' information, typically with 'geo' in the
-        index.
+    findings: A list of all individual findings related to pairwise
+      correlations.
+    pairwise_corr_results: A list of pairwise correlation results.
   """
 
-  overall_corr_mat: xr.DataArray
-  geo_corr_mat: xr.DataArray
-  overall_extreme_corr_var_pairs: pd.DataFrame
-  geo_extreme_corr_var_pairs: pd.DataFrame
+  pairwise_corr_results: list[PairwiseCorrResult]
