@@ -4556,13 +4556,15 @@ class AnalyzerKpiTest(parameterized.TestCase):
             )),
         )
     )
-    self.analyzer_kpi.expected_vs_actual_data()
+    self.analyzer_kpi.expected_vs_actual_data(use_kpi=True)
+
     _, mock_kwargs = mock_expected_outcome.call_args
     self.assertEqual(mock_kwargs["use_kpi"], True)
 
   def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_vs_actual(self):
     expected_vs_actual = self.analyzer_kpi.expected_vs_actual_data(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        use_kpi=True,
     )
     backend_test_utils.assert_allclose(
         list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
@@ -4813,6 +4815,48 @@ class AnalyzerKpiTest(parameterized.TestCase):
     )
     self.assertEqual(actual.confidence_level, expected.confidence_level)
     self.assertEqual(actual.use_posterior, expected.use_posterior)
+
+  def test_check_revenue_data_exists_expected_outcome_raises_error(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Revenue analysis is not available when `revenue_per_kpi` is unknown."
+        " Set `use_kpi=True` to perform KPI analysis instead.",
+    ):
+      self.analyzer_kpi.expected_outcome(use_kpi=False)
+
+  def test_check_revenue_data_exists_optimal_freq_raises_error(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Revenue analysis is not available when `revenue_per_kpi` is unknown."
+        " Set `use_kpi=True` to perform KPI analysis instead.",
+    ):
+      self.analyzer_kpi.optimal_freq(use_kpi=False)
+
+  def test_check_revenue_data_exists_expected_outcome_warning(
+      self,
+  ):
+    input_data_revenue = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
+    )
+    mmm_revenue = model.Meridian(input_data=input_data_revenue)
+    analyzer_revenue = analyzer.Analyzer(mmm_revenue)
+    # The `expected_outcome` method calls `_check_revenue_data_exists`.
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE` since in"
+        " this case, KPI is equal to revenue.",
+    ):
+      analyzer_revenue.expected_outcome(use_kpi=True)
 
 
 class AnalyzerNonMediaTest(parameterized.TestCase):

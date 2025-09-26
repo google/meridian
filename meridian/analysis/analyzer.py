@@ -2632,6 +2632,7 @@ class Analyzer:
       self,
       aggregate_geos: bool = False,
       aggregate_times: bool = False,
+      use_kpi: bool = False,
       split_by_holdout_id: bool = False,
       non_media_baseline_values: Sequence[float] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -2643,6 +2644,8 @@ class Analyzer:
         summed over all of the regions.
       aggregate_times: Boolean. If `True`, the expected, baseline, and actual
         are summed over all of the time periods.
+      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
+        the incremental revenue using the revenue per KPI (if available).
       split_by_holdout_id: Boolean. If `True` and `holdout_id` exists, the data
         is split into `'Train'`, `'Test'`, and `'All Data'` subsections.
       non_media_baseline_values: Optional list of shape
@@ -2660,7 +2663,7 @@ class Analyzer:
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
     mmm = self._meridian
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    self._check_revenue_data_exists(use_kpi)
     can_split_by_holdout = self._can_split_by_holdout_id(split_by_holdout_id)
     expected_outcome = self.expected_outcome(
         aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi
@@ -3617,6 +3620,7 @@ class Analyzer:
         prior to calling this method.
       ValueError: If there are no channels with reach and frequency data.
     """
+    self._check_revenue_data_exists(use_kpi)
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
     new_data = new_data or DataTensors()
     if self._meridian.n_rf_channels == 0:
@@ -3794,6 +3798,7 @@ class Analyzer:
       self,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | None = None,
+      use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Calculates `R-Squared`, `MAPE`, and `wMAPE` goodness of fit metrics.
@@ -3823,7 +3828,9 @@ class Analyzer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
       selected_times: Optional list containing a subset of dates to include. By
-        default, all time periods are included.
+        default all time periods are included.
+      use_kpi: Whether to use KPI or revenue scale for the predictive accuracy
+        metrics.
       batch_size: Integer representing the maximum draws per chain in each
         batch. By default, `batch_size` is `100`. The calculation is run in
         batches to avoid memory exhaustion. If a memory error occurs, try
@@ -3837,7 +3844,7 @@ class Analyzer:
       is split into `'Train'`, `'Test'`, and `'All Data'` subsections, and the
       three metrics are computed for each.
     """
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    self._check_revenue_data_exists(use_kpi)
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -3858,10 +3865,11 @@ class Analyzer:
         ],
         constants.GEO_GRANULARITY: [constants.GEO, constants.NATIONAL],
     }
-    if self._meridian.revenue_per_kpi is not None:
-      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
-    else:
+    if use_kpi:
       input_tensor = self._meridian.kpi
+    else:
+      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
+
     actual = np.asarray(
         self.filter_and_aggregate_geos_and_times(
             tensor=input_tensor,
