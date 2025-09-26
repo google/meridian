@@ -34,6 +34,7 @@ _CORR_VAR1 = 'var1'
 _CORR_VAR2 = 'var2'
 _PAIRWISE_OVERALL_CORR_THRESHOLD = 0.999
 _PAIRWISE_GEO_CORR_THRESHOLD = 0.999
+_PAIRWISE_NATIONAL_CORR_THRESHOLD = 0.999
 _EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
     columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
 )
@@ -918,6 +919,60 @@ class EDAEngine:
         ),
     ]
 
+    return eda_outcome.PairwiseCorrOutcome(
+        findings=findings,
+        pairwise_corr_results=pairwise_corr_results,
+    )
+
+  def check_pairwise_corr_national(self) -> eda_outcome.PairwiseCorrOutcome:
+    """Checks pairwise correlation among treatments and controls for national data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    findings = []
+
+    corr_mat = _compute_correlation_matrix(
+        self.treatment_control_scaled_ds_national, dims=constants.TIME
+    )
+    extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
+        corr_mat, _PAIRWISE_NATIONAL_CORR_THRESHOLD
+    )
+
+    if not extreme_corr_var_pairs_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have perfect pairwise correlation across all'
+                  ' times. For each pair of perfectly-correlated'
+                  ' variables, please remove one of the variables from the'
+                  ' model.\n'
+                  + extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed pairwise correlations. Note that'
+                  ' high pairwise correlation may cause model identifiability'
+                  ' and convergence issues. Consider combining the variables if'
+                  ' high correlation exists.'
+              ),
+          )
+      )
+
+    pairwise_corr_results = [
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            corr_matrix=corr_mat,
+            extreme_corr_var_pairs=extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_NATIONAL_CORR_THRESHOLD,
+        )
+    ]
     return eda_outcome.PairwiseCorrOutcome(
         findings=findings,
         pairwise_corr_results=pairwise_corr_results,

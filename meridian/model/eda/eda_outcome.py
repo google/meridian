@@ -72,8 +72,8 @@ class CorrelationAnalysisLevel(enum.Enum):
     GEO: Computed across time, for each geo.
   """
 
-  OVERALL = 1
-  GEO = 2
+  OVERALL = enum.auto()
+  GEO = enum.auto()
 
 
 @dataclasses.dataclass(frozen=True)

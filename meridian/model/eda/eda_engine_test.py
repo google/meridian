@@ -2415,13 +2415,25 @@ class EDAEngineTest(
       self, data: np.ndarray, var_name: str = "media"
   ):
     """Helper to create a dataset for correlation testing."""
-    n_geos, n_times, n_vars = data.shape
-    geos = [f"geo{i}" for i in range(n_geos)]
+    var_dim_name = f"{var_name}_dim"
+
+    if data.ndim == 3:
+      n_geos, n_times, n_vars = data.shape
+      dims = ["geo", "time", var_dim_name]
+      geos = [f"geo{i}" for i in range(n_geos)]
+    elif data.ndim == 2:
+      n_times, n_vars = data.shape
+      dims = ["time", var_dim_name]
+      geos = None
+    else:
+      raise ValueError(f"Unsupported data shape: {data.shape}")
+
     times = pd.date_range(start="2023-01-01", periods=n_times, freq="W")
     var_coords = [f"{var_name}_{i+1}" for i in range(n_vars)]
-    var_dim_name = f"{var_name}_dim"
-    coords = {"time": times, "geo": geos, var_dim_name: var_coords}
-    dims = ["geo", "time", var_dim_name]
+
+    coords = {"time": times, var_dim_name: var_coords}
+    if geos:
+      coords["geo"] = geos
 
     xarray_data_vars = {var_name: (dims, data)}
 
@@ -2437,13 +2449,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -2478,13 +2492,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -2517,13 +2533,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -2576,13 +2594,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -2624,13 +2644,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -2672,13 +2694,15 @@ class EDAEngineTest(
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    with mock.patch.object(
-        eda_engine.EDAEngine,
-        "treatment_control_scaled_ds",
-        new_callable=mock.PropertyMock,
-        return_value=mock_ds,
-    ):
-      outcome = engine.check_pairwise_corr_geo()
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_geo()
 
     expected_overall_corr = np.corrcoef(
         media_data.flatten(), control_data.flatten()
@@ -2715,6 +2739,127 @@ class EDAEngineTest(
     self.assertAllClose(
         geo_corr_mat.sel(var1="media_1", var2="control_1").values,
         expected_geo_corr,
+    )
+
+  def test_check_pairwise_corr_national_one_error(self):
+    # Create data where media_1 and media_2 are perfectly correlated
+    data = np.array([
+        [1, 1],
+        [2, 2],
+        [3, 3],
+    ])  # Shape (3, 2)
+    mock_ds = self._create_mock_single_var_dataset_for_corr_test(data)
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds_national",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_national()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 1)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertIn(
+        "perfect pairwise correlation across all times",
+        finding.explanation,
+    )
+
+    result = outcome.pairwise_corr_results[0]
+    self.assertEqual(result.level, eda_outcome.CorrelationAnalysisLevel.OVERALL)
+    self.assertIn("media_1", result.extreme_corr_var_pairs.to_string())
+    self.assertIn("media_2", result.extreme_corr_var_pairs.to_string())
+    self.assertEqual(
+        result.extreme_corr_threshold,
+        eda_engine._PAIRWISE_NATIONAL_CORR_THRESHOLD,
+    )
+
+  def test_check_pairwise_corr_national_info_only(self):
+    # No high correlations
+    data = np.array([
+        [1, 10],
+        [2, 2],
+        [3, 13],
+    ])  # Shape (3, 2)
+    mock_ds = self._create_mock_single_var_dataset_for_corr_test(data)
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds_national",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_national()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertLen(outcome.pairwise_corr_results, 1)
+
+    finding = outcome.findings[0]
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
+    self.assertIn(
+        "Please review the computed pairwise correlations",
+        finding.explanation,
+    )
+
+    result = outcome.pairwise_corr_results[0]
+    pd.testing.assert_frame_equal(
+        result.extreme_corr_var_pairs,
+        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
+    )
+
+  def test_check_pairwise_corr_national_correlation_values(self):
+    # Create data to test correlation computations.
+    media_data = np.array([
+        [1],
+        [2],
+        [3],
+    ])  # Shape (3, 1)
+    control_data = np.array([
+        [1],
+        [2],
+        [4],
+    ])  # Shape (3, 1)
+    mock_media_ds = self._create_mock_single_var_dataset_for_corr_test(
+        media_data, "media"
+    )
+    mock_control_ds = self._create_mock_single_var_dataset_for_corr_test(
+        control_data, "control"
+    )
+    mock_ds = xr.merge([mock_media_ds, mock_control_ds])
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.EDAEngine,
+            "treatment_control_scaled_ds_national",
+            new_callable=mock.PropertyMock,
+            return_value=mock_ds,
+        )
+    )
+    outcome = engine.check_pairwise_corr_national()
+
+    expected_corr = np.corrcoef(media_data.flatten(), control_data.flatten())[
+        0, 1
+    ]
+
+    result = outcome.pairwise_corr_results[0]
+    corr_mat = result.corr_matrix
+
+    self.assertAllClose(
+        corr_mat.sel(var1="media_1", var2="control_1").values,
+        expected_corr,
     )
 
 
