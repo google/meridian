@@ -726,8 +726,6 @@ INC_OUTCOME_NON_PAID_USE_PRIOR = np.array([[
         2.224e05,
     ],
 ]])
-
-
 INC_OUTCOME_NON_PAID_USE_POSTERIOR = np.array([
     [
         [
@@ -1055,7 +1053,6 @@ INC_OUTCOME_NON_PAID_USE_POSTERIOR = np.array([
     ],
 ])
 
-
 INC_OUTCOME_NON_MEDIA_MAX = np.array([
     [
         [
@@ -1282,7 +1279,6 @@ INC_OUTCOME_NON_MEDIA_MAX = np.array([
         ],
     ],
 ])
-
 INC_OUTCOME_NON_MEDIA_MIX = np.array([
     [
         [
@@ -1509,7 +1505,6 @@ INC_OUTCOME_NON_MEDIA_MIX = np.array([
         ],
     ],
 ])
-
 INC_OUTCOME_NON_MEDIA_FIXED = np.array([
     [
         [
@@ -1734,6 +1729,33 @@ INC_OUTCOME_NON_MEDIA_FIXED = np.array([
             -2.014e04,
             -1.338e04,
         ],
+    ],
+])
+
+EXP_OUTCOME_MEDIA_AND_RF = np.array([
+    [
+        32254.154,
+        32296.66,
+        32331.918,
+        32391.336,
+        32797.367,
+        33077.375,
+        33469.82,
+        33316.707,
+        33251.33,
+        33261.21,
+    ],
+    [
+        53146.668,
+        53151.16,
+        53404.375,
+        53814.035,
+        54136.48,
+        54141.82,
+        54581.93,
+        54777.164,
+        54912.758,
+        54915.656,
     ],
 ])
 
