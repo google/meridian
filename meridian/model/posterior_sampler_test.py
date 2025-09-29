@@ -18,54 +18,52 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
+from meridian.backend import test_utils
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import posterior_sampler
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 
 class PosteriorMCMCSamplerTest(
-    tf.test.TestCase,
     parameterized.TestCase,
+    absltest.TestCase,
     model_test_data.WithInputDataSamples,
 ):
 
   input_data_samples = model_test_data.WithInputDataSamples
 
-  def setUp(self):
-    super().setUp()
-    model_test_data.WithInputDataSamples.setup(self)
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
 
   def test_get_joint_dist_zeros(self):
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=tfp.distributions.Deterministic(0),
-            tau_g_excl_baseline=tfp.distributions.Deterministic(0),
-            beta_m=tfp.distributions.Deterministic(0),
-            beta_rf=tfp.distributions.Deterministic(0),
-            eta_m=tfp.distributions.Deterministic(0),
-            eta_rf=tfp.distributions.Deterministic(0),
-            gamma_c=tfp.distributions.Deterministic(0),
-            xi_c=tfp.distributions.Deterministic(0),
-            alpha_m=tfp.distributions.Deterministic(0),
-            alpha_rf=tfp.distributions.Deterministic(0),
-            ec_m=tfp.distributions.Deterministic(0),
-            ec_rf=tfp.distributions.Deterministic(0),
-            slope_m=tfp.distributions.Deterministic(0),
-            slope_rf=tfp.distributions.Deterministic(0),
-            sigma=tfp.distributions.Deterministic(0),
-            roi_m=tfp.distributions.Deterministic(0),
-            roi_rf=tfp.distributions.Deterministic(0),
+            knot_values=backend.tfd.Deterministic(0),
+            tau_g_excl_baseline=backend.tfd.Deterministic(0),
+            beta_m=backend.tfd.Deterministic(0),
+            beta_rf=backend.tfd.Deterministic(0),
+            eta_m=backend.tfd.Deterministic(0),
+            eta_rf=backend.tfd.Deterministic(0),
+            gamma_c=backend.tfd.Deterministic(0),
+            xi_c=backend.tfd.Deterministic(0),
+            alpha_m=backend.tfd.Deterministic(0),
+            alpha_rf=backend.tfd.Deterministic(0),
+            sigma=backend.tfd.Deterministic(0),
+            roi_m=backend.tfd.Deterministic(0),
+            roi_rf=backend.tfd.Deterministic(0),
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     sample = (
@@ -73,36 +71,33 @@ class PosteriorMCMCSamplerTest(
             self._N_DRAWS
         )
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         sample.y,
-        tf.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
+        backend.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
     )
 
   def test_get_joint_dist_zeros_no_controls_data(self):
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=tfp.distributions.Deterministic(0),
-            tau_g_excl_baseline=tfp.distributions.Deterministic(0),
-            beta_m=tfp.distributions.Deterministic(0),
-            beta_rf=tfp.distributions.Deterministic(0),
-            eta_m=tfp.distributions.Deterministic(0),
-            eta_rf=tfp.distributions.Deterministic(0),
-            gamma_c=tfp.distributions.Deterministic(0),
-            xi_c=tfp.distributions.Deterministic(0),
-            alpha_m=tfp.distributions.Deterministic(0),
-            alpha_rf=tfp.distributions.Deterministic(0),
-            ec_m=tfp.distributions.Deterministic(0),
-            ec_rf=tfp.distributions.Deterministic(0),
-            slope_m=tfp.distributions.Deterministic(0),
-            slope_rf=tfp.distributions.Deterministic(0),
-            sigma=tfp.distributions.Deterministic(0),
-            roi_m=tfp.distributions.Deterministic(0),
-            roi_rf=tfp.distributions.Deterministic(0),
+            knot_values=backend.tfd.Deterministic(0),
+            tau_g_excl_baseline=backend.tfd.Deterministic(0),
+            beta_m=backend.tfd.Deterministic(0),
+            beta_rf=backend.tfd.Deterministic(0),
+            eta_m=backend.tfd.Deterministic(0),
+            eta_rf=backend.tfd.Deterministic(0),
+            gamma_c=backend.tfd.Deterministic(0),
+            xi_c=backend.tfd.Deterministic(0),
+            alpha_m=backend.tfd.Deterministic(0),
+            alpha_rf=backend.tfd.Deterministic(0),
+            sigma=backend.tfd.Deterministic(0),
+            roi_m=backend.tfd.Deterministic(0),
+            roi_rf=backend.tfd.Deterministic(0),
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
+    input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only_no_controls,
+        input_data=input_data,
         model_spec=model_spec,
     )
     sample = (
@@ -110,9 +105,9 @@ class PosteriorMCMCSamplerTest(
             self._N_DRAWS
         )
     )
-    self.assertAllEqual(
+    test_utils.assert_allequal(
         sample.y,
-        tf.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
+        backend.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
     )
 
     # Without controls data, controls-related distributions should be absent.
@@ -146,9 +141,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -201,14 +197,14 @@ class PosteriorMCMCSamplerTest(
     # Parameters that are derived from other parameters via Deterministic()
     # should have zero contribution to log_prob.
     for parname in derived_params:
-      self.assertAllEqual(log_prob_parts["unpinned"][parname][0], 0)
+      test_utils.assert_allequal(log_prob_parts["unpinned"][parname][0], 0)
 
     prior_distribution_logprobs = {}
     for parname in prior_distribution_params:
-      prior_distribution_logprobs[parname] = tf.reduce_sum(
+      prior_distribution_logprobs[parname] = backend.reduce_sum(
           getattr(meridian.prior_broadcast, parname).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           prior_distribution_logprobs[parname],
           log_prob_parts["unpinned"][parname][0],
       )
@@ -219,10 +215,10 @@ class PosteriorMCMCSamplerTest(
     ]
     coef_logprobs = {}
     for parname in coef_params:
-      coef_logprobs[parname] = tf.reduce_sum(
-          tfp.distributions.Normal(0, 1).log_prob(par[parname])
+      coef_logprobs[parname] = backend.reduce_sum(
+          backend.tfd.Normal(0, 1).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
@@ -230,31 +226,34 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        decay_functions=meridian.adstock_decay_spec.media
     )[0, :, :, :]
     beta_m = par[constants.BETA_GM][0, :, :]
     y_means = (
         par[constants.TAU_G][0, :, None]
         + par[constants.MU_T][0, None, :]
-        + tf.einsum("gtm,gm->gt", transformed_media, beta_m)
-        + tf.einsum(
+        + backend.einsum("gtm,gm->gt", transformed_media, beta_m)
+        + backend.einsum(
             "gtc,gc->gt",
             meridian.controls_scaled,
             par[constants.GAMMA_GC][0, :, :],
         )
     )
-    y_means_logprob = tf.reduce_sum(
-        tfp.distributions.Normal(y_means, par[constants.SIGMA]).log_prob(
+    y_means_logprob = backend.reduce_sum(
+        backend.tfd.Normal(y_means, par[constants.SIGMA]).log_prob(
             meridian.kpi_scaled
         )
     )
-    self.assertAllClose(y_means_logprob, log_prob_parts["pinned"]["y"][0])
+    test_utils.assert_allclose(
+        y_means_logprob, log_prob_parts["pinned"]["y"][0]
+    )
 
-    tau_g_logprob = tf.reduce_sum(
+    tau_g_logprob = backend.reduce_sum(
         getattr(
             meridian.prior_broadcast, constants.TAU_G_EXCL_BASELINE
         ).log_prob(par[constants.TAU_G_EXCL_BASELINE])
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         tau_g_logprob,
         log_prob_parts["unpinned"][constants.TAU_G_EXCL_BASELINE][0],
     )
@@ -265,7 +264,7 @@ class PosteriorMCMCSamplerTest(
         + y_means_logprob
         + tau_g_logprob
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         posterior_unnormalized_logprob,
         meridian.posterior_sampler_callable._get_joint_dist().log_prob(par)[0],
     )
@@ -290,9 +289,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -345,14 +345,14 @@ class PosteriorMCMCSamplerTest(
     # Parameters that are derived from other parameters via Deterministic()
     # should have zero contribution to log_prob.
     for parname in derived_params:
-      self.assertAllEqual(log_prob_parts["unpinned"][parname][0], 0)
+      test_utils.assert_allequal(log_prob_parts["unpinned"][parname][0], 0)
 
     prior_distribution_logprobs = {}
     for parname in prior_distribution_params:
-      prior_distribution_logprobs[parname] = tf.reduce_sum(
+      prior_distribution_logprobs[parname] = backend.reduce_sum(
           getattr(meridian.prior_broadcast, parname).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           prior_distribution_logprobs[parname],
           log_prob_parts["unpinned"][parname][0],
       )
@@ -363,10 +363,10 @@ class PosteriorMCMCSamplerTest(
     ]
     coef_logprobs = {}
     for parname in coef_params:
-      coef_logprobs[parname] = tf.reduce_sum(
-          tfp.distributions.Normal(0, 1).log_prob(par[parname])
+      coef_logprobs[parname] = backend.reduce_sum(
+          backend.tfd.Normal(0, 1).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_reach = meridian.adstock_hill_rf(
@@ -375,31 +375,34 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
     beta_rf = par[constants.BETA_GRF][0, :, :]
     y_means = (
         par[constants.TAU_G][0, :, None]
         + par[constants.MU_T][0, None, :]
-        + tf.einsum("gtm,gm->gt", transformed_reach, beta_rf)
-        + tf.einsum(
+        + backend.einsum("gtm,gm->gt", transformed_reach, beta_rf)
+        + backend.einsum(
             "gtc,gc->gt",
             meridian.controls_scaled,
             par[constants.GAMMA_GC][0, :, :],
         )
     )
-    y_means_logprob = tf.reduce_sum(
-        tfp.distributions.Normal(y_means, par[constants.SIGMA]).log_prob(
+    y_means_logprob = backend.reduce_sum(
+        backend.tfd.Normal(y_means, par[constants.SIGMA]).log_prob(
             meridian.kpi_scaled
         )
     )
-    self.assertAllClose(y_means_logprob, log_prob_parts["pinned"]["y"][0])
+    test_utils.assert_allclose(
+        y_means_logprob, log_prob_parts["pinned"]["y"][0]
+    )
 
-    tau_g_logprob = tf.reduce_sum(
+    tau_g_logprob = backend.reduce_sum(
         getattr(
             meridian.prior_broadcast, constants.TAU_G_EXCL_BASELINE
         ).log_prob(par[constants.TAU_G_EXCL_BASELINE])
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         tau_g_logprob,
         log_prob_parts["unpinned"][constants.TAU_G_EXCL_BASELINE][0],
     )
@@ -410,12 +413,11 @@ class PosteriorMCMCSamplerTest(
         + y_means_logprob
         + tau_g_logprob
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         posterior_unnormalized_logprob,
         meridian.posterior_sampler_callable._get_joint_dist().log_prob(par)[0],
     )
 
-  # TODO: Add test for holdout_id.
   @parameterized.product(
       paid_media_prior_type=[
           constants.TREATMENT_PRIOR_TYPE_ROI,
@@ -437,9 +439,10 @@ class PosteriorMCMCSamplerTest(
         rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
         model_spec=model_spec,
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
     )
 
     # Take a single draw of all parameters from the prior distribution.
@@ -502,14 +505,14 @@ class PosteriorMCMCSamplerTest(
     # Parameters that are derived from other parameters via Deterministic()
     # should have zero contribution to log_prob.
     for parname in derived_params:
-      self.assertAllEqual(log_prob_parts["unpinned"][parname][0], 0)
+      test_utils.assert_allequal(log_prob_parts["unpinned"][parname][0], 0)
 
     prior_distribution_logprobs = {}
     for parname in prior_distribution_params:
-      prior_distribution_logprobs[parname] = tf.reduce_sum(
+      prior_distribution_logprobs[parname] = backend.reduce_sum(
           getattr(meridian.prior_broadcast, parname).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           prior_distribution_logprobs[parname],
           log_prob_parts["unpinned"][parname][0],
       )
@@ -521,10 +524,10 @@ class PosteriorMCMCSamplerTest(
     ]
     coef_logprobs = {}
     for parname in coef_params:
-      coef_logprobs[parname] = tf.reduce_sum(
-          tfp.distributions.Normal(0, 1).log_prob(par[parname])
+      coef_logprobs[parname] = backend.reduce_sum(
+          backend.tfd.Normal(0, 1).log_prob(par[parname])
       )
-      self.assertAllClose(
+      test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
@@ -532,6 +535,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
+        decay_functions=meridian.adstock_decay_spec.media
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,
@@ -539,38 +543,43 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
+        decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
-    combined_transformed_media = tf.concat(
+    combined_transformed_media = backend.concatenate(
         [transformed_media, transformed_reach], axis=-1
     )
 
-    combined_beta = tf.concat(
+    combined_beta = backend.concatenate(
         [par[constants.BETA_GM][0, :, :], par[constants.BETA_GRF][0, :, :]],
         axis=-1,
     )
     y_means = (
         par[constants.TAU_G][0, :, None]
         + par[constants.MU_T][0, None, :]
-        + tf.einsum("gtm,gm->gt", combined_transformed_media, combined_beta)
-        + tf.einsum(
+        + backend.einsum(
+            "gtm,gm->gt", combined_transformed_media, combined_beta
+        )
+        + backend.einsum(
             "gtc,gc->gt",
             meridian.controls_scaled,
             par[constants.GAMMA_GC][0, :, :],
         )
     )
-    y_means_logprob = tf.reduce_sum(
-        tfp.distributions.Normal(y_means, par[constants.SIGMA]).log_prob(
+    y_means_logprob = backend.reduce_sum(
+        backend.tfd.Normal(y_means, par[constants.SIGMA]).log_prob(
             meridian.kpi_scaled
         )
     )
-    self.assertAllClose(y_means_logprob, log_prob_parts["pinned"]["y"][0])
+    test_utils.assert_allclose(
+        y_means_logprob, log_prob_parts["pinned"]["y"][0]
+    )
 
-    tau_g_logprob = tf.reduce_sum(
+    tau_g_logprob = backend.reduce_sum(
         getattr(
             meridian.prior_broadcast, constants.TAU_G_EXCL_BASELINE
         ).log_prob(par[constants.TAU_G_EXCL_BASELINE])
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         tau_g_logprob,
         log_prob_parts["unpinned"][constants.TAU_G_EXCL_BASELINE][0],
     )
@@ -581,7 +590,7 @@ class PosteriorMCMCSamplerTest(
         + y_means_logprob
         + tau_g_logprob
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         posterior_unnormalized_logprob,
         meridian.posterior_sampler_callable._get_joint_dist().log_prob(par)[0],
     )
@@ -604,8 +613,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -731,8 +741,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -850,8 +861,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only_no_controls,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -901,8 +913,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_rf_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1019,8 +1032,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1136,13 +1150,14 @@ class PosteriorMCMCSamplerTest(
             posterior_sampler,
             "_xla_windowed_adaptive_nuts",
             autospec=True,
-            side_effect=tf.errors.ResourceExhaustedError(
+            side_effect=backend.errors.ResourceExhaustedError(
                 None, None, "Resource exhausted"
             ),
         )
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=spec.ModelSpec(),
     )
 
@@ -1173,8 +1188,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1186,7 +1202,7 @@ class PosteriorMCMCSamplerTest(
     )
     inference_data = meridian.inference_data
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -1213,8 +1229,9 @@ class PosteriorMCMCSamplerTest(
     model_spec = spec.ModelSpec(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1226,7 +1243,7 @@ class PosteriorMCMCSamplerTest(
     )
     inference_data = meridian.inference_data
     meridian_with_inference_data = model.Meridian(
-        input_data=self.short_input_data_with_media_only,
+        input_data=input_data,
         model_spec=model_spec,
         inference_data=inference_data,
     )
@@ -1431,8 +1448,9 @@ class PosteriorMCMCSamplerTest(
         roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
         rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
     )
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1449,7 +1467,9 @@ class PosteriorMCMCSamplerTest(
     posterior_dims = meridian.create_inference_data_dims()
     posterior_samples = dict(meridian.inference_data.posterior)
     for posterior in mismatched_posteriors:
-      posterior_samples[posterior] = tf.zeros(mismatched_posteriors[posterior])
+      posterior_samples[posterior] = backend.zeros(
+          mismatched_posteriors[posterior]
+      )
 
     posterior_coords = dict(posterior_coords)
     posterior_coords[coord] = np.arange(mismatched_coord_size)
@@ -1468,7 +1488,7 @@ class PosteriorMCMCSamplerTest(
         f" {expected_coord_size}, got {mismatched_coord_size}",
     ):
       _ = model.Meridian(
-          input_data=self.short_input_data_with_media_and_rf,
+          input_data=input_data,
           model_spec=model_spec,
           inference_data=inference_data,
       )
@@ -1480,7 +1500,7 @@ class PosteriorMCMCSamplerTest(
   )
   def test_sample_posterior_with_seed(self, seed):
     if seed is not None:
-      seed = tfp.random.sanitize_seed(seed)
+      seed = backend.random.sanitize_seed(seed)
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
             posterior_sampler,
@@ -1495,8 +1515,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
     meridian.sample_posterior(
@@ -1533,8 +1554,9 @@ class PosteriorMCMCSamplerTest(
         " for details.",
     ):
       model_spec = spec.ModelSpec()
+      input_data = self.short_input_data_with_media_and_rf
       meridian = model.Meridian(
-          input_data=self.short_input_data_with_media_and_rf,
+          input_data=input_data,
           model_spec=model_spec,
       )
       meridian.sample_posterior(
@@ -1572,8 +1594,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1600,7 +1623,9 @@ class PosteriorMCMCSamplerTest(
     else:
       sanitized_seed0 = kwargs0["seed"]
       sanitized_seed1 = kwargs1["seed"]
-      self.assertAllEqual(sanitized_seed1, [x + 1 for x in sanitized_seed0])
+      test_utils.assert_allequal(
+          sanitized_seed1, [x + 1 for x in sanitized_seed0]
+      )
 
   def test_sample_posterior_seed_int(self):
     n_chains_list = [self._N_CHAINS, self._N_CHAINS]
@@ -1618,8 +1643,9 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
-        input_data=self.short_input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=model_spec,
     )
 
@@ -1636,8 +1662,57 @@ class PosteriorMCMCSamplerTest(
     _, kwargs0 = calls[0]
     _, kwargs1 = calls[1]
 
-    self.assertAllEqual(kwargs0["seed"], [123, 123])
-    self.assertAllEqual(kwargs1["seed"], [124, 124])
+    test_utils.assert_allequal(kwargs0["seed"], [123, 123])
+    test_utils.assert_allequal(kwargs1["seed"], [124, 124])
+
+  @parameterized.named_parameters(
+      dict(testcase_name="n_chains_is_list", n_chains_type=list),
+      dict(testcase_name="n_chains_is_int", n_chains_type=int),
+  )
+  def test_sample_posterior_joint_distribution_cached(self, n_chains_type):
+    n_chains = (
+        [self._N_CHAINS, self._N_CHAINS]
+        if n_chains_type == list
+        else self._N_CHAINS
+    )
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler,
+            "_xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    mock_get_joint_dist_unpinned = self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "_get_joint_dist_unpinned",
+            autospec=True,
+            return_value=mock.MagicMock(
+                experimental_pin=lambda y: y,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec()
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=n_chains,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+    mock_get_joint_dist_unpinned.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -33,7 +33,9 @@ dependencies = [
   "natsort >= 7.1.1, < 8",
   "numpy >= 2.0.2, < 3",
   "pandas >= 2.2.2, < 3",
+  "patsy >= 0.5.3, < 0.5.4",
   "scipy >= 1.13.1, < 2",
+  "statsmodels >= 0.12.2",
   "tensorflow >= 2.18, < 2.19",
   "tensorflow-probability >= 0.25, < 0.26",
   "tf-keras >= 2.18, < 2.19",
@@ -72,6 +74,14 @@ and-cuda = [
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
+
+# JAX backend dependencies.
+# Installed through `pip install -e .[jax]`
+jax = [
+    "jax==0.4.26",
+    "jaxlib==0.4.26",
+    "tensorflow-probability[substrates-jax] >= 0.25, < 0.26",
+]
 
 [tool.pyink]
 # Formatting configuration to follow Google style-guide

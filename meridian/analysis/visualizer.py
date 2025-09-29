@@ -19,6 +19,7 @@ import functools
 from typing import Mapping
 import warnings
 import altair as alt
+from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import formatter
@@ -26,8 +27,6 @@ from meridian.analysis import summary_text
 from meridian.model import model
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow_probability as tfp
 import xarray as xr
 
 
@@ -312,10 +311,10 @@ class ModelDiagnostics:
         k: v.values
         for k, v in self._meridian.inference_data.posterior.data_vars.items()
     }
-    for k, v in tfp.mcmc.potential_scale_reduction(
-        {k: tf.einsum('ij...->ji...', v) for k, v in mcmc_states.items()}
+    for k, v in backend.mcmc.potential_scale_reduction(
+        {k: backend.einsum('ij...->ji...', v) for k, v in mcmc_states.items()}
     ).items():
-      rhat_temp = v.numpy().flatten()
+      rhat_temp = np.asarray(v).flatten()
       rhat = pd.concat([
           rhat,
           pd.DataFrame({
@@ -864,6 +863,7 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
+      use_kpi: bool = False,
   ) -> xr.Dataset:
     """Dataset holding the calculated response curves data.
 
@@ -887,12 +887,14 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
+        the incremental revenue using the revenue per KPI (if available).
 
     Returns:
       A Dataset displaying the response curves data.
     """
     selected_times_list = list(selected_times) if selected_times else None
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
     return self._analyzer.response_curves(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=confidence_level,
@@ -962,6 +964,7 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
+      use_kpi: bool = False,
       plot_separately: bool = True,
       include_ci: bool = True,
       num_channels_displayed: int | None = None,
@@ -987,6 +990,8 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
+        the incremental revenue using the revenue per KPI (if available).
       plot_separately: If `True`, the plots are faceted. If `False`, the plots
         are layered to create one plot with all of the channels.
       include_ci: If `True`, plots the credible interval. Defaults to `True`.
@@ -1022,11 +1027,13 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
+        use_kpi=use_kpi,
     )
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      y_axis_label = summary_text.INC_OUTCOME_LABEL
-    else:
-      y_axis_label = summary_text.INC_KPI_LABEL
+    y_axis_label = (
+        summary_text.INC_KPI_LABEL
+        if use_kpi or self._meridian.input_data.revenue_per_kpi is None
+        else summary_text.INC_OUTCOME_LABEL
+    )
     base = (
         alt.Chart(response_curves_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_calculate(
@@ -1197,41 +1204,32 @@ class MediaEffects:
       include_ci: If `True`, plots the credible interval. Defaults to `True`.
 
     Returns:
-      A dictionary mapping channel type constants (`media`, `rf`, and
-      `organic_media`) to their respective Altair chart objects. Keys are only
-      present if charts for that type were generated (i.e., if the
-      corresponding channels exist in the data). Returns an empty dictionary if
-      no relevant channels are found.
+      A dictionary mapping channel type constants (`media`, `rf`,
+      `organic_media`, and `organic_rf`) to their respective Altair chart
+      objects. Keys are only present if charts for that type were generated
+      (i.e., if the corresponding channels exist in the data). Returns an empty
+      dictionary if no relevant channels are found.
     """
     hill_curves_dataframe = self.hill_curves_dataframe(
         confidence_level=confidence_level
     )
-    channel_types = list(set(hill_curves_dataframe[c.CHANNEL_TYPE]))
+    all_channel_types = set(hill_curves_dataframe[c.CHANNEL_TYPE])
     plots: dict[str, alt.Chart] = {}
 
-    if c.MEDIA in channel_types:
-      media_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.MEDIA
-      ]
-      plots[c.MEDIA] = self._plot_hill_curves_helper(
-          media_df, include_prior, include_ci
-      )
-
-    if c.RF in channel_types:
-      rf_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.RF
-      ]
-      plots[c.RF] = self._plot_hill_curves_helper(
-          rf_df, include_prior, include_ci
-      )
-
-    if c.ORGANIC_MEDIA in channel_types:
-      organic_media_df = hill_curves_dataframe[
-          hill_curves_dataframe[c.CHANNEL_TYPE] == c.ORGANIC_MEDIA
-      ]
-      plots[c.ORGANIC_MEDIA] = self._plot_hill_curves_helper(
-          organic_media_df, include_prior, include_ci
-      )
+    supported_channel_types = [
+        c.MEDIA,
+        c.RF,
+        c.ORGANIC_MEDIA,
+        c.ORGANIC_RF,
+    ]
+    for channel_type in supported_channel_types:
+      if channel_type in all_channel_types:
+        df_for_type = hill_curves_dataframe[
+            hill_curves_dataframe[c.CHANNEL_TYPE] == channel_type
+        ]
+        plots[channel_type] = self._plot_hill_curves_helper(
+            df_for_type, include_prior, include_ci
+        )
 
     return plots
 
@@ -1259,19 +1257,17 @@ class MediaEffects:
         column, or contains an unsupported channel type.
     """
     channel_type = df_channel_type[c.CHANNEL_TYPE].iloc[0]
-    if channel_type == c.MEDIA:
+    if channel_type in [c.MEDIA, c.ORGANIC_MEDIA]:
       x_axis_title = summary_text.HILL_X_AXIS_MEDIA_LABEL
       shaded_area_title = summary_text.HILL_SHADED_REGION_MEDIA_LABEL
-    elif channel_type == c.RF:
+    elif channel_type in [c.RF, c.ORGANIC_RF]:
       x_axis_title = summary_text.HILL_X_AXIS_RF_LABEL
       shaded_area_title = summary_text.HILL_SHADED_REGION_RF_LABEL
-    elif channel_type == c.ORGANIC_MEDIA:
-      x_axis_title = summary_text.HILL_X_AXIS_MEDIA_LABEL
-      shaded_area_title = summary_text.HILL_SHADED_REGION_MEDIA_LABEL
     else:
       raise ValueError(
           f"Unsupported channel type '{channel_type}' found in Hill curve data."
-          ' Expected one of: {c.MEDIA}, {c.RF}, {c.ORGANIC_MEDIA}.'
+          ' Expected one of: {c.MEDIA}, {c.RF}, {c.ORGANIC_MEDIA},'
+          ' {c.ORGANIC_RF}.'
       )
     domain_list = [
         c.POSTERIOR,
@@ -1345,6 +1341,7 @@ class MediaEffects:
       selected_times: frozenset[str] | None = None,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       by_reach: bool = True,
+      use_kpi: bool = False,
   ) -> pd.DataFrame:
     """Returns DataFrame with top channels by spend for the layered plot.
 
@@ -1359,6 +1356,7 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, use KPI instead of revenue.
 
     Returns:
       A DataFrame containing the top chosen channels
@@ -1369,6 +1367,7 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
+        use_kpi=use_kpi,
     )
     list_sorted_channels_cost = list(
         data.sel(spend_multiplier=1)
@@ -1433,8 +1432,8 @@ class MediaSummary:
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float denoting the fixed
         value which will be used as baseline for the given channel. If `None`,
-        the values defined with `ModelSpec.non_media_baseline_values`
-        will be used.
+        the values defined with `ModelSpec.non_media_baseline_values` will be
+        used.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
@@ -1654,8 +1653,8 @@ class MediaSummary:
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float denoting the fixed
         value which will be used as baseline for the given channel. If `None`,
-        the values defined with `ModelSpec.non_media_baseline_values`
-        will be used.
+        the values defined with `ModelSpec.non_media_baseline_values` will be
+        used.
     """
     self._confidence_level = confidence_level or self._confidence_level
     self._selected_times = selected_times

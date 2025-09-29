@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import datetime
+import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -1240,6 +1242,28 @@ class InputDataTest(parameterized.TestCase):
         expected_paid_channels,
     )
 
+  def test_get_all_adstock_hill_channels(self):
+    data = input_data.InputData(
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        controls=self.lagged_controls,
+        kpi=self.lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+    channels = data.get_all_adstock_hill_channels()
+    expected_adstock_hill_channels = [
+        m.item() for m in self.lagged_media[constants.MEDIA_CHANNEL]
+    ] + [rf.item() for rf in self.lagged_reach[constants.RF_CHANNEL]]
+    self.assertSequenceEqual(
+        channels.tolist(),
+        expected_adstock_hill_channels,
+    )
+
   def test_get_paid_channels_argument_builder(self):
     data = input_data.InputData(
         media=self.lagged_media,
@@ -1574,6 +1598,50 @@ class InputDataTest(parameterized.TestCase):
     expected_sum = np.einsum("gtm,tm->m", self.rf_spend.values, factors)
     np.testing.assert_array_almost_equal(result, expected_sum)
 
+  def test_scaled_centered_kpi(self):
+    tensor = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=1,
+            n_times=20,
+            n_media_times=20,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    ).scaled_centered_kpi
+    self.assertLen(tensor, 1)
+    np.testing.assert_allclose(
+        tensor[0].tolist(),
+        [
+            2.2627279108728477,
+            0.23631363080491555,
+            1.2752080884690158,
+            -0.5568927832723847,
+            1.0900254672561442,
+            1.1659889773033834,
+            -1.2555846027456177,
+            -0.4878882033108945,
+            -0.710828578320152,
+            -0.9461028701343918,
+            -1.1358022006132944,
+            -0.916229997265268,
+            -0.8039075798379829,
+            -0.4954278956685814,
+            -0.388120367674675,
+            -1.2567157354290128,
+            0.6854030057326468,
+            0.41937018236711265,
+            0.7154972479952508,
+            1.1029663034709385,
+        ],
+    )
+
+  def test_scaled_centered_kpi_supports_dtype_int(self):
+    data = test_utils.sample_input_data_revenue(n_media_channels=5)
+    data.kpi = data.kpi.astype(int)
+    data.population = data.population.astype(int)
+    self.assertNotEmpty(data.scaled_centered_kpi)
+
 
 class NonpaidInputDataTest(parameterized.TestCase):
   """Tests for non-paid InputData."""
@@ -1585,6 +1653,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
     self.n_lagged_media_times = 152
     self.n_geos = 10
     self.n_media_channels = 6
+    self.n_rf_channels = 2
     self.n_controls = 3
 
     self.n_non_media_channels = 2
@@ -1601,6 +1670,23 @@ class NonpaidInputDataTest(parameterized.TestCase):
         n_geos=self.n_geos,
         n_times=self.n_times,
         n_media_channels=self.n_media_channels,
+    )
+    self.lagged_reach = test_utils.random_reach_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_rf_channels=self.n_rf_channels,
+    )
+    self.lagged_frequency = test_utils.random_frequency_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_media_times=self.n_lagged_media_times,
+        n_rf_channels=self.n_rf_channels,
+    )
+    self.rf_spend = test_utils.random_rf_spend_nd_da(
+        n_geos=self.n_geos,
+        n_times=self.n_times,
+        n_rf_channels=self.n_rf_channels,
     )
     self.controls = test_utils.random_controls_da(
         media=self.lagged_media,
@@ -1699,6 +1785,137 @@ class NonpaidInputDataTest(parameterized.TestCase):
         expected_paid_channels,
     )
 
+  def test_get_all_adstock_hill_channels(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    channels = data.get_all_adstock_hill_channels()
+
+    expected_adstock_hill_channels = [m.item() for m in itertools.chain(
+        self.lagged_media[constants.MEDIA_CHANNEL],
+        self.lagged_reach[constants.RF_CHANNEL],
+        self.lagged_organic_media[constants.ORGANIC_MEDIA_CHANNEL],
+        self.lagged_organic_reach[constants.ORGANIC_RF_CHANNEL]
+    )]
+
+    self.assertSequenceEqual(
+        channels.tolist(),
+        expected_adstock_hill_channels,
+    )
+
+  def test_get_organic_media_channels_argument_builder(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    organic_media_channels_arg_builder = (
+        data.get_organic_media_channels_argument_builder()
+    )
+
+    expected_organic_media_channels = [
+        m.item()
+        for m in self.lagged_organic_media[constants.ORGANIC_MEDIA_CHANNEL]
+    ]
+
+    self.assertSequenceEqual(
+        organic_media_channels_arg_builder._ordered_coords,
+        expected_organic_media_channels,
+    )
+
+  def test_get_organic_media_channels_argument_builder_no_organic_media_channels(
+      self,
+  ):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "There are no organic media channels in the input data.",
+    ):
+      data.get_organic_media_channels_argument_builder()
+
+  def test_get_organic_rf_channels_argument_builder(self):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+
+    organic_rf_channels_arg_builder = (
+        data.get_organic_rf_channels_argument_builder()
+    )
+
+    expected_organic_rf_channels = [
+        m.item()
+        for m in self.lagged_organic_reach[constants.ORGANIC_RF_CHANNEL]
+    ]
+
+    self.assertSequenceEqual(
+        organic_rf_channels_arg_builder._ordered_coords,
+        expected_organic_rf_channels,
+    )
+
+  def test_get_organic_rf_channels_argument_builder_no_organic_rf_channels(
+      self,
+  ):
+    data = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+    )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "There are no organic RF channels in the input data.",
+    ):
+      data.get_organic_rf_channels_argument_builder()
+
   def test_get_total_outcome_no_revenue(self):
     """Tests get_total_outcome when revenue_per_kpi is None."""
     data = input_data.InputData(
@@ -1740,6 +1957,73 @@ class NonpaidInputDataTest(parameterized.TestCase):
     # Need to convert expected_outcome to a 0-d DataArray for assert_allclose
     expected_outcome_da = xr.DataArray(expected_outcome)
     self.assertAlmostEqual(total_outcome, expected_outcome_da)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="deep", deep=True),
+      dict(testcase_name="shallow", deep=False),
+  )
+  def test_copy_all_fields_populated(self, deep: bool):
+    """Tests copy with an InputData instance having all fields."""
+    original = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        non_media_treatments=self.non_media_treatments,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+        organic_media=self.lagged_organic_media,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=self.lagged_organic_frequency,
+    )
+    self._verify_copy(original, deep=deep)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="deep", deep=True),
+      dict(testcase_name="shallow", deep=False),
+  )
+  def test_copy_partial_fields_populated(self, deep: bool):
+    """Tests copy with an InputData instance having partial fields."""
+    original = input_data.InputData(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        organic_media=self.lagged_organic_media,
+    )
+    self._verify_copy(original, deep=deep)
+
+  def _verify_copy(self, original: input_data.InputData, deep: bool):
+    """Verifies that the copy is correct."""
+    copied = original.copy(deep=deep)
+
+    # Assert that the copied object is a new instance
+    self.assertIsNot(original, copied)
+
+    # Iterate through all fields of the InputData dataclass
+    for field in dataclasses.fields(original):
+      original_value = getattr(original, field.name)
+      copied_value = getattr(copied, field.name)
+
+      if isinstance(original_value, xr.DataArray):
+        if deep:
+          # In a deep copy, DataArrays should be new instances and equal in
+          # content.
+          self.assertIsNot(original_value, copied_value)
+          xrt.assert_equal(original_value, copied_value)
+        else:
+          # In a shallow copy, DataArrays should be the same instance
+          self.assertIs(original_value, copied_value)
+      else:
+        # Non-DataArray fields should always be the same instance
+        self.assertIs(original_value, copied_value)
 
 
 if __name__ == "__main__":

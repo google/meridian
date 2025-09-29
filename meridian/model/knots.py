@@ -16,8 +16,16 @@
 
 import bisect
 from collections.abc import Collection, Sequence
+import copy
 import dataclasses
+import math
+from typing import Any
+from meridian import constants
+from meridian.data import input_data
 import numpy as np
+# TODO: b/437393442 - migrate patsy
+from patsy import highlevel
+from statsmodels.regression import linear_model
 
 
 __all__ = [
@@ -144,6 +152,8 @@ class KnotInfo:
 def get_knot_info(
     n_times: int,
     knots: int | Collection[int] | None,
+    enable_aks: bool = False,
+    data: input_data.InputData | None = None,
     is_national: bool = False,
 ) -> KnotInfo:
   """Returns the number of knots, knot locations, and weights.
@@ -161,6 +171,12 @@ def get_knot_info(
       coefficient used for all time periods. If `knots` is `None`, then the
       numbers of knots used is equal to the number of time periods. This is
       equivalent to each time period having its own regression coefficient.
+    enable_aks: A boolean indicating whether to use the Automatic Knot Selection
+      algorithm to select optimal number of knots for running the model instead
+      of the default 1 for national and n_times for non-national models.
+    data: An Optional InputData object used by the Automatic Knot Selection
+      algorithm to calculate optimal number of knots from the provided Input
+      Data.
     is_national: A boolean indicator whether to adapt the knot information for a
       national model.
 
@@ -169,8 +185,17 @@ def get_knot_info(
     weights used to multiply with the knot values to get time-varying
     coefficients.
   """
-
-  if isinstance(knots, int):
+  if enable_aks:
+    if data is None:
+      raise ValueError(
+          'If enable_aks is true then input data must be provided.'
+      )
+    else:
+      aks = AKS(data)
+      knots = aks.automatic_knot_selection().knots
+      n_knots = len(knots)
+      knot_locations = knots
+  elif isinstance(knots, int):
     if knots < 1:
       raise ValueError('If knots is an integer, it must be at least 1.')
     elif knots > n_times:
@@ -208,3 +233,501 @@ def get_knot_info(
     weights = l1_distance_weights(n_times, knot_locations)
 
   return KnotInfo(n_knots, knot_locations, weights)
+
+
+@dataclasses.dataclass(frozen=True)
+class AKSResult:
+  knots: np.ndarray[int, np.dtype[int]]
+  model: linear_model.OLS
+
+
+class AKS:
+  """Class for automatically selecting knots in Meridian Core Library."""
+
+  _BASE_PENALTY = np.logspace(-1, 2, 100)
+  _DEGREE = 1
+
+  def __init__(self, data: input_data.InputData):
+    self._data = data
+
+  def automatic_knot_selection(self) -> AKSResult:
+    """Calculates the optimal number of knots for Meridian model using Automatic knot selection with A-spline.
+
+    Returns:
+      Selected knots and the corresponding B-spline model.
+    """
+    n_times = len(self._data.time)
+    n_geos = len(self._data.geo)
+
+    y_tensor = self._data.scaled_centered_kpi
+    y = np.reshape(y_tensor, (n_geos * n_times,))
+    x = np.reshape(
+        np.repeat([range(n_times)], n_geos, axis=0), (n_geos * n_times,)
+    )
+
+    knots, min_internal_knots, max_internal_knots = (
+        self._calculate_initial_knots(x)
+    )
+    geo_scaling_factor = 1 / np.sqrt(len(self._data.geo))
+    penalty = geo_scaling_factor * self._BASE_PENALTY
+
+    aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
+    n_knots = np.array([len(x) for x in aspline[constants.KNOTS_SELECTED]])
+    feasible_idx = np.where(
+        (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)
+    )[0]
+    information_criterion = aspline[constants.AIC][feasible_idx]
+    knots_sel = [aspline[constants.KNOTS_SELECTED][i] for i in feasible_idx]
+    model = [aspline[constants.MODEL][i] for i in feasible_idx]
+    opt_idx = max(
+        np.where(information_criterion == min(information_criterion))[0]
+    )
+
+    return AKSResult(knots_sel[opt_idx], model[opt_idx])
+
+  def _calculate_initial_knots(
+      self,
+      x: np.ndarray,
+  ) -> tuple[np.ndarray, int, int]:
+    """Calculates initial knots based on unique x values.
+
+    Args:
+      x: A flattened array of indexed time coordinates, repeated n_geos times.
+        e.g. [0, 1, 2, 3, ..., 0, 1, 2, 3, ...].
+
+    Returns:
+      A tuple containing:
+        - The calculated knots.
+        - The minimum number of internal knots.
+        - The maximum number of internal knots.
+    """
+    n_media = (
+        len(self._data.media_channel)
+        if self._data.media_channel is not None
+        else 0
+    )
+    n_rf = (
+        len(self._data.rf_channel) if self._data.rf_channel is not None else 0
+    )
+    n_organic_media = (
+        len(self._data.organic_media_channel)
+        if self._data.organic_media_channel is not None
+        else 0
+    )
+    n_organic_rf = (
+        len(self._data.organic_rf_channel)
+        if self._data.organic_rf_channel is not None
+        else 0
+    )
+    n_non_media = (
+        len(self._data.non_media_channel)
+        if self._data.non_media_channel is not None
+        else 0
+    )
+    n_controls = (
+        len(self._data.control_variable)
+        if self._data.control_variable is not None
+        else 0
+    )
+
+    x_vals_unique = np.unique(x)
+    min_x_data, max_x_data = x_vals_unique.min(), x_vals_unique.max()
+    knots = x_vals_unique[
+        (x_vals_unique > min_x_data) & (x_vals_unique < max_x_data)
+    ]
+    knots = np.sort(np.unique(knots))
+    # Drop one knot from the set of all knots because the algorithm requires one
+    # fewer degree of freedom than the total number of knots to function.
+    # Dropping the final knot is a natural and practical choice because it
+    # often has minimal impact on the overall model fit.
+    knots = knots[:-1]
+    min_internal_knots = 1
+
+    max_internal_knots = (
+        len(knots)
+        - n_media
+        - n_rf
+        - n_organic_media
+        - n_organic_rf
+        - n_non_media
+        - n_controls
+    )
+    if min_internal_knots > len(knots):
+      raise ValueError(
+          'The minimum number of internal knots cannot be greater than the'
+          ' total number of initial knots.'
+      )
+    if max_internal_knots < min_internal_knots:
+      raise ValueError(
+          'The maximum number of internal knots cannot be less than the minimum'
+          ' number of internal knots.'
+      )
+
+    return knots, min_internal_knots, max_internal_knots
+
+  def aspline(
+      self,
+      x: np.ndarray,
+      y: np.ndarray,
+      knots: np.ndarray,
+      penalty: np.ndarray,
+      max_iterations: int = 1000,
+      epsilon: float = 1e-5,
+      tol: float = 1e-6,
+  ) -> dict[str, Any]:
+    """Fits B-splines with automatic knot selection.
+
+    Args:
+      x: A flattened array of indexed time coordinates, repeated n_geos times.
+        e.g. [0, 1, 2, 3, ..., 0, 1, 2, 3, ...].
+      y: The flattened array of KPI values that have been population-scaled and
+        mean-centered by geo.
+      knots: Internal knots used for spline regression.
+      penalty: A vector of positive penalty values. The adaptive spline
+        regression is performed for every value of penalty.
+      max_iterations: Maximum number of iterations in the main loop.
+      epsilon: Value of the constant in the adaptive ridge procedure (see
+        Frommlet, F., Nuel, G. (2016) An Adaptive Ridge Procedure for L0
+        Regularization.)
+      tol: The tolerance chosen to diagnose convergence of the adaptive ridge
+        procedure.
+
+    Returns:
+      A dictionary of the following items:
+        selection_coefs: A list of selection coefficients for every value of
+        penalty.
+        knots_selected: A list of selected knots for every value of penalty.
+        model: A list of fitted models for every value of penalty.
+        regression_coefs: A list of estimated regression coefficients for every
+        value of penalty.
+        selected_matrix: A matrix of selected knots for every value of penalty.
+        aic: A list of AIC values for every value of penalty.
+        bic: A list of BIC values for every value of penalty.
+        ebic: A list of EBIC values for every value of penalty.
+    """
+    if x.ndim != 1 or y.ndim != 1:
+      raise ValueError(
+          'Provided x and y args for aspline must both be 1 dimensional!'
+      )
+
+    bs_cmd = (
+        'bs(x,knots=['
+        + ','.join(map(str, knots))
+        + '],degree='
+        + str(self._DEGREE)
+        + ',include_intercept=True)-1'
+    )
+    xmat = highlevel.dmatrix(bs_cmd, {'x': x})
+    nrow = xmat.shape[0]
+    ncol = xmat.shape[1]
+
+    xx = xmat.T.dot(xmat)
+    xy = xmat.T.dot(y)
+    xx_rot = np.concat(
+        [
+            self._mat2rot(xx + (1e-20 * np.identity(ncol))),
+            np.zeros(ncol)[:, np.newaxis],
+        ],
+        axis=1,
+    )
+    sigma0sq = linear_model.OLS(y, xmat).fit().mse_resid ** 2
+    model, x_sel, knots_sel, sel_ls, par_ls, aic, bic, ebic, dim, loglik = (
+        [None] * len(penalty) for _ in range(10)
+    )
+    old_sel, w = [np.ones(ncol - self._DEGREE - 1) for _ in range(2)]
+    par = np.ones(ncol)
+    index_penalty = 0
+    for _ in range(max_iterations):
+      par = self._wridge_solver(
+          xx_rot, xy, self._DEGREE, penalty[index_penalty], w, old_par=par
+      )
+      par_diff = np.diff(par, n=self._DEGREE + 1)
+
+      w = 1 / (par_diff**2 + epsilon**2)
+      sel = w * par_diff**2
+      converge = max(abs(old_sel - sel)) < tol
+      if converge:
+        sel_ls[index_penalty] = sel
+        knots_sel[index_penalty] = knots[sel > 0.99]
+        bs_cmd_iter = (
+            f"bs(x,knots=[{','.join(map(str, knots_sel[index_penalty]))}],degree={self._DEGREE},include_intercept=True)-1"
+        )
+        design_mat = highlevel.dmatrix(bs_cmd_iter, {'x': x})
+        x_sel[index_penalty] = design_mat
+        bs_model = linear_model.OLS(y, x_sel[index_penalty]).fit()
+        model[index_penalty] = bs_model
+        coefs = np.zeros(ncol, dtype=np.float32)
+        idx = np.concat([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
+        coefs[idx] = bs_model.params
+        par_ls[index_penalty] = coefs
+
+        loglik[index_penalty] = sum(bs_model.resid**2 / sigma0sq) / 2
+        dim[index_penalty] = len(knots_sel[index_penalty]) + self._DEGREE + 1
+        aic[index_penalty] = 2 * dim[index_penalty] + 2 * loglik[index_penalty]
+        bic[index_penalty] = (
+            np.log(nrow) * dim[index_penalty] + 2 * loglik[index_penalty]
+        )
+        ebic[index_penalty] = bic[index_penalty] + 2 * np.log(
+            np.float32(math.comb(ncol, design_mat.shape[1]))
+        )
+        index_penalty = index_penalty + 1
+      if index_penalty > len(penalty) - 1:
+        break
+      old_sel = sel
+
+    sel_mat = np.round(np.stack(sel_ls, axis=-1), 1)
+    return {
+        constants.SELECTION_COEFS: sel_ls,
+        constants.KNOTS_SELECTED: knots_sel,
+        constants.MODEL: model,
+        constants.REGRESSION_COEFS: par_ls,
+        constants.SELECTED_MATRIX: sel_mat,
+        constants.AIC: np.array(aic),
+        constants.BIC: np.array(bic),
+        constants.EBIC: np.array(ebic),
+    }
+
+  def _mat2rot(self, band_mat: np.ndarray) -> np.ndarray:
+    """Rotates a symmetric band matrix to get the rotated matrix associated.
+
+    Each column of the rotated matrix corresponds to a diagonal. The first
+    column is the main diagonal, the second one is the upper-diagonal and so on.
+    Artificial 0s are placed at the end of each column if necessary.
+
+    Args:
+      band_mat: The band square matrix to be rotated.
+
+    Returns:
+      The rotated matrix of band_mat.
+    """
+    p = band_mat.shape[1]
+    l = 0
+    for i in range(p):
+      lprime = np.where(band_mat[i, :] != 0)[0]
+      l = np.maximum(l, lprime[len(lprime) - 1] - i)
+
+    rot_mat = np.zeros([p, l + 1])
+    rot_mat[:, 0] = np.diag(band_mat)
+    if l > 0:
+      for j in range(l):
+        rot_mat[:, j + 1] = np.concat([
+            np.diag(band_mat[range(p - j - 1), :][:, range(j + 1, p)]),
+            np.zeros(j + 1),
+        ])
+    return rot_mat
+
+  def _band_weight(self, w: np.ndarray, diff: int) -> np.ndarray:
+    """Creates the penalty matrix for A-Spline.
+
+    Args:
+      w: Vector of weights.
+      diff: Order of the differences to be applied to the parameters. Must be a
+        strictly positive integer.
+
+    Returns:
+      Weighted penalty matrix D'diag(w)D, where
+      D = diff(diag(len(w) + diff), differences = diff)}. Only the non-null
+      superdiagonals of the weight matrix are returned, each column
+      corresponding to a diagonal.
+    """
+    ws = len(w)
+    rows = ws + diff
+    cols = diff + 1
+
+    # Compute the entries of the difference matrix
+    binom = np.zeros(cols, dtype=np.int32)
+    for i in range(cols):
+      binom[i] = math.comb(diff, i) * (-1) ** i
+
+    # Compute the limit indices
+    ind_mat = np.zeros([rows, 2], dtype=np.int32)
+    for ind in range(rows):
+      ind_mat[ind, 0] = 0 if ind - diff < 0 else ind - diff
+      ind_mat[ind, 1] = ind if ind < ws - 1 else ws - 1
+
+    # Main loop
+    result = np.zeros([rows, cols])
+    for j in range(cols):
+      for i in range(rows - j):
+        temp = 0.0
+        for k in range(ind_mat[i + j, 0], ind_mat[i, 1] + 1):
+          temp += binom[i - k] * binom[i + j - k] * w[k]
+        result[i, j] = temp
+
+    return result
+
+  def _ldl(self, rot_mat: np.ndarray) -> np.ndarray:
+    """Solves the Fast LDL decomposition of symmetric band matrix of length k.
+
+    Args:
+      rot_mat: Rotated row-wised matrix of dimensions n*k, with first column
+        corresponding to the diagonal, the second to the first super-diagonal
+        and so on.
+
+    Returns:
+      Solution of the LDL decomposition.
+    """
+    n = rot_mat.shape[0]
+    m = rot_mat.shape[1] - 1
+    rot_mat_new = copy.deepcopy(rot_mat)
+    for i in range(1, n + 1):
+      j0 = np.maximum(1, i - m)
+      for j in range(j0, i + 1):
+        for k in range(j0, j):
+          rot_mat_new[j - 1, i - j] -= (
+              rot_mat_new[k - 1, i - k]
+              * rot_mat_new[k - 1, j - k]
+              * rot_mat_new[k - 1, 0]
+          )
+        if i > j:
+          rot_mat_new[j - 1, i - j] /= rot_mat_new[j - 1, 0]
+
+    return rot_mat_new
+
+  def _bandsolve_kernel(
+      self, rot_mat: np.ndarray, rhs_mat: np.ndarray
+  ) -> np.ndarray:
+    """Solves the symmetric bandlinear system Ax = b.
+
+    This is the kernel function that solves the system, where A is the rotated
+    form of the band matrix and b is the right hand side.
+
+    Args:
+      rot_mat: Band square matrix in the rotated form. It's the visual rotation
+        by 90 degrees of the matrix, where subdiagonal are discarded.
+      rhs_mat: right hand side of the equation. Can be either a vector or a
+        matrix. If not supplied, the function return the inverse of rot_mat.
+
+    Returns:
+      Solution of the linear problem.
+    """
+    rot_mat_ldl = self._ldl(rot_mat)
+    x = copy.deepcopy(rhs_mat)
+    n = rot_mat.shape[0]
+    k = rot_mat_ldl.shape[1] - 1
+    l = rhs_mat.shape[1]
+
+    for l in range(l):
+      # solve b=inv(L)b
+      for i in range(2, n + 1):
+        jmax = np.minimum(i - 1, k)
+        for j in range(1, jmax + 1):
+          x[i - 1, l] -= rot_mat_ldl[i - j - 1, j] * x[i - j - 1, l]
+
+      # solve b=b/D
+      for i in range(n):
+        x[i, l] /= rot_mat_ldl[i, 0]
+
+      # solve b=inv(t(L))b=inv(L*D*t(L))b
+      for i in range(n - 1, 0, -1):
+        jmax = np.minimum(n - i, k)
+        for j in range(1, jmax + 1):
+          x[i - 1, l] -= rot_mat_ldl[i - 1, j] * x[i + j - 1, l]
+
+    return x
+
+  def _bandsolve(self, rot_mat: np.ndarray, rhs_mat: np.ndarray) -> np.ndarray:
+    """Solves the symmetric bandlinear system Ax = b.
+
+    Here A is the rotated form of the band matrix and b is the right hand side.
+
+    Args:
+      rot_mat: Band square matrix in the rotated form. It's the visual rotation
+        by 90 degrees of the matrix, where subdiagonal are discarded.
+      rhs_mat: right hand side of the equation. Can be either a vector or a
+        matrix. If not supplied, the function return the inverse of rot_mat.
+
+    Returns:
+      Solution of the linear problem.
+    """
+
+    nrow = rot_mat.shape[0]
+    ncol = rot_mat.shape[1]
+    if (nrow == ncol) & (rot_mat[nrow - 1, ncol - 1] != 0):
+      raise ValueError('rot_mat should be a rotated matrix!')
+    if rot_mat[nrow - 1, 1] != 0:
+      raise ValueError('rot_mat should be a rotated matrix!')
+    if len(rhs_mat) != nrow:
+      raise ValueError('Dimension problem!')
+
+    return self._bandsolve_kernel(rot_mat, rhs_mat[:, np.newaxis])
+
+  def _wridge_solver(
+      self,
+      xx_rot: np.ndarray,
+      xy: np.ndarray,
+      degree: int,
+      penalty: float,
+      w: np.ndarray,
+      old_par: np.ndarray,
+      max_iterations: int = 1000,
+      tol: float = 1e-8,
+  ) -> np.ndarray | None:
+    """Fits B-Splines with weighted penalization over differences of parameters.
+
+    Args:
+      xx_rot: The matrix X'X where X is the design matrix. This argument is
+        given in the form of a band matrix, i.e., successive columns represent
+        superdiagonals.
+      xy: The vector of currently estimated points X'y, where y is the
+        y-coordinate of the data.
+      degree: The degree of the B-splines.
+      penalty: Positive penalty constant.
+      w: Vector of weights. The case w = np.ones(xx_rot.shape[0] - degree - 1)
+        corresponds to fitting P-splines with difference order degree + 1. See
+        Eilers, P., Marx, B. (1996) Flexible smoothing with B-splines and
+        penalties.
+      old_par: The previous parameter vector.
+      max_iterations: Maximum number of Newton-Raphson iterations to be
+        computed.
+      tol: The tolerance chosen to diagnose convergence of the adaptive ridge
+        procedure.
+
+    Returns:
+      The estimated parameter of the spline regression.
+    """
+
+    def _hessian_solver(par, xx_rot, xy, penalty, w, diff):
+      """Inverts the hessian and multiplies it by the score.
+
+      Args:
+        par: The parameter vector.
+        xx_rot: The matrix X'X where X is the design matrix. This argument is
+          given in the form of a rotated band matrix, i.e., successive columns
+          represent superdiagonals.
+        xy: The vector of currently estimated points X'y, where y is the
+          y-coordinate of the data.
+        penalty: Positive penalty constant.
+        w: Vector of weights.
+        diff: The order of the differences of the parameter. Equals degree + 1
+          in adaptive spline regression.
+
+      Returns:
+        The solution of the linear system: (X'X + penalty*D'WD)^{-1} X'y - par
+      """
+      if xx_rot.shape[1] != diff + 1:
+        raise ValueError('Error: xx_rot must have diff + 1 columns')
+      return (
+          self._bandsolve(xx_rot + penalty * self._band_weight(w, diff), xy)[
+              :, 0
+          ]
+          - par
+      )
+
+    par = None
+    for _ in range(max_iterations):
+      par = old_par + _hessian_solver(
+          par=old_par,
+          xx_rot=xx_rot,
+          xy=xy,
+          penalty=penalty,
+          w=w,
+          diff=degree + 1,
+      )
+      index = old_par != 0
+      rel_error = max(abs(par - old_par)[index] / abs(old_par)[index])
+      if rel_error < tol:
+        break
+      old_par = par
+
+    return par

@@ -15,11 +15,11 @@
 """Structures and functions for manipulating media value data and tensors."""
 
 import dataclasses
+from meridian import backend
 from meridian import constants
 from meridian.data import input_data as data
 from meridian.model import spec
 from meridian.model import transformers
-import tensorflow as tf
 
 
 __all__ = [
@@ -35,9 +35,9 @@ __all__ = [
 
 
 def _roi_calibration_scaled_counterfactual(
-    metric_scaled: tf.Tensor,
-    calibration_period: tf.Tensor,
-) -> tf.Tensor:
+    metric_scaled: backend.Tensor,
+    calibration_period: backend.Tensor,
+) -> backend.Tensor:
   """Calculate ROI calibration scaled counterfactual media or reach.
 
   Args:
@@ -50,8 +50,8 @@ def _roi_calibration_scaled_counterfactual(
     A tensor of scaled metric values with shape `(n_geos, n_times, n_channels)`
     where media values are set to zero during the calibration period.
   """
-  factors = tf.where(calibration_period, 0.0, 1.0)
-  return tf.einsum("gtm,tm->gtm", metric_scaled, factors)
+  factors = backend.where(calibration_period, 0.0, 1.0)
+  return backend.einsum("gtm,tm->gtm", metric_scaled, factors)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -84,12 +84,12 @@ class MediaTensors:
       (repeated for each channel.)
   """
 
-  media: tf.Tensor | None = None
-  media_spend: tf.Tensor | None = None
+  media: backend.Tensor | None = None
+  media_spend: backend.Tensor | None = None
   media_transformer: transformers.MediaTransformer | None = None
-  media_scaled: tf.Tensor | None = None
-  prior_media_scaled_counterfactual: tf.Tensor | None = None
-  prior_denominator: tf.Tensor | None = None
+  media_scaled: backend.Tensor | None = None
+  prior_media_scaled_counterfactual: backend.Tensor | None = None
+  prior_denominator: backend.Tensor | None = None
 
 
 def build_media_tensors(
@@ -101,26 +101,24 @@ def build_media_tensors(
     return MediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  media = tf.convert_to_tensor(input_data.media, dtype=tf.float32)
-  media_spend = tf.convert_to_tensor(input_data.media_spend, dtype=tf.float32)
+  media = backend.to_tensor(input_data.media, dtype=backend.float32)
+  media_spend = backend.to_tensor(input_data.media_spend, dtype=backend.float32)
   media_transformer = transformers.MediaTransformer(
-      media, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      media, backend.to_tensor(input_data.population, dtype=backend.float32)
   )
   media_scaled = media_transformer.forward(media)
   prior_type = model_spec.effective_media_prior_type
   calibration_period = model_spec.roi_calibration_period
   if calibration_period is not None:
-    calibration_period_tf = tf.convert_to_tensor(
-        calibration_period, dtype=tf.bool
+    calibration_period_tensor = backend.to_tensor(
+        calibration_period, dtype=backend.bool_
     )
   else:
-    calibration_period_tf = None
+    calibration_period_tensor = None
 
-  aggregated_media_spend = tf.convert_to_tensor(
-      input_data.aggregate_media_spend(
-          calibration_period=calibration_period
-      ),
-      dtype=tf.float32,
+  aggregated_media_spend = backend.to_tensor(
+      input_data.aggregate_media_spend(calibration_period=calibration_period),
+      dtype=backend.float32,
   )
   # Set `prior_media_scaled_counterfactual` and `prior_denominator` depending on
   # the prior type.
@@ -133,7 +131,7 @@ def build_media_tensors(
       prior_media_scaled_counterfactual = (
           _roi_calibration_scaled_counterfactual(
               media_scaled,
-              calibration_period=calibration_period_tf,
+              calibration_period=calibration_period_tensor,
           )
       )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
@@ -141,8 +139,12 @@ def build_media_tensors(
     prior_denominator = aggregated_media_spend * (constants.MROI_FACTOR - 1.0)
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_media_scaled_counterfactual = None
-    total_outcome = tf.cast(input_data.get_total_outcome(), tf.float32)
-    prior_denominator = tf.repeat(total_outcome, len(input_data.media_channel))
+    total_outcome = backend.to_tensor(
+        input_data.get_total_outcome(), dtype=backend.float32
+    )
+    prior_denominator = backend.repeat(
+        total_outcome, len(input_data.media_channel)
+    )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
     prior_media_scaled_counterfactual = None
     prior_denominator = None
@@ -171,9 +173,9 @@ class OrganicMediaTensors:
       by the median value.
   """
 
-  organic_media: tf.Tensor | None = None
+  organic_media: backend.Tensor | None = None
   organic_media_transformer: transformers.MediaTransformer | None = None
-  organic_media_scaled: tf.Tensor | None = None
+  organic_media_scaled: backend.Tensor | None = None
 
 
 def build_organic_media_tensors(
@@ -184,12 +186,12 @@ def build_organic_media_tensors(
     return OrganicMediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  organic_media = tf.convert_to_tensor(
-      input_data.organic_media, dtype=tf.float32
+  organic_media = backend.to_tensor(
+      input_data.organic_media, dtype=backend.float32
   )
   organic_media_transformer = transformers.MediaTransformer(
       organic_media,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      backend.to_tensor(input_data.population, dtype=backend.float32),
   )
   organic_media_scaled = organic_media_transformer.forward(organic_media)
 
@@ -233,14 +235,14 @@ class RfTensors:
       (repeated for each channel).
   """
 
-  reach: tf.Tensor | None = None
-  frequency: tf.Tensor | None = None
-  rf_impressions: tf.Tensor | None = None
-  rf_spend: tf.Tensor | None = None
+  reach: backend.Tensor | None = None
+  frequency: backend.Tensor | None = None
+  rf_impressions: backend.Tensor | None = None
+  rf_spend: backend.Tensor | None = None
   reach_transformer: transformers.MediaTransformer | None = None
-  reach_scaled: tf.Tensor | None = None
-  prior_reach_scaled_counterfactual: tf.Tensor | None = None
-  prior_denominator: tf.Tensor | None = None
+  reach_scaled: backend.Tensor | None = None
+  prior_reach_scaled_counterfactual: backend.Tensor | None = None
+  prior_denominator: backend.Tensor | None = None
 
 
 def build_rf_tensors(
@@ -251,23 +253,25 @@ def build_rf_tensors(
   if input_data.reach is None:
     return RfTensors()
 
-  reach = tf.convert_to_tensor(input_data.reach, dtype=tf.float32)
-  frequency = tf.convert_to_tensor(input_data.frequency, dtype=tf.float32)
+  reach = backend.to_tensor(input_data.reach, dtype=backend.float32)
+  frequency = backend.to_tensor(input_data.frequency, dtype=backend.float32)
   rf_impressions = (
       reach * frequency if reach is not None and frequency is not None else None
   )
-  rf_spend = tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32)
+  rf_spend = backend.to_tensor(input_data.rf_spend, dtype=backend.float32)
   reach_transformer = transformers.MediaTransformer(
-      reach, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      reach, backend.to_tensor(input_data.population, dtype=backend.float32)
   )
   reach_scaled = reach_transformer.forward(reach)
   prior_type = model_spec.effective_rf_prior_type
   calibration_period = model_spec.rf_roi_calibration_period
   if calibration_period is not None:
-    calibration_period = tf.convert_to_tensor(calibration_period, dtype=tf.bool)
-  aggregated_rf_spend = tf.convert_to_tensor(
+    calibration_period = backend.to_tensor(
+        calibration_period, dtype=backend.bool_
+    )
+  aggregated_rf_spend = backend.to_tensor(
       input_data.aggregate_rf_spend(calibration_period=calibration_period),
-      dtype=tf.float32,
+      dtype=backend.float32,
   )
   # Set `prior_reach_scaled_counterfactual` and `prior_denominator` depending on
   # the prior type.
@@ -287,8 +291,12 @@ def build_rf_tensors(
     prior_denominator = aggregated_rf_spend * (constants.MROI_FACTOR - 1.0)
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_reach_scaled_counterfactual = None
-    total_outcome = tf.cast(input_data.get_total_outcome(), tf.float32)
-    prior_denominator = tf.repeat(total_outcome, len(input_data.rf_channel))
+    total_outcome = backend.to_tensor(
+        input_data.get_total_outcome(), dtype=backend.float32
+    )
+    prior_denominator = backend.repeat(
+        total_outcome, len(input_data.rf_channel)
+    )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
     prior_reach_scaled_counterfactual = None
     prior_denominator = None
@@ -320,10 +328,10 @@ class OrganicRfTensors:
       by the median value.
   """
 
-  organic_reach: tf.Tensor | None = None
-  organic_frequency: tf.Tensor | None = None
+  organic_reach: backend.Tensor | None = None
+  organic_frequency: backend.Tensor | None = None
   organic_reach_transformer: transformers.MediaTransformer | None = None
-  organic_reach_scaled: tf.Tensor | None = None
+  organic_reach_scaled: backend.Tensor | None = None
 
 
 def build_organic_rf_tensors(
@@ -333,15 +341,15 @@ def build_organic_rf_tensors(
   if input_data.organic_reach is None:
     return OrganicRfTensors()
 
-  organic_reach = tf.convert_to_tensor(
-      input_data.organic_reach, dtype=tf.float32
+  organic_reach = backend.to_tensor(
+      input_data.organic_reach, dtype=backend.float32
   )
-  organic_frequency = tf.convert_to_tensor(
-      input_data.organic_frequency, dtype=tf.float32
+  organic_frequency = backend.to_tensor(
+      input_data.organic_frequency, dtype=backend.float32
   )
   organic_reach_transformer = transformers.MediaTransformer(
       organic_reach,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      backend.to_tensor(input_data.population, dtype=backend.float32),
   )
   organic_reach_scaled = organic_reach_transformer.forward(organic_reach)
 

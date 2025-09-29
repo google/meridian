@@ -1,0 +1,995 @@
+# Copyright 2025 The Meridian Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Meridian EDA Engine."""
+
+import dataclasses
+import functools
+from typing import Callable, Dict, Optional, Sequence, TypeAlias
+from meridian import constants
+from meridian.model import model
+from meridian.model import transformers
+from meridian.model.eda import eda_outcome
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import xarray as xr
+
+
+_DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
+AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
+_CORRELATION_COL_NAME = 'correlation'
+_CORR_VAR1 = 'var1'
+_CORR_VAR2 = 'var2'
+_PAIRWISE_OVERALL_CORR_THRESHOLD = 0.999
+_PAIRWISE_GEO_CORR_THRESHOLD = 0.999
+_PAIRWISE_NATIONAL_CORR_THRESHOLD = 0.999
+_EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
+    columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
+)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ReachFrequencyData:
+  """Holds reach and frequency data arrays.
+
+  Attributes:
+    reach_raw_da: Raw reach data.
+    reach_scaled_da: Scaled reach data.
+    national_reach_raw_da: National raw reach data.
+    national_reach_scaled_da: National scaled reach data.
+    frequency_da: Frequency data.
+    national_frequency_da: National frequency data.
+    rf_impressions_scaled_da: Scaled reach * frequency impressions data.
+    national_rf_impressions_scaled_da: National scaled reach * frequency
+      impressions data.
+    rf_impressions_raw_da: Raw reach * frequency impressions data.
+    national_rf_impressions_raw_da: National raw reach * frequency impressions
+      data.
+  """
+
+  reach_raw_da: xr.DataArray
+  reach_scaled_da: xr.DataArray
+  national_reach_raw_da: xr.DataArray
+  national_reach_scaled_da: xr.DataArray
+  frequency_da: xr.DataArray
+  national_frequency_da: xr.DataArray
+  rf_impressions_scaled_da: xr.DataArray
+  national_rf_impressions_scaled_da: xr.DataArray
+  rf_impressions_raw_da: xr.DataArray
+  national_rf_impressions_raw_da: xr.DataArray
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class AggregationConfig:
+  """Configuration for custom aggregation functions.
+
+  Attributes:
+    control_variables: A dictionary mapping control variable names to
+      aggregation functions. Defaults to `np.sum` if a variable is not
+      specified.
+    non_media_treatments: A dictionary mapping non-media variable names to
+      aggregation functions. Defaults to `np.sum` if a variable is not
+      specified.
+  """
+
+  control_variables: AggregationMap = dataclasses.field(default_factory=dict)
+  non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
+
+
+def _data_array_like(
+    *, da: xr.DataArray, values: np.ndarray | tf.Tensor
+) -> xr.DataArray:
+  """Returns a DataArray from `values` with the same structure as `da`.
+
+  Args:
+    da: The DataArray whose structure (dimensions, coordinates, name, and attrs)
+      will be used for the new DataArray.
+    values: The numpy array or tensorflow tensor to use as the values for the
+      new DataArray.
+
+  Returns:
+    A new DataArray with the provided `values` and the same structure as `da`.
+  """
+  return xr.DataArray(
+      values,
+      coords=da.coords,
+      dims=da.dims,
+      name=da.name,
+      attrs=da.attrs,
+  )
+
+
+def _stack_variables(ds: xr.Dataset, coord_name: str) -> xr.DataArray:
+  """Stacks data variables other than time and geo into a single variable."""
+  dims = []
+  coords = []
+  sample_dims = []
+  # Dimensions have the same names as the coordinates.
+  for dim in ds.dims:
+    if dim in [constants.TIME, constants.GEO]:
+      sample_dims.append(dim)
+      continue
+    dims.append(dim)
+    coords.extend(ds.coords[dim].values.tolist())
+
+  da = ds.to_stacked_array(coord_name, sample_dims=sample_dims)
+  da = da.reset_index(dims).assign_coords({coord_name: coords})
+  return da
+
+
+def _compute_correlation_matrix(
+    dataset: xr.Dataset, dims: str | Sequence[str]
+) -> xr.DataArray:
+  """Computes the correlation matrix for a dataset.
+
+  Args:
+    dataset: An xr.Dataset containing variables for which to compute
+      correlations.
+    dims: Dimensions along which to compute correlations. Can only be TIME or
+      GEO.
+
+  Returns:
+    An xr.DataArray containing the correlation matrix.
+  """
+  # Create two versions for correlation
+  da1 = _stack_variables(dataset, _CORR_VAR1)
+  da2 = _stack_variables(dataset, _CORR_VAR2)
+
+  # Compute pairwise correlation across dims. Other dims are broadcasted.
+  corr_mat_da = xr.corr(da1, da2, dim=dims)
+  return corr_mat_da
+
+
+def _get_upper_triangle_corr_mat(corr_mat_da: xr.DataArray) -> xr.DataArray:
+  """Gets the upper triangle of a correlation matrix.
+
+  Args:
+    corr_mat_da: An xr.DataArray containing the correlation matrix.
+
+  Returns:
+    An xr.DataArray containing only the elements in the upper triangle of the
+    correlation matrix, with other elements masked as NaN.
+  """
+  n_vars = corr_mat_da.sizes[_CORR_VAR1]
+  mask_np = np.triu(np.ones((n_vars, n_vars), dtype=bool), k=1)
+  mask = xr.DataArray(
+      mask_np,
+      dims=[_CORR_VAR1, _CORR_VAR2],
+      coords={
+          _CORR_VAR1: corr_mat_da[_CORR_VAR1],
+          _CORR_VAR2: corr_mat_da[_CORR_VAR2],
+      },
+  )
+  return corr_mat_da.where(mask)
+
+
+def _find_extreme_corr_pairs(
+    extreme_corr_da: xr.DataArray, extreme_corr_threshold: float
+) -> pd.DataFrame:
+  """Finds extreme correlation pairs in a correlation matrix."""
+  corr_tri = _get_upper_triangle_corr_mat(extreme_corr_da)
+  extreme_corr_da = corr_tri.where(abs(corr_tri) > extreme_corr_threshold)
+
+  df = extreme_corr_da.to_dataframe(name=_CORRELATION_COL_NAME).dropna()
+  if df.empty:
+    return _EMPTY_DF_FOR_EXTREME_CORR_PAIRS.copy()
+  return df.sort_values(
+      by=_CORRELATION_COL_NAME, ascending=False, inplace=False
+  )
+
+
+class EDAEngine:
+  """Meridian EDA Engine."""
+
+  def __init__(
+      self,
+      meridian: model.Meridian,
+      agg_config: AggregationConfig = AggregationConfig(),
+  ):
+    self._meridian = meridian
+    self._agg_config = agg_config
+
+  @functools.cached_property
+  def controls_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.controls is None:
+      return None
+    controls_scaled_da = _data_array_like(
+        da=self._meridian.input_data.controls,
+        values=self._meridian.controls_scaled,
+    )
+    return controls_scaled_da
+
+  @functools.cached_property
+  def national_controls_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled controls data array."""
+    if self._meridian.input_data.controls is None:
+      return None
+    if self._meridian.is_national:
+      if self.controls_scaled_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'controls_scaled_da is None when controls is not None.'
+        )
+      return self.controls_scaled_da.squeeze(constants.GEO)
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.controls,
+          transformers.CenteringAndScalingTransformer,
+          constants.CONTROL_VARIABLE,
+          self._agg_config.control_variables,
+      )
+
+  @functools.cached_property
+  def media_raw_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.media is None:
+      return None
+    return self._truncate_media_time(self._meridian.input_data.media)
+
+  @functools.cached_property
+  def media_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.media is None:
+      return None
+    media_scaled_da = _data_array_like(
+        da=self._meridian.input_data.media,
+        values=self._meridian.media_tensors.media_scaled,
+    )
+    return self._truncate_media_time(media_scaled_da)
+
+  @functools.cached_property
+  def media_spend_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.media_spend is None:
+      return None
+    media_spend_da = _data_array_like(
+        da=self._meridian.input_data.media_spend,
+        values=self._meridian.media_tensors.media_spend,
+    )
+    # No need to truncate the media time for media spend.
+    return media_spend_da
+
+  @functools.cached_property
+  def national_media_spend_da(self) -> xr.DataArray | None:
+    """Returns the national media spend data array."""
+    if self._meridian.input_data.media_spend is None:
+      return None
+    if self._meridian.is_national:
+      if self.media_spend_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'media_spend_da is None when media_spend is not None.'
+        )
+      return self.media_spend_da.squeeze(constants.GEO)
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.media_spend,
+          None,
+      )
+
+  @functools.cached_property
+  def national_media_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw media data array."""
+    if self.media_raw_da is None:
+      return None
+    if self._meridian.is_national:
+      return self.media_raw_da.squeeze(constants.GEO)
+    else:
+      # Note that media is summable by assumption.
+      return self._aggregate_and_scale_geo_da(
+          self.media_raw_da,
+          None,
+      )
+
+  @functools.cached_property
+  def national_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled media data array."""
+    if self.media_scaled_da is None:
+      return None
+    if self._meridian.is_national:
+      return self.media_scaled_da.squeeze(constants.GEO)
+    else:
+      # Note that media is summable by assumption.
+      return self._aggregate_and_scale_geo_da(
+          self.media_raw_da,
+          transformers.MediaTransformer,
+      )
+
+  @functools.cached_property
+  def organic_media_raw_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.organic_media is None:
+      return None
+    return self._truncate_media_time(self._meridian.input_data.organic_media)
+
+  @functools.cached_property
+  def organic_media_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.organic_media is None:
+      return None
+    organic_media_scaled_da = _data_array_like(
+        da=self._meridian.input_data.organic_media,
+        values=self._meridian.organic_media_tensors.organic_media_scaled,
+    )
+    return self._truncate_media_time(organic_media_scaled_da)
+
+  @functools.cached_property
+  def national_organic_media_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic media data array."""
+    if self.organic_media_raw_da is None:
+      return None
+    if self._meridian.is_national:
+      return self.organic_media_raw_da.squeeze(constants.GEO)
+    else:
+      # Note that organic media is summable by assumption.
+      return self._aggregate_and_scale_geo_da(self.organic_media_raw_da, None)
+
+  @functools.cached_property
+  def national_organic_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic media data array."""
+    if self.organic_media_scaled_da is None:
+      return None
+    if self._meridian.is_national:
+      return self.organic_media_scaled_da.squeeze(constants.GEO)
+    else:
+      # Note that organic media is summable by assumption.
+      return self._aggregate_and_scale_geo_da(
+          self.organic_media_raw_da,
+          transformers.MediaTransformer,
+      )
+
+  @functools.cached_property
+  def non_media_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.non_media_treatments is None:
+      return None
+    non_media_scaled_da = _data_array_like(
+        da=self._meridian.input_data.non_media_treatments,
+        values=self._meridian.non_media_treatments_normalized,
+    )
+    return non_media_scaled_da
+
+  @functools.cached_property
+  def national_non_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled non-media treatment data array."""
+    if self._meridian.input_data.non_media_treatments is None:
+      return None
+    if self._meridian.is_national:
+      if self.non_media_scaled_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError(
+            'non_media_scaled_da is None when non_media_treatments is not None.'
+        )
+      return self.non_media_scaled_da.squeeze(constants.GEO)
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.non_media_treatments,
+          transformers.CenteringAndScalingTransformer,
+          constants.NON_MEDIA_CHANNEL,
+          self._agg_config.non_media_treatments,
+      )
+
+  @functools.cached_property
+  def rf_spend_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.rf_spend is None:
+      return None
+    rf_spend_da = _data_array_like(
+        da=self._meridian.input_data.rf_spend,
+        values=self._meridian.rf_tensors.rf_spend,
+    )
+    return rf_spend_da
+
+  @functools.cached_property
+  def national_rf_spend_da(self) -> xr.DataArray | None:
+    """Returns the national RF spend data array."""
+    if self._meridian.input_data.rf_spend is None:
+      return None
+    if self._meridian.is_national:
+      if self.rf_spend_da is None:
+        # This case should be impossible given the check above.
+        raise RuntimeError('rf_spend_da is None when rf_spend is not None.')
+      return self.rf_spend_da.squeeze(constants.GEO)
+    else:
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.rf_spend, None
+      )
+
+  @functools.cached_property
+  def _rf_data(self) -> ReachFrequencyData | None:
+    if self._meridian.input_data.reach is None:
+      return None
+    return self._get_rf_data(
+        self._meridian.input_data.reach,
+        self._meridian.input_data.frequency,
+        is_organic=False,
+    )
+
+  @property
+  def reach_raw_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_raw_da
+
+  @property
+  def reach_scaled_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.reach_scaled_da
+
+  @property
+  def national_reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw reach data array."""
+    if self._rf_data is None:
+      return None
+    return self._rf_data.national_reach_raw_da
+
+  @property
+  def national_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled reach data array."""
+    if self._rf_data is None:
+      return None
+    return self._rf_data.national_reach_scaled_da
+
+  @property
+  def frequency_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.frequency_da
+
+  @property
+  def national_frequency_da(self) -> xr.DataArray | None:
+    """Returns the national frequency data array."""
+    if self._rf_data is None:
+      return None
+    return self._rf_data.national_frequency_da
+
+  @property
+  def rf_impressions_raw_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_raw_da
+
+  @property
+  def national_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw RF impressions data array."""
+    if self._rf_data is None:
+      return None
+    return self._rf_data.national_rf_impressions_raw_da
+
+  @property
+  def rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    if self._rf_data is None:
+      return None
+    return self._rf_data.rf_impressions_scaled_da
+
+  @property
+  def national_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled RF impressions data array."""
+    if self._rf_data is None:
+      return None
+    return self._rf_data.national_rf_impressions_scaled_da
+
+  @functools.cached_property
+  def _organic_rf_data(self) -> ReachFrequencyData | None:
+    if self._meridian.input_data.organic_reach is None:
+      return None
+    return self._get_rf_data(
+        self._meridian.input_data.organic_reach,
+        self._meridian.input_data.organic_frequency,
+        is_organic=True,
+    )
+
+  @property
+  def organic_reach_raw_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_raw_da
+
+  @property
+  def organic_reach_scaled_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.reach_scaled_da
+
+  @property
+  def national_organic_reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic reach data array."""
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.national_reach_raw_da
+
+  @property
+  def national_organic_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic reach data array."""
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.national_reach_scaled_da
+
+  @property
+  def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_scaled_da
+
+  @property
+  def national_organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the national scaled organic RF impressions data array."""
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.national_rf_impressions_scaled_da
+
+  @property
+  def organic_frequency_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.frequency_da
+
+  @property
+  def national_organic_frequency_da(self) -> xr.DataArray | None:
+    """Returns the national organic frequency data array."""
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.national_frequency_da
+
+  @property
+  def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.rf_impressions_raw_da
+
+  @property
+  def national_organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the national raw organic RF impressions data array."""
+    if self._organic_rf_data is None:
+      return None
+    return self._organic_rf_data.national_rf_impressions_raw_da
+
+  @functools.cached_property
+  def geo_population_da(self) -> xr.DataArray | None:
+    if self._meridian.is_national:
+      return None
+    return xr.DataArray(
+        self._meridian.population,
+        coords={constants.GEO: self._meridian.input_data.geo.values},
+        dims=[constants.GEO],
+        name=constants.POPULATION,
+    )
+
+  @functools.cached_property
+  def kpi_scaled_da(self) -> xr.DataArray:
+    return _data_array_like(
+        da=self._meridian.input_data.kpi,
+        values=self._meridian.kpi_scaled,
+    )
+
+  @functools.cached_property
+  def national_kpi_scaled_da(self) -> xr.DataArray:
+    """Returns the national scaled KPI data array."""
+    if self._meridian.is_national:
+      return self.kpi_scaled_da.squeeze(constants.GEO)
+    else:
+      # Note that kpi is summable by assumption.
+      return self._aggregate_and_scale_geo_da(
+          self._meridian.input_data.kpi,
+          transformers.CenteringAndScalingTransformer,
+      )
+
+  @functools.cached_property
+  def treatment_control_scaled_ds(self) -> xr.Dataset:
+    """Returns a Dataset containing all scaled treatments and controls.
+
+    This includes media, RF impressions, organic media, organic RF impressions,
+    non-media treatments, and control variables, all at the geo level.
+    """
+    to_merge = [
+        da
+        for da in [
+            self.media_scaled_da,
+            self.rf_impressions_scaled_da,
+            self.organic_media_scaled_da,
+            self.organic_rf_impressions_scaled_da,
+            self.controls_scaled_da,
+            self.non_media_scaled_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
+
+  @functools.cached_property
+  def national_treatment_control_scaled_ds(self) -> xr.Dataset:
+    """Returns a Dataset containing all scaled treatments and controls.
+
+    This includes media, RF impressions, organic media, organic RF impressions,
+    non-media treatments, and control variables, all at the national level.
+    """
+    to_merge_national = [
+        da
+        for da in [
+            self.national_media_scaled_da,
+            self.national_rf_impressions_scaled_da,
+            self.national_organic_media_scaled_da,
+            self.national_organic_rf_impressions_scaled_da,
+            self.national_controls_scaled_da,
+            self.national_non_media_scaled_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge_national, join='inner')
+
+  def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
+    """Truncates the first `start` elements of the media time of a variable."""
+    # This should not happen. If it does, it means this function is mis-used.
+    if constants.MEDIA_TIME not in da.coords:
+      raise ValueError(
+          f'Variable does not have a media time coordinate: {da.name}.'
+      )
+
+    start = self._meridian.n_media_times - self._meridian.n_times
+    da = da.copy().isel({constants.MEDIA_TIME: slice(start, None)})
+    da = da.rename({constants.MEDIA_TIME: constants.TIME})
+    return da
+
+  def _scale_xarray(
+      self,
+      xarray: xr.DataArray,
+      transformer_class: Optional[type[transformers.TensorTransformer]],
+      population: tf.Tensor = tf.constant([1.0], dtype=tf.float32),
+  ) -> xr.DataArray:
+    """Scales xarray values with a TensorTransformer."""
+    da = xarray.copy()
+
+    if transformer_class is None:
+      return da
+    elif transformer_class is transformers.CenteringAndScalingTransformer:
+      xarray_transformer = transformers.CenteringAndScalingTransformer(
+          tensor=da.values, population=population
+      )
+    elif transformer_class is transformers.MediaTransformer:
+      xarray_transformer = transformers.MediaTransformer(
+          media=da.values, population=population
+      )
+    else:
+      raise ValueError(
+          'Unknown transformer class: '
+          + str(transformer_class)
+          + '.\nMust be one of: CenteringAndScalingTransformer or'
+          ' MediaTransformer.'
+      )
+    da.values = xarray_transformer.forward(da.values)
+    return da
+
+  def _aggregate_variables(
+      self,
+      da_geo: xr.DataArray,
+      channel_dim: str,
+      da_var_agg_map: AggregationMap,
+      keepdims: bool = True,
+  ) -> xr.DataArray:
+    """Aggregates variables within a DataArray based on user-defined functions.
+
+    Args:
+      da_geo: The geo-level DataArray containing multiple variables along
+        channel_dim.
+      channel_dim: The name of the dimension coordinate to aggregate over (e.g.,
+        constants.CONTROL_VARIABLE).
+      da_var_agg_map: A dictionary mapping dataArray variable names to
+        aggregation functions.
+      keepdims: Whether to keep the dimensions of the aggregated DataArray.
+
+    Returns:
+      An xr.DataArray aggregated to the national level, with each variable
+      aggregated according to the da_var_agg_map.
+    """
+    agg_results = []
+    for var_name in da_geo[channel_dim].values:
+      var_data = da_geo.sel({channel_dim: var_name})
+      agg_func = da_var_agg_map.get(var_name, _DEFAULT_DA_VAR_AGG_FUNCTION)
+      # Apply the aggregation function over the GEO dimension
+      aggregated_data = var_data.reduce(
+          agg_func, dim=constants.GEO, keepdims=keepdims
+      )
+      agg_results.append(aggregated_data)
+
+    # Combine the aggregated variables back into a single DataArray
+    return xr.concat(agg_results, dim=channel_dim).transpose(..., channel_dim)
+
+  def _aggregate_and_scale_geo_da(
+      self,
+      da_geo: xr.DataArray,
+      transformer_class: Optional[type[transformers.TensorTransformer]],
+      channel_dim: Optional[str] = None,
+      da_var_agg_map: Optional[AggregationMap] = None,
+  ) -> xr.DataArray:
+    """Aggregate geo-level xr.DataArray to national level and then scale values.
+
+    Args:
+      da_geo: The geo-level DataArray to convert.
+      transformer_class: The TensorTransformer class to apply after summing to
+        national level. Must be None, CenteringAndScalingTransformer, or
+        MediaTransformer.
+      channel_dim: The name of the dimension coordinate to aggregate over (e.g.,
+        constants.CONTROL_VARIABLE). If None, standard sum aggregation is used.
+      da_var_agg_map: A dictionary mapping dataArray variable names to
+        aggregation functions. Used only if channel_dim is not None.
+
+    Returns:
+      An xr.DataArray representing the aggregated and scaled national-level
+        data.
+    """
+    temp_geo_dim = constants.NATIONAL_MODEL_DEFAULT_GEO_NAME
+
+    if da_var_agg_map is None:
+      da_var_agg_map = {}
+
+    if channel_dim is not None:
+      da_national = self._aggregate_variables(
+          da_geo, channel_dim, da_var_agg_map
+      )
+    else:
+      # Default to sum aggregation if no channel dimension is provided
+      da_national = da_geo.sum(
+          dim=constants.GEO, keepdims=True, skipna=False, keep_attrs=True
+      )
+
+    da_national = da_national.assign_coords({constants.GEO: [temp_geo_dim]})
+    da_national.values = tf.cast(da_national.values, tf.float32)
+    da_national = self._scale_xarray(da_national, transformer_class)
+
+    return da_national.sel({constants.GEO: temp_geo_dim}, drop=True)
+
+  def _get_rf_data(
+      self,
+      reach_raw_da: xr.DataArray,
+      freq_raw_da: xr.DataArray,
+      is_organic: bool,
+  ) -> ReachFrequencyData:
+    """Get impressions and frequencies data arrays for RF channels."""
+    if is_organic:
+      scaled_reach_values = (
+          self._meridian.organic_rf_tensors.organic_reach_scaled
+      )
+    else:
+      scaled_reach_values = self._meridian.rf_tensors.reach_scaled
+    reach_scaled_da = _data_array_like(
+        da=reach_raw_da, values=scaled_reach_values
+    )
+    # Truncate the media time for reach and scaled reach.
+    reach_raw_da = self._truncate_media_time(reach_raw_da)
+    reach_scaled_da = self._truncate_media_time(reach_scaled_da)
+
+    # The geo level frequency
+    frequency_da = self._truncate_media_time(freq_raw_da)
+
+    # The raw geo level impression
+    # It's equal to reach * frequency.
+    impressions_raw_da = reach_raw_da * frequency_da
+    impressions_raw_da.name = (
+        constants.ORGANIC_RF_IMPRESSIONS
+        if is_organic
+        else constants.RF_IMPRESSIONS
+    )
+    impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
+
+    if self._meridian.is_national:
+      national_reach_raw_da = reach_raw_da.squeeze(constants.GEO)
+      national_reach_scaled_da = reach_scaled_da.squeeze(constants.GEO)
+      national_impressions_raw_da = impressions_raw_da.squeeze(constants.GEO)
+      national_frequency_da = frequency_da.squeeze(constants.GEO)
+
+      # Scaled impressions
+      impressions_scaled_da = self._scale_xarray(
+          impressions_raw_da, transformers.MediaTransformer
+      )
+      national_impressions_scaled_da = impressions_scaled_da.squeeze(
+          constants.GEO
+      )
+    else:
+      national_reach_raw_da = self._aggregate_and_scale_geo_da(
+          reach_raw_da, None
+      )
+      national_reach_scaled_da = self._aggregate_and_scale_geo_da(
+          reach_raw_da, transformers.MediaTransformer
+      )
+      national_impressions_raw_da = self._aggregate_and_scale_geo_da(
+          impressions_raw_da, None
+      )
+
+      # National frequency is a weighted average of geo frequencies,
+      # weighted by reach.
+      national_frequency_da = xr.where(
+          national_reach_raw_da == 0.0,
+          0.0,
+          national_impressions_raw_da / national_reach_raw_da,
+      )
+      national_frequency_da.name = (
+          constants.ORGANIC_PREFIX if is_organic else ''
+      ) + constants.FREQUENCY
+      national_frequency_da.values = tf.cast(
+          national_frequency_da.values, tf.float32
+      )
+
+      # Scale the impressions by population
+      impressions_scaled_da = self._scale_xarray(
+          impressions_raw_da,
+          transformers.MediaTransformer,
+          population=self._meridian.population,
+      )
+
+      # Scale the national impressions
+      national_impressions_scaled_da = self._aggregate_and_scale_geo_da(
+          impressions_raw_da,
+          transformers.MediaTransformer,
+      )
+
+    return ReachFrequencyData(
+        reach_raw_da=reach_raw_da,
+        reach_scaled_da=reach_scaled_da,
+        national_reach_raw_da=national_reach_raw_da,
+        national_reach_scaled_da=national_reach_scaled_da,
+        frequency_da=frequency_da,
+        national_frequency_da=national_frequency_da,
+        rf_impressions_scaled_da=impressions_scaled_da,
+        national_rf_impressions_scaled_da=national_impressions_scaled_da,
+        rf_impressions_raw_da=impressions_raw_da,
+        national_rf_impressions_raw_da=national_impressions_raw_da,
+    )
+
+  def _pairwise_corr_for_geo_data(
+      self, dims: str | Sequence[str], extreme_corr_threshold: float
+  ) -> tuple[xr.DataArray, pd.DataFrame]:
+    """Get pairwise correlation among treatments and controls for geo data."""
+    corr_mat = _compute_correlation_matrix(
+        self.treatment_control_scaled_ds, dims=dims
+    )
+    extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
+        corr_mat, extreme_corr_threshold
+    )
+    return corr_mat, extreme_corr_var_pairs_df
+
+  def check_pairwise_corr_geo(self) -> eda_outcome.PairwiseCorrOutcome:
+    """Checks pairwise correlation among treatments and controls for geo data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    findings = []
+
+    overall_corr_mat, overall_extreme_corr_var_pairs_df = (
+        self._pairwise_corr_for_geo_data(
+            dims=[constants.GEO, constants.TIME],
+            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+        )
+    )
+    if not overall_extreme_corr_var_pairs_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have perfect pairwise correlation across all'
+                  ' times and geos. For each pair of perfectly-correlated'
+                  ' variables, please remove one of the variables from the'
+                  ' model.\n'
+                  + overall_extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+
+    geo_corr_mat, geo_extreme_corr_var_pairs_df = (
+        self._pairwise_corr_for_geo_data(
+            dims=constants.TIME,
+            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+        )
+    )
+    # Overall correlation and per-geo correlation findings are mutually
+    # exclusive, and overall correlation finding takes precedence.
+    if (
+        overall_extreme_corr_var_pairs_df.empty
+        and not geo_extreme_corr_var_pairs_df.empty
+    ):
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=(
+                  'Some variables have perfect pairwise correlation in certain'
+                  ' geo(s). Consider checking your data, and/or combining these'
+                  ' variables if they also have high pairwise correlations in'
+                  ' other geos.\n'
+                  + geo_extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+
+    # If there are no findings, add a INFO level finding indicating that no
+    # severe correlations were found and what it means for user's data.
+    if not findings:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed pairwise correlations. Note that'
+                  ' high pairwise correlation may cause model identifiability'
+                  ' and convergence issues. Consider combining the variables if'
+                  ' high correlation exists.'
+              ),
+          )
+      )
+
+    pairwise_corr_results = [
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            corr_matrix=overall_corr_mat,
+            extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+        ),
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.GEO,
+            corr_matrix=geo_corr_mat,
+            extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+        ),
+    ]
+
+    return eda_outcome.PairwiseCorrOutcome(
+        findings=findings,
+        pairwise_corr_results=pairwise_corr_results,
+    )
+
+  def check_pairwise_corr_national(self) -> eda_outcome.PairwiseCorrOutcome:
+    """Checks pairwise correlation among treatments and controls for national data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    findings = []
+
+    corr_mat = _compute_correlation_matrix(
+        self.national_treatment_control_scaled_ds, dims=constants.TIME
+    )
+    extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
+        corr_mat, _PAIRWISE_NATIONAL_CORR_THRESHOLD
+    )
+
+    if not extreme_corr_var_pairs_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have perfect pairwise correlation across all'
+                  ' times. For each pair of perfectly-correlated'
+                  ' variables, please remove one of the variables from the'
+                  ' model.\n'
+                  + extreme_corr_var_pairs_df.to_string()
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed pairwise correlations. Note that'
+                  ' high pairwise correlation may cause model identifiability'
+                  ' and convergence issues. Consider combining the variables if'
+                  ' high correlation exists.'
+              ),
+          )
+      )
+
+    pairwise_corr_results = [
+        eda_outcome.PairwiseCorrResult(
+            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            corr_matrix=corr_mat,
+            extreme_corr_var_pairs=extreme_corr_var_pairs_df,
+            extreme_corr_threshold=_PAIRWISE_NATIONAL_CORR_THRESHOLD,
+        )
+    ]
+    return eda_outcome.PairwiseCorrOutcome(
+        findings=findings,
+        pairwise_corr_results=pairwise_corr_results,
+    )

@@ -20,14 +20,13 @@ import numbers
 from typing import Any, Optional
 import warnings
 
+from meridian import backend
 from meridian import constants
 from meridian.model import adstock_hill
 from meridian.model import model
 from meridian.model import transformers
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import tensorflow_probability as tfp
 from typing_extensions import Self
 import xarray as xr
 
@@ -35,6 +34,7 @@ __all__ = [
     "Analyzer",
     "DataTensors",
     "DistributionTensors",
+    "get_central_tendency_and_ci",
 ]
 
 
@@ -53,7 +53,7 @@ def _validate_non_media_baseline_values_numbers(
 
 
 # TODO: Refactor the related unit tests to be under DataTensors.
-class DataTensors(tf.experimental.ExtensionType):
+class DataTensors(backend.ExtensionType):
   """Container for data variable arguments of Analyzer methods.
 
   Attributes:
@@ -88,86 +88,100 @@ class DataTensors(tf.experimental.ExtensionType):
       for time dimension `T`.
   """
 
-  media: Optional[tf.Tensor]
-  media_spend: Optional[tf.Tensor]
-  reach: Optional[tf.Tensor]
-  frequency: Optional[tf.Tensor]
-  rf_impressions: Optional[tf.Tensor]
-  rf_spend: Optional[tf.Tensor]
-  organic_media: Optional[tf.Tensor]
-  organic_reach: Optional[tf.Tensor]
-  organic_frequency: Optional[tf.Tensor]
-  non_media_treatments: Optional[tf.Tensor]
-  controls: Optional[tf.Tensor]
-  revenue_per_kpi: Optional[tf.Tensor]
-  time: Optional[tf.Tensor]
+  media: Optional[backend.Tensor]
+  media_spend: Optional[backend.Tensor]
+  reach: Optional[backend.Tensor]
+  frequency: Optional[backend.Tensor]
+  rf_impressions: Optional[backend.Tensor]
+  rf_spend: Optional[backend.Tensor]
+  organic_media: Optional[backend.Tensor]
+  organic_reach: Optional[backend.Tensor]
+  organic_frequency: Optional[backend.Tensor]
+  non_media_treatments: Optional[backend.Tensor]
+  controls: Optional[backend.Tensor]
+  revenue_per_kpi: Optional[backend.Tensor]
+  time: Optional[backend.Tensor]
 
   def __init__(
       self,
-      media: Optional[tf.Tensor] = None,
-      media_spend: Optional[tf.Tensor] = None,
-      reach: Optional[tf.Tensor] = None,
-      frequency: Optional[tf.Tensor] = None,
-      rf_impressions: Optional[tf.Tensor] = None,
-      rf_spend: Optional[tf.Tensor] = None,
-      organic_media: Optional[tf.Tensor] = None,
-      organic_reach: Optional[tf.Tensor] = None,
-      organic_frequency: Optional[tf.Tensor] = None,
-      non_media_treatments: Optional[tf.Tensor] = None,
-      controls: Optional[tf.Tensor] = None,
-      revenue_per_kpi: Optional[tf.Tensor] = None,
-      time: Optional[Sequence[str] | tf.Tensor] = None,
+      media: Optional[backend.Tensor] = None,
+      media_spend: Optional[backend.Tensor] = None,
+      reach: Optional[backend.Tensor] = None,
+      frequency: Optional[backend.Tensor] = None,
+      rf_impressions: Optional[backend.Tensor] = None,
+      rf_spend: Optional[backend.Tensor] = None,
+      organic_media: Optional[backend.Tensor] = None,
+      organic_reach: Optional[backend.Tensor] = None,
+      organic_frequency: Optional[backend.Tensor] = None,
+      non_media_treatments: Optional[backend.Tensor] = None,
+      controls: Optional[backend.Tensor] = None,
+      revenue_per_kpi: Optional[backend.Tensor] = None,
+      time: Optional[Sequence[str] | backend.Tensor] = None,
   ):
-    self.media = tf.cast(media, tf.float32) if media is not None else None
-    self.media_spend = (
-        tf.cast(media_spend, tf.float32) if media_spend is not None else None
+    self.media = (
+        backend.cast(media, backend.float32) if media is not None else None
     )
-    self.reach = tf.cast(reach, tf.float32) if reach is not None else None
+    self.media_spend = (
+        backend.cast(media_spend, backend.float32)
+        if media_spend is not None
+        else None
+    )
+    self.reach = (
+        backend.cast(reach, backend.float32) if reach is not None else None
+    )
     self.frequency = (
-        tf.cast(frequency, tf.float32) if frequency is not None else None
+        backend.cast(frequency, backend.float32)
+        if frequency is not None
+        else None
     )
     self.rf_impressions = (
-        tf.cast(rf_impressions, tf.float32)
+        backend.cast(rf_impressions, backend.float32)
         if rf_impressions is not None
         else None
     )
     self.rf_spend = (
-        tf.cast(rf_spend, tf.float32) if rf_spend is not None else None
+        backend.cast(rf_spend, backend.float32)
+        if rf_spend is not None
+        else None
     )
     self.organic_media = (
-        tf.cast(organic_media, tf.float32)
+        backend.cast(organic_media, backend.float32)
         if organic_media is not None
         else None
     )
     self.organic_reach = (
-        tf.cast(organic_reach, tf.float32)
+        backend.cast(organic_reach, backend.float32)
         if organic_reach is not None
         else None
     )
     self.organic_frequency = (
-        tf.cast(organic_frequency, tf.float32)
+        backend.cast(organic_frequency, backend.float32)
         if organic_frequency is not None
         else None
     )
     self.non_media_treatments = (
-        tf.cast(non_media_treatments, tf.float32)
+        backend.cast(non_media_treatments, backend.float32)
         if non_media_treatments is not None
         else None
     )
     self.controls = (
-        tf.cast(controls, tf.float32) if controls is not None else None
+        backend.cast(controls, backend.float32)
+        if controls is not None
+        else None
     )
     self.revenue_per_kpi = (
-        tf.cast(revenue_per_kpi, tf.float32)
+        backend.cast(revenue_per_kpi, backend.float32)
         if revenue_per_kpi is not None
         else None
     )
-    self.time = tf.cast(time, tf.string) if time is not None else None
+    self.time = (
+        backend.to_tensor(time, dtype="string") if time is not None else None
+    )
 
   def __validate__(self):
     self._validate_n_dims()
 
-  def total_spend(self) -> tf.Tensor | None:
+  def total_spend(self) -> backend.Tensor | None:
     """Returns the total spend tensor.
 
     Returns:
@@ -180,7 +194,9 @@ class DataTensors(tf.experimental.ExtensionType):
       spend_tensors.append(self.media_spend)
     if self.rf_spend is not None:
       spend_tensors.append(self.rf_spend)
-    return tf.concat(spend_tensors, axis=-1) if spend_tensors else None
+    return (
+        backend.concatenate(spend_tensors, axis=-1) if spend_tensors else None
+    )
 
   def get_modified_times(self, meridian: model.Meridian) -> int | None:
     """Returns `n_times` of any tensor where `n_times` has been modified.
@@ -472,8 +488,8 @@ class DataTensors(tf.experimental.ExtensionType):
       elif var_name == constants.REVENUE_PER_KPI:
         old_tensor = meridian.revenue_per_kpi
       elif var_name == constants.TIME:
-        old_tensor = tf.convert_to_tensor(
-            meridian.input_data.time.values.tolist(), dtype=tf.string
+        old_tensor = backend.to_tensor(
+            meridian.input_data.time.values.tolist(), dtype="string"
         )
       else:
         continue
@@ -484,36 +500,67 @@ class DataTensors(tf.experimental.ExtensionType):
     return DataTensors(**output)
 
 
-class DistributionTensors(tf.experimental.ExtensionType):
+class DistributionTensors(backend.ExtensionType):
   """Container for parameters distributions arguments of Analyzer methods."""
 
-  alpha_m: Optional[tf.Tensor] = None
-  alpha_rf: Optional[tf.Tensor] = None
-  alpha_om: Optional[tf.Tensor] = None
-  alpha_orf: Optional[tf.Tensor] = None
-  ec_m: Optional[tf.Tensor] = None
-  ec_rf: Optional[tf.Tensor] = None
-  ec_om: Optional[tf.Tensor] = None
-  ec_orf: Optional[tf.Tensor] = None
-  slope_m: Optional[tf.Tensor] = None
-  slope_rf: Optional[tf.Tensor] = None
-  slope_om: Optional[tf.Tensor] = None
-  slope_orf: Optional[tf.Tensor] = None
-  beta_gm: Optional[tf.Tensor] = None
-  beta_grf: Optional[tf.Tensor] = None
-  beta_gom: Optional[tf.Tensor] = None
-  beta_gorf: Optional[tf.Tensor] = None
-  mu_t: Optional[tf.Tensor] = None
-  tau_g: Optional[tf.Tensor] = None
-  gamma_gc: Optional[tf.Tensor] = None
-  gamma_gn: Optional[tf.Tensor] = None
+  alpha_m: Optional[backend.Tensor] = None
+  alpha_rf: Optional[backend.Tensor] = None
+  alpha_om: Optional[backend.Tensor] = None
+  alpha_orf: Optional[backend.Tensor] = None
+  ec_m: Optional[backend.Tensor] = None
+  ec_rf: Optional[backend.Tensor] = None
+  ec_om: Optional[backend.Tensor] = None
+  ec_orf: Optional[backend.Tensor] = None
+  slope_m: Optional[backend.Tensor] = None
+  slope_rf: Optional[backend.Tensor] = None
+  slope_om: Optional[backend.Tensor] = None
+  slope_orf: Optional[backend.Tensor] = None
+  beta_gm: Optional[backend.Tensor] = None
+  beta_grf: Optional[backend.Tensor] = None
+  beta_gom: Optional[backend.Tensor] = None
+  beta_gorf: Optional[backend.Tensor] = None
+  mu_t: Optional[backend.Tensor] = None
+  tau_g: Optional[backend.Tensor] = None
+  gamma_gc: Optional[backend.Tensor] = None
+  gamma_gn: Optional[backend.Tensor] = None
+
+
+def get_central_tendency_and_ci(
+    data: np.ndarray | backend.Tensor,
+    confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+    axis: tuple[int, ...] = (0, 1),
+    include_median=False,
+) -> np.ndarray:
+  """Calculates mean and credible intervals for the given data.
+
+  Args:
+    data: Data for the metric.
+    confidence_level: Confidence level for computing credible intervals,
+      represented as a value between zero and one.
+    axis: Axis or axes along which the mean, median, and quantiles are computed.
+    include_median: A boolean flag indicating whether to calculate and include
+      the median in the output Dataset (default: False).
+
+  Returns:
+    A numpy array or backend.Tensor containing the mean and credible intervals
+    for the given data. Optionally, it also includes the median.
+  """
+  mean = np.mean(data, axis=axis, keepdims=False)
+  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)
+  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)
+
+  if include_median:
+    median = np.median(data, axis=axis, keepdims=False)
+    return np.stack([mean, median, ci_lo, ci_hi], axis=-1)
+  else:
+    return np.stack([mean, ci_lo, ci_hi], axis=-1)
 
 
 def _transformed_new_or_scaled(
-    new_variable: tf.Tensor | None,
+    new_variable: backend.Tensor | None,
     transformer: transformers.TensorTransformer | None,
-    scaled_variable: tf.Tensor | None,
-) -> tf.Tensor | None:
+    scaled_variable: backend.Tensor | None,
+) -> backend.Tensor | None:
   """Returns the transformed new variable or the scaled variable.
 
   If the `new_variable` is present, returns
@@ -532,37 +579,6 @@ def _transformed_new_or_scaled(
   if new_variable is None or transformer is None:
     return scaled_variable
   return transformer.forward(new_variable)
-
-
-def get_central_tendency_and_ci(
-    data: np.ndarray | tf.Tensor,
-    confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
-    axis: tuple[int, ...] = (0, 1),
-    include_median=False,
-) -> np.ndarray:
-  """Calculates central tendency and confidence intervals for the given data.
-
-  Args:
-    data: Data for the metric.
-    confidence_level: Confidence level for computing credible intervals,
-      represented as a value between zero and one.
-    axis: Axis or axes along which the mean, median, and quantiles are computed.
-    include_median: A boolean flag indicating whether to calculate and include
-      the median in the output Dataset (default: False).
-
-  Returns:
-    A numpy array or tf.Tensor containing central tendency and confidence
-    intervals.
-  """
-  mean = np.mean(data, axis=axis, keepdims=False)
-  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)
-  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)
-
-  if include_median:
-    median = np.median(data, axis=axis, keepdims=False)
-    return np.stack([mean, median, ci_lo, ci_hi], axis=-1)
-  else:
-    return np.stack([mean, ci_lo, ci_hi], axis=-1)
 
 
 def _calc_rsquared(expected, actual):
@@ -594,7 +610,7 @@ def _warn_if_geo_arg_in_kwargs(**kwargs):
       )
 
 
-def _check_n_dims(tensor: tf.Tensor, name: str, n_dims: int):
+def _check_n_dims(tensor: backend.Tensor, name: str, n_dims: int):
   """Raises an error if the tensor has the wrong number of dimensions."""
   if tensor.ndim != n_dims:
     raise ValueError(
@@ -659,43 +675,66 @@ def _validate_flexible_selected_times(
     selected_times: Sequence[str] | Sequence[bool] | None,
     media_selected_times: Sequence[str] | Sequence[bool] | None,
     new_n_media_times: int,
+    new_time: Sequence[str] | None = None,
 ):
   """Raises an error if selected times or media selected times is invalid.
 
-  This checks that the `selected_times` and `media_selected_times` arguments
-  are lists of booleans with the same number of elements as `new_n_media_times`.
-  This is only relevant if the time dimension of any of the variables in
-  `new_data` used in the analysis is modified.
+  This checks that (1) the `selected_times` and `media_selected_times` arguments
+  are lists of booleans with the same number of elements as `new_n_media_times`,
+  or (2) the `selected_times` and `media_selected_times` arguments are lists of
+  strings and the `new_time` list is provided and `selected_times` and
+  `media_selected_times` are subsets of `new_time`. This is only relevant if the
+  time dimension of any of the variables in `new_data` used in the analysis is
+  modified.
 
   Args:
     selected_times: Optional list of times to validate.
     media_selected_times: Optional list of media times to validate.
     new_n_media_times: The number of time periods in the new data.
+    new_time: The optional time dimension of the new data.
   """
   if selected_times and (
-      not _is_bool_list(selected_times)
-      or len(selected_times) != new_n_media_times
+      not (
+          _is_bool_list(selected_times)
+          and len(selected_times) == new_n_media_times
+      )
+      and not (
+          _is_str_list(selected_times)
+          and new_time is not None
+          and set(selected_times) <= set(new_time)
+      )
   ):
     raise ValueError(
         "If `media`, `reach`, `frequency`, `organic_media`,"
         " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
         " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then `selected_times` must be a list"
+        " periods than in `InputData`, then (1) `selected_times` must be a list"
         " of booleans with length equal to the number of time periods in"
-        " the new data."
+        " the new data, or (2) `selected_times` must be a list of strings and"
+        " `new_time` must be provided and `selected_times` must be a subset of"
+        " `new_time`."
     )
 
   if media_selected_times and (
-      not _is_bool_list(media_selected_times)
-      or len(media_selected_times) != new_n_media_times
+      not (
+          _is_bool_list(media_selected_times)
+          and len(media_selected_times) == new_n_media_times
+      )
+      and not (
+          _is_str_list(media_selected_times)
+          and new_time is not None
+          and set(media_selected_times) <= set(new_time)
+      )
   ):
     raise ValueError(
         "If `media`, `reach`, `frequency`, `organic_media`,"
         " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
         " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then `media_selected_times` must be"
+        " periods than in `InputData`, then (1) `media_selected_times` must be"
         " a list of booleans with length equal to the number of time"
-        " periods in the new data."
+        " periods in the new data, or (2) `media_selected_times` must be a list"
+        " of strings and `new_time` must be provided and"
+        " `media_selected_times` must be a subset of `new_time`."
     )
 
 
@@ -753,8 +792,8 @@ def _scale_tensors_by_multiplier(
 
 
 def _central_tendency_and_ci_by_prior_and_posterior(
-    prior: tf.Tensor,
-    posterior: tf.Tensor,
+    prior: backend.Tensor,
+    posterior: backend.Tensor,
     metric_name: str,
     xr_dims: Sequence[str],
     xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
@@ -799,16 +838,16 @@ class Analyzer:
   def __init__(self, meridian: model.Meridian):
     self._meridian = meridian
     # Make the meridian object ready for methods in this analyzer that create
-    # tf.function computation graphs: it should be frozen for no more internal
-    # states mutation before those graphs execute.
+    # backend.function computation graphs: it should be frozen for no more
+    # internal states mutation before those graphs execute.
     self._meridian.populate_cached_properties()
 
-  @tf.function(jit_compile=True)
+  @backend.function(jit_compile=True)
   def _get_kpi_means(
       self,
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes batched KPI means.
 
     Note that the output array has the same number of time periods as the media
@@ -827,7 +866,7 @@ class Analyzer:
     Returns:
       Tensor representing computed kpi means.
     """
-    tau_gt = tf.expand_dims(dist_tensors.tau_g, -1) + tf.expand_dims(
+    tau_gt = backend.expand_dims(dist_tensors.tau_g, -1) + backend.expand_dims(
         dist_tensors.mu_t, -2
     )
     combined_media_transformed, combined_beta = (
@@ -837,17 +876,17 @@ class Analyzer:
         )
     )
 
-    result = tau_gt + tf.einsum(
+    result = tau_gt + backend.einsum(
         "...gtm,...gm->...gt", combined_media_transformed, combined_beta
     )
     if self._meridian.controls is not None:
-      result += tf.einsum(
+      result += backend.einsum(
           "...gtc,...gc->...gt",
           data_tensors.controls,
           dist_tensors.gamma_gc,
       )
     if data_tensors.non_media_treatments is not None:
-      result += tf.einsum(
+      result += backend.einsum(
           "...gtm,...gm->...gt",
           data_tensors.non_media_treatments,
           dist_tensors.gamma_gn,
@@ -902,8 +941,8 @@ class Analyzer:
     """Computes decayed effect means and CIs for media or RF channels.
 
     Args:
-      channel_type: Specifies `media`, `reach`, or `organic_media` for computing
-        prior and posterior decayed effects.
+      channel_type: Specifies `media`, `rf`, `organic_media`, or `organic_rf`
+        for computing prior and posterior decayed effects.
       l_range: The range of time across which the adstock effect is computed.
       xr_dims: A list of dimensions for the output dataset.
       xr_coords: A dictionary with the coordinates for the output dataset.
@@ -914,42 +953,66 @@ class Analyzer:
       Pandas DataFrame containing the channel, time_units, distribution, ci_hi,
       ci_lo, and mean decayed effects for either media or RF channel types.
     """
-    if channel_type is constants.MEDIA:
+    window_size = min(
+        self._meridian.model_spec.max_lag + 1, self._meridian.n_media_times
+    )
+    if channel_type == constants.MEDIA:
       prior = self._meridian.inference_data.prior.alpha_m.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_m.values,
           (-1, self._meridian.n_media_channels),
       )
-    elif channel_type is constants.REACH:
+      decay_functions = self._meridian.adstock_decay_spec.media
+    elif channel_type == constants.RF:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
           (-1, self._meridian.n_rf_channels),
       )
-    elif channel_type is constants.ORGANIC_MEDIA:
+      decay_functions = self._meridian.adstock_decay_spec.rf
+    elif channel_type == constants.ORGANIC_MEDIA:
       prior = self._meridian.inference_data.prior.alpha_om.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_om.values,
           (-1, self._meridian.n_organic_media_channels),
       )
+      decay_functions = self._meridian.adstock_decay_spec.organic_media
+    elif channel_type == constants.ORGANIC_RF:
+      prior = self._meridian.inference_data.prior.alpha_orf.values[0]
+      posterior = np.reshape(
+          self._meridian.inference_data.posterior.alpha_orf.values,
+          (-1, self._meridian.n_organic_rf_channels),
+      )
+      decay_functions = self._meridian.adstock_decay_spec.organic_rf
     else:
       raise ValueError(
           f"Unsupported channel type for adstock decay: '{channel_type}'. "
       )
 
-    decayed_effect_prior = (
-        prior[np.newaxis, ...] ** l_range[:, np.newaxis, np.newaxis, np.newaxis]
+    decayed_effect_prior = adstock_hill.compute_decay_weights(
+        alpha=backend.to_tensor(
+            prior[backend.newaxis, ...], dtype=backend.float32
+        ),
+        l_range=backend.to_tensor(l_range, dtype=backend.float32),
+        window_size=window_size,
+        decay_functions=decay_functions,
+        normalize=False,
     )
-    decayed_effect_posterior = (
-        posterior[np.newaxis, ...]
-        ** l_range[:, np.newaxis, np.newaxis, np.newaxis]
+    decayed_effect_posterior = adstock_hill.compute_decay_weights(
+        alpha=backend.to_tensor(
+            posterior[backend.newaxis, ...], dtype=backend.float32
+        ),
+        l_range=backend.to_tensor(l_range, dtype=backend.float32),
+        window_size=window_size,
+        decay_functions=decay_functions,
+        normalize=False,
     )
 
-    decayed_effect_prior_transpose = tf.transpose(
-        decayed_effect_prior, perm=[1, 2, 0, 3]
+    decayed_effect_prior_transpose = backend.transpose(
+        decayed_effect_prior, perm=[0, 1, 3, 2]
     )
-    decayed_effect_posterior_transpose = tf.transpose(
-        decayed_effect_posterior, perm=[1, 2, 0, 3]
+    decayed_effect_posterior_transpose = backend.transpose(
+        decayed_effect_posterior, perm=[0, 1, 3, 2]
     )
     adstock_dataset = _central_tendency_and_ci_by_prior_and_posterior(
         decayed_effect_prior_transpose,
@@ -1157,7 +1220,7 @@ class Analyzer:
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
       n_times_output: int | None = None,
-  ) -> tuple[tf.Tensor | None, tf.Tensor | None]:
+  ) -> tuple[backend.Tensor | None, backend.Tensor | None]:
     """Function for transforming media using adstock and hill functions.
 
     This transforms the media tensor using the adstock and hill functions, in
@@ -1185,6 +1248,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_m,
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
+              decay_functions=self._meridian.adstock_decay_spec.media,
               n_times_output=n_times_output,
           )
       )
@@ -1198,6 +1262,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_rf,
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
+              decay_functions=self._meridian.adstock_decay_spec.rf,
               n_times_output=n_times_output,
           )
       )
@@ -1209,6 +1274,7 @@ class Analyzer:
               alpha=dist_tensors.alpha_om,
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
+              decay_functions=self._meridian.adstock_decay_spec.organic_media,
               n_times_output=n_times_output,
           )
       )
@@ -1221,25 +1287,26 @@ class Analyzer:
               alpha=dist_tensors.alpha_orf,
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
+              decay_functions=self._meridian.adstock_decay_spec.organic_rf,
               n_times_output=n_times_output,
           )
       )
       combined_betas.append(dist_tensors.beta_gorf)
 
-    combined_media_transformed = tf.concat(combined_medias, axis=-1)
-    combined_beta = tf.concat(combined_betas, axis=-1)
+    combined_media_transformed = backend.concatenate(combined_medias, axis=-1)
+    combined_beta = backend.concatenate(combined_betas, axis=-1)
     return combined_media_transformed, combined_beta
 
   def filter_and_aggregate_geos_and_times(
       self,
-      tensor: tf.Tensor,
+      tensor: backend.Tensor,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       flexible_time_dim: bool = False,
       has_media_dim: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Filters and/or aggregates geo and time dimensions of a tensor.
 
     Args:
@@ -1299,12 +1366,12 @@ class Analyzer:
         c + 1 for c in allowed_n_channels
     ]
     expected_shapes_w_media = [
-        tf.TensorShape(shape)
+        backend.TensorShape(shape)
         for shape in itertools.product(
             [mmm.n_geos], [n_times], allowed_channel_dim
         )
     ]
-    expected_shape_wo_media = tf.TensorShape([mmm.n_geos, n_times])
+    expected_shape_wo_media = backend.TensorShape([mmm.n_geos, n_times])
     if not flexible_time_dim:
       if tensor.shape[-3:] in expected_shapes_w_media:
         has_media_dim = True
@@ -1338,7 +1405,7 @@ class Analyzer:
             "meridian.InputData."
         )
       geo_mask = [x in selected_geos for x in mmm.input_data.geo]
-      tensor = tf.boolean_mask(tensor, geo_mask, axis=geo_dim)
+      tensor = backend.boolean_mask(tensor, geo_mask, axis=geo_dim)
 
     if selected_times is not None:
       _validate_selected_times(
@@ -1350,9 +1417,9 @@ class Analyzer:
       )
       if _is_str_list(selected_times):
         time_mask = [x in selected_times for x in mmm.input_data.time]
-        tensor = tf.boolean_mask(tensor, time_mask, axis=time_dim)
+        tensor = backend.boolean_mask(tensor, time_mask, axis=time_dim)
       elif _is_bool_list(selected_times):
-        tensor = tf.boolean_mask(tensor, selected_times, axis=time_dim)
+        tensor = backend.boolean_mask(tensor, selected_times, axis=time_dim)
 
     tensor_dims = "...gt" + "m" * has_media_dim
     output_dims = (
@@ -1360,7 +1427,7 @@ class Analyzer:
         + "t" * (not aggregate_times)
         + "m" * has_media_dim
     )
-    return tf.einsum(f"{tensor_dims}->...{output_dims}", tensor)
+    return backend.einsum(f"{tensor_dims}->...{output_dims}", tensor)
 
   def expected_outcome(
       self,
@@ -1373,7 +1440,7 @@ class Analyzer:
       inverse_transform_outcome: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either prior or posterior expected outcome.
 
     This calculates `E(Outcome|Media, RF, Organic media, Organic RF, Non-media
@@ -1492,7 +1559,7 @@ class Analyzer:
 
     n_draws = params.draw.size
     n_chains = params.chain.size
-    outcome_means = tf.zeros(
+    outcome_means = backend.zeros(
         (n_chains, 0, self._meridian.n_geos, self._meridian.n_times)
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
@@ -1508,7 +1575,7 @@ class Analyzer:
     for start_index in batch_starting_indices:
       stop_index = np.min([n_draws, start_index + batch_size])
       batch_dists = {
-          k: tf.convert_to_tensor(params[k][:, start_index:stop_index, ...])
+          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
           for k in param_list
       }
       dist_tensors = DistributionTensors(**batch_dists)
@@ -1519,7 +1586,9 @@ class Analyzer:
               dist_tensors=dist_tensors,
           )
       )
-    outcome_means = tf.concat([outcome_means, *outcome_means_temps], axis=1)
+    outcome_means = backend.concatenate(
+        [outcome_means, *outcome_means_temps], axis=1
+    )
     if inverse_transform_outcome:
       outcome_means = self._meridian.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
@@ -1562,7 +1631,7 @@ class Analyzer:
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
       non_media_treatments_baseline_normalized: Sequence[float] | None = None,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes incremental KPI distribution.
 
     Args:
@@ -1611,28 +1680,28 @@ class Analyzer:
             n_times_output=n_times_output,
         )
     )
-    combined_media_kpi = tf.einsum(
+    combined_media_kpi = backend.einsum(
         "...gtm,...gm->...gtm",
         combined_media_transformed,
         combined_beta,
     )
     if data_tensors.non_media_treatments is not None:
-      non_media_kpi = tf.einsum(
+      non_media_kpi = backend.einsum(
           "gtn,...gn->...gtn",
           data_tensors.non_media_treatments
           - non_media_treatments_baseline_normalized,
           dist_tensors.gamma_gn,
       )
-      return tf.concat([combined_media_kpi, non_media_kpi], axis=-1)
+      return backend.concatenate([combined_media_kpi, non_media_kpi], axis=-1)
     else:
       return combined_media_kpi
 
   def _inverse_outcome(
       self,
-      modeled_incremental_outcome: tf.Tensor,
+      modeled_incremental_outcome: backend.Tensor,
       use_kpi: bool,
-      revenue_per_kpi: tf.Tensor | None,
-  ) -> tf.Tensor:
+      revenue_per_kpi: backend.Tensor | None,
+  ) -> backend.Tensor:
     """Inverses incremental outcome (revenue or KPI).
 
     This method assumes that additive changes on the model kpi scale
@@ -1656,16 +1725,16 @@ class Analyzer:
     if revenue_per_kpi is None:
       revenue_per_kpi = self._meridian.revenue_per_kpi
     t1 = self._meridian.kpi_transformer.inverse(
-        tf.einsum("...m->m...", modeled_incremental_outcome)
+        backend.einsum("...m->m...", modeled_incremental_outcome)
     )
-    t2 = self._meridian.kpi_transformer.inverse(tf.zeros_like(t1))
-    kpi = tf.einsum("m...->...m", t1 - t2)
+    t2 = self._meridian.kpi_transformer.inverse(backend.zeros_like(t1))
+    kpi = backend.einsum("m...->...m", t1 - t2)
 
     if use_kpi:
       return kpi
-    return tf.einsum("gt,...gtm->...gtm", revenue_per_kpi, kpi)
+    return backend.einsum("gt,...gtm->...gtm", revenue_per_kpi, kpi)
 
-  @tf.function(jit_compile=True)
+  @backend.function(jit_compile=True)
   def _incremental_outcome_impl(
       self,
       data_tensors: DataTensors,
@@ -1677,7 +1746,7 @@ class Analyzer:
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes incremental outcome (revenue or KPI) on a batch of data.
 
     Args:
@@ -1722,9 +1791,11 @@ class Analyzer:
       selected_geos: Contains a subset of geos to include. By default, all geos
         are included.
       selected_times: An optional string list containing a subset of
-        `InputData.time` to include or a boolean list with length equal to the
-        number of time periods in `new_media` (if provided). By default, all
-        time periods are included.
+        `input_data.time` to include or a boolean list with length equal to the
+        number of time periods in `data_tensors` if time is modified in
+        `data_tensors`, or `input_data.n_times` otherwise. If time in
+        `data_tensors` is modified, then only the boolean list can be used as
+        `selected_times`. By default, all time periods are included.
       aggregate_geos: If True, then incremental outcome is summed over all
         regions.
       aggregate_times: If True, then incremental outcome is summed over all time
@@ -1767,6 +1838,7 @@ class Analyzer:
         has_media_dim=True,
     )
 
+  # TODO: b/407847021 - Add support for `new_data.time`.
   def incremental_outcome(
       self,
       use_posterior: bool = True,
@@ -1784,7 +1856,7 @@ class Analyzer:
       by_reach: bool = True,
       include_non_paid_channels: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either the posterior or prior incremental outcome.
 
     This calculates the media outcome of each media channel for each posterior
@@ -1869,26 +1941,27 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. The incremental outcome corresponds to
-        incremental KPI generated during the `selected_times` arg by media
-        executed during the `media_selected_times` arg. Note that if
-        `use_kpi=False`, then `selected_times` can only include the time periods
-        that have `revenue_per_kpi` input data. By default, all time periods are
-        included where `revenue_per_kpi` data is available.
+        `new_data` if time is modified in `new_data`, or `input_data.n_times`
+        otherwise. The incremental outcome corresponds to incremental KPI
+        generated during the `selected_times` arg by media executed during the
+        `media_selected_times` arg. Note that if `use_kpi=False`, then
+        `selected_times` can only include the time periods that have
+        `revenue_per_kpi` input data. By default, all time periods are included
+        where `revenue_per_kpi` data is available.
       media_selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        `new_data`, if provided. If `new_data` is provided,
-        `media_selected_times` can select any subset of time periods in
-        `new_data`. If `new_data` is not provided, `media_selected_times`
-        selects from `InputData.time`. The incremental outcome corresponds to
-        incremental KPI generated during the `selected_times` arg by treatment
-        variables executed during the `media_selected_times` arg. For each
-        channel, the incremental outcome is defined as the difference between
-        expected KPI when treatment variables execution is scaled by
-        `scaling_factor1` and `scaling_factor0` during these specified time
-        periods. By default, the difference is between treatment variables at
-        historical execution levels, or as provided in `new_data`, versus zero
-        execution. Defaults to include all time periods.
+        KPI data or number of time periods in the `new_data` args, if provided.
+        If `new_data` is provided, `media_selected_times` can select any subset
+        of time periods in `new_data`. If `new_data` is not provided,
+        `media_selected_times` selects from `InputData.time`. The incremental
+        outcome corresponds to incremental KPI generated during the
+        `selected_times` arg by treatment variables executed during the
+        `media_selected_times` arg. For each channel, the incremental outcome is
+        defined as the difference between expected KPI when treatment variables
+        execution is scaled by `scaling_factor1` and `scaling_factor0` during
+        these specified time periods. By default, the difference is between
+        treatment variables at historical execution levels, or as provided in
+        `new_data`, versus zero execution. Defaults to include all time periods.
       aggregate_geos: Boolean. If `True`, then incremental outcome is summed
         over all regions.
       aggregate_times: Boolean. If `True`, then incremental outcome is summed
@@ -2018,11 +2091,11 @@ class Analyzer:
           non_media_treatments_baseline_scaled,
           apply_population_scaling=False,
       )
-      non_media_treatments0 = tf.broadcast_to(
-          tf.constant(
-              non_media_treatments_baseline_normalized, dtype=tf.float32
-          )[tf.newaxis, tf.newaxis, :],
-          self._meridian.non_media_treatments.shape,  # pytype: disable=attribute-error
+      non_media_treatments0 = backend.broadcast_to(
+          backend.to_tensor(
+              non_media_treatments_baseline_normalized, dtype=backend.float32
+          )[backend.newaxis, backend.newaxis, :],
+          data_tensors.non_media_treatments.shape,  # pytype: disable=attribute-error
       )
     else:
       non_media_treatments_baseline_normalized = None
@@ -2088,7 +2161,7 @@ class Analyzer:
     for i, start_index in enumerate(batch_starting_indices):
       stop_index = np.min([n_draws, start_index + batch_size])
       batch_dists = {
-          k: tf.convert_to_tensor(params[k][:, start_index:stop_index, ...])
+          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
           for k in param_list
       }
       dist_tensors = DistributionTensors(**batch_dists)
@@ -2106,12 +2179,12 @@ class Analyzer:
             **dim_kwargs,
             **incremental_outcome_kwargs,
         )
-    return tf.concat(incremental_outcome_temps, axis=1)
+    return backend.concatenate(incremental_outcome_temps, axis=1)
 
   def _validate_geo_and_time_granularity(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -2119,8 +2192,9 @@ class Analyzer:
     Args:
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional. Contains a subset of times to include. By
-        default, all time periods are included.
+      selected_times: Optional. Contains a subset of times to include or
+        booleans with length `input_data.n_times`. By default, all time periods
+        are included.
       aggregate_geos: If `True`, then expected revenue is summed over all
         regions.
 
@@ -2180,7 +2254,7 @@ class Analyzer:
       by_reach: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates the marginal ROI prior or posterior distribution.
 
     The marginal ROI (mROI) numerator is the change in expected outcome (`kpi`
@@ -2290,7 +2364,7 @@ class Analyzer:
             "dimension."
         )
       denominator = spend_inc
-    return tf.math.divide_no_nan(numerator, denominator)
+    return backend.divide_no_nan(numerator, denominator)
 
   def roi(
       self,
@@ -2301,7 +2375,7 @@ class Analyzer:
       aggregate_geos: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates ROI prior or posterior distribution for each media channel.
 
     The ROI numerator is the change in expected outcome (`kpi` or `kpi *
@@ -2406,7 +2480,7 @@ class Analyzer:
             "dimension."
         )
       denominator = spend
-    return tf.math.divide_no_nan(incremental_outcome, denominator)
+    return backend.divide_no_nan(incremental_outcome, denominator)
 
   def cpik(
       self,
@@ -2416,7 +2490,7 @@ class Analyzer:
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates the cost per incremental KPI distribution for each channel.
 
     The CPIK numerator is the total spend on the channel. The CPIK denominator
@@ -2481,11 +2555,11 @@ class Analyzer:
         aggregate_geos=aggregate_geos,
         batch_size=batch_size,
     )
-    return tf.math.divide_no_nan(1.0, roi)
+    return backend.divide_no_nan(1.0, roi)
 
   def _mean_and_ci_by_eval_set(
       self,
-      draws: tf.Tensor,
+      draws: backend.Tensor,
       split_by_holdout: bool,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
@@ -2656,7 +2730,7 @@ class Analyzer:
       self,
       non_media_baseline_values: Sequence[float] | None = None,
       **expected_outcome_kwargs,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Calculates either the posterior or prior expected outcome of baseline.
 
     This is a wrapper for expected_outcome() that automatically sets the
@@ -2673,8 +2747,8 @@ class Analyzer:
 
     Args:
       non_media_baseline_values: Optional list of shape
-        `(n_non_media_channels,)`. Each element is a float which means that the
-        fixed value will be used as baseline for the given channel. It is
+        `(n_non_media_channels,)`. Each element is a float denoting a fixed
+        value that will be used as the baseline for the given channel. It is
         expected that they are scaled by population for the channels where
         `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
         `model_spec.non_media_baseline_values` is used, which defaults to the
@@ -2690,43 +2764,47 @@ class Analyzer:
       dropped if `aggregate_geos=True` or `aggregate_time=True`, respectively.
     """
     new_media = (
-        tf.zeros_like(self._meridian.media_tensors.media)
+        backend.zeros_like(self._meridian.media_tensors.media)
         if self._meridian.media_tensors.media is not None
         else None
     )
     # Frequency is not needed because the reach is zero.
     new_reach = (
-        tf.zeros_like(self._meridian.rf_tensors.reach)
+        backend.zeros_like(self._meridian.rf_tensors.reach)
         if self._meridian.rf_tensors.reach is not None
         else None
     )
     new_organic_media = (
-        tf.zeros_like(self._meridian.organic_media_tensors.organic_media)
+        backend.zeros_like(self._meridian.organic_media_tensors.organic_media)
         if self._meridian.organic_media_tensors.organic_media is not None
         else None
     )
     new_organic_reach = (
-        tf.zeros_like(self._meridian.organic_rf_tensors.organic_reach)
+        backend.zeros_like(self._meridian.organic_rf_tensors.organic_reach)
         if self._meridian.organic_rf_tensors.organic_reach is not None
         else None
     )
     if self._meridian.non_media_treatments is not None:
       if self._meridian.model_spec.non_media_population_scaling_id is not None:
-        scaling_factors = tf.where(
+        scaling_factors = backend.where(
             self._meridian.model_spec.non_media_population_scaling_id,
-            self._meridian.population[:, tf.newaxis, tf.newaxis],
-            tf.ones_like(self._meridian.population)[:, tf.newaxis, tf.newaxis],
+            self._meridian.population[:, backend.newaxis, backend.newaxis],
+            backend.ones_like(self._meridian.population)[
+                :, backend.newaxis, backend.newaxis
+            ],
         )
       else:
-        scaling_factors = tf.ones_like(self._meridian.population)[
-            :, tf.newaxis, tf.newaxis
+        scaling_factors = backend.ones_like(self._meridian.population)[
+            :, backend.newaxis, backend.newaxis
         ]
 
       baseline = self._meridian.compute_non_media_treatments_baseline(
           non_media_baseline_values=non_media_baseline_values,
       )
-      new_non_media_treatments_population_scaled = tf.broadcast_to(
-          tf.constant(baseline, dtype=tf.float32)[tf.newaxis, tf.newaxis, :],
+      new_non_media_treatments_population_scaled = backend.broadcast_to(
+          backend.to_tensor(baseline, dtype=backend.float32)[
+              backend.newaxis, backend.newaxis, :
+          ],
           self._meridian.non_media_treatments.shape,
       )
       new_non_media_treatments = (
@@ -2754,7 +2832,7 @@ class Analyzer:
       include_non_paid_channels: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
       **kwargs,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Aggregates the incremental outcome of the media channels.
 
     Args:
@@ -2806,11 +2884,11 @@ class Analyzer:
         non_media_baseline_values=non_media_baseline_values,
         **kwargs,
     )
-    incremental_outcome_total = tf.reduce_sum(
+    incremental_outcome_total = backend.reduce_sum(
         incremental_outcome_m, axis=-1, keepdims=True
     )
 
-    return tf.concat(
+    return backend.concatenate(
         [incremental_outcome_m, incremental_outcome_total],
         axis=-1,
     )
@@ -2940,10 +3018,10 @@ class Analyzer:
         include_non_paid_channels=include_non_paid_channels,
         **dim_kwargs,
     )
-    impressions_with_total = tf.concat(
+    impressions_with_total = backend.concatenate(
         [
             aggregated_impressions,
-            tf.reduce_sum(aggregated_impressions, -1, keepdims=True),
+            backend.reduce_sum(aggregated_impressions, -1, keepdims=True),
         ],
         axis=-1,
     )
@@ -3127,12 +3205,15 @@ class Analyzer:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
-        tensor=tf.concat(spend_list, axis=-1),
+        tensor=backend.concatenate(spend_list, axis=-1),
         flexible_time_dim=True,
         **dim_kwargs,
     )
-    spend_with_total = tf.concat(
-        [aggregated_spend, tf.reduce_sum(aggregated_spend, -1, keepdims=True)],
+    spend_with_total = backend.concatenate(
+        [
+            aggregated_spend,
+            backend.reduce_sum(aggregated_spend, -1, keepdims=True),
+        ],
         axis=-1,
     )
     spend_data = self._compute_spend_data_aggregate(
@@ -3220,7 +3301,7 @@ class Analyzer:
       aggregate_times: bool = True,
       optimal_frequency: Sequence[float] | None = None,
       include_non_paid_channels: bool = True,
-  ) -> tf.Tensor:
+  ) -> backend.Tensor:
     """Computes aggregated impressions values in the data across all channels.
 
     Args:
@@ -3277,7 +3358,9 @@ class Analyzer:
       if optimal_frequency is None:
         new_frequency = data_tensors.frequency
       else:
-        new_frequency = tf.ones_like(data_tensors.frequency) * optimal_frequency
+        new_frequency = (
+            backend.ones_like(data_tensors.frequency) * optimal_frequency
+        )
       impressions_list.append(
           data_tensors.reach[:, -n_times:, :] * new_frequency[:, -n_times:, :]
       )
@@ -3290,7 +3373,8 @@ class Analyzer:
           new_organic_frequency = data_tensors.organic_frequency
         else:
           new_organic_frequency = (
-              tf.ones_like(data_tensors.organic_frequency) * optimal_frequency
+              backend.ones_like(data_tensors.organic_frequency)
+              * optimal_frequency
           )
         impressions_list.append(
             data_tensors.organic_reach[:, -n_times:, :]
@@ -3300,7 +3384,7 @@ class Analyzer:
         impressions_list.append(data_tensors.non_media_treatments)
 
     return self.filter_and_aggregate_geos_and_times(
-        tensor=tf.concat(impressions_list, axis=-1),
+        tensor=backend.concatenate(impressions_list, axis=-1),
         selected_geos=selected_geos,
         selected_times=selected_times,
         aggregate_geos=aggregate_geos,
@@ -3402,7 +3486,7 @@ class Analyzer:
         use_posterior=True, use_kpi=use_kpi, **outcome_kwargs
     )
 
-    baseline_expected_outcome_prior = tf.expand_dims(
+    baseline_expected_outcome_prior = backend.expand_dims(
         self._calculate_baseline_expected_outcome(
             use_posterior=False,
             use_kpi=use_kpi,
@@ -3411,7 +3495,7 @@ class Analyzer:
         ),
         axis=-1,
     )
-    baseline_expected_outcome_posterior = tf.expand_dims(
+    baseline_expected_outcome_posterior = backend.expand_dims(
         self._calculate_baseline_expected_outcome(
             use_posterior=True,
             use_kpi=use_kpi,
@@ -3453,8 +3537,8 @@ class Analyzer:
       freq_grid: Sequence[float] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
-      selected_geos: Sequence[str | int] | None = None,
-      selected_times: Sequence[str | int | bool] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3502,8 +3586,8 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. By default, all time periods are
-        included.
+        `new_data` if time is modified in `new_data`, or `input_data.n_times`
+        otherwise. By default, all time periods are included.
       confidence_level: Confidence level for prior and posterior credible
         intervals, represented as a value between zero and one.
 
@@ -3563,10 +3647,10 @@ class Analyzer:
     n_times = (
         filled_data.get_modified_times(self._meridian) or self._meridian.n_times
     )
-    dummy_media = tf.ones(
+    dummy_media = backend.ones(
         (self._meridian.n_geos, n_media_times, self._meridian.n_media_channels)
     )
-    dummy_media_spend = tf.ones(
+    dummy_media_spend = backend.ones(
         (self._meridian.n_geos, n_times, self._meridian.n_media_channels)
     )
 
@@ -3582,7 +3666,7 @@ class Analyzer:
     metric_grid = np.zeros((len(freq_grid), self._meridian.n_rf_channels, 4))
 
     for i, freq in enumerate(freq_grid):
-      new_frequency = tf.ones_like(filled_data.rf_impressions) * freq
+      new_frequency = backend.ones_like(filled_data.rf_impressions) * freq
       new_reach = filled_data.rf_impressions / new_frequency
       new_roi_data = DataTensors(
           reach=new_reach,
@@ -3612,9 +3696,9 @@ class Analyzer:
     )
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
-    optimal_frequency_tensor = tf.convert_to_tensor(
-        tf.ones_like(filled_data.rf_impressions) * optimal_frequency,
-        tf.float32,
+    optimal_frequency_tensor = backend.to_tensor(
+        backend.ones_like(filled_data.rf_impressions) * optimal_frequency,
+        backend.float32,
     )
     optimal_reach = filled_data.rf_impressions / optimal_frequency_tensor
 
@@ -3778,10 +3862,12 @@ class Analyzer:
       input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
     else:
       input_tensor = self._meridian.kpi
-    actual = self.filter_and_aggregate_geos_and_times(
-        tensor=input_tensor,
-        **dims_kwargs,
-    ).numpy()
+    actual = np.asarray(
+        self.filter_and_aggregate_geos_and_times(
+            tensor=input_tensor,
+            **dims_kwargs,
+        )
+    )
     expected = np.mean(
         self.expected_outcome(
             batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
@@ -3888,7 +3974,7 @@ class Analyzer:
 
     return holdout_id
 
-  def get_rhat(self) -> Mapping[str, tf.Tensor]:
+  def get_rhat(self) -> Mapping[str, backend.Tensor]:
     """Computes the R-hat values for each parameter in the model.
 
     Returns:
@@ -3904,12 +3990,12 @@ class Analyzer:
           "sample_posterior() must be called prior to calling this method."
       )
 
-    def _transpose_first_two_dims(x: tf.Tensor) -> tf.Tensor:
+    def _transpose_first_two_dims(x: backend.Tensor) -> backend.Tensor:
       n_dim = len(x.shape)
       perm = [1, 0] + list(range(2, n_dim))
-      return tf.transpose(x, perm)
+      return backend.transpose(x, perm)
 
-    rhat = tfp.mcmc.potential_scale_reduction({
+    rhat = backend.mcmc.potential_scale_reduction({
         k: _transpose_first_two_dims(v)
         for k, v in self._meridian.inference_data.posterior.data_vars.items()
     })
@@ -3993,6 +4079,7 @@ class Analyzer:
 
   def response_curves(
       self,
+      new_data: DataTensors | None = None,
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
@@ -4011,13 +4098,22 @@ class Analyzer:
 
     A list of multipliers is applied to each media channel's total historical
     spend within `selected_geos` and `selected_times` to obtain the x-axis
-    values. The y-axis values are the incremental ouctcome generated by each
+    values. The y-axis values are the incremental outcome generated by each
     channel within `selected_geos` and `selected_times` under the counterfactual
     where media units in each geo and time period are scaled by the
     corresponding multiplier. (Media units for time periods prior to
     `selected_times` are also scaled by the multiplier.)
 
     Args:
+      new_data: Optional `DataTensors` object with optional new tensors:
+        `media`, `reach`, `frequency`, `media_spend`, `rf_spend`,
+        `revenue_per_kpi`, `times`. If provided, the response curves are
+        calculated using the values of the tensors passed in `new_data` and the
+        original values of all the remaining tensors. If `None`, the response
+        curves are calculated using the original values of all the tensors. If
+        any of the tensors in `new_data` is provided with a different number of
+        time periods than in `InputData`, then all tensors must be provided with
+        the same number of time periods and the `time` tensor must be provided.
       spend_multipliers: List of multipliers. Each channel's total spend is
         multiplied by these factors to obtain the values at which the curve is
         calculated for that channel.
@@ -4025,9 +4121,11 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list of containing a subset of time dimensions to
-        include. By default, all time periods are included. Time dimension
-        strings and integers must align with the `Meridian.n_times`.
+      selected_times: Optional list containing a subset of dates to include. If
+        `new_data` is provided with modified time periods, then `selected_times`
+        must be a subset of `new_data.times`. Otherwise, `selected_times` must
+        be a subset of `self._meridian.input_data.time`. By default, all time
+        periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -4056,24 +4154,62 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
+    if new_data is None:
+      new_data = DataTensors()
+    # TODO: b/442920356 - Support flexible time without providing exact dates.
+    required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=required_tensors_names,
+        meridian=self._meridian,
+        allow_modified_times=True,
+    )
+    new_n_media_times = filled_data.get_modified_times(self._meridian)
+
+    if new_n_media_times is None:
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=self._meridian.input_data.time,
+          n_times=self._meridian.n_times,
+          arg_name="selected_times",
+          comparison_arg_name="the input data",
+      )
+    else:
+      new_time = np.asarray(filled_data.time).astype(str).tolist()
+      _validate_flexible_selected_times(
+          selected_times=selected_times,
+          media_selected_times=None,
+          new_n_media_times=new_n_media_times,
+          new_time=new_time,
+      )
+      # TODO: b/407847021 - Switch to Sequence[str] once it is supported.
+      if selected_times is not None:
+        selected_times = [x in selected_times for x in new_time]
+        dim_kwargs["selected_times"] = selected_times
+
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
-      frequency = tf.ones_like(
-          self._meridian.rf_tensors.frequency
-      ) * tf.convert_to_tensor(
+      opt_freq_data = DataTensors(
+          media=filled_data.media,
+          rf_impressions=filled_data.reach * filled_data.frequency,
+          media_spend=filled_data.media_spend,
+          rf_spend=filled_data.rf_spend,
+          revenue_per_kpi=filled_data.revenue_per_kpi,
+      )
+      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(
           self.optimal_freq(
+              new_data=opt_freq_data,
               selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
-          dtype=tf.float32,
+          dtype=backend.float32,
       )
-      reach = tf.math.divide_no_nan(
-          self._meridian.rf_tensors.reach * self._meridian.rf_tensors.frequency,
+      reach = backend.divide_no_nan(
+          filled_data.reach * filled_data.frequency,
           frequency,
       )
     else:
-      frequency = self._meridian.rf_tensors.frequency
-      reach = self._meridian.rf_tensors.reach
+      frequency = filled_data.frequency
+      reach = filled_data.reach
     if spend_multipliers is None:
       spend_multipliers = list(np.arange(0, 2.2, 0.2))
     incremental_outcome = np.zeros((
@@ -4083,22 +4219,23 @@ class Analyzer:
     ))
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
-        incremental_outcome[i, :, :] = tf.zeros(
+        incremental_outcome[i, :, :] = backend.zeros(
             (len(self._meridian.input_data.get_all_paid_channels()), 3)
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
-      new_data = _scale_tensors_by_multiplier(
+      scaled_data = _scale_tensors_by_multiplier(
           data=DataTensors(
-              media=self._meridian.media_tensors.media,
+              media=filled_data.media,
               reach=reach,
               frequency=frequency,
+              revenue_per_kpi=filled_data.revenue_per_kpi,
           ),
           multiplier=multiplier,
           by_reach=by_reach,
       )
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=new_data.filter_fields(constants.PAID_DATA),
+          new_data=scaled_data.filter_fields(constants.PAID_DATA),
           inverse_transform_outcome=True,
           batch_size=batch_size,
           use_kpi=use_kpi,
@@ -4109,25 +4246,14 @@ class Analyzer:
           inc_outcome_temp, confidence_level
       )
 
-    if self._meridian.n_media_channels > 0 and self._meridian.n_rf_channels > 0:
-      spend = tf.concat(
-          [
-              self._meridian.media_tensors.media_spend,
-              self._meridian.rf_tensors.rf_spend,
-          ],
-          axis=-1,
-      )
-    elif self._meridian.n_media_channels > 0:
-      spend = self._meridian.media_tensors.media_spend
-    else:
-      spend = self._meridian.rf_tensors.rf_spend
-
-    if tf.rank(spend) == 3:
+    spend = filled_data.total_spend()
+    if spend is not None and spend.ndim == 3:
       spend = self.filter_and_aggregate_geos_and_times(
           tensor=spend,
+          flexible_time_dim=True,
           **dim_kwargs,
       )
-    spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
+    spend_einsum = backend.einsum("k,m->km", np.array(spend_multipliers), spend)
     xr_coords = {
         constants.CHANNEL: self._meridian.input_data.get_all_paid_channels(),
         constants.METRIC: [
@@ -4198,60 +4324,45 @@ class Analyzer:
     }
     final_df_list = []
 
-    if self._meridian.n_media_channels > 0:
-      media_channel_values = (
-          self._meridian.input_data.media_channel.values
-          if self._meridian.input_data.media_channel is not None
-          else []
-      )
-      media_xr_coords = base_xr_coords | {
-          constants.CHANNEL: media_channel_values
-      }
-      adstock_df_m = self._get_adstock_dataframe(
-          constants.MEDIA,
-          l_range,
-          xr_dims,
-          media_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_m.empty:
-        final_df_list.append(adstock_df_m)
+    def _add_adstock_decay_for_channel(
+        n_channels: int,
+        channel_data: xr.DataArray | None,
+        adstock_channel_type: str,
+    ) -> None:
+      """Helper to compute and append adstock decay data for a channel type."""
+      if n_channels > 0:
+        channel_values = channel_data.values if channel_data is not None else []
+        xr_coords = base_xr_coords | {constants.CHANNEL: channel_values}
+        adstock_df = self._get_adstock_dataframe(
+            adstock_channel_type,
+            l_range,
+            xr_dims,
+            xr_coords,
+            confidence_level,
+        )
+        if not adstock_df.empty:
+          final_df_list.append(adstock_df)
 
-    if self._meridian.n_rf_channels > 0:
-      rf_channel_values = (
-          self._meridian.input_data.rf_channel.values
-          if self._meridian.input_data.rf_channel is not None
-          else []
-      )
-      rf_xr_coords = base_xr_coords | {constants.CHANNEL: rf_channel_values}
-      adstock_df_rf = self._get_adstock_dataframe(
-          constants.REACH,
-          l_range,
-          xr_dims,
-          rf_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_rf.empty:
-        final_df_list.append(adstock_df_rf)
-
-    if self._meridian.n_organic_media_channels > 0:
-      organic_media_channel_values = (
-          self._meridian.input_data.organic_media_channel.values
-          if self._meridian.input_data.organic_media_channel is not None
-          else []
-      )
-      organic_media_xr_coords = base_xr_coords | {
-          constants.CHANNEL: organic_media_channel_values
-      }
-      adstock_df_om = self._get_adstock_dataframe(
-          constants.ORGANIC_MEDIA,
-          l_range,
-          xr_dims,
-          organic_media_xr_coords,
-          confidence_level,
-      )
-      if not adstock_df_om.empty:
-        final_df_list.append(adstock_df_om)
+    _add_adstock_decay_for_channel(
+        self._meridian.n_media_channels,
+        self._meridian.input_data.media_channel,
+        constants.MEDIA,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_rf_channels,
+        self._meridian.input_data.rf_channel,
+        constants.RF,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_organic_media_channels,
+        self._meridian.input_data.organic_media_channel,
+        constants.ORGANIC_MEDIA,
+    )
+    _add_adstock_decay_for_channel(
+        self._meridian.n_organic_rf_channels,
+        self._meridian.input_data.organic_rf_channel,
+        constants.ORGANIC_RF,
+    )
 
     final_df = pd.concat(final_df_list, ignore_index=True)
     # Adding an extra column that indicates whether time_units is an integer
@@ -4276,7 +4387,8 @@ class Analyzer:
     Returns:
       A DataFrame with data needed to plot the Hill curves, with columns:
 
-      *   `channel`: `media`, `rf`, or `organic_media` channel name.
+      *   `channel`: `media`, `rf`, `organic_media`, or `organic_rf` channel
+      name.
       *   `media_units`: Media (for `media` channels) or average frequency (for
           `rf` channels) units.
       *   `distribution`: Indication of `posterior` or `prior` draw.
@@ -4285,12 +4397,12 @@ class Analyzer:
       *   `ci_lo`: Lower bound of the credible interval of the value of the Hill
           function.
       *   `mean`: Point-wise mean of the value of the Hill function per draw.
-      *   channel_type: Indication of a `media`, `rf`, or `organic_media`
-          channel.
+      *   channel_type: Indication of a `media`, `rf`, `organic_media`
+          channel, or `organic_rf`.
 
     Raises:
       ValueError: If `channel_type` is not one of the recognized constants
-      `media`, `rf`, or `organic_media`.
+      `media`, `rf`, `organic_media`, or `organic_rf`.
     """
     if (
         channel_type == constants.MEDIA
@@ -4328,10 +4440,23 @@ class Analyzer:
           np.array(self._meridian.organic_media_tensors.organic_media_scaled),
           axis=(0, 1),
       )
+    elif (
+        channel_type == constants.ORGANIC_RF
+        and self._meridian.input_data.organic_rf_channel is not None
+    ):
+      ec = constants.EC_ORF
+      slope = constants.SLOPE_ORF
+      channels = self._meridian.input_data.organic_rf_channel.values
+      transformer = None
+      linspace_max_values = np.max(
+          np.array(self._meridian.organic_rf_tensors.organic_frequency),
+          axis=(0, 1),
+      )
     else:
       raise ValueError(
           f"Unsupported channel type: {channel_type} or the requested type of"
-          " channels (`media`, `rf`, or `organic_media`) are not present."
+          " channels (`media`, `rf`, `organic_media`, or `organic_rf`) are not"
+          " present."
       )
     linspace = np.linspace(
         0,
@@ -4353,7 +4478,7 @@ class Analyzer:
     }
     # Expanding the linspace by one dimension since the HillTransformer requires
     # 3-dimensional input as (geo, time, channel).
-    expanded_linspace = tf.expand_dims(linspace, axis=0)
+    expanded_linspace = backend.expand_dims(linspace, axis=0)
     # Including [:, :, 0, :, :] in the output of the Hill Function to reduce the
     # tensors by the geo dimension. Original Hill dimension shape is (n_chains,
     # n_draws, n_geos, n_times, n_channels), and we want to plot the
@@ -4375,36 +4500,44 @@ class Analyzer:
         xr_coords,
         confidence_level,
     )
-    df = (
+
+    df_raw = (
         hill_dataset[constants.HILL_SATURATION_LEVEL]
         .to_dataframe()
         .reset_index()
-        .pivot(
-            index=[
-                constants.CHANNEL,
-                constants.MEDIA_UNITS,
-                constants.DISTRIBUTION,
-            ],
-            columns=constants.METRIC,
-            values=constants.HILL_SATURATION_LEVEL,
-        )
-        .reset_index()
     )
+
+    # Ensure the channel order matches the tensor order (defined by 'channels')
+    # by using a Categorical type before pivoting. This prevents pivot from
+    # sorting alphabetically, which can cause misalignment between channel names
+    # and the calculated media units derived later from the tensor order.
+    df_raw[constants.CHANNEL] = pd.Categorical(
+        df_raw[constants.CHANNEL], categories=channels
+    )
+    df = df_raw.pivot(
+        index=[
+            constants.CHANNEL,
+            constants.MEDIA_UNITS,
+            constants.DISTRIBUTION,
+        ],
+        columns=constants.METRIC,
+        values=constants.HILL_SATURATION_LEVEL,
+    ).reset_index()
 
     # Fill media_units or frequency x-axis with the correct range.
     media_units_arr = []
     if transformer is not None:
       population_scaled_median = transformer.population_scaled_median_m
-      x_range_full_shape = linspace * tf.transpose(
-          population_scaled_median[:, np.newaxis]
+      x_range_full_shape = linspace * backend.transpose(
+          population_scaled_median[:, backend.newaxis]
       )
     else:
       x_range_full_shape = linspace
 
     # Flatten this into a list.
-    x_range_list = (
-        tf.reshape(tf.transpose(x_range_full_shape), [-1]).numpy().tolist()
-    )
+    x_range_list = np.asarray(
+        backend.reshape(backend.transpose(x_range_full_shape), [-1])
+    ).tolist()
 
     # Doubles each value in the list to account for alternating prior
     # and posterior.
@@ -4420,14 +4553,15 @@ class Analyzer:
   def _get_channel_hill_histogram_dataframe(
       self,
       channel_type: str,
-      data_to_histogram: tf.Tensor,
+      data_to_histogram: backend.Tensor,
       channel_names: Sequence[str],
       n_bins: int,
   ) -> pd.DataFrame:
     """Calculates hill histogram dataframe for a given channel type's values.
 
     Args:
-      channel_type: The type of channel (e.g., 'rf', 'media', 'organic_media').
+      channel_type: The type of channel (e.g., 'rf', 'media', 'organic_media',
+        'organic_rf').
       data_to_histogram: The 2D tensor (observations, channels). containing the
         data whose distribution needs to be histogrammed for each channel.
       channel_names: The names corresponding to the channels in
@@ -4449,7 +4583,7 @@ class Analyzer:
     }
 
     for i, channel_name in enumerate(channel_names):
-      channel_data_np = data_to_histogram[:, i].numpy()
+      channel_data_np = np.asarray(data_to_histogram[:, i])
       channel_data_np = channel_data_np[~np.isnan(channel_data_np)]
       if channel_data_np.size == 0:
         continue
@@ -4511,7 +4645,7 @@ class Analyzer:
     if self._meridian.input_data.rf_channel is not None:
       frequency = self._meridian.rf_tensors.frequency
       if frequency is not None:
-        reshaped_frequency = tf.reshape(
+        reshaped_frequency = backend.reshape(
             frequency, (n_geos * n_media_times, self._meridian.n_rf_channels)
         )
         rf_hist_data = self._get_channel_hill_histogram_dataframe(
@@ -4529,7 +4663,7 @@ class Analyzer:
       if transformer is not None and scaled is not None:
         population_scaled_median = transformer.population_scaled_median_m
         scaled_media_units = scaled * population_scaled_median
-        reshaped_scaled_media_units = tf.reshape(
+        reshaped_scaled_media_units = backend.reshape(
             scaled_media_units,
             (n_geos * n_media_times, self._meridian.n_media_channels),
         )
@@ -4549,7 +4683,7 @@ class Analyzer:
       if transformer_om is not None and scaled_om is not None:
         population_scaled_median_om = transformer_om.population_scaled_median_m
         scaled_organic_media_units = scaled_om * population_scaled_median_om
-        reshaped_scaled_organic_media_units = tf.reshape(
+        reshaped_scaled_organic_media_units = backend.reshape(
             scaled_organic_media_units,
             (n_geos * n_media_times, self._meridian.n_organic_media_channels),
         )
@@ -4561,6 +4695,21 @@ class Analyzer:
         )
         df_list.append(pd.DataFrame(organic_media_hist_data))
 
+    # Organic RF.
+    if self._meridian.input_data.organic_rf_channel is not None:
+      frequency = self._meridian.organic_rf_tensors.organic_frequency
+      if frequency is not None:
+        reshaped_frequency = backend.reshape(
+            frequency,
+            (n_geos * n_media_times, self._meridian.n_organic_rf_channels),
+        )
+        organic_rf_hist_data = self._get_channel_hill_histogram_dataframe(
+            channel_type=constants.ORGANIC_RF,
+            data_to_histogram=reshaped_frequency,
+            channel_names=self._meridian.input_data.organic_rf_channel.values,
+            n_bins=n_bins,
+        )
+        df_list.append(pd.DataFrame(organic_rf_hist_data))
     return pd.concat(df_list, ignore_index=True)
 
   def hill_curves(
@@ -4613,6 +4762,7 @@ class Analyzer:
         (self._meridian.n_media_channels, constants.MEDIA),
         (self._meridian.n_rf_channels, constants.RF),
         (self._meridian.n_organic_media_channels, constants.ORGANIC_MEDIA),
+        (self._meridian.n_organic_rf_channels, constants.ORGANIC_RF),
     ]:
       if n_channels > 0:
         hill_df = self._get_hill_curves_dataframe(
@@ -4625,11 +4775,11 @@ class Analyzer:
 
   def _compute_roi_aggregate(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
-      spend_with_total: tf.Tensor,
+      spend_with_total: backend.Tensor,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       metric_name: str = constants.ROI,
   ) -> xr.Dataset:
@@ -4646,8 +4796,8 @@ class Analyzer:
 
   def _compute_spend_data_aggregate(
       self,
-      spend_with_total: tf.Tensor,
-      impressions_with_total: tf.Tensor,
+      spend_with_total: backend.Tensor,
+      impressions_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
   ) -> xr.Dataset:
@@ -4683,9 +4833,9 @@ class Analyzer:
 
   def _compute_effectiveness_aggregate(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
-      impressions_with_total: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
+      impressions_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -4702,9 +4852,9 @@ class Analyzer:
 
   def _compute_cpik_aggregate(
       self,
-      incremental_kpi_prior: tf.Tensor,
-      incremental_kpi_posterior: tf.Tensor,
-      spend_with_total: tf.Tensor,
+      incremental_kpi_prior: backend.Tensor,
+      incremental_kpi_posterior: backend.Tensor,
+      spend_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -4721,17 +4871,19 @@ class Analyzer:
 
   def _compute_pct_of_contribution(
       self,
-      incremental_outcome_prior: tf.Tensor,
-      incremental_outcome_posterior: tf.Tensor,
-      expected_outcome_prior: tf.Tensor,
-      expected_outcome_posterior: tf.Tensor,
+      incremental_outcome_prior: backend.Tensor,
+      incremental_outcome_posterior: backend.Tensor,
+      expected_outcome_prior: backend.Tensor,
+      expected_outcome_posterior: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Computes the parts of `MediaSummary` related to mean expected outcome."""
-    mean_expected_outcome_prior = tf.reduce_mean(expected_outcome_prior, (0, 1))
-    mean_expected_outcome_posterior = tf.reduce_mean(
+    mean_expected_outcome_prior = backend.reduce_mean(
+        expected_outcome_prior, (0, 1)
+    )
+    mean_expected_outcome_posterior = backend.reduce_mean(
         expected_outcome_posterior, (0, 1)
     )
 
@@ -4807,8 +4959,9 @@ class Analyzer:
         of all the remaining tensors.  If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
         then all tensors must be provided with the same number of time periods.
-      selected_times: The time period to get the aggregated spends. If None, the
-        spend will be aggregated over all time periods.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
@@ -4885,8 +5038,8 @@ class Analyzer:
   def _impute_and_aggregate_spend(
       self,
       selected_times: Sequence[str] | Sequence[bool] | None,
-      media_execution_values: tf.Tensor,
-      channel_spend: tf.Tensor,
+      media_execution_values: backend.Tensor,
+      channel_spend: backend.Tensor,
       channel_names: Sequence[str],
   ) -> xr.DataArray:
     """Imputes and aggregates the spend over the selected time period.
@@ -4899,7 +5052,9 @@ class Analyzer:
     argument, its values only affect the output when imputation is required.
 
     Args:
-      selected_times: The time period to get the aggregated spend.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        KPI data. By default, all time periods are included.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
@@ -4919,11 +5074,13 @@ class Analyzer:
     }
 
     if channel_spend.ndim == 3:
-      aggregated_spend = self.filter_and_aggregate_geos_and_times(
-          channel_spend,
-          has_media_dim=True,
-          **dim_kwargs,
-      ).numpy()
+      aggregated_spend = np.asarray(
+          self.filter_and_aggregate_geos_and_times(
+              channel_spend,
+              has_media_dim=True,
+              **dim_kwargs,
+          )
+      )
     # channel_spend.ndim can only be 3 or 1.
     else:
       # media spend can have more time points than the model time points
@@ -4939,14 +5096,84 @@ class Analyzer:
           media_exe_values,
           **dim_kwargs,
       )
-      imputed_cpmu = tf.math.divide_no_nan(
+      imputed_cpmu = backend.divide_no_nan(
           channel_spend,
           np.sum(media_exe_values, (0, 1)),
       )
-      aggregated_spend = (target_media_exe_values * imputed_cpmu).numpy()
+      aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)
 
     return xr.DataArray(
         data=aggregated_spend,
         dims=[constants.CHANNEL],
         coords={constants.CHANNEL: channel_names},
     )
+
+  def negative_baseline_probability(
+      self,
+      non_media_baseline_values: Sequence[float] | None = None,
+      use_posterior: bool = True,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
+      use_kpi: bool = False,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> np.floating:
+    """Calculates either prior or posterior negative baseline probability.
+
+    This calculates either the prior or posterior probability that the baseline,
+    aggregated over the supplied time window, is negative.
+
+    The baseline is calculated by computing `expected_outcome` with the
+    following assumptions:
+      1) `media` is set to all zeros,
+      2) `reach` is set to all zeros,
+      3) `organic_media` is set to all zeros,
+      4) `organic_reach` is set to all zeros,
+      5) `non_media_treatments` is set to the counterfactual values according
+      to the `non_media_baseline_values` argument,
+      6) `controls` are set to historical values.
+
+    Args:
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is a float denoting a fixed
+        value that will be used as the baseline for the given channel. It is
+        expected that they are scaled by population for the channels where
+        `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
+        `model_spec.non_media_baseline_values` is used, which defaults to the
+        minimum value for each non_media treatment channel.
+      use_posterior: Boolean. If `True`, then the expected outcome posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      selected_geos: Optional list of containing a subset of geos to include. By
+        default, all geos are included.
+      selected_times: Optional list of containing a subset of dates to include.
+        The values accepted here must match time dimension coordinates from
+        `InputData.time`. By default, all time periods are included.
+      use_kpi: Boolean. If `use_kpi = True`, the expected KPI is calculated;
+        otherwise the expected revenue `(kpi * revenue_per_kpi)` is calculated.
+        It is required that `use_kpi = True` if `revenue_per_kpi` is not defined
+        or if `inverse_transform_outcome = False`.
+      batch_size: Integer representing the maximum draws per chain in each
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
+
+    Returns:
+      A float representing the prior or posterior negative baseline probability
+      over the supplied time window.
+    Raises:
+      NotFittedModelError: if `sample_posterior()` (for `use_posterior=True`)
+        or `sample_prior()` (for `use_posterior=False`) has not been called
+        prior to calling this method.
+    """
+
+    baseline_draws = self._calculate_baseline_expected_outcome(
+        non_media_baseline_values=non_media_baseline_values,
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=True,
+        aggregate_times=True,
+        use_kpi=use_kpi,
+        batch_size=batch_size,
+    )
+    return np.mean(baseline_draws < 0)

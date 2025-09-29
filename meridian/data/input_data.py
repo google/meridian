@@ -442,6 +442,59 @@ class InputData:
     """Checks whether the `rf_spend` array has a time dimension."""
     return self.rf_spend is not None and constants.TIME in self.rf_spend.coords
 
+  @property
+  def scaled_centered_kpi(self) -> np.ndarray:
+    """Calculates scaled and centered KPI values.
+
+    Returns:
+      An array of KPI values that have been population-scaled and
+    mean-centered by geo.
+    """
+    kpi = self.kpi.values
+    population = self.population.values[:, np.newaxis]
+
+    population_scaled_kpi = np.divide(
+        kpi,
+        population,
+        out=np.zeros_like(kpi, dtype=float),
+        where=(population != 0),
+    )
+    population_scaled_mean = np.mean(population_scaled_kpi)
+    population_scaled_stdev = np.std(population_scaled_kpi)
+    kpi_scaled = np.divide(
+        population_scaled_kpi - population_scaled_mean,
+        population_scaled_stdev,
+        out=np.zeros_like(
+            population_scaled_kpi - population_scaled_mean, dtype=float
+        ),
+        where=(population_scaled_stdev != 0),
+    )
+    return kpi_scaled - np.mean(kpi_scaled, axis=1, keepdims=True)
+
+  def copy(self, deep: bool = True) -> "InputData":
+    """Returns a copy of the InputData instance.
+
+    Args:
+      deep: If True, a deep copy is made, meaning all xarray.DataArray objects
+        are also deepcopied. If False, a shallow copy is made.
+
+    Returns:
+      A new InputData instance.
+    """
+    if not deep:
+      return dataclasses.replace(self)
+
+    copied_fields = {}
+    for field in dataclasses.fields(self):
+      value = getattr(self, field.name)
+      if isinstance(value, xr.DataArray):
+        copied_fields[field.name] = value.copy(deep=True)
+      else:
+        # For other types, dataclasses.replace does a shallow copy.
+        copied_fields[field.name] = value
+
+    return InputData(**copied_fields)
+
   def _validate_scenarios(self):
     """Verifies that calibration and analysis is set correctly."""
     n_geos = len(self.kpi.coords[constants.GEO])
@@ -848,6 +901,32 @@ class InputData:
       raise ValueError("Both RF and media channel values are missing.")
     # pytype: enable=attribute-error
 
+  def get_all_adstock_hill_channels(self) -> np.ndarray:
+    """Returns all channel dimensions that adstock hill is applied to.
+
+    RF, organic media and organic RF channels are concatenated to the end of the
+    media channels if they are present.
+    """
+    adstock_hill_channels = []
+
+    if self.media_channel is not None:
+      adstock_hill_channels.append(self.media_channel.values)
+
+    if self.rf_channel is not None:
+      adstock_hill_channels.append(self.rf_channel.values)
+
+    if self.organic_media_channel is not None:
+      adstock_hill_channels.append(self.organic_media_channel.values)
+
+    if self.organic_rf_channel is not None:
+      adstock_hill_channels.append(self.organic_rf_channel.values)
+
+    if not adstock_hill_channels:
+      raise ValueError("Media, RF, organic media and organic RF channels are "
+                       "all missing.")
+
+    return np.concatenate(adstock_hill_channels, axis=None)
+
   def get_paid_channels_argument_builder(
       self,
   ) -> arg_builder.OrderedListArgumentBuilder:
@@ -869,6 +948,26 @@ class InputData:
     if self.rf_channel is None:
       raise ValueError("There are no RF channels in the input data.")
     return arg_builder.OrderedListArgumentBuilder(self.rf_channel.values)
+
+  def get_organic_media_channels_argument_builder(
+      self
+  ) -> arg_builder.OrderedListArgumentBuilder:
+    """Returns an argument builder for *organic* media channels *only*."""
+    if self.organic_media_channel is None:
+      raise ValueError("There are no organic media channels in the input data.")
+    return arg_builder.OrderedListArgumentBuilder(
+        self.organic_media_channel.values
+        )
+
+  def get_organic_rf_channels_argument_builder(
+      self
+  ) -> arg_builder.OrderedListArgumentBuilder:
+    """Returns an argument builder for *organic* RF channels *only*."""
+    if self.organic_rf_channel is None:
+      raise ValueError("There are no organic RF channels in the input data.")
+    return arg_builder.OrderedListArgumentBuilder(
+        self.organic_rf_channel.values
+        )
 
   def get_all_channels(self) -> np.ndarray:
     """Returns all the channel dimensions.

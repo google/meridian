@@ -14,6 +14,7 @@
 
 """Defines model specification parameters for Meridian."""
 
+from collections.abc import Mapping
 import dataclasses
 from typing import Sequence
 import warnings
@@ -72,8 +73,7 @@ class ModelSpec:
       before Hill. This argument does not apply to RF channels. Default:
       `False`.
     max_lag: An integer indicating the maximum number of lag periods (≥ `0`) to
-      include in the Adstock calculation. Can also be set to `None`, which is
-      equivalent to infinite max lag. Default: `8`.
+      include in the Adstock calculation. Default: `8`.
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
@@ -202,6 +202,20 @@ class ModelSpec:
       `(n_non_media_channels,)` indicating the non-media variables for which the
       non-media value will be scaled by population. If `None`, then no non-media
       variables are scaled by population. Default: `None`.
+    adstock_decay_spec: A string or mapping specifying the adstock decay
+      function for each media, RF, organic media and organic RF channel.
+      * If a string, must be either `'geometric'` or `'binomial'`, specifying
+        that decay function for all channels.
+      * If a mapping, keys should be channel names and values should be
+        `'geometric'` or `'binomial'`, with each key-value pair denoting the
+        adstock decay function to use for that channel. Channels that are not
+        specified in the mapping default to using 'geometric'.
+      Default: `'geometric'`.
+    enable_aks: A boolean indicating whether to use the Automatic Knot Selection
+      algorithm to select an optimal number of knots for running the model
+      instead of the default 1 for national models and n_times for geo models.
+      If this is set to `True` and the `knots` arg is provided, then an error
+      will be raised. Default: `False`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -209,7 +223,7 @@ class ModelSpec:
   )
   media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
   hill_before_adstock: bool = False
-  max_lag: int | None = 8
+  max_lag: int = 8
   unique_sigma_for_each_geo: bool = False
   media_prior_type: str | None = None
   rf_prior_type: str | None = None
@@ -227,6 +241,8 @@ class ModelSpec:
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
+  adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
+  enable_aks: bool = False
 
   def __post_init__(self):
     # Validate media_effects_dist.
@@ -311,6 +327,10 @@ class ModelSpec:
       raise ValueError("The `knots` parameter cannot be an empty list.")
     if isinstance(self.knots, int) and self.knots == 0:
       raise ValueError("The `knots` parameter cannot be zero.")
+    if self.knots is not None and self.enable_aks:
+      raise ValueError(
+          "The `knots` parameter cannot be set when `enable_aks` is True."
+      )
 
   @property
   def effective_media_prior_type(self) -> str:

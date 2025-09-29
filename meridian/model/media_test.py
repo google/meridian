@@ -18,11 +18,11 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants as c
+from meridian.backend import test_utils
 from meridian.model import media
 from meridian.model import spec
 from meridian.model import transformers
 import numpy as np
-import tensorflow as tf
 
 # Dimensions: (n_geos=2, n_media_times=4, n_channels=3)
 _MEDIA = np.array([
@@ -156,7 +156,7 @@ _CALIBRATION_MISMATCHED_TIME = np.array([
 # --- End constants for invalid input shapes ---
 
 
-class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
+class MediaTensorsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -217,17 +217,19 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
         ),
     )
 
-    self.assertAllClose(media_tensors.media, _INPUT_DATA_WITH_MEDIA_ONLY.media)
-    self.assertAllClose(
+    test_utils.assert_allclose(
+        media_tensors.media, _INPUT_DATA_WITH_MEDIA_ONLY.media
+    )
+    test_utils.assert_allclose(
         media_tensors.media_spend, _INPUT_DATA_WITH_MEDIA_ONLY.media_spend
     )
     self.assertIsNotNone(media_tensors.media_transformer)
-    self.assertAllClose(
+    test_utils.assert_allclose(
         media_tensors.media_scaled, _INPUT_DATA_WITH_MEDIA_ONLY.media
     )
 
 
-class OrganicMediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
+class OrganicMediaTensorsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -254,18 +256,18 @@ class OrganicMediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA
     )
 
-    self.assertAllClose(
+    test_utils.assert_allclose(
         organic_media_tensors.organic_media,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
     )
     self.assertIsNotNone(organic_media_tensors.organic_media_transformer)
-    self.assertAllClose(
+    test_utils.assert_allclose(
         organic_media_tensors.organic_media_scaled,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_MEDIA.organic_media,
     )
 
 
-class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
+class RfTensorsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -309,20 +311,24 @@ class RfTensorsTest(tf.test.TestCase, parameterized.TestCase):
         spec.ModelSpec(rf_roi_calibration_period=rf_roi_calibration_period),
     )
 
-    self.assertAllClose(rf_tensors.reach, _INPUT_DATA_WITH_RF_ONLY.reach)
-    self.assertAllClose(
+    test_utils.assert_allclose(rf_tensors.reach, _INPUT_DATA_WITH_RF_ONLY.reach)
+    test_utils.assert_allclose(
         rf_tensors.frequency, _INPUT_DATA_WITH_RF_ONLY.frequency
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         rf_tensors.rf_impressions,
         _INPUT_DATA_WITH_RF_ONLY.reach * _INPUT_DATA_WITH_RF_ONLY.frequency,
     )
-    self.assertAllClose(rf_tensors.rf_spend, _INPUT_DATA_WITH_RF_ONLY.rf_spend)
+    test_utils.assert_allclose(
+        rf_tensors.rf_spend, _INPUT_DATA_WITH_RF_ONLY.rf_spend
+    )
     self.assertIsNotNone(rf_tensors.reach_transformer)
-    self.assertAllClose(rf_tensors.reach_scaled, _INPUT_DATA_WITH_RF_ONLY.reach)
+    test_utils.assert_allclose(
+        rf_tensors.reach_scaled, _INPUT_DATA_WITH_RF_ONLY.reach
+    )
 
 
-class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
+class OrganicRfTensorsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -350,16 +356,16 @@ class OrganicRfTensorsTest(tf.test.TestCase, parameterized.TestCase):
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF,
     )
 
-    self.assertAllClose(
+    test_utils.assert_allclose(
         organic_rf_tensors.organic_reach,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
     )
-    self.assertAllClose(
+    test_utils.assert_allclose(
         organic_rf_tensors.organic_frequency,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_frequency,
     )
     self.assertIsNotNone(organic_rf_tensors.organic_reach_transformer)
-    self.assertAllClose(
+    test_utils.assert_allclose(
         organic_rf_tensors.organic_reach_scaled,
         _INPUT_DATA_WITH_MEDIA_AND_ORGANIC_RF.organic_reach,
     )

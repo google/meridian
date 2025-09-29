@@ -25,6 +25,39 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * ``build_design_matrix()`` now detects the temporal dimension name and
   supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
+## [1.2.1] - 2025-09-22
+
+* Add `use_kpi` arg to `output_model_results_summary`.
+* Add `lognormal_dist_from_mean_std` and `lognormal_dist_from_ci` helper
+  functions.
+* Fix `response_curves` when optimized data timeframe is outside of modeled
+  data timeframe.
+* Change AKS algorithm to use AIC instead of EBIC.
+* Fix dtype issue when scaling integer kpi/population.
+
+## [1.2.0] - 2025-09-04
+
+* Fix channel data misalignment in `Analyzer.hill_curves` when input channels
+  are not in alphabetical order.
+* Add `negative_baseline_probability` method to `Analyzer` class.
+* Add per-channel adstock decay function definition.
+* Methods in the `analyzer` module now return backend-agnostic tensors.
+* Validate distribution support ranges for custom priors.
+* Add `IndependentMultivariateDistribution` for per-channel distribution
+  definition.
+* Add automatic knot selection (AKS) to modeling.
+* Fix numerical stability of Adstock computation around `alpha = 1`.
+* Add `binomial` decay option to Adstock.
+* Make `trim_grids()` a public method of `OptimizationGrid` and update it to
+  remove rows of NaNs.
+* Add organic RF support for adstock decay in analyzer.
+* Add organic RF support for Hill curves in analyzer.
+* Set the `random_seed` in `sample_prior()` to match the seed parameter.
+* Add organic RF support for `plot_hill_curves` in visualizer.
+* Raise a `ValueError` if any media channel have all zeros or all `NaN`
+  impressions.
+* Add validation for constant KPI with contribution prior types.
+
 ## [1.1.7] - 2025-07-16
 
 * Fix `rhat_summary()` to work with a vector sigma dim.
@@ -355,4 +388,6 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.5]: https://github.com/google/meridian/releases/tag/v1.1.5
 [1.1.6]: https://github.com/google/meridian/releases/tag/v1.1.6
 [1.1.7]: https://github.com/google/meridian/releases/tag/v1.1.7
-[Unreleased]: https://github.com/google/meridian/compare/v1.1.7...HEAD
+[1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
+[1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.2.1...HEAD

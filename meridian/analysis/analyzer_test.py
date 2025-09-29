@@ -13,23 +13,23 @@
 # limitations under the License.
 
 from collections.abc import Sequence
+import dataclasses
 import os
 from unittest import mock
 import warnings
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
-from meridian.analysis import test_utils
+from meridian.analysis import test_utils as analysis_test_utils
+from meridian.backend import test_utils as backend_test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 import xarray as xr
 
 
@@ -104,11 +104,11 @@ _N_ORGANIC_MEDIA_CHANNELS = 4
 _N_ORGANIC_RF_CHANNELS = 1
 
 
-def _convert_with_swap(array: xr.DataArray) -> tf.Tensor:
-  """Converts DataArray to tf.Tensor and swaps first two dimensions."""
-  tensor = tf.convert_to_tensor(array)
+def _convert_with_swap(array: xr.DataArray) -> backend.Tensor:
+  """Converts DataArray to backend.Tensor and swaps first two dimensions."""
+  tensor = backend.to_tensor(array)
   perm = [1, 0] + [i for i in range(2, len(tensor.shape))]
-  return tf.transpose(tensor, perm=perm)
+  return backend.transpose(tensor, perm=perm)
 
 
 def _build_inference_data(
@@ -125,7 +125,7 @@ def _build_inference_data(
   return inference_data
 
 
-class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -204,7 +204,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "New `controls` must have 3 dimension(s). Found 2 dimension(s).",
     ):
       self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(controls=tf.ones((_N_GEOS, _N_TIMES))),
+          new_data=analyzer.DataTensors(
+              controls=backend.ones((_N_GEOS, _N_TIMES))
+          ),
       )
 
   def test_expected_outcome_wrong_new_data_geos_raises_exception(self):
@@ -214,7 +216,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.expected_outcome(
           new_data=analyzer.DataTensors(
-              media=tf.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+              media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
           ),
       )
 
@@ -226,7 +228,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.expected_outcome(
           new_data=analyzer.DataTensors(
-              media=tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS))
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS))
           ),
       )
 
@@ -237,7 +239,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.expected_outcome(
           new_data=analyzer.DataTensors(
-              frequency=tf.ones((_N_GEOS, _N_TIMES, 3))
+              frequency=backend.ones((_N_GEOS, _N_TIMES, 3))
           ),
       )
 
@@ -304,22 +306,22 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       (
           "wrong_media_dims",
-          {"media": tf.ones((5, 1))},
+          {"media": backend.ones((5, 1))},
           "New `media` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_reach_dims",
-          {"reach": tf.ones((5, 1))},
+          {"reach": backend.ones((5, 1))},
           "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_frequency_dims",
-          {"frequency": tf.ones((5, 1))},
+          {"frequency": backend.ones((5, 1))},
           "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_revenue_per_kpi_dims",
-          {"revenue_per_kpi": tf.ones((5))},
+          {"revenue_per_kpi": backend.ones((5))},
           (
               "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
               " dimension(s)."
@@ -346,10 +348,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       self, missing_param: str
   ):
     new_data_dict = {
-        "media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
     }
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -391,15 +393,17 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
         " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
         " provided with a different number of time periods than in `InputData`,"
-        " then `selected_times` must be a list of booleans with length equal to"
-        " the number of time periods in the new data.",
+        r" then \(1\) `selected_times` must be a list of booleans with length"
+        r" equal to the number of time periods in the new data, or \(2\)"
+        " `selected_times` must be a list of strings and `new_time` must be"
+        " provided and `selected_times` must be a subset of `new_time`.",
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
-              media=tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=tf.ones((_N_GEOS, 10)),
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
           ),
           selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
@@ -412,15 +416,18 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
         " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
         " provided with a different number of time periods than in `InputData`,"
-        " then `media_selected_times` must be a list of booleans with length"
-        " equal to the number of time periods in the new data.",
+        r" then \(1\) `media_selected_times` must be a list of booleans with"
+        r" length equal to the number of time periods in the new data, or \(2\)"
+        " `media_selected_times` must be a list of strings and `new_time` must"
+        " be provided and `media_selected_times` must be a subset of"
+        " `new_time`.",
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
-              media=tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=tf.ones((_N_GEOS, 10)),
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
           ),
           media_selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
@@ -465,10 +472,10 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           new_data=analyzer.DataTensors(
-              media=tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=tf.ones((_N_GEOS, 8)),
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              revenue_per_kpi=backend.ones((_N_GEOS, 8)),
           )
       )
 
@@ -479,7 +486,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       shape = (_N_GEOS - 1, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)
       self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(media=tf.ones(shape))
+          new_data=analyzer.DataTensors(media=backend.ones(shape))
       )
 
   def test_incremental_outcome_wrong_n_channels_raises_exception(self):
@@ -489,7 +496,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       shape = (_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1)
       self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(reach=tf.ones(shape))
+          new_data=analyzer.DataTensors(reach=backend.ones(shape))
       )
 
   def test_incremental_outcome_wrong_kpi_transformation(self):
@@ -504,7 +511,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
     outcome = self.analyzer_media_and_rf.incremental_outcome(
         new_data=analyzer.DataTensors(
-            revenue_per_kpi=tf.ones((_N_GEOS, _N_TIMES))
+            revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES))
         ),
     )
     self.assertEqual(
@@ -517,7 +524,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     no_media_times = self.analyzer_media_and_rf.incremental_outcome(
         media_selected_times=[False] * _N_MEDIA_TIMES
     )
-    self.assertAllEqual(no_media_times, tf.zeros_like(no_media_times))
+    backend_test_utils.assert_allequal(
+        no_media_times, backend.zeros_like(no_media_times)
+    )
 
   def test_incremental_outcome_no_overlap_between_media_and_selected_times(
       self,
@@ -534,7 +543,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         selected_times=selected_times,
         media_selected_times=media_selected_times,
     )
-    self.assertAllEqual(outcome, tf.zeros_like(outcome))
+    backend_test_utils.assert_allequal(outcome, backend.zeros_like(outcome))
 
   def test_incremental_outcome_media_and_selected_times_overlap_non_zero(self):
     # Incremental outcome should be non-zero when there is at least one time
@@ -551,8 +560,8 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         selected_times=selected_times,
         media_selected_times=media_selected_times,
     )
-    mean_inc_outcome = tf.reduce_mean(outcome, axis=(0, 1))
-    self.assertNotAllEqual(mean_inc_outcome, tf.zeros_like(mean_inc_outcome))
+    mean_inc_outcome = backend.reduce_mean(outcome, axis=(0, 1))
+    self.assertFalse(np.all(np.array(mean_inc_outcome) == 0))
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -602,12 +611,12 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="use_prior",
           use_posterior=False,
-          expected_outcome=test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_PRIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_PRIOR,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
-          expected_outcome=test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_POSTERIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_POSTERIOR,
       ),
   )
   def test_incremental_outcome_media_and_rf(
@@ -621,9 +630,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     outcome = self.analyzer_media_and_rf.incremental_outcome(
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(expected_outcome),
+        backend.to_tensor(expected_outcome),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -640,15 +649,21 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         )
     )
     incremental_outcome_with_totals = np.full(
-        (_N_CHAINS, _N_DRAWS, 1), _N_MEDIA_CHANNELS + _N_RF_CHANNELS
+        (_N_CHAINS, _N_DRAWS, 1),
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+        dtype=np.float64,
     )
     outcome = self.analyzer_media_and_rf.compute_incremental_outcome_aggregate(
         use_posterior=True
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.concat(
-            [mock_incremental_outcome, incremental_outcome_with_totals], -1
+        backend.concatenate(
+            [
+                backend.to_tensor(mock_incremental_outcome),
+                backend.to_tensor(incremental_outcome_with_totals),
+            ],
+            -1,
         ),
     )
 
@@ -669,9 +684,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             ],
         ),
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(test_utils.INC_OUTCOME_MEDIA_AND_RF_NEW_PARAMS),
+        backend.to_tensor(
+            analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_NEW_PARAMS
+        ),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -737,25 +754,25 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           testcase_name="use_prior",
           use_posterior=False,
           by_reach=False,
-          expected_mroi=test_utils.MROI_MEDIA_AND_RF_USE_PRIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR,
       ),
       dict(
           testcase_name="use_prior_by_reach",
           use_posterior=False,
           by_reach=True,
-          expected_mroi=test_utils.MROI_MEDIA_AND_RF_USE_PRIOR_BY_REACH,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR_BY_REACH,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
           by_reach=False,
-          expected_mroi=test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR,
       ),
       dict(
           testcase_name="use_posterior_by_reach",
           use_posterior=True,
           by_reach=True,
-          expected_mroi=test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR_BY_REACH,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR_BY_REACH,
       ),
   )
   def test_marginal_roi_media_and_rf(
@@ -771,9 +788,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         by_reach=by_reach,
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         mroi,
-        tf.convert_to_tensor(expected_mroi),
+        backend.to_tensor(expected_mroi),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -813,7 +830,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             -n_new_times:
         ]
     )
-    self.assertAllClose(actual, expected, rtol=1e-3, atol=1e-3)
+    backend_test_utils.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
 
   def test_roi_wrong_new_data_dims_raises_exception(self):
     with self.assertRaisesWithLiteralMatch(
@@ -822,7 +839,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.roi(
           new_data=analyzer.DataTensors(
-              media_spend=tf.ones((_N_GEOS, _N_TIMES))
+              media_spend=backend.ones((_N_GEOS, _N_TIMES))
           ),
       )
 
@@ -833,7 +850,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.roi(
           new_data=analyzer.DataTensors(
-              media_spend=tf.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+              media_spend=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
           ),
       )
 
@@ -847,7 +864,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_and_rf.roi(
           new_data=analyzer.DataTensors(
-              rf_spend=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS))
+              rf_spend=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS))
           ),
       )
 
@@ -857,7 +874,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         "New `reach` is expected to have 2 channels. Found 3 channels.",
     ):
       self.analyzer_media_and_rf.roi(
-          new_data=analyzer.DataTensors(reach=tf.ones((_N_GEOS, _N_TIMES, 3))),
+          new_data=analyzer.DataTensors(
+              reach=backend.ones((_N_GEOS, _N_TIMES, 3))
+          ),
       )
 
   @parameterized.product(
@@ -897,7 +916,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     expected_roi = (
         self.analyzer_media_and_rf.incremental_outcome() / total_spend
     )
-    self.assertAllClose(expected_roi, roi)
+    backend_test_utils.assert_allclose(expected_roi, roi)
 
   def test_roi_media_and_rf_new_params_correct(self):
     model.Meridian.inference_data = mock.PropertyMock(
@@ -934,7 +953,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             -n_new_times:
         ]
     )
-    self.assertAllClose(actual, expected)
+    backend_test_utils.assert_allclose(actual, expected)
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -974,7 +993,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         total_spend
         / self.analyzer_media_and_rf.incremental_outcome(use_kpi=True)
     )
-    self.assertAllClose(expected_cpik, cpik)
+    backend_test_utils.assert_allclose(expected_cpik, cpik)
 
   def test_cpik_new_times_data_correct(self):
     model.Meridian.inference_data = mock.PropertyMock(
@@ -1011,7 +1030,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             -n_new_times:
         ]
     )
-    self.assertAllClose(actual, expected)
+    backend_test_utils.assert_allclose(actual, expected)
 
   def test_hill_histogram_column_names(self):
     hill_histogram_table = (
@@ -1048,9 +1067,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             constants.END_INTERVAL_HISTOGRAM,
         ],
     )
-    self.assertAllInSet(
+    self.assertContainsSubset(
         list(set(hill_table[constants.CHANNEL])),
-        ["ch_0", "ch_2", "ch_1", "rf_ch_0", "rf_ch_1"],
+        ["ch_0", "ch_1", "ch_2", "rf_ch_0", "rf_ch_1"],
     )
     ci_lo_col = list(hill_table[constants.CI_LO].notna())
     ci_hi_col = list(hill_table[constants.CI_HI].notna())
@@ -1064,19 +1083,19 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
 
   def test_hill_calculation_curve_data_correct(self):
     hill_table = self.analyzer_media_and_rf.hill_curves()
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.CI_HI])[:5],
-        np.array(test_utils.HILL_CURVES_CI_HI),
+        np.array(analysis_test_utils.HILL_CURVES_CI_HI),
         atol=1e-5,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.CI_LO])[:5],
-        np.array(test_utils.HILL_CURVES_CI_LO),
+        np.array(analysis_test_utils.HILL_CURVES_CI_LO),
         atol=1e-5,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.MEAN])[:5],
-        np.array(test_utils.HILL_CURVES_MEAN),
+        np.array(analysis_test_utils.HILL_CURVES_MEAN),
         atol=1e-5,
     )
 
@@ -1084,24 +1103,24 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     hill_table = self.analyzer_media_and_rf.hill_curves()
     # The Histogram data is in the bottom portion of the DataFrame for
     # Altair plotting purposes.
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.SCALED_COUNT_HISTOGRAM])[-5:],
-        np.array(test_utils.HILL_CURVES_SCALED_COUNT_HISTOGRAM),
+        np.array(analysis_test_utils.HILL_CURVES_SCALED_COUNT_HISTOGRAM),
         atol=1e-5,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.COUNT_HISTOGRAM])[-5:],
-        np.array(test_utils.HILL_CURVES_COUNT_HISTOGRAM),
+        np.array(analysis_test_utils.HILL_CURVES_COUNT_HISTOGRAM),
         atol=1e-5,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.START_INTERVAL_HISTOGRAM])[-5:],
-        np.array(test_utils.HILL_CURVES_START_INTERVAL_HISTOGRAM),
+        np.array(analysis_test_utils.HILL_CURVES_START_INTERVAL_HISTOGRAM),
         atol=1e-5,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(hill_table[constants.END_INTERVAL_HISTOGRAM])[-5:],
-        np.array(test_utils.HILL_CURVES_END_INTERVAL_HISTOGRAM),
+        np.array(analysis_test_utils.HILL_CURVES_END_INTERVAL_HISTOGRAM),
         atol=1e-5,
     )
 
@@ -1151,51 +1170,61 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             constants.CPIK,
         ],
     )
-    self.assertAllClose(
-        media_summary.impressions, test_utils.SAMPLE_IMPRESSIONS
+    backend_test_utils.assert_allclose(
+        media_summary.impressions, analysis_test_utils.SAMPLE_IMPRESSIONS
     )
-    self.assertAllClose(
-        media_summary.pct_of_impressions, test_utils.SAMPLE_PCT_OF_IMPRESSIONS
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_impressions,
+        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
     )
-    self.assertAllClose(
-        media_summary.spend, test_utils.SAMPLE_SPEND, atol=1e-4, rtol=1e-4
+    backend_test_utils.assert_allclose(
+        media_summary.spend,
+        analysis_test_utils.SAMPLE_SPEND,
+        atol=1e-4,
+        rtol=1e-4,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.pct_of_spend,
-        test_utils.SAMPLE_PCT_OF_SPEND,
+        analysis_test_utils.SAMPLE_PCT_OF_SPEND,
         atol=1e-4,
         rtol=1e-4,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.cpm,
-        test_utils.SAMPLE_CPM,
+        analysis_test_utils.SAMPLE_CPM,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.incremental_outcome,
-        test_utils.SAMPLE_INCREMENTAL_OUTCOME,
+        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.pct_of_contribution,
-        test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
+        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertAllClose(
-        media_summary.roi, test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
+    backend_test_utils.assert_allclose(
+        media_summary.roi, analysis_test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.effectiveness,
-        test_utils.SAMPLE_EFFECTIVENESS,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS,
         atol=1e-4,
         rtol=1e-4,
     )
-    self.assertAllClose(
-        media_summary.mroi, test_utils.SAMPLE_MROI, atol=1e-3, rtol=1e-3
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI,
+        atol=1e-3,
+        rtol=1e-3,
     )
-    self.assertAllClose(
-        media_summary.cpik, test_utils.SAMPLE_CPIK, atol=1e-3, rtol=1e-3
+    backend_test_utils.assert_allclose(
+        media_summary.cpik,
+        analysis_test_utils.SAMPLE_CPIK,
+        atol=1e-3,
+        rtol=1e-3,
     )
 
   def test_media_summary_with_new_data_returns_correct_values(self):
@@ -1210,9 +1239,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         seed=1,
     )
     new_data = analyzer.DataTensors(
-        media=tf.convert_to_tensor(data1.media, dtype=tf.float32),
-        reach=tf.convert_to_tensor(data1.reach, dtype=tf.float32),
-        media_spend=tf.convert_to_tensor(data1.media_spend, dtype=tf.float32),
+        media=backend.to_tensor(data1.media, dtype=backend.float32),
+        reach=backend.to_tensor(data1.reach, dtype=backend.float32),
+        media_spend=backend.to_tensor(data1.media_spend, dtype=backend.float32),
     )
     media_summary = self.analyzer_media_and_rf.summary_metrics(
         new_data=new_data,
@@ -1239,100 +1268,139 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             constants.CPIK,
         ],
     )
-    self.assertNotAllClose(
-        media_summary.impressions, test_utils.SAMPLE_IMPRESSIONS
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.impressions),
+            analysis_test_utils.SAMPLE_IMPRESSIONS,
+        )
     )
-    self.assertAllClose(
-        media_summary.impressions, test_utils.SAMPLE_IMPRESSIONS_NEW_DATA
+    backend_test_utils.assert_allclose(
+        media_summary.impressions,
+        analysis_test_utils.SAMPLE_IMPRESSIONS_NEW_DATA,
     )
-    self.assertNotAllClose(
-        media_summary.pct_of_impressions, test_utils.SAMPLE_PCT_OF_IMPRESSIONS
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_impressions),
+            analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
+        )
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.pct_of_impressions,
-        test_utils.SAMPLE_PCT_OF_IMPRESSIONS_NEW_DATA,
+        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS_NEW_DATA,
     )
-    self.assertNotAllClose(media_summary.spend, test_utils.SAMPLE_SPEND)
-    self.assertAllClose(
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.spend), analysis_test_utils.SAMPLE_SPEND
+        )
+    )
+    backend_test_utils.assert_allclose(
         media_summary.spend,
-        test_utils.SAMPLE_SPEND_NEW_DATA,
+        analysis_test_utils.SAMPLE_SPEND_NEW_DATA,
         atol=1e-4,
         rtol=1e-4,
     )
-    self.assertNotAllClose(
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_spend),
+            analysis_test_utils.SAMPLE_PCT_OF_SPEND,
+            atol=1e-4,
+            rtol=1e-4,
+        )
+    )
+    backend_test_utils.assert_allclose(
         media_summary.pct_of_spend,
-        test_utils.SAMPLE_PCT_OF_SPEND,
+        analysis_test_utils.SAMPLE_PCT_OF_SPEND_NEW_DATA,
         atol=1e-4,
         rtol=1e-4,
     )
-    self.assertAllClose(
-        media_summary.pct_of_spend,
-        test_utils.SAMPLE_PCT_OF_SPEND_NEW_DATA,
-        atol=1e-4,
-        rtol=1e-4,
+    self.assertFalse(
+        np.allclose(np.array(media_summary.cpm), analysis_test_utils.SAMPLE_CPM)
     )
-    self.assertNotAllClose(media_summary.cpm, test_utils.SAMPLE_CPM)
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.cpm,
-        test_utils.SAMPLE_CPM_NEW_DATA,
+        analysis_test_utils.SAMPLE_CPM_NEW_DATA,
     )
-    self.assertNotAllClose(
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.incremental_outcome),
+            analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
         media_summary.incremental_outcome,
-        test_utils.SAMPLE_INCREMENTAL_OUTCOME,
+        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME_NEW_DATA,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertAllClose(
-        media_summary.incremental_outcome,
-        test_utils.SAMPLE_INCREMENTAL_OUTCOME_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_contribution),
+            analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
+            atol=1e-3,
+            rtol=1e-3,
+        )
     )
-    self.assertNotAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.pct_of_contribution,
-        test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
+        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION_NEW_DATA,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertAllClose(
-        media_summary.pct_of_contribution,
-        test_utils.SAMPLE_PCT_OF_CONTRIBUTION_NEW_DATA,
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.roi),
+            analysis_test_utils.SAMPLE_ROI,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi,
+        analysis_test_utils.SAMPLE_ROI_NEW_DATA,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertNotAllClose(
-        media_summary.roi, test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.effectiveness),
+            analysis_test_utils.SAMPLE_EFFECTIVENESS,
+            atol=1e-4,
+            rtol=1e-4,
+        )
     )
-    self.assertAllClose(
-        media_summary.roi, test_utils.SAMPLE_ROI_NEW_DATA, atol=1e-3, rtol=1e-3
-    )
-    self.assertNotAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.effectiveness,
-        test_utils.SAMPLE_EFFECTIVENESS,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS_NEW_DATA,
         atol=1e-4,
         rtol=1e-4,
     )
-    self.assertAllClose(
-        media_summary.effectiveness,
-        test_utils.SAMPLE_EFFECTIVENESS_NEW_DATA,
-        atol=1e-4,
-        rtol=1e-4,
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.mroi),
+            analysis_test_utils.SAMPLE_MROI,
+            atol=1e-3,
+            rtol=1e-3,
+        )
     )
-    self.assertNotAllClose(
-        media_summary.mroi, test_utils.SAMPLE_MROI, atol=1e-3, rtol=1e-3
-    )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.mroi,
-        test_utils.SAMPLE_MROI_NEW_DATA,
+        analysis_test_utils.SAMPLE_MROI_NEW_DATA,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertNotAllClose(
-        media_summary.cpik, test_utils.SAMPLE_CPIK, atol=1e-3, rtol=1e-3
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.cpik),
+            analysis_test_utils.SAMPLE_CPIK,
+            atol=1e-3,
+            rtol=1e-3,
+        )
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.cpik,
-        test_utils.SAMPLE_CPIK_NEW_DATA,
+        analysis_test_utils.SAMPLE_CPIK_NEW_DATA,
         atol=1e-3,
         rtol=1e-3,
     )
@@ -1347,15 +1415,15 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertIsNotNone(baseline_summary.baseline_outcome)
     self.assertIsNotNone(baseline_summary.pct_of_contribution)
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         baseline_summary.baseline_outcome,
-        test_utils.SAMPLE_BASELINE_EXPECTED_OUTCOME,
+        analysis_test_utils.SAMPLE_BASELINE_EXPECTED_OUTCOME,
         atol=1e-2,
         rtol=1e-2,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         baseline_summary.pct_of_contribution,
-        test_utils.SAMPLE_BASELINE_PCT_OF_CONTRIBUTION,
+        analysis_test_utils.SAMPLE_BASELINE_PCT_OF_CONTRIBUTION,
         atol=1e-2,
         rtol=1e-2,
     )
@@ -1758,27 +1826,27 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     )
 
     if not selected_geos and not selected_times:
-      self.assertAllClose(
+      backend_test_utils.assert_allclose(
           list(df[constants.VALUE]),
-          test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_NO_GEOS_OR_TIMES,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_NO_GEOS_OR_TIMES,
           atol=1e-3,
       )
     elif selected_geos and not selected_times:
-      self.assertAllClose(
+      backend_test_utils.assert_allclose(
           list(df[constants.VALUE]),
-          test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_GEOS_NO_TIMES,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_GEOS_NO_TIMES,
           atol=1e-3,
       )
     elif not selected_geos and selected_times:
-      self.assertAllClose(
+      backend_test_utils.assert_allclose(
           list(df[constants.VALUE]),
-          test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_NO_GEOS,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_NO_GEOS,
           atol=1e-3,
       )
     else:
-      self.assertAllClose(
+      backend_test_utils.assert_allclose(
           list(df[constants.VALUE]),
-          test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_AND_GEOS,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_AND_GEOS,
           atol=1e-3,
       )
 
@@ -1822,6 +1890,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   ):
     n_geos = len(self.input_data_media_and_rf.geo)
     n_times = len(self.input_data_media_and_rf.time)
+
+    np.random.seed(0)
+
     holdout_id = np.full([n_geos, n_times], False)
     for i in range(n_geos):
       holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
@@ -1849,16 +1920,22 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
 
     if not selected_geos and not selected_times:
       expected_values = (
-          test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NO_GEOS_OR_TIMES
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NO_GEOS_OR_TIMES
       )
     elif selected_geos and not selected_times:
-      expected_values = test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_GEOS_NO_TIMES
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_GEOS_NO_TIMES
+      )
     elif not selected_geos and selected_times:
-      expected_values = test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_NO_GEOS
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_NO_GEOS
+      )
     else:
-      expected_values = test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_AND_GEO
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_AND_GEO
+      )
 
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(df[constants.VALUE]),
         expected_values,
         atol=2e-3,
@@ -1874,7 +1951,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
         marginal_roi_by_reach=False,
     ).spend[:-1]
-    self.assertAllEqual(
+    backend_test_utils.assert_allequal(
         media_summary_spend * 2,
         response_data_spend[-1],
     )
@@ -2080,7 +2157,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     np.testing.assert_array_less(ds.baseline, ds.expected)
 
     # Test the math for a sample of the actual outcome metrics.
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         ds.actual.values,
         expected_actual_values,
         atol=1e-5,
@@ -2120,7 +2197,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
             constants.IS_INT_TIME_UNIT,
         ],
     )
-    self.assertAllInSet(
+    self.assertContainsSubset(
         list(set(adstock_decay_dataframe[constants.CHANNEL])),
         ["rf_ch_0", "rf_ch_1", "ch_0", "ch_1", "ch_2"],
     )
@@ -2175,21 +2252,21 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         adstock_decay_dataframe[constants.CHANNEL] == first_channel
     ]
 
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(first_channel_df[constants.CI_HI])[:5],
-        test_utils.ADSTOCK_DECAY_CI_HI,
+        analysis_test_utils.ADSTOCK_DECAY_CI_HI,
         atol=1e-3,
     )
 
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(first_channel_df[constants.CI_LO])[:5],
-        test_utils.ADSTOCK_DECAY_CI_LO,
+        analysis_test_utils.ADSTOCK_DECAY_CI_LO,
         atol=1e-3,
     )
 
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(first_channel_df[constants.MEAN])[:5],
-        test_utils.ADSTOCK_DECAY_MEAN,
+        analysis_test_utils.ADSTOCK_DECAY_MEAN,
         atol=1e-3,
     )
 
@@ -2296,7 +2373,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     # All times are selected.
     actual_hist_spend = meridian_analyzer.get_aggregated_spend()
     expected_all_spend = np.array([3.3, 6.3, 9.3])
-    self.assertAllClose(expected_all_spend, actual_hist_spend.data)
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
 
   def test_get_aggregated_spend_new_data_correct_values(self):
     # Set it to None to avoid the dimension checks on inference data.
@@ -2344,12 +2423,14 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     meridian_analyzer = analyzer.Analyzer(meridian)
 
     # All times are selected.
-    new_media_spend = tf.convert_to_tensor([[[1, 2], [2, 3], [3, 4]]])
+    new_media_spend = backend.to_tensor([[[1, 2], [2, 3], [3, 4]]])
     actual_hist_spend = meridian_analyzer.get_aggregated_spend(
         new_data=analyzer.DataTensors(media_spend=new_media_spend)
     )
     expected_all_spend = np.array([6, 9, 9.3])
-    self.assertAllClose(expected_all_spend, actual_hist_spend.data)
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
 
   def test_get_aggregated_spend_selected_times_correct_values(self):
     # Set it to None to avoid the dimension checks on inference data.
@@ -2403,7 +2484,9 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         selected_times=selected_times
     )
     expected_all_spend = np.array([2.1, 4.1, 6.1])
-    self.assertAllClose(expected_all_spend, actual_hist_spend.data)
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
 
   def test_get_aggregated_spend_with_single_dim_spends(self):
     seed = 0
@@ -2459,11 +2542,13 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     # Shape (n_media_channels + n_rf_channels)
     expected_all_spend = data.get_total_spend() * ratio
 
-    self.assertAllClose(expected_all_spend, actual_hist_spends.data)
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spends.data
+    )
 
   def test_get_aggregated_spend_with_empty_times(self):
     actual = self.analyzer_media_and_rf.get_aggregated_spend(selected_times=[])
-    self.assertAllEqual(
+    backend_test_utils.assert_allequal(
         actual.data, np.zeros((_N_MEDIA_CHANNELS + _N_RF_CHANNELS))
     )
 
@@ -2477,8 +2562,420 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
           selected_times, include_media=False, include_rf=False
       )
 
+  def test_response_curves_selected_times_wrong_type(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must be a list of strings or a list of booleans.",
+    ):
+      self.analyzer_media_and_rf.response_curves(
+          selected_times=["random_time", False, True],
+      )
 
-class AnalyzerNationalTest(tf.test.TestCase, parameterized.TestCase):
+  def test_response_curves_selected_times_wrong_time_dim_names(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must match the time dimension names from "
+        "meridian.InputData.",
+    ):
+      self.analyzer_media_and_rf.response_curves(selected_times=["random_time"])
+
+  def test_response_curves_selected_times_no_new_data_wrong_time(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must match the time dimension names from "
+        "meridian.InputData.",
+    ):
+      self.analyzer_media_and_rf.response_curves(
+          selected_times=["2022-01-01"]  # Not in input_data.time
+      )
+
+  def test_response_curves_new_data_selected_times_wrong_time(self):
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -n_new_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -n_new_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -n_new_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -n_new_times:
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -n_new_times:, :
+        ],
+        time=self.meridian_media_and_rf.input_data.time.values[-n_new_times:],
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
+        " provided with a different number of time periods than in `InputData`,"
+        r" then \(1\) `selected_times` must be a list of booleans with length"
+        r" equal to the number of time periods in the new data, or \(2\)"
+        " `selected_times` must be a list of strings and `new_time` must be"
+        " provided and `selected_times` must be a subset of `new_time`.",
+    ):
+      self.analyzer_media_and_rf.response_curves(
+          new_data=new_data, selected_times=["2022-01-01"]
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_times(self, use_optimal_frequency):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -n_new_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -n_new_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -n_new_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -n_new_times:
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -n_new_times:, :
+        ],
+        time=self.meridian_media_and_rf.input_data.time.values[-n_new_times:],
+    )
+    response_curve_data = self.analyzer_media_and_rf.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertNotIn(constants.TIME, response_curve_data.coords)
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
+    # Spend for multiplier 1.0 should match the aggregated spend from new_data.
+    expected_spend = self.analyzer_media_and_rf.get_aggregated_spend(
+        new_data=new_data
+    )
+    backend_test_utils.assert_allclose(
+        response_curve_data[constants.SPEND].sel(spend_multiplier=1.0),
+        expected_spend.data,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=new_data.reach * new_data.frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+      )
+      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(
+          optimal_frequency, dtype=backend.float32
+      )
+      reach = backend.divide_no_nan(
+          new_data.reach * new_data.frequency, frequency
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    backend_test_utils.assert_allclose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_response_curves_new_times_data_correct(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    max_lag = self.meridian_media_and_rf.model_spec.max_lag
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    selected_times_str = self.meridian_media_and_rf.input_data.time.values[
+        -n_new_times:
+    ].tolist()
+    new_data_times = self.meridian_media_and_rf.input_data.time.values[
+        -total_times:
+    ].tolist()
+
+    new_data = analyzer.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[
+            ..., -total_times:, :
+        ],
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+            ..., -total_times:, :
+        ],
+        reach=self.meridian_media_and_rf.rf_tensors.reach[
+            ..., -total_times:, :
+        ],
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
+            ..., -total_times:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
+            ..., -total_times:, :
+        ],
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+            ..., -total_times:
+        ],
+        time=new_data_times,
+    )
+    actual = self.analyzer_media_and_rf.response_curves(
+        new_data=new_data,
+        selected_times=selected_times_str,
+    )
+    expected = self.analyzer_media_and_rf.response_curves(
+        selected_times=selected_times_str
+    )
+    xr.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_data_same_times(self, use_optimal_frequency):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    # Modify only the media tensor, keep other tensors the same.
+    new_media = self.meridian_media_and_rf.media_tensors.media * 2
+    new_data = analyzer.DataTensors(
+        media=new_media,
+    )
+    response_curve_data = self.analyzer_media_and_rf.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+    original_response_curve_data = self.analyzer_media_and_rf.response_curves(
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Spend should be the same as original.
+    backend_test_utils.assert_allclose(
+        response_curve_data[constants.SPEND].values,
+        original_response_curve_data[constants.SPEND].values,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=self.meridian_media_and_rf.rf_tensors.reach
+          * self.meridian_media_and_rf.rf_tensors.frequency,
+          media_spend=self.meridian_media_and_rf.media_tensors.media_spend,
+          rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend,
+          revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi,
+      )
+      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = backend.ones_like(
+          self.meridian_media_and_rf.rf_tensors.frequency
+      ) * backend.to_tensor(optimal_frequency, dtype=backend.float32)
+      reach = backend.divide_no_nan(
+          self.meridian_media_and_rf.rf_tensors.reach
+          * self.meridian_media_and_rf.rf_tensors.frequency,
+          frequency,
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    backend_test_utils.assert_allclose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_negative_baseline_probability_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    prob = self.analyzer_media_and_rf.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    self.assertEqual(prob.shape, ())
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="prior",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=0.6,
+      ),
+      dict(
+          testcase_name="prior_selected_times",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.7,
+      ),
+      dict(
+          testcase_name="prior_selected_geos",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=0.4,
+      ),
+      dict(
+          testcase_name="prior_selected_geos_times",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.6,
+      ),
+      dict(
+          testcase_name="posterior",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_times",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=0.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos_times",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.05,
+      ),
+  )
+  def test_negative_baseline_probability_returns_correct_values(
+      self,
+      use_posterior,
+      selected_geos,
+      selected_times,
+      expected_value,
+  ):
+    """Exact output tests for `Analyzer.negative_baseline_probability`.
+
+    Test outputs are generated from the dataset that is itself created by
+    `test_utils.sample_input_data_non_revenue_revenue_per_kpi`. Changes to the
+    simulated dataset can cause this test to fail.
+
+    Args:
+      use_posterior: bool, whether to use posterior
+      selected_geos: tuple of str or None
+      selected_times: tuple of str or None
+      expected_value: float, expected negative baseline probability
+    """
+    prob = self.analyzer_media_and_rf.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    backend_test_utils.assert_allclose(
+        prob,
+        expected_value,
+        atol=1e-5,
+        rtol=1e-5,
+    )
+
+
+class AnalyzerNationalTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -2556,19 +3053,21 @@ class AnalyzerNationalTest(tf.test.TestCase, parameterized.TestCase):
 
     if not selected_times:
       expected_values = (
-          test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NATIONAL_NO_TIMES
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NATIONAL_NO_TIMES
       )
     else:
-      expected_values = test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NATIONAL_TIMES
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NATIONAL_TIMES
+      )
 
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(df[constants.VALUE]),
         expected_values,
         atol=2e-3,
     )
 
 
-class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerMediaOnlyTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -2611,7 +3110,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         " at least 2 dimensions if `has_media_dim=False`.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(self.input_data_media_only.population),
+          backend.to_tensor(self.input_data_media_only.population),
           flexible_time_dim=True,
           has_media_dim=False,
       )
@@ -2651,7 +3150,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
   ):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(
+          backend.to_tensor(
               self.input_data_media_only.media_spend[..., :-1, :-1]
           ),
           flexible_time_dim=flexible_time_dim,
@@ -2659,24 +3158,24 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
       )
 
   def test_filter_and_aggregate_geos_and_times_empty_geos(self):
-    tensor = tf.convert_to_tensor(self.input_data_media_only.media_spend)
+    tensor = backend.to_tensor(self.input_data_media_only.media_spend)
     modified_tensor = (
         self.analyzer_media_only.filter_and_aggregate_geos_and_times(
             tensor,
             selected_geos=[],
         )
     )
-    self.assertAllEqual(modified_tensor, tf.zeros([3]))
+    backend_test_utils.assert_allequal(modified_tensor, backend.zeros([3]))
 
   def test_filter_and_aggregate_geos_and_times_empty_times(self):
-    tensor = tf.convert_to_tensor(self.input_data_media_only.media_spend)
+    tensor = backend.to_tensor(self.input_data_media_only.media_spend)
     modified_tensor = (
         self.analyzer_media_only.filter_and_aggregate_geos_and_times(
             tensor,
             selected_times=[],
         )
     )
-    self.assertAllEqual(modified_tensor, tf.zeros([3]))
+    backend_test_utils.assert_allequal(modified_tensor, backend.zeros([3]))
 
   def test_filter_and_aggregate_geos_and_times_incorrect_geos(self):
     with self.assertRaisesRegex(
@@ -2685,7 +3184,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         "meridian.InputData.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          backend.to_tensor(self.input_data_media_only.media_spend),
           selected_geos=["random_geo"],
       )
 
@@ -2696,7 +3195,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         "meridian.InputData.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          backend.to_tensor(self.input_data_media_only.media_spend),
           selected_times=["random_time"],
       )
 
@@ -2707,7 +3206,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         "there are time period coordinates in `tensor`.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          backend.to_tensor(self.input_data_media_only.media_spend),
           selected_times=[True] + [False] * (_N_MEDIA_TIMES - 1),
       )
 
@@ -2719,7 +3218,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         "`selected_times` must be a list of strings or a list of booleans.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tf.convert_to_tensor(self.input_data_media_only.media_spend),
+          backend.to_tensor(self.input_data_media_only.media_spend),
           selected_times=["random_time", False, True],
       )
 
@@ -2740,7 +3239,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
       aggregate_geos: bool,
       aggregate_times: bool,
   ):
-    tensor = tf.convert_to_tensor(self.input_data_media_only.media_spend)
+    tensor = backend.to_tensor(self.input_data_media_only.media_spend)
     modified_tensor = (
         self.analyzer_media_only.filter_and_aggregate_geos_and_times(
             tensor,
@@ -2860,8 +3359,8 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
       self, missing_param: str, error_message: str
   ):
     new_data_dict = {
-        "media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
     }
 
     with self.assertRaisesWithLiteralMatch(
@@ -2883,7 +3382,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     ):
       self.analyzer_media_only.incremental_outcome(
           new_data=analyzer.DataTensors(
-              reach=tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
           )
       )
 
@@ -2926,12 +3425,12 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="use_prior",
           use_posterior=False,
-          expected_outcome=test_utils.INC_OUTCOME_MEDIA_ONLY_USE_PRIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_ONLY_USE_PRIOR,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
-          expected_outcome=test_utils.INC_OUTCOME_MEDIA_ONLY_USE_POSTERIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_ONLY_USE_POSTERIOR,
       ),
   )
   def test_incremental_outcome_media_only(
@@ -2942,9 +3441,9 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     outcome = self.analyzer_media_only.incremental_outcome(
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(expected_outcome),
+        backend.to_tensor(expected_outcome),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -2960,9 +3459,11 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
             revenue_per_kpi=self.meridian_media_only.revenue_per_kpi[..., -10:],
         ),
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(test_utils.INC_OUTCOME_MEDIA_ONLY_NEW_PARAMS),
+        backend.to_tensor(
+            analysis_test_utils.INC_OUTCOME_MEDIA_ONLY_NEW_PARAMS
+        ),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -3003,25 +3504,25 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
           testcase_name="use_prior",
           use_posterior=False,
           by_reach=False,
-          expected_mroi=test_utils.MROI_MEDIA_ONLY_USE_PRIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_ONLY_USE_PRIOR,
       ),
       dict(
           testcase_name="use_prior_by_reach",
           use_posterior=False,
           by_reach=True,
-          expected_mroi=test_utils.MROI_MEDIA_ONLY_USE_PRIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_ONLY_USE_PRIOR,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
           by_reach=False,
-          expected_mroi=test_utils.MROI_MEDIA_ONLY_USE_POSTERIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_ONLY_USE_POSTERIOR,
       ),
       dict(
           testcase_name="use_posterior_by_reach",
           use_posterior=True,
           by_reach=True,
-          expected_mroi=test_utils.MROI_MEDIA_ONLY_USE_POSTERIOR,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_ONLY_USE_POSTERIOR,
       ),
   )
   def test_marginal_roi_media_only(
@@ -3031,9 +3532,9 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         by_reach=by_reach,
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         mroi,
-        tf.convert_to_tensor(expected_mroi),
+        backend.to_tensor(expected_mroi),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -3073,7 +3574,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         new_data=analyzer.DataTensors(media_spend=total_spend)
     )
     expected_roi = self.analyzer_media_only.incremental_outcome() / total_spend
-    self.assertAllClose(roi, expected_roi)
+    backend_test_utils.assert_allclose(roi, expected_roi)
 
   def test_roi_media_only_default_returns_correct_value(self):
     roi = self.analyzer_media_only.roi()
@@ -3081,17 +3582,17 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         self.meridian_media_only.media_tensors.media_spend
     )
     expected_roi = self.analyzer_media_only.incremental_outcome() / total_spend
-    self.assertAllClose(expected_roi, roi)
+    backend_test_utils.assert_allclose(expected_roi, roi)
 
   def test_roi_zero_media_returns_zero(self):
-    new_media = tf.zeros_like(
-        self.meridian_media_only.media_tensors.media, dtype=tf.float32
+    new_media = backend.zeros_like(
+        self.meridian_media_only.media_tensors.media, dtype=backend.float32
     )
     roi = self.analyzer_media_only.roi(
         new_data=analyzer.DataTensors(media=new_media)
     )
-    self.assertAllClose(
-        roi, tf.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
+    backend_test_utils.assert_allclose(
+        roi, backend.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
     )
 
   def test_optimal_frequency_data_media_only_raises_exception(self):
@@ -3141,7 +3642,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
             values=constants.INCREMENTAL_OUTCOME,
         )
     ).reset_index()
-    self.assertAllInSet(
+    self.assertContainsSubset(
         list(set(response_curves_df[constants.CHANNEL])),
         ["ch_0", "ch_2", "ch_1"],
     )
@@ -3273,10 +3774,10 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
       self,
   ):
     actual = self.analyzer_media_only.get_aggregated_spend(include_media=False)
-    self.assertAllEqual(actual.data, [])
+    backend_test_utils.assert_allequal(actual.data, [])
 
 
-class AnalyzerMediaOnlyNoControlsTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerMediaOnlyNoControlsTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -3352,7 +3853,7 @@ class AnalyzerMediaOnlyNoControlsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(outcome.shape, expected_shape)
 
 
-class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerRFOnlyTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -3432,9 +3933,9 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
       self, missing_param: str
   ):
     new_data_dict = {
-        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
     }
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -3486,12 +3987,12 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="use_prior",
           use_posterior=False,
-          expected_outcome=test_utils.INC_OUTCOME_RF_ONLY_USE_PRIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_RF_ONLY_USE_PRIOR,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
-          expected_outcome=test_utils.INC_OUTCOME_RF_ONLY_USE_POSTERIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_RF_ONLY_USE_POSTERIOR,
       ),
   )
   def test_incremental_outcome_rf_only(
@@ -3502,9 +4003,9 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
     outcome = self.analyzer_rf_only.incremental_outcome(
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(expected_outcome),
+        backend.to_tensor(expected_outcome),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -3521,9 +4022,9 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
             revenue_per_kpi=self.meridian_rf_only.revenue_per_kpi[..., -10:],
         )
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(test_utils.INC_OUTCOME_RF_ONLY_NEW_PARAMS),
+        backend.to_tensor(analysis_test_utils.INC_OUTCOME_RF_ONLY_NEW_PARAMS),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -3564,25 +4065,25 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
           testcase_name="use_prior",
           use_posterior=False,
           by_reach=False,
-          expected_mroi=test_utils.MROI_RF_ONLY_USE_PRIOR,
+          expected_mroi=analysis_test_utils.MROI_RF_ONLY_USE_PRIOR,
       ),
       dict(
           testcase_name="use_prior_by_reach",
           use_posterior=False,
           by_reach=True,
-          expected_mroi=test_utils.MROI_RF_ONLY_USE_PRIOR_BY_REACH,
+          expected_mroi=analysis_test_utils.MROI_RF_ONLY_USE_PRIOR_BY_REACH,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
           by_reach=False,
-          expected_mroi=test_utils.MROI_RF_ONLY_USE_POSTERIOR,
+          expected_mroi=analysis_test_utils.MROI_RF_ONLY_USE_POSTERIOR,
       ),
       dict(
           testcase_name="use_posterior_by_reach",
           use_posterior=True,
           by_reach=True,
-          expected_mroi=test_utils.MROI_RF_ONLY_USE_POSTERIOR_BY_REACH,
+          expected_mroi=analysis_test_utils.MROI_RF_ONLY_USE_POSTERIOR_BY_REACH,
       ),
   )
   def test_marginal_roi_rf_only(
@@ -3595,9 +4096,9 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         by_reach=by_reach,
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         mroi,
-        tf.convert_to_tensor(expected_mroi),
+        backend.to_tensor(expected_mroi),
         rtol=1e-3,
         atol=1e-3,
     )
@@ -3635,7 +4136,7 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         self.meridian_rf_only.rf_tensors.rf_spend
     )
     expected_roi = self.analyzer_rf_only.incremental_outcome() / total_spend
-    self.assertAllClose(expected_roi, roi)
+    backend_test_utils.assert_allclose(expected_roi, roi)
 
   def test_by_reach_returns_correct_values(self):
     mroi = self.analyzer_rf_only.marginal_roi(
@@ -3651,7 +4152,7 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         selected_geos=None,
         selected_times=None,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         mroi,
         roi,
         atol=1e-2,
@@ -3808,7 +4309,9 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
     )
     for i, freq in enumerate(freq_grid):
       new_frequency = (
-          tf.ones_like(self.analyzer_rf_only._meridian.rf_tensors.frequency)
+          backend.ones_like(
+              self.analyzer_rf_only._meridian.rf_tensors.frequency
+          )
           * freq
       )
       new_reach = (
@@ -3832,11 +4335,13 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
       roi[i, :, 1] = np.quantile(roi_temp, (1 - 0.9) / 2, (0, 1))
       roi[i, :, 2] = np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
 
-      self.assertAllEqual(roi[i, :, 0], np.mean(roi_temp, (0, 1)))
-      self.assertAllEqual(
+      backend_test_utils.assert_allequal(
+          roi[i, :, 0], np.mean(roi_temp, (0, 1))
+      )
+      backend_test_utils.assert_allequal(
           roi[i, :, 1], np.quantile(roi_temp, (1 - 0.9) / 2, (0, 1))
       )
-      self.assertAllEqual(
+      backend_test_utils.assert_allequal(
           roi[i, :, 2], np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
       )
 
@@ -3863,7 +4368,7 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
         marginal_roi_by_reach=False,
     ).spend[:-1]
-    self.assertAllEqual(
+    backend_test_utils.assert_allequal(
         media_summary_spend * 2,
         response_data_spend[-1],
     )
@@ -3993,10 +4498,10 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
       self,
   ):
     actual = self.analyzer_rf_only.get_aggregated_spend(include_rf=False)
-    self.assertAllEqual(actual.data, [])
+    backend_test_utils.assert_allequal(actual.data, [])
 
 
-class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerKpiTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -4013,9 +4518,10 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
             seed=0,
         )
     )
-    cpik_prior = tfp.distributions.LogNormal(0.5, 0.5)
-    roi_prior = tfp.distributions.TransformedDistribution(
-        cpik_prior, tfp.bijectors.Reciprocal()
+    # Use the backend's TFP and bijectors
+    cpik_prior = backend.tfd.LogNormal(0.5, 0.5)
+    roi_prior = backend.tfd.TransformedDistribution(
+        cpik_prior, backend.bijectors.Reciprocal()
     )
     custom_prior = prior_distribution.PriorDistribution(
         roi_m=roi_prior, roi_rf=roi_prior
@@ -4042,7 +4548,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
         mock.patch.object(
             self.analyzer_kpi,
             "expected_outcome",
-            return_value=tf.ones((
+            return_value=backend.ones((
                 _N_CHAINS,
                 _N_DRAWS,
                 _N_GEOS,
@@ -4058,7 +4564,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
     expected_vs_actual = self.analyzer_kpi.expected_vs_actual_data(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
         list(self.meridian_kpi.kpi[:5]),
         atol=1e-3,
@@ -4091,23 +4597,29 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
         ],
     )
     # Check the metrics that differ when `use_kpi=True`.
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         media_summary.incremental_outcome,
-        test_utils.SAMPLE_INC_OUTCOME_KPI,
+        analysis_test_utils.SAMPLE_INC_OUTCOME_KPI,
         atol=1e-2,
         rtol=1e-2,
     )
-    self.assertAllClose(
-        media_summary.roi, test_utils.SAMPLE_ROI_KPI, atol=1e-3, rtol=1e-3
-    )
-    self.assertAllClose(
-        media_summary.effectiveness,
-        test_utils.SAMPLE_EFFECTIVENESS_KPI,
+    backend_test_utils.assert_allclose(
+        media_summary.roi,
+        analysis_test_utils.SAMPLE_ROI_KPI,
         atol=1e-3,
         rtol=1e-3,
     )
-    self.assertAllClose(
-        media_summary.mroi, test_utils.SAMPLE_MROI_KPI, atol=1e-3, rtol=1e-3
+    backend_test_utils.assert_allclose(
+        media_summary.effectiveness,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI_KPI,
+        atol=1e-3,
+        rtol=1e-3,
     )
 
   def test_marginal_roi_no_revenue_data_use_kpi_false(self):
@@ -4131,7 +4643,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
         mock.patch.object(
             self.analyzer_kpi,
             "incremental_outcome",
-            return_value=tf.ones((
+            return_value=backend.ones((
                 _N_CHAINS,
                 _N_DRAWS,
                 _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
@@ -4303,7 +4815,7 @@ class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(actual.use_posterior, expected.use_posterior)
 
 
-class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerNonMediaTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -4343,19 +4855,19 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="use_prior",
           use_posterior=False,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_USE_PRIOR,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_USE_PRIOR,
           non_media_baseline_values=None,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_USE_POSTERIOR,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_USE_POSTERIOR,
           non_media_baseline_values=None,
       ),
       dict(
           testcase_name="all_min",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_USE_POSTERIOR,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_USE_POSTERIOR,
           non_media_baseline_values=[
               -7.229473,
               -7.1908092,
@@ -4366,7 +4878,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="all_max",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_MAX,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_MAX,
           non_media_baseline_values=[
               14.567047,
               15.695609,
@@ -4377,7 +4889,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="mix",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_MIX,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_MIX,
           non_media_baseline_values=[
               -7.229473,
               15.695609,
@@ -4388,7 +4900,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="mix_as_floats",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_MIX,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_MIX,
           non_media_baseline_values=[
               -7.229473,
               15.695609,
@@ -4399,7 +4911,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="all_fixed",
           use_posterior=True,
-          expected_result=test_utils.INC_OUTCOME_NON_MEDIA_FIXED,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_FIXED,
           non_media_baseline_values=[45.2, 1.03, 0.24, 7.77],
       ),
   )
@@ -4417,9 +4929,9 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
         include_non_paid_channels=True,
         non_media_baseline_values=non_media_baseline_values,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(expected_result),
+        backend.to_tensor(expected_result),
         rtol=1e-2,
         atol=1e-2,
     )
@@ -4569,7 +5081,7 @@ class AnalyzerNonMediaTest(tf.test.TestCase, parameterized.TestCase):
       )
 
 
-class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
+class AnalyzerOrganicMediaTest(parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -4699,14 +5211,14 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     )
     for tensor_name in required_tensors_names:
       if tensor_name in new_tensors_names:
-        self.assertAllClose(
+        backend_test_utils.assert_allclose(
             getattr(filled_tensors, tensor_name),
             getattr(data1, tensor_name),
             rtol=1e-4,
             atol=1e-4,
         )
       else:
-        self.assertAllClose(
+        backend_test_utils.assert_allclose(
             getattr(filled_tensors, tensor_name),
             getattr(self.input_data_non_paid, tensor_name),
             rtol=1e-4,
@@ -4756,31 +5268,27 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     tensors = []
     if n_media_channels > 0:
       tensors.append(
-          tf.convert_to_tensor(self.not_lagged_input_data_non_paid.media)
+          backend.to_tensor(self.not_lagged_input_data_non_paid.media)
       )
     if n_rf_channels > 0:
       tensors.append(
-          tf.convert_to_tensor(self.not_lagged_input_data_non_paid.reach)
+          backend.to_tensor(self.not_lagged_input_data_non_paid.reach)
       )
     if n_non_media_channels > 0:
       tensors.append(
-          tf.convert_to_tensor(
+          backend.to_tensor(
               self.not_lagged_input_data_non_paid.non_media_treatments
           )
       )
     if n_organic_media_channels > 0:
       tensors.append(
-          tf.convert_to_tensor(
-              self.not_lagged_input_data_non_paid.organic_media
-          )
+          backend.to_tensor(self.not_lagged_input_data_non_paid.organic_media)
       )
     if n_organic_rf_channels > 0:
       tensors.append(
-          tf.convert_to_tensor(
-              self.not_lagged_input_data_non_paid.organic_reach
-          )
+          backend.to_tensor(self.not_lagged_input_data_non_paid.organic_reach)
       )
-    tensor = tf.concat(tensors, axis=-1)
+    tensor = backend.concatenate(tensors, axis=-1)
     modified_tensor = (
         self.analyzer_non_paid.filter_and_aggregate_geos_and_times(
             tensor,
@@ -4840,13 +5348,19 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
             + _N_ORGANIC_RF_CHANNELS,
         ],
     )
-    tensor = tf.concat(
+    tensor = backend.concatenate(
         [
-            self.not_lagged_input_data_non_paid.media,
-            self.not_lagged_input_data_non_paid.reach,
-            self.not_lagged_input_data_non_paid.non_media_treatments,
-            self.not_lagged_input_data_non_paid.organic_media,
-            self.not_lagged_input_data_non_paid.organic_reach,
+            backend.to_tensor(self.not_lagged_input_data_non_paid.media),
+            backend.to_tensor(self.not_lagged_input_data_non_paid.reach),
+            backend.to_tensor(
+                self.not_lagged_input_data_non_paid.non_media_treatments
+            ),
+            backend.to_tensor(
+                self.not_lagged_input_data_non_paid.organic_media
+            ),
+            backend.to_tensor(
+                self.not_lagged_input_data_non_paid.organic_reach
+            ),
         ],
         axis=-1,
     )
@@ -4863,12 +5377,12 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
       dict(
           testcase_name="use_prior",
           use_posterior=False,
-          expected_outcome=test_utils.INC_OUTCOME_NON_PAID_USE_PRIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_PRIOR,
       ),
       dict(
           testcase_name="use_posterior",
           use_posterior=True,
-          expected_outcome=test_utils.INC_OUTCOME_NON_PAID_USE_POSTERIOR,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_POSTERIOR,
       ),
   )
   def test_incremental_outcome_organic_media(
@@ -4882,9 +5396,9 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     outcome = self.analyzer_non_paid.incremental_outcome(
         use_posterior=use_posterior,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         outcome,
-        tf.convert_to_tensor(expected_outcome),
+        backend.to_tensor(expected_outcome),
         rtol=1e-2,
         atol=1e-2,
     )
@@ -4913,14 +5427,18 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
       self, missing_param: str, expected_error_message: str
   ):
     new_data_dict = {
-        "media": tf.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "organic_media": tf.ones((_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)),
-        "organic_reach": tf.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
-        "organic_frequency": tf.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
-        "non_media_treatments": tf.ones((_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)),
-        "revenue_per_kpi": tf.ones((_N_GEOS, 10)),
+        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "organic_media": backend.ones((_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)),
+        "organic_reach": backend.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
+        "organic_frequency": backend.ones(
+            (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
+        ),
+        "non_media_treatments": backend.ones(
+            (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
+        ),
+        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
     }
     with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
       new_data_dict.pop(missing_param)
@@ -4932,14 +5450,14 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
       (
           "organic_reach",
           {
-              "reach": tf.ones((_N_GEOS, _N_RF_CHANNELS)),
+              "reach": backend.ones((_N_GEOS, _N_RF_CHANNELS)),
           },
           "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "non_media_treatments",
           {
-              "non_media_treatments": tf.ones((_N_GEOS,)),
+              "non_media_treatments": backend.ones((_N_GEOS,)),
           },
           (
               "New `non_media_treatments` must have 3 dimension(s). Found 1"
@@ -4949,7 +5467,7 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
       (
           "revenue_per_kpi",
           {
-              "revenue_per_kpi": tf.ones(
+              "revenue_per_kpi": backend.ones(
                   (_N_GEOS, _N_TIMES, _N_MEDIA_CHANNELS)
               ),
           },
@@ -4961,7 +5479,7 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
   )
   def test_incremental_outcome_wrong_shape_new_param_raises_exception(
       self,
-      new_data_dict: dict[str, tf.Tensor],
+      new_data_dict: dict[str, backend.Tensor],
       expected_error_message: str,
   ):
     with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
@@ -4973,22 +5491,22 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
       self,
   ):
     new_data_dict = {
-        "media": tf.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
-        "reach": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": tf.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "organic_media": tf.ones(
+        "media": backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
+        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "organic_media": backend.ones(
             (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_MEDIA_CHANNELS)
         ),
-        "organic_reach": tf.ones(
+        "organic_reach": backend.ones(
             (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
         ),
-        "organic_frequency": tf.ones(
+        "organic_frequency": backend.ones(
             (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
         ),
-        "non_media_treatments": tf.ones(
+        "non_media_treatments": backend.ones(
             (_N_GEOS, _N_TIMES, _N_NON_MEDIA_CHANNELS)
         ),
-        "revenue_per_kpi": tf.ones((_N_GEOS, _N_TIMES)),
+        "revenue_per_kpi": backend.ones((_N_GEOS, _N_TIMES)),
     }
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -5101,15 +5619,15 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertIsNotNone(baseline_summary.baseline_outcome)
     self.assertIsNotNone(baseline_summary.pct_of_contribution)
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         baseline_summary.baseline_outcome,
-        test_utils.SAMPLE_BASELINE_EXPECTED_OUTCOME_NON_PAID,
+        analysis_test_utils.SAMPLE_BASELINE_EXPECTED_OUTCOME_NON_PAID,
         atol=1e-2,
         rtol=1e-2,
     )
-    self.assertAllClose(
+    backend_test_utils.assert_allclose(
         baseline_summary.pct_of_contribution,
-        test_utils.SAMPLE_BASELINE_PCT_OF_CONTRIBUTION_NON_PAID,
+        analysis_test_utils.SAMPLE_BASELINE_PCT_OF_CONTRIBUTION_NON_PAID,
         atol=1e-2,
         rtol=1e-2,
     )
@@ -5127,42 +5645,57 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         "organic_media_1",
         "organic_media_2",
         "organic_media_3",
+        "organic_rf_ch_0",
     ]
     self.assertSameElements(expected_channels, actual_channels)
 
-  def test_adstock_decay_organic_math_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media",
+          channel_name="organic_media_0",
+          expected_ci_hi=analysis_test_utils.ORGANIC_ADSTOCK_DECAY_CI_HI,
+          expected_ci_lo=analysis_test_utils.ORGANIC_ADSTOCK_DECAY_CI_LO,
+          expected_mean=analysis_test_utils.ORGANIC_ADSTOCK_DECAY_MEAN,
+      ),
+      dict(
+          testcase_name="organic_rf",
+          channel_name="organic_rf_ch_0",
+          expected_ci_hi=analysis_test_utils.ORGANIC_RF_ADSTOCK_DECAY_CI_HI,
+          expected_ci_lo=analysis_test_utils.ORGANIC_RF_ADSTOCK_DECAY_CI_LO,
+          expected_mean=analysis_test_utils.ORGANIC_RF_ADSTOCK_DECAY_MEAN,
+      ),
+  )
+  def test_adstock_decay_organic_channels_math_correct(
+      self, channel_name, expected_ci_hi, expected_ci_lo, expected_mean
+  ):
     adstock_decay_dataframe = self.analyzer_non_paid.adstock_decay(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
     )
 
-    target_organic_channel = "organic_media_0"
-    first_organic_channel_df = adstock_decay_dataframe[
-        adstock_decay_dataframe[constants.CHANNEL] == target_organic_channel
+    channel_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.CHANNEL] == channel_name
     ]
 
-    first_organic_channel_df = first_organic_channel_df.sort_values(
+    channel_df = channel_df.sort_values(
         by=[constants.DISTRIBUTION, constants.TIME_UNITS],
-        ascending=[
-            False,
-            True,
-        ],
+        ascending=[False, True],
     )
 
-    self.assertAllClose(
-        list(first_organic_channel_df[constants.CI_HI])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_CI_HI,
+    backend_test_utils.assert_allclose(
+        list(channel_df[constants.CI_HI])[:5],
+        expected_ci_hi,
         atol=1e-3,
     )
 
-    self.assertAllClose(
-        list(first_organic_channel_df[constants.CI_LO])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_CI_LO,
+    backend_test_utils.assert_allclose(
+        list(channel_df[constants.CI_LO])[:5],
+        expected_ci_lo,
         atol=1e-3,
     )
 
-    self.assertAllClose(
-        list(first_organic_channel_df[constants.MEAN])[:5],
-        test_utils.ORGANIC_ADSTOCK_DECAY_MEAN,
+    backend_test_utils.assert_allclose(
+        list(channel_df[constants.MEAN])[:5],
+        expected_mean,
         atol=1e-3,
     )
 
@@ -5194,9 +5727,11 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         "organic_media_2",
         "organic_media_3",
     }
+    expected_organic_rf = {"organic_rf_ch_0"}
     self.assertTrue(expected_paid_media.issubset(all_channels_present))
     self.assertTrue(expected_rf.issubset(all_channels_present))
     self.assertTrue(expected_organic_media.issubset(all_channels_present))
+    self.assertTrue(expected_organic_rf.issubset(all_channels_present))
     self.assertSetEqual(
         set(
             hill_table[hill_table[constants.CHANNEL_TYPE] == constants.MEDIA][
@@ -5221,52 +5756,82 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         ),
         expected_organic_media,
     )
+    self.assertSetEqual(
+        set(
+            hill_table[
+                hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_RF
+            ][constants.CHANNEL].unique()
+        ),
+        expected_organic_rf,
+    )
     self.assertTrue(hist_df.index.is_unique)
 
-  def test_hill_curves_curve_data_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media_test",
+          channel_name="organic_media_1",
+          expected_channel_type=constants.ORGANIC_MEDIA,
+      ),
+      dict(
+          testcase_name="organic_rf_test",
+          channel_name="organic_rf_ch_0",
+          expected_channel_type=constants.ORGANIC_RF,
+      ),
+  )
+  def test_hill_curves_curve_data_correct(
+      self, channel_name, expected_channel_type
+  ):
     hill_table = self.analyzer_non_paid.hill_curves()
 
-    organic_channel = "organic_media_1"
-    organic_df = (
+    df = (
         hill_table[
-            (hill_table[constants.CHANNEL] == organic_channel)
+            (hill_table[constants.CHANNEL] == channel_name)
             & (hill_table[constants.DISTRIBUTION] == constants.POSTERIOR)
         ]
         .sort_values(constants.MEDIA_UNITS)
         .dropna(subset=[constants.MEAN])
     )
 
-    self.assertFalse(organic_df.empty)
-    self.assertEqual(
-        organic_df[constants.CHANNEL_TYPE].iloc[0], constants.ORGANIC_MEDIA
-    )
-    self.assertTrue(organic_df[constants.MEAN].is_monotonic_increasing)
-    self.assertLessEqual(organic_df[constants.MEAN].iloc[-1], 1.0)
-    self.assertGreaterEqual(organic_df[constants.MEAN].iloc[0], 0.0)
-    self.assertLess(organic_df[constants.MEDIA_UNITS].iloc[0], 0.1)
-    self.assertAlmostEqual(organic_df[constants.MEAN].iloc[0], 0.0, delta=1e-3)
+    self.assertFalse(df.empty)
+    self.assertEqual(df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type)
+    self.assertTrue(df[constants.MEAN].is_monotonic_increasing)
+    self.assertLessEqual(df[constants.MEAN].iloc[-1], 1.0)
+    self.assertGreaterEqual(df[constants.MEAN].iloc[0], 0.0)
+    self.assertLess(df[constants.MEDIA_UNITS].iloc[0], 0.1)
+    self.assertAlmostEqual(df[constants.MEAN].iloc[0], 0.0, delta=1e-3)
 
-  def test_hill_curves_histogram_data_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media_test",
+          channel_name="organic_media_0",
+          expected_channel_type=constants.ORGANIC_MEDIA,
+      ),
+      dict(
+          testcase_name="organic_rf_test",
+          channel_name="organic_rf_ch_0",
+          expected_channel_type=constants.ORGANIC_RF,
+      ),
+  )
+  def test_hill_curves_histogram_data_correct(
+      self, channel_name, expected_channel_type
+  ):
     n_bins = 25
     hill_table = self.analyzer_non_paid.hill_curves(n_bins=n_bins)
 
-    organic_channel = "organic_media_0"
-    organic_hist_df = hill_table[
-        hill_table[constants.CHANNEL] == organic_channel
-    ].dropna(subset=[constants.COUNT_HISTOGRAM])
+    hist_df = hill_table[hill_table[constants.CHANNEL] == channel_name].dropna(
+        subset=[constants.COUNT_HISTOGRAM]
+    )
 
-    self.assertFalse(organic_hist_df.empty)
-    self.assertLen(organic_hist_df, n_bins)
+    self.assertFalse(hist_df.empty)
+    self.assertLen(hist_df, n_bins)
     self.assertEqual(
-        organic_hist_df[constants.CHANNEL_TYPE].iloc[0], constants.ORGANIC_MEDIA
+        hist_df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type
     )
-    self.assertTrue((organic_hist_df[constants.COUNT_HISTOGRAM] >= 0).all())
-    self.assertTrue(
-        (organic_hist_df[constants.SCALED_COUNT_HISTOGRAM] <= 1.0001).all()
-    )
+    self.assertTrue((hist_df[constants.COUNT_HISTOGRAM] >= 0).all())
+    self.assertTrue((hist_df[constants.SCALED_COUNT_HISTOGRAM] <= 1.0001).all())
     np.testing.assert_allclose(
-        organic_hist_df[constants.START_INTERVAL_HISTOGRAM].iloc[1:].values,
-        organic_hist_df[constants.END_INTERVAL_HISTOGRAM].iloc[:-1].values,
+        hist_df[constants.START_INTERVAL_HISTOGRAM].iloc[1:].values,
+        hist_df[constants.END_INTERVAL_HISTOGRAM].iloc[:-1].values,
         atol=1e-6,
         err_msg="Histogram bin start/end edges do not align correctly.",
     )
@@ -5383,7 +5948,7 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
             times[-mmm.n_times :],
         )
         calculated_m[:, :, i] = ii[:, :, i] / spend[i]
-      calculated_m = tf.convert_to_tensor(calculated_m)
+      calculated_m = backend.to_tensor(calculated_m)
   elif media_prior_type == "mroi":
     mroi = mmm_analyzer.marginal_roi(use_posterior=use_posterior)
     calculated_m = mroi[:, :, :n_m]
@@ -5417,7 +5982,7 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
             times[-mmm.n_times :],
         )
         calculated_rf[:, :, i] = ii[:, :, n_m + i] / spend[i]
-      calculated_rf = tf.convert_to_tensor(calculated_rf)
+      calculated_rf = backend.to_tensor(calculated_rf)
   elif rf_prior_type == "mroi":
     mroi = mmm_analyzer.marginal_roi(use_posterior=use_posterior)
     calculated_rf = mroi[:, :, n_m : (n_m + n_rf)]
@@ -5425,12 +5990,219 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
   else:  # rf_prior_type == "contribution"
     calculated_rf = ii_rf / total_outcome
     param_rf = infdata.contribution_rf
+  backend_test_utils.assert_allclose(
+      calculated_m, param_m, rtol=rtol, atol=atol
+  )
+  backend_test_utils.assert_allclose(
+      calculated_rf, param_rf, rtol=rtol, atol=atol
+  )
+  backend_test_utils.assert_allclose(
+      calculated_om, param_om, rtol=rtol, atol=atol
+  )
+  backend_test_utils.assert_allclose(
+      calculated_orf, param_orf, rtol=rtol, atol=atol
+  )
+  backend_test_utils.assert_allclose(
+      calculated_n, param_n, rtol=rtol, atol=atol
+  )
 
-  tf.debugging.assert_near(calculated_m, param_m, rtol=rtol, atol=atol)
-  tf.debugging.assert_near(calculated_rf, param_rf, rtol=rtol, atol=atol)
-  tf.debugging.assert_near(calculated_om, param_om, rtol=rtol, atol=atol)
-  tf.debugging.assert_near(calculated_orf, param_orf, rtol=rtol, atol=atol)
-  tf.debugging.assert_near(calculated_n, param_n, rtol=rtol, atol=atol)
+
+class AnalyzerDataShapeTest(parameterized.TestCase):
+  """Tests for Analyzer behavior with specific data shapes, independent of global setups."""
+
+  def test_hill_curves_scaling_and_alignment_with_disparate_magnitudes(
+      self,
+  ):
+    n_geos = 3
+    n_times = 10
+    n_media_times = 12
+    n_draws = 50
+
+    channel_names = ["Z-Search", "A-Social"]
+
+    base_dataset = data_test_utils.random_dataset(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_controls=1,
+        n_media_channels=2,
+        explicit_media_channel_names=channel_names,
+        constant_population_value=1.0,  # Key condition: Population=1
+        revenue_per_kpi_value=1.0,
+        seed=123,
+    )
+
+    rng = np.random.default_rng(seed=0)
+
+    # Channel 1 ("Z-Search"): low impression values (e.g., 80k - 120k)
+    search_impressions = (
+        80_000 + rng.random(size=(n_geos, n_media_times)) * 40_000
+    )
+
+    # Channel 2 ("A-Social"): high impression values (e.g., 7M - 8M)
+    social_impressions = (
+        7_000_000 + rng.random(size=(n_geos, n_media_times)) * 1_000_000
+    )
+
+    actual_max_low = search_impressions.max()
+    actual_max_high = social_impressions.max()
+
+    media_values = np.stack([search_impressions, social_impressions], axis=-1)
+
+    media_da = xr.DataArray(
+        media_values,
+        dims=["geo", "media_time", "media_channel"],
+        coords={
+            "geo": base_dataset.geo.values,
+            "media_time": base_dataset.media_time.values,
+            "media_channel": channel_names,
+        },
+        name="media",
+    )
+
+    search_spend = 80 + rng.random(size=(n_geos, n_times)) * 40
+    social_spend = 7000 + rng.random(size=(n_geos, n_times)) * 1000
+    spend_values = np.stack([search_spend, social_spend], axis=-1)
+
+    media_spend_da = xr.DataArray(
+        spend_values,
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": base_dataset.geo.values,
+            "time": base_dataset.time.values,
+            "media_channel": channel_names,
+        },
+        name="media_spend",
+    )
+    base_input_data = data_test_utils.sample_input_data_from_dataset(
+        base_dataset, kpi_type=constants.NON_REVENUE
+    )
+    input_data_obj = dataclasses.replace(
+        base_input_data,
+        media=media_da,
+        media_spend=media_spend_da,
+    )
+
+    model_spec = spec.ModelSpec(max_lag=4)
+    mmm = model.Meridian(input_data=input_data_obj, model_spec=model_spec)
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+    mmm.sample_prior(n_draws)
+    mmm.sample_joint_dist_unpinned_as_posterior(n_draws)
+
+    mmm_analyzer = analyzer.Analyzer(mmm)
+    hill_df = mmm_analyzer.hill_curves()
+
+    max_units_low = hill_df[
+        (hill_df[constants.CHANNEL] == "Z-Search")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    max_units_high = hill_df[
+        (hill_df[constants.CHANNEL] == "A-Social")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    np.testing.assert_allclose(
+        max_units_low,
+        actual_max_low,
+        rtol=1e-5,
+        err_msg=(
+            "X-axis range for low-scale channel does not match input data max."
+        ),
+    )
+    np.testing.assert_allclose(
+        max_units_high,
+        actual_max_high,
+        rtol=1e-5,
+        err_msg=(
+            "X-axis range for high-scale channel does not match input data max."
+        ),
+    )
+
+  def test_hill_curves_channel_alignment_correct_with_non_alphabetical_order(
+      self,
+  ):
+    n_geos = 2
+    n_times = 10
+    n_media_times = 12
+    n_draws = 50
+
+    # Input Order (Tensor Order): ['Channel_B', 'Channel_A']
+    channel_names = ["Channel_B", "Channel_A"]
+
+    # Scales corresponding to Input Order:
+    # Channel_B (Index 0): Mean 100 (Low)
+    # Channel_A (Index 1): Mean 10000 (High)
+    scale_b = (100, 10)
+    scale_a = (10000, 1000)
+    media_scales = [scale_b, scale_a]
+
+    dataset = data_test_utils.random_dataset(
+        n_geos=n_geos,
+        n_times=n_times,
+        n_media_times=n_media_times,
+        n_controls=1,
+        n_media_channels=2,
+        explicit_media_channel_names=channel_names,
+        constant_population_value=1.0,  # Key condition: Population=1
+        media_value_scales=media_scales,
+        revenue_per_kpi_value=1.0,
+        seed=1,
+    )
+    input_data_obj = data_test_utils.sample_input_data_from_dataset(
+        dataset, kpi_type=constants.NON_REVENUE
+    )
+
+    assert input_data_obj.media is not None, "media should not be None"
+    actual_max_a = (
+        input_data_obj.media.sel(media_channel="Channel_A").max().item()
+    )
+    actual_max_b = (
+        input_data_obj.media.sel(media_channel="Channel_B").max().item()
+    )
+
+    model_spec = spec.ModelSpec(max_lag=2)
+    mmm = model.Meridian(input_data=input_data_obj, model_spec=model_spec)
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+    mmm.sample_prior(n_draws)
+    mmm.sample_joint_dist_unpinned_as_posterior(n_draws)
+
+    mmm_analyzer = analyzer.Analyzer(mmm)
+    hill_df = mmm_analyzer.hill_curves()
+
+    output_channels = (
+        hill_df[hill_df[constants.MEAN].notna()][constants.CHANNEL]
+        .unique()
+        .tolist()
+    )
+
+    max_units_a = hill_df[
+        (hill_df[constants.CHANNEL] == "Channel_A")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    max_units_b = hill_df[
+        (hill_df[constants.CHANNEL] == "Channel_B")
+        & (hill_df[constants.MEAN].notna())
+    ][constants.MEDIA_UNITS].max()
+
+    self.assertListEqual(
+        output_channels,
+        channel_names,
+        msg=(
+            "Channel order in the output DataFrame does not match the input"
+            " tensor order."
+        ),
+    )
+
+    np.testing.assert_allclose(max_units_a, actual_max_a, rtol=1e-5)
+    np.testing.assert_allclose(max_units_b, actual_max_b, rtol=1e-5)
 
 
 class AnalyzerCustomPriorTest(parameterized.TestCase):

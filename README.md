@@ -15,7 +15,7 @@ own in-house models. Meridian helps you answer key questions such as:
 *   How do I optimize my marketing budget allocation for the future?
 
 Meridian is a highly customizable modeling framework that is based on
-[Bayesian causal inference](https://developers.google.com/meridian/docs/basics/bayesian-inference).
+[Bayesian causal inference](https://developers.google.com/meridian/docs/advanced-modeling/bayesian-inference).
 It is capable of handling large scale geo-level data, which is encouraged if
 available, but it can also be used for national-level modeling. Meridian
 provides clear insights and visualizations to inform business decisions around
@@ -105,10 +105,10 @@ started quickly with using Meridian:
 | [Reference list][10]        | White papers and other referenced material.    |
 
 [1]: https://developers.google.com/meridian
-[2]: https://developers.google.com/meridian/docs/basics/about-the-project
+[2]: https://developers.google.com/meridian/docs/basics/meridian-introduction
 [3]: https://developers.google.com/meridian/notebook/meridian-getting-started
 [4]: https://developers.google.com/meridian/docs/user-guide/installing
-[5]: https://developers.google.com/meridian/docs/user-guide/collect-data
+[5]: https://developers.google.com/meridian/docs/pre-modeling/collect-data
 [6]: https://developers.google.com/meridian/docs/advanced-modeling/control-variables
 [7]: https://developers.google.com/meridian/docs/advanced-modeling/model-fit
 [8]: https://developers.google.com/meridian/docs/migrate
@@ -117,7 +117,7 @@ started quickly with using Meridian:
 
 ## Support
 
-**Questions about methodology**: Please see the [Modeling](https://developers.google.com/meridian/docs/basics/about-the-project) tab in the technical documentation.
+**Questions about methodology**: Please see the [Modeling](https://developers.google.com/meridian/docs/basics/meridian-introduction) tab in the technical documentation.
 
 **Issues installing or using Meridian**: Feel free to post questions in the
 [Discussions](https://github.com/google/meridian/discussions) or [Issues](https://github.com/google/meridian/issues) tabs of the Meridian GitHub repository. The Meridian team responds to
@@ -151,7 +151,7 @@ To cite this repository:
   author = {Google Meridian Marketing Mix Modeling Team},
   title = {Meridian: Marketing Mix Modeling},
   url = {https://github.com/google/meridian},
-  version = {1.1.7},
+  version = {1.2.1},
   year = {2025},
 }
 ```

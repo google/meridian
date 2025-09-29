@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module for Meridian version."""
+"""The Meridian API module that performs EDA checks."""
 
-__version__ = "1.2.1"
+from meridian.model.eda import eda_engine

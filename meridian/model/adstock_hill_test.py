@@ -16,15 +16,234 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import backend
+from meridian import constants
+from meridian.backend import test_utils
 from meridian.model import adstock_hill
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
-tfd = tfp.distributions
+tfd = backend.tfd
+
+_NONEXISTENT_CHANNEL_NAME = "nonexistent_channel"
+_UNSUPPORTED_DECAY_FUNCTION_NAME = "unsupported_decay_function"
+
+_DECAY_FUNCTIONS = [
+    dict(
+        testcase_name=constants.GEOMETRIC_DECAY,
+        decay_functions=constants.GEOMETRIC_DECAY,
+    ),
+    dict(
+        testcase_name=constants.BINOMIAL_DECAY,
+        decay_functions=constants.BINOMIAL_DECAY,
+    ),
+]
+
+_DECAY_WEIGHTS = [
+    # (function, alpha, expected_weights)
+    (
+        constants.GEOMETRIC_DECAY,
+        0.0,
+        (0.0, 0.0, 0.0, 0.0, 1.0),
+    ),
+    (constants.GEOMETRIC_DECAY, 0.5, (0.5**4, 0.5**3, 0.5**2, 0.5**1, 0.5**0)),
+]
+
+_BINOMIAL_0_0_WEIGHTS = (0.0, 0.0, 0.0, 0.0, 1.0)
+_BINOMIAL_0_25_WEIGHTS = (0.008, 0.064, 0.216, 0.512, 1.0)
+_BINOMIAL_0_5_WEIGHTS = (0.2, 0.4, 0.6, 0.8, 1.0)
+_BINOMIAL_0_6666_WEIGHTS = (
+    np.sqrt(0.2),
+    np.sqrt(0.4),
+    np.sqrt(0.6),
+    np.sqrt(0.8),
+    1.0,
+)
+_BINOMIAL_1_0_WEIGHTS = (1.0, 1.0, 1.0, 1.0, 1.0)
+
+_GEOMETRIC_0_0_WEIGHTS = (0.0, 0.0, 0.0, 0.0, 1.0)
+_GEOMETRIC_0_5_WEIGHTS = (0.5**4, 0.5**3, 0.5**2, 0.5**1, 1.0)
+_GEOMETRIC_1_0_WEIGHTS = (1.0, 1.0, 1.0, 1.0, 1.0)
+
+_MAX_LAG = 4
 
 
-class TestAdstock(parameterized.TestCase):
+class TestAdstockDecayFunction(test_utils.MeridianTestCase):
+  """Tests for adstock_hill.AdstockDecayFunction."""
+
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_from_uniform_type(self, decay_functions):
+    adstock_decay_function = adstock_hill.AdstockDecaySpec.from_consistent_type(
+        decay_functions
+    )
+
+    self.assertEqual(adstock_decay_function.media, decay_functions)
+    self.assertEqual(adstock_decay_function.rf, decay_functions)
+    self.assertEqual(adstock_decay_function.organic_media, decay_functions)
+    self.assertEqual(adstock_decay_function.organic_rf, decay_functions)
+
+
+class TestComputeDecayWeights(test_utils.MeridianTestCase):
+  """Tests for adstock_hill.compute_decay_weights()."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geometric_0.0",
+          alpha=0.0,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_0_0_WEIGHTS,
+      ),
+      dict(
+          testcase_name="geometric_0.5",
+          alpha=0.5,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_0_5_WEIGHTS,
+      ),
+      dict(
+          testcase_name="geometric_1.0",
+          alpha=1.0,
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=_GEOMETRIC_1_0_WEIGHTS,
+      ),
+      dict(
+          testcase_name="binomial_0.0",
+          alpha=0.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_0_WEIGHTS,
+      ),
+      dict(
+          testcase_name="binomial_0.25",
+          alpha=0.25,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_25_WEIGHTS,
+      ),
+      dict(
+          testcase_name="binomial_0.5",
+          alpha=0.5,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_5_WEIGHTS,
+      ),
+      dict(
+          testcase_name="binomial_0.6666",
+          alpha=2.0 / 3.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_0_6666_WEIGHTS,
+      ),
+      dict(
+          testcase_name="binomial_1.0",
+          alpha=1.0,
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=_BINOMIAL_1_0_WEIGHTS,
+      ),
+  )
+  def test_compute_decay_weights_single_channel(
+      self, alpha, decay_function, expected_weights
+  ):
+
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+
+    with self.subTest("unnormalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=False
+      )
+
+      test_utils.assert_allclose(weights, expected_weights, rtol=1e-5)
+
+    with self.subTest("normalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=True
+      )
+      test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)
+      test_utils.assert_allclose(
+          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="all_geometric",
+          alpha=np.array([0.0, 0.5, 1.0], dtype=np.float32),
+          decay_function=constants.GEOMETRIC_DECAY,
+          expected_weights=(
+              _GEOMETRIC_0_0_WEIGHTS,
+              _GEOMETRIC_0_5_WEIGHTS,
+              _GEOMETRIC_1_0_WEIGHTS,
+          ),
+      ),
+      dict(
+          testcase_name="all_binomial",
+          alpha=np.array([0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=np.float32),
+          decay_function=constants.BINOMIAL_DECAY,
+          expected_weights=(
+              _BINOMIAL_0_0_WEIGHTS,
+              _BINOMIAL_0_25_WEIGHTS,
+              _BINOMIAL_0_5_WEIGHTS,
+              _BINOMIAL_0_6666_WEIGHTS,
+              _BINOMIAL_1_0_WEIGHTS,
+          ),
+      ),
+      dict(
+          testcase_name="mixed_binomial_geometric",
+          alpha=np.array([0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=np.float32),
+          decay_function=(
+              constants.GEOMETRIC_DECAY,
+              constants.BINOMIAL_DECAY,
+              constants.GEOMETRIC_DECAY,
+              constants.BINOMIAL_DECAY,
+              constants.GEOMETRIC_DECAY,
+          ),
+          expected_weights=(
+              _GEOMETRIC_0_0_WEIGHTS,
+              _BINOMIAL_0_25_WEIGHTS,
+              _GEOMETRIC_0_5_WEIGHTS,
+              _BINOMIAL_0_6666_WEIGHTS,
+              _GEOMETRIC_1_0_WEIGHTS,
+          ),
+      ),
+  )
+  def test_compute_decay_weights_multiple_channels(
+      self, alpha, decay_function, expected_weights
+  ):
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+
+    with self.subTest("unnormalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=False
+      )
+
+      test_utils.assert_allclose(weights, expected_weights, rtol=1e-5)
+
+    with self.subTest("normalized"):
+      weights = adstock_hill.compute_decay_weights(
+          alpha, l_range, _MAX_LAG + 1, decay_function, normalize=True
+      )
+
+      test_utils.assert_allclose(
+          backend.reduce_sum(weights, axis=1), [1.0] * len(alpha), rtol=1e-5
+      )
+      test_utils.assert_allclose(
+          weights / backend.reduce_max(weights, axis=1, keepdims=True),
+          expected_weights,
+          rtol=1e-5,
+      )
+
+  def test_incompatible_alpha_decay_function_raises_error(self):
+    alpha = backend.to_tensor([0.5, 0.5])
+    decay_function = [constants.GEOMETRIC_DECAY] * 3
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of `alpha` ((2,)) is incompatible with the length of "
+        "`decay_functions` (3)",
+    ):
+      _ = adstock_hill.compute_decay_weights(
+          alpha,
+          l_range,
+          _MAX_LAG + 1,
+          decay_function,
+      )
+
+
+class TestAdstock(test_utils.MeridianTestCase):
   """Tests for adstock()."""
 
   # Data dimensions for default parameter values.
@@ -35,137 +254,180 @@ class TestAdstock(parameterized.TestCase):
   _N_MEDIA_CHANNELS = 3
   _MAX_LAG = 5
 
-  # Generate random data based on dimensions specified above.
-  tf.random.set_seed(1)
-  _MEDIA = tfd.HalfNormal(1).sample(
-      [_N_CHAINS, _N_DRAWS, _N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS]
-  )
-  _ALPHA = tfd.Uniform(0, 1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
+  def setUp(self):
+    super().setUp()
+    self.seed = 1
+    self._initialize_rng()
+
+    self._media = self.sample(
+        backend.tfd.HalfNormal(1.0),
+        sample_shape=[
+            self._N_CHAINS,
+            self._N_DRAWS,
+            self._N_GEOS,
+            self._N_MEDIA_TIMES,
+            self._N_MEDIA_CHANNELS,
+        ],
+    )
+    self._alpha = self.sample(
+        backend.tfd.Uniform(0.0, 1.0),
+        sample_shape=[
+            self._N_CHAINS,
+            self._N_DRAWS,
+            self._N_MEDIA_CHANNELS,
+        ],
+    )
 
   def test_raises(self):
     """Test that exceptions are raised as expected."""
     with self.assertRaisesRegex(ValueError, "`n_times_output` cannot exceed"):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA,
+          alpha=self._alpha,
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES + 1,
-      ).forward(self._MEDIA)
+      ).forward(self._media)
     with self.assertRaisesRegex(ValueError, "`media` batch dims do not"):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA[1:, ...],
+          alpha=self._alpha[1:, ...],
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES,
-      ).forward(self._MEDIA)
+      ).forward(self._media)
     with self.assertRaisesRegex(ValueError, "`media` contains a different"):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA,
+          alpha=self._alpha,
           max_lag=self._MAX_LAG,
           n_times_output=self._N_MEDIA_TIMES,
-      ).forward(self._MEDIA[..., 1:])
+      ).forward(self._media[..., 1:])
     with self.assertRaisesRegex(
         ValueError, "`n_times_output` must be positive"
     ):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA, max_lag=self._MAX_LAG, n_times_output=0
-      ).forward(self._MEDIA)
+          alpha=self._alpha, max_lag=self._MAX_LAG, n_times_output=0
+      ).forward(self._media)
     with self.assertRaisesRegex(ValueError, "`max_lag` must be non-negative"):
       adstock_hill.AdstockTransformer(
-          alpha=self._ALPHA, max_lag=-1, n_times_output=self._N_MEDIA_TIMES
-      ).forward(self._MEDIA)
+          alpha=self._alpha, max_lag=-1, n_times_output=self._N_MEDIA_TIMES
+      ).forward(self._media)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="basic",
-          media=_MEDIA,
-          alpha=_ALPHA,
+          get_media=lambda s: s._media,
           n_time_output=_N_MEDIA_TIMES,
       ),
       dict(
           testcase_name="no media batch dims",
-          media=_MEDIA[0, 0, ...],
-          alpha=_ALPHA,
+          get_media=lambda s: s._media[0, 0, ...],
           n_time_output=_N_MEDIA_TIMES,
       ),
       dict(
           testcase_name="n_time_output < n_time",
-          media=_MEDIA,
-          alpha=_ALPHA,
+          get_media=lambda s: s._media,
           n_time_output=_N_MEDIA_TIMES - 1,
       ),
       dict(
           testcase_name="max_lag > n_media_times",
-          media=_MEDIA[..., : (_MAX_LAG - 1)],
-          alpha=_ALPHA,
-          n_time_output=_N_MEDIA_TIMES,
+          get_media=lambda s: s._media[..., : (s._MAX_LAG - 1), :],
+          n_time_output=_MAX_LAG - 1,
       ),
       dict(
           testcase_name="excess lagged media history available",
-          media=_MEDIA,
-          alpha=_ALPHA,
+          get_media=lambda s: s._media,
           n_time_output=_N_MEDIA_TIMES - _MAX_LAG - 1,
       ),
   )
-  def test_basic_output(self, media, alpha, n_time_output):
+  def test_basic_output(self, get_media, n_time_output):
     """Basic test for valid output."""
+    media = get_media(self)
+    alpha = self._alpha
+
     media_transformed = adstock_hill.AdstockTransformer(
         alpha, self._MAX_LAG, n_time_output
     ).forward(media)
-    output_shape = tf.TensorShape(
-        alpha.shape[:-1] + media.shape[-3] + [n_time_output] + alpha.shape[-1]
+    output_shape = (
+        tuple(alpha.shape[:-1])
+        + media.shape[-3:-2]
+        + (n_time_output,)
+        + alpha.shape[-1:]
     )
     msg = f"{adstock_hill.AdstockTransformer.__name__}() failed."
-    tf.debugging.assert_equal(
-        media_transformed.shape, output_shape, message=msg
-    )
-    tf.debugging.assert_all_finite(media_transformed, message=msg)
-    tf.debugging.assert_non_negative(media_transformed, message=msg)
+    self.assertEqual(media_transformed.shape, output_shape, msg=msg)
+    test_utils.assert_all_finite(media_transformed, err_msg=msg)
+    test_utils.assert_all_non_negative(media_transformed, err_msg=msg)
 
-  def test_max_lag_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_max_lag_zero(self, decay_functions: str):
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha=self._ALPHA,
+        alpha=self._alpha,
         max_lag=0,
         n_times_output=self._N_MEDIA_TIMES,
-    ).forward(self._MEDIA)
-    tf.debugging.assert_near(media_transformed, self._MEDIA)
+        decay_functions=decay_functions,
+    ).forward(self._media)
+    test_utils.assert_allclose(media_transformed, self._media)
 
-  def test_alpha_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_zero(self, decay_functions: str):
+    """Alpha of zero is allowed, effectively no Adstock."""
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha=tf.zeros_like(self._ALPHA),
+        alpha=backend.zeros_like(self._alpha),
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
-    ).forward(self._MEDIA)
-    tf.debugging.assert_near(media_transformed, self._MEDIA)
+        decay_functions=decay_functions,
+    ).forward(self._media)
+    test_utils.assert_allclose(media_transformed, self._media)
 
-  def test_media_zero(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_media_zero(self, decay_functions: str):
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha=self._ALPHA,
+        alpha=self._alpha,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
+        decay_functions=decay_functions,
     ).forward(
-        tf.zeros_like(self._MEDIA),
+        backend.zeros_like(self._media),
     )
-    tf.debugging.assert_near(media_transformed, tf.zeros_like(self._MEDIA))
+    test_utils.assert_allclose(
+        media_transformed, backend.zeros_like(self._media)
+    )
 
-  def test_alpha_close_to_one(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_close_to_one(self, decay_functions: str):
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha=0.99999 * tf.ones_like(self._ALPHA),
+        alpha=0.99999 * backend.ones_like(self._alpha),
         max_lag=self._N_MEDIA_TIMES - 1,
         n_times_output=self._N_MEDIA_TIMES,
-    ).forward(self._MEDIA)
-    tf.debugging.assert_near(
+        decay_functions=decay_functions,
+    ).forward(self._media)
+    test_utils.assert_allclose(
         media_transformed,
-        tf.cumsum(self._MEDIA, axis=-2) / self._N_MEDIA_TIMES,
+        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,
         rtol=1e-4,
         atol=1e-4,
     )
 
-  def test_media_all_ones(self):
+  @parameterized.named_parameters(*_DECAY_FUNCTIONS)
+  def test_alpha_one(self, decay_functions: str):
+    media_transformed = adstock_hill.AdstockTransformer(
+        alpha=backend.ones_like(self._alpha),
+        max_lag=self._N_MEDIA_TIMES - 1,
+        n_times_output=self._N_MEDIA_TIMES,
+        decay_functions=decay_functions,
+    ).forward(self._media)
+    test_utils.assert_allclose(
+        media_transformed,
+        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+
+  def test_media_all_ones_geometric(self):
     # Calculate adstock on a media vector of all ones and no lag history.
     media_transformed = adstock_hill.AdstockTransformer(
-        alpha=self._ALPHA,
+        alpha=self._alpha,
         max_lag=self._MAX_LAG,
         n_times_output=self._N_MEDIA_TIMES,
-    ).forward(tf.ones_like(self._MEDIA))
+        decay_functions=constants.GEOMETRIC_DECAY,
+    ).forward(backend.ones_like(self._media))
     # n_nonzero_terms is a tensor with length containing the number of nonzero
     # terms in the adstock for each output time period.
     n_nonzero_terms = np.minimum(
@@ -182,22 +444,34 @@ class TestAdstock(parameterized.TestCase):
     # We can therefore write adstock = series1 / series2 = term1 / term2.
 
     # `term1` has dimensions (n_chains, n_draws, n_output_times, n_channels).
-    term1 = 1 - self._ALPHA[:, :, None, :] ** n_nonzero_terms[:, None]
+    term1 = 1 - self._alpha[:, :, None, :] ** n_nonzero_terms[:, None]
     # `term2` has dimensions (n_chains, n_draws, n_channels).
-    term2 = 1 - self._ALPHA ** (self._MAX_LAG + 1)
+    term2 = 1 - self._alpha ** (self._MAX_LAG + 1)
     # `result` has dimensions (n_chains, n_draws, n_output_times, n_channels).
     result = term1 / term2[:, :, None, :]
     # Broadcast `result` across geos.
-    result = tf.tile(
+    result = backend.tile(
         result[:, :, None, :, :], multiples=[1, 1, self._N_GEOS, 1, 1]
     )
-    tf.debugging.assert_near(media_transformed, result)
+    test_utils.assert_allclose(media_transformed, result)
 
-  def test_output(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name=constants.GEOMETRIC_DECAY,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          expected_adstock=np.array([[[0.751, 0.435, 0.572]]]),
+      ),
+      dict(
+          testcase_name=constants.BINOMIAL_DECAY,
+          decay_functions=constants.BINOMIAL_DECAY,
+          expected_adstock=np.array([[[0.742, 0.463, 0.567]]]),
+      ),
+  )
+  def test_output(self, decay_functions: str, expected_adstock: np.ndarray):
     """Test for valid adstock weights."""
-    alpha = tf.constant([0.1, 0.5, 0.9])
+    alpha = backend.to_tensor([0.1, 0.5, 0.9])
     window_size = 5
-    media = tf.constant([[
+    media = backend.to_tensor([[
         [0.12, 0.55, 0.89],
         [0.34, 0.71, 0.23],
         [0.91, 0.08, 0.67],
@@ -208,12 +482,12 @@ class TestAdstock(parameterized.TestCase):
         alpha=alpha,
         max_lag=window_size - 1,
         n_times_output=1,
+        decay_functions=decay_functions,
     ).forward(media)
-    expected_adstock = tf.constant([0.751, 0.435, 0.572])
-    tf.debugging.assert_near(adstock, expected_adstock, rtol=1e-2)
+    test_utils.assert_allclose(adstock, expected_adstock, rtol=1e-2)
 
 
-class TestHill(parameterized.TestCase):
+class TestHill(test_utils.MeridianTestCase):
   """Tests for adstock_hill.hill()."""
 
   # Data dimensions for default parameter values.
@@ -223,77 +497,141 @@ class TestHill(parameterized.TestCase):
   _N_MEDIA_TIMES = 10
   _N_MEDIA_CHANNELS = 3
 
-  # Generate random data based on dimensions specified above.
-  tf.random.set_seed(1)
-  _MEDIA = tfd.HalfNormal(1).sample(
-      [_N_CHAINS, _N_DRAWS, _N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS]
-  )
-  _EC = tfd.Uniform(0, 1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
-  _SLOPE = tfd.HalfNormal(1).sample([_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS])
+  def setUp(self):
+    super().setUp()
+    self.seed = 1
+    self._initialize_rng()
+
+    self._media = self.sample(
+        backend.tfd.HalfNormal(1.0),
+        [
+            self._N_CHAINS,
+            self._N_DRAWS,
+            self._N_GEOS,
+            self._N_MEDIA_TIMES,
+            self._N_MEDIA_CHANNELS,
+        ],
+    )
+    self._ec = self.sample(
+        backend.tfd.Uniform(0.0, 1.0),
+        sample_shape=[self._N_CHAINS, self._N_DRAWS, self._N_MEDIA_CHANNELS],
+    )
+    self._slope = self.sample(
+        backend.tfd.HalfNormal(1.0),
+        sample_shape=[self._N_CHAINS, self._N_DRAWS, self._N_MEDIA_CHANNELS],
+    )
 
   def test_raises(self):
     """Test that exceptions are raised as expected."""
     with self.assertRaisesRegex(ValueError, "`slope` and `ec` dimensions"):
       adstock_hill.HillTransformer(
-          ec=self._EC, slope=self._SLOPE[1:, ...]
-      ).forward(self._MEDIA)
+          ec=self._ec, slope=self._slope[1:, ...]
+      ).forward(self._media)
     with self.assertRaisesRegex(ValueError, "`media` batch dims do not"):
-      adstock_hill.HillTransformer(ec=self._EC, slope=self._SLOPE).forward(
-          self._MEDIA[1:, ...]
+      adstock_hill.HillTransformer(ec=self._ec, slope=self._slope).forward(
+          self._media[1:, ...]
       )
     with self.assertRaisesRegex(ValueError, "`media` contains a different"):
-      adstock_hill.HillTransformer(ec=self._EC, slope=self._SLOPE).forward(
-          self._MEDIA[..., 1:]
+      adstock_hill.HillTransformer(ec=self._ec, slope=self._slope).forward(
+          self._media[..., 1:]
       )
 
   @parameterized.named_parameters(
       dict(
           testcase_name="basic",
-          media=_MEDIA,
+          get_media=lambda s: s._media,
       ),
       dict(
           testcase_name="no media batch dims",
-          media=_MEDIA[0, 0, ...],
+          get_media=lambda s: s._media[0, 0, ...],
       ),
   )
-  def test_basic_output(self, media):
+  def test_basic_output(self, get_media):
     """Basic test for valid output."""
+    media = get_media(self)
     media_transformed = adstock_hill.HillTransformer(
-        ec=self._EC, slope=self._SLOPE
+        ec=self._ec, slope=self._slope
     ).forward(media)
-    tf.debugging.assert_equal(media_transformed.shape, self._MEDIA.shape)
-    tf.debugging.assert_all_finite(media_transformed, message="")
-    tf.debugging.assert_non_negative(media_transformed)
+    self.assertEqual(media_transformed.shape, self._media.shape)
+    test_utils.assert_all_finite(media_transformed, err_msg="")
+    test_utils.assert_all_non_negative(media_transformed)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="media=0",
-          media=tf.zeros_like(_MEDIA),
-          ec=_EC,
-          slope=_SLOPE,
-          result=tf.zeros_like(_MEDIA),
+          get_media=lambda s: backend.zeros_like(s._media),
+          get_ec=lambda s: s._ec,
+          get_slope=lambda s: s._slope,
+          get_result=lambda s: backend.zeros_like(s._media),
       ),
       dict(
           testcase_name="slope=ec=1",
-          media=_MEDIA,
-          ec=tf.ones_like(_EC),
-          slope=tf.ones_like(_SLOPE),
-          result=_MEDIA / (1 + _MEDIA),
+          get_media=lambda s: s._media,
+          get_ec=lambda s: backend.ones_like(s._ec),
+          get_slope=lambda s: backend.ones_like(s._slope),
+          get_result=lambda s: s._media / (1 + s._media),
       ),
       dict(
           testcase_name="slope=0",
-          media=_MEDIA,
-          ec=_EC,
-          slope=tf.zeros_like(_SLOPE),
-          result=0.5 * tf.ones_like(_MEDIA),
+          get_media=lambda s: s._media,
+          get_ec=lambda s: s._ec,
+          get_slope=lambda s: backend.zeros_like(s._slope),
+          get_result=lambda s: 0.5 * backend.ones_like(s._media),
       ),
   )
-  def test_known_outputs(self, media, ec, slope, result):
+  def test_known_outputs(self, get_media, get_ec, get_slope, get_result):
     """Test special cases where expected output is known."""
+    media = get_media(self)
+    ec = get_ec(self)
+    slope = get_slope(self)
+    result = get_result(self)
+
     media_transformed = adstock_hill.HillTransformer(
         ec=ec, slope=slope
     ).forward(media)
-    tf.debugging.assert_near(media_transformed, result)
+    test_utils.assert_allclose(media_transformed, result)
+
+
+class TestTransformNonNegativeRealsDistribution(test_utils.MeridianTestCase):
+  """Tests for transform_non_negative_reals_distribution()."""
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="lognormal",
+          get_distribution=lambda: backend.tfd.LogNormal(0.2, 0.9),
+      ),
+      dict(
+          testcase_name="halfnormal 2d",
+          get_distribution=lambda: backend.tfd.HalfNormal([1.0, 2.0]),
+      ),
+  )
+  def test_support(self, get_distribution):
+    distribution = get_distribution()
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    q0 = transformed_distribution.quantile(
+        backend.to_tensor(0.0, dtype=distribution.dtype)
+    )
+    q1 = transformed_distribution.quantile(
+        backend.to_tensor(1.0, dtype=distribution.dtype)
+    )
+
+    test_utils.assert_allclose(q0, 0.0, atol=1e-6)
+    test_utils.assert_allclose(q1, 1.0, atol=1e-6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="0", inp=0.0, out=1.0),
+      dict(testcase_name="1", inp=1.0, out=0.5),
+      dict(testcase_name="4", inp=4.0, out=0.2),
+      dict(testcase_name="inf", inp=np.inf, out=0.0),
+  )
+  def test_mapping(self, inp, out):
+    distribution = backend.tfd.Deterministic(inp)
+    transformed_distribution = (
+        adstock_hill.transform_non_negative_reals_distribution(distribution)
+    )
+    test_utils.assert_allclose(self.sample(transformed_distribution), out)
 
 
 if __name__ == "__main__":

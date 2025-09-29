@@ -54,6 +54,8 @@ DATE_FORMAT = '%Y-%m-%d'
 # Example: "2024 Apr"
 QUARTER_FORMAT = '%Y %b'
 
+ORGANIC_PREFIX = 'organic_'
+
 # Input data variables.
 KPI = 'kpi'
 REVENUE_PER_KPI = 'revenue_per_kpi'
@@ -65,9 +67,10 @@ REACH = 'reach'
 FREQUENCY = 'frequency'
 RF_IMPRESSIONS = 'rf_impressions'
 RF_SPEND = 'rf_spend'
-ORGANIC_MEDIA = 'organic_media'
-ORGANIC_REACH = 'organic_reach'
-ORGANIC_FREQUENCY = 'organic_frequency'
+ORGANIC_MEDIA = ORGANIC_PREFIX + MEDIA
+# ORGANIC_RF is defined below.
+ORGANIC_REACH = ORGANIC_PREFIX + REACH
+ORGANIC_FREQUENCY = ORGANIC_PREFIX + FREQUENCY
 NON_MEDIA_TREATMENTS = 'non_media_treatments'
 REVENUE = 'revenue'
 NON_REVENUE = 'non_revenue'
@@ -125,8 +128,8 @@ NON_REVENUE_DATA = IMPRESSIONS_DATA + (CONTROLS,)
 # Scaled input data variables.
 MEDIA_SCALED = 'media_scaled'
 REACH_SCALED = 'reach_scaled'
-ORGANIC_MEDIA_SCALED = 'organic_media_scaled'
-ORGANIC_REACH_SCALED = 'organic_reach_scaled'
+ORGANIC_MEDIA_SCALED = ORGANIC_PREFIX + MEDIA_SCALED
+ORGANIC_REACH_SCALED = ORGANIC_PREFIX + REACH_SCALED
 NON_MEDIA_TREATMENTS_SCALED = 'non_media_treatments_scaled'
 CONTROLS_SCALED = 'controls_scaled'
 
@@ -143,8 +146,9 @@ MEDIA_CHANNEL = 'media_channel'
 RF_CHANNEL = 'rf_channel'
 CHANNEL = 'channel'
 RF = 'rf'
-ORGANIC_MEDIA_CHANNEL = 'organic_media_channel'
-ORGANIC_RF_CHANNEL = 'organic_rf_channel'
+ORGANIC_RF = ORGANIC_PREFIX + RF
+ORGANIC_MEDIA_CHANNEL = ORGANIC_PREFIX + MEDIA_CHANNEL
+ORGANIC_RF_CHANNEL = ORGANIC_PREFIX + RF_CHANNEL
 NON_MEDIA_CHANNEL = 'non_media_channel'
 CONTROL_VARIABLE = 'control_variable'
 REQUIRED_INPUT_DATA_COORD_NAMES = (
@@ -169,6 +173,9 @@ POSSIBLE_INPUT_DATA_COORD_NAMES = (
 POSSIBLE_INPUT_DATA_COORDS_AND_ARRAYS_SET = frozenset(
     POSSIBLE_INPUT_DATA_COORD_NAMES + POSSIBLE_INPUT_DATA_ARRAY_NAMES
 )
+
+# EDA property constants
+ORGANIC_RF_IMPRESSIONS = ORGANIC_PREFIX + RF_IMPRESSIONS
 
 
 # National model constants.
@@ -212,9 +219,11 @@ NON_PAID_TREATMENT_PRIOR_TYPES = frozenset({
     TREATMENT_PRIOR_TYPE_COEFFICIENT,
     TREATMENT_PRIOR_TYPE_CONTRIBUTION,
 })
-PAID_MEDIA_ROI_PRIOR_TYPES = frozenset(
-    {TREATMENT_PRIOR_TYPE_ROI, TREATMENT_PRIOR_TYPE_MROI}
-)
+PAID_MEDIA_ROI_PRIOR_TYPES = frozenset({
+    TREATMENT_PRIOR_TYPE_ROI,
+    TREATMENT_PRIOR_TYPE_MROI,
+    TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+})
 # Represents a 1% increase in spend.
 MROI_FACTOR = 1.01
 
@@ -536,10 +545,17 @@ ADSTOCK_HILL_FUNCTIONS = frozenset({
     'hill',
 })
 
+# Adstock decay functions.
+GEOMETRIC_DECAY = 'geometric'
+BINOMIAL_DECAY = 'binomial'
+
+ADSTOCK_DECAY_FUNCTIONS = frozenset({GEOMETRIC_DECAY, BINOMIAL_DECAY})
+ADSTOCK_CHANNELS = (MEDIA, RF, ORGANIC_MEDIA, ORGANIC_RF)
 
 # Distribution constants.
 DISTRIBUTION = 'distribution'
 DISTRIBUTION_TYPE = 'distribution_type'
+INDEPENDENT_MULTIVARIATE = 'IndependentMultivariate'
 PRIOR = 'prior'
 POSTERIOR = 'posterior'
 # Prior mean proportion of KPI incremental due to all media.
@@ -745,3 +761,13 @@ WEEKLY = 'weekly'
 QUARTERLY = 'quarterly'
 TIME_GRANULARITIES = frozenset({WEEKLY, QUARTERLY})
 QUARTERLY_SUMMARY_THRESHOLD_WEEKS = 52
+
+# Automatic Knot Selection constants
+KNOTS_SELECTED = 'knots_selected'
+SELECTION_COEFS = 'selection_coefs'
+MODEL = 'model'
+REGRESSION_COEFS = 'regression_coefs'
+SELECTED_MATRIX = 'selected_matrix'
+AIC = 'aic'
+BIC = 'bic'
+EBIC = 'ebic'
