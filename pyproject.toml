@@ -75,6 +75,11 @@ and-cuda = [
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
 
+# UI dependencies for running the Advantage Medical Professionals MMM app.
+ui = [
+  "streamlit>=1.36.0",
+]
+
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [

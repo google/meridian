@@ -1,2 +1,3 @@
 global-exclude *_test.py
 include meridian/analysis/templates/*
+recursive-include apps/sample_data *
