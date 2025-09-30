@@ -135,6 +135,36 @@ tab of the Meridian GitHub repository. We have an internal roadmap for Meridian
 development, but would love your inputs for new feature requests so that we can
 prioritize them based on the roadmap.
 
+## Cloud Run deployment notes
+
+The default container image that ships with this repository exposes a small
+diagnostics service so you can confirm the runtime is configured correctly once
+deployed to Google Cloud Run. Two environment variables can be supplied at
+deploy time to point the container at your Advantage Medical Professionals
+datasets:
+
+* `MERIDIAN_DATA_PATH` – path to the aggregated MMM dataset you plan to model.
+* `MERIDIAN_CONFIG_PATH` – optional path to any configuration artefacts (model
+  specifications, priors, etc.).
+
+When the service is running you can call the following endpoints:
+
+* `GET /healthz` – returns a simple status message used by Cloud Run health
+  checks.
+* `GET /status` – returns a JSON payload with the detected Meridian version,
+  Python runtime details, and filesystem metadata for the configured dataset
+  paths. This gives immediate feedback on whether the container can reach the
+  files you mounted or downloaded at start-up.
+* `POST /refresh` – returns `501 Not Implemented`. Extend this endpoint to
+  trigger your modeling workflow once you are ready to productionize the
+  service (for example, kick off an orchestrated job that loads HubSpot exports,
+  refreshes the MMM, and persists summaries).
+
+Until you attach your own ingestion and modeling code, the diagnostics service
+is intentionally lightweight—it does not attempt to fit a model. Instead, it
+provides a foundation you can build on while giving your team enough visibility
+to validate that deployments are wired to the correct data sources.
+
 **Pull requests**: These are appreciated but are very difficult for us to merge
 because the code in this repository is linked to Google internal systems and has
 to pass internal review. If you submit a pull request and we believe that we can
