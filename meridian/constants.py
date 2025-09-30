@@ -123,7 +123,6 @@ RF_DATA = (
     RF_SPEND,
     REVENUE_PER_KPI,
 )
-NON_REVENUE_DATA = IMPRESSIONS_DATA + (CONTROLS,)
 
 # Scaled input data variables.
 MEDIA_SCALED = 'media_scaled'
