@@ -1644,7 +1644,7 @@ class Meridian:
         a list of integers as `n_chains` to sample chains serially. For more
         information, see
         [ResourceExhaustedError when running Meridian.sample_posterior]
-        (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
+        (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
     self.posterior_sampler_callable(
         n_chains=n_chains,

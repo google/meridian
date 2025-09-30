@@ -15,7 +15,7 @@ own in-house models. Meridian helps you answer key questions such as:
 *   How do I optimize my marketing budget allocation for the future?
 
 Meridian is a highly customizable modeling framework that is based on
-[Bayesian causal inference](https://developers.google.com/meridian/docs/advanced-modeling/bayesian-inference).
+[Bayesian causal inference](https://developers.google.com/meridian/docs/causal-inference/bayesian-inference).
 It is capable of handling large scale geo-level data, which is encouraged if
 available, but it can also be used for national-level modeling. Meridian
 provides clear insights and visualizations to inform business decisions around
@@ -110,7 +110,7 @@ started quickly with using Meridian:
 [4]: https://developers.google.com/meridian/docs/user-guide/installing
 [5]: https://developers.google.com/meridian/docs/pre-modeling/collect-data
 [6]: https://developers.google.com/meridian/docs/advanced-modeling/control-variables
-[7]: https://developers.google.com/meridian/docs/advanced-modeling/model-fit
+[7]: https://developers.google.com/meridian/docs/post-modeling/model-fit
 [8]: https://developers.google.com/meridian/docs/migrate
 [9]: https://developers.google.com/meridian/reference/api/meridian
 [10]: https://developers.google.com/meridian/docs/reference-list
