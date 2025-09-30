@@ -182,18 +182,18 @@ class AnalyzerTest(parameterized.TestCase):
         atol=0.1,
     )
 
-  def test_expected_outcome_new_revenue_per_kpi_raises_warning(self):
+  def test_expected_outcome_new_media_spend_raises_warning(self):
     with warnings.catch_warnings(record=True) as w:
       self.analyzer_media_and_rf.expected_outcome(
           new_data=analyzer.DataTensors(
-              revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi
+              media_spend=self.meridian_media_and_rf.media_tensors.media_spend
           ),
       )
 
       self.assertLen(w, 1)
       self.assertTrue(issubclass(w[0].category, UserWarning))
       self.assertIn(
-          "A `revenue_per_kpi` value was passed in the `new_data` argument. "
+          "A `media_spend` value was passed in the `new_data` argument. "
           "This is not supported and will be ignored.",
           str(w[0].message),
       )
@@ -286,6 +286,53 @@ class AnalyzerTest(parameterized.TestCase):
           else (_N_TIMES,)
       )
     self.assertEqual(outcome.shape, expected_shape)
+
+  def test_expected_outcome_new_data(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    expected = self.analyzer_media_and_rf.expected_outcome()
+    # Set new data with only certain param overrides matching the existing data.
+    # The params not provided should use the existing data and the result will
+    # be overridden. Using the same training data should result in the same
+    # expected outcome as the original data.
+    outcome = self.analyzer_media_and_rf.expected_outcome(
+        new_data=analyzer.DataTensors(
+            media=self.meridian_media_and_rf.media_tensors.media,
+            frequency=self.meridian_media_and_rf.rf_tensors.frequency,
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi,
+        ),
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        expected,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_expected_outcome_new_data_result(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    default = self.analyzer_media_and_rf.expected_outcome()
+    outcome = self.analyzer_media_and_rf.expected_outcome(
+        new_data=analyzer.DataTensors(
+            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi * 2.0,
+        ),
+        use_kpi=False,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        default * 2.0,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        analysis_test_utils.EXP_OUTCOME_MEDIA_AND_RF,
+        rtol=1e-3,
+        atol=1e-3,
+    )
 
   def test_incremental_outcome_new_controls_raises_warning(self):
     with warnings.catch_warnings(record=True) as w:
