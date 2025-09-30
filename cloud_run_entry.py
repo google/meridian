@@ -20,12 +20,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 import platform
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from urllib import parse
 
 try:
   from meridian import __version__ as _MERIDIAN_VERSION
-except Exception:  # pragma: no cover - defensive import guard
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - defensive import guard
   _MERIDIAN_VERSION = None
 
 
@@ -33,10 +33,10 @@ _DATA_PATH_ENV = "MERIDIAN_DATA_PATH"
 _CONFIG_PATH_ENV = "MERIDIAN_CONFIG_PATH"
 
 
-def _collect_path_metadata(path_value: str | None) -> Dict[str, Any]:
+def _collect_path_metadata(path_value: str | None) -> dict[str, Any]:
   """Return filesystem metadata for a configured path."""
 
-  info: Dict[str, Any] = {"configured": bool(path_value)}
+  info: dict[str, Any] = {"configured": bool(path_value)}
   if not path_value:
     info["message"] = (
         "Set the environment variable to point at your aggregated MMM dataset."
@@ -46,17 +46,20 @@ def _collect_path_metadata(path_value: str | None) -> Dict[str, Any]:
   path = Path(path_value)
   info["path"] = path_value
   info["exists"] = path.exists()
-  if path.is_file():
-    info["size_bytes"] = path.stat().st_size
-  elif path.is_dir():
-    info["contains"] = sorted(p.name for p in path.iterdir())[:25]
-  else:
-    info["message"] = "Path does not point to a regular file or directory."
+  try:
+    if path.is_file():
+      info["size_bytes"] = path.stat().st_size
+    elif path.is_dir():
+      info["contains"] = sorted(p.name for p in path.iterdir())[:25]
+    else:
+      info["message"] = "Path does not point to a regular file or directory."
+  except OSError as exc:
+    info["message"] = f"Unable to inspect path: {exc}"
 
   return info
 
 
-def _status_payload() -> Dict[str, Any]:
+def _status_payload() -> dict[str, Any]:
   """Builds a JSON-serialisable object describing the runtime state."""
 
   return {
@@ -79,7 +82,7 @@ def _status_payload() -> Dict[str, Any]:
 class MeridianDiagnosticsHandler(BaseHTTPRequestHandler):
   """Serve a couple of useful routes for Cloud Run diagnostics."""
 
-  def _send_json(self, payload: Dict[str, Any], status: HTTPStatus = HTTPStatus.OK):
+  def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK):
     body = json.dumps(payload, indent=2).encode("utf-8")
     self.send_response(status)
     self.send_header("Content-Type", "application/json; charset=utf-8")
