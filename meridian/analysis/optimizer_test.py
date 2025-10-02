@@ -4436,11 +4436,11 @@ class OptimizerKPITest(parameterized.TestCase):
         not use_kpi,
     )
 
-  def test_optimize_no_use_kpi_no_revenue_per_kpi_raises_error(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        'Revenue analysis is not available when `revenue_per_kpi` is unknown.'
-        ' Set `use_kpi=True` to perform KPI analysis instead.',
+  def test_optimize_no_use_kpi_no_revenue_per_kpi_raises_warning(self):
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Revenue analysis is not available when `revenue_per_kpi` is'
+        ' unknown. Defaulting to KPI analysis.',
     ):
       self.budget_optimizer_media_and_rf_kpi.optimize(use_kpi=False)
 
