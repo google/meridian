@@ -48,15 +48,14 @@ def _get_tau_g(
     parameter with zero at position `baseline_geo_idx` and matching
     `tau_g_excl_baseline` elsewhere.
   """
-  rank = len(tau_g_excl_baseline.shape)
-  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else 1
+  shape = tau_g_excl_baseline.shape[:-1] + (1,)
   tau_g = backend.concatenate(
       [
           tau_g_excl_baseline[..., :baseline_geo_idx],
           backend.zeros(shape, dtype=tau_g_excl_baseline.dtype),
           tau_g_excl_baseline[..., baseline_geo_idx:],
       ],
-      axis=rank - 1,
+      axis=-1,
   )
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
@@ -158,7 +157,7 @@ class PriorDistributionSampler:
       )
       media_vars[constants.BETA_M] = backend.tfd.Deterministic(
           beta_m_value, name=constants.BETA_M
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
 
     beta_eta_combined = (
         media_vars[constants.BETA_M][..., backend.newaxis, :]
@@ -171,7 +170,7 @@ class PriorDistributionSampler:
     )
     media_vars[constants.BETA_GM] = backend.tfd.Deterministic(
         beta_gm_value, name=constants.BETA_GM
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
 
     return media_vars
 
@@ -268,7 +267,7 @@ class PriorDistributionSampler:
       rf_vars[constants.BETA_RF] = backend.tfd.Deterministic(
           beta_rf_value,
           name=constants.BETA_RF,
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
 
     beta_eta_combined = (
         rf_vars[constants.BETA_RF][..., backend.newaxis, :]
@@ -281,7 +280,7 @@ class PriorDistributionSampler:
     )
     rf_vars[constants.BETA_GRF] = backend.tfd.Deterministic(
         beta_grf_value, name=constants.BETA_GRF
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
 
     return rf_vars
 
@@ -357,7 +356,7 @@ class PriorDistributionSampler:
       organic_media_vars[constants.BETA_OM] = backend.tfd.Deterministic(
           beta_om_value,
           name=constants.BETA_OM,
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
@@ -373,7 +372,7 @@ class PriorDistributionSampler:
     )
     organic_media_vars[constants.BETA_GOM] = backend.tfd.Deterministic(
         beta_gom_value, name=constants.BETA_GOM
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
 
     return organic_media_vars
 
@@ -450,7 +449,7 @@ class PriorDistributionSampler:
       organic_rf_vars[constants.BETA_ORF] = backend.tfd.Deterministic(
           beta_orf_value,
           name=constants.BETA_ORF,
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
@@ -466,7 +465,7 @@ class PriorDistributionSampler:
     )
     organic_rf_vars[constants.BETA_GORF] = backend.tfd.Deterministic(
         beta_gorf_value, name=constants.BETA_GORF
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
 
     return organic_rf_vars
 
@@ -531,7 +530,7 @@ class PriorDistributionSampler:
       )
       non_media_treatments_vars[constants.GAMMA_N] = backend.tfd.Deterministic(
           gamma_n_value, name=constants.GAMMA_N
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
     non_media_treatments_vars[constants.GAMMA_GN] = backend.tfd.Deterministic(
@@ -539,7 +538,7 @@ class PriorDistributionSampler:
         + non_media_treatments_vars[constants.XI_N][..., backend.newaxis, :]
         * gamma_gn_dev,
         name=constants.GAMMA_GN,
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
     return non_media_treatments_vars
 
   def _sample_prior(
@@ -576,7 +575,7 @@ class PriorDistributionSampler:
             _get_tau_g(
                 tau_g_excl_baseline=tau_g_excl_baseline,
                 baseline_geo_idx=mmm.baseline_geo_idx,
-            ).sample()
+            ).sample(seed=rng_handler.get_next_seed())
         ),
     }
 
@@ -587,7 +586,7 @@ class PriorDistributionSampler:
             backend.to_tensor(mmm.knot_info.weights),
         ),
         name=constants.MU_T,
-    ).sample()
+    ).sample(seed=rng_handler.get_next_seed())
 
     # Omit gamma_c, xi_c, and gamma_gc parameters from sampled distributions if
     # there are no control variables in the model.
@@ -610,7 +609,7 @@ class PriorDistributionSampler:
           base_vars[constants.GAMMA_C][..., backend.newaxis, :]
           + base_vars[constants.XI_C][..., backend.newaxis, :] * gamma_gc_dev,
           name=constants.GAMMA_GC,
-      ).sample()
+      ).sample(seed=rng_handler.get_next_seed())
 
     media_vars = (
         self._sample_media_priors(n_draws, rng_handler)
