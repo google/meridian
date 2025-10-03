@@ -87,6 +87,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     controls_scaled_da = engine.controls_scaled_da
     self.assertIsInstance(controls_scaled_da, xr.DataArray)
+    self.assertEqual(controls_scaled_da.name, constants.CONTROLS_SCALED)
     self.assertEqual(controls_scaled_da.shape, expected_shape)
     self.assertCountEqual(
         controls_scaled_da.coords.keys(),
@@ -138,6 +139,9 @@ class EDAEngineTest(
     national_controls_scaled_da = engine.national_controls_scaled_da
     self.assertIsInstance(national_controls_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_controls_scaled_da.name, constants.NATIONAL_CONTROLS_SCALED
+    )
+    self.assertEqual(
         national_controls_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
@@ -163,11 +167,18 @@ class EDAEngineTest(
     national_controls_scaled_da = engine.national_controls_scaled_da
     self.assertIsInstance(national_controls_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_controls_scaled_da.name, constants.NATIONAL_CONTROLS_SCALED
+    )
+    self.assertEqual(
         national_controls_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_CONTROLS,
         ),
+    )
+    self.assertCountEqual(
+        national_controls_scaled_da.coords.keys(),
+        [constants.TIME, constants.CONTROL_VARIABLE],
     )
     expected_controls_scaled_da = engine.controls_scaled_da
     self.assertIsNotNone(expected_controls_scaled_da)
@@ -206,6 +217,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     media_da = engine.media_raw_da
     self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.name, constants.MEDIA)
     self.assertEqual(media_da.shape, expected_shape)
     self.assertCountEqual(
         media_da.coords.keys(),
@@ -224,6 +236,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_media_raw_da = engine.national_media_raw_da
     self.assertIsInstance(national_media_raw_da, xr.DataArray)
+    self.assertEqual(national_media_raw_da.name, constants.NATIONAL_MEDIA)
     self.assertEqual(
         national_media_raw_da.shape,
         (
@@ -247,12 +260,17 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_media_raw_da = engine.national_media_raw_da
     self.assertIsInstance(national_media_raw_da, xr.DataArray)
+    self.assertEqual(national_media_raw_da.name, constants.NATIONAL_MEDIA)
     self.assertEqual(
         national_media_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_media_raw_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
     )
     expected_media_raw_da = engine.media_raw_da
     self.assertIsNotNone(expected_media_raw_da)
@@ -288,6 +306,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     media_da = engine.media_scaled_da
     self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.name, constants.MEDIA_SCALED)
     self.assertEqual(media_da.shape, expected_shape)
     self.assertCountEqual(
         media_da.coords.keys(),
@@ -307,6 +326,9 @@ class EDAEngineTest(
 
     national_media_scaled_da = engine.national_media_scaled_da
     self.assertIsInstance(national_media_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_media_scaled_da.name, constants.NATIONAL_MEDIA_SCALED
+    )
     self.assertEqual(
         national_media_scaled_da.shape,
         (
@@ -335,11 +357,18 @@ class EDAEngineTest(
     national_media_scaled_da = engine.national_media_scaled_da
     self.assertIsInstance(national_media_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_media_scaled_da.name, constants.NATIONAL_MEDIA_SCALED
+    )
+    self.assertEqual(
         national_media_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
     )
     expected_media_scaled_da = engine.media_scaled_da
     self.assertIsNotNone(expected_media_scaled_da)
@@ -375,6 +404,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     media_da = engine.media_spend_da
     self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.name, constants.MEDIA_SPEND)
     self.assertEqual(media_da.shape, expected_shape)
     self.assertCountEqual(
         media_da.coords.keys(),
@@ -388,6 +418,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_media_spend_da = engine.national_media_spend_da
     self.assertIsInstance(national_media_spend_da, xr.DataArray)
+    self.assertEqual(
+        national_media_spend_da.name, constants.NATIONAL_MEDIA_SPEND
+    )
     self.assertEqual(
         national_media_spend_da.shape,
         (
@@ -412,11 +445,18 @@ class EDAEngineTest(
     national_media_spend_da = engine.national_media_spend_da
     self.assertIsInstance(national_media_spend_da, xr.DataArray)
     self.assertEqual(
+        national_media_spend_da.name, constants.NATIONAL_MEDIA_SPEND
+    )
+    self.assertEqual(
         national_media_spend_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_media_spend_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
     )
     expected_media_spend_da = engine.media_spend_da
     self.assertIsNotNone(expected_media_spend_da)
@@ -454,6 +494,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_media_da = engine.organic_media_raw_da
     self.assertIsInstance(organic_media_da, xr.DataArray)
+    self.assertEqual(organic_media_da.name, constants.ORGANIC_MEDIA)
     self.assertEqual(organic_media_da.shape, expected_shape)
     self.assertCountEqual(
         organic_media_da.coords.keys(),
@@ -494,6 +535,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_media_da = engine.organic_media_scaled_da
     self.assertIsInstance(organic_media_da, xr.DataArray)
+    self.assertEqual(organic_media_da.name, constants.ORGANIC_MEDIA_SCALED)
     self.assertEqual(organic_media_da.shape, expected_shape)
     self.assertCountEqual(
         organic_media_da.coords.keys(),
@@ -513,6 +555,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_organic_media_raw_da = engine.national_organic_media_raw_da
     self.assertIsInstance(national_organic_media_raw_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_media_raw_da.name, constants.NATIONAL_ORGANIC_MEDIA
+    )
     self.assertEqual(
         national_organic_media_raw_da.shape,
         (
@@ -539,11 +584,18 @@ class EDAEngineTest(
     national_organic_media_raw_da = engine.national_organic_media_raw_da
     self.assertIsInstance(national_organic_media_raw_da, xr.DataArray)
     self.assertEqual(
+        national_organic_media_raw_da.name, constants.NATIONAL_ORGANIC_MEDIA
+    )
+    self.assertEqual(
         national_organic_media_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_media_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
     )
     expected_organic_media_raw_da = engine.organic_media_raw_da
     self.assertIsNotNone(expected_organic_media_raw_da)
@@ -565,6 +617,10 @@ class EDAEngineTest(
 
     national_organic_media_scaled_da = engine.national_organic_media_scaled_da
     self.assertIsInstance(national_organic_media_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_media_scaled_da.name,
+        constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+    )
     self.assertEqual(
         national_organic_media_scaled_da.shape,
         (
@@ -592,11 +648,19 @@ class EDAEngineTest(
     national_organic_media_scaled_da = engine.national_organic_media_scaled_da
     self.assertIsInstance(national_organic_media_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_organic_media_scaled_da.name,
+        constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+    )
+    self.assertEqual(
         national_organic_media_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
     )
     expected_organic_media_scaled_da = engine.organic_media_scaled_da
     self.assertIsNotNone(expected_organic_media_scaled_da)
@@ -637,6 +701,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     non_media_da = engine.non_media_scaled_da
     self.assertIsInstance(non_media_da, xr.DataArray)
+    self.assertEqual(non_media_da.name, constants.NON_MEDIA_TREATMENTS_SCALED)
     self.assertEqual(non_media_da.shape, expected_shape)
     self.assertCountEqual(
         non_media_da.coords.keys(),
@@ -682,6 +747,10 @@ class EDAEngineTest(
     national_non_media_scaled_da = engine.national_non_media_scaled_da
     self.assertIsInstance(national_non_media_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_non_media_scaled_da.name,
+        constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
+    )
+    self.assertEqual(
         national_non_media_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
@@ -709,11 +778,19 @@ class EDAEngineTest(
     national_non_media_scaled_da = engine.national_non_media_scaled_da
     self.assertIsInstance(national_non_media_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_non_media_scaled_da.name,
+        constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
+    )
+    self.assertEqual(
         national_non_media_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_non_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.NON_MEDIA_CHANNEL],
     )
     expected_non_media_scaled_da = engine.non_media_scaled_da
     self.assertIsNotNone(expected_non_media_scaled_da)
@@ -752,6 +829,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     rf_spend_da = engine.rf_spend_da
     self.assertIsInstance(rf_spend_da, xr.DataArray)
+    self.assertEqual(rf_spend_da.name, constants.RF_SPEND)
     self.assertEqual(rf_spend_da.shape, expected_shape)
     self.assertCountEqual(
         rf_spend_da.coords.keys(),
@@ -765,6 +843,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_rf_spend_da = engine.national_rf_spend_da
     self.assertIsInstance(national_rf_spend_da, xr.DataArray)
+    self.assertEqual(national_rf_spend_da.name, constants.NATIONAL_RF_SPEND)
     self.assertEqual(
         national_rf_spend_da.shape,
         (
@@ -788,12 +867,17 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_rf_spend_da = engine.national_rf_spend_da
     self.assertIsInstance(national_rf_spend_da, xr.DataArray)
+    self.assertEqual(national_rf_spend_da.name, constants.NATIONAL_RF_SPEND)
     self.assertEqual(
         national_rf_spend_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_rf_spend_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_rf_spend_da = engine.rf_spend_da
     self.assertIsNotNone(expected_rf_spend_da)
@@ -829,6 +913,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     reach_da = engine.reach_raw_da
     self.assertIsInstance(reach_da, xr.DataArray)
+    self.assertEqual(reach_da.name, constants.REACH)
     self.assertEqual(reach_da.shape, expected_shape)
     self.assertCountEqual(
         reach_da.coords.keys(),
@@ -845,6 +930,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_reach_raw_da = engine.national_reach_raw_da
     self.assertIsInstance(national_reach_raw_da, xr.DataArray)
+    self.assertEqual(national_reach_raw_da.name, constants.NATIONAL_REACH)
     self.assertEqual(
         national_reach_raw_da.shape,
         (
@@ -868,12 +954,17 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_reach_raw_da = engine.national_reach_raw_da
     self.assertIsInstance(national_reach_raw_da, xr.DataArray)
+    self.assertEqual(national_reach_raw_da.name, constants.NATIONAL_REACH)
     self.assertEqual(
         national_reach_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_reach_raw_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_reach_raw_da = engine.reach_raw_da
     self.assertIsNotNone(expected_reach_raw_da)
@@ -909,6 +1000,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     reach_da = engine.reach_scaled_da
     self.assertIsInstance(reach_da, xr.DataArray)
+    self.assertEqual(reach_da.name, constants.REACH_SCALED)
     self.assertEqual(reach_da.shape, expected_shape)
     self.assertCountEqual(
         reach_da.coords.keys(),
@@ -926,6 +1018,9 @@ class EDAEngineTest(
 
     national_reach_scaled_da = engine.national_reach_scaled_da
     self.assertIsInstance(national_reach_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_reach_scaled_da.name, constants.NATIONAL_REACH_SCALED
+    )
     self.assertEqual(
         national_reach_scaled_da.shape,
         (
@@ -952,11 +1047,18 @@ class EDAEngineTest(
     national_reach_scaled_da = engine.national_reach_scaled_da
     self.assertIsInstance(national_reach_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_reach_scaled_da.name, constants.NATIONAL_REACH_SCALED
+    )
+    self.assertEqual(
         national_reach_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_reach_scaled_da = engine.reach_scaled_da
     self.assertIsNotNone(expected_reach_scaled_da)
@@ -991,6 +1093,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     frequency_da = engine.frequency_da
     self.assertIsInstance(frequency_da, xr.DataArray)
+    self.assertEqual(frequency_da.name, constants.FREQUENCY)
     self.assertEqual(frequency_da.shape, expected_shape)
     self.assertCountEqual(
         frequency_da.coords.keys(),
@@ -1007,6 +1110,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_frequency_da = engine.national_frequency_da
     self.assertIsInstance(national_frequency_da, xr.DataArray)
+    self.assertEqual(national_frequency_da.name, constants.NATIONAL_FREQUENCY)
     self.assertEqual(
         national_frequency_da.shape,
         (
@@ -1038,12 +1142,17 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_frequency_da = engine.national_frequency_da
     self.assertIsInstance(national_frequency_da, xr.DataArray)
+    self.assertEqual(national_frequency_da.name, constants.NATIONAL_FREQUENCY)
     self.assertEqual(
         national_frequency_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_frequency_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_frequency_da = engine.frequency_da
     self.assertIsNotNone(expected_frequency_da)
@@ -1081,6 +1190,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     rf_impressions_raw_da = engine.rf_impressions_raw_da
     self.assertIsInstance(rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(rf_impressions_raw_da.name, constants.RF_IMPRESSIONS)
     self.assertEqual(rf_impressions_raw_da.shape, expected_shape)
     self.assertCountEqual(
         rf_impressions_raw_da.coords.keys(),
@@ -1100,6 +1210,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_rf_impressions_raw_da = engine.national_rf_impressions_raw_da
     self.assertIsInstance(national_rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(
+        national_rf_impressions_raw_da.name, constants.NATIONAL_RF_IMPRESSIONS
+    )
     self.assertEqual(
         national_rf_impressions_raw_da.shape,
         (
@@ -1125,11 +1238,18 @@ class EDAEngineTest(
     national_rf_impressions_raw_da = engine.national_rf_impressions_raw_da
     self.assertIsInstance(national_rf_impressions_raw_da, xr.DataArray)
     self.assertEqual(
+        national_rf_impressions_raw_da.name, constants.NATIONAL_RF_IMPRESSIONS
+    )
+    self.assertEqual(
         national_rf_impressions_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_rf_impressions_raw_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_rf_impressions_raw_da = engine.rf_impressions_raw_da
     self.assertIsNotNone(expected_rf_impressions_raw_da)
@@ -1193,6 +1313,9 @@ class EDAEngineTest(
     self.assertIsNotNone(rf_impressions_scaled_da)
 
     self.assertIsInstance(rf_impressions_scaled_da, xr.DataArray)
+    self.assertEqual(
+        rf_impressions_scaled_da.name, constants.RF_IMPRESSIONS_SCALED
+    )
     self.assertEqual(rf_impressions_scaled_da.shape, expected_shape)
     self.assertCountEqual(
         rf_impressions_scaled_da.coords.keys(),
@@ -1218,6 +1341,10 @@ class EDAEngineTest(
         engine.national_rf_impressions_scaled_da
     )
     self.assertIsInstance(national_rf_impressions_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_rf_impressions_scaled_da.name,
+        constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+    )
     self.assertEqual(
         national_rf_impressions_scaled_da.shape,
         (
@@ -1247,11 +1374,19 @@ class EDAEngineTest(
     )
     self.assertIsInstance(national_rf_impressions_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_rf_impressions_scaled_da.name,
+        constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+    )
+    self.assertEqual(
         national_rf_impressions_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_rf_impressions_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_rf_impressions_scaled_da = engine.rf_impressions_scaled_da
     self.assertIsNotNone(expected_rf_impressions_scaled_da)
@@ -1292,6 +1427,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_reach_da = engine.organic_reach_raw_da
     self.assertIsInstance(organic_reach_da, xr.DataArray)
+    self.assertEqual(organic_reach_da.name, constants.ORGANIC_REACH)
     self.assertEqual(organic_reach_da.shape, expected_shape)
     self.assertCountEqual(
         organic_reach_da.coords.keys(),
@@ -1310,6 +1446,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_organic_reach_raw_da = engine.national_organic_reach_raw_da
     self.assertIsInstance(national_organic_reach_raw_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_reach_raw_da.name, constants.NATIONAL_ORGANIC_REACH
+    )
     self.assertEqual(
         national_organic_reach_raw_da.shape,
         (
@@ -1334,11 +1473,18 @@ class EDAEngineTest(
     national_organic_reach_raw_da = engine.national_organic_reach_raw_da
     self.assertIsInstance(national_organic_reach_raw_da, xr.DataArray)
     self.assertEqual(
+        national_organic_reach_raw_da.name, constants.NATIONAL_ORGANIC_REACH
+    )
+    self.assertEqual(
         national_organic_reach_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_reach_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_da = engine.organic_reach_raw_da
     self.assertIsNotNone(expected_da)
@@ -1376,6 +1522,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_reach_da = engine.organic_reach_scaled_da
     self.assertIsInstance(organic_reach_da, xr.DataArray)
+    self.assertEqual(organic_reach_da.name, constants.ORGANIC_REACH_SCALED)
     self.assertEqual(organic_reach_da.shape, expected_shape)
     self.assertCountEqual(
         organic_reach_da.coords.keys(),
@@ -1397,6 +1544,10 @@ class EDAEngineTest(
 
     national_organic_reach_scaled_da = engine.national_organic_reach_scaled_da
     self.assertIsInstance(national_organic_reach_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_reach_scaled_da.name,
+        constants.NATIONAL_ORGANIC_REACH_SCALED,
+    )
     self.assertEqual(
         national_organic_reach_scaled_da.shape,
         (
@@ -1427,11 +1578,19 @@ class EDAEngineTest(
     national_organic_reach_scaled_da = engine.national_organic_reach_scaled_da
     self.assertIsInstance(national_organic_reach_scaled_da, xr.DataArray)
     self.assertEqual(
+        national_organic_reach_scaled_da.name,
+        constants.NATIONAL_ORGANIC_REACH_SCALED,
+    )
+    self.assertEqual(
         national_organic_reach_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_da = engine.organic_reach_scaled_da
     self.assertIsNotNone(expected_da)
@@ -1471,6 +1630,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_frequency_da = engine.organic_frequency_da
     self.assertIsInstance(organic_frequency_da, xr.DataArray)
+    self.assertEqual(organic_frequency_da.name, constants.ORGANIC_FREQUENCY)
     self.assertEqual(organic_frequency_da.shape, expected_shape)
     self.assertCountEqual(
         organic_frequency_da.coords.keys(),
@@ -1490,6 +1650,10 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_organic_frequency_da = engine.national_organic_frequency_da
     self.assertIsInstance(national_organic_frequency_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_frequency_da.name,
+        constants.NATIONAL_ORGANIC_FREQUENCY,
+    )
     self.assertEqual(
         national_organic_frequency_da.shape,
         (
@@ -1526,11 +1690,19 @@ class EDAEngineTest(
     national_organic_frequency_da = engine.national_organic_frequency_da
     self.assertIsInstance(national_organic_frequency_da, xr.DataArray)
     self.assertEqual(
+        national_organic_frequency_da.name,
+        constants.NATIONAL_ORGANIC_FREQUENCY,
+    )
+    self.assertEqual(
         national_organic_frequency_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_frequency_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
 
     expected_da = engine.organic_frequency_da
@@ -1569,6 +1741,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     organic_rf_impressions_raw_da = engine.organic_rf_impressions_raw_da
     self.assertIsInstance(organic_rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(
+        organic_rf_impressions_raw_da.name, constants.ORGANIC_RF_IMPRESSIONS
+    )
     self.assertEqual(organic_rf_impressions_raw_da.shape, expected_shape)
     self.assertCountEqual(
         organic_rf_impressions_raw_da.coords.keys(),
@@ -1591,6 +1766,10 @@ class EDAEngineTest(
         engine.national_organic_rf_impressions_raw_da
     )
     self.assertIsInstance(national_organic_rf_impressions_raw_da, xr.DataArray)
+    self.assertEqual(
+        national_organic_rf_impressions_raw_da.name,
+        constants.NATIONAL_ORGANIC_RF_IMPRESSIONS,
+    )
     self.assertEqual(
         national_organic_rf_impressions_raw_da.shape,
         (
@@ -1620,11 +1799,19 @@ class EDAEngineTest(
     )
     self.assertIsInstance(national_organic_rf_impressions_raw_da, xr.DataArray)
     self.assertEqual(
+        national_organic_rf_impressions_raw_da.name,
+        constants.NATIONAL_ORGANIC_RF_IMPRESSIONS,
+    )
+    self.assertEqual(
         national_organic_rf_impressions_raw_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_rf_impressions_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_organic_rf_impressions_raw_da = (
         engine.organic_rf_impressions_raw_da
@@ -1692,6 +1879,10 @@ class EDAEngineTest(
     self.assertIsNotNone(organic_rf_impressions_scaled_da)
 
     self.assertIsInstance(organic_rf_impressions_scaled_da, xr.DataArray)
+    self.assertEqual(
+        organic_rf_impressions_scaled_da.name,
+        constants.ORGANIC_RF_IMPRESSIONS_SCALED,
+    )
     self.assertEqual(organic_rf_impressions_scaled_da.shape, expected_shape)
     self.assertCountEqual(
         organic_rf_impressions_scaled_da.coords.keys(),
@@ -1720,6 +1911,10 @@ class EDAEngineTest(
     )
     self.assertIsInstance(
         national_organic_rf_impressions_scaled_da, xr.DataArray
+    )
+    self.assertEqual(
+        national_organic_rf_impressions_scaled_da.name,
+        constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
     )
     self.assertEqual(
         national_organic_rf_impressions_scaled_da.shape,
@@ -1755,11 +1950,19 @@ class EDAEngineTest(
         national_organic_rf_impressions_scaled_da, xr.DataArray
     )
     self.assertEqual(
+        national_organic_rf_impressions_scaled_da.name,
+        constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
+    )
+    self.assertEqual(
         national_organic_rf_impressions_scaled_da.shape,
         (
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_rf_impressions_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_organic_rf_impressions_scaled_da = (
         engine.organic_rf_impressions_scaled_da
@@ -1782,6 +1985,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     population_da = engine.geo_population_da
     self.assertIsInstance(population_da, xr.DataArray)
+    self.assertEqual(population_da.name, constants.POPULATION)
     self.assertEqual(
         population_da.shape,
         (model_test_data.WithInputDataSamples._N_GEOS,),
@@ -1813,6 +2017,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     kpi_da = engine.kpi_scaled_da
     self.assertIsInstance(kpi_da, xr.DataArray)
+    self.assertEqual(kpi_da.name, constants.KPI_SCALED)
     self.assertEqual(kpi_da.shape, expected_shape)
     self.assertCountEqual(kpi_da.coords.keys(), [constants.GEO, constants.TIME])
     self.assertAllClose(kpi_da.values, meridian.kpi_scaled)
@@ -1824,6 +2029,7 @@ class EDAEngineTest(
 
     national_kpi_scaled_da = engine.national_kpi_scaled_da
     self.assertIsInstance(national_kpi_scaled_da, xr.DataArray)
+    self.assertEqual(national_kpi_scaled_da.name, constants.NATIONAL_KPI_SCALED)
     self.assertEqual(
         national_kpi_scaled_da.shape,
         (model_test_data.WithInputDataSamples._N_TIMES,),
@@ -1842,9 +2048,14 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     national_kpi_scaled_da = engine.national_kpi_scaled_da
     self.assertIsInstance(national_kpi_scaled_da, xr.DataArray)
+    self.assertEqual(national_kpi_scaled_da.name, constants.NATIONAL_KPI_SCALED)
     self.assertEqual(
         national_kpi_scaled_da.shape,
         (model_test_data.WithInputDataSamples._N_TIMES,),
+    )
+    self.assertCountEqual(
+        national_kpi_scaled_da.coords.keys(),
+        [constants.TIME],
     )
     self.assertAllClose(
         national_kpi_scaled_da.values,
@@ -1856,14 +2067,14 @@ class EDAEngineTest(
       dict(
           testcase_name="media_only",
           input_data_fixture="input_data_with_media_only",
-          expected_vars=[constants.MEDIA, constants.CONTROLS],
+          expected_vars=[constants.MEDIA_SCALED, constants.CONTROLS_SCALED],
           expected_dims={
-              constants.MEDIA: [
+              constants.MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.CONTROLS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
@@ -1874,22 +2085,22 @@ class EDAEngineTest(
           testcase_name="media_rf",
           input_data_fixture="input_data_with_media_and_rf",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.CONTROLS,
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.CONTROLS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.CONTROLS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
@@ -1900,40 +2111,40 @@ class EDAEngineTest(
           testcase_name="all_channels",
           input_data_fixture="input_data_non_media_and_organic",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.ORGANIC_MEDIA,
-              constants.ORGANIC_RF_IMPRESSIONS,
-              constants.CONTROLS,
-              constants.NON_MEDIA_TREATMENTS,
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.ORGANIC_MEDIA_SCALED,
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED,
+              constants.CONTROLS_SCALED,
+              constants.NON_MEDIA_TREATMENTS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.ORGANIC_MEDIA: [
+              constants.ORGANIC_MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.ORGANIC_MEDIA_CHANNEL,
               ],
-              constants.ORGANIC_RF_IMPRESSIONS: [
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.ORGANIC_RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.CONTROLS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
-              constants.NON_MEDIA_TREATMENTS: [
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.NON_MEDIA_CHANNEL,
@@ -1944,22 +2155,22 @@ class EDAEngineTest(
           testcase_name="when_national_media_rf",
           input_data_fixture="national_input_data_media_and_rf",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.CONTROLS,
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.CONTROLS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.CONTROLS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
@@ -1970,40 +2181,40 @@ class EDAEngineTest(
           testcase_name="when_national_all_channels",
           input_data_fixture="national_input_data_non_media_and_organic",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.ORGANIC_MEDIA,
-              constants.ORGANIC_RF_IMPRESSIONS,
-              constants.CONTROLS,
-              constants.NON_MEDIA_TREATMENTS,
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.ORGANIC_MEDIA_SCALED,
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED,
+              constants.CONTROLS_SCALED,
+              constants.NON_MEDIA_TREATMENTS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.ORGANIC_MEDIA: [
+              constants.ORGANIC_MEDIA_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.ORGANIC_MEDIA_CHANNEL,
               ],
-              constants.ORGANIC_RF_IMPRESSIONS: [
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.ORGANIC_RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.CONTROLS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
-              constants.NON_MEDIA_TREATMENTS: [
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
                   constants.GEO,
                   constants.TIME,
                   constants.NON_MEDIA_CHANNEL,
@@ -2022,20 +2233,23 @@ class EDAEngineTest(
     self.assertCountEqual(tc_scaled_ds.data_vars.keys(), expected_vars)
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(tc_scaled_ds[var].dims, dims)
+      self.assertCountEqual(list(tc_scaled_ds[var].dims), dims)
 
   # --- Test cases for national_treatment_control_scaled_ds ---
   @parameterized.named_parameters(
       dict(
           testcase_name="media_only",
           input_data_fixture="input_data_with_media_only",
-          expected_vars=[constants.MEDIA, constants.CONTROLS],
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_CONTROLS_SCALED,
+          ],
           expected_dims={
-              constants.MEDIA: [
+              constants.NATIONAL_MEDIA_SCALED: [
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.NATIONAL_CONTROLS_SCALED: [
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
@@ -2045,20 +2259,20 @@ class EDAEngineTest(
           testcase_name="media_rf",
           input_data_fixture="input_data_with_media_and_rf",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.CONTROLS,
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_CONTROLS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.NATIONAL_MEDIA_SCALED: [
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.NATIONAL_CONTROLS_SCALED: [
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
@@ -2068,35 +2282,35 @@ class EDAEngineTest(
           testcase_name="all_channels",
           input_data_fixture="input_data_non_media_and_organic",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.ORGANIC_MEDIA,
-              constants.ORGANIC_RF_IMPRESSIONS,
-              constants.CONTROLS,
-              constants.NON_MEDIA_TREATMENTS,
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_CONTROLS_SCALED,
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.NATIONAL_MEDIA_SCALED: [
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.ORGANIC_MEDIA: [
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED: [
                   constants.TIME,
                   constants.ORGANIC_MEDIA_CHANNEL,
               ],
-              constants.ORGANIC_RF_IMPRESSIONS: [
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.ORGANIC_RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.NATIONAL_CONTROLS_SCALED: [
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
-              constants.NON_MEDIA_TREATMENTS: [
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
                   constants.TIME,
                   constants.NON_MEDIA_CHANNEL,
               ],
@@ -2106,20 +2320,20 @@ class EDAEngineTest(
           testcase_name="national_media_rf",
           input_data_fixture="national_input_data_media_and_rf",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.CONTROLS,
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_CONTROLS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.NATIONAL_MEDIA_SCALED: [
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.NATIONAL_CONTROLS_SCALED: [
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
@@ -2129,35 +2343,35 @@ class EDAEngineTest(
           testcase_name="national_all_channels",
           input_data_fixture="national_input_data_non_media_and_organic",
           expected_vars=[
-              constants.MEDIA,
-              constants.RF_IMPRESSIONS,
-              constants.ORGANIC_MEDIA,
-              constants.ORGANIC_RF_IMPRESSIONS,
-              constants.CONTROLS,
-              constants.NON_MEDIA_TREATMENTS,
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_CONTROLS_SCALED,
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
           ],
           expected_dims={
-              constants.MEDIA: [
+              constants.NATIONAL_MEDIA_SCALED: [
                   constants.TIME,
                   constants.MEDIA_CHANNEL,
               ],
-              constants.RF_IMPRESSIONS: [
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.RF_CHANNEL,
               ],
-              constants.ORGANIC_MEDIA: [
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED: [
                   constants.TIME,
                   constants.ORGANIC_MEDIA_CHANNEL,
               ],
-              constants.ORGANIC_RF_IMPRESSIONS: [
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED: [
                   constants.TIME,
                   constants.ORGANIC_RF_CHANNEL,
               ],
-              constants.CONTROLS: [
+              constants.NATIONAL_CONTROLS_SCALED: [
                   constants.TIME,
                   constants.CONTROL_VARIABLE,
               ],
-              constants.NON_MEDIA_TREATMENTS: [
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
                   constants.TIME,
                   constants.NON_MEDIA_CHANNEL,
               ],
@@ -2172,13 +2386,352 @@ class EDAEngineTest(
     national_tc_scaled_ds = engine.national_treatment_control_scaled_ds
     self.assertIsInstance(national_tc_scaled_ds, xr.Dataset)
 
-    self.assertCountEqual(national_tc_scaled_ds.data_vars.keys(), expected_vars)
+    self.assertCountEqual(
+        national_tc_scaled_ds.data_vars.keys(),
+        expected_vars,
+    )
 
     for var in expected_vars:
       self.assertCountEqual(
           list(national_tc_scaled_ds[var].dims),
           expected_dims[var],
       )
+
+  # --- Test cases for all_reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              (
+                  model_test_data.WithInputDataSamples._N_RF_CHANNELS
+                  + model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS
+              ),
+          ),
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.reach_scaled_da,
+                  engine.organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              (
+                  model_test_data.WithInputDataSamples._N_RF_CHANNELS
+                  + model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS
+              ),
+          ),
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.reach_scaled_da,
+                  engine.organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.reach_scaled_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.reach_scaled_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+  )
+  def test_all_reach_scaled_da_present(
+      self, input_data_fixture, expected_shape, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    all_reach_scaled_da = engine.all_reach_scaled_da
+
+    self.assertIsInstance(all_reach_scaled_da, xr.DataArray)
+    self.assertEqual(all_reach_scaled_da.name, constants.ALL_REACH_SCALED)
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(all_reach_scaled_da.values, expected_da.values)
+
+    self.assertEqual(all_reach_scaled_da.shape, expected_shape)
+
+    self.assertCountEqual(
+        all_reach_scaled_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for all_freq_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.frequency_da,
+                  engine.organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.frequency_da,
+                  engine.organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.frequency_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.frequency_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: engine.organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: engine.organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+  )
+  def test_all_freq_da_present(self, input_data_fixture, expected_da_func):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    all_freq_da = engine.all_freq_da
+
+    self.assertIsInstance(all_freq_da, xr.DataArray)
+    self.assertEqual(all_freq_da.name, constants.ALL_FREQUENCY)
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(all_freq_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        all_freq_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for national_all_reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_reach_scaled_da,
+                  engine.national_organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_reach_scaled_da,
+                  engine.national_organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.national_reach_scaled_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.national_reach_scaled_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_reach_scaled_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_reach_scaled_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+  )
+  def test_national_all_reach_scaled_da_present(
+      self, input_data_fixture, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_all_reach_scaled_da = engine.national_all_reach_scaled_da
+
+    self.assertIsInstance(national_all_reach_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_all_reach_scaled_da.name, constants.NATIONAL_ALL_REACH_SCALED
+    )
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(national_all_reach_scaled_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        national_all_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for national_all_freq_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_frequency_da,
+                  engine.national_organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_frequency_da,
+                  engine.national_organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.national_frequency_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.national_frequency_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_frequency_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_frequency_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+  )
+  def test_national_all_freq_da_present(
+      self, input_data_fixture, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_all_freq_da = engine.national_all_freq_da
+
+    self.assertIsInstance(national_all_freq_da, xr.DataArray)
+    self.assertEqual(
+        national_all_freq_da.name, constants.NATIONAL_ALL_FREQUENCY
+    )
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(national_all_freq_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        national_all_freq_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
 
   @parameterized.named_parameters(
       dict(
@@ -2366,6 +2919,26 @@ class EDAEngineTest(
           input_data_fixture="national_input_data_media_and_rf",
           property_name="geo_population_da",
       ),
+      dict(
+          testcase_name="all_reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="all_reach_scaled_da",
+      ),
+      dict(
+          testcase_name="all_freq_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="all_freq_da",
+      ),
+      dict(
+          testcase_name="national_all_reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="national_all_reach_scaled_da",
+      ),
+      dict(
+          testcase_name="national_all_freq_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="national_all_freq_da",
+      ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
     meridian = model.Meridian(getattr(self, input_data_fixture))
@@ -2487,7 +3060,7 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", overall_result.extreme_corr_var_pairs.to_string())
@@ -2529,7 +3102,7 @@ class EDAEngineTest(
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", geo_result.extreme_corr_var_pairs.to_string())
@@ -2571,12 +3144,12 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
 
     pd.testing.assert_frame_equal(
@@ -2631,7 +3204,7 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
     self.assertIn(
@@ -2681,7 +3254,7 @@ class EDAEngineTest(
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
     self.assertIn("control_1", geo_result.extreme_corr_var_pairs.to_string())
@@ -2734,15 +3307,17 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     overall_corr_mat = overall_result.corr_matrix
+    self.assertEqual(overall_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
     geo_corr_mat = geo_result.corr_matrix
+    self.assertEqual(geo_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
 
     # Check overall correlation
     self.assertAllClose(
@@ -2755,6 +3330,13 @@ class EDAEngineTest(
         geo_corr_mat.sel(var1="media_1", var2="control_1").values,
         expected_geo_corr,
     )
+
+  def test_check_pairwise_corr_geo_raises_error_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_pairwise_corr_geo()
 
   def test_check_pairwise_corr_national_one_error(self):
     # Create data where media_1 and media_2 are perfectly correlated
@@ -2788,7 +3370,7 @@ class EDAEngineTest(
     )
 
     result = outcome.pairwise_corr_results[0]
-    self.assertEqual(result.level, eda_outcome.CorrelationAnalysisLevel.OVERALL)
+    self.assertEqual(result.level, eda_outcome.AnalysisLevel.NATIONAL)
     self.assertIn("media_1", result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", result.extreme_corr_var_pairs.to_string())
     self.assertEqual(
@@ -2871,6 +3453,7 @@ class EDAEngineTest(
 
     result = outcome.pairwise_corr_results[0]
     corr_mat = result.corr_matrix
+    self.assertEqual(corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
 
     self.assertAllClose(
         corr_mat.sel(var1="media_1", var2="control_1").values,
