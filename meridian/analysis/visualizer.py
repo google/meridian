@@ -46,9 +46,10 @@ alt.data_transformers.disable_max_rows()
 class ModelDiagnostics:
   """Generates model diagnostics plots from the Meridian model fitting."""
 
-  def __init__(self, meridian: model.Meridian):
+  def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
+    self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
   @functools.lru_cache(maxsize=128)
   def _predictive_accuracy_dataset(
@@ -82,6 +83,7 @@ class ModelDiagnostics:
     return self._analyzer.predictive_accuracy(
         selected_geos=selected_geos_list,
         selected_times=selected_times_list,
+        use_kpi=self._use_kpi,
         batch_size=batch_size,
     )
 
@@ -366,19 +368,23 @@ class ModelFit:
   def __init__(
       self,
       meridian: model.Meridian,
+      use_kpi: bool = False,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
   ):
     """Initializes the dataset based on the model and confidence level.
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
+      use_kpi: If `True`, plots the incremental KPI. Otherwise, plots the
+        incremental revenue using the revenue per KPI (if available).
       confidence_level: Confidence level for expected outcome credible intervals
         represented as a value between zero and one. Default is `0.9`.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
+    self._use_kpi = self._analyzer._use_kpi(use_kpi)
     self._model_fit_data = self._analyzer.expected_vs_actual_data(
-        confidence_level=confidence_level
+        use_kpi=self._use_kpi, confidence_level=confidence_level
     )
 
   @property
@@ -430,11 +436,7 @@ class ModelFit:
     Returns:
       An Altair plot showing the model fit.
     """
-    outcome = (
-        c.REVENUE
-        if self._meridian.input_data.revenue_per_kpi is not None
-        else c.KPI.upper()
-    )
+    outcome = c.KPI.upper() if self._use_kpi else c.REVENUE
     self._validate_times_to_plot(selected_times)
     self._validate_geos_to_plot(
         selected_geos, n_top_largest_geos, show_geo_level
@@ -459,10 +461,10 @@ class ModelFit:
     title = summary_text.EXPECTED_ACTUAL_OUTCOME_CHART_TITLE.format(
         outcome=outcome
     )
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      y_axis_label = summary_text.REVENUE_LABEL
-    else:
+    if self._use_kpi:
       y_axis_label = summary_text.KPI_LABEL
+    else:
+      y_axis_label = summary_text.REVENUE_LABEL
     plot = (
         alt.Chart(model_fit_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
         .mark_line()
@@ -638,7 +640,7 @@ class ReachAndFrequency:
       self,
       meridian: model.Meridian,
       selected_times: Sequence[str] | None = None,
-      use_kpi: bool | None = None,
+      use_kpi: bool = False,
   ):
     """Initializes the reach and frequency dataset for the model data.
 
@@ -651,15 +653,7 @@ class ReachAndFrequency:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
     self._selected_times = selected_times
-    # TODO Adapt the mechanisms to choose between KPI and REVENUE
-    # from Analyzer.
-    if use_kpi is None:
-      self._use_kpi = (
-          meridian.input_data.kpi_type == c.NON_REVENUE
-          and meridian.input_data.revenue_per_kpi is None
-      )
-    else:
-      self._use_kpi = use_kpi
+    self._use_kpi = self._analyzer._use_kpi(use_kpi)
     self._optimal_frequency_data = self._analyzer.optimal_freq(
         selected_times=selected_times,
         use_kpi=self._use_kpi,
@@ -844,6 +838,7 @@ class MediaEffects:
       self,
       meridian: model.Meridian,
       by_reach: bool = True,
+      use_kpi: bool = False,
   ):
     """Initializes the Media Effects based on the model data and params.
 
@@ -852,10 +847,13 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
+      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
+        the incremental revenue using the revenue per KPI (if available).
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
     self._by_reach = by_reach
+    self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
   @functools.lru_cache(maxsize=128)
   def response_curves_data(
@@ -863,7 +861,6 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
-      use_kpi: bool = False,
   ) -> xr.Dataset:
     """Dataset holding the calculated response curves data.
 
@@ -887,20 +884,17 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
-      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
-        the incremental revenue using the revenue per KPI (if available).
 
     Returns:
       A Dataset displaying the response curves data.
     """
     selected_times_list = list(selected_times) if selected_times else None
-    use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
     return self._analyzer.response_curves(
         spend_multipliers=list(np.arange(0, 2.2, c.RESPONSE_CURVE_STEP_SIZE)),
         confidence_level=confidence_level,
         selected_times=selected_times_list,
         by_reach=by_reach,
-        use_kpi=use_kpi,
+        use_kpi=self._use_kpi,
     )
 
   @functools.lru_cache(maxsize=128)
@@ -964,7 +958,6 @@ class MediaEffects:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: frozenset[str] | None = None,
       by_reach: bool = True,
-      use_kpi: bool = False,
       plot_separately: bool = True,
       include_ci: bool = True,
       num_channels_displayed: int | None = None,
@@ -990,8 +983,6 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
-      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
-        the incremental revenue using the revenue per KPI (if available).
       plot_separately: If `True`, the plots are faceted. If `False`, the plots
         are layered to create one plot with all of the channels.
       include_ci: If `True`, plots the credible interval. Defaults to `True`.
@@ -1027,11 +1018,10 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
-        use_kpi=use_kpi,
     )
     y_axis_label = (
         summary_text.INC_KPI_LABEL
-        if use_kpi or self._meridian.input_data.revenue_per_kpi is None
+        if self._use_kpi
         else summary_text.INC_OUTCOME_LABEL
     )
     base = (
@@ -1341,7 +1331,6 @@ class MediaEffects:
       selected_times: frozenset[str] | None = None,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       by_reach: bool = True,
-      use_kpi: bool = False,
   ) -> pd.DataFrame:
     """Returns DataFrame with top channels by spend for the layered plot.
 
@@ -1356,7 +1345,6 @@ class MediaEffects:
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
-      use_kpi: If `True`, use KPI instead of revenue.
 
     Returns:
       A DataFrame containing the top chosen channels
@@ -1367,7 +1355,6 @@ class MediaEffects:
         confidence_level=confidence_level,
         selected_times=selected_times,
         by_reach=by_reach,
-        use_kpi=use_kpi,
     )
     list_sorted_channels_cost = list(
         data.sel(spend_multiplier=1)
@@ -1415,6 +1402,7 @@ class MediaSummary:
       selected_times: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
+      use_kpi: bool = False,
   ):
     """Initializes the media summary metrics based on the model data and params.
 
@@ -1434,6 +1422,7 @@ class MediaSummary:
         value which will be used as baseline for the given channel. If `None`,
         the values defined with `ModelSpec.non_media_baseline_values` will be
         used.
+      use_kpi: If `True`, use KPI instead of revenue.
     """
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(meridian)
@@ -1441,6 +1430,7 @@ class MediaSummary:
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach
     self._non_media_baseline_values = non_media_baseline_values
+    self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
   @property
   def paid_summary_metrics(self):
@@ -1475,7 +1465,7 @@ class MediaSummary:
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,
         marginal_roi_by_reach=self._marginal_roi_by_reach,
-        use_kpi=self._meridian.input_data.revenue_per_kpi is None,
+        use_kpi=self._use_kpi,
         confidence_level=self._confidence_level,
         include_non_paid_channels=False,
         aggregate_times=aggregate_times,
@@ -1508,7 +1498,7 @@ class MediaSummary:
     """
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,
-        use_kpi=self._meridian.input_data.revenue_per_kpi is None,
+        use_kpi=self._use_kpi,
         confidence_level=self._confidence_level,
         include_non_paid_channels=True,
         non_media_baseline_values=self._non_media_baseline_values,
@@ -1545,7 +1535,7 @@ class MediaSummary:
           'At least one of `include_posterior` or `include_prior` must be True.'
       )
 
-    use_revenue = self._meridian.input_data.revenue_per_kpi is not None
+    use_revenue = not self._use_kpi
     distribution = [c.PRIOR] * include_prior + [c.POSTERIOR] * include_posterior
 
     percentage_metrics = [
@@ -1731,11 +1721,7 @@ class MediaSummary:
             ),
             y=alt.Y(
                 f'{c.INCREMENTAL_OUTCOME}:Q',
-                title=(
-                    c.REVENUE.title()
-                    if self._meridian.input_data.revenue_per_kpi is not None
-                    else c.KPI.upper()
-                ),
+                title=(c.KPI.upper() if self._use_kpi else c.REVENUE.title()),
                 axis=alt.Axis(
                     ticks=False,
                     domain=False,
@@ -1901,11 +1887,7 @@ class MediaSummary:
     Returns:
       An Altair plot showing the contributions per channel.
     """
-    outcome = (
-        c.REVENUE.title()
-        if self._meridian.input_data.revenue_per_kpi is not None
-        else c.KPI.upper()
-    )
+    outcome = c.KPI.upper() if self._use_kpi else c.REVENUE.title()
     outcome_df = self.contribution_metrics(include_non_paid=True)
     pct = c.PCT_OF_CONTRIBUTION
     value = c.INCREMENTAL_OUTCOME
@@ -2039,11 +2021,7 @@ class MediaSummary:
     Returns:
       An Altair plot showing the spend versus outcome percentages per channel.
     """
-    outcome = (
-        c.REVENUE
-        if self._meridian.input_data.revenue_per_kpi is not None
-        else c.KPI.upper()
-    )
+    outcome = c.KPI.upper() if self._use_kpi else c.REVENUE
     df = self._transform_contribution_spend_metrics()
     domain = [
         f'% {outcome.title() if outcome == c.REVENUE else outcome}',
@@ -2567,10 +2545,10 @@ class MediaSummary:
       A dataframe of spend and outcome percentages and ROI per channel.
     """
     paid_summary_metrics = self.get_paid_summary_metrics()
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      outcome = summary_text.REVENUE_LABEL
-    else:
+    if self._use_kpi:
       outcome = summary_text.KPI_LABEL
+    else:
+      outcome = summary_text.REVENUE_LABEL
     total_media_outcome = (
         paid_summary_metrics[c.INCREMENTAL_OUTCOME]
         .sel(
