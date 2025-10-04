@@ -156,6 +156,8 @@ class WithInputDataSamples:
   _short_input_data_non_media_and_organic: input_data.InputData
   _short_input_data_non_media: input_data.InputData
   _input_data_non_media_and_organic_same_time_dims: input_data.InputData
+  _input_data_organic_only: input_data.InputData
+  _national_input_data_organic_only: input_data.InputData
 
   # The following NamedTuples and their attributes are immutable, so they can
   # be accessed directly.
@@ -496,6 +498,34 @@ class WithInputDataSamples:
             seed=0,
         )
     )
+    cls._input_data_organic_only = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=cls._N_GEOS,
+            n_times=cls._N_TIMES,
+            n_media_times=cls._N_MEDIA_TIMES,
+            n_controls=cls._N_CONTROLS,
+            n_non_media_channels=0,
+            n_media_channels=cls._N_MEDIA_CHANNELS,
+            n_rf_channels=0,
+            n_organic_media_channels=cls._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=cls._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls._national_input_data_organic_only = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=cls._N_GEOS_NATIONAL,
+            n_times=cls._N_TIMES,
+            n_media_times=cls._N_MEDIA_TIMES,
+            n_controls=cls._N_CONTROLS,
+            n_non_media_channels=0,
+            n_media_channels=cls._N_MEDIA_CHANNELS,
+            n_rf_channels=0,
+            n_organic_media_channels=cls._N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=cls._N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
 
   @property
   def input_data_non_revenue_no_revenue_per_kpi(self) -> input_data.InputData:
@@ -606,3 +636,11 @@ class WithInputDataSamples:
       self,
   ) -> input_data.InputData:
     return self._input_data_non_media_and_organic_same_time_dims.copy(deep=True)
+
+  @property
+  def input_data_organic_only(self) -> input_data.InputData:
+    return self._input_data_organic_only.copy(deep=True)
+
+  @property
+  def national_input_data_organic_only(self) -> input_data.InputData:
+    return self._national_input_data_organic_only.copy(deep=True)
