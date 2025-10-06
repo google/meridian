@@ -176,6 +176,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_CONTROLS,
         ),
     )
+    self.assertCountEqual(
+        national_controls_scaled_da.coords.keys(),
+        [constants.TIME, constants.CONTROL_VARIABLE],
+    )
     expected_controls_scaled_da = engine.controls_scaled_da
     self.assertIsNotNone(expected_controls_scaled_da)
     expected_controls_scaled_da = expected_controls_scaled_da.squeeze(
@@ -263,6 +267,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_media_raw_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
     )
     expected_media_raw_da = engine.media_raw_da
     self.assertIsNotNone(expected_media_raw_da)
@@ -358,6 +366,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
+    )
     expected_media_scaled_da = engine.media_scaled_da
     self.assertIsNotNone(expected_media_scaled_da)
     expected_media_scaled_da = expected_media_scaled_da.squeeze(constants.GEO)
@@ -441,6 +453,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_media_spend_da.coords.keys(),
+        [constants.TIME, constants.MEDIA_CHANNEL],
     )
     expected_media_spend_da = engine.media_spend_da
     self.assertIsNotNone(expected_media_spend_da)
@@ -577,6 +593,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_organic_media_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
+    )
     expected_organic_media_raw_da = engine.organic_media_raw_da
     self.assertIsNotNone(expected_organic_media_raw_da)
     expected_organic_media_raw_da = expected_organic_media_raw_da.squeeze(
@@ -637,6 +657,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_MEDIA_CHANNEL],
     )
     expected_organic_media_scaled_da = engine.organic_media_scaled_da
     self.assertIsNotNone(expected_organic_media_scaled_da)
@@ -764,6 +788,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_non_media_scaled_da.coords.keys(),
+        [constants.TIME, constants.NON_MEDIA_CHANNEL],
+    )
     expected_non_media_scaled_da = engine.non_media_scaled_da
     self.assertIsNotNone(expected_non_media_scaled_da)
     expected_non_media_scaled_da = expected_non_media_scaled_da.squeeze(
@@ -847,6 +875,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_rf_spend_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
     expected_rf_spend_da = engine.rf_spend_da
     self.assertIsNotNone(expected_rf_spend_da)
     expected_rf_spend_da = expected_rf_spend_da.squeeze(constants.GEO)
@@ -929,6 +961,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_reach_raw_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_reach_raw_da = engine.reach_raw_da
     self.assertIsNotNone(expected_reach_raw_da)
@@ -1020,6 +1056,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
     expected_reach_scaled_da = engine.reach_scaled_da
     self.assertIsNotNone(expected_reach_scaled_da)
     expected_reach_scaled_da = expected_reach_scaled_da.squeeze(constants.GEO)
@@ -1109,6 +1149,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_frequency_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_frequency_da = engine.frequency_da
     self.assertIsNotNone(expected_frequency_da)
@@ -1202,6 +1246,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_rf_impressions_raw_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
     )
     expected_rf_impressions_raw_da = engine.rf_impressions_raw_da
     self.assertIsNotNone(expected_rf_impressions_raw_da)
@@ -1336,6 +1384,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_RF_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_rf_impressions_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
     expected_rf_impressions_scaled_da = engine.rf_impressions_scaled_da
     self.assertIsNotNone(expected_rf_impressions_scaled_da)
     expected_rf_impressions_scaled_da = (
@@ -1429,6 +1481,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_reach_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_da = engine.organic_reach_raw_da
     self.assertIsNotNone(expected_da)
@@ -1531,6 +1587,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_da = engine.organic_reach_scaled_da
     self.assertIsNotNone(expected_da)
@@ -1640,6 +1700,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_organic_frequency_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
 
     expected_da = engine.organic_frequency_da
     self.assertIsNotNone(expected_da)
@@ -1744,6 +1808,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_TIMES,
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
+    )
+    self.assertCountEqual(
+        national_organic_rf_impressions_raw_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
     )
     expected_organic_rf_impressions_raw_da = (
         engine.organic_rf_impressions_raw_da
@@ -1892,6 +1960,10 @@ class EDAEngineTest(
             model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
         ),
     )
+    self.assertCountEqual(
+        national_organic_rf_impressions_scaled_da.coords.keys(),
+        [constants.TIME, constants.ORGANIC_RF_CHANNEL],
+    )
     expected_organic_rf_impressions_scaled_da = (
         engine.organic_rf_impressions_scaled_da
     )
@@ -1980,6 +2052,10 @@ class EDAEngineTest(
     self.assertEqual(
         national_kpi_scaled_da.shape,
         (model_test_data.WithInputDataSamples._N_TIMES,),
+    )
+    self.assertCountEqual(
+        national_kpi_scaled_da.coords.keys(),
+        [constants.TIME],
     )
     self.assertAllClose(
         national_kpi_scaled_da.values,

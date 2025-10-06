@@ -269,7 +269,7 @@ class EDAEngine:
         raise RuntimeError(
             'controls_scaled_da is None when controls is not None.'
         )
-      national_da = self.controls_scaled_da.squeeze(constants.GEO)
+      national_da = self.controls_scaled_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_CONTROLS_SCALED
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -323,7 +323,7 @@ class EDAEngine:
         raise RuntimeError(
             'media_spend_da is None when media_spend is not None.'
         )
-      national_da = self.media_spend_da.squeeze(constants.GEO)
+      national_da = self.media_spend_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_MEDIA_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -339,7 +339,7 @@ class EDAEngine:
     if self.media_raw_da is None:
       return None
     if self._meridian.is_national:
-      national_da = self.media_raw_da.squeeze(constants.GEO)
+      national_da = self.media_raw_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_MEDIA
     else:
       # Note that media is summable by assumption.
@@ -356,7 +356,7 @@ class EDAEngine:
     if self.media_scaled_da is None:
       return None
     if self._meridian.is_national:
-      national_da = self.media_scaled_da.squeeze(constants.GEO)
+      national_da = self.media_scaled_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_MEDIA_SCALED
     else:
       # Note that media is summable by assumption.
@@ -394,7 +394,7 @@ class EDAEngine:
     if self.organic_media_raw_da is None:
       return None
     if self._meridian.is_national:
-      national_da = self.organic_media_raw_da.squeeze(constants.GEO)
+      national_da = self.organic_media_raw_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_ORGANIC_MEDIA
     else:
       # Note that organic media is summable by assumption.
@@ -409,7 +409,9 @@ class EDAEngine:
     if self.organic_media_scaled_da is None:
       return None
     if self._meridian.is_national:
-      national_da = self.organic_media_scaled_da.squeeze(constants.GEO)
+      national_da = self.organic_media_scaled_da.squeeze(
+          constants.GEO, drop=True
+      )
       national_da.name = constants.NATIONAL_ORGANIC_MEDIA_SCALED
     else:
       # Note that organic media is summable by assumption.
@@ -442,7 +444,7 @@ class EDAEngine:
         raise RuntimeError(
             'non_media_scaled_da is None when non_media_treatments is not None.'
         )
-      national_da = self.non_media_scaled_da.squeeze(constants.GEO)
+      national_da = self.non_media_scaled_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -474,7 +476,7 @@ class EDAEngine:
       if self.rf_spend_da is None:
         # This case should be impossible given the check above.
         raise RuntimeError('rf_spend_da is None when rf_spend is not None.')
-      national_da = self.rf_spend_da.squeeze(constants.GEO)
+      national_da = self.rf_spend_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_RF_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -656,7 +658,7 @@ class EDAEngine:
   def national_kpi_scaled_da(self) -> xr.DataArray:
     """Returns the national scaled KPI data array."""
     if self._meridian.is_national:
-      national_da = self.kpi_scaled_da.squeeze(constants.GEO)
+      national_da = self.kpi_scaled_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_KPI_SCALED
     else:
       # Note that kpi is summable by assumption.
@@ -869,13 +871,17 @@ class EDAEngine:
     impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
 
     if self._meridian.is_national:
-      national_reach_raw_da = reach_raw_da.squeeze(constants.GEO)
+      national_reach_raw_da = reach_raw_da.squeeze(constants.GEO, drop=True)
       national_reach_raw_da.name = names.national_reach
-      national_reach_scaled_da = reach_scaled_da.squeeze(constants.GEO)
+      national_reach_scaled_da = reach_scaled_da.squeeze(
+          constants.GEO, drop=True
+      )
       national_reach_scaled_da.name = names.national_reach_scaled
-      national_impressions_raw_da = impressions_raw_da.squeeze(constants.GEO)
+      national_impressions_raw_da = impressions_raw_da.squeeze(
+          constants.GEO, drop=True
+      )
       national_impressions_raw_da.name = names.national_impressions
-      national_frequency_da = frequency_da.squeeze(constants.GEO)
+      national_frequency_da = frequency_da.squeeze(constants.GEO, drop=True)
       national_frequency_da.name = names.national_frequency
 
       # Scaled impressions
@@ -884,7 +890,7 @@ class EDAEngine:
       )
       impressions_scaled_da.name = names.impressions_scaled
       national_impressions_scaled_da = impressions_scaled_da.squeeze(
-          constants.GEO
+          constants.GEO, drop=True
       )
       national_impressions_scaled_da.name = names.national_impressions_scaled
     else:
