@@ -35,6 +35,7 @@ __all__ = [
     'PriorDistribution',
     'distributions_are_equal',
     'lognormal_dist_from_mean_std',
+    'lognormal_dist_from_range',
 ]
 
 
