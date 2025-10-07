@@ -175,149 +175,103 @@ def get_budget_optimisation_data(
     selected_channels: Sequence[str] | None = None,
     selected_times: Sequence[str | int] | None = None,
     use_kpi: bool = False,
+    use_posterior: bool = True,
     confidence_level: float = 0.90,
 ) -> pd.DataFrame:
   """Returns optimal-frequency ROI (RF) and ROI for non-RF paid media as one table.
 
-  Output schema (preserved):
-    - rf_channel: channel name (applies to both RF and non-RF)
-    - frequency: RF frequency grid value (NaN for non-RF rows)
-    - roi: mean ROI
-    - optimal_frequency: channel-level optimal frequency (NaN for non-RF rows)
-
-  Notes:
-    - For RF channels we compute ROI across the provided frequency grid and attach
-      that channel's optimal_frequency on each row.
-    - For non-RF paid media channels we compute ROI from `Analyzer.summary_metrics`
-      (mean), evaluated at the RF channels' optimal frequency (so the system is
-      consistent), and add a single row per non-RF channel with frequency/optimal_frequency = NaN.
+  This implementation mirrors the behaviour recommended in Meridian's helper
+  functions so that both reach/frequency (RF) and non-RF channels are always
+  represented.  RF channels contribute one row per frequency grid point along
+  with their optimal frequency; non-RF channels yield a single ROI row with
+  ``frequency`` and ``optimal_frequency`` set to ``NaN``.
   """
+
   ana = analyzer.Analyzer(mmm)
-
-  # Build a minimal DataTensors consistent with the original code, so both
-  # optimal_freq() and summary_metrics() can reuse mmm data where not provided.
-  rf_tensors = getattr(mmm, "rf_tensors", None)
-  input_data = getattr(mmm, "input_data", None)
-  new_data = analyzer.DataTensors(
-      rf_impressions=tf.cast(rf_tensors.rf_impressions, tf.float32)
-      if getattr(rf_tensors, "rf_impressions", None) is not None
-      else None,
-      rf_spend=tf.cast(rf_tensors.rf_spend, tf.float32)
-      if getattr(rf_tensors, "rf_spend", None) is not None
-      else None,
-      revenue_per_kpi=tf.cast(input_data.revenue_per_kpi, tf.float32)
-      if getattr(input_data, "revenue_per_kpi", None) is not None
-      else None,
-  )
-
-  # Frequency grid for RF part (if any RF channels exist).
-  rf_freq = getattr(rf_tensors, "frequency", None)
-  max_frequency = None
-  if rf_freq is not None:
-    try:
-      max_frequency = float(tf.reduce_max(tf.cast(rf_freq, tf.float32)).numpy())
-    except Exception:
-      max_frequency = float(np.max(np.array(rf_freq, dtype=np.float32)))
-  if not max_frequency or not np.isfinite(max_frequency):
-    max_frequency = 50.0
-  freq_grid = np.arange(1.0, max_frequency, 0.1, dtype=np.float32)
 
   tables: list[pd.DataFrame] = []
 
-  # ---- 1) RF block: ROI over frequency grid + optimal_frequency per RF channel.
-  rf_ds = None
-  rf_available: list[str] = []
+  # -----------------------------------------------------------------------
+  # RF block: ROI across the frequency grid + per-channel optimal frequency
+  # -----------------------------------------------------------------------
+  rf_names: list[str] = []
   try:
     rf_ds = ana.optimal_freq(
-        new_data=new_data,
-        freq_grid=freq_grid,
         selected_times=selected_times,
         use_kpi=use_kpi,
         confidence_level=confidence_level,
     )
-    rf_available = [str(c) for c in rf_ds.coords[C.RF_CHANNEL].values]
-  except Exception:
+
+    rf_names = [str(c) for c in rf_ds.coords[C.RF_CHANNEL].values]
+    if selected_channels is not None:
+      keep = [c for c in rf_names if c in set(selected_channels)]
+    else:
+      keep = rf_names
+
+    if keep:
+      rf_ds = rf_ds.sel({C.RF_CHANNEL: keep})
+      rf_names = keep
+      df_rf = (
+          rf_ds[C.ROI]
+          .sel({C.METRIC: C.MEAN})
+          .to_dataframe()
+          .reset_index()
+          [[C.RF_CHANNEL, C.FREQUENCY, C.ROI]]
+      )
+      opt_freq = rf_ds[C.OPTIMAL_FREQUENCY].to_pandas()
+      df_rf[C.OPTIMAL_FREQUENCY] = df_rf[C.RF_CHANNEL].map(opt_freq)
+      tables.append(df_rf)
+    else:
+      rf_names = []
+  except ValueError:
+    # Analyzer.optimal_freq raises ValueError when no RF channels exist.
     rf_ds = None
-    rf_available = []
 
-  # Select RF channels, tolerating unknown labels.
-  if selected_channels is None:
-    rf_selected = rf_available
-  else:
-    rf_selected = [c for c in selected_channels if c in rf_available]
+  rf_name_set = set(rf_names)
 
-  # If we have RF data and selection yields channels, build the RF table.
-  opt_freq_vec = None
-  if rf_ds is not None and rf_available:
-    # ROI(grid) for selected RF channels.
-    if rf_selected:
-      perf_df = (
-          rf_ds[[C.ROI]]
-          .sel(metric=[C.MEAN])
-          .sel(rf_channel=rf_selected)
-          .to_dataframe()
-          .reset_index()
-          .pivot(index=[C.RF_CHANNEL, C.FREQUENCY], columns=C.METRIC, values=C.ROI)
-          .reset_index()
-          .rename(columns={C.MEAN: C.ROI})
-      )
-      opt_df = (
-          rf_ds[[C.OPTIMAL_FREQUENCY]]
-          .sel(rf_channel=rf_selected)
-          .to_dataframe()
-          .reset_index()
-      )
-      rf_table = perf_df.merge(opt_df, on=C.RF_CHANNEL)
-      tables.append(rf_table)
-
-    # Keep the full optimal-frequency vector (for all RF channels) to make
-    # summary_metrics internally consistent; do not subset here.
-    opt_freq_vec = np.asarray(rf_ds[C.OPTIMAL_FREQUENCY].values, dtype=np.float32)
-
-  # ---- 2) Non-RF paid media block: ROI at (RF) optimal frequencies.
-  # Compute summary metrics with optimal_frequency applied (if known).
+  # -----------------------------------------------------------------------
+  # Non-RF block: ROI from summary metrics, filtered to channels without RF
+  # -----------------------------------------------------------------------
   sum_ds = ana.summary_metrics(
-      new_data=new_data,
-      optimal_frequency=opt_freq_vec,
       selected_times=selected_times,
       use_kpi=use_kpi,
       confidence_level=confidence_level,
       include_non_paid_channels=False,
   )
 
-  # All paid channels (media + rf) live on `channel`. Remove aggregate total.
-  all_paid = [str(c) for c in sum_ds.coords[C.CHANNEL].values]
-  non_total = [c for c in all_paid if c != C.ALL_CHANNELS]
+  dist = C.POSTERIOR if use_posterior else C.PRIOR
+  roi_da = sum_ds[C.ROI]
+  if C.DISTRIBUTION in roi_da.coords:
+    roi_da = roi_da.sel({C.DISTRIBUTION: dist})
+  if C.METRIC in roi_da.coords:
+    roi_da = roi_da.sel({C.METRIC: C.MEAN})
+  df_sum = (
+      roi_da
+      .to_dataframe()
+      .reset_index()
+      .rename(columns={C.CHANNEL: "channel", C.ROI: C.ROI})
+  )
 
-  # Non-RF = paid channels that are not in rf_available.
-  non_rf_channels = [c for c in non_total if c not in rf_available]
+  df_sum = df_sum[df_sum["channel"] != C.ALL_CHANNELS]
+
   if selected_channels is not None:
-    non_rf_channels = [c for c in non_rf_channels if c in selected_channels]
+    df_sum = df_sum[df_sum["channel"].isin(set(selected_channels))]
 
-  if non_rf_channels:
-    mdf = (
-        sum_ds[[C.ROI]]
-        .sel(metric=[C.MEAN])
-        .sel(channel=non_rf_channels)
-        .to_dataframe()
-        .reset_index()
-        .pivot(index=[C.CHANNEL], columns=C.METRIC, values=C.ROI)
-        .reset_index()
-        .rename(columns={C.MEAN: C.ROI})
-    )
-    mdf[C.FREQUENCY] = np.nan
-    mdf[C.OPTIMAL_FREQUENCY] = np.nan
-    mdf = mdf.rename(columns={C.CHANNEL: C.RF_CHANNEL})
-    mdf = mdf[[C.RF_CHANNEL, C.FREQUENCY, C.ROI, C.OPTIMAL_FREQUENCY]]
-    tables.append(mdf)
+  non_rf_df = df_sum[~df_sum["channel"].isin(rf_name_set)].copy()
+  if not non_rf_df.empty:
+    non_rf_df = non_rf_df.groupby("channel", as_index=False)[C.ROI].mean()
+    non_rf_df[C.RF_CHANNEL] = non_rf_df["channel"]
+    non_rf_df[C.FREQUENCY] = np.nan
+    non_rf_df[C.OPTIMAL_FREQUENCY] = np.nan
+    non_rf_df = non_rf_df[[C.RF_CHANNEL, C.FREQUENCY, C.ROI, C.OPTIMAL_FREQUENCY]]
+    tables.append(non_rf_df)
 
-  # ---- 3) Combine.
   if tables:
     out = pd.concat(tables, ignore_index=True)
   else:
     out = pd.DataFrame(columns=[C.RF_CHANNEL, C.FREQUENCY, C.ROI, C.OPTIMAL_FREQUENCY])
 
-  return out
+  return out.sort_values([C.RF_CHANNEL, C.FREQUENCY], na_position="last").reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------

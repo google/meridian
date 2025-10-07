@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import xarray as xr
 from absl.testing import absltest
 
@@ -103,18 +102,7 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    class DummyMMM:
-      pass
-
-    self.mmm = DummyMMM()
-    self.mmm.rf_tensors = mock.Mock(
-        rf_impressions=tf.constant([[[1.0]]], dtype=tf.float64),
-        rf_spend=tf.constant([[[2.0]]], dtype=tf.float64),
-        frequency=tf.constant([[[3.0]]], dtype=tf.float64),
-    )
-    self.mmm.input_data = mock.Mock(
-        revenue_per_kpi=tf.constant([[3.0]], dtype=tf.float64)
-    )
+    self.mmm = object()
     self.rf_ds = xr.Dataset(
         coords={
             values.C.FREQUENCY: [1, 2],
@@ -161,25 +149,18 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
       self.assertEqual(opt_kwargs['selected_times'], ['t'])
       self.assertTrue(opt_kwargs['use_kpi'])
       self.assertEqual(opt_kwargs['confidence_level'], 0.9)
-      freq_grid = opt_kwargs['freq_grid']
-      self.assertIsInstance(freq_grid, np.ndarray)
-      self.assertEqual(freq_grid.dtype, np.float32)
-      new_data = opt_kwargs['new_data']
-      self.assertEqual(new_data.rf_impressions.dtype, tf.float32)
-      self.assertEqual(new_data.rf_spend.dtype, tf.float32)
-      self.assertEqual(new_data.revenue_per_kpi.dtype, tf.float32)
 
       _, sum_kwargs = MockAnalyzer.return_value.summary_metrics.call_args
-      self.assertTrue(np.allclose(sum_kwargs['optimal_frequency'], np.array([1, 2], dtype=np.float32)))
       self.assertEqual(sum_kwargs['selected_times'], ['t'])
       self.assertTrue(sum_kwargs['use_kpi'])
       self.assertEqual(sum_kwargs['confidence_level'], 0.9)
       self.assertFalse(sum_kwargs['include_non_paid_channels'])
+      self.assertNotIn('optimal_frequency', sum_kwargs)
 
     expected = pd.DataFrame({
         values.C.RF_CHANNEL: ['B', 'B', 'C'],
         values.C.FREQUENCY: [1, 2, np.nan],
-        values.C.ROI: [20, 40, 3],
+        values.C.ROI: [20.0, 40.0, 3.0],
         values.C.OPTIMAL_FREQUENCY: [2, 2, np.nan],
     })
     expected = expected[[values.C.RF_CHANNEL, values.C.FREQUENCY,
@@ -187,15 +168,6 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
     pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
   def test_returns_non_rf_rows_when_no_rf_channels(self):
-    class DummyMMM:
-      pass
-
-    mmm = DummyMMM()
-    mmm.rf_tensors = mock.Mock(rf_impressions=None, rf_spend=None, frequency=None)
-    mmm.input_data = mock.Mock(
-        revenue_per_kpi=tf.constant([[3.0]], dtype=tf.float64)
-    )
-
     sum_ds = xr.Dataset(
         coords={
             values.C.CHANNEL: ['C'],
@@ -207,25 +179,23 @@ class GetBudgetOptimisationDataTest(absltest.TestCase):
     )
 
     with mock.patch.object(values.analyzer, 'Analyzer') as MockAnalyzer:
-      MockAnalyzer.return_value.optimal_freq.side_effect = Exception('no rf')
+      MockAnalyzer.return_value.optimal_freq.side_effect = ValueError('no rf')
       MockAnalyzer.return_value.summary_metrics.return_value = sum_ds
-      result = values.get_budget_optimisation_data(mmm)
-      MockAnalyzer.assert_called_once_with(mmm)
+      result = values.get_budget_optimisation_data(object())
+      MockAnalyzer.assert_called_once()
       MockAnalyzer.return_value.optimal_freq.assert_called_once()
       MockAnalyzer.return_value.summary_metrics.assert_called_once()
       _, sum_kwargs = MockAnalyzer.return_value.summary_metrics.call_args
-      self.assertIsNone(sum_kwargs['optimal_frequency'])
       self.assertFalse(sum_kwargs['include_non_paid_channels'])
 
     expected = pd.DataFrame({
         values.C.RF_CHANNEL: ['C'],
         values.C.FREQUENCY: [np.nan],
-        values.C.ROI: [5],
+        values.C.ROI: [5.0],
         values.C.OPTIMAL_FREQUENCY: [np.nan],
     })
     expected = expected[[values.C.RF_CHANNEL, values.C.FREQUENCY,
                          values.C.ROI, values.C.OPTIMAL_FREQUENCY]]
-    expected.columns.name = values.C.METRIC
     pd.testing.assert_frame_equal(result.reset_index(drop=True), expected)
 
 
