@@ -41,6 +41,12 @@ _EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
 )
 
 
+class GeoLevelCheckOnNationalModelError(Exception):
+  """Raised when a geo-level check is called on a national model."""
+
+  pass
+
+
 @dataclasses.dataclass(frozen=True)
 class _RFNames:
   """Holds constant names for reach and frequency data arrays."""
@@ -1069,7 +1075,16 @@ class EDAEngine:
 
     Returns:
       An EDAOutcome object with findings and result values.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the model is national.
     """
+    # If the model is national, raise an error.
+    if self._meridian.is_national:
+      raise GeoLevelCheckOnNationalModelError(
+          'check_pairwise_corr_geo is not supported for national models.'
+      )
+
     findings = []
 
     overall_corr_mat, overall_extreme_corr_var_pairs_df = (
@@ -1134,13 +1149,13 @@ class EDAEngine:
 
     pairwise_corr_results = [
         eda_outcome.PairwiseCorrResult(
-            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            level=eda_outcome.AnalysisLevel.OVERALL,
             corr_matrix=overall_corr_mat,
             extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
             extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
         ),
         eda_outcome.PairwiseCorrResult(
-            level=eda_outcome.CorrelationAnalysisLevel.GEO,
+            level=eda_outcome.AnalysisLevel.GEO,
             corr_matrix=geo_corr_mat,
             extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
             extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
@@ -1195,7 +1210,7 @@ class EDAEngine:
 
     pairwise_corr_results = [
         eda_outcome.PairwiseCorrResult(
-            level=eda_outcome.CorrelationAnalysisLevel.OVERALL,
+            level=eda_outcome.AnalysisLevel.NATIONAL,
             corr_matrix=corr_mat,
             extreme_corr_var_pairs=extreme_corr_var_pairs_df,
             extreme_corr_threshold=_PAIRWISE_NATIONAL_CORR_THRESHOLD,

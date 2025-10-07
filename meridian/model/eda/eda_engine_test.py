@@ -3060,7 +3060,7 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", overall_result.extreme_corr_var_pairs.to_string())
@@ -3102,7 +3102,7 @@ class EDAEngineTest(
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", geo_result.extreme_corr_var_pairs.to_string())
@@ -3144,12 +3144,12 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
 
     pd.testing.assert_frame_equal(
@@ -3204,7 +3204,7 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     self.assertIn("media_1", overall_result.extreme_corr_var_pairs.to_string())
     self.assertIn(
@@ -3254,7 +3254,7 @@ class EDAEngineTest(
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     self.assertIn("media_1", geo_result.extreme_corr_var_pairs.to_string())
     self.assertIn("control_1", geo_result.extreme_corr_var_pairs.to_string())
@@ -3307,12 +3307,12 @@ class EDAEngineTest(
     overall_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.OVERALL
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
     )
     geo_result = next(
         res
         for res in outcome.pairwise_corr_results
-        if res.level == eda_outcome.CorrelationAnalysisLevel.GEO
+        if res.level == eda_outcome.AnalysisLevel.GEO
     )
     overall_corr_mat = overall_result.corr_matrix
     self.assertEqual(overall_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
@@ -3330,6 +3330,13 @@ class EDAEngineTest(
         geo_corr_mat.sel(var1="media_1", var2="control_1").values,
         expected_geo_corr,
     )
+
+  def test_check_pairwise_corr_geo_raises_error_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_pairwise_corr_geo()
 
   def test_check_pairwise_corr_national_one_error(self):
     # Create data where media_1 and media_2 are perfectly correlated
@@ -3363,7 +3370,7 @@ class EDAEngineTest(
     )
 
     result = outcome.pairwise_corr_results[0]
-    self.assertEqual(result.level, eda_outcome.CorrelationAnalysisLevel.OVERALL)
+    self.assertEqual(result.level, eda_outcome.AnalysisLevel.NATIONAL)
     self.assertIn("media_1", result.extreme_corr_var_pairs.to_string())
     self.assertIn("media_2", result.extreme_corr_var_pairs.to_string())
     self.assertEqual(

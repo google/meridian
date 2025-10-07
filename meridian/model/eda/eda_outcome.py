@@ -64,15 +64,17 @@ class EDAOutcome:
 
 
 @enum.unique
-class CorrelationAnalysisLevel(enum.Enum):
-  """Enumeration for the level of a correlation analysis.
+class AnalysisLevel(enum.Enum):
+  """Enumeration for the level of an analysis.
 
   Attributes:
     OVERALL: Computed across all geos and time.
+    NATIONAL: Computed across time for data aggregated to the national level.
     GEO: Computed across time, for each geo.
   """
 
   OVERALL = enum.auto()
+  NATIONAL = enum.auto()
   GEO = enum.auto()
 
 
@@ -89,7 +91,7 @@ class PairwiseCorrResult:
       pairs.
   """
 
-  level: CorrelationAnalysisLevel
+  level: AnalysisLevel
   corr_matrix: xr.DataArray
   extreme_corr_var_pairs: pd.DataFrame
   extreme_corr_threshold: float
