@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Move `use_kpi` to `Summarizer` and `Visualizer` class initialization.
+* Make KPI analysis the default when revenue data is unavailable.
+
 ## [1.2.1] - 2025-09-22
 
 * Add `use_kpi` arg to `output_model_results_summary`.
