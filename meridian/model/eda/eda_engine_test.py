@@ -2397,6 +2397,342 @@ class EDAEngineTest(
           expected_dims[var],
       )
 
+  # --- Test cases for all_reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              (
+                  model_test_data.WithInputDataSamples._N_RF_CHANNELS
+                  + model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS
+              ),
+          ),
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.reach_scaled_da,
+                  engine.organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              (
+                  model_test_data.WithInputDataSamples._N_RF_CHANNELS
+                  + model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS
+              ),
+          ),
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.reach_scaled_da,
+                  engine.organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.reach_scaled_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.reach_scaled_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+          ),
+          expected_da_func=lambda engine: engine.organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+  )
+  def test_all_reach_scaled_da_present(
+      self, input_data_fixture, expected_shape, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    all_reach_scaled_da = engine.all_reach_scaled_da
+
+    self.assertIsInstance(all_reach_scaled_da, xr.DataArray)
+    self.assertEqual(all_reach_scaled_da.name, constants.ALL_REACH_SCALED)
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(all_reach_scaled_da.values, expected_da.values)
+
+    self.assertEqual(all_reach_scaled_da.shape, expected_shape)
+
+    self.assertCountEqual(
+        all_reach_scaled_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for all_freq_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.frequency_da,
+                  engine.organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.frequency_da,
+                  engine.organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.frequency_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.frequency_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: engine.organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: engine.organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          ),
+      ),
+  )
+  def test_all_freq_da_present(self, input_data_fixture, expected_da_func):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    all_freq_da = engine.all_freq_da
+
+    self.assertIsInstance(all_freq_da, xr.DataArray)
+    self.assertEqual(all_freq_da.name, constants.ALL_FREQUENCY)
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(all_freq_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        all_freq_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for national_all_reach_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_reach_scaled_da,
+                  engine.national_organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_reach_scaled_da,
+                  engine.national_organic_reach_scaled_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.national_reach_scaled_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.national_reach_scaled_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_reach_scaled_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_reach_scaled_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+  )
+  def test_national_all_reach_scaled_da_present(
+      self, input_data_fixture, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_all_reach_scaled_da = engine.national_all_reach_scaled_da
+
+    self.assertIsInstance(national_all_reach_scaled_da, xr.DataArray)
+    self.assertEqual(
+        national_all_reach_scaled_da.name, constants.NATIONAL_ALL_REACH_SCALED
+    )
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(national_all_reach_scaled_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        national_all_reach_scaled_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
+  # --- Test cases for national_all_freq_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_paid_and_organic",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_frequency_da,
+                  engine.national_organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="national_paid_and_organic",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_da_func=lambda engine: xr.concat(
+              [
+                  engine.national_frequency_da,
+                  engine.national_organic_frequency_da.rename(
+                      {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+                  ),
+              ],
+              dim=constants.RF_CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="geo_paid_only",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_da_func=lambda engine: engine.national_frequency_da,
+      ),
+      dict(
+          testcase_name="national_paid_only",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_da_func=lambda engine: engine.national_frequency_da,
+      ),
+      dict(
+          testcase_name="geo_organic_only",
+          input_data_fixture="input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_frequency_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+      dict(
+          testcase_name="national_organic_only",
+          input_data_fixture="national_input_data_organic_only",
+          expected_da_func=lambda engine: (
+              engine.national_organic_frequency_da.rename(
+                  {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+              )
+          ),
+      ),
+  )
+  def test_national_all_freq_da_present(
+      self, input_data_fixture, expected_da_func
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_all_freq_da = engine.national_all_freq_da
+
+    self.assertIsInstance(national_all_freq_da, xr.DataArray)
+    self.assertEqual(
+        national_all_freq_da.name, constants.NATIONAL_ALL_FREQUENCY
+    )
+
+    expected_da = expected_da_func(engine)
+    self.assertIsNotNone(expected_da)
+    self.assertAllClose(national_all_freq_da.values, expected_da.values)
+
+    self.assertCountEqual(
+        national_all_freq_da.coords.keys(),
+        [constants.TIME, constants.RF_CHANNEL],
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
@@ -2582,6 +2918,26 @@ class EDAEngineTest(
           testcase_name="geo_population_da",
           input_data_fixture="national_input_data_media_and_rf",
           property_name="geo_population_da",
+      ),
+      dict(
+          testcase_name="all_reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="all_reach_scaled_da",
+      ),
+      dict(
+          testcase_name="all_freq_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="all_freq_da",
+      ),
+      dict(
+          testcase_name="national_all_reach_scaled_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="national_all_reach_scaled_da",
+      ),
+      dict(
+          testcase_name="national_all_freq_da",
+          input_data_fixture="input_data_with_media_only",
+          property_name="national_all_freq_da",
       ),
   )
   def test_property_absent(self, input_data_fixture, property_name):

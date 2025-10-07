@@ -504,7 +504,7 @@ class EDAEngine:
   def reach_scaled_da(self) -> xr.DataArray | None:
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_scaled_da
+    return self._rf_data.reach_scaled_da  # pytype: disable=attribute-error
 
   @property
   def national_reach_raw_da(self) -> xr.DataArray | None:
@@ -518,20 +518,20 @@ class EDAEngine:
     """Returns the national scaled reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_reach_scaled_da
+    return self._rf_data.national_reach_scaled_da  # pytype: disable=attribute-error
 
   @property
   def frequency_da(self) -> xr.DataArray | None:
     if self._rf_data is None:
       return None
-    return self._rf_data.frequency_da
+    return self._rf_data.frequency_da  # pytype: disable=attribute-error
 
   @property
   def national_frequency_da(self) -> xr.DataArray | None:
     """Returns the national frequency data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_frequency_da
+    return self._rf_data.national_frequency_da  # pytype: disable=attribute-error
 
   @property
   def rf_impressions_raw_da(self) -> xr.DataArray | None:
@@ -579,7 +579,7 @@ class EDAEngine:
   def organic_reach_scaled_da(self) -> xr.DataArray | None:
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_scaled_da
+    return self._organic_rf_data.reach_scaled_da  # pytype: disable=attribute-error
 
   @property
   def national_organic_reach_raw_da(self) -> xr.DataArray | None:
@@ -593,7 +593,7 @@ class EDAEngine:
     """Returns the national scaled organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.national_reach_scaled_da
+    return self._organic_rf_data.national_reach_scaled_da  # pytype: disable=attribute-error
 
   @property
   def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -612,14 +612,14 @@ class EDAEngine:
   def organic_frequency_da(self) -> xr.DataArray | None:
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.frequency_da
+    return self._organic_rf_data.frequency_da  # pytype: disable=attribute-error
 
   @property
   def national_organic_frequency_da(self) -> xr.DataArray | None:
     """Returns the national organic frequency data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.national_frequency_da
+    return self._organic_rf_data.national_frequency_da  # pytype: disable=attribute-error
 
   @property
   def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
@@ -710,6 +710,110 @@ class EDAEngine:
         if da is not None
     ]
     return xr.merge(to_merge_national, join='inner')
+
+  @functools.cached_property
+  def all_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns a DataArray containing all scaled reach data.
+
+    This includes both paid and organic reach, concatenated along the RF_CHANNEL
+    dimension.
+
+    Returns:
+      A DataArray containing all scaled reach data, or None if no RF or organic
+      RF channels are present.
+    """
+    reach_das = []
+    if self.reach_scaled_da is not None:
+      reach_das.append(self.reach_scaled_da)
+    if self.organic_reach_scaled_da is not None:
+      reach_das.append(
+          self.organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          )
+      )
+    if not reach_das:
+      return None
+    da = xr.concat(reach_das, dim=constants.RF_CHANNEL)
+    da.name = constants.ALL_REACH_SCALED
+    return da
+
+  @functools.cached_property
+  def all_freq_da(self) -> xr.DataArray | None:
+    """Returns a DataArray containing all frequency data.
+
+    This includes both paid and organic frequency, concatenated along the
+    RF_CHANNEL dimension.
+
+    Returns:
+      A DataArray containing all frequency data, or None if no RF or organic
+      RF channels are present.
+    """
+    freq_das = []
+    if self.frequency_da is not None:
+      freq_das.append(self.frequency_da)
+    if self.organic_frequency_da is not None:
+      freq_das.append(
+          self.organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          )
+      )
+    if not freq_das:
+      return None
+    da = xr.concat(freq_das, dim=constants.RF_CHANNEL)
+    da.name = constants.ALL_FREQUENCY
+    return da
+
+  @functools.cached_property
+  def national_all_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns a DataArray containing all national-level scaled reach data.
+
+    This includes both paid and organic reach, concatenated along the
+    RF_CHANNEL dimension.
+
+    Returns:
+      A DataArray containing all national-level scaled reach data, or None if
+      no RF or organic RF channels are present.
+    """
+    reach_national_das = []
+    if self.national_reach_scaled_da is not None:
+      reach_national_das.append(self.national_reach_scaled_da)
+    if self.national_organic_reach_scaled_da is not None:
+      reach_national_das.append(
+          self.national_organic_reach_scaled_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          )
+      )
+    if not reach_national_das:
+      return None
+    da = xr.concat(reach_national_das, dim=constants.RF_CHANNEL)
+    da.name = constants.NATIONAL_ALL_REACH_SCALED
+    return da
+
+  @functools.cached_property
+  def national_all_freq_da(self) -> xr.DataArray | None:
+    """Returns a DataArray containing all national-level frequency data.
+
+    This includes both paid and organic frequency, concatenated along the
+    RF_CHANNEL dimension.
+
+    Returns:
+      A DataArray containing all national-level frequency data, or None if no
+      RF or organic RF channels are present.
+    """
+    freq_national_das = []
+    if self.national_frequency_da is not None:
+      freq_national_das.append(self.national_frequency_da)
+    if self.national_organic_frequency_da is not None:
+      freq_national_das.append(
+          self.national_organic_frequency_da.rename(
+              {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
+          )
+      )
+    if not freq_national_das:
+      return None
+    da = xr.concat(freq_national_das, dim=constants.RF_CHANNEL)
+    da.name = constants.NATIONAL_ALL_FREQUENCY
+    return da
 
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
