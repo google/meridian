@@ -375,6 +375,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.meridian_media_and_rf = model.Meridian(
         input_data=self.input_data_media_and_rf
     )
+    self.meridian_media_and_rf_no_lag = model.Meridian(
+        input_data=self.input_data_media_and_rf,
+        model_spec=spec.ModelSpec(max_lag=0),
+    )
     self.meridian_media_only = model.Meridian(
         input_data=self.input_data_media_only
     )
@@ -385,6 +389,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     self.budget_optimizer_media_and_rf = optimizer.BudgetOptimizer(
         self.meridian_media_and_rf
+    )
+    self.budget_optimizer_media_and_rf_no_lag = optimizer.BudgetOptimizer(
+        self.meridian_media_and_rf_no_lag
     )
     self.budget_optimizer_media_only = optimizer.BudgetOptimizer(
         self.meridian_media_only
@@ -1384,8 +1391,25 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     actual_data = optimization_results.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
-  def test_optimized_data_new_data(self):
-    max_lag = 15
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='lagged',
+          max_lag=15,
+          meridian_key='meridian_media_and_rf',
+          budget_optimizer_key='budget_optimizer_media_and_rf',
+      ),
+      dict(
+          testcase_name='no_lag',
+          max_lag=0,
+          meridian_key='meridian_media_and_rf_no_lag',
+          budget_optimizer_key='budget_optimizer_media_and_rf_no_lag',
+      ),
+  )
+  def test_optimized_data_new_data(
+      self, max_lag: int, meridian_key: str, budget_optimizer_key: str
+  ):
+    meridian_media_and_rf = getattr(self, meridian_key)
+    budget_optimizer_media_and_rf = getattr(self, budget_optimizer_key)
     n_new_times = 15
     total_times = max_lag + n_new_times
     weekly_step = np.timedelta64(1, 'W')
@@ -1397,35 +1421,31 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
     ).tolist()
     new_data = analyzer.DataTensors(
-        media=self.meridian_media_and_rf.media_tensors.media[
+        media=meridian_media_and_rf.media_tensors.media[..., -total_times:, :],
+        media_spend=meridian_media_and_rf.media_tensors.media_spend[
             ..., -total_times:, :
         ],
-        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+        reach=meridian_media_and_rf.rf_tensors.reach[..., -total_times:, :],
+        frequency=meridian_media_and_rf.rf_tensors.frequency[
             ..., -total_times:, :
         ],
-        reach=self.meridian_media_and_rf.rf_tensors.reach[
+        rf_spend=meridian_media_and_rf.rf_tensors.rf_spend[
             ..., -total_times:, :
         ],
-        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-            ..., -total_times:, :
-        ],
-        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-            ..., -total_times:, :
-        ],
-        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+        revenue_per_kpi=meridian_media_and_rf.revenue_per_kpi[
             ..., -total_times:
         ],
         time=new_times,
     )
-    actual = self.budget_optimizer_media_and_rf.optimize(
+    actual = budget_optimizer_media_and_rf.optimize(
         new_data=new_data,
         start_date=new_times[-n_new_times],
         end_date=new_times[-1],
     )
-    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    times = meridian_media_and_rf.input_data.time.to_numpy().tolist()
     start_date = times[-n_new_times]
     end_date = times[-1]
-    expected = self.budget_optimizer_media_and_rf.optimize(
+    expected = budget_optimizer_media_and_rf.optimize(
         start_date=start_date,
         end_date=end_date,
     )

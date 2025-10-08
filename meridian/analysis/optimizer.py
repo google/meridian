@@ -115,8 +115,8 @@ class OptimizationGrid:
       reach and frequency data, but historical frequency is used for the
       optimization scenario.
     selected_times: The time coordinates from the model used in this grid. If
-      new data with modified time coordinates is used for optimization, this
-      is a list of booleans indicating which time coordinates are selected.
+      new data with modified time coordinates is used for optimization, this is
+      a list of booleans indicating which time coordinates are selected.
       Otherwise, this is a list of strings indicating the time coordinates used
       in this grid.
   """
@@ -2990,12 +2990,11 @@ def _expand_selected_times(
         start_date=start_date,
         end_date=end_date,
     )
+    if expanded_dates is None:
+      expanded_dates = time_coordinates.all_dates
+    expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
     if return_flexible_str:
-      if expanded_dates is None:
-        expanded_dates = time_coordinates.all_dates
-      expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
       return [x for x in new_times_str if x in expanded_str]
     # TODO: Remove once every method uses `new_data.time`.
     else:
-      expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
       return [x in expanded_str for x in new_times_str]
