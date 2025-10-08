@@ -191,12 +191,12 @@ def _stack_variables(
 
 
 def _compute_correlation_matrix(
-    dataset: xr.Dataset, dims: str | Sequence[str]
+    input_da: xr.DataArray, dims: str | Sequence[str]
 ) -> xr.DataArray:
-  """Computes the correlation matrix for a dataset.
+  """Computes the correlation matrix for variables in a DataArray.
 
   Args:
-    dataset: An xr.Dataset containing variables for which to compute
+    input_da: An xr.DataArray containing variables for which to compute
       correlations.
     dims: Dimensions along which to compute correlations. Can only be TIME or
       GEO.
@@ -205,8 +205,8 @@ def _compute_correlation_matrix(
     An xr.DataArray containing the correlation matrix.
   """
   # Create two versions for correlation
-  da1 = _stack_variables(dataset, _CORR_VAR1)
-  da2 = _stack_variables(dataset, _CORR_VAR2)
+  da1 = input_da.rename({_STACK_VAR_COORD_NAME: _CORR_VAR1})
+  da2 = input_da.rename({_STACK_VAR_COORD_NAME: _CORR_VAR2})
 
   # Compute pairwise correlation across dims. Other dims are broadcasted.
   corr_mat_da = xr.corr(da1, da2, dim=dims)
@@ -752,6 +752,13 @@ class EDAEngine:
     return xr.merge(to_merge, join='inner')
 
   @functools.cached_property
+  def _stacked_treatment_control_scaled_da(self) -> xr.DataArray:
+    """Returns a stacked DataArray of treatment_control_scaled_ds."""
+    da = _stack_variables(self.treatment_control_scaled_ds)
+    da.name = constants.TREATMENT_CONTROL_SCALED
+    return da
+
+  @functools.cached_property
   def national_treatment_control_scaled_ds(self) -> xr.Dataset:
     """Returns a Dataset containing all scaled treatments and controls.
 
@@ -771,6 +778,13 @@ class EDAEngine:
         if da is not None
     ]
     return xr.merge(to_merge_national, join='inner')
+
+  @functools.cached_property
+  def _stacked_national_treatment_control_scaled_da(self) -> xr.DataArray:
+    """Returns a stacked DataArray of national_treatment_control_scaled_ds."""
+    da = _stack_variables(self.national_treatment_control_scaled_ds)
+    da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
+    return da
 
   @functools.cached_property
   def all_reach_scaled_da(self) -> xr.DataArray | None:
@@ -1120,7 +1134,7 @@ class EDAEngine:
   ) -> tuple[xr.DataArray, pd.DataFrame]:
     """Get pairwise correlation among treatments and controls for geo data."""
     corr_mat = _compute_correlation_matrix(
-        self.treatment_control_scaled_ds, dims=dims
+        self._stacked_treatment_control_scaled_da, dims=dims
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
         corr_mat, extreme_corr_threshold
@@ -1233,7 +1247,7 @@ class EDAEngine:
     findings = []
 
     corr_mat = _compute_correlation_matrix(
-        self.national_treatment_control_scaled_ds, dims=constants.TIME
+        self._stacked_national_treatment_control_scaled_da, dims=constants.TIME
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
         corr_mat, _NATIONAL_PAIRWISE_CORR_THRESHOLD
@@ -1315,11 +1329,6 @@ class EDAEngine:
     findings = []
     results = []
 
-    treatment_control_scaled_da = _stack_variables(
-        self.treatment_control_scaled_ds
-    )
-    treatment_control_scaled_da.name = constants.TREATMENT_CONTROL_SCALED
-
     checks = [
         (
             self.kpi_scaled_da,
@@ -1331,7 +1340,7 @@ class EDAEngine:
             ),
         ),
         (
-            treatment_control_scaled_da,
+            self._stacked_treatment_control_scaled_da,
             (
                 'Some treatment or control variables have zero standard'
                 ' deviation after removing outliers in certain geo(s). Please'
@@ -1397,11 +1406,6 @@ class EDAEngine:
     findings = []
     results = []
 
-    treatment_and_control_da = _stack_variables(
-        self.national_treatment_control_scaled_ds
-    )
-    treatment_and_control_da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
-
     checks = [
         (
             self.national_kpi_scaled_da,
@@ -1414,7 +1418,7 @@ class EDAEngine:
             ),
         ),
         (
-            treatment_and_control_da,
+            self._stacked_national_treatment_control_scaled_da,
             (
                 'The standard deviation of these scaled treatment or control'
                 ' variables drops from positive to zero after removing'
