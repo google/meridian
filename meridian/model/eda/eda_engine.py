@@ -16,19 +16,21 @@
 
 import dataclasses
 import functools
-from typing import Callable, Dict, Optional, Sequence, TypeAlias
+from typing import Optional, Sequence
 from meridian import constants
 from meridian.model import model
 from meridian.model import transformers
 from meridian.model.eda import eda_outcome
+from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from statsmodels.stats import outliers_influence
 import tensorflow as tf
 import xarray as xr
 
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
-AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
 _CORRELATION_COL_NAME = 'correlation'
 _STACK_VAR_COORD_NAME = 'var'
 _CORR_VAR1 = 'var1'
@@ -47,6 +49,7 @@ _STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
 _STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
 _OUTLIERS_COL_NAME = 'outliers'
 _ABS_OUTLIERS_COL_NAME = 'abs_outliers'
+_VIF_COL_NAME = 'VIF'
 
 
 class GeoLevelCheckOnNationalModelError(Exception):
@@ -130,23 +133,6 @@ class ReachFrequencyData:
   national_rf_impressions_raw_da: xr.DataArray
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class AggregationConfig:
-  """Configuration for custom aggregation functions.
-
-  Attributes:
-    control_variables: A dictionary mapping control variable names to
-      aggregation functions. Defaults to `np.sum` if a variable is not
-      specified.
-    non_media_treatments: A dictionary mapping non-media variable names to
-      aggregation functions. Defaults to `np.sum` if a variable is not
-      specified.
-  """
-
-  control_variables: AggregationMap = dataclasses.field(default_factory=dict)
-  non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
-
-
 def _data_array_like(
     *, da: xr.DataArray, values: np.ndarray | tf.Tensor
 ) -> xr.DataArray:
@@ -191,12 +177,12 @@ def _stack_variables(
 
 
 def _compute_correlation_matrix(
-    dataset: xr.Dataset, dims: str | Sequence[str]
+    input_da: xr.DataArray, dims: str | Sequence[str]
 ) -> xr.DataArray:
-  """Computes the correlation matrix for a dataset.
+  """Computes the correlation matrix for variables in a DataArray.
 
   Args:
-    dataset: An xr.Dataset containing variables for which to compute
+    input_da: An xr.DataArray containing variables for which to compute
       correlations.
     dims: Dimensions along which to compute correlations. Can only be TIME or
       GEO.
@@ -205,8 +191,8 @@ def _compute_correlation_matrix(
     An xr.DataArray containing the correlation matrix.
   """
   # Create two versions for correlation
-  da1 = _stack_variables(dataset, _CORR_VAR1)
-  da2 = _stack_variables(dataset, _CORR_VAR2)
+  da1 = input_da.rename({_STACK_VAR_COORD_NAME: _CORR_VAR1})
+  da2 = input_da.rename({_STACK_VAR_COORD_NAME: _CORR_VAR2})
 
   # Compute pairwise correlation across dims. Other dims are broadcasted.
   corr_mat_da = xr.corr(da1, da2, dim=dims)
@@ -297,16 +283,51 @@ def _calculate_std(
   return std_ds, outlier_df
 
 
+def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
+  """Helper function to compute variance inflation factor.
+
+  Args:
+    input_da: A DataArray for which to calculate the VIF over sample dimensions
+      (e.g. time and geo if applicable).
+    var_dim: The dimension name of the variable to compute VIF for.
+
+  Returns:
+    A DataArray containing the VIF for each variable in the variable dimension.
+  """
+  num_vars = input_da.sizes[var_dim]
+  np_data = input_da.values.reshape(-1, num_vars)
+  np_data_with_const = sm.add_constant(np_data, prepend=True)
+
+  # Compute VIF for each variable excluding const which is the first one in the
+  # 'variable' dimension.
+  vifs = [
+      outliers_influence.variance_inflation_factor(np_data_with_const, i)
+      for i in range(1, num_vars + 1)
+  ]
+
+  vif_da = xr.DataArray(
+      vifs,
+      coords={var_dim: input_da[var_dim].values},
+      dims=[var_dim],
+  )
+  return vif_da
+
+
 class EDAEngine:
   """Meridian EDA Engine."""
 
   def __init__(
       self,
       meridian: model.Meridian,
-      agg_config: AggregationConfig = AggregationConfig(),
+      spec: eda_spec.EDASpec = eda_spec.EDASpec(),
   ):
     self._meridian = meridian
-    self._agg_config = agg_config
+    self._spec = spec
+    self._agg_config = self._spec.aggregation_config
+
+  @property
+  def spec(self) -> eda_spec.EDASpec:
+    return self._spec
 
   @functools.cached_property
   def controls_scaled_da(self) -> xr.DataArray | None:
@@ -752,6 +773,13 @@ class EDAEngine:
     return xr.merge(to_merge, join='inner')
 
   @functools.cached_property
+  def _stacked_treatment_control_scaled_da(self) -> xr.DataArray:
+    """Returns a stacked DataArray of treatment_control_scaled_ds."""
+    da = _stack_variables(self.treatment_control_scaled_ds)
+    da.name = constants.TREATMENT_CONTROL_SCALED
+    return da
+
+  @functools.cached_property
   def national_treatment_control_scaled_ds(self) -> xr.Dataset:
     """Returns a Dataset containing all scaled treatments and controls.
 
@@ -771,6 +799,13 @@ class EDAEngine:
         if da is not None
     ]
     return xr.merge(to_merge_national, join='inner')
+
+  @functools.cached_property
+  def _stacked_national_treatment_control_scaled_da(self) -> xr.DataArray:
+    """Returns a stacked DataArray of national_treatment_control_scaled_ds."""
+    da = _stack_variables(self.national_treatment_control_scaled_ds)
+    da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
+    return da
 
   @functools.cached_property
   def all_reach_scaled_da(self) -> xr.DataArray | None:
@@ -924,7 +959,7 @@ class EDAEngine:
       self,
       geo_da: xr.DataArray,
       channel_dim: str,
-      da_var_agg_map: AggregationMap,
+      da_var_agg_map: eda_spec.AggregationMap,
       keepdims: bool = True,
   ) -> xr.DataArray:
     """Aggregates variables within a DataArray based on user-defined functions.
@@ -961,7 +996,7 @@ class EDAEngine:
       national_da_name: str,
       transformer_class: Optional[type[transformers.TensorTransformer]],
       channel_dim: Optional[str] = None,
-      da_var_agg_map: Optional[AggregationMap] = None,
+      da_var_agg_map: Optional[eda_spec.AggregationMap] = None,
   ) -> xr.DataArray:
     """Aggregate geo-level xr.DataArray to national level and then scale values.
 
@@ -1120,7 +1155,7 @@ class EDAEngine:
   ) -> tuple[xr.DataArray, pd.DataFrame]:
     """Get pairwise correlation among treatments and controls for geo data."""
     corr_mat = _compute_correlation_matrix(
-        self.treatment_control_scaled_ds, dims=dims
+        self._stacked_treatment_control_scaled_da, dims=dims
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
         corr_mat, extreme_corr_threshold
@@ -1233,7 +1268,7 @@ class EDAEngine:
     findings = []
 
     corr_mat = _compute_correlation_matrix(
-        self.national_treatment_control_scaled_ds, dims=constants.TIME
+        self._stacked_national_treatment_control_scaled_da, dims=constants.TIME
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
         corr_mat, _NATIONAL_PAIRWISE_CORR_THRESHOLD
@@ -1315,11 +1350,6 @@ class EDAEngine:
     findings = []
     results = []
 
-    treatment_control_scaled_da = _stack_variables(
-        self.treatment_control_scaled_ds
-    )
-    treatment_control_scaled_da.name = constants.TREATMENT_CONTROL_SCALED
-
     checks = [
         (
             self.kpi_scaled_da,
@@ -1331,7 +1361,7 @@ class EDAEngine:
             ),
         ),
         (
-            treatment_control_scaled_da,
+            self._stacked_treatment_control_scaled_da,
             (
                 'Some treatment or control variables have zero standard'
                 ' deviation after removing outliers in certain geo(s). Please'
@@ -1397,11 +1427,6 @@ class EDAEngine:
     findings = []
     results = []
 
-    treatment_and_control_da = _stack_variables(
-        self.national_treatment_control_scaled_ds
-    )
-    treatment_and_control_da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
-
     checks = [
         (
             self.national_kpi_scaled_da,
@@ -1414,7 +1439,7 @@ class EDAEngine:
             ),
         ),
         (
-            treatment_and_control_da,
+            self._stacked_national_treatment_control_scaled_da,
             (
                 'The standard deviation of these scaled treatment or control'
                 ' variables drops from positive to zero after removing'
@@ -1470,4 +1495,137 @@ class EDAEngine:
 
     return eda_outcome.StandardDeviationOutcome(
         findings=findings, std_results=results
+    )
+
+  def check_geo_vif(self) -> eda_outcome.VIFOutcome:
+    """Computes geo-level variance inflation factor among treatments and controls."""
+    if self._meridian.is_national:
+      raise ValueError(
+          'Geo-level VIF checks are not applicable for national models.'
+      )
+
+    # Overall level VIF check for geo data.
+    tc_da = self._stacked_treatment_control_scaled_da
+    overall_threshold = self._spec.vif_spec.overall_threshold
+
+    overall_vif_da = _calculate_vif(tc_da, _STACK_VAR_COORD_NAME)
+    extreme_overall_vif_da = overall_vif_da.where(
+        overall_vif_da > overall_threshold
+    )
+    extreme_overall_vif_df = extreme_overall_vif_da.to_dataframe(
+        name=_VIF_COL_NAME
+    ).dropna()
+
+    overall_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        vif_da=overall_vif_da,
+        outlier_df=extreme_overall_vif_df,
+    )
+
+    # Geo level VIF check.
+    geo_threshold = self._spec.vif_spec.geo_threshold
+    geo_vif_da = tc_da.groupby(constants.GEO).map(
+        lambda x: _calculate_vif(x, _STACK_VAR_COORD_NAME)
+    )
+    extreme_geo_vif_da = geo_vif_da.where(geo_vif_da > geo_threshold)
+    extreme_geo_vif_df = extreme_geo_vif_da.to_dataframe(
+        name=_VIF_COL_NAME
+    ).dropna()
+
+    geo_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.GEO,
+        vif_da=geo_vif_da,
+        outlier_df=extreme_geo_vif_df,
+    )
+
+    findings = []
+    if not extreme_overall_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have extreme multicollinearity (VIF'
+                  f' >{overall_threshold}) across all times and geos. To'
+                  ' address multicollinearity, please drop any variable that'
+                  ' is a sum of other variables. Otherwise, consider combining'
+                  ' variables.'
+              ),
+          )
+      )
+    elif not extreme_geo_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=(
+                  'Some variables have extreme multicollinearity (with VIF >'
+                  f' {geo_threshold}) in certain geo(s). Consider checking your'
+                  ' data, and/or combining these variables if they also have'
+                  ' high VIF in other geos.'
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed VIFs. Note that high VIF suggests'
+                  ' multicollinearity issues in the dataset, which may'
+                  ' jeopardize model identifiability and model convergence.'
+                  ' Consider combining the variables if high VIF occurs.'
+              ),
+          )
+      )
+
+    return eda_outcome.VIFOutcome(
+        findings=findings,
+        vif_results=[overall_vif_result, geo_vif_result],
+    )
+
+  def check_national_vif(self) -> eda_outcome.VIFOutcome:
+    """Computes national-level variance inflation factor among treatments and controls."""
+    national_tc_da = self._stacked_national_treatment_control_scaled_da
+    national_threshold = self._spec.vif_spec.national_threshold
+    national_vif_da = _calculate_vif(national_tc_da, _STACK_VAR_COORD_NAME)
+
+    extreme_national_vif_df = (
+        national_vif_da.where(national_vif_da > national_threshold)
+        .to_dataframe(name=_VIF_COL_NAME)
+        .dropna()
+    )
+    national_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.NATIONAL,
+        vif_da=national_vif_da,
+        outlier_df=extreme_national_vif_df,
+    )
+
+    findings = []
+    if not extreme_national_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have extreme multicollinearity (with VIF >'
+                  f' {national_threshold}) across all times. To address'
+                  ' multicollinearity, please drop any variable that is a sum'
+                  ' of other variables. Otherwise, consider combining'
+                  ' variables.'
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed VIFs. Note that high VIF suggests'
+                  ' multicollinearity issues in the dataset, which may'
+                  ' jeopardize model identifiability and model convergence.'
+                  ' Consider combining the variables if high VIF occurs.'
+              ),
+          )
+      )
+    return eda_outcome.VIFOutcome(
+        findings=findings,
+        vif_results=[national_vif_result],
     )
