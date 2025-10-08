@@ -1315,13 +1315,12 @@ class BudgetOptimizer:
   ) -> OptimizationResults:
     """Finds the optimal budget allocation that maximizes outcome.
 
-    Define B to be the historical spend of a channel within `selected_geos` and
-    between `start_date` and `end_date`. When the optimization assigns a new
-    budget N to this channel, the historical media units for each geo and time
-    period are assumed to scale by the ratio N / B. Media units prior to
-    `selected_times` are also scaled by N / B. The incremental outcome of each
-    channel is aggregated over `selected_geos` and between `start_date` and
-    `end_date`.
+    Define B to be the historical spend of a channel between `start_date` and
+    `end_date`. When the optimization assigns a new budget N to this channel,
+    the historical media units for each geo and time period are assumed to scale
+    by the ratio N / B. Media units prior to `selected_times` are also scaled by
+    N / B. The incremental outcome of each channel is aggregated over time
+    periods between `start_date` and `end_date`.
 
     The incremental outcome includes the (lagged) amount generated between
     `start_date` and `end_date` by media executed prior to `start_date`, but it
@@ -1349,13 +1348,11 @@ class BudgetOptimizer:
       The cost per media unit is held constant during optimization and does not
       depend on the overall budget assigned to the channel.
     3. Center of the spend box constraint for each channel. By default, the
-      historical percentage of spend within `selected_geos` and between
-      `start_date` and `end_date` is used. This can be overridden by passing
-      `pct_of_spend`.
+      historical percentage of spend between `start_date` and `end_date` is
+      used. This can be overridden by passing `pct_of_spend`.
     4. Total budget to be allocated (for fixed budget scenarios only). By
-      default, the historical spend within `selected_geos` and between
-      `start_date` and `end_date` is used. This can be overridden by passing
-      `budget`.
+      default, the historical spend between `start_date` and `end_date` is used.
+      This can be overridden by passing `budget`.
 
     Passing `new_data.media` (or `new_data.reach` or `new_data.frequency`) will
     override both the flighting pattern and cost per media unit. Passing
