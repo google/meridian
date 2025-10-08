@@ -155,6 +155,11 @@ class WithInputDataSamplesTest(
           "input_data_non_media_and_organic_same_time_dims",
           "input_data_non_media_and_organic_same_time_dims",
       ),
+      ("input_data_organic_only", "input_data_organic_only"),
+      (
+          "national_input_data_organic_only",
+          "national_input_data_organic_only",
+      ),
   )
   def test_input_data_properties_value_equality(self, property_name):
     """Tests that InputData properties return values equal to private members."""
@@ -203,6 +208,11 @@ class WithInputDataSamplesTest(
       (
           "input_data_non_media_and_organic_same_time_dims",
           "input_data_non_media_and_organic_same_time_dims",
+      ),
+      ("input_data_organic_only", "input_data_organic_only"),
+      (
+          "national_input_data_organic_only",
+          "national_input_data_organic_only",
       ),
   )
   def test_input_data_properties_deep_copy(self, property_name):

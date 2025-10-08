@@ -12,7 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Meridian API module that performs EDA checks."""
+"""TODO: Implement."""
 
-from meridian.model.eda import eda_engine
+from unittest import mock
+
+from absl.testing import absltest
+from absl.testing import parameterized
 from meridian.model.eda import meridian_eda
+
+
+class MeridianEdaTest(parameterized.TestCase):
+
+  def test_give_me_a_name(self):
+    # TODO: add real test cases
+    self.assertIsNotNone(meridian_eda.MeridianEDA(mock.MagicMock()))
+
+
+if __name__ == "__main__":
+  absltest.main()

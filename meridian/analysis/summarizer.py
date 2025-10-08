@@ -20,6 +20,7 @@ import os
 
 import jinja2
 from meridian import constants as c
+from meridian.analysis import analyzer
 from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
@@ -59,17 +60,18 @@ RESPONSE_CURVES_CARD_SPEC = formatter.CardSpec(
 class Summarizer:
   """Generates HTML summary visualizations from the model fitting."""
 
-  def __init__(self, meridian: model.Meridian):
+  def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     """Initialize the visualizer classes that are not time-dependent."""
     self._meridian = meridian
+    self._use_kpi = analyzer.Analyzer(meridian)._use_kpi(use_kpi)
 
   @functools.cached_property
   def _model_fit(self):
-    return visualizer.ModelFit(self._meridian)
+    return visualizer.ModelFit(self._meridian, use_kpi=self._use_kpi)
 
   @functools.cached_property
   def _model_diagnostics(self):
-    return visualizer.ModelDiagnostics(self._meridian)
+    return visualizer.ModelDiagnostics(self._meridian, use_kpi=self._use_kpi)
 
   def output_model_results_summary(
       self,
@@ -77,7 +79,6 @@ class Summarizer:
       filepath: str,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
-      use_kpi: bool = False,
   ):
     """Generates and saves the HTML results summary output.
 
@@ -87,18 +88,15 @@ class Summarizer:
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format.
       end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
-      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
-        the incremental revenue using the revenue per KPI (if available).
     """
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
-      f.write(self._gen_model_results_summary(start_date, end_date, use_kpi))
+      f.write(self._gen_model_results_summary(start_date, end_date))
 
   def _gen_model_results_summary(
       self,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
-      use_kpi: bool = False,
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
     all_dates = self._meridian.input_data.time_coordinates.all_dates
@@ -144,7 +142,6 @@ class Summarizer:
     cards_htmls = self._create_cards_htmls(
         template_env,
         selected_times=selected_times,
-        use_kpi=use_kpi,
     )
 
     return html_template.render(
@@ -155,29 +152,29 @@ class Summarizer:
       self,
       template_env: jinja2.Environment,
       selected_times: Sequence[str] | None,
-      use_kpi: bool,
   ) -> Sequence[str]:
     """Creates the HTML snippets for cards in the summary page."""
     media_summary = visualizer.MediaSummary(
-        self._meridian, selected_times=selected_times
+        self._meridian, selected_times=selected_times, use_kpi=self._use_kpi
     )
-    media_effects = visualizer.MediaEffects(self._meridian)
+    media_effects = visualizer.MediaEffects(
+        self._meridian, use_kpi=self._use_kpi
+    )
     reach_frequency = (
         visualizer.ReachAndFrequency(
-            self._meridian, selected_times=selected_times
+            self._meridian, selected_times=selected_times, use_kpi=self._use_kpi
         )
         if self._meridian.n_rf_channels > 0
         else None
     )
     cards = [
         self._create_model_fit_card_html(
-            template_env, selected_times=selected_times, use_kpi=use_kpi
+            template_env, selected_times=selected_times
         ),
         self._create_outcome_contrib_card_html(
             template_env,
             media_summary,
             selected_times=selected_times,
-            use_kpi=use_kpi,
         ),
         self._create_performance_breakdown_card_html(
             template_env, media_summary
@@ -188,17 +185,16 @@ class Summarizer:
             media_summary=media_summary,
             media_effects=media_effects,
             reach_frequency=reach_frequency,
-            use_kpi=use_kpi,
         ),
     ]
     return cards
 
   def _create_model_fit_card_html(
-      self, template_env: jinja2.Environment, use_kpi: bool, **kwargs
+      self, template_env: jinja2.Environment, **kwargs
   ) -> str:
     """Creates the HTML snippet for the Model Fit card."""
     model_fit = self._model_fit
-    outcome = self._kpi_or_revenue(use_kpi)
+    outcome = self._kpi_or_revenue()
     expected_actual_outcome_chart = formatter.ChartSpec(
         id=summary_text.EXPECTED_ACTUAL_OUTCOME_CHART_ID,
         description=summary_text.EXPECTED_ACTUAL_OUTCOME_CHART_DESCRIPTION_FORMAT.format(
@@ -207,9 +203,7 @@ class Summarizer:
         chart_json=model_fit.plot_model_fit(**kwargs).to_json(),
     )
 
-    predictive_accuracy_table = self._predictive_accuracy_table_spec(
-        use_kpi=use_kpi, **kwargs
-    )
+    predictive_accuracy_table = self._predictive_accuracy_table_spec(**kwargs)
     insights = summary_text.MODEL_FIT_INSIGHTS_FORMAT
 
     return formatter.create_card_html(
@@ -219,11 +213,9 @@ class Summarizer:
         [expected_actual_outcome_chart, predictive_accuracy_table],
     )
 
-  def _predictive_accuracy_table_spec(
-      self, use_kpi: bool, **kwargs
-  ) -> formatter.TableSpec:
+  def _predictive_accuracy_table_spec(self, **kwargs) -> formatter.TableSpec:
     """Creates the HTML snippet for the predictive accuracy table."""
-    outcome = self._kpi_or_revenue(use_kpi)
+    outcome = self._kpi_or_revenue()
     model_diag = self._model_diagnostics
     table = model_diag.predictive_accuracy_table(column_var=c.METRIC, **kwargs)
 
@@ -284,10 +276,9 @@ class Summarizer:
       template_env: jinja2.Environment,
       media_summary: visualizer.MediaSummary,
       selected_times: Sequence[str] | None,
-      use_kpi: bool,
   ) -> str:
     """Creates the HTML snippet for the Outcome Contrib card."""
-    outcome = self._kpi_or_revenue(use_kpi)
+    outcome = self._kpi_or_revenue()
 
     num_selected_times = (
         self._meridian.n_times
@@ -457,10 +448,9 @@ class Summarizer:
       media_summary: visualizer.MediaSummary,
       media_effects: visualizer.MediaEffects,
       reach_frequency: visualizer.ReachAndFrequency | None,
-      use_kpi: bool,
   ) -> str:
     """Creates the HTML snippet for the Optimal Analyst card."""
-    outcome = self._kpi_or_revenue(use_kpi)
+    outcome = self._kpi_or_revenue()
     charts = []
     charts.append(
         formatter.ChartSpec(
@@ -473,7 +463,6 @@ class Summarizer:
                 selected_times=(
                     frozenset(selected_times) if selected_times else None
                 ),
-                use_kpi=use_kpi,
                 plot_separately=False,
                 include_ci=False,
                 num_channels_displayed=7,
@@ -541,7 +530,5 @@ class Summarizer:
         rf_channel=most_spend_rf_channel
     ).optimal_frequency
 
-  def _kpi_or_revenue(self, use_kpi: bool) -> str:
-    if use_kpi or self._meridian.input_data.revenue_per_kpi is None:
-      return c.KPI.upper()
-    return c.REVENUE
+  def _kpi_or_revenue(self) -> str:
+    return c.KPI.upper() if self._use_kpi else c.REVENUE

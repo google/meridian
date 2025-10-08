@@ -893,42 +893,37 @@ class Analyzer:
       )
     return result
 
-  def _check_revenue_data_exists(self, use_kpi: bool = False):
-    """Checks if the revenue data is available for the analysis.
+  def _use_kpi(self, use_kpi: bool = False) -> bool:
+    """Checks if KPI analysis should be used.
 
-    In the `kpi_type=NON_REVENUE` case, `revenue_per_kpi` is required to perform
-    the revenue analysis. If `revenue_per_kpi` is not defined, then the revenue
-    data is not available and the revenue analysis (`use_kpi=False`) is not
-    possible. Only the KPI analysis (`use_kpi=True`) is possible in this case.
+    If `use_kpi` is `True` but `kpi_type=REVENUE`, then `use_kpi` is ignored.
 
-    In the `kpi_type=REVENUE` case, KPI is equal to revenue and setting
-    `use_kpi=True` has no effect. Therefore, a warning is issued if the default
-    `False` value of `use_kpi` is overridden by the user.
+    If `use_kpi` is `False`, then  `revenue_per_kpi` is required to perform
+    the revenue analysis. Setting `use_kpi` to `False` in this case is ignored.
 
     Args:
-      use_kpi: A boolean flag indicating whether to use KPI instead of revenue.
+      use_kpi: A boolean flag indicating whether KPI analysis should be used.
 
+    Returns:
+      A boolean flag indicating whether KPI analysis should be used.
     Raises:
-      ValueError: If `use_kpi` is `False` and `revenue_per_kpi` is not defined.
-      UserWarning: If `use_kpi` is `True` in the `kpi_type=REVENUE` case.
+      UserWarning: If the KPI type is revenue and use_kpi is True or if
+      `use_kpi=False` but `revenue_per_kpi` is not available.
     """
-    if self._meridian.input_data.kpi_type == constants.NON_REVENUE:
-      if not use_kpi and self._meridian.revenue_per_kpi is None:
-        raise ValueError(
-            "Revenue analysis is not available when `revenue_per_kpi` is"
-            " unknown. Set `use_kpi=True` to perform KPI analysis instead."
-        )
+    if use_kpi and self._meridian.input_data.kpi_type == constants.REVENUE:
+      warnings.warn(
+          "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`"
+          " since in this case, KPI is equal to revenue."
+      )
+      return False
 
-    if self._meridian.input_data.kpi_type == constants.REVENUE:
-      # In the `kpi_type=REVENUE` case, KPI is equal to revenue and
-      # `revenue_per_kpi` is set to a tensor of 1s in the initialization of the
-      # `InputData` object.
-      assert self._meridian.revenue_per_kpi is not None
-      if use_kpi:
-        warnings.warn(
-            "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`"
-            " since in this case, KPI is equal to revenue."
-        )
+    if not use_kpi and self._meridian.input_data.revenue_per_kpi is None:
+      warnings.warn(
+          "Revenue analysis is not available when `revenue_per_kpi` is"
+          " unknown. Defaulting to KPI analysis."
+      )
+
+    return use_kpi or self._meridian.input_data.revenue_per_kpi is None
 
   def _get_adstock_dataframe(
       self,
@@ -1475,19 +1470,19 @@ class Analyzer:
         calculated.
       new_data: An optional `DataTensors` container with optional new tensors:
         `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, `controls`. If `None`,
-        expected outcome is calculated conditional on the original values of the
-        data tensors that the Meridian object was initialized with. If
-        `new_data` argument is used, expected outcome is calculated conditional
-        on the values of the tensors passed in `new_data` and on the original
-        values of the remaining unset tensors. For example,
+        `organic_frequency`, `non_media_treatments`, `revenue_per_kpi`,
+        `controls`. If `None`, expected outcome is calculated conditional on the
+        original values of the data tensors that the Meridian object was
+        initialized with. If `new_data` argument is used, expected outcome is
+        calculated conditional on the values of the tensors passed in `new_data`
+        and on the original values of the remaining unset tensors. For example,
         `expected_outcome(new_data=DataTensors(reach=new_reach,
         frequency=new_frequency))` calculates expected outcome conditional on
         the original `media`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments` and `controls` tensors and
-        on the new given values for `reach` and `frequency` tensors. The new
-        tensors' dimensions must match the dimensions of the corresponding
-        original tensors from `input_data`.
+        `organic_frequency`, `non_media_treatments`, `revenue_per_kpi`, and
+        `controls` tensors and on the new given values for `reach` and
+        `frequency` tensors. The new tensors' dimensions must match the
+        dimensions of the corresponding original tensors from `input_data`.
       selected_geos: Optional list of containing a subset of geos to include. By
         default, all geos are included.
       selected_times: Optional list of containing a subset of dates to include.
@@ -1521,8 +1516,7 @@ class Analyzer:
         or `sample_prior()` (for `use_posterior=False`) has not been called
         prior to calling this method.
     """
-
-    self._check_revenue_data_exists(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)
     self._check_kpi_transformation(inverse_transform_outcome, use_kpi)
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
@@ -1538,7 +1532,9 @@ class Analyzer:
     if new_data is None:
       new_data = DataTensors()
 
-    required_fields = constants.NON_REVENUE_DATA
+    required_fields = (
+        constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
+    )
     filled_tensors = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_fields,
         meridian=self._meridian,
@@ -1592,7 +1588,7 @@ class Analyzer:
     if inverse_transform_outcome:
       outcome_means = self._meridian.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
-        outcome_means *= self._meridian.revenue_per_kpi
+        outcome_means *= filled_tensors.revenue_per_kpi
 
     return self.filter_and_aggregate_geos_and_times(
         outcome_means,
@@ -1721,7 +1717,7 @@ class Analyzer:
     Returns:
        Tensor of incremental outcome returned in terms of revenue or KPI.
     """
-    self._check_revenue_data_exists(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)
     if revenue_per_kpi is None:
       revenue_per_kpi = self._meridian.revenue_per_kpi
     t1 = self._meridian.kpi_transformer.inverse(
@@ -1804,7 +1800,7 @@ class Analyzer:
     Returns:
       Tensor containing the incremental outcome distribution.
     """
-    self._check_revenue_data_exists(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)
     if (
         data_tensors.non_media_treatments is not None
         and non_media_treatments_baseline_normalized is None
@@ -2005,7 +2001,7 @@ class Analyzer:
         with matching time dimensions.
     """
     mmm = self._meridian
-    self._check_revenue_data_exists(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)
     self._check_kpi_transformation(inverse_transform_outcome, use_kpi)
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
@@ -2322,7 +2318,7 @@ class Analyzer:
         "selected_times": selected_times,
         "aggregate_geos": aggregate_geos,
     }
-    self._check_revenue_data_exists(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)
     self._validate_geo_and_time_granularity(**dim_kwargs)
     required_values = constants.PERFORMANCE_DATA
     if not new_data:
@@ -2431,6 +2427,7 @@ class Analyzer:
       (n_media_channels + n_rf_channels))`. The `n_geos` dimension is dropped if
       `aggregate_geos=True`.
     """
+    use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -2444,7 +2441,6 @@ class Analyzer:
         "include_non_paid_channels": False,
         "aggregate_times": True,
     }
-    self._check_revenue_data_exists(use_kpi)
     self._validate_geo_and_time_granularity(**dim_kwargs)
     required_values = constants.PERFORMANCE_DATA
     if not new_data:
@@ -2632,6 +2628,7 @@ class Analyzer:
       self,
       aggregate_geos: bool = False,
       aggregate_times: bool = False,
+      use_kpi: bool = False,
       split_by_holdout_id: bool = False,
       non_media_baseline_values: Sequence[float] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -2643,6 +2640,8 @@ class Analyzer:
         summed over all of the regions.
       aggregate_times: Boolean. If `True`, the expected, baseline, and actual
         are summed over all of the time periods.
+      use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
+        the incremental revenue using the revenue per KPI (if available).
       split_by_holdout_id: Boolean. If `True` and `holdout_id` exists, the data
         is split into `'Train'`, `'Test'`, and `'All Data'` subsections.
       non_media_baseline_values: Optional list of shape
@@ -2659,8 +2658,8 @@ class Analyzer:
       A dataset with the expected, baseline, and actual outcome metrics.
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
+    use_kpi = self._use_kpi(use_kpi)
     mmm = self._meridian
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     can_split_by_holdout = self._can_split_by_holdout_id(split_by_holdout_id)
     expected_outcome = self.expected_outcome(
         aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi
@@ -2828,7 +2827,7 @@ class Analyzer:
       self,
       use_posterior: bool,
       new_data: DataTensors | None = None,
-      use_kpi: bool | None = None,
+      use_kpi: bool = False,
       include_non_paid_channels: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
       **kwargs,
@@ -2875,7 +2874,7 @@ class Analyzer:
       the end containing the total incremental outcome of all channels.
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
-    use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
+    use_kpi = self._use_kpi(use_kpi)
     incremental_outcome_m = self.incremental_outcome(
         use_posterior=use_posterior,
         new_data=new_data,
@@ -3004,6 +3003,7 @@ class Analyzer:
       interpretation by time period.
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
+    use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -3146,16 +3146,19 @@ class Analyzer:
     ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
 
     if new_data.get_modified_times(self._meridian) is None:
+      expected_outcome_fields = list(
+          constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
+      )
       expected_outcome_prior = self.expected_outcome(
           use_posterior=False,
-          new_data=new_data.filter_fields(constants.NON_REVENUE_DATA),
+          new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
           **dim_kwargs,
           **batched_kwargs,
       )
       expected_outcome_posterior = self.expected_outcome(
           use_posterior=True,
-          new_data=new_data.filter_fields(constants.NON_REVENUE_DATA),
+          new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
           **dim_kwargs,
           **batched_kwargs,
@@ -3399,6 +3402,7 @@ class Analyzer:
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       non_media_baseline_values: Sequence[float] | None = None,
+      use_kpi: bool = False,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
@@ -3420,6 +3424,8 @@ class Analyzer:
         `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
         `model_spec.non_media_baseline_values` is used, which defaults to the
         minimum value for each non_media treatment channel.
+      use_kpi: Boolean. If `True`, the baseline summary metrics are calculated
+        using KPI. If `False`, the metrics are calculated using revenue.
       confidence_level: Confidence level for media summary metrics credible
         intervals, represented as a value between zero and one.
       batch_size: Integer representing the maximum draws per chain in each
@@ -3435,7 +3441,7 @@ class Analyzer:
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
     # TODO: Change "pct_of_contribution" to a more accurate term.
 
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -3618,6 +3624,7 @@ class Analyzer:
       ValueError: If there are no channels with reach and frequency data.
     """
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
+    use_kpi = self._use_kpi(use_kpi)
     new_data = new_data or DataTensors()
     if self._meridian.n_rf_channels == 0:
       raise ValueError(
@@ -3783,10 +3790,7 @@ class Analyzer:
         attrs={
             constants.CONFIDENCE_LEVEL: confidence_level,
             constants.USE_POSTERIOR: use_posterior,
-            constants.IS_REVENUE_KPI: (
-                self._meridian.input_data.kpi_type == constants.REVENUE
-                or not use_kpi
-            ),
+            constants.IS_REVENUE_KPI: not use_kpi,
         },
     )
 
@@ -3794,6 +3798,7 @@ class Analyzer:
       self,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | None = None,
+      use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
     """Calculates `R-Squared`, `MAPE`, and `wMAPE` goodness of fit metrics.
@@ -3824,6 +3829,8 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing a subset of dates to include. By
         default, all time periods are included.
+      use_kpi: Whether to use KPI or revenue scale for the predictive accuracy
+        metrics.
       batch_size: Integer representing the maximum draws per chain in each
         batch. By default, `batch_size` is `100`. The calculation is run in
         batches to avoid memory exhaustion. If a memory error occurs, try
@@ -3837,7 +3844,7 @@ class Analyzer:
       is split into `'Train'`, `'Test'`, and `'All Data'` subsections, and the
       three metrics are computed for each.
     """
-    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+    use_kpi = self._use_kpi(use_kpi)
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -3858,10 +3865,10 @@ class Analyzer:
         ],
         constants.GEO_GRANULARITY: [constants.GEO, constants.NATIONAL],
     }
-    if self._meridian.revenue_per_kpi is not None:
-      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
-    else:
+    if use_kpi:
       input_tensor = self._meridian.kpi
+    else:
+      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
     actual = np.asarray(
         self.filter_and_aggregate_geos_and_times(
             tensor=input_tensor,

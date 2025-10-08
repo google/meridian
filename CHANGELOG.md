@@ -25,13 +25,15 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * ``build_design_matrix()`` now detects the temporal dimension name and
   supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
+* Move `use_kpi` to `Summarizer` and `Visualizer` class initialization.
+* Make KPI analysis the default when revenue data is unavailable.
+
 ## [1.2.1] - 2025-09-22
 
 * Add `use_kpi` arg to `output_model_results_summary`.
 * Add `lognormal_dist_from_mean_std` and `lognormal_dist_from_ci` helper
   functions.
-* Fix `response_curves` when optimized data timeframe is outside of modeled
-  data timeframe.
+* Add support for forecasted data in the optimization 2-pager visualizations.
 * Change AKS algorithm to use AIC instead of EBIC.
 * Fix dtype issue when scaling integer kpi/population.
 
