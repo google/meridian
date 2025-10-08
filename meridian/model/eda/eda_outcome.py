@@ -108,3 +108,32 @@ class PairwiseCorrOutcome(EDAOutcome):
   """
 
   pairwise_corr_results: list[PairwiseCorrResult]
+
+
+@dataclasses.dataclass(frozen=True)
+class StandardDeviationResult:
+  """Encapsulates results from a standard deviation analysis.
+
+  Attributes:
+    variable: The variable for which standard deviation is calculated.
+    level: The level of the analysis.
+    std_ds: Dataset with stdev_with_outliers and stdev_without_outliers.
+    outlier_df: DataFrame with outliers.
+  """
+
+  variable: str
+  level: AnalysisLevel
+  std_ds: xr.Dataset
+  outlier_df: pd.DataFrame
+
+
+@dataclasses.dataclass(frozen=True)
+class StandardDeviationOutcome(EDAOutcome):
+  """Encapsulates results from the standard deviation EDA check.
+
+  Attributes:
+    findings: A list of all individual findings related to standard deviation.
+    std_results: A list of standard deviation results.
+  """
+
+  std_results: list[StandardDeviationResult]

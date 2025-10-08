@@ -30,6 +30,7 @@ import xarray as xr
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
 _CORRELATION_COL_NAME = 'correlation'
+_STACK_VAR_COORD_NAME = 'var'
 _CORR_VAR1 = 'var1'
 _CORR_VAR2 = 'var2'
 _CORRELATION_MATRIX_NAME = 'correlation_matrix'
@@ -39,6 +40,13 @@ _PAIRWISE_NATIONAL_CORR_THRESHOLD = 0.999
 _EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
     columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
 )
+_Q1_THRESHOLD = 0.25
+_Q3_THRESHOLD = 0.75
+_IQR_MULTIPLIER = 1.5
+_STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
+_STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
+_OUTLIERS_COL_NAME = 'outliers'
+_ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 
 
 class GeoLevelCheckOnNationalModelError(Exception):
@@ -162,7 +170,9 @@ def _data_array_like(
   )
 
 
-def _stack_variables(ds: xr.Dataset, coord_name: str) -> xr.DataArray:
+def _stack_variables(
+    ds: xr.Dataset, coord_name: str = _STACK_VAR_COORD_NAME
+) -> xr.DataArray:
   """Stacks data variables other than time and geo into a single variable."""
   dims = []
   coords = []
@@ -176,7 +186,7 @@ def _stack_variables(ds: xr.Dataset, coord_name: str) -> xr.DataArray:
     coords.extend(ds.coords[dim].values.tolist())
 
   da = ds.to_stacked_array(coord_name, sample_dims=sample_dims)
-  da = da.reset_index(dims).assign_coords({coord_name: coords})
+  da = da.reset_index(dims, drop=True).assign_coords({coord_name: coords})
   return da
 
 
@@ -240,6 +250,51 @@ def _find_extreme_corr_pairs(
   return df.sort_values(
       by=_CORRELATION_COL_NAME, ascending=False, inplace=False
   )
+
+
+def _calculate_std(
+    input_da: xr.DataArray,
+) -> tuple[xr.Dataset, pd.DataFrame]:
+  """Helper function to compute std with and without outliers.
+
+  Args:
+    input_da: A DataArray for which to calculate the std.
+
+  Returns:
+    A tuple where the first element is a Dataset with two data variables:
+    'std_incl_outliers' and 'std_excl_outliers'. The second element is a
+    DataFrame with columns for variables, geo (if applicable), time, and
+    outlier values.
+  """
+  std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
+
+  # TODO: Allow users to specify custom outlier definitions.
+  q1 = input_da.quantile(_Q1_THRESHOLD, dim=constants.TIME)
+  q3 = input_da.quantile(_Q3_THRESHOLD, dim=constants.TIME)
+  iqr = q3 - q1
+  lower_bound = q1 - _IQR_MULTIPLIER * iqr
+  upper_bound = q3 + _IQR_MULTIPLIER * iqr
+
+  da_no_outlier = input_da.where(
+      (input_da >= lower_bound) & (input_da <= upper_bound)
+  )
+  std_without_outliers = da_no_outlier.std(dim=constants.TIME, ddof=1)
+
+  std_ds = xr.Dataset({
+      _STD_WITH_OUTLIERS_VAR_NAME: std_with_outliers,
+      _STD_WITHOUT_OUTLIERS_VAR_NAME: std_without_outliers,
+  })
+
+  outlier_da = input_da.where(
+      (input_da < lower_bound) | (input_da > upper_bound)
+  )
+
+  outlier_df = outlier_da.to_dataframe(name=_OUTLIERS_COL_NAME).dropna()
+  outlier_df = outlier_df.assign(
+      **{_ABS_OUTLIERS_COL_NAME: np.abs(outlier_df[_OUTLIERS_COL_NAME])}
+  ).sort_values(by=_ABS_OUTLIERS_COL_NAME, ascending=False, inplace=False)
+
+  return std_ds, outlier_df
 
 
 class EDAEngine:
@@ -1219,4 +1274,116 @@ class EDAEngine:
     return eda_outcome.PairwiseCorrOutcome(
         findings=findings,
         pairwise_corr_results=pairwise_corr_results,
+    )
+
+  def _check_std(
+      self,
+      data: xr.DataArray,
+      level: eda_outcome.AnalysisLevel,
+      zero_std_message: str,
+  ) -> tuple[
+      Optional[eda_outcome.EDAFinding], eda_outcome.StandardDeviationResult
+  ]:
+    """Helper to check standard deviation."""
+    std_ds, outlier_df = _calculate_std(data)
+
+    finding = None
+    if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] == 0).any():
+      finding = eda_outcome.EDAFinding(
+          severity=eda_outcome.EDASeverity.ATTENTION,
+          explanation=zero_std_message,
+      )
+
+    result = eda_outcome.StandardDeviationResult(
+        variable=str(data.name),
+        level=level,
+        std_ds=std_ds,
+        outlier_df=outlier_df,
+    )
+
+    return finding, result
+
+  def check_std_geo(
+      self,
+  ) -> eda_outcome.StandardDeviationOutcome:
+    """Checks std for geo-level KPI, treatments, R&F, and controls."""
+    if self._meridian.is_national:
+      raise ValueError('check_std_geo is not applicable for national models.')
+
+    findings = []
+    results = []
+
+    treatment_control_scaled_da = _stack_variables(
+        self.treatment_control_scaled_ds
+    )
+    treatment_control_scaled_da.name = constants.TREATMENT_CONTROL_SCALED
+
+    checks = [
+        (
+            self.kpi_scaled_da,
+            (
+                'KPI has zero standard deviation after removing outliers'
+                ' in certain geos, indicating weak or no signal in the response'
+                ' variable for these geos.  Please review the input data,'
+                ' and/or consider grouping these geos together.'
+            ),
+        ),
+        (
+            treatment_control_scaled_da,
+            (
+                'Some treatment or control variables have zero standard'
+                ' deviation after removing outliers in certain geo(s). Please'
+                ' review the input data. If these variables are sparse,'
+                ' consider combining them to mitigate potential model'
+                ' identifiability and convergence issues.'
+            ),
+        ),
+        (
+            self.all_reach_scaled_da,
+            (
+                'There are RF or Organic RF channels with zero variation of'
+                ' reach across time at a geo after outliers are removed. If'
+                ' these channels also have low variation of reach in other'
+                ' geos, consider modeling them as impression-based channels'
+                ' instead by taking reach * frequency.'
+            ),
+        ),
+        (
+            self.all_freq_da,
+            (
+                'There are RF or Organic RF channels with zero variation of'
+                ' frequency across time at a geo after outliers are removed. If'
+                ' these channels also have low variation of frequency in other'
+                ' geos, consider modeling them as impression-based channels'
+                ' instead by taking reach * frequency.'
+            ),
+        ),
+    ]
+
+    for data_da, message in checks:
+      if data_da is None:
+        continue
+      finding, result = self._check_std(
+          level=eda_outcome.AnalysisLevel.GEO,
+          data=data_da,
+          zero_std_message=message,
+      )
+      results.append(result)
+      if finding:
+        findings.append(finding)
+
+    # Add an INFO finding if no findings were added.
+    if not findings:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review any identified outliers and the standard'
+                  ' deviation.'
+              ),
+          )
+      )
+
+    return eda_outcome.StandardDeviationOutcome(
+        findings=findings, std_results=results
     )
