@@ -34,9 +34,9 @@ _STACK_VAR_COORD_NAME = 'var'
 _CORR_VAR1 = 'var1'
 _CORR_VAR2 = 'var2'
 _CORRELATION_MATRIX_NAME = 'correlation_matrix'
-_PAIRWISE_OVERALL_CORR_THRESHOLD = 0.999
-_PAIRWISE_GEO_CORR_THRESHOLD = 0.999
-_PAIRWISE_NATIONAL_CORR_THRESHOLD = 0.999
+_OVERALL_PAIRWISE_CORR_THRESHOLD = 0.999
+_GEO_PAIRWISE_CORR_THRESHOLD = 0.999
+_NATIONAL_PAIRWISE_CORR_THRESHOLD = 0.999
 _EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
     columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
 )
@@ -835,19 +835,19 @@ class EDAEngine:
       A DataArray containing all national-level scaled reach data, or None if
       no RF or organic RF channels are present.
     """
-    reach_national_das = []
+    national_reach_das = []
     if self.national_reach_scaled_da is not None:
-      reach_national_das.append(self.national_reach_scaled_da)
+      national_reach_das.append(self.national_reach_scaled_da)
     national_organic_reach_scaled_da = self.national_organic_reach_scaled_da
     if national_organic_reach_scaled_da is not None:
-      reach_national_das.append(
+      national_reach_das.append(
           national_organic_reach_scaled_da.rename(
               {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
           )
       )
-    if not reach_national_das:
+    if not national_reach_das:
       return None
-    da = xr.concat(reach_national_das, dim=constants.RF_CHANNEL)
+    da = xr.concat(national_reach_das, dim=constants.RF_CHANNEL)
     da.name = constants.NATIONAL_ALL_REACH_SCALED
     return da
 
@@ -862,19 +862,19 @@ class EDAEngine:
       A DataArray containing all national-level frequency data, or None if no
       RF or organic RF channels are present.
     """
-    freq_national_das = []
+    national_freq_das = []
     if self.national_frequency_da is not None:
-      freq_national_das.append(self.national_frequency_da)
+      national_freq_das.append(self.national_frequency_da)
     national_organic_frequency_da = self.national_organic_frequency_da
     if national_organic_frequency_da is not None:
-      freq_national_das.append(
+      national_freq_das.append(
           national_organic_frequency_da.rename(
               {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
           )
       )
-    if not freq_national_das:
+    if not national_freq_das:
       return None
-    da = xr.concat(freq_national_das, dim=constants.RF_CHANNEL)
+    da = xr.concat(national_freq_das, dim=constants.RF_CHANNEL)
     da.name = constants.NATIONAL_ALL_FREQUENCY
     return da
 
@@ -922,7 +922,7 @@ class EDAEngine:
 
   def _aggregate_variables(
       self,
-      da_geo: xr.DataArray,
+      geo_da: xr.DataArray,
       channel_dim: str,
       da_var_agg_map: AggregationMap,
       keepdims: bool = True,
@@ -930,7 +930,7 @@ class EDAEngine:
     """Aggregates variables within a DataArray based on user-defined functions.
 
     Args:
-      da_geo: The geo-level DataArray containing multiple variables along
+      geo_da: The geo-level DataArray containing multiple variables along
         channel_dim.
       channel_dim: The name of the dimension coordinate to aggregate over (e.g.,
         constants.CONTROL_VARIABLE).
@@ -943,8 +943,8 @@ class EDAEngine:
       aggregated according to the da_var_agg_map.
     """
     agg_results = []
-    for var_name in da_geo[channel_dim].values:
-      var_data = da_geo.sel({channel_dim: var_name})
+    for var_name in geo_da[channel_dim].values:
+      var_data = geo_da.sel({channel_dim: var_name})
       agg_func = da_var_agg_map.get(var_name, _DEFAULT_DA_VAR_AGG_FUNCTION)
       # Apply the aggregation function over the GEO dimension
       aggregated_data = var_data.reduce(
@@ -957,7 +957,7 @@ class EDAEngine:
 
   def _aggregate_and_scale_geo_da(
       self,
-      da_geo: xr.DataArray,
+      geo_da: xr.DataArray,
       national_da_name: str,
       transformer_class: Optional[type[transformers.TensorTransformer]],
       channel_dim: Optional[str] = None,
@@ -966,7 +966,7 @@ class EDAEngine:
     """Aggregate geo-level xr.DataArray to national level and then scale values.
 
     Args:
-      da_geo: The geo-level DataArray to convert.
+      geo_da: The geo-level DataArray to convert.
       national_da_name: The name for the returned national DataArray.
       transformer_class: The TensorTransformer class to apply after summing to
         national level. Must be None, CenteringAndScalingTransformer, or
@@ -986,21 +986,21 @@ class EDAEngine:
       da_var_agg_map = {}
 
     if channel_dim is not None:
-      da_national = self._aggregate_variables(
-          da_geo, channel_dim, da_var_agg_map
+      national_da = self._aggregate_variables(
+          geo_da, channel_dim, da_var_agg_map
       )
     else:
-      da_national = da_geo.sum(
+      national_da = geo_da.sum(
           dim=constants.GEO, keepdims=True, skipna=False, keep_attrs=True
       )
 
-    da_national = da_national.assign_coords({constants.GEO: [temp_geo_dim]})
-    da_national.values = tf.cast(da_national.values, tf.float32)
-    da_national = self._scale_xarray(da_national, transformer_class)
+    national_da = national_da.assign_coords({constants.GEO: [temp_geo_dim]})
+    national_da.values = tf.cast(national_da.values, tf.float32)
+    national_da = self._scale_xarray(national_da, transformer_class)
 
-    da_national = da_national.sel({constants.GEO: temp_geo_dim}, drop=True)
-    da_national.name = national_da_name
-    return da_national
+    national_da = national_da.sel({constants.GEO: temp_geo_dim}, drop=True)
+    national_da.name = national_da_name
+    return national_da
 
   def _get_rf_data(
       self,
@@ -1127,7 +1127,7 @@ class EDAEngine:
     )
     return corr_mat, extreme_corr_var_pairs_df
 
-  def check_pairwise_corr_geo(self) -> eda_outcome.PairwiseCorrOutcome:
+  def check_geo_pairwise_corr(self) -> eda_outcome.PairwiseCorrOutcome:
     """Checks pairwise correlation among treatments and controls for geo data.
 
     Returns:
@@ -1139,7 +1139,7 @@ class EDAEngine:
     # If the model is national, raise an error.
     if self._meridian.is_national:
       raise GeoLevelCheckOnNationalModelError(
-          'check_pairwise_corr_geo is not supported for national models.'
+          'check_geo_pairwise_corr is not supported for national models.'
       )
 
     findings = []
@@ -1147,7 +1147,7 @@ class EDAEngine:
     overall_corr_mat, overall_extreme_corr_var_pairs_df = (
         self._pairwise_corr_for_geo_data(
             dims=[constants.GEO, constants.TIME],
-            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+            extreme_corr_threshold=_OVERALL_PAIRWISE_CORR_THRESHOLD,
         )
     )
     if not overall_extreme_corr_var_pairs_df.empty:
@@ -1167,7 +1167,7 @@ class EDAEngine:
     geo_corr_mat, geo_extreme_corr_var_pairs_df = (
         self._pairwise_corr_for_geo_data(
             dims=constants.TIME,
-            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+            extreme_corr_threshold=_GEO_PAIRWISE_CORR_THRESHOLD,
         )
     )
     # Overall correlation and per-geo correlation findings are mutually
@@ -1209,13 +1209,13 @@ class EDAEngine:
             level=eda_outcome.AnalysisLevel.OVERALL,
             corr_matrix=overall_corr_mat,
             extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
-            extreme_corr_threshold=_PAIRWISE_OVERALL_CORR_THRESHOLD,
+            extreme_corr_threshold=_OVERALL_PAIRWISE_CORR_THRESHOLD,
         ),
         eda_outcome.PairwiseCorrResult(
             level=eda_outcome.AnalysisLevel.GEO,
             corr_matrix=geo_corr_mat,
             extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
-            extreme_corr_threshold=_PAIRWISE_GEO_CORR_THRESHOLD,
+            extreme_corr_threshold=_GEO_PAIRWISE_CORR_THRESHOLD,
         ),
     ]
 
@@ -1224,7 +1224,7 @@ class EDAEngine:
         pairwise_corr_results=pairwise_corr_results,
     )
 
-  def check_pairwise_corr_national(self) -> eda_outcome.PairwiseCorrOutcome:
+  def check_national_pairwise_corr(self) -> eda_outcome.PairwiseCorrOutcome:
     """Checks pairwise correlation among treatments and controls for national data.
 
     Returns:
@@ -1236,7 +1236,7 @@ class EDAEngine:
         self.national_treatment_control_scaled_ds, dims=constants.TIME
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
-        corr_mat, _PAIRWISE_NATIONAL_CORR_THRESHOLD
+        corr_mat, _NATIONAL_PAIRWISE_CORR_THRESHOLD
     )
 
     if not extreme_corr_var_pairs_df.empty:
@@ -1270,7 +1270,7 @@ class EDAEngine:
             level=eda_outcome.AnalysisLevel.NATIONAL,
             corr_matrix=corr_mat,
             extreme_corr_var_pairs=extreme_corr_var_pairs_df,
-            extreme_corr_threshold=_PAIRWISE_NATIONAL_CORR_THRESHOLD,
+            extreme_corr_threshold=_NATIONAL_PAIRWISE_CORR_THRESHOLD,
         )
     ]
     return eda_outcome.PairwiseCorrOutcome(
@@ -1305,12 +1305,12 @@ class EDAEngine:
 
     return finding, result
 
-  def check_std_geo(
+  def check_geo_std(
       self,
   ) -> eda_outcome.StandardDeviationOutcome:
     """Checks std for geo-level KPI, treatments, R&F, and controls."""
     if self._meridian.is_national:
-      raise ValueError('check_std_geo is not applicable for national models.')
+      raise ValueError('check_geo_std is not applicable for national models.')
 
     findings = []
     results = []
@@ -1390,7 +1390,7 @@ class EDAEngine:
         findings=findings, std_results=results
     )
 
-  def check_std_national(
+  def check_national_std(
       self,
   ) -> eda_outcome.StandardDeviationOutcome:
     """Checks std for national-level KPI, treatments, R&F, and controls."""

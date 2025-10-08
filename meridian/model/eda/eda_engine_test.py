@@ -3084,7 +3084,7 @@ class EDAEngineTest(
       self.assertNotIn(constants.MEDIA_TIME, prop.coords)
       self.assertIn(constants.TIME, prop.coords)
 
-  def test_check_pairwise_corr_geo_one_error(self):
+  def test_check_geo_pairwise_corr_one_error(self):
     # Create data where media_1 and media_2 are perfectly correlated
     data = np.array([
         [[1, 1], [2, 2], [3, 3]],
@@ -3095,7 +3095,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -3116,10 +3116,10 @@ class EDAEngineTest(
     self.assertIn("media_2", overall_result.extreme_corr_var_pairs.to_string())
     self.assertEqual(
         overall_result.extreme_corr_threshold,
-        eda_engine._PAIRWISE_OVERALL_CORR_THRESHOLD,
+        eda_engine._OVERALL_PAIRWISE_CORR_THRESHOLD,
     )
 
-  def test_check_pairwise_corr_geo_one_attention(self):
+  def test_check_geo_pairwise_corr_one_attention(self):
     # Create data where media_1 and media_2 are perfectly correlated per geo but
     # not overall.
     data = np.array([
@@ -3131,7 +3131,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -3151,10 +3151,10 @@ class EDAEngineTest(
     self.assertIn("media_2", geo_result.extreme_corr_var_pairs.to_string())
     self.assertEqual(
         geo_result.extreme_corr_threshold,
-        eda_engine._PAIRWISE_GEO_CORR_THRESHOLD,
+        eda_engine._GEO_PAIRWISE_CORR_THRESHOLD,
     )
 
-  def test_check_pairwise_corr_geo_info_only(self):
+  def test_check_geo_pairwise_corr_info_only(self):
     # No high correlations
     data = np.array([
         [[1, 10], [2, 2], [3, 13]],
@@ -3165,7 +3165,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -3197,7 +3197,7 @@ class EDAEngineTest(
         eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
     )
 
-  def test_check_pairwise_corr_geo_high_overall_corr(self):
+  def test_check_geo_pairwise_corr_high_overall_corr(self):
     # Create data where media_1 and control_1 are perfectly correlated across
     # all geos.
     media_data = np.array([
@@ -3215,7 +3215,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -3236,7 +3236,7 @@ class EDAEngineTest(
         "control_1", overall_result.extreme_corr_var_pairs.to_string()
     )
 
-  def test_check_pairwise_corr_geo_high_corr_in_one_geo(self):
+  def test_check_geo_pairwise_corr_high_corr_in_one_geo(self):
     # Create data where media_1 and control_1 are perfectly correlated in geo1
     # but not geo2.
     media_data = np.array([
@@ -3254,7 +3254,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 2)
@@ -3274,10 +3274,10 @@ class EDAEngineTest(
     self.assertIn("control_1", geo_result.extreme_corr_var_pairs.to_string())
     self.assertIn("geo0", geo_result.extreme_corr_var_pairs.to_string())
 
-  def test_check_pairwise_corr_geo_corr_matrix_has_correct_coordinates(self):
+  def test_check_geo_pairwise_corr_corr_matrix_has_correct_coordinates(self):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     self.assertLen(outcome.pairwise_corr_results, 2)
 
@@ -3295,7 +3295,7 @@ class EDAEngineTest(
       else:
         self.fail(f"Unexpected level: {res.level}")
 
-  def test_check_pairwise_corr_geo_correlation_values(self):
+  def test_check_geo_pairwise_corr_correlation_values(self):
     # Create data to test correlation computations.
     # geo0: media_1 = [1, 2, 3], control_1 = [1, 2, 3] -> corr = 1.0
     # geo1: media_1 = [4, 5, 6], control_1 = [6, 5, 4] -> corr = -1.0
@@ -3314,7 +3314,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
-    outcome = engine.check_pairwise_corr_geo()
+    outcome = engine.check_geo_pairwise_corr()
 
     expected_overall_corr = np.corrcoef(
         media_data.flatten(), control_data.flatten()
@@ -3355,14 +3355,14 @@ class EDAEngineTest(
         expected_geo_corr,
     )
 
-  def test_check_pairwise_corr_geo_raises_error_for_national_model(self):
+  def test_check_geo_pairwise_corr_raises_error_for_national_model(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
     with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
-      engine.check_pairwise_corr_geo()
+      engine.check_geo_pairwise_corr()
 
-  def test_check_pairwise_corr_national_one_error(self):
+  def test_check_national_pairwise_corr_one_error(self):
     # Create data where media_1 and media_2 are perfectly correlated
     data = np.array([
         [1, 1],
@@ -3376,7 +3376,7 @@ class EDAEngineTest(
     self._mock_eda_engine_property(
         "national_treatment_control_scaled_ds", mock_ds
     )
-    outcome = engine.check_pairwise_corr_national()
+    outcome = engine.check_national_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 1)
@@ -3394,10 +3394,10 @@ class EDAEngineTest(
     self.assertIn("media_2", result.extreme_corr_var_pairs.to_string())
     self.assertEqual(
         result.extreme_corr_threshold,
-        eda_engine._PAIRWISE_NATIONAL_CORR_THRESHOLD,
+        eda_engine._NATIONAL_PAIRWISE_CORR_THRESHOLD,
     )
 
-  def test_check_pairwise_corr_national_info_only(self):
+  def test_check_national_pairwise_corr_info_only(self):
     # No high correlations
     data = np.array([
         [1, 10],
@@ -3411,7 +3411,7 @@ class EDAEngineTest(
     self._mock_eda_engine_property(
         "national_treatment_control_scaled_ds", mock_ds
     )
-    outcome = engine.check_pairwise_corr_national()
+    outcome = engine.check_national_pairwise_corr()
 
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.pairwise_corr_results, 1)
@@ -3429,12 +3429,12 @@ class EDAEngineTest(
         eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
     )
 
-  def test_check_pairwise_corr_national_corr_matrix_has_correct_coordinates(
+  def test_check_national_pairwise_corr_corr_matrix_has_correct_coordinates(
       self,
   ):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
-    outcome = engine.check_pairwise_corr_national()
+    outcome = engine.check_national_pairwise_corr()
 
     self.assertLen(outcome.pairwise_corr_results, 1)
     res = outcome.pairwise_corr_results[0]
@@ -3444,7 +3444,7 @@ class EDAEngineTest(
         [eda_engine._CORR_VAR1, eda_engine._CORR_VAR2],
     )
 
-  def test_check_pairwise_corr_national_correlation_values(self):
+  def test_check_national_pairwise_corr_correlation_values(self):
     # Create data to test correlation computations.
     media_data = np.array([
         [1],
@@ -3465,7 +3465,7 @@ class EDAEngineTest(
     self._mock_eda_engine_property(
         "national_treatment_control_scaled_ds", mock_ds
     )
-    outcome = engine.check_pairwise_corr_national()
+    outcome = engine.check_national_pairwise_corr()
 
     expected_corr = np.corrcoef(media_data.flatten(), control_data.flatten())[
         0, 1
@@ -3480,20 +3480,20 @@ class EDAEngineTest(
         expected_corr,
     )
 
-  def test_check_std_geo_raises_error_for_national_model(self):
+  def test_check_geo_std_raises_error_for_national_model(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
 
     with self.assertRaisesRegex(
-        ValueError, "check_std_geo is not applicable for national models."
+        ValueError, "check_geo_std is not applicable for national models."
     ):
-      engine.check_std_geo()
+      engine.check_geo_std()
 
-  def test_check_std_geo_std_results_have_correct_coordinates(self):
+  def test_check_geo_std_std_results_have_correct_coordinates(self):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
 
     self.assertLen(outcome.std_results, 4)
 
@@ -3518,7 +3518,7 @@ class EDAEngineTest(
       else:
         self.fail(f"Unexpected variable: {res.variable}")
 
-  def test_check_std_geo_calculates_std_value_correctly(self):
+  def test_check_geo_std_calculates_std_value_correctly(self):
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3529,7 +3529,7 @@ class EDAEngineTest(
     )
 
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
 
     self.assertLen(outcome.std_results, 2)
     kpi_result = next(
@@ -3559,7 +3559,7 @@ class EDAEngineTest(
           outlier_value=14.0,
       ),
   )
-  def test_check_std_geo_correctly_identifies_outliers(self, outlier_value):
+  def test_check_geo_std_correctly_identifies_outliers(self, outlier_value):
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3570,7 +3570,7 @@ class EDAEngineTest(
     )
 
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
 
     self.assertLen(outcome.std_results, 2)
     kpi_result = next(
@@ -3588,7 +3588,7 @@ class EDAEngineTest(
         outlier_value,
     )
 
-  def test_check_std_geo_returns_info_finding_when_no_issues(self):
+  def test_check_geo_std_returns_info_finding_when_no_issues(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = False
     engine = eda_engine.EDAEngine(meridian)
@@ -3606,7 +3606,7 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_tc_ds)
     self._mock_eda_engine_property("all_reach_scaled_da", None)
     self._mock_eda_engine_property("all_freq_da", None)
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
@@ -3658,7 +3658,7 @@ class EDAEngineTest(
           expected_message_substr="zero variation of frequency across time",
       ),
   )
-  def test_check_std_geo_attention_cases(
+  def test_check_geo_std_attention_cases(
       self,
       mock_kpi_ndarray,
       mock_tc_ndarray,
@@ -3710,14 +3710,14 @@ class EDAEngineTest(
     else:
       self._mock_eda_engine_property("all_freq_da", None)
 
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
     )
     self.assertIn(expected_message_substr, outcome.findings[0].explanation)
 
-  def test_check_std_geo_handles_missing_rf_data(self):
+  def test_check_geo_std_handles_missing_rf_data(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = False
     engine = eda_engine.EDAEngine(meridian)
@@ -3736,17 +3736,17 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_tc_ds)
     self._mock_eda_engine_property("all_reach_scaled_da", None)
     self._mock_eda_engine_property("all_freq_da", None)
-    outcome = engine.check_std_geo()
+    outcome = engine.check_geo_std()
     self.assertLen(outcome.std_results, 2)
     self.assertCountEqual(
         [res.variable for res in outcome.std_results],
         [constants.KPI_SCALED, constants.TREATMENT_CONTROL_SCALED],
     )
 
-  def test_check_std_national_std_results_have_correct_coordinates(self):
+  def test_check_national_std_std_results_have_correct_coordinates(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
 
     self.assertLen(outcome.std_results, 4)
 
@@ -3771,7 +3771,7 @@ class EDAEngineTest(
       else:
         self.fail(f"Unexpected variable: {res.variable}")
 
-  def test_check_std_national_calculates_std_value_correctly(self):
+  def test_check_national_std_calculates_std_value_correctly(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3782,7 +3782,7 @@ class EDAEngineTest(
     )
 
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
 
     self.assertLen(outcome.std_results, 4)
     kpi_result = next(
@@ -3812,7 +3812,7 @@ class EDAEngineTest(
           outlier_value=14.0,
       ),
   )
-  def test_check_std_national_correctly_identifies_outliers(
+  def test_check_national_std_correctly_identifies_outliers(
       self, outlier_value
   ):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
@@ -3825,7 +3825,7 @@ class EDAEngineTest(
     )
 
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
 
     self.assertLen(outcome.std_results, 4)
     kpi_result = next(
@@ -3845,7 +3845,7 @@ class EDAEngineTest(
         outlier_value,
     )
 
-  def test_check_std_national_returns_info_finding_when_no_issues(self):
+  def test_check_national_std_returns_info_finding_when_no_issues(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
@@ -3865,7 +3865,7 @@ class EDAEngineTest(
     )
     self._mock_eda_engine_property("national_all_reach_scaled_da", None)
     self._mock_eda_engine_property("national_all_freq_da", None)
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
@@ -3873,7 +3873,7 @@ class EDAEngineTest(
         outcome.findings[0].explanation,
     )
 
-  def test_check_std_national_finds_zero_std_kpi(self):
+  def test_check_national_std_finds_zero_std_kpi(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
@@ -3895,7 +3895,7 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_all_reach_scaled_da", None)
     self._mock_eda_engine_property("national_all_freq_da", None)
 
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
@@ -3944,7 +3944,7 @@ class EDAEngineTest(
           expected_message_substr="zero variation of frequency across time",
       ),
   )
-  def test_check_std_national_attention_cases(
+  def test_check_national_std_attention_cases(
       self,
       mock_kpi_ndarray,
       mock_tc_ndarray,
@@ -3996,14 +3996,14 @@ class EDAEngineTest(
     else:
       self._mock_eda_engine_property("national_all_freq_da", None)
 
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
     )
     self.assertIn(expected_message_substr, outcome.findings[0].explanation)
 
-  def test_check_std_national_handles_missing_rf_data(self):
+  def test_check_national_std_handles_missing_rf_data(self):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
@@ -4024,7 +4024,7 @@ class EDAEngineTest(
     )
     self._mock_eda_engine_property("national_all_reach_scaled_da", None)
     self._mock_eda_engine_property("national_all_freq_da", None)
-    outcome = engine.check_std_national()
+    outcome = engine.check_national_std()
     self.assertLen(outcome.std_results, 2)
     self.assertCountEqual(
         [res.variable for res in outcome.std_results],
