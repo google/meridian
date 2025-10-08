@@ -838,9 +838,10 @@ class EDAEngine:
     reach_national_das = []
     if self.national_reach_scaled_da is not None:
       reach_national_das.append(self.national_reach_scaled_da)
-    if self.national_organic_reach_scaled_da is not None:
+    national_organic_reach_scaled_da = self.national_organic_reach_scaled_da
+    if national_organic_reach_scaled_da is not None:
       reach_national_das.append(
-          self.national_organic_reach_scaled_da.rename(
+          national_organic_reach_scaled_da.rename(
               {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
           )
       )
@@ -864,9 +865,10 @@ class EDAEngine:
     freq_national_das = []
     if self.national_frequency_da is not None:
       freq_national_das.append(self.national_frequency_da)
-    if self.national_organic_frequency_da is not None:
+    national_organic_frequency_da = self.national_organic_frequency_da
+    if national_organic_frequency_da is not None:
       freq_national_das.append(
-          self.national_organic_frequency_da.rename(
+          national_organic_frequency_da.rename(
               {constants.ORGANIC_RF_CHANNEL: constants.RF_CHANNEL}
           )
       )
@@ -1366,6 +1368,88 @@ class EDAEngine:
       finding, result = self._check_std(
           level=eda_outcome.AnalysisLevel.GEO,
           data=data_da,
+          zero_std_message=message,
+      )
+      results.append(result)
+      if finding:
+        findings.append(finding)
+
+    # Add an INFO finding if no findings were added.
+    if not findings:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review any identified outliers and the standard'
+                  ' deviation.'
+              ),
+          )
+      )
+
+    return eda_outcome.StandardDeviationOutcome(
+        findings=findings, std_results=results
+    )
+
+  def check_std_national(
+      self,
+  ) -> eda_outcome.StandardDeviationOutcome:
+    """Checks std for national-level KPI, treatments, R&F, and controls."""
+    findings = []
+    results = []
+
+    treatment_and_control_da = _stack_variables(
+        self.national_treatment_control_scaled_ds
+    )
+    treatment_and_control_da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
+
+    checks = [
+        (
+            self.national_kpi_scaled_da,
+            (
+                'The standard deviation of the scaled KPI drops from positive'
+                ' to zero after removing outliers, indicating sparsity of KPI'
+                ' i.e. lack of signal in the response variable. Please review'
+                ' the input data, and/or reconsider the feasibility of model'
+                ' fitting with this dataset.'
+            ),
+        ),
+        (
+            treatment_and_control_da,
+            (
+                'The standard deviation of these scaled treatment or control'
+                ' variables drops from positive to zero after removing'
+                ' outliers. This indicates sparsity of these variables, which'
+                ' may cause model identifiability and convergence issues.'
+                ' Please review the input data, and/or consider combining these'
+                ' variables to mitigate sparsity.'
+            ),
+        ),
+        (
+            self.national_all_reach_scaled_da,
+            (
+                'There are RF channels with totally zero variation of reach'
+                ' across time at the national level after outliers are removed.'
+                ' Consider modeling these RF channels as impression-based'
+                ' channels instead.'
+            ),
+        ),
+        (
+            self.national_all_freq_da,
+            (
+                'There are RF channels with totally zero variation of frequency'
+                ' across time at the national level after outliers are removed.'
+                ' Consider modeling these RF channels as impression-based'
+                ' channels instead.'
+            ),
+        ),
+    ]
+
+    for data_da, message in checks:
+      if data_da is None:
+        continue
+      finding, result = self._check_std(
+          data=data_da,
+          level=eda_outcome.AnalysisLevel.NATIONAL,
           zero_std_message=message,
       )
       results.append(result)

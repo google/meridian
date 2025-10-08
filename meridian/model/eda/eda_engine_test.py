@@ -3743,6 +3743,297 @@ class EDAEngineTest(
         [constants.KPI_SCALED, constants.TREATMENT_CONTROL_SCALED],
     )
 
+  def test_check_std_national_std_results_have_correct_coordinates(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    outcome = engine.check_std_national()
+
+    self.assertLen(outcome.std_results, 4)
+
+    for res in outcome.std_results:
+      if res.variable == constants.NATIONAL_KPI_SCALED:
+        self.assertCountEqual(res.std_ds.coords.keys(), [])
+      elif res.variable == constants.NATIONAL_TREATMENT_CONTROL_SCALED:
+        self.assertCountEqual(
+            res.std_ds.coords.keys(),
+            [eda_engine._STACK_VAR_COORD_NAME],
+        )
+      elif res.variable == constants.NATIONAL_ALL_REACH_SCALED:
+        self.assertCountEqual(
+            res.std_ds.coords.keys(),
+            [constants.RF_CHANNEL],
+        )
+      elif res.variable == constants.NATIONAL_ALL_FREQUENCY:
+        self.assertCountEqual(
+            res.std_ds.coords.keys(),
+            [constants.RF_CHANNEL],
+        )
+      else:
+        self.fail(f"Unexpected variable: {res.variable}")
+
+  def test_check_std_national_calculates_std_value_correctly(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    kpi_data = np.array([1, 2, 3, 4, 5, 100], dtype=float)
+    mock_kpi_da = _create_single_var_data_array(
+        kpi_data,
+        name=constants.NATIONAL_KPI_SCALED,
+    )
+
+    self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
+    outcome = engine.check_std_national()
+
+    self.assertLen(outcome.std_results, 4)
+    kpi_result = next(
+        res
+        for res in outcome.std_results
+        if res.variable == constants.NATIONAL_KPI_SCALED
+    )
+
+    expected_kpi_std_value_with_outliers = np.std([1, 2, 3, 4, 5, 100], ddof=1)
+    expected_kpi_std_value_without_outliers = np.std([1, 2, 3, 4, 5], ddof=1)
+    self.assertAllClose(
+        kpi_result.std_ds[eda_engine._STD_WITH_OUTLIERS_VAR_NAME].values,
+        expected_kpi_std_value_with_outliers,
+    )
+    self.assertAllClose(
+        kpi_result.std_ds[eda_engine._STD_WITHOUT_OUTLIERS_VAR_NAME].values,
+        expected_kpi_std_value_without_outliers,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="small_outlier",
+          outlier_value=8.0,
+      ),
+      dict(
+          testcase_name="large_outlier",
+          outlier_value=14.0,
+      ),
+  )
+  def test_check_std_national_correctly_identifies_outliers(
+      self, outlier_value
+  ):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    kpi_data = np.array([10, 11, 12, 11, 10, 11, outlier_value], dtype=float)
+    mock_kpi_da = _create_single_var_data_array(
+        kpi_data,
+        name=constants.NATIONAL_KPI_SCALED,
+    )
+
+    self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
+    outcome = engine.check_std_national()
+
+    self.assertLen(outcome.std_results, 4)
+    kpi_result = next(
+        res
+        for res in outcome.std_results
+        if res.variable == constants.NATIONAL_KPI_SCALED
+    )
+    self.assertGreater(
+        kpi_result.std_ds[eda_engine._STD_WITH_OUTLIERS_VAR_NAME].values.item(),
+        kpi_result.std_ds[
+            eda_engine._STD_WITHOUT_OUTLIERS_VAR_NAME
+        ].values.item(),
+    )
+    self.assertFalse(kpi_result.outlier_df.empty)
+    self.assertEqual(
+        kpi_result.outlier_df[eda_engine._OUTLIERS_COL_NAME].iloc[0],
+        outlier_value,
+    )
+
+  def test_check_std_national_returns_info_finding_when_no_issues(self):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = True
+    engine = eda_engine.EDAEngine(meridian)
+
+    kpi_data = np.arange(7).astype(float)
+    mock_kpi_da = _create_single_var_data_array(
+        kpi_data,
+        name=constants.NATIONAL_KPI_SCALED,
+    )
+
+    tc_data = np.arange(7).reshape(7, 1).astype(float)
+    mock_tc_ds = _create_single_var_dataset(tc_data)
+
+    self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
+    self._mock_eda_engine_property(
+        "national_treatment_control_scaled_ds", mock_tc_ds
+    )
+    self._mock_eda_engine_property("national_all_reach_scaled_da", None)
+    self._mock_eda_engine_property("national_all_freq_da", None)
+    outcome = engine.check_std_national()
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
+    self.assertIn(
+        "Please review any identified outliers",
+        outcome.findings[0].explanation,
+    )
+
+  def test_check_std_national_finds_zero_std_kpi(self):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = True
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_kpi_da = _create_single_var_data_array(
+        np.ones(7, dtype=float),
+        name=constants.NATIONAL_KPI_SCALED,
+    )
+
+    mock_tc_ds = _create_single_var_dataset(
+        np.arange(7).reshape(7, 1).astype(float),
+        var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
+    )
+
+    self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
+    self._mock_eda_engine_property(
+        "national_treatment_control_scaled_ds", mock_tc_ds
+    )
+    self._mock_eda_engine_property("national_all_reach_scaled_da", None)
+    self._mock_eda_engine_property("national_all_freq_da", None)
+
+    outcome = engine.check_std_national()
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(
+        outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
+    )
+    self.assertIn(
+        "The standard deviation of the scaled KPI drops",
+        outcome.findings[0].explanation,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="zero_std_kpi",
+          mock_kpi_ndarray=np.ones(7, dtype=float),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr=(
+              "The standard deviation of the scaled KPI drops"
+          ),
+      ),
+      dict(
+          testcase_name="zero_std_treatment_control",
+          mock_kpi_ndarray=np.arange(7).astype(float),
+          mock_tc_ndarray=np.ones((7, 1), dtype=float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr=(
+              "The standard deviation of these scaled treatment or control"
+              " variables drops from positive to zero"
+          ),
+      ),
+      dict(
+          testcase_name="zero_std_reach",
+          mock_kpi_ndarray=np.arange(7).astype(float),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=np.ones((7, 1), dtype=float),
+          mock_freq_ndarray=None,
+          expected_message_substr="zero variation of reach across time",
+      ),
+      dict(
+          testcase_name="zero_std_freq",
+          mock_kpi_ndarray=np.arange(7).astype(float),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=np.ones((7, 1), dtype=float),
+          expected_message_substr="zero variation of frequency across time",
+      ),
+  )
+  def test_check_std_national_attention_cases(
+      self,
+      mock_kpi_ndarray,
+      mock_tc_ndarray,
+      mock_reach_ndarray,
+      mock_freq_ndarray,
+      expected_message_substr,
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = True
+    engine = eda_engine.EDAEngine(meridian)
+
+    self._mock_eda_engine_property(
+        "national_kpi_scaled_da",
+        _create_single_var_data_array(
+            mock_kpi_ndarray,
+            name=constants.NATIONAL_KPI_SCALED,
+        ),
+    )
+    self._mock_eda_engine_property(
+        "national_treatment_control_scaled_ds",
+        _create_single_var_dataset(
+            mock_tc_ndarray,
+            var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
+        ),
+    )
+
+    # Override mocks for RF data if provided
+    if mock_reach_ndarray is not None:
+      self._mock_eda_engine_property(
+          "national_all_reach_scaled_da",
+          _create_single_var_data_array(
+              mock_reach_ndarray,
+              name=constants.NATIONAL_ALL_REACH_SCALED,
+              var_name=constants.RF_CHANNEL,
+          ),
+      )
+    else:
+      self._mock_eda_engine_property("national_all_reach_scaled_da", None)
+
+    if mock_freq_ndarray is not None:
+      self._mock_eda_engine_property(
+          "national_all_freq_da",
+          _create_single_var_data_array(
+              mock_freq_ndarray,
+              name=constants.NATIONAL_ALL_FREQUENCY,
+              var_name=constants.RF_CHANNEL,
+          ),
+      )
+    else:
+      self._mock_eda_engine_property("national_all_freq_da", None)
+
+    outcome = engine.check_std_national()
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(
+        outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
+    )
+    self.assertIn(expected_message_substr, outcome.findings[0].explanation)
+
+  def test_check_std_national_handles_missing_rf_data(self):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = True
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_kpi_da = _create_single_var_data_array(
+        np.arange(7).astype(float),
+        name=constants.NATIONAL_KPI_SCALED,
+    )
+
+    mock_tc_ds = _create_single_var_dataset(
+        np.arange(7).reshape(7, 1).astype(float),
+        var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
+    )
+
+    self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
+    self._mock_eda_engine_property(
+        "national_treatment_control_scaled_ds", mock_tc_ds
+    )
+    self._mock_eda_engine_property("national_all_reach_scaled_da", None)
+    self._mock_eda_engine_property("national_all_freq_da", None)
+    outcome = engine.check_std_national()
+    self.assertLen(outcome.std_results, 2)
+    self.assertCountEqual(
+        [res.variable for res in outcome.std_results],
+        [
+            constants.NATIONAL_KPI_SCALED,
+            constants.NATIONAL_TREATMENT_CONTROL_SCALED,
+        ],
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
