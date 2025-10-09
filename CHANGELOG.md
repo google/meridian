@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix bug in `optimize()` when using `new_data` with `start_date` and `end_date`
+  matching the first and last dates in the new data.
 * Move `use_kpi` to `Summarizer` and `Visualizer` class initialization.
 * Make KPI analysis the default when revenue data is unavailable.
 
