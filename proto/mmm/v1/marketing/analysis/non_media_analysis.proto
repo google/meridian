@@ -1,0 +1,40 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing.analysis;
+
+import "mmm/v1/marketing/analysis/outcome.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// The analysis on non-media factor.
+message NonMediaAnalysis {
+  reserved 2;
+
+  // The name of the non-media factor. Required.
+  string non_media_name = 1;
+
+  // The marketing outcomes from this non-media factor. Required.
+  //
+  // The non-media outcome(s) calculated based on revenue and/or generic
+  // non-revenue KPI. One or more outcome values are set when revenue and/or
+  // generic non-revenue KPI outcome information is available.
+  //
+  // The spend-related fields herein won't be set as non-media factor doesn't
+  // have spend.
+  repeated Outcome non_media_outcomes = 3;
+}
