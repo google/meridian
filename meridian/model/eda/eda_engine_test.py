@@ -20,6 +20,7 @@ from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
+from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -146,6 +147,35 @@ class EDAEngineTest(
         )
     )
 
+  def test_spec_property_default_spec(self):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+    self.assertEqual(engine.spec, eda_spec.EDASpec())
+    self.assertEqual(engine.spec.vif_spec, eda_spec.VIFSpec())
+    self.assertEqual(
+        engine.spec.aggregation_config, eda_spec.AggregationConfig()
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="vif_spec",
+          kwargs_to_pass=dict(vif_spec=eda_spec.VIFSpec(geo_threshold=500)),
+      ),
+      dict(
+          testcase_name="aggregation_config",
+          kwargs_to_pass=dict(
+              aggregation_config=eda_spec.AggregationConfig(
+                  control_variables={"control_0": np.mean},
+              )
+          ),
+      ),
+  )
+  def test_spec_property_custom_spec_fields(self, kwargs_to_pass):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(**kwargs_to_pass)
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self.assertEqual(engine.spec, spec)
+
   # --- Test cases for controls_scaled_da ---
   @parameterized.named_parameters(
       dict(
@@ -184,12 +214,12 @@ class EDAEngineTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="geo_default_agg",
-          agg_config=eda_engine.AggregationConfig(),
+          agg_config=eda_spec.AggregationConfig(),
           expected_values_func=lambda da: da.sum(dim=constants.GEO),
       ),
       dict(
           testcase_name="geo_custom_agg_mean",
-          agg_config=eda_engine.AggregationConfig(
+          agg_config=eda_spec.AggregationConfig(
               control_variables={
                   "control_0": np.mean,
                   "control_1": np.mean,
@@ -199,7 +229,7 @@ class EDAEngineTest(
       ),
       dict(
           testcase_name="geo_custom_agg_mix",
-          agg_config=eda_engine.AggregationConfig(
+          agg_config=eda_spec.AggregationConfig(
               control_variables={"control_0": np.mean}
           ),
           expected_values_func=lambda da: xr.concat(
@@ -219,7 +249,8 @@ class EDAEngineTest(
       self, agg_config, expected_values_func
   ):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
-    engine = eda_engine.EDAEngine(meridian, agg_config=agg_config)
+    spec = eda_spec.EDASpec(aggregation_config=agg_config)
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
 
     national_controls_scaled_da = engine.national_controls_scaled_da
     self.assertIsInstance(national_controls_scaled_da, xr.DataArray)
@@ -800,12 +831,12 @@ class EDAEngineTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="geo_default_agg",
-          agg_config=eda_engine.AggregationConfig(),
+          agg_config=eda_spec.AggregationConfig(),
           expected_values_func=lambda da: da.sum(dim=constants.GEO),
       ),
       dict(
           testcase_name="geo_custom_agg_mean",
-          agg_config=eda_engine.AggregationConfig(
+          agg_config=eda_spec.AggregationConfig(
               non_media_treatments={
                   "non_media_0": np.mean,
               }
@@ -827,7 +858,8 @@ class EDAEngineTest(
       self, agg_config, expected_values_func
   ):
     meridian = model.Meridian(self.input_data_non_media_and_organic)
-    engine = eda_engine.EDAEngine(meridian, agg_config=agg_config)
+    spec = eda_spec.EDASpec(aggregation_config=agg_config)
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
 
     national_non_media_scaled_da = engine.national_non_media_scaled_da
     self.assertIsInstance(national_non_media_scaled_da, xr.DataArray)

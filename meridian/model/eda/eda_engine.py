@@ -16,11 +16,12 @@
 
 import dataclasses
 import functools
-from typing import Callable, Dict, Optional, Sequence, TypeAlias
+from typing import Optional, Sequence
 from meridian import constants
 from meridian.model import model
 from meridian.model import transformers
 from meridian.model.eda import eda_outcome
+from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -28,7 +29,6 @@ import xarray as xr
 
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
-AggregationMap: TypeAlias = Dict[str, Callable[[xr.DataArray], np.ndarray]]
 _CORRELATION_COL_NAME = 'correlation'
 _STACK_VAR_COORD_NAME = 'var'
 _CORR_VAR1 = 'var1'
@@ -128,23 +128,6 @@ class ReachFrequencyData:
   national_rf_impressions_scaled_da: xr.DataArray
   rf_impressions_raw_da: xr.DataArray
   national_rf_impressions_raw_da: xr.DataArray
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class AggregationConfig:
-  """Configuration for custom aggregation functions.
-
-  Attributes:
-    control_variables: A dictionary mapping control variable names to
-      aggregation functions. Defaults to `np.sum` if a variable is not
-      specified.
-    non_media_treatments: A dictionary mapping non-media variable names to
-      aggregation functions. Defaults to `np.sum` if a variable is not
-      specified.
-  """
-
-  control_variables: AggregationMap = dataclasses.field(default_factory=dict)
-  non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
 
 
 def _data_array_like(
@@ -303,10 +286,15 @@ class EDAEngine:
   def __init__(
       self,
       meridian: model.Meridian,
-      agg_config: AggregationConfig = AggregationConfig(),
+      spec: eda_spec.EDASpec = eda_spec.EDASpec(),
   ):
     self._meridian = meridian
-    self._agg_config = agg_config
+    self._spec = spec
+    self._agg_config = self._spec.aggregation_config
+
+  @property
+  def spec(self) -> eda_spec.EDASpec:
+    return self._spec
 
   @functools.cached_property
   def controls_scaled_da(self) -> xr.DataArray | None:
@@ -938,7 +926,7 @@ class EDAEngine:
       self,
       geo_da: xr.DataArray,
       channel_dim: str,
-      da_var_agg_map: AggregationMap,
+      da_var_agg_map: eda_spec.AggregationMap,
       keepdims: bool = True,
   ) -> xr.DataArray:
     """Aggregates variables within a DataArray based on user-defined functions.
@@ -975,7 +963,7 @@ class EDAEngine:
       national_da_name: str,
       transformer_class: Optional[type[transformers.TensorTransformer]],
       channel_dim: Optional[str] = None,
-      da_var_agg_map: Optional[AggregationMap] = None,
+      da_var_agg_map: Optional[eda_spec.AggregationMap] = None,
   ) -> xr.DataArray:
     """Aggregate geo-level xr.DataArray to national level and then scale values.
 
