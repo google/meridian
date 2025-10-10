@@ -215,7 +215,7 @@ class ModelSpec:
       algorithm to select an optimal number of knots for running the model
       instead of the default 1 for national models and n_times for geo models.
       If this is set to `True` and the `knots` arg is provided, then an error
-      will be raised. Default: `False`.
+      will be raised. Default: `True`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -242,7 +242,7 @@ class ModelSpec:
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
   adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
-  enable_aks: bool = False
+  enable_aks: bool = True
 
   def __post_init__(self):
     # Validate media_effects_dist.
