@@ -1,0 +1,41 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.common;
+
+option java_multiple_files = true;
+
+// Target metrics for marketing performance optimizations.
+// Note that each of these metric variants can be interpreted in terms of either
+// revenue or non-revenue KPI _type_. See: `common.KpiType`.
+enum TargetMetric {
+  TARGET_METRIC_UNSPECIFIED = 0;
+
+  // Any KPI type (revenue if the model data can be converted to revenue, or
+  // some generic KPI otherwise).
+  KPI = 1;
+
+  // ROI = net KPI change / spend.
+  ROI = 2;
+
+  // Marginal ROI is defined at channel level and is applied across all
+  // channels.
+  // mROI = changed in incremental KPI / spend.
+  MARGINAL_ROI = 3;
+
+  // CPIK = total spend / change in incremental KPI.
+  COST_PER_INCREMENTAL_KPI = 4;
+}
