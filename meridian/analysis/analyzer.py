@@ -194,6 +194,8 @@ class DataTensors(backend.ExtensionType):
       spend_tensors.append(self.media_spend)
     if self.rf_spend is not None:
       spend_tensors.append(self.rf_spend)
+    if spend_tensors is not None:
+      spend_tensors = spend_tensors
     return (
         backend.concatenate(spend_tensors, axis=-1) if spend_tensors else None
     )
