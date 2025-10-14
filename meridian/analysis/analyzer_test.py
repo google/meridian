@@ -2600,6 +2600,62 @@ class AnalyzerTest(parameterized.TestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
+  def test_get_aggregated_spend_selected_geos_correct_values(self):
+    # Set it to None to avoid the dimension checks on inference data.
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: None),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=2,
+        n_times=2,
+        n_media_times=3,
+        n_media_channels=1,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0], [1.1]], [[1.2], [1.3]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[2.0], [2.1]], [[2.2], [2.3]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    # Select only first geo.
+    selected_geos = ["geo_0"]
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        selected_geos=selected_geos
+    )
+    expected_all_spend = np.array([1.0 + 1.1, 2.0 + 2.1])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
   def test_get_aggregated_spend_with_single_dim_spends(self):
     seed = 0
     data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
@@ -2628,10 +2684,13 @@ class AnalyzerTest(parameterized.TestCase):
     meridian_analyzer = analyzer.Analyzer(meridian)
 
     n_sub_times = 4
+    n_sub_geos = 3
 
+    selected_geos = data.geo.values.tolist()[:n_sub_geos]
     selected_times = data.time.values[-n_sub_times:].tolist()
     actual_hist_spends = meridian_analyzer.get_aggregated_spend(
-        selected_times=selected_times
+        selected_geos=selected_geos,
+        selected_times=selected_times,
     )
 
     # The spend is interpolated based on the ratio of media execution in the
@@ -2642,15 +2701,15 @@ class AnalyzerTest(parameterized.TestCase):
     # Get the media execution values in the selected times.
     # Shape (n_media_channels + n_rf_channels)
     target_media_exe_values = np.sum(
-        all_media_exe_values[:, -n_sub_times:], axis=(0, 1)
+        all_media_exe_values[:n_sub_geos, -n_sub_times:], axis=(0, 1)
     )
     # Get the media execution values in the entire time period.
     # Shape (n_media_channels + n_rf_channels)
-    all_media_exe_values = np.sum(
+    total_media_exe_values = np.sum(
         all_media_exe_values[:, -meridian.n_times :], axis=(0, 1)
     )
     # The ratio will be used to interpolate the spend.
-    ratio = target_media_exe_values / all_media_exe_values
+    ratio = target_media_exe_values / total_media_exe_values
     # Shape (n_media_channels + n_rf_channels)
     expected_all_spend = data.get_total_spend() * ratio
 
