@@ -1162,7 +1162,9 @@ class EDAEngine:
     )
     return corr_mat, extreme_corr_var_pairs_df
 
-  def check_geo_pairwise_corr(self) -> eda_outcome.PairwiseCorrOutcome:
+  def check_geo_pairwise_corr(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PairwiseCorrArtifact]:
     """Checks pairwise correlation among treatments and controls for geo data.
 
     Returns:
@@ -1239,14 +1241,14 @@ class EDAEngine:
           )
       )
 
-    pairwise_corr_results = [
-        eda_outcome.PairwiseCorrResult(
+    pairwise_corr_artifacts = [
+        eda_outcome.PairwiseCorrArtifact(
             level=eda_outcome.AnalysisLevel.OVERALL,
             corr_matrix=overall_corr_mat,
             extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
             extreme_corr_threshold=_OVERALL_PAIRWISE_CORR_THRESHOLD,
         ),
-        eda_outcome.PairwiseCorrResult(
+        eda_outcome.PairwiseCorrArtifact(
             level=eda_outcome.AnalysisLevel.GEO,
             corr_matrix=geo_corr_mat,
             extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
@@ -1254,12 +1256,15 @@ class EDAEngine:
         ),
     ]
 
-    return eda_outcome.PairwiseCorrOutcome(
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PAIRWISE_CORR,
         findings=findings,
-        pairwise_corr_results=pairwise_corr_results,
+        analysis_artifacts=pairwise_corr_artifacts,
     )
 
-  def check_national_pairwise_corr(self) -> eda_outcome.PairwiseCorrOutcome:
+  def check_national_pairwise_corr(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PairwiseCorrArtifact]:
     """Checks pairwise correlation among treatments and controls for national data.
 
     Returns:
@@ -1300,17 +1305,18 @@ class EDAEngine:
           )
       )
 
-    pairwise_corr_results = [
-        eda_outcome.PairwiseCorrResult(
+    pairwise_corr_artifacts = [
+        eda_outcome.PairwiseCorrArtifact(
             level=eda_outcome.AnalysisLevel.NATIONAL,
             corr_matrix=corr_mat,
             extreme_corr_var_pairs=extreme_corr_var_pairs_df,
             extreme_corr_threshold=_NATIONAL_PAIRWISE_CORR_THRESHOLD,
         )
     ]
-    return eda_outcome.PairwiseCorrOutcome(
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PAIRWISE_CORR,
         findings=findings,
-        pairwise_corr_results=pairwise_corr_results,
+        analysis_artifacts=pairwise_corr_artifacts,
     )
 
   def _check_std(
@@ -1319,7 +1325,7 @@ class EDAEngine:
       level: eda_outcome.AnalysisLevel,
       zero_std_message: str,
   ) -> tuple[
-      Optional[eda_outcome.EDAFinding], eda_outcome.StandardDeviationResult
+      Optional[eda_outcome.EDAFinding], eda_outcome.StandardDeviationArtifact
   ]:
     """Helper to check standard deviation."""
     std_ds, outlier_df = _calculate_std(data)
@@ -1331,24 +1337,24 @@ class EDAEngine:
           explanation=zero_std_message,
       )
 
-    result = eda_outcome.StandardDeviationResult(
+    artifact = eda_outcome.StandardDeviationArtifact(
         variable=str(data.name),
         level=level,
         std_ds=std_ds,
         outlier_df=outlier_df,
     )
 
-    return finding, result
+    return finding, artifact
 
   def check_geo_std(
       self,
-  ) -> eda_outcome.StandardDeviationOutcome:
+  ) -> eda_outcome.EDAOutcome[eda_outcome.StandardDeviationArtifact]:
     """Checks std for geo-level KPI, treatments, R&F, and controls."""
     if self._meridian.is_national:
       raise ValueError('check_geo_std is not applicable for national models.')
 
     findings = []
-    results = []
+    artifacts = []
 
     checks = [
         (
@@ -1395,12 +1401,12 @@ class EDAEngine:
     for data_da, message in checks:
       if data_da is None:
         continue
-      finding, result = self._check_std(
+      finding, artifact = self._check_std(
           level=eda_outcome.AnalysisLevel.GEO,
           data=data_da,
           zero_std_message=message,
       )
-      results.append(result)
+      artifacts.append(artifact)
       if finding:
         findings.append(finding)
 
@@ -1416,16 +1422,18 @@ class EDAEngine:
           )
       )
 
-    return eda_outcome.StandardDeviationOutcome(
-        findings=findings, std_results=results
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.STD,
+        findings=findings,
+        analysis_artifacts=artifacts,
     )
 
   def check_national_std(
       self,
-  ) -> eda_outcome.StandardDeviationOutcome:
+  ) -> eda_outcome.EDAOutcome[eda_outcome.StandardDeviationArtifact]:
     """Checks std for national-level KPI, treatments, R&F, and controls."""
     findings = []
-    results = []
+    artifacts = []
 
     checks = [
         (
@@ -1472,12 +1480,12 @@ class EDAEngine:
     for data_da, message in checks:
       if data_da is None:
         continue
-      finding, result = self._check_std(
+      finding, artifact = self._check_std(
           data=data_da,
           level=eda_outcome.AnalysisLevel.NATIONAL,
           zero_std_message=message,
       )
-      results.append(result)
+      artifacts.append(artifact)
       if finding:
         findings.append(finding)
 
@@ -1493,11 +1501,13 @@ class EDAEngine:
           )
       )
 
-    return eda_outcome.StandardDeviationOutcome(
-        findings=findings, std_results=results
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.STD,
+        findings=findings,
+        analysis_artifacts=artifacts,
     )
 
-  def check_geo_vif(self) -> eda_outcome.VIFOutcome:
+  def check_geo_vif(self) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
     """Computes geo-level variance inflation factor among treatments and controls."""
     if self._meridian.is_national:
       raise ValueError(
@@ -1516,7 +1526,7 @@ class EDAEngine:
         name=_VIF_COL_NAME
     ).dropna()
 
-    overall_vif_result = eda_outcome.VIFResult(
+    overall_vif_artifact = eda_outcome.VIFArtifact(
         level=eda_outcome.AnalysisLevel.OVERALL,
         vif_da=overall_vif_da,
         outlier_df=extreme_overall_vif_df,
@@ -1532,7 +1542,7 @@ class EDAEngine:
         name=_VIF_COL_NAME
     ).dropna()
 
-    geo_vif_result = eda_outcome.VIFResult(
+    geo_vif_artifact = eda_outcome.VIFArtifact(
         level=eda_outcome.AnalysisLevel.GEO,
         vif_da=geo_vif_da,
         outlier_df=extreme_geo_vif_df,
@@ -1577,12 +1587,15 @@ class EDAEngine:
           )
       )
 
-    return eda_outcome.VIFOutcome(
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.VIF,
         findings=findings,
-        vif_results=[overall_vif_result, geo_vif_result],
+        analysis_artifacts=[overall_vif_artifact, geo_vif_artifact],
     )
 
-  def check_national_vif(self) -> eda_outcome.VIFOutcome:
+  def check_national_vif(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
     """Computes national-level variance inflation factor among treatments and controls."""
     national_tc_da = self._stacked_national_treatment_control_scaled_da
     national_threshold = self._spec.vif_spec.national_threshold
@@ -1593,7 +1606,7 @@ class EDAEngine:
         .to_dataframe(name=_VIF_COL_NAME)
         .dropna()
     )
-    national_vif_result = eda_outcome.VIFResult(
+    national_vif_artifact = eda_outcome.VIFArtifact(
         level=eda_outcome.AnalysisLevel.NATIONAL,
         vif_da=national_vif_da,
         outlier_df=extreme_national_vif_df,
@@ -1625,7 +1638,8 @@ class EDAEngine:
               ),
           )
       )
-    return eda_outcome.VIFOutcome(
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.VIF,
         findings=findings,
-        vif_results=[national_vif_result],
+        analysis_artifacts=[national_vif_artifact],
     )
