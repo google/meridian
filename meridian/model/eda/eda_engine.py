@@ -24,6 +24,8 @@ from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from statsmodels.stats import outliers_influence
 import tensorflow as tf
 import xarray as xr
 
@@ -47,6 +49,7 @@ _STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
 _STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
 _OUTLIERS_COL_NAME = 'outliers'
 _ABS_OUTLIERS_COL_NAME = 'abs_outliers'
+_VIF_COL_NAME = 'VIF'
 
 
 class GeoLevelCheckOnNationalModelError(Exception):
@@ -278,6 +281,36 @@ def _calculate_std(
   ).sort_values(by=_ABS_OUTLIERS_COL_NAME, ascending=False, inplace=False)
 
   return std_ds, outlier_df
+
+
+def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
+  """Helper function to compute variance inflation factor.
+
+  Args:
+    input_da: A DataArray for which to calculate the VIF over sample dimensions
+      (e.g. time and geo if applicable).
+    var_dim: The dimension name of the variable to compute VIF for.
+
+  Returns:
+    A DataArray containing the VIF for each variable in the variable dimension.
+  """
+  num_vars = input_da.sizes[var_dim]
+  np_data = input_da.values.reshape(-1, num_vars)
+  np_data_with_const = sm.add_constant(np_data, prepend=True)
+
+  # Compute VIF for each variable excluding const which is the first one in the
+  # 'variable' dimension.
+  vifs = [
+      outliers_influence.variance_inflation_factor(np_data_with_const, i)
+      for i in range(1, num_vars + 1)
+  ]
+
+  vif_da = xr.DataArray(
+      vifs,
+      coords={var_dim: input_da[var_dim].values},
+      dims=[var_dim],
+  )
+  return vif_da
 
 
 class EDAEngine:
@@ -1462,4 +1495,89 @@ class EDAEngine:
 
     return eda_outcome.StandardDeviationOutcome(
         findings=findings, std_results=results
+    )
+
+  def check_geo_vif(self) -> eda_outcome.VIFOutcome:
+    """Computes geo-level variance inflation factor among treatments and controls."""
+    if self._meridian.is_national:
+      raise ValueError(
+          'Geo-level VIF checks are not applicable for national models.'
+      )
+
+    # Overall level VIF check for geo data.
+    tc_da = self._stacked_treatment_control_scaled_da
+    overall_threshold = self._spec.vif_spec.overall_threshold
+
+    overall_vif_da = _calculate_vif(tc_da, _STACK_VAR_COORD_NAME)
+    extreme_overall_vif_da = overall_vif_da.where(
+        overall_vif_da > overall_threshold
+    )
+    extreme_overall_vif_df = extreme_overall_vif_da.to_dataframe(
+        name=_VIF_COL_NAME
+    ).dropna()
+
+    overall_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        vif_da=overall_vif_da,
+        outlier_df=extreme_overall_vif_df,
+    )
+
+    # Geo level VIF check.
+    geo_threshold = self._spec.vif_spec.geo_threshold
+    geo_vif_da = tc_da.groupby(constants.GEO).map(
+        lambda x: _calculate_vif(x, _STACK_VAR_COORD_NAME)
+    )
+    extreme_geo_vif_da = geo_vif_da.where(geo_vif_da > geo_threshold)
+    extreme_geo_vif_df = extreme_geo_vif_da.to_dataframe(
+        name=_VIF_COL_NAME
+    ).dropna()
+
+    geo_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.GEO,
+        vif_da=geo_vif_da,
+        outlier_df=extreme_geo_vif_df,
+    )
+
+    findings = []
+    if not extreme_overall_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have extreme multicollinearity (VIF'
+                  f' >{overall_threshold}) across all times and geos. To'
+                  ' address multicollinearity, please drop any variable that'
+                  ' is a linear combination of other variables. Otherwise,'
+                  ' consider combining variables.'
+              ),
+          )
+      )
+    elif not extreme_geo_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=(
+                  'Some variables have extreme multicollinearity (with VIF >'
+                  f' {geo_threshold}) in certain geo(s). Consider checking your'
+                  ' data, and/or combining these variables if they also have'
+                  ' high VIF in other geos.'
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed VIFs. Note that high VIF suggests'
+                  ' multicollinearity issues in the dataset, which may'
+                  ' jeopardize model identifiability and model convergence.'
+                  ' Consider combining the variables if high VIF occurs.'
+              ),
+          )
+      )
+
+    return eda_outcome.VIFOutcome(
+        findings=findings,
+        vif_results=[overall_vif_result, geo_vif_result],
     )

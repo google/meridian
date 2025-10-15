@@ -137,3 +137,30 @@ class StandardDeviationOutcome(EDAOutcome):
   """
 
   std_results: list[StandardDeviationResult]
+
+
+@dataclasses.dataclass(frozen=True)
+class VIFResult:
+  """Encapsulates results from a single VIF analysis.
+
+  Attributes:
+    level: The level of the VIF analysis.
+    vif_da: DataArray with VIF values.
+    outlier_df: DataFrame with extreme VIF values.
+  """
+
+  level: AnalysisLevel
+  vif_da: xr.DataArray
+  outlier_df: pd.DataFrame
+
+
+@dataclasses.dataclass(frozen=True)
+class VIFOutcome(EDAOutcome):
+  """Encapsulates results from the VIF EDA check.
+
+  Attributes:
+    findings: A list of all individual findings related to VIF.
+    vif_results: A list of VIF results.
+  """
+
+  vif_results: list[VIFResult]

@@ -23,6 +23,8 @@ from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from statsmodels.stats import outliers_influence
 import tensorflow as tf
 import xarray as xr
 
@@ -75,10 +77,10 @@ def _construct_dims_and_shapes(
   return dims, n_geos, n_times, n_vars
 
 
-def _create_single_var_dataset(
+def _create_dataset_with_var_dim(
     data: np.ndarray, var_name: str = "media"
 ) -> xr.Dataset:
-  """Helper to create a dataset with a single variable."""
+  """Helper to create a dataset with a single variable dimension."""
   dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
       data.shape, var_name
   )
@@ -88,10 +90,10 @@ def _create_single_var_dataset(
   return xr.Dataset(data_vars=xarray_data_vars, coords=coords)
 
 
-def _create_single_var_data_array(
+def _create_data_array_with_var_dim(
     data: np.ndarray, name: str, var_name: str | None = None
 ) -> xr.DataArray:
-  """Helper to create a data array with a single variable."""
+  """Helper to create a data array with a single variable dimension."""
   dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
       data.shape, var_name
   )
@@ -100,6 +102,39 @@ def _create_single_var_data_array(
   coords = _construct_coords(dims, n_geos, n_times, n_vars, var_name)
 
   return xr.DataArray(data, name=name, dims=dims, coords=coords)
+
+
+_N_GEOS_VIF = 2
+_N_TIMES_VIF = 20
+_N_VARS_VIF = 3
+_RNG = np.random.default_rng(42)
+
+
+def _get_low_vif_da():
+  data = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF, _N_VARS_VIF))
+  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
+
+
+def _get_geo_vif_da():
+  v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+  v2 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+  v3_geo0 = v1[0, :] * 2 + v2[0, :] * 0.5 + _RNG.random(_N_TIMES_VIF) * 0.01
+  v3_geo1 = _RNG.random(_N_TIMES_VIF)
+  v3 = np.stack([v3_geo0, v3_geo1], axis=0)
+  data = np.stack([v1, v2, v3], axis=-1)
+  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
+
+
+def _get_overall_vif_da():
+  v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+  v2 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+  # v3 is a linear combination of v1 and v2, which results in an inf VIF value.
+  v3 = v1 * 2 + v2 * 0.5
+  data = np.stack([v1, v2, v3], axis=-1)
+  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
 
 
 class EDAEngineTest(
@@ -3122,7 +3157,7 @@ class EDAEngineTest(
         [[1, 1], [2, 2], [3, 3]],
         [[4, 4], [5, 5], [6, 6]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_single_var_dataset(data)
+    mock_ds = _create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3158,7 +3193,7 @@ class EDAEngineTest(
         [[1, 1], [2, 2], [3, 3]],
         [[4, 7], [5, 8], [6, 9]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_single_var_dataset(data)
+    mock_ds = _create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3192,7 +3227,7 @@ class EDAEngineTest(
         [[1, 10], [2, 2], [3, 13]],
         [[4, 4], [5, 15], [6, 6]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_single_var_dataset(data)
+    mock_ds = _create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3240,8 +3275,8 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [10], [12]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_single_var_dataset(media_data, "media")
-    mock_control_ds = _create_single_var_dataset(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
+    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -3279,8 +3314,8 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [11], [14]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_single_var_dataset(media_data, "media")
-    mock_control_ds = _create_single_var_dataset(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
+    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -3339,8 +3374,8 @@ class EDAEngineTest(
         [[1], [2], [3]],
         [[6], [5], [4]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_single_var_dataset(media_data, "media")
-    mock_control_ds = _create_single_var_dataset(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
+    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -3401,7 +3436,7 @@ class EDAEngineTest(
         [2, 2],
         [3, 3],
     ])  # Shape (3, 2)
-    mock_ds = _create_single_var_dataset(data)
+    mock_ds = _create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3436,7 +3471,7 @@ class EDAEngineTest(
         [2, 2],
         [3, 13],
     ])  # Shape (3, 2)
-    mock_ds = _create_single_var_dataset(data)
+    mock_ds = _create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -3488,8 +3523,8 @@ class EDAEngineTest(
         [2],
         [4],
     ])  # Shape (3, 1)
-    mock_media_ds = _create_single_var_dataset(media_data, "media")
-    mock_control_ds = _create_single_var_dataset(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
+    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
@@ -3555,7 +3590,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([[1, 2, 3, 4, 5, 100]], dtype=float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -3596,7 +3631,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([[10, 11, 12, 11, 10, 11, outlier_value]], dtype=float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -3626,13 +3661,13 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.arange(7).reshape(1, 7).astype(float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
 
     tc_data = np.tile(np.arange(7), (1, 1, 1)).astype(float)
-    mock_tc_ds = _create_single_var_dataset(tc_data)
+    mock_tc_ds = _create_dataset_with_var_dim(tc_data)
 
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_tc_ds)
@@ -3704,14 +3739,14 @@ class EDAEngineTest(
 
     self._mock_eda_engine_property(
         "kpi_scaled_da",
-        _create_single_var_data_array(
+        _create_data_array_with_var_dim(
             mock_kpi_ndarray,
             name=constants.KPI_SCALED,
         ),
     )
     self._mock_eda_engine_property(
         "treatment_control_scaled_ds",
-        _create_single_var_dataset(
+        _create_dataset_with_var_dim(
             mock_tc_ndarray,
             var_name=constants.TREATMENT_CONTROL_SCALED,
         ),
@@ -3721,7 +3756,7 @@ class EDAEngineTest(
     if mock_reach_ndarray is not None:
       self._mock_eda_engine_property(
           "all_reach_scaled_da",
-          _create_single_var_data_array(
+          _create_data_array_with_var_dim(
               mock_reach_ndarray,
               name=constants.ALL_REACH_SCALED,
               var_name=constants.RF_CHANNEL,
@@ -3733,7 +3768,7 @@ class EDAEngineTest(
     if mock_freq_ndarray is not None:
       self._mock_eda_engine_property(
           "all_freq_da",
-          _create_single_var_data_array(
+          _create_data_array_with_var_dim(
               mock_freq_ndarray,
               name=constants.ALL_FREQUENCY,
               var_name=constants.RF_CHANNEL,
@@ -3754,12 +3789,12 @@ class EDAEngineTest(
     meridian.is_national = False
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         np.arange(7).reshape(1, 7).astype(float),
         name=constants.KPI_SCALED,
     )
 
-    mock_tc_ds = _create_single_var_dataset(
+    mock_tc_ds = _create_dataset_with_var_dim(
         np.tile(np.arange(7), (1, 1, 1)).astype(float),
         var_name=constants.TREATMENT_CONTROL_SCALED,
     )
@@ -3808,7 +3843,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([1, 2, 3, 4, 5, 100], dtype=float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
@@ -3851,7 +3886,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([10, 11, 12, 11, 10, 11, outlier_value], dtype=float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
@@ -3883,13 +3918,13 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.arange(7).astype(float)
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
 
     tc_data = np.arange(7).reshape(7, 1).astype(float)
-    mock_tc_ds = _create_single_var_dataset(tc_data)
+    mock_tc_ds = _create_dataset_with_var_dim(tc_data)
 
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
     self._mock_eda_engine_property(
@@ -3910,12 +3945,12 @@ class EDAEngineTest(
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         np.ones(7, dtype=float),
         name=constants.NATIONAL_KPI_SCALED,
     )
 
-    mock_tc_ds = _create_single_var_dataset(
+    mock_tc_ds = _create_dataset_with_var_dim(
         np.arange(7).reshape(7, 1).astype(float),
         var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
     )
@@ -3990,14 +4025,14 @@ class EDAEngineTest(
 
     self._mock_eda_engine_property(
         "national_kpi_scaled_da",
-        _create_single_var_data_array(
+        _create_data_array_with_var_dim(
             mock_kpi_ndarray,
             name=constants.NATIONAL_KPI_SCALED,
         ),
     )
     self._mock_eda_engine_property(
         "national_treatment_control_scaled_ds",
-        _create_single_var_dataset(
+        _create_dataset_with_var_dim(
             mock_tc_ndarray,
             var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
         ),
@@ -4007,7 +4042,7 @@ class EDAEngineTest(
     if mock_reach_ndarray is not None:
       self._mock_eda_engine_property(
           "national_all_reach_scaled_da",
-          _create_single_var_data_array(
+          _create_data_array_with_var_dim(
               mock_reach_ndarray,
               name=constants.NATIONAL_ALL_REACH_SCALED,
               var_name=constants.RF_CHANNEL,
@@ -4019,7 +4054,7 @@ class EDAEngineTest(
     if mock_freq_ndarray is not None:
       self._mock_eda_engine_property(
           "national_all_freq_da",
-          _create_single_var_data_array(
+          _create_data_array_with_var_dim(
               mock_freq_ndarray,
               name=constants.NATIONAL_ALL_FREQUENCY,
               var_name=constants.RF_CHANNEL,
@@ -4040,12 +4075,12 @@ class EDAEngineTest(
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_single_var_data_array(
+    mock_kpi_da = _create_data_array_with_var_dim(
         np.arange(7).astype(float),
         name=constants.NATIONAL_KPI_SCALED,
     )
 
-    mock_tc_ds = _create_single_var_dataset(
+    mock_tc_ds = _create_dataset_with_var_dim(
         np.arange(7).reshape(7, 1).astype(float),
         var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
     )
@@ -4065,6 +4100,199 @@ class EDAEngineTest(
             constants.NATIONAL_TREATMENT_CONTROL_SCALED,
         ],
     )
+
+  def test_check_geo_vif_raises_error_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    with self.assertRaisesRegex(
+        ValueError,
+        "Geo-level VIF checks are not applicable for national models.",
+    ):
+      engine.check_geo_vif()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="info",
+          data=_get_low_vif_da(),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+          expected_explanation="Please review the computed VIFs.",
+      ),
+      dict(
+          testcase_name="attention",
+          data=_get_geo_vif_da(),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_explanation=(
+              "Some variables have extreme multicollinearity (with VIF > 5) in"
+              " certain geo(s)."
+          ),
+      ),
+      dict(
+          testcase_name="error",
+          data=_get_overall_vif_da(),
+          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_explanation=(
+              "Some variables have extreme multicollinearity (VIF >10) across"
+              " all times and geos."
+          ),
+      ),
+  )
+  def test_check_geo_vif_returns_correct_finding_severity(
+      self, data, expected_severity, expected_explanation
+  ):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=10, geo_threshold=5)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property("_stacked_treatment_control_scaled_da", data)
+
+    outcome = engine.check_geo_vif()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(outcome.findings[0].severity, expected_severity)
+    self.assertIn(expected_explanation, outcome.findings[0].explanation)
+
+  def test_check_geo_vif_overall_result_is_correct(self):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=1e6, geo_threshold=1)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", _get_geo_vif_da()
+    )
+
+    outcome = engine.check_geo_vif()
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 2)
+
+    overall_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
+    )
+    self.assertEqual(overall_result.level, eda_outcome.AnalysisLevel.OVERALL)
+    self.assertCountEqual(
+        overall_result.vif_da.coords.keys(), [eda_engine._STACK_VAR_COORD_NAME]
+    )
+    self.assertEqual(overall_result.vif_da.shape, (_N_VARS_VIF,))
+    # With overall_threshold=1e6 and _get_geo_vif_da(), we expect no overall
+    # outliers
+    self.assertTrue(overall_result.outlier_df.empty)
+
+  def test_check_geo_vif_geo_result_is_correct(self):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=1e6, geo_threshold=10)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", _get_geo_vif_da()
+    )
+
+    outcome = engine.check_geo_vif()
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 2)
+
+    geo_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.GEO
+    )
+    self.assertEqual(geo_result.level, eda_outcome.AnalysisLevel.GEO)
+    self.assertCountEqual(
+        geo_result.vif_da.coords.keys(),
+        [constants.GEO, eda_engine._STACK_VAR_COORD_NAME],
+    )
+    self.assertEqual(geo_result.vif_da.shape, (_N_GEOS_VIF, _N_VARS_VIF))
+    # With geo_threshold=10 and _get_geo_vif_da(), we expect outliers in geo0
+    self.assertFalse(geo_result.outlier_df.empty)
+    self.assertIn(
+        "geo0", geo_result.outlier_df.index.get_level_values(constants.GEO)
+    )
+    self.assertNotIn(
+        "geo1", geo_result.outlier_df.index.get_level_values(constants.GEO)
+    )
+
+  def test_check_geo_vif_has_correct_vif_value_when_vif_is_inf(self):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=10, geo_threshold=5)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", _get_overall_vif_da()
+    )
+
+    outcome = engine.check_geo_vif()
+
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 2)
+
+    overall_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
+    )
+    geo_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.GEO
+    )
+
+    # With perfect multicollinearity, VIF values should be inf.
+    self.assertTrue(np.isinf(overall_result.vif_da.values).all())
+    self.assertTrue(np.isinf(geo_result.vif_da.values).all())
+
+  def test_check_geo_vif_has_correct_vif_value(self):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=10, geo_threshold=5)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    data = _get_low_vif_da()
+    self._mock_eda_engine_property("_stacked_treatment_control_scaled_da", data)
+
+    outcome = engine.check_geo_vif()
+
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 2)
+
+    overall_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.OVERALL
+    )
+    geo_result = next(
+        res
+        for res in outcome.vif_results
+        if res.level == eda_outcome.AnalysisLevel.GEO
+    )
+
+    # Check overall VIF
+    overall_data = data.values.reshape(-1, _N_VARS_VIF)
+    overall_data_with_const = sm.add_constant(overall_data, prepend=True)
+    expected_overall_vif = [
+        outliers_influence.variance_inflation_factor(overall_data_with_const, i)
+        for i in range(1, _N_VARS_VIF + 1)
+    ]
+    self.assertAllClose(overall_result.vif_da.values, expected_overall_vif)
+
+    # Check geo VIF
+    geo0_data = data.values[0, :, :]
+    geo1_data = data.values[1, :, :]
+    geo0_data_with_const = sm.add_constant(geo0_data, prepend=True)
+    geo1_data_with_const = sm.add_constant(geo1_data, prepend=True)
+    expected_geo0_vif = [
+        outliers_influence.variance_inflation_factor(geo0_data_with_const, i)
+        for i in range(1, _N_VARS_VIF + 1)
+    ]
+    expected_geo1_vif = [
+        outliers_influence.variance_inflation_factor(geo1_data_with_const, i)
+        for i in range(1, _N_VARS_VIF + 1)
+    ]
+    expected_geo_vif = np.stack([expected_geo0_vif, expected_geo1_vif], axis=0)
+    self.assertAllClose(geo_result.vif_da.values, expected_geo_vif)
 
 
 if __name__ == "__main__":
