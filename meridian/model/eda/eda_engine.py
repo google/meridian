@@ -1581,3 +1581,51 @@ class EDAEngine:
         findings=findings,
         vif_results=[overall_vif_result, geo_vif_result],
     )
+
+  def check_national_vif(self) -> eda_outcome.VIFOutcome:
+    """Computes national-level variance inflation factor among treatments and controls."""
+    national_tc_da = self._stacked_national_treatment_control_scaled_da
+    national_threshold = self._spec.vif_spec.national_threshold
+    national_vif_da = _calculate_vif(national_tc_da, _STACK_VAR_COORD_NAME)
+
+    extreme_national_vif_df = (
+        national_vif_da.where(national_vif_da > national_threshold)
+        .to_dataframe(name=_VIF_COL_NAME)
+        .dropna()
+    )
+    national_vif_result = eda_outcome.VIFResult(
+        level=eda_outcome.AnalysisLevel.NATIONAL,
+        vif_da=national_vif_da,
+        outlier_df=extreme_national_vif_df,
+    )
+
+    findings = []
+    if not extreme_national_vif_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ERROR,
+              explanation=(
+                  'Some variables have extreme multicollinearity (with VIF >'
+                  f' {national_threshold}) across all times. To address'
+                  ' multicollinearity, please drop any variable that is a'
+                  ' linear combination of other variables. Otherwise, consider'
+                  ' combining variables.'
+              ),
+          )
+      )
+    else:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation=(
+                  'Please review the computed VIFs. Note that high VIF suggests'
+                  ' multicollinearity issues in the dataset, which may'
+                  ' jeopardize model identifiability and model convergence.'
+                  ' Consider combining the variables if high VIF occurs.'
+              ),
+          )
+      )
+    return eda_outcome.VIFOutcome(
+        findings=findings,
+        vif_results=[national_vif_result],
+    )

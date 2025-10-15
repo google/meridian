@@ -110,13 +110,17 @@ _N_VARS_VIF = 3
 _RNG = np.random.default_rng(42)
 
 
-def _get_low_vif_da():
-  data = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF, _N_VARS_VIF))
+def _get_low_vif_da(geo_level: bool = True):
+  shape = (_N_TIMES_VIF, _N_VARS_VIF)
+  if geo_level:
+    shape = (_N_GEOS_VIF,) + shape
+
+  data = _RNG.random(shape)
   da = _create_data_array_with_var_dim(data, "VIF", "var")
   return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
 
 
-def _get_geo_vif_da():
+def _get_geo_high_vif_da():
   v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
   v2 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
   v3_geo0 = v1[0, :] * 2 + v2[0, :] * 0.5 + _RNG.random(_N_TIMES_VIF) * 0.01
@@ -127,9 +131,10 @@ def _get_geo_vif_da():
   return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
 
 
-def _get_overall_vif_da():
-  v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
-  v2 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+def _get_overall_high_vif_da(geo_level: bool = True):
+  sample_shape = (_N_GEOS_VIF, _N_TIMES_VIF) if geo_level else (_N_TIMES_VIF,)
+  v1 = _RNG.random(sample_shape)
+  v2 = _RNG.random(sample_shape)
   # v3 is a linear combination of v1 and v2, which results in an inf VIF value.
   v3 = v1 * 2 + v2 * 0.5
   data = np.stack([v1, v2, v3], axis=-1)
@@ -4119,7 +4124,7 @@ class EDAEngineTest(
       ),
       dict(
           testcase_name="attention",
-          data=_get_geo_vif_da(),
+          data=_get_geo_high_vif_da(),
           expected_severity=eda_outcome.EDASeverity.ATTENTION,
           expected_explanation=(
               "Some variables have extreme multicollinearity (with VIF > 5) in"
@@ -4128,7 +4133,7 @@ class EDAEngineTest(
       ),
       dict(
           testcase_name="error",
-          data=_get_overall_vif_da(),
+          data=_get_overall_high_vif_da(),
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF >10) across"
@@ -4159,7 +4164,7 @@ class EDAEngineTest(
     )
     engine = eda_engine.EDAEngine(meridian, spec=spec)
     self._mock_eda_engine_property(
-        "_stacked_treatment_control_scaled_da", _get_geo_vif_da()
+        "_stacked_treatment_control_scaled_da", _get_geo_high_vif_da()
     )
 
     outcome = engine.check_geo_vif()
@@ -4187,7 +4192,7 @@ class EDAEngineTest(
     )
     engine = eda_engine.EDAEngine(meridian, spec=spec)
     self._mock_eda_engine_property(
-        "_stacked_treatment_control_scaled_da", _get_geo_vif_da()
+        "_stacked_treatment_control_scaled_da", _get_geo_high_vif_da()
     )
 
     outcome = engine.check_geo_vif()
@@ -4221,7 +4226,7 @@ class EDAEngineTest(
     )
     engine = eda_engine.EDAEngine(meridian, spec=spec)
     self._mock_eda_engine_property(
-        "_stacked_treatment_control_scaled_da", _get_overall_vif_da()
+        "_stacked_treatment_control_scaled_da", _get_overall_high_vif_da()
     )
 
     outcome = engine.check_geo_vif()
@@ -4293,6 +4298,128 @@ class EDAEngineTest(
     ]
     expected_geo_vif = np.stack([expected_geo0_vif, expected_geo1_vif], axis=0)
     self.assertAllClose(geo_result.vif_da.values, expected_geo_vif)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="info",
+          data=_get_low_vif_da(geo_level=False),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+          expected_explanation="Please review the computed VIFs.",
+      ),
+      dict(
+          testcase_name="error",
+          data=_get_overall_high_vif_da(geo_level=False),
+          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_explanation=(
+              "Some variables have extreme multicollinearity (with VIF > 10)"
+              " across all times."
+          ),
+      ),
+  )
+  def test_check_national_vif_returns_correct_finding_severity(
+      self, data, expected_severity, expected_explanation
+  ):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    spec = eda_spec.EDASpec(vif_spec=eda_spec.VIFSpec(national_threshold=10))
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
+    )
+
+    outcome = engine.check_national_vif()
+
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(outcome.findings[0].severity, expected_severity)
+    self.assertIn(expected_explanation, outcome.findings[0].explanation)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="low_vif",
+          data=_get_low_vif_da(geo_level=False),
+          national_threshold=10,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="high_vif",
+          data=_get_overall_high_vif_da(geo_level=False),
+          national_threshold=10,
+          expected_outlier_df_empty=False,
+      ),
+  )
+  def test_check_national_vif_result_is_correct(
+      self,
+      data,
+      national_threshold,
+      expected_outlier_df_empty,
+  ):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(national_threshold=national_threshold)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
+    )
+
+    outcome = engine.check_national_vif()
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 1)
+
+    national_result = outcome.vif_results[0]
+    self.assertEqual(national_result.level, eda_outcome.AnalysisLevel.NATIONAL)
+    self.assertCountEqual(
+        national_result.vif_da.coords.keys(), [eda_engine._STACK_VAR_COORD_NAME]
+    )
+    self.assertEqual(national_result.vif_da.shape, (_N_VARS_VIF,))
+    self.assertEqual(
+        national_result.outlier_df.empty, expected_outlier_df_empty
+    )
+
+  def test_check_national_vif_has_correct_vif_value_when_vif_is_inf(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    spec = eda_spec.EDASpec(vif_spec=eda_spec.VIFSpec(national_threshold=10))
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da",
+        _get_overall_high_vif_da(geo_level=False),
+    )
+
+    outcome = engine.check_national_vif()
+
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 1)
+
+    national_result = outcome.vif_results[0]
+
+    # With perfect multicollinearity, VIF values should be inf.
+    self.assertTrue(np.isinf(national_result.vif_da.values).all())
+
+  def test_check_national_vif_has_correct_vif_value(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    spec = eda_spec.EDASpec(vif_spec=eda_spec.VIFSpec(national_threshold=10))
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    data = _get_low_vif_da(geo_level=False)
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
+    )
+
+    outcome = engine.check_national_vif()
+
+    self.assertIsInstance(outcome, eda_outcome.VIFOutcome)
+    self.assertLen(outcome.vif_results, 1)
+
+    national_result = outcome.vif_results[0]
+
+    # Check national VIF
+    national_data = data.values.reshape(-1, _N_VARS_VIF)
+    national_data_with_const = sm.add_constant(national_data, prepend=True)
+    expected_national_vif = [
+        outliers_influence.variance_inflation_factor(
+            national_data_with_const, i
+        )
+        for i in range(1, _N_VARS_VIF + 1)
+    ]
+    self.assertAllClose(national_result.vif_da.values, expected_national_vif)
 
 
 if __name__ == "__main__":
