@@ -456,6 +456,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           use_posterior=use_posterior,
       )
 
+  def test_create_optimization_grid_empty_selected_geos_raises_exception(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        '`selected_geos` must not be empty.',
+    ):
+      self.budget_optimizer_media_and_rf.create_optimization_grid(
+          selected_geos=[],
+      )
+
   def test_fixed_budget_target_roi_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -1541,8 +1550,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_constraint_upper = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
     start_date = '2021-01-25'
     end_date = '2021-02-01'
+    selected_geos = ['geo 0']
     optimization_grid = (
         self.budget_optimizer_media_and_rf.create_optimization_grid(
+            selected_geos=selected_geos,
             start_date=start_date,
             end_date=end_date,
             spend_constraint_lower=spend_constraint_lower,
@@ -1584,6 +1595,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=selected_geos,
         selected_times=[start_date, end_date],
         use_kpi=False,
         batch_size=c.DEFAULT_BATCH_SIZE,
@@ -1671,6 +1683,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1755,6 +1768,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1859,6 +1873,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1957,6 +1972,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -2048,6 +2064,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,
@@ -2493,6 +2510,36 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           ),
       ),
       dict(
+          testcase_name='selected_geos',
+          create_optimization_grid_args={'selected_geos': ['geo_0']},
+          optimize_args={'selected_geos': ['geo_1']},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " \\['geo_0'\\], but optimization request was called with"
+              " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
+          ),
+      ),
+      dict(
+          testcase_name='selected_geos_none_in_grid',
+          create_optimization_grid_args={'selected_geos': None},
+          optimize_args={'selected_geos': ['geo_1']},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " None, but optimization request was called with"
+              " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
+          ),
+      ),
+      dict(
+          testcase_name='selected_geos_none_in_optimize',
+          create_optimization_grid_args={'selected_geos': ['geo_0']},
+          optimize_args={'selected_geos': None},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " \\['geo_0'\\], but optimization request was called with"
+              " `selected_geos` = None. A new grid will be created."
+          ),
+      ),
+      dict(
           testcase_name='pct_of_spend',
           create_optimization_grid_args={
               'pct_of_spend': np.array([0.3, 0.3, 0.2, 0.1, 0.1])
@@ -2525,6 +2572,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       budget_optimizer.optimize(optimization_grid=grid, **optimize_args)
     default_optimization_args = {
         'new_data': None,
+        'selected_geos': None,
         'start_date': None,
         'end_date': None,
         'budget': None,
@@ -2604,6 +2652,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     optimization_args = {
         'new_data': new_data,
+        'selected_geos': None,
         'start_date': start_date,
         'end_date': end_date,
         'budget': None,
@@ -3046,6 +3095,7 @@ class OptimizerPlotsTest(absltest.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,
@@ -3631,6 +3681,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,

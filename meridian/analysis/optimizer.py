@@ -114,6 +114,7 @@ class OptimizationGrid:
       does not contain reach and frequency data, or if the model does contain
       reach and frequency data, but historical frequency is used for the
       optimization scenario.
+    selected_geos: The geo coordinates from the model used in this grid.
     selected_times: The time coordinates from the model used in this grid. If
       new data with modified time coordinates is used for optimization, this is
       a list of booleans indicating which time coordinates are selected.
@@ -132,6 +133,7 @@ class OptimizationGrid:
   gtol: float
   round_factor: int
   optimal_frequency: np.ndarray | None
+  selected_geos: Sequence[str] | None
   selected_times: Sequence[str] | Sequence[bool] | None
 
   @property
@@ -1041,6 +1043,9 @@ class OptimizationResults:
     self.template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
         f'%b {end_date_adjusted.day}, %Y'
     )
+    self.template_env.globals[c.SELECTED_GEOS] = (
+        self.optimization_grid.selected_geos
+    )
 
     html_template = self.template_env.get_template('summary.html.jinja')
     return html_template.render(
@@ -1295,6 +1300,7 @@ class BudgetOptimizer:
       self,
       new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
+      selected_geos: Sequence[str] | None = None,
       # TODO: b/409550413 - Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
@@ -1315,12 +1321,13 @@ class BudgetOptimizer:
   ) -> OptimizationResults:
     """Finds the optimal budget allocation that maximizes outcome.
 
-    Define B to be the historical spend of a channel between `start_date` and
-    `end_date`. When the optimization assigns a new budget N to this channel,
-    the historical media units for each geo and time period are assumed to scale
-    by the ratio N / B. Media units prior to `selected_times` are also scaled by
-    N / B. The incremental outcome of each channel is aggregated over time
-    periods between `start_date` and `end_date`.
+    Define B to be the historical spend of a channel within `selected_geos` and
+    between `start_date` and `end_date`. When the optimization assigns a new
+    budget N to this channel, the historical media units for each geo and time
+    period are assumed to scale by the ratio N / B. Media units prior to
+    `selected_times` are also scaled by N / B. The incremental outcome of each
+    channel is aggregated over `selected_geos` and between `start_date` and
+    `end_date`.
 
     The incremental outcome includes the (lagged) amount generated between
     `start_date` and `end_date` by media executed prior to `start_date`, but it
@@ -1348,11 +1355,13 @@ class BudgetOptimizer:
       The cost per media unit is held constant during optimization and does not
       depend on the overall budget assigned to the channel.
     3. Center of the spend box constraint for each channel. By default, the
-      historical percentage of spend between `start_date` and `end_date` is
-      used. This can be overridden by passing `pct_of_spend`.
+      historical percentage of spend within `selected_geos` and between
+      `start_date` and `end_date` is used. This can be overridden by passing
+      `pct_of_spend`.
     4. Total budget to be allocated (for fixed budget scenarios only). By
-      default, the historical spend between `start_date` and `end_date` is used.
-      This can be overridden by passing `budget`.
+      default, the historical spend within `selected_geos` and between
+      `start_date` and `end_date` is used. This can be overridden by passing
+      `budget`.
 
     Passing `new_data.media` (or `new_data.reach` or `new_data.frequency`) will
     override both the flighting pattern and cost per media unit. Passing
@@ -1380,6 +1389,9 @@ class BudgetOptimizer:
       use_posterior: Boolean. If `True`, then the budget is optimized based on
         the posterior distribution of the model. Otherwise, the prior
         distribution is used.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Deprecated. Tuple containing the start and end time
         dimension coordinates for the duration to run the optimization on.
         Please Use `start_date` and `end_date` instead.
@@ -1481,6 +1493,7 @@ class BudgetOptimizer:
     use_grid_arg = optimization_grid is not None and self._validate_grid(
         new_data=new_data,
         use_posterior=use_posterior,
+        selected_geos=selected_geos,
         start_date=start_date,
         end_date=end_date,
         budget=budget,
@@ -1495,6 +1508,7 @@ class BudgetOptimizer:
     if optimization_grid is None or not use_grid_arg:
       optimization_grid = self.create_optimization_grid(
           new_data=new_data,
+          selected_geos=selected_geos,
           start_date=start_date,
           end_date=end_date,
           budget=budget,
@@ -1748,6 +1762,7 @@ class BudgetOptimizer:
       self,
       new_data: analyzer_module.DataTensors | None,
       use_posterior: bool,
+      selected_geos: Sequence[str] | None,
       start_date: tc.Date,
       end_date: tc.Date,
       budget: float | None,
@@ -1817,6 +1832,17 @@ class BudgetOptimizer:
       )
       return False
 
+    s_geos = sorted(selected_geos or [])
+    g_geos = sorted(optimization_grid.selected_geos or [])
+    if s_geos != g_geos:
+      warnings.warn(
+          'Given optimization grid was created with `selected_geos` ='
+          f' {optimization_grid.selected_geos}, but optimization request was'
+          f' called with `selected_geos` = {selected_geos}. A new grid will be'
+          ' created.'
+      )
+      return False
+
     n_channels = len(optimization_grid.channels)
     selected_times = _expand_selected_times(
         meridian=self._meridian,
@@ -1874,6 +1900,7 @@ class BudgetOptimizer:
       self,
       new_data: xr.Dataset | None = None,
       use_posterior: bool = True,
+      selected_geos: Sequence[str] | None = None,
       # TODO: b/409550413 - Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
@@ -1912,6 +1939,9 @@ class BudgetOptimizer:
       use_posterior: Boolean. If `True`, then the incremental outcome is derived
         from the posterior distribution of the model. Otherwise, the prior
         distribution is used.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Deprecated. Tuple containing the start and end time
         dimension coordinates. Please Use `start_date` and `end_date` instead.
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
@@ -1966,7 +1996,8 @@ class BudgetOptimizer:
     self._validate_model_fit(use_posterior)
     if new_data is None:
       new_data = analyzer_module.DataTensors()
-
+    if selected_geos is not None and not selected_geos:
+      raise ValueError('`selected_geos` must not be empty.')
     if selected_times is not None:
       warnings.warn(
           '`selected_times` is deprecated. Please use `start_date` and'
@@ -1990,6 +2021,7 @@ class BudgetOptimizer:
     )
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
+        selected_geos=selected_geos,
         selected_times=selected_times,
         include_media=self._meridian.n_media_channels > 0,
         include_rf=self._meridian.n_rf_channels > 0,
@@ -2022,6 +2054,7 @@ class BudgetOptimizer:
           self._analyzer.optimal_freq(
               new_data=opt_freq_data,
               use_posterior=use_posterior,
+              selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
@@ -2036,6 +2069,7 @@ class BudgetOptimizer:
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
         step_size=step_size,
+        selected_geos=selected_geos,
         selected_times=selected_times,
         new_data=filled_data.filter_fields(c.PAID_DATA),
         use_posterior=use_posterior,
@@ -2060,6 +2094,7 @@ class BudgetOptimizer:
         gtol=gtol,
         round_factor=round_factor,
         optimal_frequency=optimal_frequency,
+        selected_geos=selected_geos,
         selected_times=selected_times,
     )
 
@@ -2356,6 +2391,7 @@ class BudgetOptimizer:
       incremental_outcome_grid: np.ndarray,
       multipliers_grid: backend.Tensor,
       new_data: analyzer_module.DataTensors | None = None,
+      selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
@@ -2377,6 +2413,9 @@ class BudgetOptimizer:
         tensors is provided with a different number of time periods than in
         `InputData`, then all tensors must be provided with the same number of
         time periods.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Optional list of times to optimize. This can either be a
         string list containing a subset of time dimension coordinates from
         `InputData.time` or a boolean list with length equal to the time
@@ -2442,6 +2481,7 @@ class BudgetOptimizer:
                     frequency=new_frequency,
                     revenue_per_kpi=filled_data.revenue_per_kpi,
                 ),
+                selected_geos=selected_geos,
                 selected_times=selected_times,
                 use_kpi=use_kpi,
                 include_non_paid_channels=False,
@@ -2459,6 +2499,7 @@ class BudgetOptimizer:
       spend_bound_upper: np.ndarray,
       step_size: int,
       new_data: analyzer_module.DataTensors | None = None,
+      selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
@@ -2481,6 +2522,9 @@ class BudgetOptimizer:
         tensors is provided with a different number of time periods than in
         `InputData`, then all tensors must be provided with the same number of
         time periods.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Optional list of times to optimize. This can either be a
         string list containing a subset of time dimension coordinates from
         `InputData.time` or a boolean list with length equal to the time
@@ -2537,6 +2581,7 @@ class BudgetOptimizer:
           i=i,
           incremental_outcome_grid=incremental_outcome_grid,
           multipliers_grid=multipliers_grid,
+          selected_geos=selected_geos,
           selected_times=selected_times,
           new_data=new_data,
           use_posterior=use_posterior,

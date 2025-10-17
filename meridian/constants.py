@@ -781,6 +781,7 @@ HILL_NUM_STEPS = 500
 # Summary template params.
 START_DATE = 'start_date'
 END_DATE = 'end_date'
+SELECTED_GEOS = 'selected_geos'
 CARD_INSIGHTS = 'insights'
 CARD_CHARTS = 'charts'
 CARD_STATS = 'stats'

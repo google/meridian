@@ -18,4 +18,16 @@ limitations under the License.
   <chip>
     Time period: {{ start_date }} - {{ end_date }}
   </chip>
+  {% if selected_geos %}
+    {%- set geo_count = selected_geos | length %}
+    {%- set full_list = selected_geos | join(', ') %}
+    <chip title="Selected: {{ full_list }}">
+      Selected geos:
+      {%- if geo_count > 5 %}
+        {{ selected_geos[:5] | join(', ') }}, + {{ geo_count - 5 }} more
+      {%- else %}
+        {{ full_list }}
+      {%- endif %}
+    </chip>
+  {% endif %}
 </chips>
