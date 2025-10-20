@@ -604,7 +604,9 @@ class PriorDistributionSamplerTest(
         input_data=input_data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(self._N_DRAWS)
+    prior_samples = meridian.prior_sampler_callable._sample_prior(
+        self._N_DRAWS, seed=0
+    )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 
@@ -632,6 +634,90 @@ class PriorDistributionSamplerTest(
           model_spec=model_spec,
           inference_data=inference_data,
       )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_coefficient_prior",
+          input_data_fixture_name="short_input_data_with_media_only",
+          spec_updates={
+              "media_prior_type": constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+          },
+          expected_vars_and_shapes={
+              constants.BETA_M: (
+                  1,
+                  model_test_data.WithInputDataSamples._N_DRAWS,
+                  model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+              )
+          },
+          unexpected_vars=[
+              constants.ROI_M,
+              constants.MROI_M,
+              constants.CONTRIBUTION_M,
+          ],
+      ),
+      dict(
+          testcase_name="rf_coefficient_prior",
+          input_data_fixture_name="short_input_data_with_rf_only",
+          spec_updates={
+              "rf_prior_type": constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+          },
+          expected_vars_and_shapes={
+              constants.BETA_RF: (
+                  1,
+                  model_test_data.WithInputDataSamples._N_DRAWS,
+                  model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+              )
+          },
+          unexpected_vars=[
+              constants.ROI_RF,
+              constants.MROI_RF,
+              constants.CONTRIBUTION_RF,
+          ],
+      ),
+      dict(
+          testcase_name="organic_media_coefficient_prior",
+          input_data_fixture_name="short_input_data_non_media_and_organic",
+          spec_updates={
+              "organic_media_prior_type": (
+                  constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+              )
+          },
+          expected_vars_and_shapes={
+              constants.BETA_OM: (
+                  1,
+                  model_test_data.WithInputDataSamples._N_DRAWS,
+                  model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+              )
+          },
+          unexpected_vars=[constants.CONTRIBUTION_OM],
+      ),
+  )
+  def test_sample_prior_with_coefficient_prior_type(
+      self,
+      input_data_fixture_name,
+      spec_updates,
+      expected_vars_and_shapes,
+      unexpected_vars,
+  ):
+    """Checks that coefficient priors are sampled correctly."""
+    model_spec = spec.ModelSpec(**spec_updates)
+
+    input_data = getattr(self, input_data_fixture_name)
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+
+    prior = meridian.inference_data.prior
+
+    for var, shape in expected_vars_and_shapes.items():
+      self.assertTrue(hasattr(prior, var))
+      self.assertEqual(getattr(prior, var).shape, shape)
+
+    for var in unexpected_vars:
+      with self.assertRaises(AttributeError):
+        getattr(prior, var)
 
 
 if __name__ == "__main__":

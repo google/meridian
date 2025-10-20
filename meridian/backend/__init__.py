@@ -18,7 +18,7 @@ import abc
 import functools
 import os
 from typing import Any, Optional, Sequence, Tuple, TYPE_CHECKING, Union
-
+import warnings
 from meridian.backend import config
 import numpy as np
 from typing_extensions import Literal
@@ -37,6 +37,7 @@ _DEFAULT_INT = "int64"
 _TENSORFLOW_TILE_KEYWORD = "multiples"
 _JAX_TILE_KEYWORD = "reps"
 
+_ARG_AUTOGRAPH = "autograph"
 _ARG_JIT_COMPILE = "jit_compile"
 _ARG_STATIC_ARGNUMS = "static_argnums"
 _ARG_STATIC_ARGNAMES = "static_argnames"
@@ -205,6 +206,7 @@ def _jax_function_wrapper(func=None, **kwargs):
   jit_kwargs = kwargs.copy()
 
   jit_kwargs.pop(_ARG_JIT_COMPILE, None)
+  jit_kwargs.pop(_ARG_AUTOGRAPH, None)
 
   if _ARG_STATIC_ARGNUMS in jit_kwargs:
     if not jit_kwargs[_ARG_STATIC_ARGNUMS]:
@@ -566,11 +568,9 @@ if _BACKEND == config.Backend.JAX:
   int32 = _ops.int32
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
-    raise NotImplementedError(
-        "JAX does not support a global, stateful random seed. `set_random_seed`"
-        " is not implemented. Instead, you must pass an explicit `seed`"
-        " integer directly to the sampling methods (e.g., `sample_prior`),"
-        " which will be used to create a JAX PRNGKey internally."
+    warnings.warn(
+        "backend.set_random_seed is a no-op in JAX. Randomness is managed "
+        "statelessly via PRNGKeys passed to sampling methods."
     )
 
 elif _BACKEND == config.Backend.TENSORFLOW:

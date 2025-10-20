@@ -209,10 +209,11 @@ class BackendTest(parameterized.TestCase):
       config.set_backend(config.Backend.JAX)
       self.assertEmpty(w)
 
-  def test_set_random_seed_raises_for_jax(self):
+  def test_set_random_seed_warns_for_jax(self):
     self._set_backend_for_test(_JAX)
-    with self.assertRaises(NotImplementedError):
+    with self.assertWarns(UserWarning) as cm:
       backend.set_random_seed(0)
+    self.assertIn("is a no-op in JAX", str(cm.warning))
 
   @parameterized.named_parameters(
       ("numpy_int32", np.int32, "int32"),
@@ -847,6 +848,7 @@ class BackendFunctionWrappersTest(parameterized.TestCase):
     # (jit_compile). We must set static_argnums=() because this is a standalone
     # function.
     @backend.function(
+        autograph=False,
         jit_compile=True,
         static_argnames="should_be_ignored_by_tf",
         static_argnums=(),
