@@ -1642,6 +1642,193 @@ class InputDataTest(parameterized.TestCase):
     data.population = data.population.astype(int)
     self.assertNotEmpty(data.scaled_centered_kpi)
 
+  def test_rank_geos_only_media_spend(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_1",
+            "geo_5",
+            "geo_4",
+            "geo_6",
+            "geo_7",
+            "geo_8",
+            "geo_2",
+            "geo_3",
+            "geo_9",
+            "geo_0",
+        ],
+    )
+
+  def test_rank_geos_only_rf_spend(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_3",
+            "geo_5",
+            "geo_0",
+            "geo_4",
+            "geo_8",
+            "geo_6",
+            "geo_7",
+            "geo_1",
+            "geo_9",
+            "geo_2",
+        ],
+    )
+
+  def test_rank_geos_media_spend_and_rf_spend(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_5",
+            "geo_4",
+            "geo_1",
+            "geo_6",
+            "geo_8",
+            "geo_3",
+            "geo_7",
+            "geo_0",
+            "geo_2",
+            "geo_9",
+        ],
+    )
+
+  def test_rank_geos_national(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=1,
+            n_times=20,
+            n_media_times=20,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    actual_ranked = data.ranked_geos
+    self.assertListEqual(actual_ranked, ["geo_0"])
+
+  def test_rank_geos_no_geos_in_rf_spend(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=test_utils.random_rf_spend_nd_da(
+            n_geos=None,
+            n_times=None,
+            n_rf_channels=self.n_rf_channels,
+        ),
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_1",
+            "geo_5",
+            "geo_4",
+            "geo_6",
+            "geo_7",
+            "geo_8",
+            "geo_2",
+            "geo_3",
+            "geo_9",
+            "geo_0",
+        ],
+    )
+
+  def test_rank_geos_no_geos_in_media_spend(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=test_utils.random_media_spend_nd_da(
+            n_geos=None,
+            n_times=None,
+            n_media_channels=self.n_media_channels,
+        ),
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=self.rf_spend,
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_3",
+            "geo_5",
+            "geo_0",
+            "geo_4",
+            "geo_8",
+            "geo_6",
+            "geo_7",
+            "geo_1",
+            "geo_9",
+            "geo_2",
+        ],
+    )
+
+  def test_rank_geos_no_geos_in_both_spend_rank_by_allocated(self):
+    data = input_data.InputData(
+        kpi=self.not_lagged_kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=test_utils.random_media_spend_nd_da(
+            n_geos=None,
+            n_times=None,
+            n_media_channels=self.n_media_channels,
+        ),
+        reach=self.lagged_reach,
+        frequency=self.lagged_frequency,
+        rf_spend=test_utils.random_rf_spend_nd_da(
+            n_geos=None,
+            n_times=None,
+            n_rf_channels=self.n_rf_channels,
+        ),
+    )
+    self.assertListEqual(
+        data.ranked_geos,
+        [
+            "geo_5",
+            "geo_8",
+            "geo_3",
+            "geo_1",
+            "geo_4",
+            "geo_6",
+            "geo_2",
+            "geo_0",
+            "geo_7",
+            "geo_9",
+        ],
+    )
+
 
 class NonpaidInputDataTest(parameterized.TestCase):
   """Tests for non-paid InputData."""
