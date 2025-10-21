@@ -364,6 +364,66 @@ class InputData:
       return self.reach[constants.MEDIA_TIME]
 
   @functools.cached_property
+  def ranked_geos(self) -> list[str]:
+    """Ranks geos by total spend then by total KPI."""
+    n_geos = len(self.geo)
+    if n_geos == 1:
+      return [self.geo[0]]
+    else:
+      spend_da = None
+
+      if self.media_spend is not None:
+        # Sum across media_channel and any other non-geo/time dimensions
+        media_spend_sum = self.media_spend.sum(
+            dim=[
+                d
+                for d in self.media_spend.dims
+                if d not in (constants.GEO, constants.TIME)
+            ]
+        )
+        spend_da = media_spend_sum
+
+      if self.rf_spend is not None:
+        # Sum across rf_channel and any other non-geo/time dimensions
+        rf_spend_sum = self.rf_spend.sum(
+            dim=[
+                d
+                for d in self.rf_spend.dims
+                if d not in (constants.GEO, constants.TIME)
+            ]
+        )
+
+        if spend_da is None:
+          spend_da = rf_spend_sum
+        else:
+          # Add media and rf spend. xarray aligns on geo/time.
+          # Use fillna(0) for safe addition.
+          spend_da = spend_da.fillna(0) + rf_spend_sum.fillna(0)
+
+      if spend_da is None:
+        raise ValueError(
+            "It is required to have at least one of media spend or rf spend."
+        )
+
+      # 2. Calculate Total Spend and KPI per Geo
+      geo_spend_sum_da = spend_da.sum(dim=constants.TIME)
+      geo_kpi_sum_da = self.kpi.sum(dim=constants.TIME)
+
+      # 3. Get the underlying NumPy arrays and coordinates
+      geo_coords = geo_spend_sum_da[constants.GEO].values
+      spend_values = geo_spend_sum_da.values
+      kpi_values = geo_kpi_sum_da.values
+
+      # 4. Use NumPy's lexsort for multi-criteria sorting (descending)
+      sort_indices = np.lexsort((
+          -kpi_values,  # Secondary sort key (minor)
+          -spend_values,  # Primary sort key (major)
+      ))
+
+      # 5. Apply the sorted indices to the geo coordinates
+      return geo_coords[sort_indices].tolist()
+
+  @functools.cached_property
   def media_time_coordinates(self) -> tc.TimeCoordinates:
     """Returns the media time dimension in a `TimeCoordinates` wrapper."""
     return tc.TimeCoordinates.from_dates(self.media_time)
