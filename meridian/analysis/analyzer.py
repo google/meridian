@@ -4035,8 +4035,6 @@ class Analyzer:
 
       *   `n_params`: The number of respective parameters in the model.
       *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `n_params`: The number of respective parameters in the model.
-      *   `avg_rhat`: The average R-hat value for the respective parameter.
       *   `max_rhat`: The maximum R-hat value for the respective parameter.
       *   `percent_bad_rhat`: The percentage of R-hat values for the respective
           parameter that are greater than `bad_rhat_threshold`.
