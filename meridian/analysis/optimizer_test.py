@@ -2525,7 +2525,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           optimize_args={'selected_geos': ['geo_1']},
           warning_regex=(
               'Given optimization grid was created with `selected_geos` ='
-              " None, but optimization request was called with"
+              ' None, but optimization request was called with'
               " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
           ),
       ),
@@ -2536,7 +2536,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           warning_regex=(
               'Given optimization grid was created with `selected_geos` ='
               " \\['geo_0'\\], but optimization request was called with"
-              " `selected_geos` = None. A new grid will be created."
+              ' `selected_geos` = None. A new grid will be created.'
           ),
       ),
       dict(
@@ -3062,6 +3062,26 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_response_curves.assert_called_once()
       _, kwargs = mock_response_curves.call_args
       self.assertEqual(kwargs['selected_times'], selected_times)
+
+  def test_get_response_curves_selected_geos_correct(self):
+    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+        :2
+    ]
+    with mock.patch.object(
+        analyzer.Analyzer,
+        'response_curves',
+        wraps=self.budget_optimizer_media_and_rf._analyzer.response_curves,
+    ) as mock_response_curves:
+      # Create OptimizationResults with selected_geos
+      optimization_results_old_data = (
+          self.budget_optimizer_media_and_rf.optimize(
+              selected_geos=selected_geos
+          )
+      )
+      optimization_results_old_data.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      self.assertEqual(kwargs['selected_geos'], selected_geos)
 
 
 class OptimizerPlotsTest(absltest.TestCase):
