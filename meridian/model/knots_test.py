@@ -764,6 +764,121 @@ class AKSTest(parameterized.TestCase):
           x, y, np.array([1.0, 3, 15]), np.array([-10, 50, 0])
       )
 
+  def test_user_provided_base_penalty(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    base_penalty = np.array([0.5] * 100)
+    aks_result = aks_obj.automatic_knot_selection(base_penalty=base_penalty)
+    actual_knots, _ = aks_result.knots, aks_result.model
+    self.assertListEqual(
+        actual_knots.tolist(),
+        [
+            2,
+            7,
+            8,
+            10,
+            11,
+            14,
+            15,
+            16,
+            17,
+            21,
+            22,
+            24,
+            25,
+            26,
+            30,
+            31,
+            34,
+            35,
+            36,
+            38,
+            39,
+            40,
+            42,
+            43,
+            45,
+            49,
+            52,
+            54,
+            57,
+            60,
+            61,
+            64,
+            67,
+            68,
+            69,
+            72,
+            73,
+            74,
+            79,
+            81,
+            83,
+            84,
+            85,
+            86,
+            89,
+            93,
+            94,
+            95,
+            98,
+            101,
+            102,
+            103,
+            104,
+            105,
+            107,
+            109,
+            110,
+            113,
+            114,
+        ],
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="min_equals_max",
+          min_internal_knots=8,
+          max_internal_knots=8,
+          expected_knots=[2, 7, 24, 25, 38, 39, 49, 114],
+      ),
+      dict(
+          testcase_name="min_lt_max_",
+          min_internal_knots=2,
+          max_internal_knots=15,
+          expected_knots=[2, 7, 24, 25, 38, 39, 49, 114],
+      ),
+  )
+  def test_aks_user_provided_min_max_internal_knots(
+      self, min_internal_knots, max_internal_knots, expected_knots
+  ):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    aks_result = aks_obj.automatic_knot_selection(
+        min_internal_knots=min_internal_knots,
+        max_internal_knots=max_internal_knots,
+    )
+    actual_knots, _ = aks_result.knots, aks_result.model
+    self.assertListEqual(actual_knots.tolist(), expected_knots)
+
 
 if __name__ == "__main__":
   absltest.main()
