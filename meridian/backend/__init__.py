@@ -419,6 +419,21 @@ def _jax_transpose(a, perm=None):
   return jnp.transpose(a, axes=perm)
 
 
+def _jax_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Extracts the underlying numerical data from a JAX PRNGKey."""
+  if seed is None:
+    return None
+
+  return np.array(jax.random.key_data(seed))
+
+
+def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Converts a TensorFlow-style seed into a NumPy array."""
+  if seed is None:
+    return None
+  return np.array(seed)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -536,6 +551,7 @@ if _BACKEND == config.Backend.JAX:
   function = _jax_function_wrapper
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
+  get_seed_data = _jax_get_seed_data
   is_nan = _ops.isnan
   log = _ops.log
   make_ndarray = _jax_make_ndarray
@@ -676,6 +692,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   function = _tf_function_wrapper
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
+  get_seed_data = _tf_get_seed_data
   is_nan = _ops.math.is_nan
   log = _ops.math.log
   make_ndarray = _ops.make_ndarray
@@ -853,35 +870,22 @@ class _JaxRNGHandler(_BaseRNGHandler):
     return _JaxRNGHandler(np.asarray(new_seed_tensor).item())
 
 
-# TODO: Replace with _TFRNGHandler
-class _TFLegacyRNGHandler(_BaseRNGHandler):
-  """TensorFlow implementation.
+class _TFRNGHandler(_BaseRNGHandler):
+  """A stateless-style RNG handler for TensorFlow.
 
-  TODO: This class should be removed and replaced with a correct,
-  stateful `tf.random.Generator`-based implementation.
+  This handler canonicalizes any seed input into a single stateless seed Tensor.
   """
 
-  def __init__(self, seed: SeedType, *, _sanitized_seed: Optional[Any] = None):
-    """Initializes the TensorFlow legacy RNG handler.
+  def __init__(self, seed: SeedType):
+    """Initializes the TensorFlow RNG handler.
 
     Args:
       seed: The initial seed. Can be an integer, a sequence of two integers, a
-        corresponding Tensor, or None.
-      _sanitized_seed: For internal use only. If provided, this pre-computed
-        seed tensor is used directly, and the standard initialization logic for
-        the public `seed` argument is bypassed.
-
-    Raises:
-      ValueError: If `seed` is a sequence with a length other than 2.
+        corresponding Tensor, or None. It will be sanitized and stored
+        internally as a single stateless seed Tensor.
     """
     super().__init__(seed)
-    self._tf_sanitized_seed: Optional[Any] = None
-
-    if _sanitized_seed is not None:
-      # Internal path: A pre-sanitized seed was provided by a trusted source
-      # so we adopt it directly.
-      self._tf_sanitized_seed = _sanitized_seed
-      return
+    self._seed_state: Optional["_tf.Tensor"] = None
 
     if seed is None:
       return
@@ -899,63 +903,33 @@ class _TFLegacyRNGHandler(_BaseRNGHandler):
     else:
       seed_to_sanitize = seed
 
-    self._tf_sanitized_seed = random.sanitize_seed(seed_to_sanitize)
+    self._seed_state = random.sanitize_seed(seed_to_sanitize)
 
   def get_kernel_seed(self) -> Any:
-    return self._tf_sanitized_seed
+    """Provides the current stateless seed of the handler without advancing it."""
+    return self._seed_state
 
   def get_next_seed(self) -> Any:
-    """Returns the original integer seed to preserve prior sampling behavior.
-
-    Returns:
-      The original integer seed provided during initialization.
-
-    Raises:
-      RuntimeError: If the handler was not initialized with a scalar integer
-        seed, which is required for the legacy prior sampling path.
-    """
-    if self._seed_input is None:
+    """Returns a new unique seed and advances the handler's internal state."""
+    if self._seed_state is None:
       return None
+    new_seed, next_state = random.stateless_split(self._seed_state)
+    self._seed_state = next_state
+    return new_seed
 
-    if self._int_seed is None:
-      raise RuntimeError(
-          "RNGHandler was not initialized with a scalar integer seed, cannot"
-          " provide seed for TensorFlow prior sampling."
-      )
-    return self._int_seed
-
-  def advance_handler(self) -> "_TFLegacyRNGHandler":
-    """Creates a new handler by incrementing the sanitized seed by 1.
-
-    Returns:
-      A new `_TFLegacyRNGHandler` instance with an incremented seed state.
-
-    Raises:
-      RuntimeError: If the handler's sanitized seed was not initialized.
-    """
-    if self._seed_input is None:
-      return _TFLegacyRNGHandler(None)
-
-    if self._tf_sanitized_seed is None:
-      # Should be caught during init, but included for defensive programming.
-      raise RuntimeError("RNGHandler sanitized seed not initialized.")
-
-    new_sanitized_seed = self._tf_sanitized_seed + 1
-
-    # Create a new handler instance, passing the original seed input (to
-    # preserve state like `_int_seed`) and injecting the new sanitized seed
-    # via the private constructor argument.
-    return _TFLegacyRNGHandler(
-        self._seed_input, _sanitized_seed=new_sanitized_seed
-    )
+  def advance_handler(self) -> "_TFRNGHandler":
+    """Creates a new handler from a new seed and advances the current handler."""
+    if self._seed_state is None:
+      return _TFRNGHandler(None)
+    seed_for_new_handler, next_state = random.stateless_split(self._seed_state)
+    self._seed_state = next_state
+    return _TFRNGHandler(seed_for_new_handler)
 
 
 if _BACKEND == config.Backend.JAX:
   RNGHandler = _JaxRNGHandler
 elif _BACKEND == config.Backend.TENSORFLOW:
-  RNGHandler = (
-      _TFLegacyRNGHandler  # TODO: Replace with _TFRNGHandler
-  )
+  RNGHandler = _TFRNGHandler
 else:
   raise ImportError(f"RNGHandler not implemented for backend: {_BACKEND}")
 
