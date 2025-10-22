@@ -102,6 +102,7 @@ class OptimizationGrid:
     use_kpi: Whether using generic KPI or revenue.
     use_posterior: Whether posterior distributions were used, or prior.
     use_optimal_frequency: Whether optimal frequency was used.
+    max_frequency: The maximum frequency for reach and frequency channels.
     start_date: The start date of the optimization period.
     end_date: The end date of the optimization period.
     gtol: Float indicating the acceptable relative error for the budget used in
@@ -135,6 +136,7 @@ class OptimizationGrid:
   optimal_frequency: np.ndarray | None
   selected_geos: Sequence[str] | None
   selected_times: Sequence[str] | Sequence[bool] | None
+  max_frequency: float | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -1544,6 +1546,7 @@ class BudgetOptimizer:
         spend_constraint_upper=spend_constraint_upper,
         gtol=gtol,
         use_optimal_frequency=use_optimal_frequency,
+        max_frequency=max_frequency,
         use_kpi=use_kpi,
         optimization_grid=optimization_grid,
     )
@@ -1816,6 +1819,7 @@ class BudgetOptimizer:
       spend_constraint_upper: _SpendConstraint,
       gtol: float,
       use_optimal_frequency: bool,
+      max_frequency: float | None,
       use_kpi: bool,
       optimization_grid: OptimizationGrid,
   ) -> bool:
@@ -1844,6 +1848,15 @@ class BudgetOptimizer:
           'Given optimization grid was created with `use_optimal_frequency` ='
           f' {optimization_grid.use_optimal_frequency}, but optimization was'
           f' called with `use_optimal_frequency` = {use_optimal_frequency}. A'
+          ' new grid will be created.'
+      )
+      return False
+
+    if max_frequency != optimization_grid.max_frequency:
+      warnings.warn(
+          'Given optimization grid was created with `use_optimal_frequency` ='
+          f' {optimization_grid.max_frequency}, but optimization was'
+          f' called with `max_frequency` = {max_frequency}. A'
           ' new grid will be created.'
       )
       return False
@@ -2140,6 +2153,7 @@ class BudgetOptimizer:
         use_kpi=use_kpi,
         use_posterior=use_posterior,
         use_optimal_frequency=use_optimal_frequency,
+        max_frequency=max_frequency,
         start_date=start_date,
         end_date=end_date,
         gtol=gtol,
