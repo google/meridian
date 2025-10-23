@@ -105,7 +105,7 @@ class OptimizationGrid:
     start_date: The start date of the optimization period.
     end_date: The end date of the optimization period.
     gtol: Float indicating the acceptable relative error for the budget used in
-      the grid setup. The budget is rounded by `10*n`, where `n` is the smallest
+      the grid setup. The budget is rounded by `10**n`, where `n` is the smallest
       integer such that `(budget - rounded_budget)` is less than or equal to
       `(budget * gtol)`.
     round_factor: The round factor used for the optimization grid.
@@ -1442,7 +1442,7 @@ class BudgetOptimizer:
         used for flexible budget scenarios. The budget is constrained to when
         the marginal ROI of the total spend hits `target_mroi`.
       gtol: Float indicating the acceptable relative error for the budget used
-        in the grid setup. The budget will be rounded by `10*n`, where `n` is
+        in the grid setup. The budget will be rounded by `10**n`, where `n` is
         the smallest integer such that `(budget - rounded_budget)` is less than
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
       use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
@@ -1978,7 +1978,7 @@ class BudgetOptimizer:
         Consider using `InputData.get_paid_channels_argument_builder()` to
         construct this argument.
       gtol: Float indicating the acceptable relative error for the budget used
-        in the grid setup. The budget will be rounded by `10*n`, where `n` is
+        in the grid setup. The budget will be rounded by `10**n`, where `n` is
         the smallest integer such that `(budget - rounded_budget)` is less than
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
       use_optimal_frequency: Boolean. Whether optimal frequency was used.
@@ -2753,7 +2753,7 @@ def get_round_factor(budget: float, gtol: float) -> int:
   Args:
     budget: Float number for total advertising budget.
     gtol: Float indicating the acceptable relative error for the budget used in
-      the grid setup. The budget will be rounded by `10*n`, where `n` is the
+      the grid setup. The budget will be rounded by `10**n`, where `n` is the
       smallest int such that `(budget - rounded_budget) <= (budget * gtol)`.
       `gtol` must be less than 1.
 
@@ -2768,7 +2768,7 @@ def get_round_factor(budget: float, gtol: float) -> int:
   elif tolerance < 1.0:
     return 0
   else:
-    return -int(math.log10(tolerance)) - 1
+    return -int(math.log10(tolerance))
 
 
 def _validate_pct_of_spend(
