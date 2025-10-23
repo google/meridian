@@ -15,12 +15,10 @@
 """Meridian EDA Spec."""
 
 import dataclasses
-from typing import Callable, Dict, TypeAlias
-import numpy as np
-import xarray as xr
+from typing import Any, Callable, Dict, TypeAlias
 
 
-AggregationFn: TypeAlias = Callable[[xr.DataArray], np.ndarray]
+AggregationFn: TypeAlias = Callable[..., Any]
 AggregationMap: TypeAlias = Dict[str, AggregationFn]
 _DEFAULT_VIF_THRESHOLD = 1000
 
@@ -28,6 +26,11 @@ _DEFAULT_VIF_THRESHOLD = 1000
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class AggregationConfig:
   """A configuration for customizing variable aggregation functions.
+
+  The aggregation function can be called in the form `f(x, axis=axis, **kwargs)`
+  to return the result of reducing an `np.ndarray` over an integer valued axis.
+  It's recommended to explicitly define the aggregation functions instead of
+  using lambdas.
 
   Attributes:
     control_variables: A dictionary mapping control variable names to
