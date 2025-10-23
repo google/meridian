@@ -444,7 +444,8 @@ class Meridian:
           f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
           " either contain only channel_names"
           f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media', 'organic_rf'}."
+          " be one or more of {'media', 'rf', 'organic_media',"
+          " 'organic_rf'}."
       ) from e
 
   @functools.cached_property
