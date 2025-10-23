@@ -326,6 +326,7 @@ def _jax_boolean_mask(tensor, mask, axis=None):
 
   if axis is None:
     axis = 0
+  mask = jnp.asarray(mask)
   tensor_swapped = jnp.moveaxis(tensor, axis, 0)
   masked = tensor_swapped[mask]
   return jnp.moveaxis(masked, 0, axis)
@@ -338,17 +339,20 @@ def _tf_boolean_mask(tensor, mask, axis=None):
   return tf.boolean_mask(tensor, mask, axis=axis)
 
 
-def _jax_gather(params, indices):
-  """JAX implementation for gather."""
-  # JAX uses standard array indexing for gather operations.
-  return params[indices]
+def _jax_gather(params, indices, axis=0):
+  """JAX implementation for gather with axis support."""
+  import jax.numpy as jnp
+
+  if isinstance(params, np.ndarray) and params.dtype.kind in ("S", "U"):
+    return np.take(params, np.asarray(indices), axis=axis)
+  return jnp.take(params, indices, axis=axis)
 
 
-def _tf_gather(params, indices):
+def _tf_gather(params, indices, axis=0):
   """TensorFlow implementation for gather."""
   import tensorflow as tf
 
-  return tf.gather(params, indices)
+  return tf.gather(params, indices, axis=axis)
 
 
 def _jax_fill(dims, value):
@@ -419,6 +423,64 @@ def _jax_transpose(a, perm=None):
   return jnp.transpose(a, axes=perm)
 
 
+def _jax_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Extracts the underlying numerical data from a JAX PRNGKey."""
+  if seed is None:
+    return None
+
+  return np.array(jax.random.key_data(seed))
+
+
+def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Converts a TensorFlow-style seed into a NumPy array."""
+  if seed is None:
+    return None
+  return np.array(seed)
+
+
+def _jax_convert_to_tensor(data, dtype=None):
+  """Converts data to a JAX array, handling strings as NumPy arrays."""
+  # JAX does not natively support string tensors in the same way TF does.
+  # If a string dtype is requested, or if the data is inherently strings,
+  # we fall back to a standard NumPy array.
+  if dtype == np.str_ or (
+      dtype is None
+      and isinstance(data, (list, np.ndarray))
+      and np.array(data).dtype.kind in ("S", "U")
+  ):
+    return np.array(data, dtype=np.str_)
+  return jax_ops.asarray(data, dtype=dtype)
+
+
+def _tf_nanmean(a, axis=None, keepdims=False):
+  import tensorflow.experimental.numpy as tnp
+
+  return tf_backend.convert_to_tensor(
+      tnp.nanmean(a, axis=axis, keepdims=keepdims)
+  )
+
+
+def _tf_nansum(a, axis=None, keepdims=False):
+  import tensorflow.experimental.numpy as tnp
+
+  return tf_backend.convert_to_tensor(
+      tnp.nansum(a, axis=axis, keepdims=keepdims)
+  )
+
+
+def _tf_nanvar(a, axis=None, keepdims=False):
+  """Calculates variance ignoring NaNs, strictly returning a Tensor."""
+  import tensorflow as tf
+  import tensorflow.experimental.numpy as tnp
+  # We implement two-pass variance to correctly handle NaNs and ensure
+  # all operations remain within the TF graph (maintaining differentiability).
+  a_tensor = tf.convert_to_tensor(a)
+  mean = tnp.nanmean(a_tensor, axis=axis, keepdims=True)
+  sq_diff = tf.math.squared_difference(a_tensor, mean)
+  var = tnp.nanmean(sq_diff, axis=axis, keepdims=keepdims)
+  return tf.convert_to_tensor(var)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -431,14 +493,62 @@ if _BACKEND == config.Backend.JAX:
   import jax
   import jax.numpy as jax_ops
   import tensorflow_probability.substrates.jax as tfp_jax
+  from jax import tree_util
+  import numpy as np
 
   class ExtensionType:
-    """A JAX-compatible stand-in for tf.experimental.ExtensionType."""
+    """A JAX-compatible stand-in for tf.experimental.ExtensionType.
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-      raise NotImplementedError(
-          "ExtensionType is not yet implemented for the JAX backend."
+    This class registers itself as a JAX Pytree node, allowing it to be passed
+    through JIT-compiled functions.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+      super().__init_subclass__(**kwargs)
+      tree_util.register_pytree_node(
+          cls,
+          cls._tree_flatten,
+          cls._tree_unflatten,
       )
+
+    def _tree_flatten(self):
+      """Flattens the object for JAX tracing.
+
+      Fields containing JAX arrays (or convertibles) are treated as children.
+      Fields containing strings or NumPy string arrays must be treated as
+      auxiliary data because JAX cannot trace non-numeric/non-boolean data.
+      """
+      d = vars(self)
+      all_keys = sorted(d.keys())
+      children = []
+      aux = {}
+      children_keys = []
+
+      for k in all_keys:
+        v = d[k]
+        # Identify string data to prevent JAX tracing errors.
+        # 'S' is zero-terminated bytes (fixed-width), 'U' is unicode string.
+        is_numpy_string = isinstance(v, np.ndarray) and v.dtype.kind in (
+            "S",
+            "U",
+        )
+        is_plain_string = isinstance(v, str)
+
+        if is_numpy_string or is_plain_string:
+          aux[k] = v
+        else:
+          children.append(v)
+          children_keys.append(k)
+      return children, (aux, children_keys)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_and_keys, children):
+      aux, children_keys = aux_and_keys
+      obj = cls.__new__(cls)
+      vars(obj).update(aux)
+      for k, v in zip(children_keys, children):
+        setattr(obj, k, v)
+      return obj
 
   class _JaxErrors:
     # pylint: disable=invalid-name
@@ -501,7 +611,7 @@ if _BACKEND == config.Backend.JAX:
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   mcmc = tfp_jax.mcmc
-  _convert_to_tensor = _ops.asarray
+  _convert_to_tensor = _jax_convert_to_tensor
 
   # Standardized Public API
   absolute = _ops.abs
@@ -541,6 +651,9 @@ if _BACKEND == config.Backend.JAX:
   make_ndarray = _jax_make_ndarray
   make_tensor_proto = _jax_make_tensor_proto
   nanmedian = _jax_nanmedian
+  nanmean = jax_ops.nanmean
+  nanvar = jax_ops.nanvar
+  nansum = jax_ops.nansum
   numpy_function = _jax_numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -566,6 +679,7 @@ if _BACKEND == config.Backend.JAX:
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
   int32 = _ops.int32
+  string = np.str_
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     warnings.warn(
@@ -681,6 +795,9 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   make_ndarray = _ops.make_ndarray
   make_tensor_proto = _ops.make_tensor_proto
   nanmedian = _tf_nanmedian
+  nanmean = _tf_nanmean
+  nanvar = _tf_nanvar
+  nansum = _tf_nansum
   numpy_function = _ops.numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -707,6 +824,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape
   int32 = _ops.int32
+  string = _ops.string
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
@@ -735,7 +853,7 @@ def _extract_int_seed(s: Any) -> Optional[int]:
   # in unpredictable ways. The goal is to safely attempt extraction and fail
   # gracefully.
   except Exception:  # pylint: disable=broad-except
-    pass
+    return None
   return None
 
 
@@ -819,6 +937,14 @@ class _JaxRNGHandler(_BaseRNGHandler):
     if seed is None:
       return
 
+    if (
+        isinstance(seed, jax.Array)  # pylint: disable=undefined-variable
+        and seed.shape == (2,)
+        and seed.dtype == jax_ops.uint32  # pylint: disable=undefined-variable
+    ):
+      self._key = seed
+      return
+
     if self._int_seed is None:
       raise ValueError(
           "JAX backend requires a seed that is an integer or a scalar array,"
@@ -853,35 +979,22 @@ class _JaxRNGHandler(_BaseRNGHandler):
     return _JaxRNGHandler(np.asarray(new_seed_tensor).item())
 
 
-# TODO: Replace with _TFRNGHandler
-class _TFLegacyRNGHandler(_BaseRNGHandler):
-  """TensorFlow implementation.
+class _TFRNGHandler(_BaseRNGHandler):
+  """A stateless-style RNG handler for TensorFlow.
 
-  TODO: This class should be removed and replaced with a correct,
-  stateful `tf.random.Generator`-based implementation.
+  This handler canonicalizes any seed input into a single stateless seed Tensor.
   """
 
-  def __init__(self, seed: SeedType, *, _sanitized_seed: Optional[Any] = None):
-    """Initializes the TensorFlow legacy RNG handler.
+  def __init__(self, seed: SeedType):
+    """Initializes the TensorFlow RNG handler.
 
     Args:
       seed: The initial seed. Can be an integer, a sequence of two integers, a
-        corresponding Tensor, or None.
-      _sanitized_seed: For internal use only. If provided, this pre-computed
-        seed tensor is used directly, and the standard initialization logic for
-        the public `seed` argument is bypassed.
-
-    Raises:
-      ValueError: If `seed` is a sequence with a length other than 2.
+        corresponding Tensor, or None. It will be sanitized and stored
+        internally as a single stateless seed Tensor.
     """
     super().__init__(seed)
-    self._tf_sanitized_seed: Optional[Any] = None
-
-    if _sanitized_seed is not None:
-      # Internal path: A pre-sanitized seed was provided by a trusted source
-      # so we adopt it directly.
-      self._tf_sanitized_seed = _sanitized_seed
-      return
+    self._seed_state: Optional["_tf.Tensor"] = None
 
     if seed is None:
       return
@@ -899,63 +1012,33 @@ class _TFLegacyRNGHandler(_BaseRNGHandler):
     else:
       seed_to_sanitize = seed
 
-    self._tf_sanitized_seed = random.sanitize_seed(seed_to_sanitize)
+    self._seed_state = random.sanitize_seed(seed_to_sanitize)
 
   def get_kernel_seed(self) -> Any:
-    return self._tf_sanitized_seed
+    """Provides the current stateless seed of the handler without advancing it."""
+    return self._seed_state
 
   def get_next_seed(self) -> Any:
-    """Returns the original integer seed to preserve prior sampling behavior.
-
-    Returns:
-      The original integer seed provided during initialization.
-
-    Raises:
-      RuntimeError: If the handler was not initialized with a scalar integer
-        seed, which is required for the legacy prior sampling path.
-    """
-    if self._seed_input is None:
+    """Returns a new unique seed and advances the handler's internal state."""
+    if self._seed_state is None:
       return None
+    new_seed, next_state = random.stateless_split(self._seed_state)
+    self._seed_state = next_state
+    return new_seed
 
-    if self._int_seed is None:
-      raise RuntimeError(
-          "RNGHandler was not initialized with a scalar integer seed, cannot"
-          " provide seed for TensorFlow prior sampling."
-      )
-    return self._int_seed
-
-  def advance_handler(self) -> "_TFLegacyRNGHandler":
-    """Creates a new handler by incrementing the sanitized seed by 1.
-
-    Returns:
-      A new `_TFLegacyRNGHandler` instance with an incremented seed state.
-
-    Raises:
-      RuntimeError: If the handler's sanitized seed was not initialized.
-    """
-    if self._seed_input is None:
-      return _TFLegacyRNGHandler(None)
-
-    if self._tf_sanitized_seed is None:
-      # Should be caught during init, but included for defensive programming.
-      raise RuntimeError("RNGHandler sanitized seed not initialized.")
-
-    new_sanitized_seed = self._tf_sanitized_seed + 1
-
-    # Create a new handler instance, passing the original seed input (to
-    # preserve state like `_int_seed`) and injecting the new sanitized seed
-    # via the private constructor argument.
-    return _TFLegacyRNGHandler(
-        self._seed_input, _sanitized_seed=new_sanitized_seed
-    )
+  def advance_handler(self) -> "_TFRNGHandler":
+    """Creates a new handler from a new seed and advances the current handler."""
+    if self._seed_state is None:
+      return _TFRNGHandler(None)
+    seed_for_new_handler, next_state = random.stateless_split(self._seed_state)
+    self._seed_state = next_state
+    return _TFRNGHandler(seed_for_new_handler)
 
 
 if _BACKEND == config.Backend.JAX:
   RNGHandler = _JaxRNGHandler
 elif _BACKEND == config.Backend.TENSORFLOW:
-  RNGHandler = (
-      _TFLegacyRNGHandler  # TODO: Replace with _TFRNGHandler
-  )
+  RNGHandler = _TFRNGHandler
 else:
   raise ImportError(f"RNGHandler not implemented for backend: {_BACKEND}")
 
