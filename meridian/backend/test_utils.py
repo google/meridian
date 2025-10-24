@@ -70,6 +70,14 @@ def assert_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
   np.testing.assert_array_equal(np.array(a), np.array(b), err_msg=err_msg)
 
 
+def assert_not_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
+  """Asserts that two objects are not element-wise equal."""
+  np.testing.assert_(
+      not np.array_equal(np.array(a), np.array(b)),
+      msg=f"Arrays are unexpectedly equal.\n{err_msg}",
+  )
+
+
 def assert_all_finite(a: ArrayLike, err_msg: str = ""):
   """Backend-agnostic assertion to check if all elements in an array are finite.
 
