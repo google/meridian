@@ -2741,9 +2741,8 @@ def get_optimization_bounds(
       spend_constraint_lower=spend_constraint_lower,
       spend_constraint_upper=spend_constraint_upper,
   )
-  rounded_spend = np.round(spend, round_factor).astype(int)
-  lower = np.round((spend_bounds[0] * rounded_spend), round_factor).astype(int)
-  upper = np.round(spend_bounds[1] * rounded_spend, round_factor).astype(int)
+  lower = np.round((spend_bounds[0] * spend), round_factor).astype(int)
+  upper = np.round(spend_bounds[1] * spend, round_factor).astype(int)
   return (lower, upper)
 
 
