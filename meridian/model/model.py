@@ -126,11 +126,17 @@ class Meridian:
       treatmenttensors using the model's non-media treatment data.
     kpi_transformer: A `KpiTransformer` to scale KPI tensors using the model's
       KPI data.
-    controls_scaled: The controls tensor normalized by population and by the
-      median value.
-    non_media_treatments_scaled: The non-media treatment tensor normalized by
-      population and by the median value.
-    kpi_scaled: The KPI tensor normalized by population and by the median value.
+    controls_scaled: The controls tensor after pre-modeling transformations
+      including population scaling (for variables with
+      `ModelSpec.control_population_scaling_id` set to `True`), centering by the
+      mean, and scaling by the standard deviation.
+    non_media_treatments_scaled: The non-media treatment tensor after
+      pre-modeling transformations including population scaling (for variables
+      with `ModelSpec.non_media_population_scaling_id` set to `True`), centering
+      by the mean, and scaling by the standard deviation.
+    kpi_scaled: The KPI tensor after pre-modeling transformations including
+      population scaling, centering by the mean, and scaling by the standard
+      deviation.
     media_effects_dist: A string to specify the distribution of media random
       effects across geos.
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
