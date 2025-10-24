@@ -935,7 +935,7 @@ class RNGHandlerTest(BackendTest):
     if backend_name == _JAX:
       self.assertIs(backend.RNGHandler, backend._JaxRNGHandler)
     else:
-      self.assertIs(backend.RNGHandler, backend._TFLegacyRNGHandler)
+      self.assertIs(backend.RNGHandler, backend._TFRNGHandler)
     # pylint: enable=protected-access
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
@@ -1055,31 +1055,17 @@ class RNGHandlerTest(BackendTest):
     seed2 = handler.get_next_seed()
 
     if backend_name == _TF:
-      # TODO: Ensure TF returns independent seeds.
-      self.assertIsInstance(seed1, int)
-      self.assertEqual(seed1, seed)
-      self.assertEqual(seed2, seed)
-      test_utils.assert_allequal(handler.get_kernel_seed(), initial_kernel_seed)
+      self.assertIsInstance(seed1, backend.Tensor)
+      self.assertIsInstance(seed2, backend.Tensor)
+      self.assertFalse(np.array_equal(seed1.numpy(), seed2.numpy()))
+      test_utils.assert_not_allequal(
+          handler.get_kernel_seed(), initial_kernel_seed
+      )
     elif backend_name == _JAX:
       self.assertIsInstance(seed1, jax.Array)
       self.assertIsInstance(seed2, jax.Array)
       self._assert_key_not_equal(seed1, seed2)
       self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
-
-  def test_tf_get_next_seed_raises_if_initialized_with_non_scalar(self):
-    """TF's get_next_seed (for prior sampling) requires a scalar init."""
-    self._set_backend_for_test(_TF)
-    handler_seq = backend.RNGHandler([1, 2])
-    with self.assertRaisesRegex(
-        RuntimeError, "was not initialized with a scalar integer seed"
-    ):
-      handler_seq.get_next_seed()
-
-    handler_tensor = backend.RNGHandler(tf.constant([1, 2]))
-    with self.assertRaisesRegex(
-        RuntimeError, "was not initialized with a scalar integer seed"
-    ):
-      handler_tensor.get_next_seed()
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_get_next_seed_is_reproducible(self, backend_name):
@@ -1121,11 +1107,12 @@ class RNGHandlerTest(BackendTest):
 
     new_handler1 = handler.advance_handler()
 
-    # In JAX, the original handler's state also advances. In TF, it does not.
     if backend_name == _JAX:
       self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
     else:
-      test_utils.assert_allequal(handler.get_kernel_seed(), initial_kernel_seed)
+      test_utils.assert_not_allequal(
+          handler.get_kernel_seed(), initial_kernel_seed
+      )
 
     if backend_name == _JAX:
       new_handler2 = handler.advance_handler()
@@ -1144,23 +1131,6 @@ class RNGHandlerTest(BackendTest):
     else:
       self.assertFalse(np.array_equal(kernel_seed1, initial_kernel_seed))
       self.assertFalse(np.array_equal(kernel_seed1, kernel_seed2))
-
-  def test_tf_advance_handler_implements_plus_one_regression(self):
-    """Crucially tests that TF advance_handler implements sanitized_seed + 1."""
-    self._set_backend_for_test(_TF)
-    seed = 500
-    handler = backend.RNGHandler(seed)
-
-    initial_sanitized_seed = handler.get_kernel_seed()
-
-    new_handler = handler.advance_handler()
-    new_sanitized_seed = new_handler.get_kernel_seed()
-
-    test_utils.assert_allequal(new_sanitized_seed, initial_sanitized_seed + 1)
-
-    test_utils.assert_allequal(
-        handler.get_kernel_seed(), initial_sanitized_seed
-    )
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_advance_handler_is_reproducible(self, backend_name):
