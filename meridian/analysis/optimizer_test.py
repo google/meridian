@@ -3063,6 +3063,47 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       _, kwargs = mock_response_curves.call_args
       self.assertEqual(kwargs['selected_times'], selected_times)
 
+  def test_create_budget_dataset_selected_geos_correct(self):
+    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+        :2
+    ]
+    with mock.patch.object(
+        self.budget_optimizer_media_and_rf,
+        '_create_budget_dataset',
+        autospec=True,
+        wraps=self.budget_optimizer_media_and_rf._create_budget_dataset,
+    ) as mock_create_budget_dataset:
+      self.budget_optimizer_media_and_rf.optimize(selected_geos=selected_geos)
+      self.assertLen(
+          mock_create_budget_dataset.call_args_list,
+          3,
+          'Expected create_budget_dataset to be called 3 times.',
+      )
+      for _, kwargs in mock_create_budget_dataset.call_args_list:
+        self.assertEqual(
+            kwargs['selected_geos'],
+            selected_geos,
+        )
+
+  def test_get_response_curves_selected_geos_correct(self):
+    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+        :2
+    ]
+    with mock.patch.object(
+        analyzer.Analyzer,
+        'response_curves',
+        wraps=self.budget_optimizer_media_and_rf._analyzer.response_curves,
+    ) as mock_response_curves:
+      # Create OptimizationResults with selected_geos
+      optimization_results = self.budget_optimizer_media_and_rf.optimize(
+          selected_geos=selected_geos
+      )
+
+      optimization_results.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      self.assertEqual(kwargs['selected_geos'], selected_geos)
+
 
 class OptimizerPlotsTest(absltest.TestCase):
 
@@ -4434,6 +4475,7 @@ class OptimizerKPITest(parameterized.TestCase):
 
     mock_incremental_outcome.assert_called_with(
         # marginal roi numerator computation requires the following arguments.
+        selected_geos=None,
         selected_times=None,
         scaling_factor0=1.0,
         scaling_factor1=1.01,
