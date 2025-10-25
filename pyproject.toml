@@ -75,6 +75,13 @@ and-cuda = [
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
 
+# MMM schema, only works with `pip install .[schema]`
+schema = [
+  # TODO: publish a schema package to pypi
+  "mmm-proto-schema @ file:./proto",
+  "semver",
+]
+
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
@@ -103,7 +110,11 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*"]
+include = [
+  "meridian*",
+  "scenarioplanner*",
+  "schema*",
+]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
