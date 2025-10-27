@@ -63,8 +63,8 @@ class MediaTensors:
     media_spend: A tensor constructed from `InputData.media_spend`.
     media_transformer: A `MediaTransformer` to scale media tensors using the
       model's media data.
-    media_scaled: The media tensor normalized by population and by the median
-      value.
+    media_scaled: The media tensor after pre-modeling transformations including
+      population scaling and scaling by the median non-zero value.
     prior_media_scaled_counterfactual: A tensor containing `media_scaled` values
       corresponding to the counterfactual scenario required for the prior
       calculation. For ROI priors, the counterfactual scenario is where media is
@@ -169,8 +169,9 @@ class OrganicMediaTensors:
     organic_media: A tensor constructed from `InputData.organic_media`.
     organic_media_transformer: A `MediaTransformer` to scale media tensors using
       the model's organic media data.
-    organic_media_scaled: The organic media tensor normalized by population and
-      by the median value.
+    organic_media_scaled: The organic media tensor after pre-modeling
+      transformations including population scaling and scaling by the media
+      non-zero value.
   """
 
   organic_media: backend.Tensor | None = None
@@ -214,8 +215,8 @@ class RfTensors:
     rf_spend: A tensor constructed from `InputData.rf_spend`.
     reach_transformer: A `MediaTransformer` to scale RF tensors using the
       model's RF data.
-    reach_scaled: A reach tensor normalized by population and by the median
-      value.
+    reach_scaled: A reach tensor after pre-modeling transformations including
+      population scaling and scaling by the median non-zero value.
     prior_reach_scaled_counterfactual: A tensor containing `reach_scaled` values
       corresponding to the counterfactual scenario required for the prior
       calculation. For ROI priors, the counterfactual scenario is where reach is
@@ -324,8 +325,9 @@ class OrganicRfTensors:
     organic_frequency: A tensor constructed from `InputData.organic_frequency`.
     organic_reach_transformer: A `MediaTransformer` to scale organic RF tensors
       using the model's organic RF data.
-    organic_reach_scaled: An organic reach tensor normalized by population and
-      by the median value.
+    organic_reach_scaled: An organic reach tensor after pre-modeling
+      transformations including population scaling and scaling by the median
+      non-zero value.
   """
 
   organic_reach: backend.Tensor | None = None
