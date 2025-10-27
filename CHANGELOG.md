@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Refactor the TensorFlow RNG handler to use stateless seed generation.
 * Add `selected_geos` arg to the optimizer.
 * Add `selected_geos` arg to `get_aggregated_spend`.
 * Fix bug in `optimize()` when using `new_data` with `start_date` and `end_date`
