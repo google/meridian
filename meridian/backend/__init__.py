@@ -419,6 +419,21 @@ def _jax_transpose(a, perm=None):
   return jnp.transpose(a, axes=perm)
 
 
+def _jax_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Extracts the underlying numerical data from a JAX PRNGKey."""
+  if seed is None:
+    return None
+
+  return np.array(jax.random.key_data(seed))
+
+
+def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
+  """Converts a TensorFlow-style seed into a NumPy array."""
+  if seed is None:
+    return None
+  return np.array(seed)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -536,6 +551,7 @@ if _BACKEND == config.Backend.JAX:
   function = _jax_function_wrapper
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
+  get_seed_data = _jax_get_seed_data
   is_nan = _ops.isnan
   log = _ops.log
   make_ndarray = _jax_make_ndarray
@@ -676,6 +692,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   function = _tf_function_wrapper
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
+  get_seed_data = _tf_get_seed_data
   is_nan = _ops.math.is_nan
   log = _ops.math.log
   make_ndarray = _ops.make_ndarray

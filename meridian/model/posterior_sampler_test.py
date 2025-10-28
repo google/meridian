@@ -30,8 +30,7 @@ import numpy as np
 
 
 class PosteriorMCMCSamplerTest(
-    parameterized.TestCase,
-    absltest.TestCase,
+    test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
 ):
 
@@ -68,7 +67,7 @@ class PosteriorMCMCSamplerTest(
     )
     sample = (
         meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
-            self._N_DRAWS
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
         )
     )
     test_utils.assert_allequal(
@@ -102,7 +101,7 @@ class PosteriorMCMCSamplerTest(
     )
     sample = (
         meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
-            self._N_DRAWS
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
         )
     )
     test_utils.assert_allequal(
@@ -149,7 +148,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -297,7 +298,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -447,7 +450,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -624,7 +629,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -637,8 +645,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    test_utils.assert_seed_allequal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     media_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_MEDIA_CHANNELS)
@@ -752,7 +762,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -765,8 +778,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    test_utils.assert_seed_allequal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     media_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_MEDIA_CHANNELS)
@@ -872,8 +887,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
 
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -886,8 +903,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    test_utils.assert_seed_allequal(actual_seed, expected_seed)
 
     # Control parameters should not exist in the inference data posteriors.
     for param in (
@@ -924,7 +943,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -937,8 +959,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    test_utils.assert_seed_allequal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     rf_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_RF_CHANNELS)
@@ -1043,21 +1067,21 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
-    mock_sample_posterior.assert_called_with(
-        n_draws=self._N_BURNIN + self._N_KEEP,
-        joint_dist=mock.ANY,
-        n_chains=self._N_CHAINS,
-        num_adaptation_steps=self._N_ADAPT,
-        current_state=None,
-        init_step_size=None,
-        dual_averaging_kwargs=None,
-        max_tree_depth=10,
-        max_energy_diff=500.0,
-        unrolled_leapfrog_steps=1,
-        parallel_iterations=10,
-        seed=None,
-    )
+
+    handler = backend.RNGHandler(123)
+    expected_seed_1 = handler.get_kernel_seed()
+    handler = handler.advance_handler()
+    expected_seed_2 = handler.get_kernel_seed()
+
+    self.assertEqual(mock_sample_posterior.call_count, 2)
+    first_call_args = mock_sample_posterior.call_args_list[0].kwargs
+    second_call_args = mock_sample_posterior.call_args_list[1].kwargs
+
+    test_utils.assert_seed_allequal(first_call_args["seed"], expected_seed_1)
+    test_utils.assert_seed_allequal(second_call_args["seed"], expected_seed_2)
+
     n_total_chains = self._N_CHAINS * 2
     knots_shape = (n_total_chains, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (n_total_chains, self._N_KEEP, self._N_CONTROLS)
@@ -1499,8 +1523,12 @@ class PosteriorMCMCSamplerTest(
       dict(testcase_name="seed_is_pair", seed=[42, 123]),
   )
   def test_sample_posterior_with_seed(self, seed):
-    if seed is not None:
-      seed = backend.random.sanitize_seed(seed)
+    if (
+        backend.config.get_backend() == backend.config.Backend.JAX
+        and isinstance(seed, list)
+    ):
+      self.skipTest("JAX backend does not support sequence seeds.")
+
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
             posterior_sampler,
@@ -1527,6 +1555,8 @@ class PosteriorMCMCSamplerTest(
         n_keep=self._N_KEEP,
         seed=seed,
     )
+
+    expected_seed = backend.RNGHandler(seed).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -1539,13 +1569,21 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=seed,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    test_utils.assert_seed_allequal(actual_seed, expected_seed)
 
   @parameterized.named_parameters(
       dict(testcase_name="seed_is_invalid_sequence", seed=[1, 2, 3]),
   )
   def test_sample_posterior_with_invalid_seed_sequence(self, seed):
+    if backend.config.get_backend() == backend.config.Backend.JAX:
+      self.skipTest(
+          "JAX backend validates integer seed, so this TF-specific"
+          " sequence-length test is not applicable."
+      )
+
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Invalid seed: Must be either a single integer (stateful seed) or a"
@@ -1607,6 +1645,12 @@ class PosteriorMCMCSamplerTest(
       self, initial_seed
   ):
     """Tests that sequential MCMC batches get independent but reproducible seeds."""
+    if (
+        backend.config.get_backend() == backend.config.Backend.JAX
+        and isinstance(initial_seed, list)
+    ):
+      self.skipTest("JAX backend does not support sequence seeds.")
+
     n_chains_list = [self._N_CHAINS, self._N_CHAINS]
     mock_return = collections.namedtuple(
         "StatesAndTrace", ["all_states", "trace"]
@@ -1639,10 +1683,10 @@ class PosteriorMCMCSamplerTest(
     seeds2 = run_sampling(initial_seed)
 
     self.assertLen(seeds1, 2)
-    test_utils.assert_allequal(seeds1[0], seeds2[0])
-    test_utils.assert_allequal(seeds1[1], seeds2[1])
+    test_utils.assert_seed_allequal(seeds1[0], seeds2[0])
+    test_utils.assert_seed_allequal(seeds1[1], seeds2[1])
 
-    test_utils.assert_not_allequal(seeds1[0], seeds1[1])
+    test_utils.assert_seed_not_allequal(seeds1[0], seeds1[1])
 
   @parameterized.named_parameters(
       dict(testcase_name="n_chains_is_list", n_chains_type=list),

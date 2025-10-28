@@ -70,11 +70,36 @@ def assert_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
   np.testing.assert_array_equal(np.array(a), np.array(b), err_msg=err_msg)
 
 
+def assert_seed_allequal(a: Any, b: Any, err_msg: str = ""):
+  """Backend-agnostic assertion to check if two seed objects are equal."""
+  data_a = backend.get_seed_data(a)
+  data_b = backend.get_seed_data(b)
+  if data_a is None and data_b is None:
+    return
+  np.testing.assert_array_equal(data_a, data_b, err_msg=err_msg)
+
+
 def assert_not_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
   """Asserts that two objects are not element-wise equal."""
   np.testing.assert_(
       not np.array_equal(np.array(a), np.array(b)),
       msg=f"Arrays are unexpectedly equal.\n{err_msg}",
+  )
+
+
+def assert_seed_not_allequal(a: Any, b: Any, err_msg: str = ""):
+  """Asserts that two seed objects are not element-wise equal."""
+  data_a = backend.get_seed_data(a)
+  data_b = backend.get_seed_data(b)
+  if data_a is None and data_b is None:
+    raise AssertionError(
+        f"Seeds are unexpectedly equal (both are None). {err_msg}"
+    )
+  if data_a is None or data_b is None:
+    return
+  np.testing.assert_(
+      not np.array_equal(data_a, data_b),
+      msg=f"Seeds are unexpectedly equal.\n{err_msg}",
   )
 
 
