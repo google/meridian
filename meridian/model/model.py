@@ -76,6 +76,7 @@ def _check_for_negative_effect(
       media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
       and np.any(dist.cdf(0)) > 0
   ):
+    # comment to trigger change
     raise ValueError(
         "Media priors must have non-negative support when"
         f' `media_effects_dist`="{media_effects_dist}". Found negative effect'
