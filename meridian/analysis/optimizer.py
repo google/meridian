@@ -1720,7 +1720,11 @@ class BudgetOptimizer:
       A `DataTensors` object with optional tensors `media`, `reach`,
       `frequency`, `media_spend`, `rf_spend`, `revenue_per_kpi`, and `time`.
     """
+    n_times = time.shape[0] if isinstance(time, backend.Tensor) else len(time)
+    n_geos = self._meridian.n_geos
     self._validate_optimization_tensors(
+        expected_n_geos=n_geos,
+        expected_n_times=n_times,
         cpmu=cpmu,
         cprf=cprf,
         media=media,
@@ -1730,13 +1734,6 @@ class BudgetOptimizer:
         rf_spend=rf_spend,
         revenue_per_kpi=revenue_per_kpi,
         use_optimal_frequency=use_optimal_frequency,
-    )
-    n_times = time.shape[0] if isinstance(time, backend.Tensor) else len(time)
-    n_geos = self._meridian.n_geos
-    revenue_per_kpi = (
-        _expand_tensor(revenue_per_kpi, (n_geos, n_times))
-        if revenue_per_kpi is not None
-        else None
     )
 
     tensors = {}
@@ -1773,7 +1770,9 @@ class BudgetOptimizer:
           impressions, tensors[c.FREQUENCY]
       )
     if revenue_per_kpi is not None:
-      tensors[c.REVENUE_PER_KPI] = revenue_per_kpi
+      tensors[c.REVENUE_PER_KPI] = _expand_tensor(
+          revenue_per_kpi, (n_geos, n_times)
+      )
     tensors[c.TIME] = backend.to_tensor(time)
     return analyzer_module.DataTensors(**tensors)
 
@@ -2633,6 +2632,8 @@ class BudgetOptimizer:
 
   def _validate_optimization_tensors(
       self,
+      expected_n_geos: int,
+      expected_n_times: int,
       cpmu: backend.Tensor | None = None,
       cprf: backend.Tensor | None = None,
       media: backend.Tensor | None = None,
@@ -2649,9 +2650,19 @@ class BudgetOptimizer:
           'If `media` or `media_spend` is provided, then `cpmu` must also be'
           ' provided.'
       )
+    if (media is None and media_spend is None) and cpmu is not None:
+      raise ValueError(
+          'If `cpmu` is provided, then one of `media` or `media_spend` must'
+          ' also be provided.'
+      )
     if (rf_impressions is not None or rf_spend is not None) and cprf is None:
       raise ValueError(
           'If `reach` and `frequency` or `rf_spend` is provided, then `cprf`'
+          ' must also be provided.'
+      )
+    if (rf_impressions is None and rf_spend is None) and cprf is not None:
+      raise ValueError(
+          'If `cprf` is provided, then one of `rf_impressions` or `rf_spend`'
           ' must also be provided.'
       )
     if media is not None and media_spend is not None:
@@ -2671,26 +2682,44 @@ class BudgetOptimizer:
             'If `use_optimal_frequency` is `False`, then `frequency` must be'
             ' provided.'
         )
-
-    n_geos = [
-        t.shape[0]
-        for t in [
-            cpmu,
-            cprf,
-            media,
-            rf_impressions,
-            frequency,
-            media_spend,
-            rf_spend,
-        ]
-        if t is not None and t.ndim == 3
+    n_geos_list = []
+    n_times_list = []
+    tensor_list = [
+        cpmu,
+        cprf,
+        media,
+        rf_impressions,
+        frequency,
+        media_spend,
+        rf_spend,
     ]
+    for t in tensor_list:
+      # `(n_geos, T, n_channels)` shape
+      if t is not None and t.ndim == 3:
+        n_geos_list.append(t.shape[0])
+        n_times_list.append(t.shape[1])
+      # `(T, n_channels)` shape
+      elif t is not None and t.ndim == 2:
+        n_times_list.append(t.shape[0])
+
+    # `(n_geos, T)` shape
     if revenue_per_kpi is not None and revenue_per_kpi.ndim == 2:
-      n_geos.append(revenue_per_kpi.shape[0])
-    if any(n_geo != self._meridian.n_geos for n_geo in n_geos):
+      n_geos_list.append(revenue_per_kpi.shape[0])
+      n_times_list.append(revenue_per_kpi.shape[1])
+    # `(T)` shape
+    elif revenue_per_kpi is not None and revenue_per_kpi.ndim == 1:
+      n_times_list.append(revenue_per_kpi.shape[0])
+
+    if any(n_geo != expected_n_geos for n_geo in n_geos_list):
       raise ValueError(
-          'All tensors with a geo dimension must have the same number of geos'
-          ' as in `meridian.InputData`.'
+          'All tensors with a geo dimension must have'
+          f' {expected_n_geos} geos (as defined in `meridian.InputData`).'
+      )
+
+    if any(n_time != expected_n_times for n_time in n_times_list):
+      raise ValueError(
+          'All tensors with a time dimension must have'
+          f' {expected_n_times} times (as defined in `time` argument).'
       )
 
   def _allocate_tensor_by_population(

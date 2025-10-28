@@ -4607,6 +4607,26 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
           time=self.time, rf_impressions=backend.zeros((2, 2, 1))
       )
 
+  def test_value_error_if_cpmu_is_provided_without_media(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'If `cpmu` is provided, then one of `media` or `media_spend` must also'
+        ' be provided.',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cpmu=self.cpmu
+      )
+
+  def test_value_error_if_cprf_is_provided_without_rf(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'If `cprf` is provided, then one of `rf_impressions` or `rf_spend` must'
+        ' also be provided.',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cprf=self.cprf
+      )
+
   def test_value_error_if_media_and_media_spend_provided(self):
     with self.assertRaisesRegex(
         ValueError, 'Only one of `media` or `media_spend`'
@@ -4658,10 +4678,56 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
 
   def test_value_error_n_geos_not_matching(self):
     with self.assertRaisesRegex(
-        ValueError, 'with a geo dimension must have the same number of geos'
+        ValueError,
+        'All tensors with a geo dimension must have 2 geos',
     ):
       self.budget_optimizer.create_optimization_tensors(
           time=self.time, cpmu=self.cpmu, media=backend.zeros((4, 2, 3))
+      )
+
+  def test_value_error_n_times_not_matching(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'All tensors with a time dimension must have 2 times',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cpmu=self.cpmu, media=backend.zeros((2, 3, 3))
+      )
+
+  def test_value_error_n_times_not_matching_2d(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'All tensors with a time dimension must have 2 times',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cpmu=self.cpmu, media=backend.zeros((3, 3))
+      )
+
+  def test_value_error_n_times_not_matching_revenue_per_kpi_1d(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'All tensors with a time dimension must have 2 times',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, revenue_per_kpi=backend.zeros((3,))
+      )
+
+  def test_value_error_n_times_not_matching_revenue_per_kpi_2d(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'All tensors with a time dimension must have 2 times',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, revenue_per_kpi=backend.zeros((2, 3))
+      )
+
+  def test_value_error_n_geos_not_matching_revenue_per_kpi_2d(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'All tensors with a geo dimension must have 2 geos',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, revenue_per_kpi=backend.zeros((4, 2))
       )
 
   def test_value_error_allocate_by_population_wrong_ndim(self):
