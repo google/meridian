@@ -135,6 +135,54 @@ def _resolve_dtype(dtype: Optional[Any], *args: Any) -> str:
 
 
 # --- Private Backend-Specific Implementations ---
+def _jax_stabilize_rf_roi_grid(
+    spend_grid: np.ndarray,
+    outcome_grid: np.ndarray,
+    n_rf_channels: int,
+) -> np.ndarray:
+  """Stabilizes the RF ROI grid for JAX using a stable index lookup."""
+  new_outcome_grid = outcome_grid.copy()
+  rf_slice = slice(-n_rf_channels, None)
+  rf_spend_grid = spend_grid[:, rf_slice]
+  rf_outcome_grid = new_outcome_grid[:, rf_slice]
+
+  last_valid_indices = np.sum(~np.isnan(rf_spend_grid), axis=0) - 1
+  channel_indices = np.arange(n_rf_channels)
+
+  ref_spend = rf_spend_grid[last_valid_indices, channel_indices]
+  ref_outcome = rf_outcome_grid[last_valid_indices, channel_indices]
+
+  rf_roi = np.divide(
+      ref_outcome,
+      ref_spend,
+      out=np.zeros_like(ref_outcome, dtype=np.float64),
+      where=(ref_spend != 0),
+  )
+
+  new_outcome_grid[:, rf_slice] = rf_roi * rf_spend_grid
+  return new_outcome_grid
+
+
+def _tf_stabilize_rf_roi_grid(
+    spend_grid: np.ndarray,
+    outcome_grid: np.ndarray,
+    n_rf_channels: int,
+) -> np.ndarray:
+  """Stabilizes the RF ROI grid for TF using nanmax logic."""
+  new_outcome_grid = outcome_grid.copy()
+  rf_slice = slice(-n_rf_channels, None)
+  rf_outcome_max = np.nanmax(new_outcome_grid[:, rf_slice], axis=0)
+  rf_spend_max = np.nanmax(spend_grid[:, rf_slice], axis=0)
+
+  rf_roi = np.divide(
+      rf_outcome_max,
+      rf_spend_max,
+      out=np.zeros_like(rf_outcome_max, dtype=np.float64),
+      where=(rf_spend_max != 0),
+  )
+
+  new_outcome_grid[:, rf_slice] = rf_roi * spend_grid[:, rf_slice]
+  return new_outcome_grid
 
 
 def _jax_arange(
@@ -326,6 +374,7 @@ def _jax_boolean_mask(tensor, mask, axis=None):
 
   if axis is None:
     axis = 0
+  mask = jnp.asarray(mask)
   tensor_swapped = jnp.moveaxis(tensor, axis, 0)
   masked = tensor_swapped[mask]
   return jnp.moveaxis(masked, 0, axis)
@@ -338,17 +387,20 @@ def _tf_boolean_mask(tensor, mask, axis=None):
   return tf.boolean_mask(tensor, mask, axis=axis)
 
 
-def _jax_gather(params, indices):
-  """JAX implementation for gather."""
-  # JAX uses standard array indexing for gather operations.
-  return params[indices]
+def _jax_gather(params, indices, axis=0):
+  """JAX implementation for gather with axis support."""
+  import jax.numpy as jnp
+
+  if isinstance(params, np.ndarray) and params.dtype.kind in ("S", "U"):
+    return np.take(params, np.asarray(indices), axis=axis)
+  return jnp.take(params, indices, axis=axis)
 
 
-def _tf_gather(params, indices):
+def _tf_gather(params, indices, axis=0):
   """TensorFlow implementation for gather."""
   import tensorflow as tf
 
-  return tf.gather(params, indices)
+  return tf.gather(params, indices, axis=axis)
 
 
 def _jax_fill(dims, value):
@@ -434,6 +486,49 @@ def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
   return np.array(seed)
 
 
+def _jax_convert_to_tensor(data, dtype=None):
+  """Converts data to a JAX array, handling strings as NumPy arrays."""
+  # JAX does not natively support string tensors in the same way TF does.
+  # If a string dtype is requested, or if the data is inherently strings,
+  # we fall back to a standard NumPy array.
+  if dtype == np.str_ or (
+      dtype is None
+      and isinstance(data, (list, np.ndarray))
+      and np.array(data).dtype.kind in ("S", "U")
+  ):
+    return np.array(data, dtype=np.str_)
+  return jax_ops.asarray(data, dtype=dtype)
+
+
+def _tf_nanmean(a, axis=None, keepdims=False):
+  import tensorflow.experimental.numpy as tnp
+
+  return tf_backend.convert_to_tensor(
+      tnp.nanmean(a, axis=axis, keepdims=keepdims)
+  )
+
+
+def _tf_nansum(a, axis=None, keepdims=False):
+  import tensorflow.experimental.numpy as tnp
+
+  return tf_backend.convert_to_tensor(
+      tnp.nansum(a, axis=axis, keepdims=keepdims)
+  )
+
+
+def _tf_nanvar(a, axis=None, keepdims=False):
+  """Calculates variance ignoring NaNs, strictly returning a Tensor."""
+  import tensorflow as tf
+  import tensorflow.experimental.numpy as tnp
+  # We implement two-pass variance to correctly handle NaNs and ensure
+  # all operations remain within the TF graph (maintaining differentiability).
+  a_tensor = tf.convert_to_tensor(a)
+  mean = tnp.nanmean(a_tensor, axis=axis, keepdims=True)
+  sq_diff = tf.math.squared_difference(a_tensor, mean)
+  var = tnp.nanmean(sq_diff, axis=axis, keepdims=keepdims)
+  return tf.convert_to_tensor(var)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -446,14 +541,62 @@ if _BACKEND == config.Backend.JAX:
   import jax
   import jax.numpy as jax_ops
   import tensorflow_probability.substrates.jax as tfp_jax
+  from jax import tree_util
+  import numpy as np
 
   class ExtensionType:
-    """A JAX-compatible stand-in for tf.experimental.ExtensionType."""
+    """A JAX-compatible stand-in for tf.experimental.ExtensionType.
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-      raise NotImplementedError(
-          "ExtensionType is not yet implemented for the JAX backend."
+    This class registers itself as a JAX Pytree node, allowing it to be passed
+    through JIT-compiled functions.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+      super().__init_subclass__(**kwargs)
+      tree_util.register_pytree_node(
+          cls,
+          cls._tree_flatten,
+          cls._tree_unflatten,
       )
+
+    def _tree_flatten(self):
+      """Flattens the object for JAX tracing.
+
+      Fields containing JAX arrays (or convertibles) are treated as children.
+      Fields containing strings or NumPy string arrays must be treated as
+      auxiliary data because JAX cannot trace non-numeric/non-boolean data.
+      """
+      d = vars(self)
+      all_keys = sorted(d.keys())
+      children = []
+      aux = {}
+      children_keys = []
+
+      for k in all_keys:
+        v = d[k]
+        # Identify string data to prevent JAX tracing errors.
+        # 'S' is zero-terminated bytes (fixed-width), 'U' is unicode string.
+        is_numpy_string = isinstance(v, np.ndarray) and v.dtype.kind in (
+            "S",
+            "U",
+        )
+        is_plain_string = isinstance(v, str)
+
+        if is_numpy_string or is_plain_string:
+          aux[k] = v
+        else:
+          children.append(v)
+          children_keys.append(k)
+      return children, (aux, children_keys)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_and_keys, children):
+      aux, children_keys = aux_and_keys
+      obj = cls.__new__(cls)
+      vars(obj).update(aux)
+      for k, v in zip(children_keys, children):
+        setattr(obj, k, v)
+      return obj
 
   class _JaxErrors:
     # pylint: disable=invalid-name
@@ -516,7 +659,7 @@ if _BACKEND == config.Backend.JAX:
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   mcmc = tfp_jax.mcmc
-  _convert_to_tensor = _ops.asarray
+  _convert_to_tensor = _jax_convert_to_tensor
 
   # Standardized Public API
   absolute = _ops.abs
@@ -557,6 +700,9 @@ if _BACKEND == config.Backend.JAX:
   make_ndarray = _jax_make_ndarray
   make_tensor_proto = _jax_make_tensor_proto
   nanmedian = _jax_nanmedian
+  nanmean = jax_ops.nanmean
+  nanvar = jax_ops.nanvar
+  nansum = jax_ops.nansum
   numpy_function = _jax_numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -582,6 +728,9 @@ if _BACKEND == config.Backend.JAX:
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
   int32 = _ops.int32
+  string = np.str_
+
+  stabilize_rf_roi_grid = _jax_stabilize_rf_roi_grid
 
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     warnings.warn(
@@ -698,6 +847,9 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   make_ndarray = _ops.make_ndarray
   make_tensor_proto = _ops.make_tensor_proto
   nanmedian = _tf_nanmedian
+  nanmean = _tf_nanmean
+  nanvar = _tf_nanvar
+  nansum = _tf_nansum
   numpy_function = _ops.numpy_function
   ones = _ops.ones
   ones_like = _ops.ones_like
@@ -719,11 +871,14 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like
 
+  stabilize_rf_roi_grid = _tf_stabilize_rf_roi_grid
+
   float32 = _ops.float32
   bool_ = _ops.bool
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape
   int32 = _ops.int32
+  string = _ops.string
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
@@ -834,6 +989,14 @@ class _JaxRNGHandler(_BaseRNGHandler):
     self._key: Optional["_jax.Array"] = None
 
     if seed is None:
+      return
+
+    if (
+        isinstance(seed, jax.Array)  # pylint: disable=undefined-variable
+        and seed.shape == (2,)
+        and seed.dtype == jax_ops.uint32  # pylint: disable=undefined-variable
+    ):
+      self._key = seed
       return
 
     if self._int_seed is None:
