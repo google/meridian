@@ -1900,7 +1900,7 @@ class MediaSummary:
     num_channels = len(outcome_df[c.CHANNEL])
 
     base = (
-        alt.Chart(outcome_df, width=c.VEGALITE_FACET_LARGE_WIDTH)
+        alt.Chart(outcome_df)
         .transform_window(
             sum_outcome=f'sum({c.PCT_OF_CONTRIBUTION})',
             kwargs=f'lead({c.CHANNEL})',
@@ -1916,7 +1916,10 @@ class MediaSummary:
             y=alt.Y(
                 f'{c.CHANNEL}:N',
                 axis=alt.Axis(
-                    ticks=False, labelPadding=c.PADDING_10, domain=False
+                    ticks=False,
+                    labelPadding=c.PADDING_10,
+                    domain=False,
+                    labelLimit=0,
                 ),
                 title=None,
                 sort=None,
@@ -1959,6 +1962,7 @@ class MediaSummary:
             title=formatter.custom_title_params(
                 summary_text.CHANNEL_DRIVERS_CHART_TITLE
             ),
+            width=c.VEGALITE_FACET_LARGE_WIDTH,
             height=c.BAR_SIZE * num_channels
             + c.BAR_SIZE * 2 * c.SCALED_PADDING,
         )

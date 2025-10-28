@@ -126,11 +126,17 @@ class Meridian:
       treatmenttensors using the model's non-media treatment data.
     kpi_transformer: A `KpiTransformer` to scale KPI tensors using the model's
       KPI data.
-    controls_scaled: The controls tensor normalized by population and by the
-      median value.
-    non_media_treatments_scaled: The non-media treatment tensor normalized by
-      population and by the median value.
-    kpi_scaled: The KPI tensor normalized by population and by the median value.
+    controls_scaled: The controls tensor after pre-modeling transformations
+      including population scaling (for variables with
+      `ModelSpec.control_population_scaling_id` set to `True`), centering by the
+      mean, and scaling by the standard deviation.
+    non_media_treatments_scaled: The non-media treatment tensor after
+      pre-modeling transformations including population scaling (for variables
+      with `ModelSpec.non_media_population_scaling_id` set to `True`), centering
+      by the mean, and scaling by the standard deviation.
+    kpi_scaled: The KPI tensor after pre-modeling transformations including
+      population scaling, centering by the mean, and scaling by the standard
+      deviation.
     media_effects_dist: A string to specify the distribution of media random
       effects across geos.
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
@@ -444,7 +450,8 @@ class Meridian:
           f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
           " either contain only channel_names"
           f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media', 'organic_rf'}."
+          " be one or more of {'media', 'rf', 'organic_media',"
+          " 'organic_rf'}."
       ) from e
 
   @functools.cached_property
@@ -1644,7 +1651,7 @@ class Meridian:
         a list of integers as `n_chains` to sample chains serially. For more
         information, see
         [ResourceExhaustedError when running Meridian.sample_posterior]
-        (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
+        (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
     self.posterior_sampler_callable(
         n_chains=n_chains,

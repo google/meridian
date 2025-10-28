@@ -72,7 +72,7 @@ def _get_tau_g(
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
-@backend.function(autograph=False, jit_compile=True)
+@backend.function(autograph=False, jit_compile=True, static_argnums=())
 def _xla_windowed_adaptive_nuts(**kwargs):
   """XLA wrapper for windowed_adaptive_nuts."""
   return backend.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
@@ -559,7 +559,7 @@ class PosteriorMCMCSampler:
         a list of integers as `n_chains` to sample chains serially. For more
         information, see
         [ResourceExhaustedError when running Meridian.sample_posterior]
-        (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
+        (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
     rng_handler = backend.RNGHandler(seed)
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
@@ -593,7 +593,7 @@ class PosteriorMCMCSampler:
         raise MCMCOOMError(
             "ERROR: Out of memory. Try reducing `n_keep` or pass a list of"
             " integers as `n_chains` to sample chains serially (see"
-            " https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error)"
+            " https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error)"
         ) from error
       rng_handler = rng_handler.advance_handler()
       states.append(mcmc.all_states._asdict())

@@ -1196,7 +1196,7 @@ def lognormal_dist_from_range(
   """Define a LogNormal distribution from a specified range.
 
   This function parameterizes lognormal distributions by the bounds of a range,
-  so that the specificed probability mass falls within the bounds defined by
+  so that the specified probability mass falls within the bounds defined by
   `low` and `high`. The probability mass is symmetric about the median. For
   example, to define a lognormal distribution with a 95% probability mass of
   (1, 10), use:
@@ -1211,7 +1211,7 @@ def lognormal_dist_from_range(
     high: Float or array-like denoting the upper bound of range. Values must be
       non-negative.
     mass_percent: Float or array-like denoting the probability mass. Values must
-      be between 0 and 1 (exlusive). Default: 0.95.
+      be between 0 and 1 (exclusive). Default: 0.95.
 
   Returns:
     A `backend.tfd.LogNormal` object with the input percentage mass falling

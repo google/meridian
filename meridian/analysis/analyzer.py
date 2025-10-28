@@ -4035,8 +4035,6 @@ class Analyzer:
 
       *   `n_params`: The number of respective parameters in the model.
       *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `n_params`: The number of respective parameters in the model.
-      *   `avg_rhat`: The average R-hat value for the respective parameter.
       *   `max_rhat`: The maximum R-hat value for the respective parameter.
       *   `percent_bad_rhat`: The percentage of R-hat values for the respective
           parameter that are greater than `bad_rhat_threshold`.
@@ -4951,11 +4949,12 @@ class Analyzer:
   def get_aggregated_spend(
       self,
       new_data: DataTensors | None = None,
+      selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       include_media: bool = True,
       include_rf: bool = True,
   ) -> xr.DataArray:
-    """Gets the aggregated spend based on the selected time.
+    """Gets the aggregated spend based on the selected geos and time.
 
     Args:
       new_data: An optional `DataTensors` object containing the new `media`,
@@ -4966,6 +4965,9 @@ class Analyzer:
         of all the remaining tensors.  If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
         then all tensors must be provided with the same number of time periods.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
         KPI data. By default, all time periods are included.
@@ -5010,10 +5012,11 @@ class Analyzer:
       aggregated_media_spend = empty_da
     else:
       aggregated_media_spend = self._impute_and_aggregate_spend(
-          selected_times,
-          filled_data.media,
-          filled_data.media_spend,
-          list(self._meridian.input_data.media_channel.values),
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+          media_execution_values=filled_data.media,
+          channel_spend=filled_data.media_spend,
+          channel_names=list(self._meridian.input_data.media_channel.values),
       )
 
     if not include_rf:
@@ -5032,10 +5035,11 @@ class Analyzer:
     else:
       rf_execution_values = filled_data.reach * filled_data.frequency
       aggregated_rf_spend = self._impute_and_aggregate_spend(
-          selected_times,
-          rf_execution_values,
-          filled_data.rf_spend,
-          list(self._meridian.input_data.rf_channel.values),
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+          media_execution_values=rf_execution_values,
+          channel_spend=filled_data.rf_spend,
+          channel_names=list(self._meridian.input_data.rf_channel.values),
       )
 
     return xr.concat(
@@ -5044,21 +5048,26 @@ class Analyzer:
 
   def _impute_and_aggregate_spend(
       self,
+      selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | Sequence[bool] | None,
       media_execution_values: backend.Tensor,
       channel_spend: backend.Tensor,
       channel_names: Sequence[str],
   ) -> xr.DataArray:
-    """Imputes and aggregates the spend over the selected time period.
+    """Imputes and aggregates the spend within selected dimensions.
 
-    This function is used to aggregate the spend over the selected time period.
-    Imputation is required when `channel_spend` has only one dimension and the
-    aggregation is applied to only a subset of times, as specified by
-    `selected_times`. The `media_execution_values` argument only serves the
-    purpose of imputation. Although `media_execution_values` is a required
-    argument, its values only affect the output when imputation is required.
+    This function is used to aggregate the spend within selected geos over the
+    selected time period. Imputation is required when `channel_spend` has only
+    one dimension and the aggregation is applied to only a subset of geos or
+    times, as specified by `selected_geos` and `selected_times`. The
+    `media_execution_values` argument only serves the purpose of imputation.
+    Although `media_execution_values` is a required argument, its values only
+    affect the output when imputation is required.
 
     Args:
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
         KPI data. By default, all time periods are included.
@@ -5073,7 +5082,7 @@ class Analyzer:
       variable `spend`.
     """
     dim_kwargs = {
-        "selected_geos": None,
+        "selected_geos": selected_geos,
         "selected_times": selected_times,
         "aggregate_geos": True,
         "aggregate_times": True,

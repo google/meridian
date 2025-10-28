@@ -375,6 +375,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     self.meridian_media_and_rf = model.Meridian(
         input_data=self.input_data_media_and_rf
     )
+    self.meridian_media_and_rf_no_lag = model.Meridian(
+        input_data=self.input_data_media_and_rf,
+        model_spec=spec.ModelSpec(max_lag=0),
+    )
     self.meridian_media_only = model.Meridian(
         input_data=self.input_data_media_only
     )
@@ -385,6 +389,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     self.budget_optimizer_media_and_rf = optimizer.BudgetOptimizer(
         self.meridian_media_and_rf
+    )
+    self.budget_optimizer_media_and_rf_no_lag = optimizer.BudgetOptimizer(
+        self.meridian_media_and_rf_no_lag
     )
     self.budget_optimizer_media_only = optimizer.BudgetOptimizer(
         self.meridian_media_only
@@ -447,6 +454,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     ):
       budget_optimizer.create_optimization_grid(
           use_posterior=use_posterior,
+      )
+
+  def test_create_optimization_grid_empty_selected_geos_raises_exception(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        '`selected_geos` must not be empty.',
+    ):
+      self.budget_optimizer_media_and_rf.create_optimization_grid(
+          selected_geos=[],
       )
 
   def test_fixed_budget_target_roi_raises_exception(self):
@@ -1384,8 +1400,25 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     actual_data = optimization_results.optimized_data
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
-  def test_optimized_data_new_data(self):
-    max_lag = 15
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='lagged',
+          max_lag=15,
+          meridian_key='meridian_media_and_rf',
+          budget_optimizer_key='budget_optimizer_media_and_rf',
+      ),
+      dict(
+          testcase_name='no_lag',
+          max_lag=0,
+          meridian_key='meridian_media_and_rf_no_lag',
+          budget_optimizer_key='budget_optimizer_media_and_rf_no_lag',
+      ),
+  )
+  def test_optimized_data_new_data(
+      self, max_lag: int, meridian_key: str, budget_optimizer_key: str
+  ):
+    meridian_media_and_rf = getattr(self, meridian_key)
+    budget_optimizer_media_and_rf = getattr(self, budget_optimizer_key)
     n_new_times = 15
     total_times = max_lag + n_new_times
     weekly_step = np.timedelta64(1, 'W')
@@ -1397,35 +1430,31 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
     ).tolist()
     new_data = analyzer.DataTensors(
-        media=self.meridian_media_and_rf.media_tensors.media[
+        media=meridian_media_and_rf.media_tensors.media[..., -total_times:, :],
+        media_spend=meridian_media_and_rf.media_tensors.media_spend[
             ..., -total_times:, :
         ],
-        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
+        reach=meridian_media_and_rf.rf_tensors.reach[..., -total_times:, :],
+        frequency=meridian_media_and_rf.rf_tensors.frequency[
             ..., -total_times:, :
         ],
-        reach=self.meridian_media_and_rf.rf_tensors.reach[
+        rf_spend=meridian_media_and_rf.rf_tensors.rf_spend[
             ..., -total_times:, :
         ],
-        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-            ..., -total_times:, :
-        ],
-        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-            ..., -total_times:, :
-        ],
-        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
+        revenue_per_kpi=meridian_media_and_rf.revenue_per_kpi[
             ..., -total_times:
         ],
         time=new_times,
     )
-    actual = self.budget_optimizer_media_and_rf.optimize(
+    actual = budget_optimizer_media_and_rf.optimize(
         new_data=new_data,
         start_date=new_times[-n_new_times],
         end_date=new_times[-1],
     )
-    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    times = meridian_media_and_rf.input_data.time.to_numpy().tolist()
     start_date = times[-n_new_times]
     end_date = times[-1]
-    expected = self.budget_optimizer_media_and_rf.optimize(
+    expected = budget_optimizer_media_and_rf.optimize(
         start_date=start_date,
         end_date=end_date,
     )
@@ -1521,8 +1550,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     spend_constraint_upper = np.array([0.5, 0.4, 0.3, 0.2, 0.1])
     start_date = '2021-01-25'
     end_date = '2021-02-01'
+    selected_geos = ['geo 0']
     optimization_grid = (
         self.budget_optimizer_media_and_rf.create_optimization_grid(
+            selected_geos=selected_geos,
             start_date=start_date,
             end_date=end_date,
             spend_constraint_lower=spend_constraint_lower,
@@ -1564,6 +1595,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=selected_geos,
         selected_times=[start_date, end_date],
         use_kpi=False,
         batch_size=c.DEFAULT_BATCH_SIZE,
@@ -1651,6 +1683,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1735,6 +1768,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1839,6 +1873,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -1937,6 +1972,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
+        selected_geos=None,
         selected_times=[start_date, end_date],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
@@ -2028,6 +2064,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,
@@ -2473,6 +2510,36 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           ),
       ),
       dict(
+          testcase_name='selected_geos',
+          create_optimization_grid_args={'selected_geos': ['geo_0']},
+          optimize_args={'selected_geos': ['geo_1']},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " \\['geo_0'\\], but optimization request was called with"
+              " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
+          ),
+      ),
+      dict(
+          testcase_name='selected_geos_none_in_grid',
+          create_optimization_grid_args={'selected_geos': None},
+          optimize_args={'selected_geos': ['geo_1']},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " None, but optimization request was called with"
+              " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
+          ),
+      ),
+      dict(
+          testcase_name='selected_geos_none_in_optimize',
+          create_optimization_grid_args={'selected_geos': ['geo_0']},
+          optimize_args={'selected_geos': None},
+          warning_regex=(
+              'Given optimization grid was created with `selected_geos` ='
+              " \\['geo_0'\\], but optimization request was called with"
+              " `selected_geos` = None. A new grid will be created."
+          ),
+      ),
+      dict(
           testcase_name='pct_of_spend',
           create_optimization_grid_args={
               'pct_of_spend': np.array([0.3, 0.3, 0.2, 0.1, 0.1])
@@ -2505,6 +2572,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       budget_optimizer.optimize(optimization_grid=grid, **optimize_args)
     default_optimization_args = {
         'new_data': None,
+        'selected_geos': None,
         'start_date': None,
         'end_date': None,
         'budget': None,
@@ -2584,6 +2652,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     optimization_args = {
         'new_data': new_data,
+        'selected_geos': None,
         'start_date': start_date,
         'end_date': end_date,
         'budget': None,
@@ -2994,6 +3063,47 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       _, kwargs = mock_response_curves.call_args
       self.assertEqual(kwargs['selected_times'], selected_times)
 
+  def test_create_budget_dataset_selected_geos_correct(self):
+    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+        :2
+    ]
+    with mock.patch.object(
+        self.budget_optimizer_media_and_rf,
+        '_create_budget_dataset',
+        autospec=True,
+        wraps=self.budget_optimizer_media_and_rf._create_budget_dataset,
+    ) as mock_create_budget_dataset:
+      self.budget_optimizer_media_and_rf.optimize(selected_geos=selected_geos)
+      self.assertLen(
+          mock_create_budget_dataset.call_args_list,
+          3,
+          'Expected create_budget_dataset to be called 3 times.',
+      )
+      for _, kwargs in mock_create_budget_dataset.call_args_list:
+        self.assertEqual(
+            kwargs['selected_geos'],
+            selected_geos,
+        )
+
+  def test_get_response_curves_selected_geos_correct(self):
+    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+        :2
+    ]
+    with mock.patch.object(
+        analyzer.Analyzer,
+        'response_curves',
+        wraps=self.budget_optimizer_media_and_rf._analyzer.response_curves,
+    ) as mock_response_curves:
+      # Create OptimizationResults with selected_geos
+      optimization_results = self.budget_optimizer_media_and_rf.optimize(
+          selected_geos=selected_geos
+      )
+
+      optimization_results.get_response_curves()
+      mock_response_curves.assert_called_once()
+      _, kwargs = mock_response_curves.call_args
+      self.assertEqual(kwargs['selected_geos'], selected_geos)
+
 
 class OptimizerPlotsTest(absltest.TestCase):
 
@@ -3026,6 +3136,7 @@ class OptimizerPlotsTest(absltest.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,
@@ -3611,6 +3722,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         use_kpi=False,
         use_posterior=True,
         use_optimal_frequency=False,
+        selected_geos=None,
         start_date=None,
         end_date=None,
         gtol=0.1,
@@ -4363,6 +4475,7 @@ class OptimizerKPITest(parameterized.TestCase):
 
     mock_incremental_outcome.assert_called_with(
         # marginal roi numerator computation requires the following arguments.
+        selected_geos=None,
         selected_times=None,
         scaling_factor0=1.0,
         scaling_factor1=1.01,

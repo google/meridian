@@ -2750,6 +2750,7 @@ class NonPaidModelTest(
 
 
 class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
+
   @parameterized.product(**data_test_utils.ADSTOCK_DECAY_SPEC_CASES)
   def test_from_channel(
       self,
@@ -2796,7 +2797,7 @@ class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
       has_undefined_rf_channel=(True, False),
       has_undefined_organic_media_channel=(True, False),
       has_undefined_organic_rf_channel=(True, False),
-      )
+  )
   def test_from_channels_some_undefined(
       self,
       media,
@@ -2818,8 +2819,8 @@ class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
         has_undefined_media_channel,
         has_undefined_rf_channel,
         has_undefined_organic_media_channel,
-        has_undefined_organic_rf_channel
-        )):
+        has_undefined_organic_rf_channel,
+    )):
       self.skipTest("Redundant test case: no undefined channels.")
 
     inp_data = data_test_utils.sample_input_data_revenue(
@@ -2929,17 +2930,10 @@ class AdstockDecaySpecFromChannelMappingTest(parameterized.TestCase):
 
   @parameterized.product(
       **data_test_utils.ADSTOCK_DECAY_SPEC_CASES,
-      bad_channel=({
-          "nonexistent_channel": constants.GEOMETRIC_DECAY
-          },)
-      )
+      bad_channel=({"nonexistent_channel": constants.GEOMETRIC_DECAY},),
+  )
   def test_from_channels_misnamed_channel_raises_error(
-      self,
-      media,
-      rf,
-      organic_media,
-      organic_rf,
-      bad_channel
+      self, media, rf, organic_media, organic_rf, bad_channel
   ):
     """Test if an exception is raised with an unrecognized channel."""
     if not (media or rf):

@@ -226,7 +226,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
-        decay_functions=meridian.adstock_decay_spec.media
+        decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
     beta_m = par[constants.BETA_GM][0, :, :]
     y_means = (
@@ -535,7 +535,7 @@ class PosteriorMCMCSamplerTest(
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
-        decay_functions=meridian.adstock_decay_spec.media
+        decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,
@@ -1567,103 +1567,82 @@ class PosteriorMCMCSamplerTest(
           seed=seed,
       )
 
-  @parameterized.named_parameters(
-      dict(testcase_name="seed_is_none", initial_seed=None),
-      dict(
-          testcase_name="seed_is_int",
-          initial_seed=123,
-      ),
-      dict(
-          testcase_name="seed_is_pair",
-          initial_seed=[123, 456],
-      ),
-  )
-  def test_sample_posterior_seed_increment(self, initial_seed):
+  def test_sample_posterior_with_none_seed_propagates_correctly(self):
+    """Validates that seed=None is correctly propagated to the MCMC kernel."""
     n_chains_list = [self._N_CHAINS, self._N_CHAINS]
-    mock_sample_posterior = self.enter_context(
-        mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
-            autospec=True,
-            return_value=collections.namedtuple(
-                "StatesAndTrace", ["all_states", "trace"]
-            )(
-                all_states=self.test_posterior_states_media_and_rf,
-                trace=self.test_trace,
-            ),
-        )
+    mock_return = collections.namedtuple(
+        "StatesAndTrace", ["all_states", "trace"]
+    )(
+        all_states=self.test_posterior_states_media_and_rf,
+        trace=self.test_trace,
     )
-    model_spec = spec.ModelSpec()
-    input_data = self.short_input_data_with_media_and_rf
-    meridian = model.Meridian(
-        input_data=input_data,
-        model_spec=model_spec,
-    )
-
-    meridian.sample_posterior(
-        n_chains=n_chains_list,
-        n_adapt=self._N_ADAPT,
-        n_burnin=self._N_BURNIN,
-        n_keep=self._N_KEEP,
-        seed=initial_seed,
-    )
-
-    calls = mock_sample_posterior.call_args_list
-    self.assertLen(calls, len(n_chains_list))
-
-    _, kwargs0 = calls[0]
-    _, kwargs1 = calls[1]
-
-    sanitized_seeds = []
-    if initial_seed is None:
-      sanitized_seeds.append(None)
-      sanitized_seeds.append(None)
-      self.assertIsNone(kwargs0["seed"])
-      self.assertIsNone(kwargs1["seed"])
-    else:
-      sanitized_seed0 = kwargs0["seed"]
-      sanitized_seed1 = kwargs1["seed"]
-      test_utils.assert_allequal(
-          sanitized_seed1, [x + 1 for x in sanitized_seed0]
+    with mock.patch.object(
+        posterior_sampler,
+        "_xla_windowed_adaptive_nuts",
+        return_value=mock_return,
+    ) as mock_nuts:
+      meridian = model.Meridian(
+          input_data=self.short_input_data_with_media_and_rf,
+          model_spec=spec.ModelSpec(),
+      )
+      meridian.sample_posterior(
+          n_chains=n_chains_list,
+          n_adapt=self._N_ADAPT,
+          n_burnin=self._N_BURNIN,
+          n_keep=self._N_KEEP,
+          seed=None,
       )
 
-  def test_sample_posterior_seed_int(self):
+      calls = mock_nuts.call_args_list
+      self.assertLen(calls, len(n_chains_list))
+
+      self.assertIsNone(calls[0].kwargs["seed"])
+      self.assertIsNone(calls[1].kwargs["seed"])
+
+  @parameterized.named_parameters(
+      dict(testcase_name="seed_is_int", initial_seed=123),
+      dict(testcase_name="seed_is_pair", initial_seed=[123, 456]),
+  )
+  def test_posterior_sequential_batches_are_reproducible_and_independent(
+      self, initial_seed
+  ):
+    """Tests that sequential MCMC batches get independent but reproducible seeds."""
     n_chains_list = [self._N_CHAINS, self._N_CHAINS]
-    mock_sample_posterior = self.enter_context(
-        mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
-            autospec=True,
-            return_value=collections.namedtuple(
-                "StatesAndTrace", ["all_states", "trace"]
-            )(
-                all_states=self.test_posterior_states_media_and_rf,
-                trace=self.test_trace,
-            ),
+    mock_return = collections.namedtuple(
+        "StatesAndTrace", ["all_states", "trace"]
+    )(
+        all_states=self.test_posterior_states_media_and_rf,
+        trace=self.test_trace,
+    )
+
+    def run_sampling(seed):
+      """Helper to run sampling and return the seeds passed to the kernel."""
+      with mock.patch.object(
+          posterior_sampler,
+          "_xla_windowed_adaptive_nuts",
+          return_value=mock_return,
+      ) as mock_nuts:
+        meridian = model.Meridian(
+            input_data=self.short_input_data_with_media_and_rf,
+            model_spec=spec.ModelSpec(),
         )
-    )
-    model_spec = spec.ModelSpec()
-    input_data = self.short_input_data_with_media_and_rf
-    meridian = model.Meridian(
-        input_data=input_data,
-        model_spec=model_spec,
-    )
+        meridian.sample_posterior(
+            n_chains=n_chains_list,
+            n_adapt=self._N_ADAPT,
+            n_burnin=self._N_BURNIN,
+            n_keep=self._N_KEEP,
+            seed=seed,
+        )
+        return [call.kwargs["seed"] for call in mock_nuts.call_args_list]
 
-    meridian.sample_posterior(
-        n_chains=n_chains_list,
-        n_adapt=self._N_ADAPT,
-        n_burnin=self._N_BURNIN,
-        n_keep=self._N_KEEP,
-        seed=123,
-    )
-    calls = mock_sample_posterior.call_args_list
-    self.assertLen(calls, len(n_chains_list))
+    seeds1 = run_sampling(initial_seed)
+    seeds2 = run_sampling(initial_seed)
 
-    _, kwargs0 = calls[0]
-    _, kwargs1 = calls[1]
+    self.assertLen(seeds1, 2)
+    test_utils.assert_allequal(seeds1[0], seeds2[0])
+    test_utils.assert_allequal(seeds1[1], seeds2[1])
 
-    test_utils.assert_allequal(kwargs0["seed"], [123, 123])
-    test_utils.assert_allequal(kwargs1["seed"], [124, 124])
+    test_utils.assert_not_allequal(seeds1[0], seeds1[1])
 
   @parameterized.named_parameters(
       dict(testcase_name="n_chains_is_list", n_chains_type=list),

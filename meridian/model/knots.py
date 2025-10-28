@@ -250,12 +250,28 @@ class AKS:
   def __init__(self, data: input_data.InputData):
     self._data = data
 
-  def automatic_knot_selection(self) -> AKSResult:
+  def automatic_knot_selection(
+      self,
+      base_penalty: np.ndarray | None = None,
+      min_internal_knots: int = 1,
+      max_internal_knots: int | None = None,
+  ) -> AKSResult:
     """Calculates the optimal number of knots for Meridian model using Automatic knot selection with A-spline.
+
+    Args:
+      base_penalty: A vector of positive penalty values. The adaptive spline
+        regression is performed for every value of penalty.
+      min_internal_knots: The minimum number of internal knots. Defaults to 1.
+      max_internal_knots: The maximum number of internal knots. If None, this
+        value is calculated as the number of initial knots minus the total count
+        of all treatment and control variables. Otherwise, the user-provided
+        value will be used.
 
     Returns:
       Selected knots and the corresponding B-spline model.
     """
+    if base_penalty is None:
+      base_penalty = self._BASE_PENALTY
     n_times = len(self._data.time)
     n_geos = len(self._data.geo)
 
@@ -265,11 +281,12 @@ class AKS:
         np.repeat([range(n_times)], n_geos, axis=0), (n_geos * n_times,)
     )
 
-    knots, min_internal_knots, max_internal_knots = (
-        self._calculate_initial_knots(x)
+    knots = self._calculate_initial_knots(x)
+    max_internal_knots = self._calculate_and_validate_max_internal_knots(
+        knots, min_internal_knots, max_internal_knots
     )
     geo_scaling_factor = 1 / np.sqrt(len(self._data.geo))
-    penalty = geo_scaling_factor * self._BASE_PENALTY
+    penalty = geo_scaling_factor * base_penalty
 
     aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
     n_knots = np.array([len(x) for x in aspline[constants.KNOTS_SELECTED]])
@@ -288,7 +305,7 @@ class AKS:
   def _calculate_initial_knots(
       self,
       x: np.ndarray,
-  ) -> tuple[np.ndarray, int, int]:
+  ) -> np.ndarray:
     """Calculates initial knots based on unique x values.
 
     Args:
@@ -298,38 +315,7 @@ class AKS:
     Returns:
       A tuple containing:
         - The calculated knots.
-        - The minimum number of internal knots.
-        - The maximum number of internal knots.
     """
-    n_media = (
-        len(self._data.media_channel)
-        if self._data.media_channel is not None
-        else 0
-    )
-    n_rf = (
-        len(self._data.rf_channel) if self._data.rf_channel is not None else 0
-    )
-    n_organic_media = (
-        len(self._data.organic_media_channel)
-        if self._data.organic_media_channel is not None
-        else 0
-    )
-    n_organic_rf = (
-        len(self._data.organic_rf_channel)
-        if self._data.organic_rf_channel is not None
-        else 0
-    )
-    n_non_media = (
-        len(self._data.non_media_channel)
-        if self._data.non_media_channel is not None
-        else 0
-    )
-    n_controls = (
-        len(self._data.control_variable)
-        if self._data.control_variable is not None
-        else 0
-    )
-
     x_vals_unique = np.unique(x)
     min_x_data, max_x_data = x_vals_unique.min(), x_vals_unique.max()
     knots = x_vals_unique[
@@ -340,18 +326,39 @@ class AKS:
     # fewer degree of freedom than the total number of knots to function.
     # Dropping the final knot is a natural and practical choice because it
     # often has minimal impact on the overall model fit.
-    knots = knots[:-1]
-    min_internal_knots = 1
+    return knots[:-1]
 
-    max_internal_knots = (
-        len(knots)
-        - n_media
-        - n_rf
-        - n_organic_media
-        - n_organic_rf
-        - n_non_media
-        - n_controls
+  def _calculate_and_validate_max_internal_knots(
+      self,
+      knots: np.ndarray,
+      min_internal_knots: int = 1,
+      max_internal_knots: int | None = None,
+  ) -> int:
+    """Calculates the max internal knots, and validates the range.
+
+    Args:
+      knots: Initial knots to calculate max internal knots from.
+      min_internal_knots: The minimum number of internal knots.
+      max_internal_knots: The maximum number of internal knots. If None, this
+        value will be calculated, otherwise will use user provided value.
+
+    Returns:
+      The maximum number of internal knots.
+    """
+    n_features = sum(
+        len(feature) if feature is not None else 0
+        for feature in [
+            self._data.media_channel,
+            self._data.rf_channel,
+            self._data.organic_media_channel,
+            self._data.organic_rf_channel,
+            self._data.non_media_channel,
+            self._data.control_variable,
+        ]
     )
+
+    if max_internal_knots is None:
+      max_internal_knots = len(knots) - n_features
     if min_internal_knots > len(knots):
       raise ValueError(
           'The minimum number of internal knots cannot be greater than the'
@@ -362,8 +369,7 @@ class AKS:
           'The maximum number of internal knots cannot be less than the minimum'
           ' number of internal knots.'
       )
-
-    return knots, min_internal_knots, max_internal_knots
+    return max_internal_knots
 
   def aspline(
       self,

@@ -16,6 +16,7 @@
 
 import dataclasses
 import enum
+import typing
 import pandas as pd
 import xarray as xr
 
@@ -47,22 +48,6 @@ class EDAFinding:
   explanation: str
 
 
-@dataclasses.dataclass(frozen=True)
-class EDAOutcome:
-  """Base dataclass for the outcomes of a single EDA check function.
-
-  An EDA check function can discover multiple issues. This object groups all of
-  those individual issues, reported as a list of EDAFinding objects. Specific
-  EDA checks should inherit from this class to store check-specific results
-  for downstream processing (e.g., plotting).
-
-  Attributes:
-      findings: A list of all individual issues discovered by the check.
-  """
-
-  findings: list[EDAFinding]
-
-
 @enum.unique
 class AnalysisLevel(enum.Enum):
   """Enumeration for the level of an analysis.
@@ -79,11 +64,24 @@ class AnalysisLevel(enum.Enum):
 
 
 @dataclasses.dataclass(frozen=True)
-class PairwiseCorrResult:
-  """Encapsulates results from a single pairwise correlation analysis.
+class AnalysisArtifact:
+  """Base dataclass for analysis artifacts.
+
+  Specific EDA artifacts should inherit from this class to store check-specific
+  data for downstream processing (e.g., plotting).
 
   Attributes:
-    level: The level of the correlation analysis.
+    level: The level of the analysis.
+  """
+
+  level: AnalysisLevel
+
+
+@dataclasses.dataclass(frozen=True)
+class PairwiseCorrArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a single pairwise correlation analysis.
+
+  Attributes:
     corr_matrix: Pairwise correlation matrix.
     extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
       correlation threshold.
@@ -91,49 +89,64 @@ class PairwiseCorrResult:
       pairs.
   """
 
-  level: AnalysisLevel
   corr_matrix: xr.DataArray
   extreme_corr_var_pairs: pd.DataFrame
   extreme_corr_threshold: float
 
 
 @dataclasses.dataclass(frozen=True)
-class PairwiseCorrOutcome(EDAOutcome):
-  """Encapsulates results from the pairwise correlation EDA check.
-
-  Attributes:
-    findings: A list of all individual findings related to pairwise
-      correlations.
-    pairwise_corr_results: A list of pairwise correlation results.
-  """
-
-  pairwise_corr_results: list[PairwiseCorrResult]
-
-
-@dataclasses.dataclass(frozen=True)
-class StandardDeviationResult:
-  """Encapsulates results from a standard deviation analysis.
+class StandardDeviationArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a standard deviation analysis.
 
   Attributes:
     variable: The variable for which standard deviation is calculated.
-    level: The level of the analysis.
     std_ds: Dataset with stdev_with_outliers and stdev_without_outliers.
     outlier_df: DataFrame with outliers.
   """
 
   variable: str
-  level: AnalysisLevel
   std_ds: xr.Dataset
   outlier_df: pd.DataFrame
 
 
 @dataclasses.dataclass(frozen=True)
-class StandardDeviationOutcome(EDAOutcome):
-  """Encapsulates results from the standard deviation EDA check.
+class VIFArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a single VIF analysis.
 
   Attributes:
-    findings: A list of all individual findings related to standard deviation.
-    std_results: A list of standard deviation results.
+    vif_da: DataArray with VIF values.
+    outlier_df: DataFrame with extreme VIF values.
   """
 
-  std_results: list[StandardDeviationResult]
+  vif_da: xr.DataArray
+  outlier_df: pd.DataFrame
+
+
+@enum.unique
+class EDACheckType(enum.Enum):
+  """Enumeration for the type of an EDA check."""
+
+  PAIRWISE_CORR = enum.auto()
+  STD = enum.auto()
+  VIF = enum.auto()
+
+
+ArtifactType = typing.TypeVar('ArtifactType', bound='AnalysisArtifact')
+
+
+@dataclasses.dataclass(frozen=True)
+class EDAOutcome(typing.Generic[ArtifactType]):
+  """A dataclass for the outcomes of a single EDA check function.
+
+  An EDA check function can discover multiple issues. This object groups all of
+  those individual issues, reported as a list of `EDAFinding` objects.
+
+  Attributes:
+    check_type: The type of the EDA check that is being performed.
+    findings: A list of all individual issues discovered by the check.
+    analysis_artifacts: A list of analysis artifacts from the EDA check.
+  """
+
+  check_type: EDACheckType
+  findings: list[EDAFinding]
+  analysis_artifacts: list[ArtifactType]

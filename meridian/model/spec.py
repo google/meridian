@@ -203,14 +203,13 @@ class ModelSpec:
       non-media value will be scaled by population. If `None`, then no non-media
       variables are scaled by population. Default: `None`.
     adstock_decay_spec: A string or mapping specifying the adstock decay
-      function for each media, RF, organic media and organic RF channel.
-      * If a string, must be either `'geometric'` or `'binomial'`, specifying
-        that decay function for all channels.
-      * If a mapping, keys should be channel names and values should be
-        `'geometric'` or `'binomial'`, with each key-value pair denoting the
-        adstock decay function to use for that channel. Channels that are not
-        specified in the mapping default to using 'geometric'.
-      Default: `'geometric'`.
+      function for each media, RF, organic media and organic RF channel. If a
+      string, must be either `'geometric'` or `'binomial'`, specifying that
+      decay function for all channels. If a mapping, keys should be channel
+      names and values should be `'geometric'` or `'binomial'`, with each
+      key-value pair denoting the adstock decay function to use for that
+      channel. Channels that are not specified in the mapping default to using
+      'geometric'. Default: `'geometric'`.
     enable_aks: A boolean indicating whether to use the Automatic Knot Selection
       algorithm to select an optimal number of knots for running the model
       instead of the default 1 for national models and n_times for geo models.
