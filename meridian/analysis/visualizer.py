@@ -58,7 +58,7 @@ class ModelDiagnostics:
       selected_times: frozenset[str] | None = None,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> xr.Dataset:
-    """Displays the predictive accuracy Dataset.
+    """Displays the predictive accuracy Dataset change.
 
     Args:
       selected_geos: Optional list of a subset of geo dimensions to include. By
