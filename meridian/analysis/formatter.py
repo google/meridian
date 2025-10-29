@@ -192,10 +192,10 @@ def format_number_text(percent_value: float, actual_value: float) -> str:
   return f'{round(percent_value * 100, 1)}% ({compact_number(actual_value)})'
 
 
-def format_monetary_num(num: float) -> str:
+def format_monetary_num(num: float, currency: str) -> str:
   """Formats a number into a readable monetary value (ex. $15M, $1.2B)."""
   precision = 1 if num != 0 and int(math.log10(abs(num))) % 3 == 0 else 0
-  return compact_number(num, precision=precision, currency='$')
+  return compact_number(num, precision=precision, currency=currency)
 
 
 def create_template_env() -> jinja2.Environment:

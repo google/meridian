@@ -561,11 +561,16 @@ class OptimizationResults:
     """The grid information used for optimization."""
     return self._optimization_grid
 
-  def output_optimization_summary(self, filename: str, filepath: str):
+  def output_optimization_summary(
+      self,
+      filename: str,
+      filepath: str,
+      currency: str = c.DEFAULT_CURRENCY,
+  ):
     """Generates and saves the HTML optimization summary output."""
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
-      f.write(self._gen_optimization_summary())
+      f.write(self._gen_optimization_summary(currency))
 
   def plot_incremental_outcome_delta(self) -> alt.Chart:
     """Plots a waterfall chart showing the change in incremental outcome."""
@@ -715,7 +720,7 @@ class OptimizationResults:
         )
     )
 
-  def plot_spend_delta(self) -> alt.Chart:
+  def plot_spend_delta(self, currency: str = c.DEFAULT_CURRENCY) -> alt.Chart:
     """Plots a bar chart showing the optimized change in spend per channel."""
     df = self._get_delta_data(c.SPEND)
     base = (
@@ -736,7 +741,7 @@ class OptimizationResults:
             y=alt.Y(
                 f'{c.SPEND}:Q',
                 axis=alt.Axis(
-                    title='$',
+                    title=currency,
                     domain=False,
                     labelExpr=formatter.compact_number_expr(),
                     **formatter.AXIS_CONFIG,
@@ -1032,7 +1037,7 @@ class OptimizationResults:
     sorted_df.sort_index(inplace=True)
     return sorted_df
 
-  def _gen_optimization_summary(self) -> str:
+  def _gen_optimization_summary(self, currency: str) -> str:
     """Generates HTML optimization summary output (as sanitized content str)."""
     start_date = tc.normalize_date(self.optimized_data.start_date)
     self.template_env.globals[c.START_DATE] = start_date.strftime(
@@ -1051,18 +1056,18 @@ class OptimizationResults:
     html_template = self.template_env.get_template('summary.html.jinja')
     return html_template.render(
         title=summary_text.OPTIMIZATION_TITLE,
-        cards=self._create_output_sections(),
+        cards=self._create_output_sections(currency),
     )
 
-  def _create_output_sections(self) -> Sequence[str]:
+  def _create_output_sections(self, currency: str) -> Sequence[str]:
     """Creates the HTML snippets for cards in the summary page."""
     return [
-        self._create_scenario_plan_section(),
-        self._create_budget_allocation_section(),
+        self._create_scenario_plan_section(currency),
+        self._create_budget_allocation_section(currency),
         self._create_response_curves_section(),
     ]
 
-  def _create_scenario_plan_section(self) -> str:
+  def _create_scenario_plan_section(self, currency: str) -> str:
     """Creates the HTML card snippet for the scenario plan section."""
     card_spec = formatter.CardSpec(
         id=summary_text.SCENARIO_PLAN_CARD_ID,
@@ -1105,22 +1110,32 @@ class OptimizationResults:
         self.template_env,
         card_spec,
         insights,
-        stats_specs=self._create_scenario_stats_specs(),
+        stats_specs=self._create_scenario_stats_specs(currency),
     )
 
-  def _create_scenario_stats_specs(self) -> Sequence[formatter.StatsSpec]:
+  def _create_scenario_stats_specs(
+      self, currency: str
+  ) -> Sequence[formatter.StatsSpec]:
     """Creates the stats to fill the scenario plan section."""
     outcome = self._kpi_or_revenue
     budget_diff = self.optimized_data.budget - self.nonoptimized_data.budget
     budget_prefix = '+' if budget_diff > 0 else ''
     non_optimized_budget = formatter.StatsSpec(
         title=summary_text.NON_OPTIMIZED_BUDGET_LABEL,
-        stat=formatter.format_monetary_num(self.nonoptimized_data.budget),
+        stat=formatter.format_monetary_num(
+            num=self.nonoptimized_data.budget,
+            currency=currency,
+        ),
     )
     optimized_budget = formatter.StatsSpec(
         title=summary_text.OPTIMIZED_BUDGET_LABEL,
-        stat=formatter.format_monetary_num(self.optimized_data.budget),
-        delta=(budget_prefix + formatter.format_monetary_num(budget_diff)),
+        stat=formatter.format_monetary_num(
+            num=self.optimized_data.budget, currency=currency
+        ),
+        delta=(
+            budget_prefix
+            + formatter.format_monetary_num(num=budget_diff, currency=currency)
+        ),
     )
 
     if outcome == c.REVENUE:
@@ -1142,7 +1157,7 @@ class OptimizationResults:
       )
       optimized_performance_title = summary_text.OPTIMIZED_CPIK_LABEL
       optimized_performance_stat = f'${self.optimized_data.total_cpik:.2f}'
-      optimized_performance_diff = formatter.compact_number(diff, 2, '$')
+      optimized_performance_diff = formatter.compact_number(diff, 2, currency)
     non_optimized_performance = formatter.StatsSpec(
         title=non_optimized_performance_title,
         stat=non_optimized_performance_stat,
@@ -1158,7 +1173,7 @@ class OptimizationResults:
         - self.nonoptimized_data.total_incremental_outcome
     )
     inc_outcome_prefix = '+' if inc_outcome_diff > 0 else ''
-    currency = '$' if outcome == c.REVENUE else ''
+    currency = currency if outcome == c.REVENUE else ''
     non_optimized_inc_outcome = formatter.StatsSpec(
         title=summary_text.NON_OPTIMIZED_INC_OUTCOME_LABEL.format(
             outcome=outcome
@@ -1188,7 +1203,7 @@ class OptimizationResults:
         optimized_inc_outcome,
     ]
 
-  def _create_budget_allocation_section(self) -> str:
+  def _create_budget_allocation_section(self, currency: str) -> str:
     """Creates the HTML card snippet for the budget allocation section."""
     outcome = self._kpi_or_revenue
     card_spec = formatter.CardSpec(
@@ -1198,7 +1213,7 @@ class OptimizationResults:
     spend_delta = formatter.ChartSpec(
         id=summary_text.SPEND_DELTA_CHART_ID,
         description=summary_text.SPEND_DELTA_CHART_INSIGHTS,
-        chart_json=self.plot_spend_delta().to_json(),
+        chart_json=self.plot_spend_delta(currency).to_json(),
     )
     spend_allocation = formatter.ChartSpec(
         id=summary_text.SPEND_ALLOCATION_CHART_ID,

@@ -393,7 +393,6 @@ ALL_NATIONAL_DETERMINISTIC_PARAMETER_NAMES = (
     ETA_ORF,
 )
 
-
 MEDIA_PARAMETERS = (
     ROI_M,
     MROI_M,
@@ -781,6 +780,7 @@ HILL_NUM_STEPS = 500
 # Summary template params.
 START_DATE = 'start_date'
 END_DATE = 'end_date'
+DEFAULT_CURRENCY = '$'
 SELECTED_GEOS = 'selected_geos'
 CARD_INSIGHTS = 'insights'
 CARD_CHARTS = 'charts'
