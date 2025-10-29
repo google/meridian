@@ -69,44 +69,50 @@ class SummarizerTest(parameterized.TestCase):
     self.mock_meridian_kpi.input_data.kpi_type = c.NON_REVENUE
     self.mock_meridian_kpi.input_data.revenue_per_kpi = None
 
-    self.analyzer_patcher = mock.patch.object(
-        analyzer,
-        'Analyzer',
-    )
-    self.analyzer = self.analyzer_patcher.start()()
+    self.analyzer = self.enter_context(
+        mock.patch.object(
+            analyzer,
+            'Analyzer',
+        )
+    )()
     self.analyzer._use_kpi.return_value = False
 
-    self.model_fit_patcher = mock.patch.object(
-        summarizer.visualizer,
-        'ModelFit',
-    )
-    self.model_fit = self.model_fit_patcher.start()()
+    self.model_fit = self.enter_context(
+        mock.patch.object(
+            summarizer.visualizer,
+            'ModelFit',
+        )
+    )()
 
-    self.model_diagnostics_patcher = mock.patch.object(
-        summarizer.visualizer,
-        'ModelDiagnostics',
-    )
-    self.model_diagnostics = self.model_diagnostics_patcher.start()()
+    self.model_diagnostics = self.enter_context(
+        mock.patch.object(
+            summarizer.visualizer,
+            'ModelDiagnostics',
+        )
+    )()
 
-    self.media_summary_patcher = mock.patch.object(
-        summarizer.visualizer,
-        'MediaSummary',
+    self.media_summary_class = self.enter_context(
+        mock.patch.object(
+            summarizer.visualizer,
+            'MediaSummary',
+        )
     )
-    self.media_summary_class = self.media_summary_patcher.start()
     self.media_summary = self.media_summary_class()
 
-    self.media_effects_patcher = mock.patch.object(
-        summarizer.visualizer,
-        'MediaEffects',
+    self.media_effects_class = self.enter_context(
+        mock.patch.object(
+            summarizer.visualizer,
+            'MediaEffects',
+        )
     )
-    self.media_effects_class = self.media_effects_patcher.start()
     self.media_effects = self.media_effects_class()
 
-    self.reach_frequency_patcher = mock.patch.object(
-        summarizer.visualizer,
-        'ReachAndFrequency',
+    self.reach_frequency_class = self.enter_context(
+        mock.patch.object(
+            summarizer.visualizer,
+            'ReachAndFrequency',
+        )
     )
-    self.reach_frequency_class = self.reach_frequency_patcher.start()
     self.reach_frequency = self.reach_frequency_class()
 
     self.summarizer_revenue = summarizer.Summarizer(self.mock_meridian_revenue)
@@ -118,16 +124,6 @@ class SummarizerTest(parameterized.TestCase):
     self.mock_template_env = mock.create_autospec(
         jinja2.Environment, instance=True
     )
-
-  def tearDown(self):
-    super().tearDown()
-
-    self.analyzer_patcher.stop()
-    self.model_fit_patcher.stop()
-    self.model_diagnostics_patcher.stop()
-    self.media_summary_patcher.stop()
-    self.media_effects_patcher.stop()
-    self.reach_frequency_patcher.stop()
 
   def _stub_plotters(self):
     self.model_fit.plot_model_fit().to_json.return_value = '{}'
@@ -584,11 +580,9 @@ class SummarizerTest(parameterized.TestCase):
     self.assertEqual(set(expected_chart_tuples), set(charts))
 
   def test_model_fit_card_custom_date_range(self):
-    model_fit = self.model_fit
-
     mock_spec = 'model_fit'
 
-    with mock.patch.object(model_fit, 'plot_model_fit') as plot:
+    with mock.patch.object(self.model_fit, 'plot_model_fit') as plot:
       plot().to_json.return_value = f'["{mock_spec}"]'
 
       self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
@@ -827,10 +821,9 @@ class SummarizerTest(parameterized.TestCase):
     )
 
   def test_media_effects_with_custom_date_range(self):
-    media_effects = self.media_effects
     mock_spec_1 = 'response_curves'
 
-    with mock.patch.object(media_effects, 'plot_response_curves') as plot:
+    with mock.patch.object(self.media_effects, 'plot_response_curves') as plot:
       plot().to_json.return_value = f'["{mock_spec_1}"]'
 
       self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
@@ -1181,16 +1174,13 @@ class SummarizerTest(parameterized.TestCase):
     )
 
   def test_response_curves_card_plotters_called(self):
-    media_effects = self.media_effects
-    reach_frequency = self.reach_frequency
-
     mock_spec_1 = 'response_curves'
     mock_spec_2 = 'optimal_frequency'
-    reach_frequency.plot_optimal_frequency().to_json.return_value = (
+    self.reach_frequency.plot_optimal_frequency().to_json.return_value = (
         f'["{mock_spec_2}"]'
     )
 
-    with mock.patch.object(media_effects, 'plot_response_curves') as plot:
+    with mock.patch.object(self.media_effects, 'plot_response_curves') as plot:
       plot().to_json.return_value = f'["{mock_spec_1}"]'
 
       summary_html_dom = self._get_output_model_results_summary_html_dom(
