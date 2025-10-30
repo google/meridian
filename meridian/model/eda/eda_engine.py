@@ -1558,7 +1558,8 @@ class EDAEngine:
                   f' >{overall_threshold}) across all times and geos. To'
                   ' address multicollinearity, please drop any variable that'
                   ' is a linear combination of other variables. Otherwise,'
-                  ' consider combining variables.'
+                  ' consider combining variables.\n'
+                  + extreme_overall_vif_df.to_string()
               ),
           )
       )
@@ -1622,7 +1623,8 @@ class EDAEngine:
                   f' {national_threshold}) across all times. To address'
                   ' multicollinearity, please drop any variable that is a'
                   ' linear combination of other variables. Otherwise, consider'
-                  ' combining variables.'
+                  ' combining variables.\n'
+                  + extreme_national_vif_df.to_string()
               ),
           )
       )
