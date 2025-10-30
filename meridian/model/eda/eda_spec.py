@@ -17,6 +17,11 @@
 import dataclasses
 from typing import Any, Callable, Dict, TypeAlias
 
+__all__ = [
+    "AggregationConfig",
+    "VIFSpec",
+    "EDASpec",
+]
 
 AggregationFn: TypeAlias = Callable[..., Any]
 AggregationMap: TypeAlias = Dict[str, AggregationFn]
