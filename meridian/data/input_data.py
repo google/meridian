@@ -364,6 +364,43 @@ class InputData:
       return self.reach[constants.MEDIA_TIME]
 
   @functools.cached_property
+  def all_spends(self) -> xr.Dataset:
+    to_merge_spend = [
+        da
+        for da in [
+            self.allocated_media_spend,
+            self.allocated_rf_spend,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge_spend, join="inner")
+
+  @functools.cached_property
+  def ranked_geos(self) -> list[str]:
+    """Ranks geos by total allocated spend then by total KPI.
+
+    This helps the geo-level EDA select the top N geos for visualization.
+    """
+    n_geos = len(self.geo)
+    if n_geos == 1:
+      return [self.geo[0].item()]
+    else:
+      if self.allocated_media_spend is None and self.allocated_rf_spend is None:
+        raise ValueError(
+            "It is required to have at least one of media spend or rf spend."
+        )
+      dims = [d for d in self.all_spends.dims if d != constants.GEO]
+      total_spend_by_var_ds = self.all_spends.sum(dim=dims)
+      total_spend = total_spend_by_var_ds.to_dataarray(dim=constants.SPEND).sum(
+          dim=constants.SPEND
+      )
+      total_kpi = self.kpi.sum(dim=constants.TIME)
+
+      return total_spend.sortby(
+          [total_spend, total_kpi], ascending=False
+      ).geo.values.tolist()
+
+  @functools.cached_property
   def media_time_coordinates(self) -> tc.TimeCoordinates:
     """Returns the media time dimension in a `TimeCoordinates` wrapper."""
     return tc.TimeCoordinates.from_dates(self.media_time)
@@ -1046,4 +1083,5 @@ class InputData:
         "media_time": selected_media_units["media_time"],
     })
     allocated_spend = expanded_spend * proportions
+    allocated_spend.name = spend.name
     return allocated_spend.rename({"media_time": "time"})
