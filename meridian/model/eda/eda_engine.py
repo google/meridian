@@ -14,11 +14,15 @@
 
 """Meridian EDA Engine."""
 
+from __future__ import annotations
+
 import dataclasses
 import functools
+import typing
 from typing import Optional, Sequence
+
+from meridian import backend
 from meridian import constants
-from meridian.model import model
 from meridian.model import transformers
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
@@ -29,6 +33,9 @@ from statsmodels.stats import outliers_influence
 import tensorflow as tf
 import xarray as xr
 
+
+if typing.TYPE_CHECKING:
+  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 _CORRELATION_COL_NAME = 'correlation'
@@ -134,7 +141,7 @@ class ReachFrequencyData:
 
 
 def _data_array_like(
-    *, da: xr.DataArray, values: np.ndarray | tf.Tensor
+    *, da: xr.DataArray, values: np.ndarray | backend.Tensor
 ) -> xr.DataArray:
   """Returns a DataArray from `values` with the same structure as `da`.
 
@@ -726,6 +733,27 @@ class EDAEngine:
         dims=[constants.GEO],
         name=constants.POPULATION,
     )
+
+  @functools.cached_property
+  def _population_scaled_kpi_artifact(
+      self,
+  ) -> eda_outcome.KpiInvarianceArtifact:
+    """Returns an artifact containing population-scaled KPI data."""
+    kpi_transformer = self._meridian.kpi_transformer
+
+    population_scaled_kpi_da = _data_array_like(
+        da=self._meridian.input_data.kpi,
+        values=kpi_transformer.population_scaled_kpi,
+    )
+    population_scaled_kpi_da.name = constants.POPULATION_SCALED_KPI
+
+    artifact = eda_outcome.KpiInvarianceArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        population_scaled_kpi_da=population_scaled_kpi_da,
+        population_scaled_mean=float(kpi_transformer.population_scaled_mean),
+        population_scaled_stdev=float(kpi_transformer.population_scaled_stdev),
+    )
+    return artifact
 
   @functools.cached_property
   def kpi_scaled_da(self) -> xr.DataArray:
@@ -1642,4 +1670,36 @@ class EDAEngine:
         check_type=eda_outcome.EDACheckType.VIF,
         findings=findings,
         analysis_artifacts=[national_vif_artifact],
+    )
+
+  def kpi_has_variability(self) -> bool:
+    """Returns True if the KPI has variability across geos and times."""
+    stdev = float(self._meridian.kpi_transformer.population_scaled_stdev)
+    return stdev != 0
+
+  def check_overall_kpi_invariance(self) -> eda_outcome.EDAOutcome:
+    """Checks if the KPI is constant across all geos and times."""
+    if not self.kpi_has_variability():
+      kpi = 'kpi' if self._meridian.is_national else 'population_scaled_kpi'
+
+      eda_finding = eda_outcome.EDAFinding(
+          severity=eda_outcome.EDASeverity.ERROR,
+          explanation=(
+              f'`{kpi}` is constant across all geos and times, indicating no'
+              ' signal in the data. Please fix this data error.'
+          ),
+      )
+    else:
+      eda_finding = eda_outcome.EDAFinding(
+          severity=eda_outcome.EDASeverity.INFO,
+          explanation=(
+              'The KPI has variability across geos and times, indicating'
+              ' variability in the data.'
+          ),
+      )
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.KPI_INVARIANCE,
+        findings=[eda_finding],
+        analysis_artifacts=[self._population_scaled_kpi_artifact],
     )
