@@ -15,6 +15,7 @@
 from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import backend
 from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
@@ -140,6 +141,33 @@ def _get_overall_high_vif_da(geo_level: bool = True):
   data = np.stack([v1, v2, v3], axis=-1)
   da = _create_data_array_with_var_dim(data, "VIF", "var")
   return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
+
+
+def _create_ndarray_with_std_below_threshold(
+    n_times: int, is_national: bool
+) -> np.ndarray:
+  """Creates an array with std without outliers equal to _STD_THRESHOLD / 2."""
+  target_std = eda_engine._STD_THRESHOLD / 2
+  # Create a base array with n_times - 1 elements.
+  base_data = np.arange(n_times - 1).astype(float)
+  # Calculate the standard deviation of the base data.
+  std_base = np.std(base_data, ddof=1)
+  # Determine the scaling factor to achieve the target_std.
+  scale_factor = target_std / std_base
+  # Scale the base data.
+  non_outlier_data = base_data * scale_factor
+
+  # Use a large fixed number as an outlier.
+  outlier = 1000.0
+
+  # Combine non-outlier data and the outlier.
+  mock_array = np.append(non_outlier_data, outlier)
+
+  # Reshape based on whether it's a national or geo model.
+  if is_national:
+    return mock_array
+  else:
+    return mock_array.reshape(1, n_times)
 
 
 class EDAEngineTest(
@@ -3879,6 +3907,16 @@ class EDAEngineTest(
           mock_freq_ndarray=np.ones((1, 7, 1), dtype=float),
           expected_message_substr="zero variation of frequency across time",
       ),
+      dict(
+          testcase_name="std_below_threshold_kpi",
+          mock_kpi_ndarray=_create_ndarray_with_std_below_threshold(
+              n_times=7, is_national=False
+          ),
+          mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr="KPI has zero standard deviation",
+      ),
   )
   def test_check_geo_std_attention_cases(
       self,
@@ -4174,6 +4212,18 @@ class EDAEngineTest(
           mock_reach_ndarray=None,
           mock_freq_ndarray=np.ones((7, 1), dtype=float),
           expected_message_substr="zero variation of frequency across time",
+      ),
+      dict(
+          testcase_name="std_below_threshold_kpi",
+          mock_kpi_ndarray=_create_ndarray_with_std_below_threshold(
+              n_times=7, is_national=True
+          ),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr=(
+              "The standard deviation of the scaled KPI drops"
+          ),
       ),
   )
   def test_check_national_std_attention_cases(
@@ -4604,6 +4654,123 @@ class EDAEngineTest(
         for i in range(1, _N_VARS_VIF + 1)
     ]
     self.assertAllClose(national_artifact.vif_da.values, expected_national_vif)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="has_variability",
+          population_scaled_stdev=1.0,
+          expected_result=True,
+      ),
+      dict(
+          testcase_name="no_variability",
+          population_scaled_stdev=0.0,
+          expected_result=False,
+      ),
+      dict(
+          testcase_name="below_threshold",
+          population_scaled_stdev=eda_engine._STD_THRESHOLD / 2,
+          expected_result=False,
+      ),
+      dict(
+          testcase_name="at_threshold",
+          population_scaled_stdev=eda_engine._STD_THRESHOLD,
+          expected_result=True,
+      ),
+  )
+  def test_kpi_has_variability(self, population_scaled_stdev, expected_result):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.kpi_transformer.population_scaled_stdev = population_scaled_stdev
+    engine = eda_engine.EDAEngine(meridian)
+    self.assertEqual(engine.kpi_has_variability(), expected_result)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          is_national=False,
+          expected_kpi_name="population_scaled_kpi",
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+          expected_kpi_name="kpi",
+      ),
+  )
+  def test_check_overall_kpi_invariance_no_variability(
+      self, is_national, expected_kpi_name
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    meridian.input_data.kpi = self.input_data_with_media_only.kpi
+    mock_kpi_transformer = mock.Mock()
+    mock_kpi_transformer.population_scaled_stdev = 0.0
+    mock_kpi_transformer.population_scaled_mean = 100.0
+    mock_kpi_transformer.population_scaled_kpi = backend.zeros(
+        (self._N_GEOS, self._N_TIMES), dtype=backend.float32
+    )
+    meridian.kpi_transformer = mock_kpi_transformer
+    engine = eda_engine.EDAEngine(meridian)
+
+    outcome = engine.check_overall_kpi_invariance()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.KPI_INVARIANCE
+    )
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(
+        outcome.findings[0].severity, eda_outcome.EDASeverity.ERROR
+    )
+    self.assertIn(
+        f"`{expected_kpi_name}` is constant across all geos and times",
+        outcome.findings[0].explanation,
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.KpiInvarianceArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+    self.assertEqual(artifact.population_scaled_stdev, 0.0)
+    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertAllClose(
+        artifact.population_scaled_kpi_da.values,
+        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+    )
+
+  def test_check_overall_kpi_invariance_has_variability(self):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = False
+    meridian.input_data.kpi = self.input_data_with_media_only.kpi
+    mock_kpi_transformer = mock.Mock()
+    mock_kpi_transformer.population_scaled_stdev = 1.0
+    mock_kpi_transformer.population_scaled_mean = 100.0
+    mock_kpi_transformer.population_scaled_kpi = backend.to_tensor(
+        np.arange(self._N_GEOS * self._N_TIMES).reshape(
+            self._N_GEOS, self._N_TIMES
+        ),
+        dtype=backend.float32,
+    )
+    meridian.kpi_transformer = mock_kpi_transformer
+    engine = eda_engine.EDAEngine(meridian)
+
+    outcome = engine.check_overall_kpi_invariance()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.KPI_INVARIANCE
+    )
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
+    self.assertIn(
+        "The KPI has variability across geos and times",
+        outcome.findings[0].explanation,
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.KpiInvarianceArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+    self.assertEqual(artifact.population_scaled_stdev, 1.0)
+    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertAllClose(
+        artifact.population_scaled_kpi_da.values,
+        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+    )
 
 
 if __name__ == "__main__":
