@@ -268,7 +268,7 @@ class OptimizationGrid:
     return xr.Dataset(
         coords={c.CHANNEL: self.channels},
         data_vars={
-            c.OPTIMIZED: ([c.CHANNEL], optimal_spend.data),
+            c.OPTIMIZED: ([c.CHANNEL], optimal_spend),
             c.NON_OPTIMIZED: ([c.CHANNEL], rounded_spend),
         },
     )
@@ -392,16 +392,26 @@ class OptimizationGrid:
       media spend that maximizes incremental outcome based on spend constraints
       for all media and RF channels.
     """
-    spend = spend_grid[0, :].copy()
-    incremental_outcome = incremental_outcome_grid[0, :].copy()
-    spend_grid = spend_grid[1:, :]
-    incremental_outcome_grid = incremental_outcome_grid[1:, :]
-    iterative_roi_grid = np.round(
-        backend.divide_no_nan(
-            incremental_outcome_grid - incremental_outcome, spend_grid - spend
-        ),
-        decimals=8,
+    spend_grid_values = np.array(spend_grid.values, dtype=np.float64)
+    incremental_outcome_grid_values = np.array(
+        incremental_outcome_grid.values, dtype=np.float64
     )
+
+    spend = spend_grid_values[0, :].copy()
+    incremental_outcome = incremental_outcome_grid_values[0, :].copy()
+    spend_grid_values = spend_grid_values[1:, :]
+    incremental_outcome_grid_values = incremental_outcome_grid_values[1:, :]
+
+    numerator = incremental_outcome_grid_values - incremental_outcome
+    denominator = spend_grid_values - spend
+    iterative_roi_grid = np.divide(
+        numerator,
+        denominator,
+        out=np.zeros_like(numerator),
+        where=(denominator != 0),
+    )
+    iterative_roi_grid = np.round(iterative_roi_grid, decimals=8)
+
     while True:
       spend_optimal = spend.astype(int)
       # If none of the exit criteria are met roi_grid will eventually be filled
@@ -413,8 +423,8 @@ class OptimizationGrid:
       )
       row_idx = point[0]
       media_idx = point[1]
-      spend[media_idx] = spend_grid[row_idx, media_idx]
-      incremental_outcome[media_idx] = incremental_outcome_grid[
+      spend[media_idx] = spend_grid_values[row_idx, media_idx]
+      incremental_outcome[media_idx] = incremental_outcome_grid_values[
           row_idx, media_idx
       ]
       roi_grid_point = iterative_roi_grid[row_idx, media_idx]
@@ -427,14 +437,23 @@ class OptimizationGrid:
         break
 
       iterative_roi_grid[0 : row_idx + 1, media_idx] = np.nan
+
+      num_col = (
+          incremental_outcome_grid_values[row_idx + 1 :, media_idx]
+          - incremental_outcome_grid_values[row_idx, media_idx]
+      )
+      den_col = (
+          spend_grid_values[row_idx + 1 :, media_idx]
+          - spend_grid_values[row_idx, media_idx]
+      )
+      new_roi_col = np.divide(
+          num_col,
+          den_col,
+          out=np.zeros_like(num_col),
+          where=(den_col != 0),
+      )
       iterative_roi_grid[row_idx + 1 :, media_idx] = np.round(
-          backend.divide_no_nan(
-              incremental_outcome_grid[row_idx + 1 :, media_idx]
-              - incremental_outcome_grid[row_idx, media_idx],
-              spend_grid[row_idx + 1 :, media_idx]
-              - spend_grid[row_idx, media_idx],
-          ),
-          decimals=8,
+          new_roi_col, decimals=8
       )
     return spend_optimal
 
@@ -2366,19 +2385,27 @@ class BudgetOptimizer:
     total_spend = np.sum(spend) if np.sum(spend) > 0 else 1
     pct_of_spend = spend / total_spend
     data_vars = {
-        c.SPEND: ([c.CHANNEL], spend.data),
-        c.PCT_OF_SPEND: ([c.CHANNEL], pct_of_spend.data),
+        c.SPEND: ([c.CHANNEL], np.array(spend.data, dtype=np.float64)),
+        c.PCT_OF_SPEND: (
+            [c.CHANNEL],
+            np.array(pct_of_spend.data, dtype=np.float64),
+        ),
         c.INCREMENTAL_OUTCOME: (
             [c.CHANNEL, c.METRIC],
-            incremental_outcome_with_mean_median_and_ci,
+            np.array(
+                incremental_outcome_with_mean_median_and_ci, dtype=np.float64
+            ),
         ),
         c.EFFECTIVENESS: (
             [c.CHANNEL, c.METRIC],
-            effectiveness_with_mean_median_and_ci,
+            np.array(effectiveness_with_mean_median_and_ci, dtype=np.float64),
         ),
-        c.ROI: ([c.CHANNEL, c.METRIC], roi),
-        c.MROI: ([c.CHANNEL, c.METRIC], marginal_roi),
-        c.CPIK: ([c.CHANNEL, c.METRIC], cpik),
+        c.ROI: ([c.CHANNEL, c.METRIC], np.array(roi, dtype=np.float64)),
+        c.MROI: (
+            [c.CHANNEL, c.METRIC],
+            np.array(marginal_roi, dtype=np.float64),
+        ),
+        c.CPIK: ([c.CHANNEL, c.METRIC], np.array(cpik, dtype=np.float64)),
     }
 
     all_times = np.asarray(filled_data.time).astype(str).tolist()
@@ -2619,15 +2646,8 @@ class BudgetOptimizer:
     # we use the following code to fix it, and ensure incremental_outcome/spend
     # is always same for RF channels.
     if self._meridian.n_rf_channels > 0:
-      rf_incremental_outcome_max = np.nanmax(
-          incremental_outcome_grid[:, -self._meridian.n_rf_channels :], axis=0
-      )
-      rf_spend_max = np.nanmax(
-          spend_grid[:, -self._meridian.n_rf_channels :], axis=0
-      )
-      rf_roi = backend.divide_no_nan(rf_incremental_outcome_max, rf_spend_max)
-      incremental_outcome_grid[:, -self._meridian.n_rf_channels :] = (
-          rf_roi * spend_grid[:, -self._meridian.n_rf_channels :]
+      incremental_outcome_grid = backend.stabilize_rf_roi_grid(
+          spend_grid, incremental_outcome_grid, self._meridian.n_rf_channels
       )
     return (spend_grid, incremental_outcome_grid)
 
