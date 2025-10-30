@@ -384,32 +384,30 @@ class EDAEngine:
 
   @functools.cached_property
   def media_spend_da(self) -> xr.DataArray | None:
-    if self._meridian.input_data.media_spend is None:
-      return None
-    media_spend_da = _data_array_like(
-        da=self._meridian.input_data.media_spend,
-        values=self._meridian.media_tensors.media_spend,
-    )
-    media_spend_da.name = constants.MEDIA_SPEND
+    """Returns media spend.
+
+    If the input spend is aggregated, it is allocated across geo and time
+    proportionally to media units.
+    """
     # No need to truncate the media time for media spend.
-    return media_spend_da
+    da = self._meridian.input_data.allocated_media_spend
+    if da is None:
+      return None
+    da = da.copy()
+    da.name = constants.MEDIA_SPEND
+    return da
 
   @functools.cached_property
   def national_media_spend_da(self) -> xr.DataArray | None:
     """Returns the national media spend data array."""
-    if self._meridian.input_data.media_spend is None:
+    if self.media_spend_da is None:
       return None
     if self._meridian.is_national:
-      if self.media_spend_da is None:
-        # This case should be impossible given the check above.
-        raise RuntimeError(
-            'media_spend_da is None when media_spend is not None.'
-        )
       national_da = self.media_spend_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_MEDIA_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
-          self._meridian.input_data.media_spend,
+          self._meridian.input_data.allocated_media_spend,
           constants.NATIONAL_MEDIA_SPEND,
           None,
       )
@@ -540,29 +538,31 @@ class EDAEngine:
 
   @functools.cached_property
   def rf_spend_da(self) -> xr.DataArray | None:
-    if self._meridian.input_data.rf_spend is None:
+    """Returns RF spend.
+
+    If the input spend is aggregated, it is allocated across geo and time
+    proportionally to RF impressions (reach * frequency).
+    """
+    da = self._meridian.input_data.allocated_rf_spend
+    if da is None:
       return None
-    rf_spend_da = _data_array_like(
-        da=self._meridian.input_data.rf_spend,
-        values=self._meridian.rf_tensors.rf_spend,
-    )
-    rf_spend_da.name = constants.RF_SPEND
-    return rf_spend_da
+    da = da.copy()
+    da.name = constants.RF_SPEND
+    return da
 
   @functools.cached_property
   def national_rf_spend_da(self) -> xr.DataArray | None:
     """Returns the national RF spend data array."""
-    if self._meridian.input_data.rf_spend is None:
+    if self.rf_spend_da is None:
       return None
     if self._meridian.is_national:
-      if self.rf_spend_da is None:
-        # This case should be impossible given the check above.
-        raise RuntimeError('rf_spend_da is None when rf_spend is not None.')
       national_da = self.rf_spend_da.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_RF_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
-          self._meridian.input_data.rf_spend, constants.NATIONAL_RF_SPEND, None
+          self._meridian.input_data.allocated_rf_spend,
+          constants.NATIONAL_RF_SPEND,
+          None,
       )
     return national_da
 

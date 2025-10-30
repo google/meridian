@@ -300,8 +300,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_controls_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_CONTROLS,
+            self._N_TIMES,
+            self._N_CONTROLS,
         ),
     )
     self.assertCountEqual(
@@ -328,8 +328,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_controls_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_CONTROLS,
+            self._N_TIMES,
+            self._N_CONTROLS,
         ),
     )
     self.assertCountEqual(
@@ -396,8 +396,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -420,8 +420,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -488,8 +488,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -518,8 +518,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -580,8 +580,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_spend_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -606,8 +606,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_media_spend_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -620,6 +620,68 @@ class EDAEngineTest(
     self.assertIsInstance(expected_media_spend_da, xr.DataArray)
     self.assertAllClose(
         national_media_spend_da.values, expected_media_spend_da.values
+    )
+
+  def test_media_spend_da_with_1d_spend(self):
+    input_data = self.input_data_with_media_and_rf.copy(deep=True)
+
+    # Create 1D media_spend
+    one_d_spend = np.array(
+        [i + 1 for i in range(self._N_MEDIA_CHANNELS)], dtype=np.float64
+    )
+    input_data.media_spend = xr.DataArray(
+        one_d_spend,
+        dims=[constants.MEDIA_CHANNEL],
+        coords={
+            constants.MEDIA_CHANNEL: (
+                input_data.media.coords[constants.MEDIA_CHANNEL].values
+            )
+        },
+        name=constants.MEDIA_SPEND,
+    )
+
+    meridian = model.Meridian(input_data)
+    engine = eda_engine.EDAEngine(meridian)
+
+    # test media_spend_da
+    media_spend_da = engine.media_spend_da
+    self.assertIsInstance(media_spend_da, xr.DataArray)
+    self.assertEqual(media_spend_da.name, constants.MEDIA_SPEND)
+    self.assertEqual(
+        media_spend_da.shape,
+        (
+            self._N_GEOS,
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        media_spend_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+    )
+
+    # check values
+    expected_allocated_spend = input_data.allocated_media_spend
+    self.assertIsInstance(expected_allocated_spend, xr.DataArray)
+    self.assertAllClose(media_spend_da.values, expected_allocated_spend.values)
+
+    # test national_media_spend_da
+    national_media_spend_da = engine.national_media_spend_da
+    self.assertIsInstance(national_media_spend_da, xr.DataArray)
+    self.assertEqual(
+        national_media_spend_da.name, constants.NATIONAL_MEDIA_SPEND
+    )
+    self.assertEqual(
+        national_media_spend_da.shape,
+        (
+            self._N_TIMES,
+            self._N_MEDIA_CHANNELS,
+        ),
+    )
+    # check values
+    expected_national_spend = media_spend_da.sum(dim=constants.GEO)
+    self.assertAllClose(
+        national_media_spend_da.values, expected_national_spend.values
     )
 
   # --- Test cases for organic_media_raw_da ---
@@ -717,8 +779,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_media_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -745,8 +807,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_media_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -780,8 +842,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -810,8 +872,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -910,8 +972,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_non_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_NON_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -941,8 +1003,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_non_media_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_NON_MEDIA_CHANNELS,
+            self._N_TIMES,
+            self._N_NON_MEDIA_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1004,8 +1066,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_spend_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1028,8 +1090,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_spend_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1042,6 +1104,66 @@ class EDAEngineTest(
     self.assertIsInstance(expected_rf_spend_da, xr.DataArray)
     self.assertAllClose(
         national_rf_spend_da.values, expected_rf_spend_da.values
+    )
+
+  def test_rf_spend_da_with_1d_spend(self):
+    input_data = self.input_data_with_media_and_rf.copy(deep=True)
+
+    # Create 1D rf_spend
+    one_d_spend = np.array(
+        [i + 1 for i in range(self._N_RF_CHANNELS)], dtype=np.float64
+    )
+    input_data.rf_spend = xr.DataArray(
+        one_d_spend,
+        dims=[constants.RF_CHANNEL],
+        coords={
+            constants.RF_CHANNEL: (
+                input_data.reach.coords[constants.RF_CHANNEL].values
+            )
+        },
+        name=constants.RF_SPEND,
+    )
+
+    meridian = model.Meridian(input_data)
+    engine = eda_engine.EDAEngine(meridian)
+
+    # test rf_spend_da
+    rf_spend_da = engine.rf_spend_da
+    self.assertIsInstance(rf_spend_da, xr.DataArray)
+    self.assertEqual(rf_spend_da.name, constants.RF_SPEND)
+    self.assertEqual(
+        rf_spend_da.shape,
+        (
+            self._N_GEOS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
+        ),
+    )
+    self.assertCountEqual(
+        rf_spend_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+    )
+
+    # check values
+    expected_allocated_spend = input_data.allocated_rf_spend
+    self.assertIsInstance(expected_allocated_spend, xr.DataArray)
+    self.assertAllClose(rf_spend_da.values, expected_allocated_spend.values)
+
+    # test national_rf_spend_da
+    national_rf_spend_da = engine.national_rf_spend_da
+    self.assertIsInstance(national_rf_spend_da, xr.DataArray)
+    self.assertEqual(national_rf_spend_da.name, constants.NATIONAL_RF_SPEND)
+    self.assertEqual(
+        national_rf_spend_da.shape,
+        (
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
+        ),
+    )
+    # check values
+    expected_national_spend = rf_spend_da.sum(dim=constants.GEO)
+    self.assertAllClose(
+        national_rf_spend_da.values, expected_national_spend.values
     )
 
   # --- Test cases for reach_raw_da ---
@@ -1091,8 +1213,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_reach_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1115,8 +1237,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_reach_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1181,8 +1303,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_reach_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1209,8 +1331,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_reach_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1271,8 +1393,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_frequency_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1303,8 +1425,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_frequency_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1373,8 +1495,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_impressions_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1400,8 +1522,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_impressions_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1505,8 +1627,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_impressions_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1537,8 +1659,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_rf_impressions_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1609,8 +1731,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_reach_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1635,8 +1757,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_reach_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1708,8 +1830,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_reach_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1741,8 +1863,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_reach_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1814,8 +1936,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_frequency_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1853,8 +1975,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_frequency_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1930,8 +2052,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_rf_impressions_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -1962,8 +2084,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_rf_impressions_raw_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -2076,8 +2198,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_rf_impressions_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -2113,8 +2235,8 @@ class EDAEngineTest(
     self.assertEqual(
         national_organic_rf_impressions_scaled_da.shape,
         (
-            model_test_data.WithInputDataSamples._N_TIMES,
-            model_test_data.WithInputDataSamples._N_ORGANIC_RF_CHANNELS,
+            self._N_TIMES,
+            self._N_ORGANIC_RF_CHANNELS,
         ),
     )
     self.assertCountEqual(
@@ -2145,7 +2267,7 @@ class EDAEngineTest(
     self.assertEqual(population_da.name, constants.POPULATION)
     self.assertEqual(
         population_da.shape,
-        (model_test_data.WithInputDataSamples._N_GEOS,),
+        (self._N_GEOS,),
     )
     self.assertCountEqual(population_da.coords.keys(), [constants.GEO])
     self.assertAllClose(population_da.values, meridian.population)
@@ -2189,7 +2311,7 @@ class EDAEngineTest(
     self.assertEqual(national_kpi_scaled_da.name, constants.NATIONAL_KPI_SCALED)
     self.assertEqual(
         national_kpi_scaled_da.shape,
-        (model_test_data.WithInputDataSamples._N_TIMES,),
+        (self._N_TIMES,),
     )
     self.assertCountEqual(
         national_kpi_scaled_da.coords.keys(), [constants.TIME]
@@ -2208,7 +2330,7 @@ class EDAEngineTest(
     self.assertEqual(national_kpi_scaled_da.name, constants.NATIONAL_KPI_SCALED)
     self.assertEqual(
         national_kpi_scaled_da.shape,
-        (model_test_data.WithInputDataSamples._N_TIMES,),
+        (self._N_TIMES,),
     )
     self.assertCountEqual(
         national_kpi_scaled_da.coords.keys(),
@@ -3151,7 +3273,7 @@ class EDAEngineTest(
       self.assertIsInstance(prop, xr.DataArray)
       self.assertEqual(
           prop.sizes[constants.TIME],
-          model_test_data.WithInputDataSamples._N_TIMES,
+          self._N_TIMES,
       )
       self.assertNotIn(constants.MEDIA_TIME, prop.coords)
       self.assertIn(constants.TIME, prop.coords)
