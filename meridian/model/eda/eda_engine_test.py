@@ -15,6 +15,7 @@
 from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import backend
 from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
@@ -4604,6 +4605,113 @@ class EDAEngineTest(
         for i in range(1, _N_VARS_VIF + 1)
     ]
     self.assertAllClose(national_artifact.vif_da.values, expected_national_vif)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="has_variability",
+          population_scaled_stdev=1.0,
+          expected_result=True,
+      ),
+      dict(
+          testcase_name="no_variability",
+          population_scaled_stdev=0.0,
+          expected_result=False,
+      ),
+  )
+  def test_kpi_has_variability(self, population_scaled_stdev, expected_result):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.kpi_transformer.population_scaled_stdev = population_scaled_stdev
+    engine = eda_engine.EDAEngine(meridian)
+    self.assertEqual(engine.kpi_has_variability(), expected_result)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          is_national=False,
+          expected_kpi_name="population_scaled_kpi",
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+          expected_kpi_name="kpi",
+      ),
+  )
+  def test_check_overall_kpi_invariance_no_variability(
+      self, is_national, expected_kpi_name
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    meridian.input_data.kpi = self.input_data_with_media_only.kpi
+    mock_kpi_transformer = mock.Mock()
+    mock_kpi_transformer.population_scaled_stdev = 0.0
+    mock_kpi_transformer.population_scaled_mean = 100.0
+    mock_kpi_transformer.population_scaled_kpi = backend.zeros(
+        (self._N_GEOS, self._N_TIMES), dtype=backend.float32
+    )
+    meridian.kpi_transformer = mock_kpi_transformer
+    engine = eda_engine.EDAEngine(meridian)
+
+    outcome = engine.check_overall_kpi_invariance()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.KPI_INVARIANCE
+    )
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(
+        outcome.findings[0].severity, eda_outcome.EDASeverity.ERROR
+    )
+    self.assertIn(
+        f"`{expected_kpi_name}` is constant across all geos and times",
+        outcome.findings[0].explanation,
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.KpiInvarianceArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+    self.assertEqual(artifact.population_scaled_stdev, 0.0)
+    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertAllClose(
+        artifact.population_scaled_kpi_da.values,
+        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+    )
+
+  def test_check_overall_kpi_invariance_has_variability(self):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = False
+    meridian.input_data.kpi = self.input_data_with_media_only.kpi
+    mock_kpi_transformer = mock.Mock()
+    mock_kpi_transformer.population_scaled_stdev = 1.0
+    mock_kpi_transformer.population_scaled_mean = 100.0
+    mock_kpi_transformer.population_scaled_kpi = backend.to_tensor(
+        np.arange(self._N_GEOS * self._N_TIMES).reshape(
+            self._N_GEOS, self._N_TIMES
+        ),
+        dtype=backend.float32,
+    )
+    meridian.kpi_transformer = mock_kpi_transformer
+    engine = eda_engine.EDAEngine(meridian)
+
+    outcome = engine.check_overall_kpi_invariance()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.KPI_INVARIANCE
+    )
+    self.assertLen(outcome.findings, 1)
+    self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
+    self.assertIn(
+        "The KPI has variability across geos and times",
+        outcome.findings[0].explanation,
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.KpiInvarianceArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+    self.assertEqual(artifact.population_scaled_stdev, 1.0)
+    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertAllClose(
+        artifact.population_scaled_kpi_da.values,
+        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+    )
 
 
 if __name__ == "__main__":
