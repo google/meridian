@@ -1917,7 +1917,7 @@ class BudgetOptimizer:
 
   def create_optimization_grid(
       self,
-      new_data: xr.Dataset | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
       # TODO: b/409550413 - Remove this argument.
