@@ -2583,6 +2583,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         'use_posterior': True,
         'use_kpi': False,
         'use_optimal_frequency': True,
+        'max_frequency': None,
         'batch_size': 100,
     }
     default_optimization_args.update(optimize_args)
@@ -2663,6 +2664,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         'use_posterior': True,
         'use_kpi': False,
         'use_optimal_frequency': True,
+        'max_frequency': None,
         'batch_size': 100,
     }
     with self.assertWarnsRegex(

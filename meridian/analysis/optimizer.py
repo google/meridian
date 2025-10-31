@@ -1329,7 +1329,9 @@ class BudgetOptimizer:
       target_roi: float | None = None,
       target_mroi: float | None = None,
       gtol: float = 0.0001,
+      # TODO: consult with the team on merging use_optimal_frequency and max_frequency into a single argument.
       use_optimal_frequency: bool = True,
+      max_frequency: float | None = None,
       use_kpi: bool = False,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
@@ -1464,6 +1466,10 @@ class BudgetOptimizer:
       use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
         trained Meridian model for optimization. If `False`, uses historical
         frequency or `new_data.frequency` if provided.
+      max_frequency: Float indicating the frequency upper bound for the optimal
+        frequency search space. If `None` when `use_optimal_frequency` is
+        `True`, the max frequency of the input data is used. If
+        `use_optimal_frequency` is `False`, `max_frequency` is ignored.
       use_kpi: If `True`, runs the optimization on KPI. Defaults to revenue.
       confidence_level: The threshold for computing the confidence intervals.
       batch_size: Maximum draws per chain in each batch. The calculation is run
@@ -1535,6 +1541,7 @@ class BudgetOptimizer:
           use_posterior=use_posterior,
           use_kpi=use_kpi,
           use_optimal_frequency=use_optimal_frequency,
+          max_frequency=max_frequency,
           batch_size=batch_size,
       )
 
@@ -1930,6 +1937,7 @@ class BudgetOptimizer:
       spend_constraint_upper: _SpendConstraint = c.SPEND_CONSTRAINT_DEFAULT,
       gtol: float = 0.0001,
       use_optimal_frequency: bool = True,
+      max_frequency: float | None = None,
       use_kpi: bool = False,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> OptimizationGrid:
@@ -2001,6 +2009,10 @@ class BudgetOptimizer:
         the smallest integer such that `(budget - rounded_budget)` is less than
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
       use_optimal_frequency: Boolean. Whether optimal frequency was used.
+      max_frequency: Float indicating the frequency upper bound for the optimal
+        frequency search space. If `None` when `use_optimal_frequency` is
+        `True`, the max frequency of the input data is used. If
+        `use_optimal_frequency` is `False`, `max_frequency` is ignored.
       use_kpi: Boolean. If `True`, then the incremental outcome is derived from
         the KPI impact. Otherwise, the incremental outcome is derived from the
         revenue impact.
@@ -2076,6 +2088,7 @@ class BudgetOptimizer:
               selected_geos=selected_geos,
               selected_times=selected_times,
               use_kpi=use_kpi,
+              max_frequency=max_frequency,
           ).optimal_frequency,
           dtype=backend.float32,
       )
