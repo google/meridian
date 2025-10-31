@@ -32,6 +32,9 @@ from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import spec
+from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_outcome
+from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
 import xarray as xr
 
@@ -412,6 +415,34 @@ class ModelTest(
     # Compare model spec.
     self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_default_spec",
+          eda_spec_kwargs={},
+          expected_eda_spec=eda_spec_module.EDASpec(),
+      ),
+      dict(
+          testcase_name="with_custom_spec",
+          eda_spec_kwargs={
+              "eda_spec": eda_spec_module.EDASpec(
+                  vif_spec=eda_spec_module.VIFSpec(geo_threshold=500.0)
+              )
+          },
+          expected_eda_spec=eda_spec_module.EDASpec(
+              vif_spec=eda_spec_module.VIFSpec(geo_threshold=500.0)
+          ),
+      ),
+  )
+  def test_eda_engine_and_spec_initialization(
+      self, eda_spec_kwargs, expected_eda_spec
+  ):
+    meridian = model.Meridian(
+        input_data=self.input_data_with_media_only, **eda_spec_kwargs
+    )
+
+    self.assertIsInstance(meridian.eda_engine, eda_engine.EDAEngine)
+    self.assertEqual(meridian.eda_spec, expected_eda_spec)
+
   def test_init_with_default_national_parameters_works(self):
     data = self.national_input_data_media_only
     meridian = model.Meridian(input_data=data)
@@ -586,6 +617,7 @@ class ModelTest(
     self.assertFalse(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -598,6 +630,7 @@ class ModelTest(
     self.assertTrue(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -1154,6 +1187,24 @@ class ModelTest(
     )
     self.assertIsNotNone(meridian)
 
+  @parameterized.named_parameters(
+      dict(testcase_name="geo", is_national=False),
+      dict(testcase_name="national", is_national=True),
+  )
+  def test_validate_kpi_transformer_with_kpi_variability(
+      self, is_national: bool
+  ):
+    valid_input_data = (
+        self.national_input_data_non_media_and_organic
+        if is_national
+        else self.input_data_non_media_and_organic
+    )
+    meridian = model.Meridian(
+        input_data=valid_input_data,
+        model_spec=spec.ModelSpec(),
+    )
+    self.assertIsNotNone(meridian)
+
   def test_broadcast_prior_distribution_compute_property(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
     # Validate `tau_g_excl_baseline` distribution.
@@ -1614,6 +1665,46 @@ class ModelTest(
     ):
       model.load_mmm("this/path/does/not/exist")
 
+  def test_run_model_training_guardail_error_message(self):
+    # Create mock EDA outcomes with ERROR severity findings
+    mock_finding1 = mock.Mock()
+    mock_finding1.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding1.explanation = "Error explanation for PAIRWISE_CORR 1."
+
+    mock_finding2 = mock.Mock()
+    mock_finding2.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding2.explanation = "Error explanation for PAIRWISE_CORR 2."
+
+    mock_finding3 = mock.Mock()
+    mock_finding3.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding3.explanation = "Error explanation for VIF 1."
+
+    mock_outcome1 = mock.Mock()
+    mock_outcome1.check_type = "PAIRWISE_CORR"
+    mock_outcome1.findings = [mock_finding1, mock_finding2]
+
+    mock_outcome2 = mock.Mock()
+    mock_outcome2.check_type = "VIF"
+    mock_outcome2.findings = [mock_finding3]
+
+    mock_eda_outcomes = self.enter_context(
+        mock.patch(
+            "meridian.model.model.Meridian.eda_outcomes",
+            new_callable=mock.PropertyMock,
+        )
+    )
+    mock_eda_outcomes.return_value = [mock_outcome1, mock_outcome2]
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    expected_error_message = (
+        "Model has critical EDA issues. Please fix before running"
+        " inference.\n\nCheck type: PAIRWISE_CORR\n  - Error explanation for"
+        " PAIRWISE_CORR 1.\n  - Error explanation for PAIRWISE_CORR 2.\nCheck"
+        " type: VIF\n  - Error explanation for VIF 1."
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
+      meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
+
 
 class NonPaidModelTest(
     parameterized.TestCase,
@@ -1653,6 +1744,7 @@ class NonPaidModelTest(
     self.assertFalse(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -1667,6 +1759,7 @@ class NonPaidModelTest(
     self.assertTrue(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
