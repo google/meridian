@@ -14,11 +14,15 @@
 
 """Meridian EDA Engine."""
 
+from __future__ import annotations
+
 import dataclasses
 import functools
-from typing import Optional, Sequence
+import typing
+from typing import Optional, Protocol, Sequence
+
+from meridian import backend
 from meridian import constants
-from meridian.model import model
 from meridian.model import transformers
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
@@ -26,9 +30,13 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from statsmodels.stats import outliers_influence
-import tensorflow as tf
 import xarray as xr
 
+
+if typing.TYPE_CHECKING:
+  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
+
+__all__ = ['EDAEngine', 'GeoLevelCheckOnNationalModelError']
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 _CORRELATION_COL_NAME = 'correlation'
@@ -47,9 +55,19 @@ _Q3_THRESHOLD = 0.75
 _IQR_MULTIPLIER = 1.5
 _STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
 _STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
+_STD_THRESHOLD = 1e-4
 _OUTLIERS_COL_NAME = 'outliers'
 _ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 _VIF_COL_NAME = 'VIF'
+
+
+class _NamedEDACheckCallable(Protocol):
+  """A callable that returns an EDAOutcome and has a __name__ attribute."""
+
+  __name__: str
+
+  def __call__(self) -> eda_outcome.EDAOutcome:
+    ...
 
 
 class GeoLevelCheckOnNationalModelError(Exception):
@@ -134,15 +152,15 @@ class ReachFrequencyData:
 
 
 def _data_array_like(
-    *, da: xr.DataArray, values: np.ndarray | tf.Tensor
+    *, da: xr.DataArray, values: np.ndarray | backend.Tensor
 ) -> xr.DataArray:
   """Returns a DataArray from `values` with the same structure as `da`.
 
   Args:
     da: The DataArray whose structure (dimensions, coordinates, name, and attrs)
       will be used for the new DataArray.
-    values: The numpy array or tensorflow tensor to use as the values for the
-      new DataArray.
+    values: The numpy array or backend tensor to use as the values for the new
+      DataArray.
 
   Returns:
     A new DataArray with the provided `values` and the same structure as `da`.
@@ -728,6 +746,27 @@ class EDAEngine:
     )
 
   @functools.cached_property
+  def _population_scaled_kpi_artifact(
+      self,
+  ) -> eda_outcome.KpiInvariabilityArtifact:
+    """Returns an artifact containing population-scaled KPI data."""
+    kpi_transformer = self._meridian.kpi_transformer
+
+    population_scaled_kpi_da = _data_array_like(
+        da=self._meridian.input_data.kpi,
+        values=kpi_transformer.population_scaled_kpi,
+    )
+    population_scaled_kpi_da.name = constants.POPULATION_SCALED_KPI
+
+    artifact = eda_outcome.KpiInvariabilityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        population_scaled_kpi_da=population_scaled_kpi_da,
+        population_scaled_mean=float(kpi_transformer.population_scaled_mean),
+        population_scaled_stdev=float(kpi_transformer.population_scaled_stdev),
+    )
+    return artifact
+
+  @functools.cached_property
   def kpi_scaled_da(self) -> xr.DataArray:
     scaled_kpi_da = _data_array_like(
         da=self._meridian.input_data.kpi,
@@ -913,6 +952,32 @@ class EDAEngine:
     da.name = constants.NATIONAL_ALL_FREQUENCY
     return da
 
+  @property
+  def _critical_checks(
+      self,
+  ) -> list[tuple[_NamedEDACheckCallable, eda_outcome.EDACheckType]]:
+    """Returns a list of critical checks to be performed."""
+    checks = [
+        (self.check_national_vif, eda_outcome.EDACheckType.VIF),
+        (
+            self.check_national_pairwise_corr,
+            eda_outcome.EDACheckType.PAIRWISE_CORR,
+        ),
+        (
+            self.check_overall_kpi_invariability,
+            eda_outcome.EDACheckType.KPI_INVARIABILITY,
+        ),
+    ]
+    if not self._meridian.is_national:
+      checks.extend([
+          (
+              self.check_geo_pairwise_corr,
+              eda_outcome.EDACheckType.PAIRWISE_CORR,
+          ),
+          (self.check_geo_vif, eda_outcome.EDACheckType.VIF),
+      ])
+    return checks
+
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
     # This should not happen. If it does, it means this function is mis-used.
@@ -930,14 +995,16 @@ class EDAEngine:
       self,
       xarray: xr.DataArray,
       transformer_class: Optional[type[transformers.TensorTransformer]],
-      population: tf.Tensor = tf.constant([1.0], dtype=tf.float32),
+      population: Optional[backend.Tensor] = None,
   ) -> xr.DataArray:
     """Scales xarray values with a TensorTransformer."""
     da = xarray.copy()
 
     if transformer_class is None:
       return da
-    elif transformer_class is transformers.CenteringAndScalingTransformer:
+    if population is None:
+      population = backend.ones([1], dtype=backend.float32)
+    if transformer_class is transformers.CenteringAndScalingTransformer:
       xarray_transformer = transformers.CenteringAndScalingTransformer(
           tensor=da.values, population=population
       )
@@ -1030,7 +1097,7 @@ class EDAEngine:
       )
 
     national_da = national_da.assign_coords({constants.GEO: [temp_geo_dim]})
-    national_da.values = tf.cast(national_da.values, tf.float32)
+    national_da.values = backend.cast(national_da.values, dtype=backend.float32)
     national_da = self._scale_xarray(national_da, transformer_class)
 
     national_da = national_da.sel({constants.GEO: temp_geo_dim}, drop=True)
@@ -1070,7 +1137,9 @@ class EDAEngine:
     # It's equal to reach * frequency.
     impressions_raw_da = reach_raw_da * frequency_da
     impressions_raw_da.name = names.impressions
-    impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
+    impressions_raw_da.values = backend.cast(
+        impressions_raw_da.values, dtype=backend.float32
+    )
 
     if self._meridian.is_national:
       national_reach_raw_da = reach_raw_da.squeeze(constants.GEO, drop=True)
@@ -1118,8 +1187,8 @@ class EDAEngine:
           national_impressions_raw_da / national_reach_raw_da,
       )
       national_frequency_da.name = names.national_frequency
-      national_frequency_da.values = tf.cast(
-          national_frequency_da.values, tf.float32
+      national_frequency_da.values = backend.cast(
+          national_frequency_da.values, dtype=backend.float32
       )
 
       # Scale the impressions by population
@@ -1331,7 +1400,7 @@ class EDAEngine:
     std_ds, outlier_df = _calculate_std(data)
 
     finding = None
-    if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] == 0).any():
+    if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] < _STD_THRESHOLD).any():
       finding = eda_outcome.EDAFinding(
           severity=eda_outcome.EDASeverity.ATTENTION,
           explanation=zero_std_message,
@@ -1643,3 +1712,63 @@ class EDAEngine:
         findings=findings,
         analysis_artifacts=[national_vif_artifact],
     )
+
+  @functools.cached_property
+  def kpi_has_variability(self) -> bool:
+    """Returns True if the KPI has variability across geos and times."""
+    stdev = float(self._meridian.kpi_transformer.population_scaled_stdev)
+    return stdev >= _STD_THRESHOLD
+
+  def check_overall_kpi_invariability(self) -> eda_outcome.EDAOutcome:
+    """Checks if the KPI is constant across all geos and times."""
+    if not self.kpi_has_variability:
+      kpi = 'kpi' if self._meridian.is_national else 'population_scaled_kpi'
+      geo_text = '' if self._meridian.is_national else 'geos and '
+      eda_finding = eda_outcome.EDAFinding(
+          severity=eda_outcome.EDASeverity.ERROR,
+          explanation=(
+              f'`{kpi}` is constant across all {geo_text}times, indicating no'
+              ' signal in the data. Please fix this data error.'
+          ),
+      )
+    else:
+      geo_text = '' if self._meridian.is_national else 'geos and '
+      eda_finding = eda_outcome.EDAFinding(
+          severity=eda_outcome.EDASeverity.INFO,
+          explanation=(
+              f'The KPI has variability across {geo_text}times, indicating'
+              ' variability in the data.'
+          ),
+      )
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.KPI_INVARIABILITY,
+        findings=[eda_finding],
+        analysis_artifacts=[self._population_scaled_kpi_artifact],
+    )
+
+  def run_all_critical_checks(self) -> list[eda_outcome.EDAOutcome]:
+    """Runs all critical EDA checks.
+
+    Critical checks are those that can result in EDASeverity.ERROR findings.
+
+    Returns:
+      A list of EDA outcomes, one for each check.
+    """
+    outcomes = []
+    for check, check_type in self._critical_checks:
+      try:
+        outcomes.append(check())
+      except Exception as e:  # pylint: disable=broad-except
+        error_finding = eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.ERROR,
+            explanation=f'An error occurred during check {check.__name__}: {e}',
+        )
+        outcomes.append(
+            eda_outcome.EDAOutcome(
+                check_type=check_type,
+                findings=[error_finding],
+                analysis_artifacts=[],
+            )
+        )
+    return outcomes
