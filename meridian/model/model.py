@@ -72,6 +72,7 @@ def _check_for_negative_effect(
     dist: backend.tfd.Distribution, media_effects_dist: str
 ):
   """Checks for negative effect in the model."""
+  # comment to trigger presubmit assuming change detection
   if (
       media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
       and np.any(dist.cdf(0)) > 0
