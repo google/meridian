@@ -14,11 +14,14 @@
 
 """Meridian EDA Engine."""
 
+from __future__ import annotations
+
 import dataclasses
 import functools
+import typing
 from typing import Optional, Sequence
+
 from meridian import constants
-from meridian.model import model
 from meridian.model import transformers
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
@@ -29,6 +32,9 @@ from statsmodels.stats import outliers_influence
 import tensorflow as tf
 import xarray as xr
 
+
+if typing.TYPE_CHECKING:
+  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 _CORRELATION_COL_NAME = 'correlation'
