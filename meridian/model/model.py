@@ -568,7 +568,9 @@ class Meridian:
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = backend.cast(baseline_value, backend.float32)
+        baseline_for_channel = backend.to_tensor(
+            baseline_value, dtype=backend.float32
+        )
       else:
         raise ValueError(
             f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
