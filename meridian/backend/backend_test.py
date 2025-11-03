@@ -16,6 +16,7 @@
 
 # pylint: disable=g-import-not-at-top
 
+import dataclasses
 import importlib
 import os
 import sys
@@ -307,6 +308,27 @@ class BackendTest(parameterized.TestCase):
       self.assertIsInstance(np_tensor, tf.Tensor)
       self.assertEqual(np_tensor.dtype, tf.float64)
 
+  @parameterized.named_parameters(
+      ("tensorflow", _TF),
+      ("jax", _JAX),
+  )
+  def test_to_tensor_strings(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    data = ["a", "b", "c"]
+    t = backend.to_tensor(data, dtype=backend.string)
+
+    if backend_name == _JAX:
+      # JAX backend uses numpy unicode strings
+      self.assertIsInstance(t, np.ndarray)
+      self.assertEqual(t.dtype.kind, "U")
+      test_utils.assert_allequal(t, np.array(data))
+    else:
+      # TensorFlow natively supports string tensors (bytes).
+      self.assertIsInstance(t, tf.Tensor)
+      self.assertEqual(t.dtype, tf.string)
+      expected = np.array([b"a", b"b", b"c"], dtype=object)
+      test_utils.assert_allequal(np.array(t).astype(object), expected)
+
   _concatenate_test_cases = [
       dict(
           testcase_name="axis_0",
@@ -562,13 +584,22 @@ class BackendTest(parameterized.TestCase):
           testcase_name="1d_tensor",
           tensor_in=[10, 20, 30, 40],
           indices=[0, 3, 1],
+          kwargs={},
           expected=np.array([10, 40, 20]),
       ),
       dict(
           testcase_name="2d_tensor",
           tensor_in=[[1, 2], [3, 4], [5, 6]],
           indices=[2, 0],
+          kwargs={},
           expected=np.array([[5, 6], [1, 2]]),
+      ),
+      dict(
+          testcase_name="2d_tensor_axis_1",
+          tensor_in=[[1, 2], [3, 4], [5, 6]],
+          indices=[1, 0],
+          kwargs={"axis": 1},
+          expected=np.array([[2, 1], [4, 3], [6, 5]]),
       ),
   ]
 
@@ -580,9 +611,10 @@ class BackendTest(parameterized.TestCase):
     self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     indices = backend.to_tensor(test_case["indices"])
+    kwargs = test_case["kwargs"]
     expected = test_case["expected"]
 
-    result = backend.gather(tensor, indices)
+    result = backend.gather(tensor, indices, **kwargs)
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
@@ -751,15 +783,24 @@ class BackendTest(parameterized.TestCase):
       self.assertIsInstance(result, backend.Tensor)
       test_utils.assert_allclose(result, expected)
 
-  def test_extension_type_raises_for_jax(self):
+  def test_jax_extension_type_is_pytree(self):
     self._set_backend_for_test(_JAX)
 
-    class MyExtension(backend.ExtensionType):
-      foo: int
-      bar: str
+    @dataclasses.dataclass
+    class MyType(backend.ExtensionType):
+      x: backend.Tensor
+      y: int
+      z: str
 
-    with self.assertRaises(NotImplementedError):
-      MyExtension()
+    obj = MyType(x=jnp.ones(3), y=5, z="hello")
+
+    # Test flattening/unflattening implicitly via jit
+    @jax.jit
+    def f(input_obj):
+      return input_obj.x * input_obj.y
+
+    res = f(obj)
+    test_utils.assert_allclose(res, jnp.ones(3) * 5)
 
   _nanmedian_test_cases = [
       dict(
@@ -799,6 +840,102 @@ class BackendTest(parameterized.TestCase):
     expected = test_case["expected"]
 
     result = backend.nanmedian(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _nanmean_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.array(3.0),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([2.0, 15.0]),
+      ),
+      dict(
+          testcase_name="2d_axis_1_keepdims",
+          tensor_in=np.array([[1.0, 10.0, np.nan], [np.nan, 20.0, 30.0]]),
+          kwargs={"axis": 1, "keepdims": True},
+          expected=np.array([[5.5], [25.0]]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nanmean_test_cases,
+  )
+  def test_nanmean(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nanmean(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _nansum_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.array(9.0),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([4.0, 30.0]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nansum_test_cases,
+  )
+  def test_nansum(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nansum(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _nanvar_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.var([1.0, 3.0, 5.0]),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([np.var([1.0, 3.0]), np.var([10.0, 20.0])]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nanvar_test_cases,
+  )
+  def test_nanvar(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nanvar(tensor, **kwargs)
 
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
@@ -1016,6 +1153,14 @@ class RNGHandlerTest(BackendTest):
     handler = backend.RNGHandler(seed_array)
 
     self.assertEqual(handler._int_seed, seed_val)
+
+  def test_jax_initialization_with_prng_key(self):
+    """JAX should accept an existing PRNGKey."""
+    self._set_backend_for_test(_JAX)
+    seed_key = jax.random.PRNGKey(42)
+    handler = backend.RNGHandler(seed_key)
+
+    self._assert_key_equal(handler._key, seed_key)
 
   def test_jax_initialization_with_sequence_seed_raises(self):
     """JAX must not be initialized with a sequence."""
