@@ -940,6 +940,92 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _stabilize_rf_roi_grid_test_cases = [
+      dict(
+          testcase_name="equivalent_case_max_outcome_on_last_row",
+          spend_grid=np.array([
+              [10.0, 100.0],
+              [20.0, 200.0],
+              [30.0, 300.0],
+              [np.nan, 400.0],
+          ]),
+          outcome_grid=np.array([
+              [1.0, 15.0],
+              [2.0, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+          n_rf_channels=2,
+          expected_tf=np.array([
+              [0.9, 15.0],
+              [1.8, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+          expected_jax=np.array([
+              [0.9, 15.0],
+              [1.8, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+      ),
+      dict(
+          testcase_name="divergent_case_max_outcome_not_on_last_row",
+          #  The maximum outcome for the first channel (2.5) is
+          #  on a different row than the maximum spend (30.0). This causes the
+          #  TF logic to calculate an incorrect reference ROI, while the
+          #  index-based JAX logic finds the ROI at the highest spend point.
+          spend_grid=np.array([
+              [10.0, 100.0],
+              [20.0, 200.0],
+              [30.0, 300.0],
+              [np.nan, 400.0],
+          ]),
+          outcome_grid=np.array([
+              [1.0, 15.0],
+              [2.5, 30.0],
+              [2.1, 45.0],
+              [np.nan, 60.0],
+          ]),
+          n_rf_channels=2,
+          expected_tf=np.array([
+              [0.833333, 15.0],
+              [1.666666, 30.0],
+              [2.5, 45.0],
+              [np.nan, 60.0],
+          ]),
+          expected_jax=np.array([
+              [0.7, 15.0],
+              [1.4, 30.0],
+              [2.1, 45.0],
+              [np.nan, 60.0],
+          ]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_stabilize_rf_roi_grid_test_cases,
+  )
+  def test_stabilize_rf_roi_grid(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    spend_grid = test_case["spend_grid"]
+    outcome_grid = test_case["outcome_grid"]
+    n_rf_channels = test_case["n_rf_channels"]
+
+    if backend_name == _JAX:
+      expected = test_case["expected_jax"]
+    else:
+      expected = test_case["expected_tf"]
+
+    result = backend.stabilize_rf_roi_grid(
+        spend_grid, outcome_grid, n_rf_channels
+    )
+
+    # The function should return a new grid, not modify in-place.
+    self.assertFalse(np.all(result == outcome_grid))
+    test_utils.assert_allclose(result, expected, atol=1e-6)
+
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
 

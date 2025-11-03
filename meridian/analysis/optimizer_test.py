@@ -163,7 +163,10 @@ def _create_budget_data(
   }
 
   if explicit_mroi is not None:
-    data_vars[c.MROI] = ([c.CHANNEL, c.METRIC], explicit_mroi)
+    data_vars[c.MROI] = (
+        [c.CHANNEL, c.METRIC],
+        np.array(explicit_mroi, dtype=np.float64),
+    )
   else:
     data_vars[c.MROI] = (
         [c.CHANNEL, c.METRIC],
@@ -173,7 +176,10 @@ def _create_budget_data(
     )
 
   if explicit_cpik is not None:
-    data_vars[c.CPIK] = ([c.CHANNEL, c.METRIC], explicit_cpik)
+    data_vars[c.CPIK] = (
+        [c.CHANNEL, c.METRIC],
+        np.array(explicit_cpik, dtype=np.float64),
+    )
   else:
     data_vars[c.CPIK] = (
         [c.CHANNEL, c.METRIC],
@@ -232,60 +238,46 @@ def _verify_actual_vs_expected_budget_data(
     np.testing.assert_equal(actual_data.end_date, expected_data.end_date)
 
 
-_SAMPLE_NON_OPTIMIZED_DATA = _create_budget_data(
-    spend=np.array([200, 100, 300]),
-    inc_outcome=np.array(
+def _get_sample_non_optimized_data(is_revenue_kpi: bool = True) -> xr.Dataset:
+  """Creates sample non-optimized budget data on demand."""
+  if is_revenue_kpi:
+    inc_outcome = np.array(
         [[280, 280, 280, 280], [150, 150, 150, 150], [330, 330, 330, 330]]
-    ),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    attrs={c.IS_REVENUE_KPI: True},
-)
-_SAMPLE_OPTIMIZED_DATA = _create_budget_data(
-    spend=np.array([220, 140, 240]),
-    inc_outcome=np.array(
-        [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
-    ),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    attrs={
-        c.FIXED_BUDGET: True,
-        c.IS_REVENUE_KPI: True,
-    },
-)
-_SAMPLE_NON_OPTIMIZED_DATA_KPI = _create_budget_data(
-    spend=np.array([200, 100, 300]),
-    inc_outcome=np.array(
+    )
+  else:
+    inc_outcome = np.array(
         [[280, 280, 279, 281], [150, 150, 149, 151], [330, 330, 329, 331]]
-    ),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    attrs={c.IS_REVENUE_KPI: False},
-)
-_SAMPLE_OPTIMIZED_DATA_KPI = _create_budget_data(
-    spend=np.array([220, 140, 240]),
-    inc_outcome=np.array(
-        [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
-    ),
-    effectiveness=np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-        [0.1, 0.2, 0.3, 0.4],
-    ]),
-    attrs={
-        c.FIXED_BUDGET: True,
-        c.IS_REVENUE_KPI: False,
-    },
-)
+    )
+
+  return _create_budget_data(
+      spend=np.array([200, 100, 300]),
+      inc_outcome=inc_outcome,
+      effectiveness=np.array([
+          [0.1, 0.2, 0.3, 0.4],
+          [0.1, 0.2, 0.3, 0.4],
+          [0.1, 0.2, 0.3, 0.4],
+      ]),
+      attrs={c.IS_REVENUE_KPI: is_revenue_kpi},
+  )
+
+
+def _get_sample_optimized_data(is_revenue_kpi: bool = True) -> xr.Dataset:
+  """Creates sample optimized budget data on demand."""
+  return _create_budget_data(
+      spend=np.array([220, 140, 240]),
+      inc_outcome=np.array(
+          [[350, 350, 349, 351], [210, 210, 209, 211], [270, 270, 269, 271]]
+      ),
+      effectiveness=np.array([
+          [0.1, 0.2, 0.3, 0.4],
+          [0.1, 0.2, 0.3, 0.4],
+          [0.1, 0.2, 0.3, 0.4],
+      ]),
+      attrs={
+          c.FIXED_BUDGET: True,
+          c.IS_REVENUE_KPI: is_revenue_kpi,
+      },
+  )
 
 
 class OptimizerAlgorithmTest(parameterized.TestCase):
@@ -1866,10 +1858,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, 1.0, 1.0, np.nan, np.nan],
         ],
     )
-    new_frequency = (
-        backend.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
-        * optimal_frequency
-    )
+    new_frequency = backend.ones_like(
+        self.meridian_media_and_rf.rf_tensors.frequency
+    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float32)
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
@@ -1965,10 +1956,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, np.nan],
         ],
     )
-    new_frequency = (
-        backend.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
-        * optimal_frequency
-    )
+    new_frequency = backend.ones_like(
+        self.meridian_media_and_rf.rf_tensors.frequency
+    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float32)
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
@@ -2525,7 +2515,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           optimize_args={'selected_geos': ['geo_1']},
           warning_regex=(
               'Given optimization grid was created with `selected_geos` ='
-              " None, but optimization request was called with"
+              ' None, but optimization request was called with'
               " `selected_geos` = \\['geo_1'\\]. A new grid will be created."
           ),
       ),
@@ -2536,7 +2526,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           warning_regex=(
               'Given optimization grid was created with `selected_geos` ='
               " \\['geo_0'\\], but optimization request was called with"
-              " `selected_geos` = None. A new grid will be created."
+              ' `selected_geos` = None. A new grid will be created.'
           ),
       ),
       dict(
@@ -3144,6 +3134,11 @@ class OptimizerPlotsTest(absltest.TestCase):
         optimal_frequency=None,
         selected_times=self.meridian.expand_selected_time_dims(),
     )
+    self.sample_non_optimized_data = _get_sample_non_optimized_data(
+        is_revenue_kpi=True
+    )
+    self.sample_optimized_data = _get_sample_optimized_data(is_revenue_kpi=True)
+
     self.optimization_results = optimizer.OptimizationResults(
         meridian=self.budget_optimizer._meridian,
         analyzer=self.budget_optimizer._analyzer,
@@ -3152,9 +3147,9 @@ class OptimizerPlotsTest(absltest.TestCase):
             np.array([0.7, 0.5, 0.7]),
             np.array([1.3]),
         ),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA,
-        _nonoptimized_data_with_optimal_freq=_SAMPLE_NON_OPTIMIZED_DATA,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA,
+        _nonoptimized_data=self.sample_non_optimized_data,
+        _nonoptimized_data_with_optimal_freq=self.sample_non_optimized_data,
+        _optimized_data=self.sample_optimized_data,
         _optimization_grid=self.optimization_grid,
     )
 
@@ -3296,13 +3291,15 @@ class OptimizerPlotsTest(absltest.TestCase):
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.SPEND])
     self.assertEqual(df.channel.size, 3)
-    self.assertEqual(list(df.spend), list(_SAMPLE_OPTIMIZED_DATA.spend.values))
+    self.assertEqual(
+        list(df.spend), list(self.sample_optimized_data.spend.values)
+    )
 
   def test_budget_allocation_nonoptimized_data(self):
     plot = self.optimization_results.plot_budget_allocation(optimized=False)
     df = plot.data
     self.assertEqual(
-        list(df.spend), list(_SAMPLE_NON_OPTIMIZED_DATA.spend.values)
+        list(df.spend), list(self.sample_non_optimized_data.spend.values)
     )
 
   def test_budget_allocation_correct_encoding(self):
@@ -3730,13 +3727,24 @@ class OptimizerOutputTest(parameterized.TestCase):
         optimal_frequency=None,
         selected_times=mock.MagicMock(),
     )
+    self.sample_non_optimized_data = _get_sample_non_optimized_data(
+        is_revenue_kpi=True
+    )
+    self.sample_optimized_data = _get_sample_optimized_data(is_revenue_kpi=True)
+    self.sample_non_optimized_data_kpi = _get_sample_non_optimized_data(
+        is_revenue_kpi=False
+    )
+    self.sample_optimized_data_kpi = _get_sample_optimized_data(
+        is_revenue_kpi=False
+    )
+
     self.optimization_results = optimizer.OptimizationResults(
         meridian=self.budget_optimizer._meridian,
         analyzer=self.budget_optimizer._analyzer,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(np.array([0.7]), np.array([1.3])),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA,
+        _nonoptimized_data=self.sample_non_optimized_data,
+        _optimized_data=self.sample_optimized_data,
         _nonoptimized_data_with_optimal_freq=mock.MagicMock(),
         _optimization_grid=self.optimization_grid,
     )
@@ -3745,8 +3753,8 @@ class OptimizerOutputTest(parameterized.TestCase):
         analyzer=self.budget_optimizer_kpi_output._analyzer,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(np.array([0.7]), np.array([1.3])),
-        _nonoptimized_data=_SAMPLE_NON_OPTIMIZED_DATA_KPI,
-        _optimized_data=_SAMPLE_OPTIMIZED_DATA_KPI,
+        _nonoptimized_data=self.sample_non_optimized_data_kpi,
+        _optimized_data=self.sample_optimized_data_kpi,
         _nonoptimized_data_with_optimal_freq=mock.MagicMock(),
         _optimization_grid=self.optimization_grid,
     )
@@ -3884,7 +3892,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
   def test_output_scenario_plan_card_text_new_budget(self):
-    new_non_optimized_data = _SAMPLE_NON_OPTIMIZED_DATA.copy()
+    new_non_optimized_data = self.sample_non_optimized_data.copy()
     new_non_optimized_data.attrs[c.USE_HISTORICAL_BUDGET] = False
     new_budget_optimization_results = dataclasses.replace(
         self.optimization_results,
@@ -4671,8 +4679,8 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
       self.budget_optimizer.create_optimization_tensors(
           time=self.time,
           cprf=self.cprf,
-          rf_spend=backend.ones_like((2, 2, 1)),
-          frequency=backend.ones_like((2, 2, 1)),
+          rf_spend=backend.ones((2, 2, 1)),
+          frequency=backend.ones((2, 2, 1)),
           use_optimal_frequency=True,
       )
 

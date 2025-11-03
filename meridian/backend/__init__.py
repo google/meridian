@@ -135,6 +135,54 @@ def _resolve_dtype(dtype: Optional[Any], *args: Any) -> str:
 
 
 # --- Private Backend-Specific Implementations ---
+def _jax_stabilize_rf_roi_grid(
+    spend_grid: np.ndarray,
+    outcome_grid: np.ndarray,
+    n_rf_channels: int,
+) -> np.ndarray:
+  """Stabilizes the RF ROI grid for JAX using a stable index lookup."""
+  new_outcome_grid = outcome_grid.copy()
+  rf_slice = slice(-n_rf_channels, None)
+  rf_spend_grid = spend_grid[:, rf_slice]
+  rf_outcome_grid = new_outcome_grid[:, rf_slice]
+
+  last_valid_indices = np.sum(~np.isnan(rf_spend_grid), axis=0) - 1
+  channel_indices = np.arange(n_rf_channels)
+
+  ref_spend = rf_spend_grid[last_valid_indices, channel_indices]
+  ref_outcome = rf_outcome_grid[last_valid_indices, channel_indices]
+
+  rf_roi = np.divide(
+      ref_outcome,
+      ref_spend,
+      out=np.zeros_like(ref_outcome, dtype=np.float64),
+      where=(ref_spend != 0),
+  )
+
+  new_outcome_grid[:, rf_slice] = rf_roi * rf_spend_grid
+  return new_outcome_grid
+
+
+def _tf_stabilize_rf_roi_grid(
+    spend_grid: np.ndarray,
+    outcome_grid: np.ndarray,
+    n_rf_channels: int,
+) -> np.ndarray:
+  """Stabilizes the RF ROI grid for TF using nanmax logic."""
+  new_outcome_grid = outcome_grid.copy()
+  rf_slice = slice(-n_rf_channels, None)
+  rf_outcome_max = np.nanmax(new_outcome_grid[:, rf_slice], axis=0)
+  rf_spend_max = np.nanmax(spend_grid[:, rf_slice], axis=0)
+
+  rf_roi = np.divide(
+      rf_outcome_max,
+      rf_spend_max,
+      out=np.zeros_like(rf_outcome_max, dtype=np.float64),
+      where=(rf_spend_max != 0),
+  )
+
+  new_outcome_grid[:, rf_slice] = rf_roi * spend_grid[:, rf_slice]
+  return new_outcome_grid
 
 
 def _jax_arange(
@@ -686,6 +734,8 @@ if _BACKEND == config.Backend.JAX:
   int32 = _ops.int32
   string = np.str_
 
+  stabilize_rf_roi_grid = _jax_stabilize_rf_roi_grid
+
   def set_random_seed(seed: int) -> None:  # pylint: disable=unused-argument
     warnings.warn(
         "backend.set_random_seed is a no-op in JAX. Randomness is managed "
@@ -824,6 +874,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   where = _ops.where
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like
+
+  stabilize_rf_roi_grid = _tf_stabilize_rf_roi_grid
 
   float32 = _ops.float32
   bool_ = _ops.bool
