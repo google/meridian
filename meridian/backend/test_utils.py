@@ -139,6 +139,13 @@ class MeridianTestCase(parameterized.TestCase):
   number generation across backends (Stateful TF vs Stateless JAX).
   """
 
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    # Enforce determinism for TensorFlow tests before any tests are run.
+    # This is a no-op with a warning for the JAX backend.
+    backend.enable_op_determinism()
+
   def setUp(self):
     super().setUp()
     # Default seed, can be overridden by subclasses before calling

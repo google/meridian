@@ -529,6 +529,13 @@ def _tf_nanvar(a, axis=None, keepdims=False):
   return tf.convert_to_tensor(var)
 
 
+def _jax_enable_op_determinism():
+  """No-op for JAX. Determinism is handled via stateless PRNGKeys."""
+  warnings.warn(
+      "op determinism is a TensorFlow-specific concept and has no effect when"
+      " using the JAX backend."
+  )
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -691,6 +698,7 @@ if _BACKEND == config.Backend.JAX:
   divide = _ops.divide
   divide_no_nan = _jax_divide_no_nan
   einsum = _ops.einsum
+  enable_op_determinism = _jax_enable_op_determinism
   equal = _ops.equal
   exp = _ops.exp
   expand_dims = _ops.expand_dims
@@ -838,6 +846,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   divide = _ops.divide
   divide_no_nan = _ops.math.divide_no_nan
   einsum = _ops.einsum
+  enable_op_determinism = _ops.config.experimental.enable_op_determinism
   equal = _ops.equal
   exp = _ops.math.exp
   expand_dims = _ops.expand_dims
