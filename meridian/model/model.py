@@ -34,8 +34,9 @@ from meridian.model import prior_distribution
 from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model import transformers
+from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
-
 
 __all__ = [
     "MCMCSamplingError",
@@ -91,6 +92,8 @@ class Meridian:
     model_spec: A `ModelSpec` object containing the model specification.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
       resulting data from fitting the model.
+    eda_engine: An `EDAEngine` object containing the EDA engine.
+    eda_spec: An `EDASpec` object containing the EDA specification.
     n_geos: Number of geos in the data.
     n_media_channels: Number of media channels in the data.
     n_rf_channels: Number of reach and frequency (RF) channels in the data.
@@ -154,12 +157,14 @@ class Meridian:
       inference_data: (
           az.InferenceData | None
       ) = None,  # for deserializer use only
+      eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
     self._input_data = input_data
     self._model_spec = model_spec if model_spec else spec.ModelSpec()
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
+    self._eda_spec = eda_spec
 
     self._validate_data_dependent_model_spec()
     self._validate_injected_inference_data()
@@ -189,6 +194,14 @@ class Meridian:
   @property
   def inference_data(self) -> az.InferenceData:
     return self._inference_data
+
+  @functools.cached_property
+  def eda_engine(self) -> eda_engine.EDAEngine:
+    return eda_engine.EDAEngine(self, spec=self._eda_spec)
+
+  @property
+  def eda_spec(self) -> eda_spec_module.EDASpec:
+    return self._eda_spec
 
   @functools.cached_property
   def media_tensors(self) -> media.MediaTensors:

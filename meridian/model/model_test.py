@@ -33,6 +33,8 @@ from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import spec
+from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
 import xarray as xr
 
@@ -403,6 +405,34 @@ class ModelTest(
     # Compare model spec.
     self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_default_spec",
+          eda_spec_kwargs={},
+          expected_eda_spec=eda_spec_module.EDASpec(),
+      ),
+      dict(
+          testcase_name="with_custom_spec",
+          eda_spec_kwargs={
+              "eda_spec": eda_spec_module.EDASpec(
+                  vif_spec=eda_spec_module.VIFSpec(geo_threshold=500.0)
+              )
+          },
+          expected_eda_spec=eda_spec_module.EDASpec(
+              vif_spec=eda_spec_module.VIFSpec(geo_threshold=500.0)
+          ),
+      ),
+  )
+  def test_eda_engine_and_spec_initialization(
+      self, eda_spec_kwargs, expected_eda_spec
+  ):
+    meridian = model.Meridian(
+        input_data=self.input_data_with_media_only, **eda_spec_kwargs
+    )
+
+    self.assertIsInstance(meridian.eda_engine, eda_engine.EDAEngine)
+    self.assertEqual(meridian.eda_spec, expected_eda_spec)
+
   def test_init_with_default_national_parameters_works(self):
     data = self.national_input_data_media_only
     meridian = model.Meridian(input_data=data)
@@ -595,6 +625,7 @@ class ModelTest(
     self.assertFalse(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -607,6 +638,7 @@ class ModelTest(
     self.assertTrue(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -1651,6 +1683,7 @@ class NonPaidModelTest(
     self.assertFalse(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
@@ -1665,6 +1698,7 @@ class NonPaidModelTest(
     self.assertTrue(meridian.is_national)
     self.assertIsNotNone(meridian.prior_broadcast)
     self.assertIsNotNone(meridian.inference_data)
+    self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 

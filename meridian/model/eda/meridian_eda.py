@@ -13,12 +13,18 @@
 # limitations under the License.
 
 """Module containing Meridian related exploratory data analysis (EDA) functionalities."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import altair as alt
-from meridian.model import model
+
+if TYPE_CHECKING:
+  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
+
 
 __all__ = [
-    'MeridianEDA',
+    "MeridianEDA",
 ]
 
 
