@@ -30,12 +30,13 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from statsmodels.stats import outliers_influence
-import tensorflow as tf
 import xarray as xr
 
 
 if typing.TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
+
+__all__ = ['EDAEngine', 'GeoLevelCheckOnNationalModelError']
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 _CORRELATION_COL_NAME = 'correlation'
@@ -149,8 +150,8 @@ def _data_array_like(
   Args:
     da: The DataArray whose structure (dimensions, coordinates, name, and attrs)
       will be used for the new DataArray.
-    values: The numpy array or tensorflow tensor to use as the values for the
-      new DataArray.
+    values: The numpy array or backend tensor to use as the values for the new
+      DataArray.
 
   Returns:
     A new DataArray with the provided `values` and the same structure as `da`.
@@ -959,14 +960,16 @@ class EDAEngine:
       self,
       xarray: xr.DataArray,
       transformer_class: Optional[type[transformers.TensorTransformer]],
-      population: tf.Tensor = tf.constant([1.0], dtype=tf.float32),
+      population: Optional[backend.Tensor] = None,
   ) -> xr.DataArray:
     """Scales xarray values with a TensorTransformer."""
     da = xarray.copy()
 
     if transformer_class is None:
       return da
-    elif transformer_class is transformers.CenteringAndScalingTransformer:
+    if population is None:
+      population = backend.ones([1], dtype=backend.float32)
+    if transformer_class is transformers.CenteringAndScalingTransformer:
       xarray_transformer = transformers.CenteringAndScalingTransformer(
           tensor=da.values, population=population
       )
@@ -1059,7 +1062,7 @@ class EDAEngine:
       )
 
     national_da = national_da.assign_coords({constants.GEO: [temp_geo_dim]})
-    national_da.values = tf.cast(national_da.values, tf.float32)
+    national_da.values = backend.cast(national_da.values, dtype=backend.float32)
     national_da = self._scale_xarray(national_da, transformer_class)
 
     national_da = national_da.sel({constants.GEO: temp_geo_dim}, drop=True)
@@ -1099,7 +1102,9 @@ class EDAEngine:
     # It's equal to reach * frequency.
     impressions_raw_da = reach_raw_da * frequency_da
     impressions_raw_da.name = names.impressions
-    impressions_raw_da.values = tf.cast(impressions_raw_da.values, tf.float32)
+    impressions_raw_da.values = backend.cast(
+        impressions_raw_da.values, dtype=backend.float32
+    )
 
     if self._meridian.is_national:
       national_reach_raw_da = reach_raw_da.squeeze(constants.GEO, drop=True)
@@ -1147,8 +1152,8 @@ class EDAEngine:
           national_impressions_raw_da / national_reach_raw_da,
       )
       national_frequency_da.name = names.national_frequency
-      national_frequency_da.values = tf.cast(
-          national_frequency_da.values, tf.float32
+      national_frequency_da.values = backend.cast(
+          national_frequency_da.values, dtype=backend.float32
       )
 
       # Scale the impressions by population
