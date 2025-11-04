@@ -78,9 +78,7 @@ mlflow = ["mlflow"]
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
-    "jax==0.4.26",
-    "jaxlib==0.4.26",
-    "tensorflow-probability[substrates-jax]==0.25.0",
+  "tfp-nightly[jax]",
 ]
 
 [tool.pyink]
