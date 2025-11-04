@@ -54,6 +54,7 @@ _Q3_THRESHOLD = 0.75
 _IQR_MULTIPLIER = 1.5
 _STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
 _STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
+_STD_THRESHOLD = 1e-4
 _OUTLIERS_COL_NAME = 'outliers'
 _ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 _VIF_COL_NAME = 'VIF'
@@ -1358,7 +1359,7 @@ class EDAEngine:
     std_ds, outlier_df = _calculate_std(data)
 
     finding = None
-    if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] == 0).any():
+    if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] < _STD_THRESHOLD).any():
       finding = eda_outcome.EDAFinding(
           severity=eda_outcome.EDASeverity.ATTENTION,
           explanation=zero_std_message,
@@ -1679,7 +1680,7 @@ class EDAEngine:
   def kpi_has_variability(self) -> bool:
     """Returns True if the KPI has variability across geos and times."""
     stdev = float(self._meridian.kpi_transformer.population_scaled_stdev)
-    return stdev != 0
+    return stdev >= _STD_THRESHOLD
 
   def check_overall_kpi_invariability(self) -> eda_outcome.EDAOutcome:
     """Checks if the KPI is constant across all geos and times."""

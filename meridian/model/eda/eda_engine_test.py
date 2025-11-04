@@ -143,6 +143,33 @@ def _get_overall_high_vif_da(geo_level: bool = True):
   return da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
 
 
+def _create_ndarray_with_std_below_threshold(
+    n_times: int, is_national: bool
+) -> np.ndarray:
+  """Creates an array with std without outliers equal to _STD_THRESHOLD / 2."""
+  target_std = eda_engine._STD_THRESHOLD / 2
+  # Create a base array with n_times - 1 elements.
+  base_data = np.arange(n_times - 1).astype(float)
+  # Calculate the standard deviation of the base data.
+  std_base = np.std(base_data, ddof=1)
+  # Determine the scaling factor to achieve the target_std.
+  scale_factor = target_std / std_base
+  # Scale the base data.
+  non_outlier_data = base_data * scale_factor
+
+  # Use a large fixed number as an outlier.
+  outlier = 1000.0
+
+  # Combine non-outlier data and the outlier.
+  mock_array = np.append(non_outlier_data, outlier)
+
+  # Reshape based on whether it's a national or geo model.
+  if is_national:
+    return mock_array
+  else:
+    return mock_array.reshape(1, n_times)
+
+
 class EDAEngineTest(
     parameterized.TestCase,
     tf.test.TestCase,
@@ -3892,6 +3919,16 @@ class EDAEngineTest(
           mock_freq_ndarray=np.ones((1, 7, 1), dtype=float),
           expected_message_substr="zero variation of frequency across time",
       ),
+      dict(
+          testcase_name="std_below_threshold_kpi",
+          mock_kpi_ndarray=_create_ndarray_with_std_below_threshold(
+              n_times=7, is_national=False
+          ),
+          mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr="KPI has zero standard deviation",
+      ),
   )
   def test_check_geo_std_attention_cases(
       self,
@@ -4187,6 +4224,18 @@ class EDAEngineTest(
           mock_reach_ndarray=None,
           mock_freq_ndarray=np.ones((7, 1), dtype=float),
           expected_message_substr="zero variation of frequency across time",
+      ),
+      dict(
+          testcase_name="std_below_threshold_kpi",
+          mock_kpi_ndarray=_create_ndarray_with_std_below_threshold(
+              n_times=7, is_national=True
+          ),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=None,
+          expected_message_substr=(
+              "The standard deviation of the scaled KPI drops"
+          ),
       ),
   )
   def test_check_national_std_attention_cases(
@@ -4634,6 +4683,16 @@ class EDAEngineTest(
           testcase_name="no_variability",
           population_scaled_stdev=0.0,
           expected_result=False,
+      ),
+      dict(
+          testcase_name="below_threshold",
+          population_scaled_stdev=eda_engine._STD_THRESHOLD / 2,
+          expected_result=False,
+      ),
+      dict(
+          testcase_name="at_threshold",
+          population_scaled_stdev=eda_engine._STD_THRESHOLD,
+          expected_result=True,
       ),
   )
   def test_kpi_has_variability(self, population_scaled_stdev, expected_result):

@@ -1184,6 +1184,24 @@ class ModelTest(
     )
     self.assertIsNotNone(meridian)
 
+  @parameterized.named_parameters(
+      dict(testcase_name="geo", is_national=False),
+      dict(testcase_name="national", is_national=True),
+  )
+  def test_validate_kpi_transformer_with_kpi_variability(
+      self, is_national: bool
+  ):
+    valid_input_data = (
+        self.national_input_data_non_media_and_organic
+        if is_national
+        else self.input_data_non_media_and_organic
+    )
+    meridian = model.Meridian(
+        input_data=valid_input_data,
+        model_spec=spec.ModelSpec(),
+    )
+    self.assertIsNotNone(meridian)
+
   def test_broadcast_prior_distribution_compute_property(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
     # Validate `tau_g_excl_baseline` distribution.
