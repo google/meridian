@@ -1,0 +1,77 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing.analysis;
+
+import "mmm/v1/common/estimate.proto";
+import "mmm/v1/common/kpi_type.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// A contribution is defined as the value difference caused by adding a new
+// outcome.
+message Contribution {
+  // The contribution value. Required.
+  common.Estimate value = 1;
+
+  // Share of contribution = contribution / total contribution from all
+  // outcomes.
+  common.Estimate share = 2;
+}
+
+// Effectiveness calculates how much incremental KPI is generated per media unit
+// (e.g. impressions or clicks), i.e. contribution / media unit.
+message Effectiveness {
+  // The media unit of the effectiveness. Required.
+  string media_unit = 1;
+
+  // The value of the effectiveness. Required.
+  common.Estimate value = 2;
+}
+
+// An outcome analysis on KPI which can be defined as revenue or other generic
+// non-revenue type.
+message Outcome {
+  // The type of this KPI (i.e. REVENUE or NON_REVENUE)
+  // Note that a model input with non-revenue (generic KPI) data can still have
+  // revenue-based KPI outcomes defined, provided that `revenue_per_kpi` is
+  // defined.
+  common.KpiType kpi_type = 1;
+
+  // The contribution to a KPI.
+  // If `kpi_type == REVENUE`, this is the revenue KPI value.
+  // If `kpi_type == NON_REVENUE`, AND there is a `revenue_per_kpi` conversion,
+  // this is the derived `kpi * revenue_per_kpi` value.
+  // Otherwise, this is simply the (non-revenue, user-defined) KPI value.
+  Contribution contribution = 2;
+
+  // The effectiveness of this outcome.
+  Effectiveness effectiveness = 3;
+
+  // ROI = contribution / spend.
+  // See contribution definition above.
+  common.Estimate roi = 4;
+
+  // Marginal ROI shows the additional ROI gained from additional spend.
+  // See ROI definition above.
+  common.Estimate marginal_roi = 5;
+
+  // Cost per incremental outcome (which could be revenue or some generic KPI).
+  // E.g. when contribution is thousand impression, it is CPM; when contribution
+  // is acquisition, this is CPA.
+  common.Estimate cost_per_contribution = 6;
+}
