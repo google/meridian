@@ -1,0 +1,230 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing;
+
+import "google/type/date.proto";
+import "mmm/v1/common/date_interval.proto";
+
+option java_multiple_files = true;
+
+message GeoInfo {
+  // The ID of the geo location. Required.
+  string geo_id = 1;
+
+  // The population of the geo location. Required.
+  int64 population = 2;
+}
+
+// A KPI (key performance indicator) can either be revenue directly, or some
+// other metric that indirectly contributes to revenue eventually (e.g. sales
+// units, conversions, impressions, etc) with a multiplier value to roughly
+// translates said non-revenue KPI unit into revenue.
+message Kpi {
+  // A revenue KPI.
+  message Revenue {
+    // The revenue value.
+    double value = 1;
+  }
+
+  // A non-revenue type of KPI.
+  message NonRevenue {
+    // The value of the non-revenue KPI.
+    double value = 1;
+
+    // Used to convert non-revenue KPI value to revenue.
+    //
+    // Needs to be non-negative.
+    double revenue_per_kpi = 2;
+  }
+
+  // The name of the KPI. Required.
+  string name = 1;
+
+  // The type of the KPI. Required
+  oneof type {
+    Revenue revenue = 2;
+    NonRevenue non_revenue = 3;
+  }
+}
+
+// The control variable. A control variable is not directly being studied but
+// included in the model to account for potential confounding effects on the
+// relationship between the primary independent and dependent variables.
+// Examples: seasonality factors, and macroeconomic factors.
+message ControlVariable {
+  // The name of the variable. Required.
+  string name = 1;
+
+  // The value of the variable. Required.
+  double value = 2;
+}
+
+// The non-media treatment variable. A marketing activity that is not directly
+// related to media, such as running a promotion, the price of a product, and
+// a change in a product's packaging or design.
+message NonMediaTreatmentVariable {
+  // The name of the variable. Required.
+  string name = 1;
+
+  // The value of the variable. Required.
+  double value = 2;
+}
+
+// Scalar type of metrics. Ex: Impressions, clicks, costs, and etc.
+message ScalarMetric {
+  // The name of the scalar metric. Required.
+  string name = 1;
+
+  // The value of the scalar metric. Required.
+  double value = 2;
+}
+
+// The media variable.
+message MediaVariable {
+  reserved 3;
+
+  // The name of the media channel. Required.
+  string channel_name = 1;
+
+  // Scalar metric measured on the channel. Required.
+  ScalarMetric scalar_metric = 2;
+
+  // Spend on the media.
+  //
+  // If the media variable is a paid media, spend is required.
+  double media_spend = 4;
+}
+
+// The reach and frequency variable.
+message ReachFrequencyVariable {
+  // The name of the reach and frequency variable. Required.
+  string channel_name = 1;
+
+  // The reach value. Required.
+  int64 reach = 2;
+
+  // The average frequency value. Required.
+  double average_frequency = 3;
+
+  // The spend value.
+  //
+  // If the reach and frequency variable is a paid media, spend is required.
+  double spend = 4;
+}
+
+// A data point contains marketing information at specific geo and time.
+message MarketingDataPoint {
+  // Geo info of this data point.
+  // If unset, this data point is aggregated across all geos in the model's
+  // geo coordinates.
+  GeoInfo geo_info = 1;
+
+  // Date interval covered by this data point. Required.
+  // This can represent either a coordinate point, or an aggregation over a time
+  // dimension's coordinates. In the case of the latter, this field should be
+  // defined with `[start, end + interval]` value, where `start` and `end` are
+  // the first and last coordinate in that time dimension, respectively.
+  common.DateInterval date_interval = 2;
+
+  // The control variables associated to the marketing at this geo and time.
+  repeated ControlVariable control_variables = 3;
+
+  // The media variables associated to the marketing at this geo and time.
+  //
+  // If a media variable is from a paid media channel and its media spend
+  // breakdown by geo and time is not available (i.e. media spend is aggregated
+  // across all geos and times), then there should be a separate
+  // `MarketingDataPoint` message with `media_spend` where `geo_info` is unset
+  // and `date_interval` spans the entire time dimension's coordinates.
+  //
+  // Media channel names should be unique across this group of media variables.
+  repeated MediaVariable media_variables = 4;
+
+  // The reach and frequency variables associated to the marketing at this geo
+  // and time.
+  //
+  // If a reach and frequency variable is from a paid media channel and its
+  // spend breakdown by geo and time is not available (i.e. spend is
+  // aggregated across all geos and times), then there should be a separate
+  // `MarketingDataPoint` message with `spend` where `geo_info` is unset and
+  // `date_interval` spans the entire time dimension's coordinates.
+  //
+  // Reach and frequency variable names should be unique across this group of
+  // reach and frequency variables.
+  repeated ReachFrequencyVariable reach_frequency_variables = 6;
+
+  // The KPI associated to the marketing at this geo and time.
+  // Kpi type must be consistent across all data points.
+  Kpi kpi = 5;
+
+  // Non-media treatment variables associated with this data point.
+  repeated NonMediaTreatmentVariable non_media_treatment_variables = 7;
+}
+
+// Metadata support useful to validate data points and recreate a model data in
+// its domain language.
+message MarketingDataMetadata {
+  // A named set of time coordinates.
+  message TimeDimension {
+    // A name for this set of time coordinates. Optional.
+    string name = 1;
+
+    // The coordinates of this time dimension in the model, as dates. Required.
+    repeated google.type.Date dates = 2;
+  }
+
+  // One or more sets of time coordinates. Required.
+  repeated TimeDimension time_dimensions = 1;
+
+  message GeoDimension {
+    repeated string geo_coordinates = 1;
+  }
+
+  // The geo dimension of the model. Required.
+  GeoDimension geo_dimension = 2;
+
+  // A named set of channel name coordinates.
+  message ChannelDimension {
+    // A name for this set of channel names in this dimension. Optional.
+    string name = 1;
+
+    // The channel names in this set's dimensional coordinates. Required.
+    repeated string channels = 2;
+  }
+
+  // One or more sets of channel names. Required.
+  repeated ChannelDimension channel_dimensions = 3;
+
+  // Control variable names.
+  repeated string control_names = 4;
+
+  // The KPI type.
+  string kpi_type = 5;
+
+  // Non-media treatment variable names.
+  repeated string non_media_treatment_names = 6;
+}
+
+// A collection of marketing data points for different combinations of geo
+// locations and times, used for model training.
+message MarketingData {
+  // The marketing data points. Required.
+  repeated MarketingDataPoint marketing_data_points = 1;
+
+  // Metadata support useful to recreate a model data in its domain language.
+  MarketingDataMetadata metadata = 2;
+}
