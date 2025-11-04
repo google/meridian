@@ -252,6 +252,17 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     self._kpi2 = self.sample(tfd.HalfNormal(10), [self._n_geos, self._n_times])
     self._population = self.sample(tfd.Uniform(100, 1000), [self._n_geos])
 
+  def test_population_scaled_kpi(self):
+    transformer = transformers.KpiTransformer(
+        kpi=self._kpi1, population=self._population
+    )
+    expected_population_scaled_kpi = backend.divide_no_nan(
+        self._kpi1, self._population[:, backend.newaxis]
+    )
+    test_utils.assert_allclose(
+        transformer.population_scaled_kpi, expected_population_scaled_kpi
+    )
+
   def test_population_scaled_mean(self):
     transformer = transformers.KpiTransformer(
         kpi=self._kpi1, population=self._population

@@ -122,6 +122,22 @@ class VIFArtifact(AnalysisArtifact):
   outlier_df: pd.DataFrame
 
 
+@dataclasses.dataclass(frozen=True)
+class KpiInvariabilityArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a KPI invariability analysis.
+
+  Attributes:
+    population_scaled_kpi_da: DataArray of the population-scaled KPI.
+    population_scaled_mean: The mean of the population-scaled KPI.
+    population_scaled_stdev: The standard deviation of the population-scaled
+      KPI.
+  """
+
+  population_scaled_kpi_da: xr.DataArray
+  population_scaled_mean: float
+  population_scaled_stdev: float
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -129,6 +145,7 @@ class EDACheckType(enum.Enum):
   PAIRWISE_CORR = enum.auto()
   STD = enum.auto()
   VIF = enum.auto()
+  KPI_INVARIABILITY = enum.auto()
 
 
 ArtifactType = typing.TypeVar('ArtifactType', bound='AnalysisArtifact')

@@ -196,11 +196,19 @@ class KpiTransformer(TensorTransformer):
         each geo, used to to compute the population scale factors.
     """
     self._population = population
-    population_scaled_kpi = backend.divide_no_nan(
+    self._population_scaled_kpi = backend.divide_no_nan(
         kpi, self._population[:, backend.newaxis]
     )
-    self._population_scaled_mean = backend.reduce_mean(population_scaled_kpi)
-    self._population_scaled_stdev = backend.reduce_std(population_scaled_kpi)
+    self._population_scaled_mean = backend.reduce_mean(
+        self._population_scaled_kpi
+    )
+    self._population_scaled_stdev = backend.reduce_std(
+        self._population_scaled_kpi
+    )
+
+  @property
+  def population_scaled_kpi(self):
+    return self._population_scaled_kpi
 
   @property
   def population_scaled_mean(self):

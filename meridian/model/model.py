@@ -1157,15 +1157,11 @@ class Meridian:
             " time."
         )
 
-  def _kpi_has_variability(self):
-    """Returns True if the KPI has variability across geos and times."""
-    return self.kpi_transformer.population_scaled_stdev != 0
-
   def _validate_kpi_transformer(self):
     """Validates the KPI transformer."""
-    if self._kpi_has_variability():
+    if self.eda_engine.kpi_has_variability:
       return
-
+    # TODO: b/457552311 - Consolidate the logic for getting KPI name.
     kpi = "kpi" if self.is_national else "population_scaled_kpi"
 
     if (

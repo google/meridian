@@ -133,6 +133,7 @@ ORGANIC_REACH_SCALED = ORGANIC_PREFIX + REACH_SCALED
 NON_MEDIA_TREATMENTS_SCALED = 'non_media_treatments_scaled'
 CONTROLS_SCALED = 'controls_scaled'
 KPI_SCALED = f'{KPI}_scaled'
+POPULATION_SCALED_KPI = f'{POPULATION}_scaled_{KPI}'
 RF_IMPRESSIONS_SCALED = f'{RF_IMPRESSIONS}_scaled'
 
 # Non-media treatments baseline value constants.
