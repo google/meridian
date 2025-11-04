@@ -1188,6 +1188,7 @@ class EDAEngine:
         )
     )
     if not overall_extreme_corr_var_pairs_df.empty:
+      var_pairs = overall_extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
@@ -1195,8 +1196,7 @@ class EDAEngine:
                   'Some variables have perfect pairwise correlation across all'
                   ' times and geos. For each pair of perfectly-correlated'
                   ' variables, please remove one of the variables from the'
-                  ' model.\n'
-                  + overall_extreme_corr_var_pairs_df.to_string()
+                  f' model.\nPairs with perfect correlation: {var_pairs}'
               ),
           )
       )
@@ -1220,8 +1220,7 @@ class EDAEngine:
                   'Some variables have perfect pairwise correlation in certain'
                   ' geo(s). Consider checking your data, and/or combining these'
                   ' variables if they also have high pairwise correlations in'
-                  ' other geos.\n'
-                  + geo_extreme_corr_var_pairs_df.to_string()
+                  ' other geos.'
               ),
           )
       )
@@ -1280,6 +1279,7 @@ class EDAEngine:
     )
 
     if not extreme_corr_var_pairs_df.empty:
+      var_pairs = extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
@@ -1287,8 +1287,7 @@ class EDAEngine:
                   'Some variables have perfect pairwise correlation across all'
                   ' times. For each pair of perfectly-correlated'
                   ' variables, please remove one of the variables from the'
-                  ' model.\n'
-                  + extreme_corr_var_pairs_df.to_string()
+                  f' model.\nPairs with perfect correlation: {var_pairs}'
               ),
           )
       )
@@ -1550,6 +1549,7 @@ class EDAEngine:
 
     findings = []
     if not extreme_overall_vif_df.empty:
+      high_vif_vars = extreme_overall_vif_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
@@ -1558,7 +1558,8 @@ class EDAEngine:
                   f' >{overall_threshold}) across all times and geos. To'
                   ' address multicollinearity, please drop any variable that'
                   ' is a linear combination of other variables. Otherwise,'
-                  ' consider combining variables.'
+                  ' consider combining variables.\n'
+                  f'Variables with extreme VIF: {high_vif_vars}'
               ),
           )
       )
@@ -1614,6 +1615,7 @@ class EDAEngine:
 
     findings = []
     if not extreme_national_vif_df.empty:
+      high_vif_vars = extreme_national_vif_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
@@ -1622,7 +1624,8 @@ class EDAEngine:
                   f' {national_threshold}) across all times. To address'
                   ' multicollinearity, please drop any variable that is a'
                   ' linear combination of other variables. Otherwise, consider'
-                  ' combining variables.'
+                  ' combining variables.\n'
+                  f'Variables with extreme VIF: {high_vif_vars}'
               ),
           )
       )

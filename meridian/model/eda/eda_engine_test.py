@@ -3301,6 +3301,10 @@ class EDAEngineTest(
         "perfect pairwise correlation across all times and geos",
         finding.explanation,
     )
+    self.assertIn(
+        "Pairs with perfect correlation: [('media_1', 'media_2')]",
+        finding.explanation,
+    )
 
     overall_artifact = next(
         artifact
@@ -3428,6 +3432,10 @@ class EDAEngineTest(
     self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
     self.assertIn(
         "perfect pairwise correlation across all times and geos",
+        finding.explanation,
+    )
+    self.assertIn(
+        "Pairs with perfect correlation: [('media_1', 'control_1')]",
         finding.explanation,
     )
     overall_artifact = next(
@@ -3595,6 +3603,10 @@ class EDAEngineTest(
     self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
     self.assertIn(
         "perfect pairwise correlation across all times",
+        finding.explanation,
+    )
+    self.assertIn(
+        "Pairs with perfect correlation: [('media_1', 'media_2')]",
         finding.explanation,
     )
 
@@ -4300,7 +4312,10 @@ class EDAEngineTest(
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF >10) across"
-              " all times and geos."
+              " all times and geos. To address multicollinearity, please drop"
+              " any variable that is a linear combination of other variables."
+              " Otherwise, consider combining variables.\nVariables with"
+              " extreme VIF: ['var_1', 'var_2', 'var_3']"
           ),
       ),
   )
@@ -4487,7 +4502,10 @@ class EDAEngineTest(
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
               "Some variables have extreme multicollinearity (with VIF > 10)"
-              " across all times."
+              " across all times. To address multicollinearity, please drop any"
+              " variable that is a linear combination of other variables."
+              " Otherwise, consider combining variables.\nVariables with"
+              " extreme VIF: ['var_1', 'var_2', 'var_3']"
           ),
       ),
   )
