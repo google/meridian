@@ -4707,57 +4707,58 @@ class EDAEngineTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="has_variability",
-          population_scaled_stdev=1.0,
+          kpi_scaled_stdev=1.0,
           expected_result=True,
       ),
       dict(
           testcase_name="no_variability",
-          population_scaled_stdev=0.0,
+          kpi_scaled_stdev=0.0,
           expected_result=False,
       ),
       dict(
           testcase_name="below_threshold",
-          population_scaled_stdev=eda_engine._STD_THRESHOLD / 2,
+          kpi_scaled_stdev=eda_engine._STD_THRESHOLD / 2,
           expected_result=False,
       ),
       dict(
           testcase_name="at_threshold",
-          population_scaled_stdev=eda_engine._STD_THRESHOLD,
+          kpi_scaled_stdev=eda_engine._STD_THRESHOLD,
           expected_result=True,
       ),
   )
-  def test_kpi_has_variability(self, population_scaled_stdev, expected_result):
+  def test_kpi_has_variability(self, kpi_scaled_stdev, expected_result):
     meridian = mock.Mock(spec=model.Meridian)
-    meridian.kpi_transformer.population_scaled_stdev = population_scaled_stdev
     engine = eda_engine.EDAEngine(meridian)
+    mock_kpi_scaled_da = mock.Mock()
+    mock_kpi_scaled_da.std.return_value = xr.DataArray(kpi_scaled_stdev)
+    self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_scaled_da)
     self.assertEqual(engine.kpi_has_variability, expected_result)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="geo",
           is_national=False,
-          expected_kpi_name="population_scaled_kpi",
+          kpi_data=np.ones((5, 200)),
       ),
       dict(
           testcase_name="national",
           is_national=True,
-          expected_kpi_name="kpi",
+          kpi_data=np.ones((1, 200)),
       ),
   )
   def test_check_overall_kpi_invariability_no_variability(
-      self, is_national, expected_kpi_name
+      self, is_national, kpi_data
   ):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = is_national
     meridian.input_data.kpi = self.input_data_with_media_only.kpi
-    mock_kpi_transformer = mock.Mock()
-    mock_kpi_transformer.population_scaled_stdev = 0.0
-    mock_kpi_transformer.population_scaled_mean = 100.0
-    mock_kpi_transformer.population_scaled_kpi = backend.zeros(
-        (self._N_GEOS, self._N_TIMES), dtype=backend.float32
-    )
-    meridian.kpi_transformer = mock_kpi_transformer
     engine = eda_engine.EDAEngine(meridian)
+
+    mock_kpi_scaled_da = _create_data_array_with_var_dim(
+        kpi_data,
+        name=constants.KPI_SCALED,
+    )
+    self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_scaled_da)
 
     outcome = engine.check_overall_kpi_invariability()
 
@@ -4770,7 +4771,7 @@ class EDAEngineTest(
     )
     expected_geo_text = "geos and " if not is_national else ""
     self.assertIn(
-        f"`{expected_kpi_name}` is constant across all"
+        f"`{constants.KPI_SCALED}` is constant across all"
         f" {expected_geo_text}times",
         outcome.findings[0].explanation,
     )
@@ -4778,38 +4779,37 @@ class EDAEngineTest(
     artifact = outcome.analysis_artifacts[0]
     self.assertIsInstance(artifact, eda_outcome.KpiInvariabilityArtifact)
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
-    self.assertEqual(artifact.population_scaled_stdev, 0.0)
-    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertAlmostEqual(artifact.kpi_stdev, 0.0)
     test_utils.assert_allclose(
-        artifact.population_scaled_kpi_da.values,
-        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+        artifact.kpi_da.values,
+        kpi_data,
     )
 
   @parameterized.named_parameters(
       dict(
           testcase_name="geo",
           is_national=False,
+          kpi_data=np.arange(5 * 200).reshape(5, 200),
       ),
       dict(
           testcase_name="national",
           is_national=True,
+          kpi_data=np.arange(1 * 200).reshape(1, 200),
       ),
   )
-  def test_check_overall_kpi_invariability_has_variability(self, is_national):
+  def test_check_overall_kpi_invariability_has_variability(
+      self, is_national, kpi_data
+  ):
     meridian = mock.Mock(spec=model.Meridian)
     meridian.is_national = is_national
     meridian.input_data.kpi = self.input_data_with_media_only.kpi
-    mock_kpi_transformer = mock.Mock()
-    mock_kpi_transformer.population_scaled_stdev = 1.0
-    mock_kpi_transformer.population_scaled_mean = 100.0
-    mock_kpi_transformer.population_scaled_kpi = backend.to_tensor(
-        np.arange(self._N_GEOS * self._N_TIMES).reshape(
-            self._N_GEOS, self._N_TIMES
-        ),
-        dtype=backend.float32,
-    )
-    meridian.kpi_transformer = mock_kpi_transformer
     engine = eda_engine.EDAEngine(meridian)
+
+    mock_kpi_scaled_da = _create_data_array_with_var_dim(
+        kpi_data,
+        name=constants.KPI_SCALED,
+    )
+    self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_scaled_da)
 
     outcome = engine.check_overall_kpi_invariability()
 
@@ -4819,9 +4819,8 @@ class EDAEngineTest(
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
     expected_geo_text = "geos and " if not is_national else ""
-    expected_kpi_name = "kpi" if is_national else "population_scaled_kpi"
     self.assertIn(
-        f"The {expected_kpi_name} has variability across"
+        f"The {constants.KPI_SCALED} has variability across"
         f" {expected_geo_text}times",
         outcome.findings[0].explanation,
     )
@@ -4829,11 +4828,10 @@ class EDAEngineTest(
     artifact = outcome.analysis_artifacts[0]
     self.assertIsInstance(artifact, eda_outcome.KpiInvariabilityArtifact)
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
-    self.assertEqual(artifact.population_scaled_stdev, 1.0)
-    self.assertEqual(artifact.population_scaled_mean, 100.0)
+    self.assertGreater(artifact.kpi_stdev, eda_engine._STD_THRESHOLD)
     test_utils.assert_allclose(
-        artifact.population_scaled_kpi_da.values,
-        backend.to_tensor(mock_kpi_transformer.population_scaled_kpi),
+        artifact.kpi_da.values,
+        kpi_data,
     )
 
 

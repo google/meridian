@@ -737,27 +737,6 @@ class EDAEngine:
     )
 
   @functools.cached_property
-  def _population_scaled_kpi_artifact(
-      self,
-  ) -> eda_outcome.KpiInvariabilityArtifact:
-    """Returns an artifact containing population-scaled KPI data."""
-    kpi_transformer = self._meridian.kpi_transformer
-
-    population_scaled_kpi_da = _data_array_like(
-        da=self._meridian.input_data.kpi,
-        values=kpi_transformer.population_scaled_kpi,
-    )
-    population_scaled_kpi_da.name = constants.POPULATION_SCALED_KPI
-
-    artifact = eda_outcome.KpiInvariabilityArtifact(
-        level=eda_outcome.AnalysisLevel.OVERALL,
-        population_scaled_kpi_da=population_scaled_kpi_da,
-        population_scaled_mean=float(kpi_transformer.population_scaled_mean),
-        population_scaled_stdev=float(kpi_transformer.population_scaled_stdev),
-    )
-    return artifact
-
-  @functools.cached_property
   def kpi_scaled_da(self) -> xr.DataArray:
     scaled_kpi_da = _data_array_like(
         da=self._meridian.input_data.kpi,
@@ -765,6 +744,17 @@ class EDAEngine:
     )
     scaled_kpi_da.name = constants.KPI_SCALED
     return scaled_kpi_da
+
+  @functools.cached_property
+  def _overall_scaled_kpi_invariability_artifact(
+      self,
+  ) -> eda_outcome.KpiInvariabilityArtifact:
+    """Returns an artifact of overall scaled KPI invariability."""
+    return eda_outcome.KpiInvariabilityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        kpi_da=self.kpi_scaled_da,
+        kpi_stdev=self.kpi_scaled_da.std(ddof=1),
+    )
 
   @functools.cached_property
   def national_kpi_scaled_da(self) -> xr.DataArray:
@@ -1681,16 +1671,17 @@ class EDAEngine:
         analysis_artifacts=[national_vif_artifact],
     )
 
-  @functools.cached_property
+  @property
   def kpi_has_variability(self) -> bool:
     """Returns True if the KPI has variability across geos and times."""
-    stdev = float(self._meridian.kpi_transformer.population_scaled_stdev)
-    return stdev >= _STD_THRESHOLD
+    return (
+        self._overall_scaled_kpi_invariability_artifact.kpi_stdev.item()
+        >= _STD_THRESHOLD
+    )
 
   def check_overall_kpi_invariability(self) -> eda_outcome.EDAOutcome:
     """Checks if the KPI is constant across all geos and times."""
-    # TODO: b/457552311 - Consolidate the logic for getting KPI name.
-    kpi = 'kpi' if self._meridian.is_national else 'population_scaled_kpi'
+    kpi = self._overall_scaled_kpi_invariability_artifact.kpi_da.name
     geo_text = '' if self._meridian.is_national else 'geos and '
 
     if not self.kpi_has_variability:
@@ -1712,5 +1703,5 @@ class EDAEngine:
     return eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.KPI_INVARIABILITY,
         findings=[eda_finding],
-        analysis_artifacts=[self._population_scaled_kpi_artifact],
+        analysis_artifacts=[self._overall_scaled_kpi_invariability_artifact],
     )

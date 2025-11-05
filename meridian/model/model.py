@@ -1161,8 +1161,7 @@ class Meridian:
     """Validates the KPI transformer."""
     if self.eda_engine.kpi_has_variability:
       return
-    # TODO: b/457552311 - Consolidate the logic for getting KPI name.
-    kpi = "kpi" if self.is_national else "population_scaled_kpi"
+    kpi = self.eda_engine.kpi_scaled_da.name
 
     if (
         self.n_media_channels > 0

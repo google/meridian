@@ -67,8 +67,11 @@ class AnalysisLevel(enum.Enum):
   """Enumeration for the level of an analysis.
 
   Attributes:
-    OVERALL: Computed across all geos and time.
+    OVERALL: Computed across all geos and time. When the analysis is performed
+      on national data, this level is equivalent to the NATIONAL level.
     NATIONAL: Computed across time for data aggregated to the national level.
+      When the analysis is performed on national data, this level is equivalent
+      to the OVERALL level.
     GEO: Computed across time, for each geo.
   """
 
@@ -141,15 +144,13 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
   """Encapsulates artifacts from a KPI invariability analysis.
 
   Attributes:
-    population_scaled_kpi_da: DataArray of the population-scaled KPI.
-    population_scaled_mean: The mean of the population-scaled KPI.
-    population_scaled_stdev: The standard deviation of the population-scaled
-      KPI.
+    kpi_da: DataArray of the KPI that is examined for variability.
+    kpi_stdev: The standard deviation of the KPI, which is used to test the KPI
+      invariability.
   """
 
-  population_scaled_kpi_da: xr.DataArray
-  population_scaled_mean: float
-  population_scaled_stdev: float
+  kpi_da: xr.DataArray
+  kpi_stdev: xr.DataArray
 
 
 @enum.unique

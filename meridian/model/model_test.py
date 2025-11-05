@@ -957,8 +957,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`population_scaled_kpi` cannot be constant with `rf_prior_type`"
-              ' = "roi".'
+              '`kpi_scaled` cannot be constant with `rf_prior_type` = "roi".'
           ),
       ),
       dict(
@@ -969,7 +968,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`population_scaled_kpi` cannot be constant with"
+              "`kpi_scaled` cannot be constant with"
               ' `media_prior_type` = "mroi".'
           ),
       ),
@@ -981,7 +980,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`population_scaled_kpi` cannot be constant with"
+              "`kpi_scaled` cannot be constant with"
               ' `organic_media_prior_type` = "contribution".'
           ),
       ),
@@ -993,7 +992,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`population_scaled_kpi` cannot be constant with"
+              "`kpi_scaled` cannot be constant with"
               ' `organic_rf_prior_type` = "contribution".'
           ),
       ),
@@ -1005,7 +1004,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
           error_msg=(
-              "`population_scaled_kpi` cannot be constant with"
+              "`kpi_scaled` cannot be constant with"
               ' `non_media_treatments_prior_type` = "contribution".'
           ),
       ),
@@ -1049,7 +1048,9 @@ class ModelTest(
           organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-          error_msg='`kpi` cannot be constant with `media_prior_type` = "roi".',
+          error_msg=(
+              '`kpi_scaled` cannot be constant with `media_prior_type` = "roi".'
+          ),
       ),
       dict(
           testcase_name="media_prior_type_mroi",
@@ -1059,7 +1060,8 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              '`kpi` cannot be constant with `media_prior_type` = "mroi".'
+              "`kpi_scaled` cannot be constant with `media_prior_type` ="
+              ' "mroi".'
           ),
       ),
       dict(
@@ -1069,7 +1071,9 @@ class ModelTest(
           organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-          error_msg='`kpi` cannot be constant with `rf_prior_type` = "roi".',
+          error_msg=(
+              '`kpi_scaled` cannot be constant with `rf_prior_type` = "roi".'
+          ),
       ),
       dict(
           testcase_name="rf_prior_type_mroi",
@@ -1078,7 +1082,9 @@ class ModelTest(
           organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-          error_msg='`kpi` cannot be constant with `rf_prior_type` = "mroi".',
+          error_msg=(
+              '`kpi_scaled` cannot be constant with `rf_prior_type` = "mroi".'
+          ),
       ),
       dict(
           testcase_name="organic_media_prior_type_contribution",
@@ -1088,8 +1094,8 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`kpi` cannot be constant with `organic_media_prior_type` ="
-              ' "contribution".'
+              "`kpi_scaled` cannot be constant with `organic_media_prior_type`"
+              ' = "contribution".'
           ),
       ),
       dict(
@@ -1100,7 +1106,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
-              "`kpi` cannot be constant with `organic_rf_prior_type` ="
+              "`kpi_scaled` cannot be constant with `organic_rf_prior_type` ="
               ' "contribution".'
           ),
       ),
@@ -1112,7 +1118,7 @@ class ModelTest(
           organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
           error_msg=(
-              "`kpi` cannot be constant with"
+              "`kpi_scaled` cannot be constant with"
               ' `non_media_treatments_prior_type` = "contribution".'
           ),
       ),
