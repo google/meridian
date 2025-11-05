@@ -1,0 +1,70 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.fit;
+
+import "mmm/v1/common/date_interval.proto";
+import "mmm/v1/common/estimate.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// A prediction contains the predicted KPI and the ground truth at a specific
+// time.
+message Prediction {
+  // The time associated to this prediction point. Required.
+  common.DateInterval date_interval = 1;
+
+  // The predicted outcome. Required.
+  common.Estimate predicted_outcome = 2;
+
+  // The predicted baseline. Optional.
+  common.Estimate predicted_baseline = 3;
+
+  // The actual value observed in the data. Required.
+  double actual_value = 4;
+}
+
+// The model fit performance indicated by different metrics.
+message Performance {
+  double r_squared = 1;
+
+  // Mean absolute percentage error.
+  double mape = 2;
+
+  // Is equal to sum_i(actual_i - pred_i) / sum_i(actual_i)
+  double weighted_mape = 3;
+
+  // Root mean square error.
+  double rmse = 4;
+}
+
+message Result {
+  // The name of the result. Required.
+  string name = 1;
+
+  // The predictions over different times. Required.
+  repeated Prediction predictions = 2;
+
+  // The performance of the model fit. Required.
+  Performance performance = 3;
+}
+
+message ModelFit {
+  // Different results for different purposes. For example, one could divide a
+  // data to training set, testing set, and validation set. Required.
+  repeated Result results = 1;
+}
