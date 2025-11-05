@@ -712,18 +712,6 @@ if _BACKEND == config.Backend.JAX:
   arange = _jax_arange
   argmax = _jax_argmax
   boolean_mask = _jax_boolean_mask
-  concatenate = _ops.concatenate
-  stack = _ops.stack
-  split = _jax_split
-  zeros = _ops.zeros
-  zeros_like = _ops.zeros_like
-  ones = _ops.ones
-  ones_like = _ops.ones_like
-  repeat = _ops.repeat
-  reshape = _ops.reshape
-  tile = _ops.tile
-  where = _ops.where
-  broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _jax_cast
@@ -745,10 +733,10 @@ if _BACKEND == config.Backend.JAX:
   log = _ops.log
   make_ndarray = _jax_make_ndarray
   make_tensor_proto = _jax_make_tensor_proto
-  nanmedian = _jax_nanmedian
   nanmean = jax_ops.nanmean
-  nanvar = jax_ops.nanvar
+  nanmedian = _jax_nanmedian
   nansum = jax_ops.nansum
+  nanvar = jax_ops.nanvar
   numpy_function = _jax_numpy_function
   one_hot = _jax_one_hot
   ones = _ops.ones
@@ -763,6 +751,7 @@ if _BACKEND == config.Backend.JAX:
   repeat = _ops.repeat
   reshape = _ops.reshape
   roll = _jax_roll
+  split = _jax_split
   stack = _ops.stack
   tile = _jax_tile
   transpose = _jax_transpose
@@ -862,25 +851,14 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   bijectors = tfp.bijectors
   experimental = tfp.experimental
   mcmc = tfp.mcmc
-
   _convert_to_tensor = _ops.convert_to_tensor
+
+  # Standardized Public API
   absolute = _ops.math.abs
   allclose = _ops.experimental.numpy.allclose
   arange = _tf_arange
   argmax = _tf_argmax
   boolean_mask = _tf_boolean_mask
-  concatenate = _ops.concat
-  stack = _ops.stack
-  split = _ops.split
-  zeros = _ops.zeros
-  zeros_like = _ops.zeros_like
-  ones = _ops.ones
-  ones_like = _ops.ones_like
-  repeat = _ops.repeat
-  reshape = _ops.reshape
-  tile = _ops.tile
-  where = _ops.where
-  broadcast_to = _ops.broadcast_to
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _ops.cast
@@ -902,10 +880,10 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   log = _ops.math.log
   make_ndarray = _ops.make_ndarray
   make_tensor_proto = _ops.make_tensor_proto
-  nanmedian = _tf_nanmedian
   nanmean = _tf_nanmean
-  nanvar = _tf_nanvar
+  nanmedian = _tf_nanmedian
   nansum = _tf_nansum
+  nanvar = _tf_nanvar
   numpy_function = _ops.numpy_function
   one_hot = _ops.one_hot
   ones = _ops.ones
@@ -921,6 +899,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reshape = _ops.reshape
   roll = _ops.roll
   set_random_seed = tf_backend.keras.utils.set_random_seed
+  split = _ops.split
   stack = _ops.stack
   tile = _ops.tile
   transpose = _ops.transpose
