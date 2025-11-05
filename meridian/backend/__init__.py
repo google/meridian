@@ -677,6 +677,26 @@ if _BACKEND == config.Backend.JAX:
 
   random = _JaxRandom()
 
+  @functools.partial(
+      jax.jit,
+      static_argnames=[
+          "joint_dist",
+          "n_chains",
+          "n_draws",
+          "num_adaptation_steps",
+          "dual_averaging_kwargs",
+          "max_tree_depth",
+          "unrolled_leapfrog_steps",
+          "parallel_iterations",
+      ],
+  )
+  def _jax_xla_windowed_adaptive_nuts(**kwargs):
+    """JAX-specific JIT wrapper for the NUTS sampler."""
+    kwargs["seed"] = random.prng_key(kwargs["seed"])
+    return experimental.mcmc.windowed_adaptive_nuts(**kwargs)
+
+  xla_windowed_adaptive_nuts = _jax_xla_windowed_adaptive_nuts
+
   _ops = jax_ops
   errors = _JaxErrors()
   Tensor = jax.Array
@@ -830,6 +850,13 @@ elif _BACKEND == config.Backend.TENSORFLOW:
       return tfp.random.sanitize_seed(seed)
 
   random = _TfRandom()
+
+  @tf_backend.function(autograph=False, jit_compile=True)
+  def _tf_xla_windowed_adaptive_nuts(**kwargs):
+    """TensorFlow-specific XLA wrapper for the NUTS sampler."""
+    return experimental.mcmc.windowed_adaptive_nuts(**kwargs)
+
+  xla_windowed_adaptive_nuts = _tf_xla_windowed_adaptive_nuts
 
   tfd = tfp.distributions
   bijectors = tfp.bijectors
@@ -1041,7 +1068,8 @@ class _JaxRNGHandler(_BaseRNGHandler):
   def get_kernel_seed(self) -> Any:
     if self._key is None:
       return None
-    return random.sanitize_seed(self._key)
+    _, subkey = random.split(self._key)
+    return int(jax.random.randint(subkey, (), 0, 2**31 - 1))  # pylint: disable=undefined-variable
 
   def get_next_seed(self) -> Any:
     if self._key is None:

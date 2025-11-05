@@ -24,6 +24,7 @@ import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import immutabledict
 import jax
 import jax.numpy as jnp
 from meridian import backend
@@ -1192,10 +1193,11 @@ class RNGHandlerTest(BackendTest):
     self.assertEqual(handler._int_seed, seed)
 
     if backend_name == _JAX:
-      expected_key = jax.random.PRNGKey(seed)
-      # Kernel seed should be the sanitized version of the key
-      expected_kernel_seed = backend.random.sanitize_seed(expected_key)
-      self._assert_key_equal(handler.get_kernel_seed(), expected_kernel_seed)
+      # The kernel seed should be a reproducible integer derived from the key.
+      key = jax.random.PRNGKey(seed)
+      _, subkey = jax.random.split(key)
+      expected_int_seed = int(jax.random.randint(subkey, (), 0, 2**31 - 1))
+      self.assertEqual(handler.get_kernel_seed(), expected_int_seed)
     else:
       # TF Regression Safety: Must match (s, s) behavior.
       # The legacy handler explicitly converts int -> (int, int) before
@@ -1306,7 +1308,7 @@ class RNGHandlerTest(BackendTest):
       self.assertIsInstance(seed1, jax.Array)
       self.assertIsInstance(seed2, jax.Array)
       self._assert_key_not_equal(seed1, seed2)
-      self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
+      self.assertNotEqual(handler.get_kernel_seed(), initial_kernel_seed)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_get_next_seed_is_reproducible(self, backend_name):
@@ -1349,7 +1351,7 @@ class RNGHandlerTest(BackendTest):
     new_handler1 = handler.advance_handler()
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
+      self.assertNotEqual(handler.get_kernel_seed(), initial_kernel_seed)
     else:
       test_utils.assert_not_allequal(
           handler.get_kernel_seed(), initial_kernel_seed
@@ -1367,8 +1369,8 @@ class RNGHandlerTest(BackendTest):
     kernel_seed2 = new_handler2.get_kernel_seed()
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(kernel_seed1, initial_kernel_seed)
-      self._assert_key_not_equal(kernel_seed1, kernel_seed2)
+      self.assertNotEqual(kernel_seed1, initial_kernel_seed)
+      self.assertNotEqual(kernel_seed1, kernel_seed2)
     else:
       self.assertFalse(np.array_equal(kernel_seed1, initial_kernel_seed))
       self.assertFalse(np.array_equal(kernel_seed1, kernel_seed2))
@@ -1404,16 +1406,152 @@ class RNGHandlerTest(BackendTest):
 
     for s1, s2 in zip(seq1, seq2):
       if backend_name == _JAX:
-        self._assert_key_equal(s1, s2)
+        self.assertEqual(s1, s2)
       else:
         test_utils.assert_allequal(s1, s2)
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(seq1[0], seq1[1])
-      self._assert_key_not_equal(seq1[1], seq1[2])
+      self.assertNotEqual(seq1[0], seq1[1])
+      self.assertNotEqual(seq1[1], seq1[2])
     else:
       self.assertFalse(np.array_equal(seq1[0], seq1[1]))
       self.assertFalse(np.array_equal(seq1[1], seq1[2]))
+
+
+class XlaWindowedAdaptiveNutsTest(BackendTest):
+  """Tests for the backend.xla_windowed_adaptive_nuts wrapper."""
+
+  def _get_test_model(self, dims=2):
+    """Defines a simple multivariate Gaussian model using the active backend."""
+    tfd = backend.tfd
+    loc = backend.zeros(dims, dtype=backend.float32)
+    scale_diag = backend.ones(dims, dtype=backend.float32)
+    return tfd.JointDistributionNamed(
+        {"x": tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)}
+    )
+
+  def _run_sampling(
+      self,
+      backend_name,
+      model,
+      seed_int,
+      n_chains,
+      n_draws,
+      num_adaptation_steps,
+      **kwargs,
+  ):
+    """Helper to execute the sampler reproducibly from an integer seed."""
+    handler = backend.RNGHandler(seed_int)
+    kernel_seed = handler.get_kernel_seed()
+
+    if backend_name == _JAX:
+      self.assertIsInstance(kernel_seed, int)
+    else:
+      self.assertIsInstance(kernel_seed, backend.Tensor)
+      self.assertLen(kernel_seed.shape, 1)
+
+    if backend_name == _JAX:
+      if "dual_averaging_kwargs" in kwargs:
+        kwargs["dual_averaging_kwargs"] = immutabledict.immutabledict(
+            kwargs["dual_averaging_kwargs"]
+        )
+
+    draws, trace = backend.xla_windowed_adaptive_nuts(
+        joint_dist=model,
+        n_chains=n_chains,
+        n_draws=n_draws,
+        num_adaptation_steps=num_adaptation_steps,
+        seed=kernel_seed,
+        **kwargs,
+    )
+    return draws, trace
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_execution_and_shapes(self, backend_name):
+    """Verifies execution, static arg handling (immutabledict), and output shapes."""
+    self._set_backend_for_test(backend_name)
+
+    dims = 3
+    model = self._get_test_model(dims=dims)
+    n_chains = 4
+    n_draws = 8
+    num_adaptation_steps = 5
+
+    draws, trace = self._run_sampling(
+        backend_name=backend_name,
+        model=model,
+        seed_int=42,
+        n_chains=n_chains,
+        n_draws=n_draws,
+        num_adaptation_steps=num_adaptation_steps,
+        max_tree_depth=5,  # Test another static arg
+        dual_averaging_kwargs={"target_accept_prob": 0.8},
+    )
+
+    self.assertIn("x", draws)
+    x_draws = draws["x"]
+    self.assertEqual(tuple(x_draws.shape), (n_draws, n_chains, dims))
+    self.assertIsInstance(x_draws, backend.Tensor)
+
+    self.assertIsInstance(trace, dict)
+    self.assertIn("step_size", trace)
+
+    expected_trace_shape = (n_draws,)
+    self.assertEqual(tuple(trace["step_size"].shape), expected_trace_shape)
+    final_step_size = trace["step_size"][-1]
+    self.assertEqual(tuple(final_step_size.shape), ())
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_reproducibility(self, backend_name):
+    """Ensures the sampling is reproducible given the same initial seed."""
+    self._set_backend_for_test(backend_name)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        seed_int=123,
+    )
+
+    # Running twice with the same seed must yield identical results.
+    draws1, trace1 = self._run_sampling(**common_args)
+    draws2, trace2 = self._run_sampling(**common_args)
+
+    test_utils.assert_allclose(draws1["x"], draws2["x"])
+    test_utils.assert_allclose(trace1["step_size"], trace2["step_size"])
+
+    if "is_accepted" in trace1 and "is_accepted" in trace2:
+      test_utils.assert_allequal(trace1["is_accepted"], trace2["is_accepted"])
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_different_seeds_produce_different_results(self, backend_name):
+    """Ensures different seeds yield different results."""
+    self._set_backend_for_test(backend_name)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+    )
+
+    draws1, _ = self._run_sampling(seed_int=101, **common_args)
+    draws2, _ = self._run_sampling(seed_int=202, **common_args)
+
+    draws1_np = np.array(draws1["x"])
+    draws2_np = np.array(draws2["x"])
+    self.assertFalse(
+        np.allclose(draws1_np, draws2_np),
+        msg=(
+            "Draws from different seeds were identical. This may indicate an"
+            " issue with JAX JIT compilation caching the seed incorrectly."
+        ),
+    )
 
 
 if __name__ == "__main__":

@@ -72,12 +72,6 @@ def _get_tau_g(
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
-@backend.function(autograph=False, jit_compile=True, static_argnums=())
-def _xla_windowed_adaptive_nuts(**kwargs):
-  """XLA wrapper for windowed_adaptive_nuts."""
-  return backend.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
-
-
 def _joint_dist_unpinned(mmm: "model.Meridian"):
   """Returns unpinned joint distribution."""
 
@@ -574,7 +568,7 @@ class PosteriorMCMCSampler:
       kernel_seed = rng_handler.get_kernel_seed()
 
       try:
-        mcmc = _xla_windowed_adaptive_nuts(
+        mcmc = backend.xla_windowed_adaptive_nuts(
             n_draws=n_burnin + n_keep,
             joint_dist=self._get_joint_dist(),
             n_chains=n_chains_batch,
