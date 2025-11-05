@@ -529,6 +529,20 @@ def _tf_nanvar(a, axis=None, keepdims=False):
   return tf.convert_to_tensor(var)
 
 
+def _jax_one_hot(*args, **kwargs):  # pylint: disable=unused-argument
+  """JAX implementation for one_hot."""
+  raise NotImplementedError(
+      "backend.one_hot is not implemented for the JAX backend."
+  )
+
+
+def _jax_roll(*args, **kwargs):  # pylint: disable=unused-argument
+  """JAX implementation for roll."""
+  raise NotImplementedError(
+      "backend.roll is not implemented for the JAX backend."
+  )
+
+
 def _jax_enable_op_determinism():
   """No-op for JAX. Determinism is handled via stateless PRNGKeys."""
   warnings.warn(
@@ -716,6 +730,7 @@ if _BACKEND == config.Backend.JAX:
   nanvar = jax_ops.nanvar
   nansum = jax_ops.nansum
   numpy_function = _jax_numpy_function
+  one_hot = _jax_one_hot
   ones = _ops.ones
   ones_like = _ops.ones_like
   rank = _ops.ndim
@@ -727,6 +742,7 @@ if _BACKEND == config.Backend.JAX:
   reduce_sum = _ops.sum
   repeat = _ops.repeat
   reshape = _ops.reshape
+  roll = _jax_roll
   stack = _ops.stack
   tile = _jax_tile
   transpose = _jax_transpose
@@ -864,6 +880,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   nanvar = _tf_nanvar
   nansum = _tf_nansum
   numpy_function = _ops.numpy_function
+  one_hot = _ops.one_hot
   ones = _ops.ones
   ones_like = _ops.ones_like
   rank = _ops.rank
@@ -875,6 +892,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reduce_sum = _ops.reduce_sum
   repeat = _ops.repeat
   reshape = _ops.reshape
+  roll = _ops.roll
   set_random_seed = tf_backend.keras.utils.set_random_seed
   stack = _ops.stack
   tile = _ops.tile

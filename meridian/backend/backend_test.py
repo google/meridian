@@ -1026,6 +1026,16 @@ class BackendTest(parameterized.TestCase):
     self.assertFalse(np.all(result == outcome_grid))
     test_utils.assert_allclose(result, expected, atol=1e-6)
 
+  def test_jax_one_hot_raises_not_implemented(self):
+    self._set_backend_for_test(_JAX)
+    with self.assertRaises(NotImplementedError):
+      backend.one_hot(indices=[0, 1], depth=2)
+
+  def test_jax_roll_raises_not_implemented(self):
+    self._set_backend_for_test(_JAX)
+    with self.assertRaises(NotImplementedError):
+      backend.roll(backend.to_tensor([1, 2, 3]), shift=1, axis=0)
+
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
 
