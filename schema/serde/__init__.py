@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian analysis API for trained models."""
+"""A serialization and deserialization library for Meridian models.
 
-from meridian.analysis import analyzer
-from meridian.analysis import formatter
-from meridian.analysis import optimizer
-from meridian.analysis import review
-from meridian.analysis import summarizer
-from meridian.analysis import visualizer
+For entry points API, see `meridian_serde` module docs.
+"""
 
+from schema.serde import constants
+from schema.serde import distribution
+from schema.serde import eda_spec
+from schema.serde import hyperparameters
+from schema.serde import inference_data
+from schema.serde import meridian_serde
+from schema.serde import serde

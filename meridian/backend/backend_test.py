@@ -619,6 +619,23 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_gather_strings(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    params = ["channel_A", "channel_B", "channel_C"]
+    indices = backend.to_tensor([0, 2])
+    expected = np.array(["channel_A", "channel_C"])
+
+    result = backend.gather(params, indices)
+
+    # JAX gather on strings returns numpy array (as strings aren't jax types)
+    if backend_name == _JAX:
+      self.assertIsInstance(result, np.ndarray)
+      test_utils.assert_allequal(result, expected)
+    else:
+      self.assertIsInstance(result, backend.Tensor)
+      test_utils.assert_allequal(result.numpy().astype(str), expected)
+
   _boolean_mask_test_cases = [
       dict(
           testcase_name="1d",
@@ -1416,6 +1433,95 @@ class RNGHandlerTest(BackendTest):
     else:
       self.assertFalse(np.array_equal(seq1[0], seq1[1]))
       self.assertFalse(np.array_equal(seq1[1], seq1[2]))
+
+
+class JitCompatibilityTest(BackendTest):
+  """Ensures core backend functions operate correctly under JIT compilation."""
+
+  def _compile_and_run(self, func, *args, **kwargs):
+    """Wraps the function in a JIT block and runs it."""
+    jitted_func = backend.function(static_argnums=())(func)
+    # First run triggers compilation
+    res1 = jitted_func(*args, **kwargs)
+    # Second run uses cached compilation
+    res2 = jitted_func(*args, **kwargs)
+    return res1, res2
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_basic_ops(self, backend_name):
+    """Tests common arithmetic and array ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def ops_func(a, b):
+      x = backend.concatenate([a, b], axis=0)
+      y = backend.expand_dims(x, axis=-1)
+      z = backend.reduce_sum(y)
+      w = backend.log(backend.exp(z))
+      return w
+
+    a = backend.to_tensor([1.0, 2.0])
+    b = backend.to_tensor([3.0, 4.0])
+    res1, res2 = self._compile_and_run(ops_func, a, b)
+    test_utils.assert_allclose(res1, res2)
+    # Ensure actual computation matches expected output
+    test_utils.assert_allclose(res1, 10.0)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_gather_and_where(self, backend_name):
+    """Tests gather and where under JIT (consistent implementation)."""
+    self._set_backend_for_test(backend_name)
+
+    def indexing_func(params, indices, mask):
+      g = backend.gather(params, indices)
+      return backend.where((mask) & (g > 2.0), g, 0.0)
+
+    params = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    indices = backend.to_tensor([0, 1, 2, 3])
+    mask = backend.to_tensor([True, False, True, True])
+
+    res1, res2 = self._compile_and_run(indexing_func, params, indices, mask)
+    test_utils.assert_allclose(res1, res2)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_boolean_mask_dynamic_shape(self, backend_name):
+    """Tests boolean_mask under JIT, expecting failure only on JAX."""
+    self._set_backend_for_test(backend_name)
+
+    def mask_func(x, mask):
+      # Dynamic output shape. Allowed in TF graphs, not in JAX compiled frames.
+      return backend.boolean_mask(x, mask)
+
+    x = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    mask = backend.to_tensor([True, False, True, True])
+
+    if backend_name == _JAX:
+      with self.assertRaises(
+          (TypeError, jax.errors.NonConcreteBooleanIndexError)
+      ):
+        self._compile_and_run(mask_func, x, mask)
+    else:
+      res1, res2 = self._compile_and_run(mask_func, x, mask)
+      test_utils.assert_allclose(res1, res2)
+      test_utils.assert_allclose(
+          res1, np.array([1.0, 3.0, 4.0], dtype=np.float32)
+      )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_aggregate_ops(self, backend_name):
+    """Tests reduction/aggregation ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def agg_func(x):
+      return backend.stack([
+          backend.reduce_min(x),
+          backend.reduce_max(x),
+          backend.reduce_mean(x),
+          backend.reduce_std(x),
+      ])
+
+    x = backend.to_tensor([1.0, 2.0, 3.0])
+    res1, res2 = self._compile_and_run(agg_func, x)
+    test_utils.assert_allclose(res1, res2)
 
 
 class XlaWindowedAdaptiveNutsTest(BackendTest):
