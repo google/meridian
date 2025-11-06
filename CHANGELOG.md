@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add model quality checks in the `analysis.review` module.
 * Add currency support to optimization summary and visualizer.
 * Expose new hyperparameters in AKS public api.
 * Refactor the TensorFlow RNG handler to use stateless seed generation.
