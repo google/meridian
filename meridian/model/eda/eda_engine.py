@@ -24,6 +24,7 @@ from typing import Optional, Sequence
 from meridian import backend
 from meridian import constants
 from meridian.model import transformers
+from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 import numpy as np
@@ -39,10 +40,10 @@ if typing.TYPE_CHECKING:
 __all__ = ['EDAEngine', 'GeoLevelCheckOnNationalModelError']
 
 _DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
-_CORRELATION_COL_NAME = 'correlation'
-_STACK_VAR_COORD_NAME = 'var'
-_CORR_VAR1 = 'var1'
-_CORR_VAR2 = 'var2'
+_CORRELATION_COL_NAME = eda_constants.CORRELATION
+_STACK_VAR_COORD_NAME = eda_constants.VARIABLE
+_CORR_VAR1 = eda_constants.VARIABLE_1
+_CORR_VAR2 = eda_constants.VARIABLE_2
 _CORRELATION_MATRIX_NAME = 'correlation_matrix'
 _OVERALL_PAIRWISE_CORR_THRESHOLD = 0.999
 _GEO_PAIRWISE_CORR_THRESHOLD = 0.999
