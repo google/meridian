@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian analysis API for trained models."""
+"""Module containing MMM schema util functions."""
 
-from meridian.analysis import analyzer
-from meridian.analysis import formatter
-from meridian.analysis import optimizer
-from meridian.analysis import review
-from meridian.analysis import summarizer
-from meridian.analysis import visualizer
-
+from schema.utils import time_record

@@ -321,8 +321,8 @@ class BackendTest(parameterized.TestCase):
     if backend_name == _JAX:
       # JAX backend uses numpy unicode strings
       self.assertIsInstance(t, np.ndarray)
-      self.assertEqual(t.dtype.kind, "U")
-      test_utils.assert_allequal(t, np.array(data))
+      self.assertEqual(t.dtype.kind, "S")
+      test_utils.assert_allequal(t, np.array(data, dtype=np.bytes_))
     else:
       # TensorFlow natively supports string tensors (bytes).
       self.assertIsInstance(t, tf.Tensor)
@@ -618,6 +618,23 @@ class BackendTest(parameterized.TestCase):
     result = backend.gather(tensor, indices, **kwargs)
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_gather_strings(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    params = ["channel_A", "channel_B", "channel_C"]
+    indices = backend.to_tensor([0, 2])
+    expected = np.array(["channel_A", "channel_C"])
+
+    result = backend.gather(params, indices)
+
+    # JAX gather on strings returns numpy array (as strings aren't jax types)
+    if backend_name == _JAX:
+      self.assertIsInstance(result, np.ndarray)
+      test_utils.assert_allequal(result, expected)
+    else:
+      self.assertIsInstance(result, backend.Tensor)
+      test_utils.assert_allequal(result.numpy().astype(str), expected)
 
   _boolean_mask_test_cases = [
       dict(
@@ -1027,15 +1044,140 @@ class BackendTest(parameterized.TestCase):
     self.assertFalse(np.all(result == outcome_grid))
     test_utils.assert_allclose(result, expected, atol=1e-6)
 
-  def test_jax_one_hot_raises_not_implemented(self):
-    self._set_backend_for_test(_JAX)
-    with self.assertRaises(NotImplementedError):
-      backend.one_hot(indices=[0, 1], depth=2)
+  @parameterized.product(
+      [
+          dict(
+              input_data=np.array([0, 1, 2, 3, 4]),
+              shift=2,
+              axis=None,
+              expected=np.array([3, 4, 0, 1, 2]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=1,
+              axis=0,
+              expected=np.array([[2, 3], [0, 1]]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=-1,
+              axis=1,
+              expected=np.array([[1, 0], [3, 2]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_roll(self, backend_name, input_data, shift, axis, expected):
+    """Tests that backend.roll works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(input_data)
+    result = backend.roll(tensor, shift, axis=axis)
+    test_utils.assert_allequal(result, expected)
 
-  def test_jax_roll_raises_not_implemented(self):
-    self._set_backend_for_test(_JAX)
-    with self.assertRaises(NotImplementedError):
-      backend.roll(backend.to_tensor([1, 2, 3]), shift=1, axis=0)
+  @parameterized.product(
+      [
+          dict(
+              indices=np.array([0, 2]),
+              depth=3,
+              on_value=None,
+              off_value=None,
+              axis=None,
+              dtype=None,
+              expected=np.array([[1, 0, 0], [0, 0, 1]]),
+          ),
+          dict(
+              indices=np.array([1, 0]),
+              depth=2,
+              on_value=1.0,
+              off_value=-1.0,
+              axis=None,
+              dtype=np.float32,
+              expected=np.array([[-1.0, 1.0], [1.0, -1.0]], dtype=np.float32),
+          ),
+          dict(
+              indices=np.array([0, 1]),
+              depth=2,
+              on_value=5,
+              off_value=1,
+              axis=None,
+              dtype=np.int32,
+              expected=np.array([[5, 1], [1, 5]], dtype=np.int32),
+          ),
+          dict(
+              indices=np.array([0, 1, 0]),
+              depth=2,
+              on_value=None,
+              off_value=None,
+              axis=0,
+              dtype=None,
+              expected=np.array([[1, 0, 1], [0, 1, 0]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_one_hot(
+      self,
+      backend_name,
+      indices,
+      depth,
+      on_value,
+      off_value,
+      axis,
+      dtype,
+      expected,
+  ):
+    """Tests that backend.one_hot works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    result = backend.one_hot(
+        indices,
+        depth,
+        on_value=on_value,
+        off_value=off_value,
+        axis=axis,
+        dtype=dtype,
+    )
+    test_utils.assert_allequal(result, expected)
+    if dtype:
+      # JAX can promote integer dtypes, so we just check kind
+      self.assertEqual(
+          np.dtype(backend.standardize_dtype(result.dtype)).kind,
+          np.dtype(expected.dtype).kind,
+      )
+
+  @parameterized.product(
+      [
+          dict(
+              arr=np.array([1.1, 2.2, 3.3], dtype=np.float32),
+          ),
+          dict(
+              arr=np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32),
+          ),
+          dict(arr=np.array([True, False, True])),
+          dict(
+              arr=np.array([b"hello", b"world"], dtype=np.bytes_),
+          ),
+          dict(
+              arr=np.array([], dtype=np.float32),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_tensor_proto_roundtrip(self, backend_name, arr):
+    """Tests proto conversion roundtrip for both backends."""
+    self._set_backend_for_test(backend_name)
+    proto = backend.make_tensor_proto(arr)
+    result_arr = backend.make_ndarray(proto)
+    test_utils.assert_allequal(
+        result_arr,
+        arr,
+        err_msg=f"Roundtrip failed for dtype {arr.dtype}",
+    )
+    if backend_name == _TF and arr.dtype.kind in ("S", "U"):
+      # tf.make_ndarray converts string protos to numpy arrays of dtype=object
+      # containing bytes. The content is correct, but the dtype differs.
+      self.assertEqual(result_arr.dtype.kind, "O")
+    else:
+      self.assertEqual(result_arr.dtype, arr.dtype)
 
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
@@ -1416,6 +1558,95 @@ class RNGHandlerTest(BackendTest):
     else:
       self.assertFalse(np.array_equal(seq1[0], seq1[1]))
       self.assertFalse(np.array_equal(seq1[1], seq1[2]))
+
+
+class JitCompatibilityTest(BackendTest):
+  """Ensures core backend functions operate correctly under JIT compilation."""
+
+  def _compile_and_run(self, func, *args, **kwargs):
+    """Wraps the function in a JIT block and runs it."""
+    jitted_func = backend.function(static_argnums=())(func)
+    # First run triggers compilation
+    res1 = jitted_func(*args, **kwargs)
+    # Second run uses cached compilation
+    res2 = jitted_func(*args, **kwargs)
+    return res1, res2
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_basic_ops(self, backend_name):
+    """Tests common arithmetic and array ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def ops_func(a, b):
+      x = backend.concatenate([a, b], axis=0)
+      y = backend.expand_dims(x, axis=-1)
+      z = backend.reduce_sum(y)
+      w = backend.log(backend.exp(z))
+      return w
+
+    a = backend.to_tensor([1.0, 2.0])
+    b = backend.to_tensor([3.0, 4.0])
+    res1, res2 = self._compile_and_run(ops_func, a, b)
+    test_utils.assert_allclose(res1, res2)
+    # Ensure actual computation matches expected output
+    test_utils.assert_allclose(res1, 10.0)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_gather_and_where(self, backend_name):
+    """Tests gather and where under JIT (consistent implementation)."""
+    self._set_backend_for_test(backend_name)
+
+    def indexing_func(params, indices, mask):
+      g = backend.gather(params, indices)
+      return backend.where((mask) & (g > 2.0), g, 0.0)
+
+    params = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    indices = backend.to_tensor([0, 1, 2, 3])
+    mask = backend.to_tensor([True, False, True, True])
+
+    res1, res2 = self._compile_and_run(indexing_func, params, indices, mask)
+    test_utils.assert_allclose(res1, res2)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_boolean_mask_dynamic_shape(self, backend_name):
+    """Tests boolean_mask under JIT, expecting failure only on JAX."""
+    self._set_backend_for_test(backend_name)
+
+    def mask_func(x, mask):
+      # Dynamic output shape. Allowed in TF graphs, not in JAX compiled frames.
+      return backend.boolean_mask(x, mask)
+
+    x = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    mask = backend.to_tensor([True, False, True, True])
+
+    if backend_name == _JAX:
+      with self.assertRaises(
+          (TypeError, jax.errors.NonConcreteBooleanIndexError)
+      ):
+        self._compile_and_run(mask_func, x, mask)
+    else:
+      res1, res2 = self._compile_and_run(mask_func, x, mask)
+      test_utils.assert_allclose(res1, res2)
+      test_utils.assert_allclose(
+          res1, np.array([1.0, 3.0, 4.0], dtype=np.float32)
+      )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_aggregate_ops(self, backend_name):
+    """Tests reduction/aggregation ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def agg_func(x):
+      return backend.stack([
+          backend.reduce_min(x),
+          backend.reduce_max(x),
+          backend.reduce_mean(x),
+          backend.reduce_std(x),
+      ])
+
+    x = backend.to_tensor([1.0, 2.0, 3.0])
+    res1, res2 = self._compile_and_run(agg_func, x)
+    test_utils.assert_allclose(res1, res2)
 
 
 class XlaWindowedAdaptiveNutsTest(BackendTest):
