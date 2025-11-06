@@ -10,6 +10,11 @@ runs:
   using: composite
   steps:
     # Install deps
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: "27.x"
+
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python_version }}
@@ -17,6 +22,6 @@ runs:
         cache-dependency-path: '**/pyproject.toml'
     - shell: bash
       run: |
-        pip install -e .[dev,jax,mlflow] --config-settings editable_mode=strict
+        pip install -e .[dev,jax,mlflow,schema] --config-settings editable_mode=strict
         pip freeze
 

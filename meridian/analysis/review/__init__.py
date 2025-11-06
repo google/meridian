@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian analysis API for trained models."""
+"""Meridian Model Quality Module."""
 
-from meridian.analysis import analyzer
-from meridian.analysis import formatter
-from meridian.analysis import optimizer
-from meridian.analysis import review
-from meridian.analysis import summarizer
-from meridian.analysis import visualizer
-
+from meridian.analysis.review import checks
+from meridian.analysis.review import configs
+from meridian.analysis.review import results
+from meridian.analysis.review import reviewer

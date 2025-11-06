@@ -1,0 +1,64 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.model.meridian.eda;
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+option java_outer_classname = "EDASpecProto";
+option java_package = "com.google.protos.mmm.v1.model.meridian.eda";
+
+// Represents an aggregation function used in EDA.
+message AggregationFunction {
+  // A key that maps to a custom function in the user-provided function
+  // registry. The registry allows the EDA spec to be serialized without
+  // including the function's code, enabling a more secure deserialization
+  // process.
+  //
+  // Required.
+  string function_key = 1;
+}
+
+// A configuration for customizing variable aggregation functions.
+//
+// Variables not specified will default to SUM.
+message AggregationConfig {
+  // A map from control variable names to their aggregation functions.
+  map<string, AggregationFunction> control_variables = 1;
+  // A map from non-media treatment names to their aggregation functions.
+  map<string, AggregationFunction> non_media_treatments = 2;
+}
+
+// A spec for the EDA VIF check.
+message VIFSpec {
+  // The threshold for geo-level VIF. (Python default: 1000.0)
+  double geo_threshold = 1;
+  // The threshold for overall VIF. (Python default: 1000.0)
+  double overall_threshold = 2;
+  // The threshold for national VIF. (Python default: 1000.0)
+  double national_threshold = 3;
+}
+
+// A container for all user-configurable EDA check specs.
+message EDASpec {
+  // Configuration for custom variable aggregation functions.
+  AggregationConfig aggregation_config = 1;
+  // Specification for the EDA VIF check.
+  VIFSpec vif_spec = 2;
+  // Lookup table that contains function names mapped to hashed functions used
+  // by various aggregation functions.
+  map<string, string> function_registry = 3;
+}

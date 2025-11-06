@@ -1,0 +1,681 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.model.meridian;
+
+import "mmm/v1/model/meridian/eda/eda_spec.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+
+option features.field_presence = IMPLICIT;
+option java_package = "com.google.protos.mmm.v1.model.meridian";
+option java_multiple_files = true;
+
+// Represents Tensorflow statistical distributions that are used in user priors
+// in a Meridian model.
+// All fields are required unless otherwise specified.
+// See: https://www.tensorflow.org/probability/api_docs/python/tfp/distributions
+message Distribution {
+  // Represents Tensorflow bijectors.
+  // All fields are required unless otherwise specified.
+  // See: https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors
+  message Bijector {
+    reserved 1;
+
+    // A bijector that shifts the input by a scalar.
+    message Shift {
+      // The shift to apply to the input.
+      repeated double shifts = 1;
+    }
+
+    // A bijector that scales the input by a scalar or log scale.
+    message Scale {
+      // The scale to apply to the input. Should be not be set if `log_scales`
+      // is set.
+      repeated double scales = 1;
+
+      // The log scale to apply to the input. Should be not be set if `scales`
+      // is set.
+      repeated double log_scales = 2;
+    }
+
+    // A bijector that reciprocates the input.
+    message Reciprocal {}
+
+    // The  name of this bijector.
+    string name = 2 [features.field_presence = EXPLICIT];
+
+    oneof bijector_type {
+      Shift shift = 3;
+      Scale scale = 4;
+      Reciprocal reciprocal = 5;
+    }
+  }
+
+  // The following message types are the distribution types that Meridian
+  // supports.
+
+  // A distribution that broadcasts an underlying distribution's batch shape.
+  message BatchBroadcast {
+    // The underlying (pre-broadcast) distribution.
+    Distribution distribution = 1;
+
+    // The shape of the broadcast distribution.
+    tensorflow.TensorShapeProto batch_shape = 2;
+  }
+
+  // A distribution that is transformed by a bijector.
+  message Transformed {
+    // The underlying (pre-transformed) distribution.
+    Distribution distribution = 1;
+
+    // The transforming bijector.
+    Bijector bijector = 2;
+  }
+
+  // A scalar deterministic distribution on the real line.
+  message Deterministic {
+    // The batch of points on which this distribution is supported.
+    repeated double locs = 1;
+  }
+
+  // A half-normal distribution with scales.
+  message HalfNormal {
+    // The scales of the distribution.
+    repeated double scales = 1;
+  }
+
+  // A log-normal distribution with locs (means) and scales (stddevs).
+  message LogNormal {
+    // The means of the underlying Normal distribution.
+    repeated double locs = 1;
+
+    // The standard deviations of the underlying normal distribution.
+    repeated double scales = 2;
+  }
+
+  // A normal distribution with locs (means) and scales (stddevs).
+  message Normal {
+    // The means of the underlying Normal distribution.
+    repeated double locs = 1;
+
+    // The standard deviations of the underlying normal distribution.
+    // Must contain only positive values.
+    repeated double scales = 2;
+  }
+
+  // A truncated Normal distribution, bounded between `low` and `high`.
+  message TruncatedNormal {
+    // The means of the underlying Normal distribution.
+    repeated double locs = 1;
+
+    // The standard deviations of the underlying Normal distribution.
+    repeated double scales = 2;
+
+    // Lower bound of the distribution's support. Must be less than `high`.
+    double low = 3 [features.field_presence = EXPLICIT, deprecated = true];
+
+    // Upper bound of the distribution's support. Must be greater than `low`.
+    double high = 4 [features.field_presence = EXPLICIT, deprecated = true];
+
+    // Lower bounds of the distribution's support. Each value in `lows` must be
+    // less than the corresponding value in `highs`.
+    repeated double lows = 5;
+
+    // Upper bounds of the distribution's support. Each value in `highs` must be
+    // greater than the corresponding value in `lows`.
+    repeated double highs = 6;
+  }
+
+  // A uniform distribution on the real line.
+  message Uniform {
+    // Lower boundary of the output interval. Must be less than `high`.
+    double low = 1 [features.field_presence = EXPLICIT, deprecated = true];
+
+    // Upper boundary of the output interval. Must be greater than `low`.
+    double high = 2 [features.field_presence = EXPLICIT, deprecated = true];
+
+    // Lower boundaries of the output interval. Each value in `lows` must be
+    // less than the corresponding value in `highs`.
+    repeated double lows = 3;
+
+    // Upper boundaries of the output interval. Each value in `highs` must be
+    // greater than the corresponding value in `lows`.
+    repeated double highs = 4;
+  }
+
+  // A Beta distribution with alpha and beta parameters.
+  // See:
+  // https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/Beta
+  message Beta {
+    // The alpha parameter of the underlying Beta distribution.
+    repeated double alpha = 1;
+
+    // The beta parameter of the underlying Beta distribution.
+    repeated double beta = 2;
+  }
+
+  // The canonical name of this distribution in the Meridian model framework.
+  string name = 1 [features.field_presence = EXPLICIT];
+
+  oneof distribution_type {
+    BatchBroadcast batch_broadcast = 2;
+    Deterministic deterministic = 3;
+    HalfNormal half_normal = 4;
+    LogNormal log_normal = 5;
+    Normal normal = 6;
+    Transformed transformed = 7;
+    TruncatedNormal truncated_normal = 8;
+    Uniform uniform = 9;
+    Beta beta = 10;
+  }
+}
+
+// A container for user prior distribution parameters in a Meridian model.
+// These distributions are in their mathematical forms when representing
+// user priors in the model spec and are part of the user input in a pre-fitted
+// model.
+//
+// After priors sampling, these distributions are broadcast and should _all_
+// contain `Distribution.BatchBroadcast` types.
+//
+// All parameter distributions are optional. If a distribution is left
+// unspecified for a given parameter, Meridian will select its default prior
+// distribution.
+//
+// See: `meridian.model.prior_distribution` module.
+// See:
+// https://developers.google.com/meridian/docs/advanced-modeling/default-prior-distributions
+message PriorDistributions {
+  Distribution knot_values = 1;
+  Distribution tau_g_excl_baseline = 2;
+  Distribution beta_m = 3;
+  Distribution beta_rf = 4;
+  Distribution eta_m = 5;
+  Distribution eta_rf = 6;
+  Distribution gamma_c = 7;
+  Distribution xi_c = 8;
+  Distribution alpha_m = 9;
+  Distribution alpha_rf = 10;
+  Distribution ec_m = 11;
+  Distribution ec_rf = 12;
+  Distribution slope_m = 13;
+  Distribution slope_rf = 14;
+  Distribution sigma = 15;
+  Distribution roi_m = 16;
+  Distribution roi_rf = 17;
+  Distribution mroi_m = 30;
+  Distribution mroi_rf = 31;
+  Distribution contribution_m = 32;
+  Distribution contribution_rf = 33;
+  Distribution contribution_om = 34;
+  Distribution contribution_orf = 35;
+  Distribution contribution_n = 36;
+  Distribution beta_om = 18;
+  Distribution beta_orf = 19;
+  Distribution eta_om = 20;
+  Distribution eta_orf = 21;
+  Distribution gamma_n = 22;
+  Distribution xi_n = 23;
+  Distribution alpha_om = 24;
+  Distribution alpha_orf = 25;
+  Distribution ec_om = 26;
+  Distribution ec_orf = 27;
+  Distribution slope_om = 28;
+  Distribution slope_orf = 29;
+}
+
+// A container for user prior distribution parameters in a Meridian model.
+// These distributions are in their mathematical forms when representing
+// user priors in the model spec and are part of the user input in a pre-fitted
+// model.
+//
+// After priors sampling, these distributions are broadcast and should _all_
+// contain `Distribution.BatchBroadcast` types.
+//
+// All parameter distributions are optional. If a distribution is left
+// unspecified for a given parameter, Meridian will select its default prior
+// distribution.
+//
+// See: `meridian.model.prior_distribution` module.
+// See:
+// https://developers.google.com/meridian/docs/advanced-modeling/default-prior-distributions
+message PriorTfpDistributions {
+  TfpDistribution knot_values = 1;
+  TfpDistribution tau_g_excl_baseline = 2;
+  TfpDistribution beta_m = 3;
+  TfpDistribution beta_rf = 4;
+  TfpDistribution eta_m = 5;
+  TfpDistribution eta_rf = 6;
+  TfpDistribution gamma_c = 7;
+  TfpDistribution xi_c = 8;
+  TfpDistribution alpha_m = 9;
+  TfpDistribution alpha_rf = 10;
+  TfpDistribution ec_m = 11;
+  TfpDistribution ec_rf = 12;
+  TfpDistribution slope_m = 13;
+  TfpDistribution slope_rf = 14;
+  TfpDistribution sigma = 15;
+  TfpDistribution roi_m = 16;
+  TfpDistribution roi_rf = 17;
+  TfpDistribution mroi_m = 30;
+  TfpDistribution mroi_rf = 31;
+  TfpDistribution contribution_m = 32;
+  TfpDistribution contribution_rf = 33;
+  TfpDistribution contribution_om = 34;
+  TfpDistribution contribution_orf = 35;
+  TfpDistribution contribution_n = 36;
+  TfpDistribution beta_om = 18;
+  TfpDistribution beta_orf = 19;
+  TfpDistribution eta_om = 20;
+  TfpDistribution eta_orf = 21;
+  TfpDistribution gamma_n = 22;
+  TfpDistribution xi_n = 23;
+  TfpDistribution alpha_om = 24;
+  TfpDistribution alpha_orf = 25;
+  TfpDistribution ec_om = 26;
+  TfpDistribution ec_orf = 27;
+  TfpDistribution slope_om = 28;
+  TfpDistribution slope_orf = 29;
+
+  // Lookup table that contains function names mapped to hashed functions used
+  // by various `tfp.distributions`.
+  map<string, string> function_registry = 37;
+}
+
+// Possible distribution types for media random effects across geos.
+enum MediaEffectsDistribution {
+  MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED = 0;
+  NORMAL = 1;
+  LOG_NORMAL = 2;
+}
+
+// Possible paid media prior types.
+enum PaidMediaPriorType {
+  PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED = 0;
+  ROI = 1;
+  MROI = 2;
+  COEFFICIENT = 3;
+  CONTRIBUTION = 4;
+}
+
+// Possible non-paid treatments prior types.
+enum NonPaidTreatmentsPriorType {
+  NON_PAID_TREATMENTS_PRIOR_TYPE_UNSPECIFIED = 0;
+  NON_PAID_TREATMENTS_PRIOR_TYPE_COEFFICIENT = 1;
+  NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION = 2;
+}
+
+// Specifies the adstock decay function for each channel.
+message AdstockDecayByChannel {
+  // A map where keys are channel names and values are the adstock decay
+  // function to use for that channel. Allowed values are 'geometric' or
+  // 'binomial'.
+  map<string, string> channel_decays = 1;
+}
+
+// A container for non-media baseline function or float values. If float, then
+// that value is used as the baseline for all non-media channels. Otherwise, the
+// min or max value is used as the baseline for the corresponding non-media
+// channel.
+message NonMediaBaselineValue {
+  // Possible non-media baseline function values. If used, then the min or max
+  // value of the non-media treatment is used as the baseline for the
+  // corresponding non-media channel instead of a fixed, user-specified value.
+  enum NonMediaBaselineFunction {
+    NON_MEDIA_BASELINE_FUNCTION_UNSPECIFIED = 0;
+    MIN = 1;
+    MAX = 2;
+  }
+
+  oneof non_media_baseline_value {
+    float value = 1;
+    NonMediaBaselineFunction function_value = 2;
+  }
+}
+
+// Hyperparameters for the MMM model.
+message Hyperparameters {
+  reserved 5;
+
+  // Specifies the distribution of media random effects across geos.
+  // This hyperparameter is ignored in a national-level model.
+  MediaEffectsDistribution media_effects_dist = 1
+      [features.field_presence = EXPLICIT];
+
+  // Indicates whether to apply the Hill function before Adstock function.
+  // This hyperparameter does not apply to RF channels.
+  bool hill_before_adstock = 2 [features.field_presence = EXPLICIT];
+
+  // The maximum number of lag periods (>= 0) to include in the Adstock
+  // calculation. If unset, then max lag is interpreted as infinite.
+  uint32 max_lag = 3 [features.field_presence = EXPLICIT];
+
+  // Indicates whether to use a unique residual variance for each geo.
+  // If False, then a single residual variance is used for all geos.
+  bool unique_sigma_for_each_geo = 4 [features.field_presence = EXPLICIT];
+
+  // Prior type for the media coefficients. If `paid_media_prior_type` is
+  // 'coefficient'`, then the model uses `beta_[m|rf]` distributions in the
+  // priors. If `paid_media_prior_type' is `'roi'` or `'mroi'`, then the
+  // `roi_[m|rf]` are used.
+  //
+  // Deprecated.  Use `media_prior_type` and `rf_prior_type` instead.
+  PaidMediaPriorType paid_media_prior_type = 13
+      [features.field_presence = EXPLICIT, deprecated = true];
+
+  // Prior type for the (paid, non-rf) media coefficients. If `media_prior_type`
+  // is 'coefficient'`, then the model uses `beta_m` distribution in the priors.
+  // If `media_prior_type' is `'roi'` or `'mroi'`, then the `roi_m` or `mroi_m`
+  // is used, respectively. If `media_prior_type` is `'contribution'`, then the
+  // `contribution_m` is used.
+  PaidMediaPriorType media_prior_type = 17 [features.field_presence = EXPLICIT];
+
+  // Prior type for the (paid) rf coefficients. If `rf_prior_type` is
+  // 'coefficient'`, then the model uses `beta_rf` distribution in the priors.
+  // If `rfprior_type' is `'roi'` or `'mroi'`, then the `roi_rf` or `mroi_rf` is
+  // used, respectively. If `rf_prior_type` is `'contribution'`, then the
+  // `contribution_rf` is used.
+  PaidMediaPriorType rf_prior_type = 18 [features.field_presence = EXPLICIT];
+
+  // Prior type for the organic media coefficients. If
+  // `organic_media_prior_type` is 'coefficient'`, then the model uses `beta_om`
+  // distribution in the priors. If
+  // `organic_media_prior_type` is `'contribution'`, then the `contribution_om`
+  // is used.
+  NonPaidTreatmentsPriorType organic_media_prior_type = 19
+      [features.field_presence = EXPLICIT];
+
+  // Prior type for the organic rf coefficients. If `organic_rf_prior_type` is
+  // 'coefficient'`, then the model uses `beta_orf` distribution in the priors.
+  // If `organic_rf_prior_type` is `'contribution'`, then the
+  // `contribution_orf` is used.
+  NonPaidTreatmentsPriorType organic_rf_prior_type = 20
+      [features.field_presence = EXPLICIT];
+
+  // Prior type for the non-media treatments coefficients. If
+  // `non_media_treatments_prior_type` is 'coefficient'`, then the model uses
+  // `gamma_n` distribution in the priors. If
+  // `non_media_treatments_prior_type` is `'contribution'`, then the
+  // `contribution_n` is used.
+  NonPaidTreatmentsPriorType non_media_treatments_prior_type = 21
+      [features.field_presence = EXPLICIT];
+
+  // A boolean tensor in the shape `(n_media_times, n_media_channels)`.
+  // This indicates the subset of `time` coordinates in the model for media ROI
+  // calibration. If unset, all time coordinates are used for media ROI
+  // calibration.
+  tensorflow.TensorProto roi_calibration_period = 9;
+
+  // A boolean tensor in the shape `(n_media_times, n_rf_channels)`.
+  // This indicates the subset of `time` coordinates in the model for reach and
+  // frequency ROI calibration. If unset, all time coordinates are used for R&F
+  // ROI calibration.
+  tensorflow.TensorProto rf_roi_calibration_period = 10;
+
+  // A (single-value) integer or a list of integers, indicating the knots used
+  // to estimate time effects.
+  // If provided as a list of integers, its indices correspond to the indices of
+  // the time coordinates in the model.
+  // If provided as a single integer, then there are knots with locations
+  // equally spaced across time periods.
+  // If unset, then the number of knots used is equal to the number of time
+  // periods in the case of a geo model (i.e. each time period has its own
+  // regression coefficient). If unset in a national model, then the model
+  // uses `1` as the number of knots.
+  repeated int32 knots = 6;
+
+  // A boolean indicating whether to use the Automatic Knot Selection
+  // algorithm to select optimal number of knots for running the model instead
+  // of the default 1 for national and n_times for non-national models. If this
+  // is set to true and the knots arg is provided, then an error will be
+  // raised when deserialized back to ModelSpec. Default: `False`.
+  bool enable_aks = 22 [features.field_presence = EXPLICIT];
+
+  // The baseline geo is treated as the reference geo in the encoding of geos.
+  // If neither option is set, the model will use the geo with the biggest
+  // population as the baseline geo.
+  oneof baseline_geo_oneof {
+    // Deprecated.  Use `baseline_geo_int` instead.
+    double baseline_geo_int_deprecated = 7 [deprecated = true];
+
+    // Integer representation of baseline geo.
+    int32 baseline_geo_int = 15;
+    string baseline_geo_string = 8;
+  }
+
+  oneof holdout_spec {
+    // A boolean tensor in the shape `(n_geos, n_times)` for a geo-level model
+    // or `(n_times,)` for a national model.
+    // This indicates which observations are part of the holdout sample, which
+    // are excluded from the training sample. For more details on the holdout
+    // sample, see: `meridian.model.spec.ModelSpec`
+    tensorflow.TensorProto holdout_id = 11;
+
+    // The ratio of holdout data to use for the goodness of fit check. Used as
+    // inputs and this will be implemented in training module right before
+    // feeding into Meridian.
+    // The holdout only applied to date as of Q1 2025.
+    double holdout_ratio = 16;
+  }
+
+  // A boolean tensor in the shape `(n_controls,)`.
+  // This indicates the control variables for which the control value will be
+  // scaled by population.
+  // If unset, no control variables are scaled by population.
+  tensorflow.TensorProto control_population_scaling_id = 12;
+
+  // A boolean tensor in the shape `(n_non_media_channels,)`.
+  // This indicates the non-media treatments channels for which the value will
+  // be scaled by population.
+  // If unset, no non-media treatments channels are scaled by population.
+  tensorflow.TensorProto non_media_population_scaling_id = 14;
+
+  // Specifies the adstock decay function for each media, RF, organic media and
+  // organic RF channel. Default is 'geometric'.
+  oneof adstock_decay_spec {
+    // The global adstock decay function to use for all channels. Allowed
+    // values are 'geometric' or 'binomial'.
+    string global_adstock_decay = 23;
+
+    // Channel-specific adstock decay functions. Defaults to 'geometric' for
+    // channels not specified in the map.
+    AdstockDecayByChannel adstock_decay_by_channel = 24;
+  }
+
+  // A list with the shape `(n_non_media_channels,)`. Each element is
+  // either a float (which means that the fixed value will be used as baseline
+  // for the given channel) or one of the function strings `"min"` or `"max"`
+  // (which mean that the global minimum or maximum value will be used as
+  // baseline for the scaled values of the given non_media treatments channel).
+  // If `None`, the minimum value is used as baseline for each non-media
+  // treatments channel. This attribute is used as the default value for the
+  // corresponding argument to `Analyzer` methods.
+  repeated NonMediaBaselineValue non_media_baseline_values = 25;
+}
+
+// A named tensor parameter.
+message Parameter {
+  string name = 1 [features.field_presence = EXPLICIT];
+
+  tensorflow.TensorProto tensor = 2;
+}
+
+// InferenceData data contains none, only prior, or both prior and posterior
+// sampled parameters and their sampling states and trace from fitting the
+// model.
+// https://python.arviz.org/en/stable/api/generated/arviz.InferenceData.html
+//
+// All fields inside this container are `xarray.Dataset`s that are
+// byte-serialized in NetCDF format.
+// See: https://docs.xarray.dev/en/stable/user-guide/io.html
+message InferenceData {
+  reserved 1;
+
+  // Sampled prior parameters as an `xarray.Dataset` serialized in NetCDF4
+  // format.
+  bytes prior = 2 [features.field_presence = EXPLICIT];
+
+  // Sampled posterior parameters as an `xarray.Dataset` serialized in NetCDF4
+  // format.
+  bytes posterior = 3 [features.field_presence = EXPLICIT];
+
+  // Contains "sample_stats", "trace", and other auxiliary data that are useful
+  // for debugging.
+  // "sample_stats" and "trace" specifically are available when `posterior` is
+  // available.
+  map<string, bytes> auxiliary_data = 4;
+}
+
+// The trace of MCMC sampling.
+message McmcSamplingTrace {
+  uint32 num_chains = 1 [features.field_presence = EXPLICIT];
+
+  uint32 num_draws = 2 [features.field_presence = EXPLICIT];
+
+  tensorflow.TensorProto step_size = 3;
+  tensorflow.TensorProto tune = 4;
+  tensorflow.TensorProto target_log_prob = 5;
+  tensorflow.TensorProto diverging = 6;
+  tensorflow.TensorProto accept_ratio = 7;
+  tensorflow.TensorProto n_steps = 8;
+  tensorflow.TensorProto is_accepted = 9;
+}
+
+// Diagnostic of MCMC sampling by computing r_hat value for each parameters.
+message RHatDiagnostic {
+  // The r-hat values of model parameters.
+  //
+  // Current list of parameters: (see InferenceData.parameters above)
+  repeated Parameter parameter_r_hats = 1;
+}
+
+message ModelConvergence {
+  McmcSamplingTrace mcmc_sampling_trace = 1;
+
+  // Convergence heuristic check for the MCMC sampling.
+  bool convergence = 2 [features.field_presence = EXPLICIT];
+
+  RHatDiagnostic r_hat_diagnostic = 3;
+}
+
+// Meridian model schema.
+message MeridianModel {
+  reserved 8, 9, 12, 13;
+
+  // The unique identifier of this model.
+  string model_id = 1 [features.field_presence = EXPLICIT];
+
+  // The semantic version of the Meridian library used to generate this model.
+  string model_version = 2 [features.field_presence = EXPLICIT];
+
+  Hyperparameters hyperparameters = 3;
+  PriorDistributions prior_distributions = 11 [deprecated = true];
+  PriorTfpDistributions prior_tfp_distributions = 18;
+
+  // Inference data contains sampled priors and posteriors.
+  InferenceData inference_data = 14;
+
+  // Contains the information about model convergence status.
+  ModelConvergence convergence_info = 10;
+
+  // User-configurable EDA check specs.
+  eda.EDASpec eda_spec = 19;
+}
+
+// Represents TensorFlow statistical distribution spec that are used in user
+// priors in a Meridian model.
+// All fields are required unless otherwise specified.
+// See: https://www.tensorflow.org/probability/api_docs/python/tfp/distributions
+message TfpDistribution {
+  // A `tfp.distributions` class name.
+  // e.g. "Normal", "TransformedDistribution", etc.
+  string distribution_type = 1;
+
+  // Parameters for the specific distribution type.
+  map<string, TfpParameterValue> parameters = 2;
+}
+
+// Represents a constructor parameter for a `tfp.distributions` class.
+message TfpParameterValue {
+  // For parameter values that are lists or tuples.
+  message List {
+    repeated TfpParameterValue values = 1;
+  }
+
+  // For parameter values that are dicts.
+  message Dict {
+    map<string, TfpParameterValue> value_map = 1;
+  }
+
+  // For parameter values that are functions.
+  message FunctionParam {
+    oneof param {
+      // A key that maps to a custom function in the user-provided function
+      // registry. The registry allows the model to be serialized without
+      // including the function's code, enabling a more secure deserialization
+      // process.
+      string function_key = 1;
+
+      // Whether the Distribution uses the default function implementation.
+      bool uses_default = 2;
+    }
+  }
+
+  oneof value_type {
+    // Primitive distribution parameter value types.
+    float scalar_value = 1;
+    int32 int_value = 2;
+    bool bool_value = 3;
+    string string_value = 4;
+    bool none_value = 5;
+
+    // For nested distribution parameter (e.g. for `TransformedDistribution`)
+    TfpDistribution distribution_value = 6;
+
+    // For nested bijector parameter (e.g. for `TransformedDistribution`)
+    TfpBijector bijector_value = 7;
+
+    // For a parameter that takes a list of parameters.
+    List list_value = 8;
+
+    // For a parameter that takes a dict.
+    Dict dict_value = 9;
+
+    // For a parameter that takes a Tensor.
+    tensorflow.TensorProto tensor_value = 10;
+
+    // Whether the distribution should be fully reparameterized.
+    // See:
+    // https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/ReparameterizationType
+    bool fully_reparameterized = 11;
+
+    // For a parameter that takes a function.
+    FunctionParam function_param = 12;
+  }
+}
+
+// Represents a constructor parameter for a `tfp.bijectors` class.
+// All fields are required unless otherwise specified.
+// See: https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors
+message TfpBijector {
+  // A `tfp.bijectors` class name.
+  // e.g. "Shift", "Scale", etc.
+  string bijector_type = 1;
+
+  // Parameters for the specific bijector type.
+  map<string, TfpParameterValue> parameters = 2;
+}
