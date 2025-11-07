@@ -34,6 +34,7 @@ from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import spec
 from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
 import xarray as xr
@@ -1667,6 +1668,50 @@ class ModelTest(
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
     ):
       model.load_mmm("this/path/does/not/exist")
+
+  def test_run_model_fitting_guardrail_error_message(self):
+    # Create mock EDA outcomes with ERROR severity findings
+    mock_finding1 = mock.Mock()
+    mock_finding1.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding1.explanation = "Error explanation for PAIRWISE_CORR 1."
+
+    mock_finding2 = mock.Mock()
+    mock_finding2.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding2.explanation = "Error explanation for PAIRWISE_CORR 2."
+
+    mock_finding3 = mock.Mock()
+    mock_finding3.severity = eda_outcome.EDASeverity.ERROR
+    mock_finding3.explanation = "Error explanation for MULTICOLLINEARITY 1."
+
+    mock_outcome1 = mock.Mock()
+    mock_outcome1.check_type = eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    mock_outcome1.findings = [mock_finding1, mock_finding2]
+
+    mock_outcome2 = mock.Mock()
+    mock_outcome2.check_type = eda_outcome.EDACheckType.MULTICOLLINEARITY
+    mock_outcome2.findings = [mock_finding3]
+
+    mock_eda_outcomes = self.enter_context(
+        mock.patch(
+            "meridian.model.model.Meridian.eda_outcomes",
+            new_callable=mock.PropertyMock,
+        )
+    )
+    mock_eda_outcomes.return_value = [mock_outcome1, mock_outcome2]
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    expected_error_message = (
+        "Model has critical EDA issues. Please fix before running"
+        " `sample_posterior`.\n\nCheck type: PAIRWISE_CORRELATION\n- Error"
+        " explanation for PAIRWISE_CORR 1.\n- Error explanation for"
+        " PAIRWISE_CORR 2.\nCheck type: MULTICOLLINEARITY\n- Error explanation"
+        " for MULTICOLLINEARITY 1.\nFor further details, please refer to"
+        " `Meridian.eda_outcomes`."
+    )
+    with self.assertRaisesWithLiteralMatch(
+        model.ModelFittingError, expected_error_message
+    ):
+      meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
 
 
 class NonPaidModelTest(

@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add model fitting guardrail using EDA to `Meridian`.
 * Introduce serde package: a serialization and deserialization library for
   Meridian model with a protocol buffer schema.
 * Add model quality checks in the `analysis.review` module.
