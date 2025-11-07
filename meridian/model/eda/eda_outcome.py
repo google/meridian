@@ -157,9 +157,9 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
 
-  PAIRWISE_CORR = enum.auto()
-  STD = enum.auto()
-  VIF = enum.auto()
+  PAIRWISE_CORRELATION = enum.auto()
+  STANDARD_DEVIATION = enum.auto()
+  MULTICOLLINEARITY = enum.auto()
   KPI_INVARIABILITY = enum.auto()
 
 

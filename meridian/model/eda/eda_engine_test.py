@@ -206,6 +206,35 @@ class EDAEngineTest(
         * self.mock_scale_factor
     )
 
+  def _mock_critical_checks(
+      self, mock_results: dict[str, eda_outcome.EDAOutcome | Exception]
+  ):
+    """Mocks critical EDA checks with specified return values or exceptions."""
+    for check_name, result in mock_results.items():
+      patcher = mock.patch.object(
+          eda_engine.EDAEngine, check_name, autospec=True
+      )
+      mock_check = self.enter_context(patcher)
+      if isinstance(result, Exception):
+        mock_check.side_effect = result
+      else:
+        mock_check.return_value = result
+
+  def _create_eda_outcome(
+      self,
+      check_type: eda_outcome.EDACheckType,
+      severity: eda_outcome.EDASeverity,
+  ) -> eda_outcome.EDAOutcome:
+    """Creates an EDAOutcome with a single finding."""
+    explanation = f"{check_type.name}: {severity.name}"
+    return eda_outcome.EDAOutcome(
+        check_type=check_type,
+        findings=[
+            eda_outcome.EDAFinding(severity=severity, explanation=explanation)
+        ],
+        analysis_artifacts=[],
+    )
+
   def _mock_eda_engine_property(self, property_name, return_value):
     self.enter_context(
         mock.patch.object(
@@ -3346,7 +3375,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 2)
 
@@ -3391,7 +3422,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 2)
 
@@ -3426,7 +3459,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 2)
 
@@ -3479,7 +3514,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 2)
 
@@ -3525,7 +3562,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 2)
 
@@ -3549,7 +3588,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
 
     for artifact in outcome.analysis_artifacts:
@@ -3587,7 +3628,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     expected_overall_corr = np.corrcoef(
         media_data.flatten(), control_data.flatten()
     )[0, 1]
@@ -3650,7 +3693,9 @@ class EDAEngineTest(
     )
     outcome = engine.check_national_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 1)
 
@@ -3690,7 +3735,9 @@ class EDAEngineTest(
     )
     outcome = engine.check_national_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertLen(outcome.analysis_artifacts, 1)
 
@@ -3714,7 +3761,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     outcome = engine.check_national_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     self.assertLen(outcome.analysis_artifacts, 1)
     artifact = outcome.analysis_artifacts[0]
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.NATIONAL)
@@ -3746,7 +3795,9 @@ class EDAEngineTest(
     )
     outcome = engine.check_national_pairwise_corr()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORR)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
     expected_corr = np.corrcoef(media_data.flatten(), control_data.flatten())[
         0, 1
     ]
@@ -3775,7 +3826,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     outcome = engine.check_geo_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 4)
 
     for artifact in outcome.analysis_artifacts:
@@ -3812,7 +3865,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
     outcome = engine.check_geo_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
     kpi_artifact = next(
         artifact
@@ -3856,7 +3911,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
     outcome = engine.check_geo_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
     kpi_artifact = next(
         artifact
@@ -3895,7 +3952,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("all_reach_scaled_da", None)
     self._mock_eda_engine_property("all_freq_da", None)
     outcome = engine.check_geo_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
@@ -4010,7 +4069,9 @@ class EDAEngineTest(
       self._mock_eda_engine_property("all_freq_da", None)
 
     outcome = engine.check_geo_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
@@ -4037,7 +4098,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("all_reach_scaled_da", None)
     self._mock_eda_engine_property("all_freq_da", None)
     outcome = engine.check_geo_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
     variables = [artifact.variable for artifact in outcome.analysis_artifacts]
     self.assertCountEqual(
@@ -4050,7 +4113,9 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
     outcome = engine.check_national_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 4)
 
     for artifact in outcome.analysis_artifacts:
@@ -4087,7 +4152,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
     outcome = engine.check_national_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 4)
     kpi_artifact = next(
         artifact
@@ -4131,7 +4198,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
     outcome = engine.check_national_std()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 4)
     kpi_artifact = next(
         artifact
@@ -4173,7 +4242,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_all_reach_scaled_da", None)
     self._mock_eda_engine_property("national_all_freq_da", None)
     outcome = engine.check_national_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
@@ -4204,7 +4275,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_all_freq_da", None)
 
     outcome = engine.check_national_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
@@ -4318,7 +4391,9 @@ class EDAEngineTest(
       self._mock_eda_engine_property("national_all_freq_da", None)
 
     outcome = engine.check_national_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(
         outcome.findings[0].severity, eda_outcome.EDASeverity.ATTENTION
@@ -4347,7 +4422,9 @@ class EDAEngineTest(
     self._mock_eda_engine_property("national_all_reach_scaled_da", None)
     self._mock_eda_engine_property("national_all_freq_da", None)
     outcome = engine.check_national_std()
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.STD)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
     variables = [artifact.variable for artifact in outcome.analysis_artifacts]
     self.assertCountEqual(
@@ -4408,7 +4485,9 @@ class EDAEngineTest(
 
     outcome = engine.check_geo_vif()
 
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.findings, 1)
     self.assertEqual(outcome.findings[0].severity, expected_severity)
     self.assertIn(expected_explanation, outcome.findings[0].explanation)
@@ -4425,7 +4504,9 @@ class EDAEngineTest(
 
     outcome = engine.check_geo_vif()
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
 
     overall_artifact = next(
@@ -4456,7 +4537,9 @@ class EDAEngineTest(
 
     outcome = engine.check_geo_vif()
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
 
     geo_artifact = next(
@@ -4493,7 +4576,9 @@ class EDAEngineTest(
     outcome = engine.check_geo_vif()
 
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
 
     overall_artifact = next(
@@ -4525,7 +4610,9 @@ class EDAEngineTest(
     outcome = engine.check_geo_vif()
 
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 2)
 
     overall_artifact = next(
@@ -4635,7 +4722,9 @@ class EDAEngineTest(
 
     outcome = engine.check_national_vif()
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 1)
 
     national_artifact = outcome.analysis_artifacts[0]
@@ -4664,7 +4753,9 @@ class EDAEngineTest(
     outcome = engine.check_national_vif()
 
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 1)
 
     national_artifact = outcome.analysis_artifacts[0]
@@ -4685,7 +4776,9 @@ class EDAEngineTest(
     outcome = engine.check_national_vif()
 
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(outcome.check_type, eda_outcome.EDACheckType.VIF)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
     self.assertLen(outcome.analysis_artifacts, 1)
 
     national_artifact = outcome.analysis_artifacts[0]
@@ -4703,6 +4796,98 @@ class EDAEngineTest(
     test_utils.assert_allclose(
         national_artifact.vif_da.values, expected_national_vif
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_model",
+          is_national=True,
+          expected_call="check_national_std",
+      ),
+      dict(
+          testcase_name="geo_model",
+          is_national=False,
+          expected_call="check_geo_std",
+      ),
+  )
+  def test_check_std_calls_correct_level(self, is_national, expected_call):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_outcome = self._create_eda_outcome(
+        eda_outcome.EDACheckType.STANDARD_DEVIATION,
+        eda_outcome.EDASeverity.INFO,
+    )
+    mock_check = self.enter_context(
+        mock.patch.object(
+            engine, expected_call, autospec=True, return_value=mock_outcome
+        )
+    )
+    result = engine.check_std()
+    mock_check.assert_called_once()
+    self.assertEqual(result, mock_outcome)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_model",
+          is_national=True,
+          expected_call="check_national_vif",
+      ),
+      dict(
+          testcase_name="geo_model",
+          is_national=False,
+          expected_call="check_geo_vif",
+      ),
+  )
+  def test_check_vif_calls_correct_level(self, is_national, expected_call):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_outcome = self._create_eda_outcome(
+        eda_outcome.EDACheckType.MULTICOLLINEARITY,
+        eda_outcome.EDASeverity.INFO,
+    )
+    mock_check = self.enter_context(
+        mock.patch.object(
+            engine, expected_call, autospec=True, return_value=mock_outcome
+        )
+    )
+    result = engine.check_vif()
+    mock_check.assert_called_once()
+    self.assertEqual(result, mock_outcome)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_model",
+          is_national=True,
+          expected_call="check_national_pairwise_corr",
+      ),
+      dict(
+          testcase_name="geo_model",
+          is_national=False,
+          expected_call="check_geo_pairwise_corr",
+      ),
+  )
+  def test_check_pairwise_corr_calls_correct_level(
+      self, is_national, expected_call
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_outcome = self._create_eda_outcome(
+        eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
+        eda_outcome.EDASeverity.INFO,
+    )
+    mock_check = self.enter_context(
+        mock.patch.object(
+            engine, expected_call, autospec=True, return_value=mock_outcome
+        )
+    )
+    result = engine.check_pairwise_corr()
+    mock_check.assert_called_once()
+    self.assertEqual(result, mock_outcome)
 
   @parameterized.named_parameters(
       dict(
@@ -4832,6 +5017,120 @@ class EDAEngineTest(
     test_utils.assert_allclose(
         artifact.kpi_da.values,
         kpi_data,
+    )
+
+  def test_run_all_critical_checks_all_pass(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_results = {
+        "check_overall_kpi_invariability": self._create_eda_outcome(
+            eda_outcome.EDACheckType.KPI_INVARIABILITY,
+            eda_outcome.EDASeverity.INFO,
+        ),
+        "check_vif": self._create_eda_outcome(
+            eda_outcome.EDACheckType.MULTICOLLINEARITY,
+            eda_outcome.EDASeverity.INFO,
+        ),
+        "check_pairwise_corr": self._create_eda_outcome(
+            eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
+            eda_outcome.EDASeverity.INFO,
+        ),
+    }
+    self._mock_critical_checks(mock_results)
+
+    outcomes = engine.run_all_critical_checks()
+
+    self.assertLen(outcomes, 3)
+    for outcome in outcomes:
+      self.assertLen(outcome.findings, 1)
+      self.assertEqual(
+          outcome.findings[0].severity, eda_outcome.EDASeverity.INFO
+      )
+
+  def test_run_all_critical_checks_with_non_info_findings(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_results = {
+        "check_overall_kpi_invariability": self._create_eda_outcome(
+            eda_outcome.EDACheckType.KPI_INVARIABILITY,
+            eda_outcome.EDASeverity.ERROR,
+        ),
+        "check_vif": self._create_eda_outcome(
+            eda_outcome.EDACheckType.MULTICOLLINEARITY,
+            eda_outcome.EDASeverity.ATTENTION,
+        ),
+        "check_pairwise_corr": self._create_eda_outcome(
+            eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
+            eda_outcome.EDASeverity.INFO,
+        ),
+    }
+    self._mock_critical_checks(mock_results)
+
+    outcomes = engine.run_all_critical_checks()
+
+    self.assertLen(outcomes, 3)
+    expected_severities = [
+        eda_outcome.EDASeverity.ERROR,
+        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.INFO,
+    ]
+    for i, outcome in enumerate(outcomes):
+      self.assertLen(outcome.findings, 1)
+      self.assertEqual(outcome.findings[0].severity, expected_severities[i])
+
+  def test_run_all_critical_checks_with_exception(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_results = {
+        "check_overall_kpi_invariability": self._create_eda_outcome(
+            eda_outcome.EDACheckType.KPI_INVARIABILITY,
+            eda_outcome.EDASeverity.INFO,
+        ),
+        "check_vif": ValueError("Test Error"),
+        "check_pairwise_corr": TypeError("Another Error"),
+    }
+    self._mock_critical_checks(mock_results)
+
+    outcomes = engine.run_all_critical_checks()
+
+    self.assertLen(outcomes, 3)
+
+    # Check check_overall_kpi_invariability
+    self.assertEqual(
+        outcomes[0].check_type, eda_outcome.EDACheckType.KPI_INVARIABILITY
+    )
+    self.assertLen(outcomes[0].findings, 1)
+    self.assertEqual(
+        outcomes[0].findings[0].severity, eda_outcome.EDASeverity.INFO
+    )
+
+    # Check check_vif (should catch ValueError)
+    self.assertEqual(
+        outcomes[1].check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
+    self.assertLen(outcomes[1].findings, 1)
+    self.assertEqual(
+        outcomes[1].findings[0].severity, eda_outcome.EDASeverity.ERROR
+    )
+    self.assertIn(
+        "An error occurred during check check_vif: Test Error",
+        outcomes[1].findings[0].explanation,
+    )
+
+    # Check check_pairwise_corr (should catch TypeError)
+    self.assertEqual(
+        outcomes[2].check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+    )
+    self.assertLen(outcomes[2].findings, 1)
+    self.assertEqual(
+        outcomes[2].findings[0].severity, eda_outcome.EDASeverity.ERROR
+    )
+    self.assertIn(
+        "An error occurred during check check_pairwise_corr: Another Error",
+        outcomes[2].findings[0].explanation,
     )
 
 
