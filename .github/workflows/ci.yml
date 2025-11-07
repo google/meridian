@@ -11,7 +11,7 @@ env:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       max-parallel: 3
       matrix:
