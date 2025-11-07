@@ -391,8 +391,14 @@ def _jax_gather(params, indices, axis=0):
   """JAX implementation for gather with axis support."""
   import jax.numpy as jnp
 
-  if isinstance(params, np.ndarray) and params.dtype.kind in ("S", "U"):
+  if isinstance(params, (list, tuple)):
+    params = np.array(params)
+
+  # JAX can't JIT-compile operations on string or object arrays. We detect
+  # these types and fall back to standard NumPy operations.
+  if isinstance(params, np.ndarray) and params.dtype.kind in ("S", "U", "O"):
     return np.take(params, np.asarray(indices), axis=axis)
+
   return jnp.take(params, indices, axis=axis)
 
 
@@ -549,6 +555,7 @@ def _jax_enable_op_determinism():
       "op determinism is a TensorFlow-specific concept and has no effect when"
       " using the JAX backend."
   )
+
 
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()

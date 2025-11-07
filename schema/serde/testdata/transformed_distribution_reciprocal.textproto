@@ -1,0 +1,70 @@
+# proto-file: third_party/py/meridian/proto/mmm/v1/model/meridian/meridian_model.proto
+# proto-message: TfpDistribution
+
+distribution_type: "TransformedDistribution"
+parameters {
+  key: "distribution"
+  value {
+    distribution_value {
+      distribution_type: "LogNormal"
+      parameters {
+        key: "loc"
+        value {
+          scalar_value: 0.7
+        }
+      }
+      parameters {
+        key: "scale"
+        value {
+          scalar_value: 0.4
+        }
+      }
+    }
+  }
+}
+parameters {
+  key: "bijector"
+  value {
+    bijector_value {
+      bijector_type: "Reciprocal"
+      parameters: {
+        key: "name"
+        value: {
+          string_value: "reciprocal"
+        }
+      }
+      parameters: {
+        key: "validate_args"
+        value: {
+          bool_value: false
+        }
+      }
+    }
+  }
+}
+parameters {
+  key: "kwargs_split_fn"
+  value {
+    function_param {
+      uses_default: true
+    }
+  }
+}
+parameters {
+  key: "validate_args"
+  value {
+    bool_value: false
+  }
+}
+parameters {
+  key: "parameters"
+  value {
+    none_value: true
+  }
+}
+parameters {
+  key: "name"
+  value {
+    string_value: "transformed_distribution_reciprocal"
+  }
+}
