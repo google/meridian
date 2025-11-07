@@ -5646,6 +5646,345 @@ class EDAEngineTest(
         kpi_data,
     )
 
+  def test_check_geo_cost_per_impression_raises_error_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_geo_cost_per_impression()
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="no_issues",
+          spend_data=np.full((1, 10, 1), 10.0),
+          impression_data=np.full((1, 10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=True,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="inconsistent_zero_spend",
+          spend_data=np.array(
+              [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+          ).reshape((1, 10, 1)),
+          impression_data=np.full((1, 10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="inconsistent_positive_spend",
+          spend_data=np.full((1, 10, 1), 10.0),
+          impression_data=np.array(
+              [0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+          ).reshape((1, 10, 1)),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="outliers",
+          spend_data=np.array(
+              [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 100.0]
+          ).reshape((1, 10, 1)),
+          impression_data=np.full((1, 10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=True,
+          expected_outlier_df_empty=False,
+      ),
+      dict(
+          testcase_name="inconsistency_and_outliers",
+          spend_data=np.array(
+              [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 100.0]
+          ).reshape((1, 10, 1)),
+          impression_data=np.full((1, 10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=2,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=False,
+      ),
+  ])
+  def test_check_geo_cost_per_impression(
+      self,
+      spend_data,
+      impression_data,
+      expected_severity,
+      expected_findings_count,
+      expected_inconsistency_df_empty,
+      expected_outlier_df_empty,
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = False
+    engine = eda_engine.EDAEngine(meridian)
+    spend_ds = _create_dataset_with_var_dim(
+        spend_data, var_name="media"
+    ).rename(
+        {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_SPEND}
+    )
+    impression_ds = _create_dataset_with_var_dim(
+        impression_data, var_name="media"
+    ).rename({"media_dim": constants.MEDIA_CHANNEL})
+    self._mock_eda_engine_property("all_spend_ds", spend_ds)
+    self._mock_eda_engine_property("paid_raw_impressions_ds", impression_ds)
+
+    outcome = engine.check_geo_cost_per_impression()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.COST_PER_IMPRESSION
+    )
+    self.assertLen(outcome.findings, expected_findings_count)
+    self.assertTrue(
+        all(
+            finding.severity == expected_severity
+            for finding in outcome.findings
+        )
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.CostPerImpressionArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.GEO)
+    self.assertEqual(
+        artifact.spend_impression_inconsistency_df.empty,
+        expected_inconsistency_df_empty,
+    )
+    self.assertEqual(
+        artifact.outlier_df.empty,
+        expected_outlier_df_empty,
+    )
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="no_issues",
+          spend_data=np.full((10, 1), 10.0),
+          impression_data=np.full((10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=True,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="inconsistent_zero_spend",
+          spend_data=np.array(
+              [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+          ).reshape((10, 1)),
+          impression_data=np.full((10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="inconsistent_positive_spend",
+          spend_data=np.full((10, 1), 10.0),
+          impression_data=np.array(
+              [0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+          ).reshape((10, 1)),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=True,
+      ),
+      dict(
+          testcase_name="outliers",
+          spend_data=np.array(
+              [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 100.0]
+          ).reshape((10, 1)),
+          impression_data=np.full((10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=1,
+          expected_inconsistency_df_empty=True,
+          expected_outlier_df_empty=False,
+      ),
+      dict(
+          testcase_name="inconsistency_and_outliers",
+          spend_data=np.array(
+              [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 100.0]
+          ).reshape((10, 1)),
+          impression_data=np.full((10, 1), 10.0),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings_count=2,
+          expected_inconsistency_df_empty=False,
+          expected_outlier_df_empty=False,
+      ),
+  ])
+  def test_check_national_cost_per_impression(
+      self,
+      spend_data,
+      impression_data,
+      expected_severity,
+      expected_findings_count,
+      expected_inconsistency_df_empty,
+      expected_outlier_df_empty,
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = True
+    engine = eda_engine.EDAEngine(meridian)
+    spend_ds = _create_dataset_with_var_dim(
+        spend_data, var_name="media"
+    ).rename(
+        {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_SPEND}
+    )
+    impression_ds = _create_dataset_with_var_dim(
+        impression_data, var_name="media"
+    ).rename({"media_dim": constants.MEDIA_CHANNEL})
+    self._mock_eda_engine_property("national_all_spend_ds", spend_ds)
+    self._mock_eda_engine_property(
+        "national_paid_raw_impressions_ds", impression_ds
+    )
+
+    outcome = engine.check_national_cost_per_impression()
+
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.COST_PER_IMPRESSION
+    )
+    self.assertLen(outcome.findings, expected_findings_count)
+    self.assertTrue(
+        all(
+            finding.severity == expected_severity
+            for finding in outcome.findings
+        )
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.CostPerImpressionArtifact)
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.NATIONAL)
+    self.assertEqual(
+        artifact.spend_impression_inconsistency_df.empty,
+        expected_inconsistency_df_empty,
+    )
+    self.assertEqual(
+        artifact.outlier_df.empty,
+        expected_outlier_df_empty,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_model",
+          is_national=True,
+          expected_call="check_national_cost_per_impression",
+      ),
+      dict(
+          testcase_name="geo_model",
+          is_national=False,
+          expected_call="check_geo_cost_per_impression",
+      ),
+  )
+  def test_check_cost_per_impression_calls_correct_level(
+      self, is_national, expected_call
+  ):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    engine = eda_engine.EDAEngine(meridian)
+
+    mock_outcome = self._create_eda_outcome(
+        eda_outcome.EDACheckType.COST_PER_IMPRESSION,
+        eda_outcome.EDASeverity.INFO,
+    )
+    mock_check = self.enter_context(
+        mock.patch.object(
+            engine, expected_call, autospec=True, return_value=mock_outcome
+        )
+    )
+    result = engine.check_cost_per_impression()
+    mock_check.assert_called_once()
+    self.assertEqual(result, mock_outcome)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          is_national=False,
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+      ),
+  )
+  def test_check_cost_per_impression_artifact_values(self, is_national):
+    meridian = mock.Mock(spec=model.Meridian)
+    meridian.is_national = is_national
+    engine = eda_engine.EDAEngine(meridian)
+
+    spend_arr = np.array(
+        [0.0, 10.0, 20.0, 30.0, 10.0, 10.0, 10.0, 10.0, 10.0, 1000.0]
+    )
+    impression_arr = np.array(
+        [5.0, 0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+    )
+    expected_cpi = np.array(
+        [0.0, np.nan, 2.0, 3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 100.0]
+    )
+
+    if is_national:
+      shape = (10, 1)
+      level = eda_outcome.AnalysisLevel.NATIONAL
+      spend_ds_prop = "national_all_spend_ds"
+      impression_ds_prop = "national_paid_raw_impressions_ds"
+      check_method = engine.check_national_cost_per_impression
+    else:
+      shape = (1, 10, 1)
+      level = eda_outcome.AnalysisLevel.GEO
+      spend_ds_prop = "all_spend_ds"
+      impression_ds_prop = "paid_raw_impressions_ds"
+      check_method = engine.check_geo_cost_per_impression
+
+    spend_data = spend_arr.reshape(shape)
+    impression_data = impression_arr.reshape(shape)
+    spend_ds = _create_dataset_with_var_dim(
+        spend_data, var_name="media"
+    ).rename({"media_dim": constants.MEDIA_CHANNEL, "media": constants.SPEND})
+    impression_ds = _create_dataset_with_var_dim(
+        impression_data, var_name="media"
+    ).rename(
+        {"media_dim": constants.MEDIA_CHANNEL, "media": constants.IMPRESSIONS}
+    )
+
+    self._mock_eda_engine_property(spend_ds_prop, spend_ds)
+    self._mock_eda_engine_property(impression_ds_prop, impression_ds)
+
+    outcome = check_method()
+
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(artifact, eda_outcome.CostPerImpressionArtifact)
+    self.assertEqual(artifact.level, level)
+
+    # Check cost_per_impression_da
+    stacked_spend_da_structure = eda_engine.stack_variables(
+        spend_ds, constants.CHANNEL
+    )
+    expected_cpi_da = xr.DataArray(
+        expected_cpi.reshape(stacked_spend_da_structure.shape),
+        coords=stacked_spend_da_structure.coords,
+        dims=stacked_spend_da_structure.dims,
+        name=eda_constants.COST_PER_MEDIA_UNIT,
+    )
+    xr.testing.assert_allclose(artifact.cost_per_impression_da, expected_cpi_da)
+
+    # Check spend_impression_inconsistency_df
+    inconsistency_df = artifact.spend_impression_inconsistency_df
+    self.assertEqual(inconsistency_df.shape[0], 2)
+    self.assertIn(
+        pd.Timestamp("2023-01-01"),
+        inconsistency_df.index.get_level_values(constants.TIME),
+    )
+    self.assertIn(
+        pd.Timestamp("2023-01-08"),
+        inconsistency_df.index.get_level_values(constants.TIME),
+    )
+
+    # Check outlier_df
+    outlier_df = artifact.outlier_df
+    self.assertEqual(outlier_df.shape[0], 1)
+    self.assertEqual(
+        outlier_df.index.get_level_values(constants.TIME)[0],
+        pd.Timestamp("2023-03-05"),
+    )
+    self.assertAlmostEqual(outlier_df.iloc[0]["outliers"], 100.0)
+
   def test_run_all_critical_checks_all_pass(self):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
