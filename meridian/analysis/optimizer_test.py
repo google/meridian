@@ -281,6 +281,43 @@ def _get_sample_optimized_data(is_revenue_kpi: bool = True) -> xr.Dataset:
 
 
 class OptimizerAlgorithmTest(parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.inference_data_media_and_rf = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_and_rf.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_and_rf.nc')
+        ),
+    )
+    cls.inference_data_media_only = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_only.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_only.nc')
+        ),
+    )
+    cls.inference_data_rf_only = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_rf_only.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_rf_only.nc')
+        ),
+    )
+    cls.inference_data_all_channels = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_non_paid.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_non_paid.nc')
+        ),
+    )
+
   # TODO: Update the sample datasets to span over 1 year.
   def setUp(self):
     super(OptimizerAlgorithmTest, self).setUp()
@@ -329,39 +366,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             n_controls=_N_CONTROLS,
             seed=0,
         )
-    )
-
-    self.inference_data_media_and_rf = az.InferenceData(
-        prior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_and_rf.nc')
-        ),
-        posterior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_and_rf.nc')
-        ),
-    )
-    self.inference_data_media_only = az.InferenceData(
-        prior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_only.nc')
-        ),
-        posterior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_only.nc')
-        ),
-    )
-    self.inference_data_rf_only = az.InferenceData(
-        prior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_prior_rf_only.nc')
-        ),
-        posterior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_posterior_rf_only.nc')
-        ),
-    )
-    self.inference_data_all_channels = az.InferenceData(
-        prior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_prior_non_paid.nc')
-        ),
-        posterior=xr.open_dataset(
-            os.path.join(_TEST_DATA_DIR, 'sample_posterior_non_paid.nc')
-        ),
     )
 
     self.meridian_media_and_rf = model.Meridian(
