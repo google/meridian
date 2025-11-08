@@ -73,12 +73,12 @@ class EdaOutcomeTest(parameterized.TestCase):
       extreme_corr_threshold=0.5,
   )
   _GEO_OUTCOME = eda_outcome.EDAOutcome(
-      check_type=eda_outcome.EDACheckType.PAIRWISE_CORR,
+      check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
       findings=[],
       analysis_artifacts=[_OVERALL_ARTIFACT, _GEO_ARTIFACT],
   )
   _NATIONAL_OUTCOME = eda_outcome.EDAOutcome(
-      check_type=eda_outcome.EDACheckType.PAIRWISE_CORR,
+      check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
       findings=[],
       analysis_artifacts=[_NATIONAL_ARTIFACT],
   )

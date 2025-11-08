@@ -41,6 +41,17 @@ class PosteriorMCMCSamplerTest(
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
 
+  def setUp(self):
+    super().setUp()
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "_run_model_fitting_guardrail",
+            autospec=True,
+            return_value=None,
+        )
+    )
+
   def _assert_seeds_equal(self, seed1, seed2):
     if backend.config.get_backend() == backend.config.Backend.JAX:
       self.assertEqual(seed1, seed2)
