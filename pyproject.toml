@@ -83,13 +83,6 @@ jax = [
     "tensorflow-probability[substrates-jax]==0.25.0",
 ]
 
-# MMM schema, only works with `pip install .[schema]`
-schema = [
-  # TODO: publish a schema package to pypi
-  "mmm-proto-schema @ file:./proto",
-  "semver",
-]
-
 [tool.pyink]
 # Formatting configuration to follow Google style-guide
 line-length = 80
@@ -110,7 +103,7 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*", "schema*"]
+include = ["meridian*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
