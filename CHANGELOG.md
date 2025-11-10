@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-11-10
+
+* Add `EDAEngine` for exploratory data analysis.
 * Add model fitting guardrail using EDA to `Meridian`.
 * Introduce serde package: a serialization and deserialization library for
   Meridian model with a protocol buffer schema.
@@ -401,4 +404,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.7]: https://github.com/google/meridian/releases/tag/v1.1.7
 [1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
 [1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.2.1...HEAD
+[1.3.0]: https://github.com/google/meridian/releases/tag/v1.3.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.3.0...HEAD
