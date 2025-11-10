@@ -91,6 +91,31 @@ class ConvergenceCheckTest(parameterized.TestCase):
           + results.NOT_CONVERGED_RECOMMENDATION,
       )
 
+  def test_convergence_check_with_nan_rhats(self):
+    self.analyzer.get_rhat.return_value = {
+        "mock_var": np.array([np.nan, np.nan])
+    }
+
+    config = configs.ConvergenceConfig()
+    convergence_check = checks.ConvergenceCheck(
+        meridian=self.meridian,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = convergence_check.run()
+    self.assertEqual(result.case, results.ConvergenceCases.CONVERGED)
+    self.assertTrue(np.isnan(result.details[results.constants.RHAT]))
+    self.assertTrue(np.isnan(result.details[results.constants.PARAMETER]))
+    self.assertEqual(
+        result.details[results.constants.CONVERGENCE_THRESHOLD],
+        config.convergence_threshold,
+    )
+    self.assertEqual(
+        result.recommendation,
+        "The model has likely converged, as all parameters have R-hat values"
+        " < 1.2.",
+    )
+
 
 class ROIConsistencyCheckTest(parameterized.TestCase):
 

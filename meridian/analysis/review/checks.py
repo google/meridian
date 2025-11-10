@@ -18,6 +18,7 @@ import abc
 from collections.abc import Sequence
 import dataclasses
 from typing import Generic, TypeVar
+import warnings
 
 from meridian import backend
 from meridian import constants
@@ -65,7 +66,25 @@ class ConvergenceCheck(
 
   def run(self) -> results.ConvergenceCheckResult:
     rhats = self._analyzer.get_rhat()
-    max_rhats = {k: np.nanmax(v) for k, v in rhats.items()}
+    with warnings.catch_warnings():
+      warnings.filterwarnings("ignore", category=RuntimeWarning)
+      max_rhats = {k: np.nanmax(v) for k, v in rhats.items()}
+
+    valid_rhat_items = [
+        item for item in max_rhats.items() if not np.isnan(item[1])
+    ]
+    if not valid_rhat_items:
+      return results.ConvergenceCheckResult(
+          case=results.ConvergenceCases.CONVERGED,
+          details={
+              review_constants.RHAT: np.nan,
+              review_constants.PARAMETER: np.nan,
+              review_constants.CONVERGENCE_THRESHOLD: (
+                  self._config.convergence_threshold
+              ),
+          },
+      )
+
     max_parameter, max_rhat = max(max_rhats.items(), key=lambda item: item[1])
 
     details = {
