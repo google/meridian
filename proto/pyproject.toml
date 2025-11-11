@@ -50,9 +50,8 @@ build-backend = "setuptools.build_meta"
 [tool.unified_schema_builder]
 proto_root=""
 github_includes=[
-  # TODO: Pin to a specific version/tag.
-  "https://github.com/googleapis/googleapis.git",
-  "https://github.com/tensorflow/tensorflow.git",
+  "https://github.com/googleapis/googleapis.git@master",  # No version tag available.
+  "https://github.com/tensorflow/tensorflow.git@v2.18.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,4 +61,3 @@ include = [
 exclude = ["*test"]
 
 [tool.setuptools]
-include-package-data = true

@@ -27,10 +27,12 @@ from setuptools.command import build
 def _toml_load(path):
   if sys.version_info[:2] >= (3, 11):
     import tomllib  # pylint: disable=g-import-not-at-top
+
     return tomllib.load(path)
   else:
     # for python<3.11
     import tomli  # pylint: disable=g-import-not-at-top
+
     return tomli.load(path)
 
 
@@ -41,10 +43,14 @@ class ProtoBuild(setuptools.Command):
     with open("pyproject.toml", "rb") as f:
       cfg = _toml_load(f).get("tool", {}).get("unified_schema_builder")
       self._root = pathlib.Path(*cfg.get("proto_root").split("/"))
-      self._deps = {
-          url.split("/")[-1].split(".")[0]: url
-          for url in cfg.get("github_includes")
-      }
+      self._deps = {}
+      for url_with_tag in cfg.get("github_includes"):
+        tag = None
+        url = url_with_tag
+        if "@" in url_with_tag:
+          url, tag = url_with_tag.split("@")
+        folder = url.split("/")[-1].split(".")[0]
+        self._deps[folder] = (url, tag)
       self._srcs = list(self._root.rglob("*.proto"))
 
   def finalize_options(self):
@@ -70,7 +76,8 @@ class ProtoBuild(setuptools.Command):
         subprocess.run(c, capture_output=True, text=True, check=True)
       except subprocess.CalledProcessError as e:
         logging.error(
-            "Skipping Unified Schema compilation since command %s failed:\n%s",
+            "Skipping Unified Schema compilation since command '%s'"
+            " failed:\n%s",
             cmd_str,
             e.stderr.strip(),
         )
@@ -90,10 +97,16 @@ class ProtoBuild(setuptools.Command):
 
   def _pull_deps(self, root):
     cmds = []
-    for folder, url in self._deps.items():
+    for folder, (url, tag) in self._deps.items():
       target_path = root / folder
       target_path.mkdir(parents=True, exist_ok=True)
-      cmds.append(f"git clone --quiet {url} {target_path}".split())
+      if tag:
+        cmds.append(
+            f"git clone --quiet --depth=1 --branch {tag} {url} {target_path}"
+            .split()
+        )
+      else:
+        cmds.append(f"git clone --quiet --depth=1 {url} {target_path}".split())
     return self._run_cmds(cmds)
 
   def run(self):
