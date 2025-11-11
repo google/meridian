@@ -29,7 +29,8 @@ from meridian.model import spec
 from meridian.version import __version__
 
 
-INPUT_DATA = test_utils.sample_input_data_revenue(n_media_channels=1)
+def _get_input_data():
+  return test_utils.sample_input_data_revenue(n_media_channels=1)
 
 
 def _create_prior_distribution_log_entry(
@@ -157,28 +158,28 @@ class AutologTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="default_model_spec_positional_args",
-          model_spec=spec.ModelSpec(),
+          model_spec_factory=spec.ModelSpec,
           sample_prior={"args": [100, 1], "kwargs": {}},
           sample_posterior={"args": [1, 1, 1, 1], "kwargs": {}},
           expected_log_param_calls=DEFAULT_EXPECTED_CALLS,
       ),
       dict(
           testcase_name="default_model_spec_keyword_args",
-          model_spec=spec.ModelSpec(),
+          model_spec_factory=spec.ModelSpec,
           sample_prior={"args": [], "kwargs": {"n_draws": 100, "seed": 1}},
           sample_posterior={"args": [1, 1, 1, 1], "kwargs": {}},
           expected_log_param_calls=DEFAULT_EXPECTED_CALLS,
       ),
       dict(
           testcase_name="default_model_spec_mixed_args",
-          model_spec=spec.ModelSpec(),
+          model_spec_factory=spec.ModelSpec,
           sample_prior={"args": [100], "kwargs": {"seed": 1}},
           sample_posterior={"args": [1, 1, 1], "kwargs": {"n_keep": 1}},
           expected_log_param_calls=DEFAULT_EXPECTED_CALLS,
       ),
       dict(
           testcase_name="no_model_spec_positional_args",
-          model_spec=None,
+          model_spec_factory=lambda: None,
           sample_prior={"args": [100, 1], "kwargs": {}},
           sample_posterior={"args": [1, 1, 1, 1], "kwargs": {}},
           expected_log_param_calls=DEFAULT_EXPECTED_CALLS,
@@ -186,13 +187,14 @@ class AutologTest(parameterized.TestCase):
   )
   def test_autolog(
       self,
-      model_spec,
+      model_spec_factory,
       sample_prior,
       sample_posterior,
       expected_log_param_calls,
   ):
+    model_spec = model_spec_factory()
     autolog.autolog()
-    mmm = model.Meridian(input_data=INPUT_DATA, model_spec=model_spec)
+    mmm = model.Meridian(input_data=_get_input_data(), model_spec=model_spec)
     mmm.sample_prior(*sample_prior["args"], **sample_prior["kwargs"])
     mmm.sample_posterior(
         *sample_posterior["args"], **sample_posterior["kwargs"]
@@ -213,7 +215,7 @@ class AutologTest(parameterized.TestCase):
       self, sample_prior, sample_posterior, expected_log_metric_calls
   ):
     autolog.autolog(log_metrics=True)
-    mmm = model.Meridian(input_data=INPUT_DATA)
+    mmm = model.Meridian(input_data=_get_input_data())
     mmm.sample_prior(*sample_prior["args"], **sample_prior["kwargs"])
     mmm.sample_posterior(
         *sample_posterior["args"], **sample_posterior["kwargs"]
@@ -223,13 +225,13 @@ class AutologTest(parameterized.TestCase):
 
   def test_autolog_disabled_after_initially_enabled(self):
     autolog.autolog()
-    model.Meridian(input_data=INPUT_DATA)
+    model.Meridian(input_data=_get_input_data())
     self.mock_log_param.assert_called()
 
     autolog.autolog(disable=True)
     self.mock_log_param.reset_mock()
 
-    model.Meridian(input_data=INPUT_DATA)
+    model.Meridian(input_data=_get_input_data())
     self.mock_log_param.assert_not_called()
 
 
