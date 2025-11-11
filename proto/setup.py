@@ -52,7 +52,10 @@ class ProtoBuild(setuptools.Command):
 
   def _check_protoc_version(self):
     out = subprocess.run(
-        "protoc --version".split(), check=True, text=True, capture_output=True
+        [sys.executable, "-m", "grpc_tools.protoc", "--version"],
+        check=True,
+        text=True,
+        capture_output=True,
     ).stdout
     out = out.strip() if out else ""
     if out.startswith("libprotoc"):
@@ -78,7 +81,10 @@ class ProtoBuild(setuptools.Command):
     i = [f"-I{include_path}" for include_path in includes]
     srcs_folders = [src for src in self._srcs]
     commands = [
-        ["protoc"] + i + f"--python_out=. {src}".split() for src in srcs_folders
+        [sys.executable, "-m", "grpc_tools.protoc"]
+        + i
+        + f"--python_out=. {src}".split()
+        for src in srcs_folders
     ]
     return self._run_cmds(commands)
 

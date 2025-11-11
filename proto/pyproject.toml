@@ -5,12 +5,11 @@ description = """\
   """
 readme = "README.md"
 requires-python = ">=3.10"
-license = {file = "LICENSE"}
+license-files = ["LICENSE"]
 authors = [
   {name = "The Meridian Authors", email="no-reply@google.com"},
 ]
 classifiers = [  # List of https://pypi.org/classifiers/
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Other/Nonlisted Topic",
@@ -22,7 +21,8 @@ keywords = [
   "protobuf",
 ]
 
-dynamic = ["version"]
+#dynamic = ["version"]
+version = "1.0.0"
 
 dependencies = [
   "googleapis-common-protos",
@@ -43,14 +43,16 @@ documentation = "https://developers.google.com/meridian"
 requires = [
   "setuptools >= 61.0.0",
   "tomli; python_version < '3.11'",
+  "grpcio-tools >= 1.66.0, < 1.70.0",
 ]
 build-backend = "setuptools.build_meta"
 
 [tool.unified_schema_builder]
 proto_root=""
 github_includes=[
- "https://github.com/googleapis/googleapis.git",
- "https://github.com/tensorflow/tensorflow.git",
+  # TODO: Pin to a specific version/tag.
+  "https://github.com/googleapis/googleapis.git",
+  "https://github.com/tensorflow/tensorflow.git",
 ]
 
 [tool.setuptools.packages.find]
@@ -61,6 +63,3 @@ exclude = ["*test"]
 
 [tool.setuptools]
 include-package-data = true
-
-[tool.setuptools.dynamic]
-version = {attr = "__version__"}
