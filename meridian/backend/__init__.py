@@ -19,6 +19,7 @@ import functools
 import os
 from typing import Any, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import warnings
+
 from meridian.backend import config
 import numpy as np
 from typing_extensions import Literal
@@ -220,7 +221,7 @@ def _tf_arange(
 
 def _jax_cast(x: Any, dtype: Any) -> "_jax.Array":
   """JAX implementation for cast."""
-  return x.astype(dtype)
+  return jax_ops.asarray(x, dtype=dtype)
 
 
 def _jax_divide_no_nan(x, y):
@@ -305,16 +306,131 @@ def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
   )
 
 
-def _jax_make_tensor_proto(*args, **kwargs):  # pylint: disable=unused-argument
-  raise NotImplementedError(
-      "backend.make_tensor_proto is not implemented for the JAX backend."
+def _jax_make_tensor_proto(values, dtype=None, shape=None):  # pylint: disable=unused-argument
+  """JAX implementation for make_tensor_proto."""
+  # pylint: disable=g-direct-tensorflow-import
+  from tensorflow.core.framework import tensor_pb2
+  from tensorflow.core.framework import tensor_shape_pb2
+  from tensorflow.core.framework import types_pb2
+  # pylint: enable=g-direct-tensorflow-import
+
+  if not isinstance(values, np.ndarray):
+    values = np.array(values)
+
+  if dtype:
+    numpy_dtype = np.dtype(dtype)
+    values = values.astype(numpy_dtype)
+  else:
+    numpy_dtype = values.dtype
+
+  dtype_map = {
+      np.dtype(np.float16): types_pb2.DT_HALF,
+      np.dtype(np.float32): types_pb2.DT_FLOAT,
+      np.dtype(np.float64): types_pb2.DT_DOUBLE,
+      np.dtype(np.int32): types_pb2.DT_INT32,
+      np.dtype(np.uint8): types_pb2.DT_UINT8,
+      np.dtype(np.uint16): types_pb2.DT_UINT16,
+      np.dtype(np.uint32): types_pb2.DT_UINT32,
+      np.dtype(np.uint64): types_pb2.DT_UINT64,
+      np.dtype(np.int16): types_pb2.DT_INT16,
+      np.dtype(np.int8): types_pb2.DT_INT8,
+      np.dtype(np.int64): types_pb2.DT_INT64,
+      np.dtype(np.complex64): types_pb2.DT_COMPLEX64,
+      np.dtype(np.complex128): types_pb2.DT_COMPLEX128,
+      np.dtype(np.bool_): types_pb2.DT_BOOL,
+      # Note: String types are handled outside the map.
+  }
+  proto_dtype = dtype_map.get(numpy_dtype)
+  if proto_dtype is None and numpy_dtype.kind in ("S", "U"):
+    proto_dtype = types_pb2.DT_STRING
+
+  if proto_dtype is None:
+    raise TypeError(
+        f"Unsupported dtype for TensorProto conversion: {numpy_dtype}"
+    )
+
+  proto = tensor_pb2.TensorProto(
+      dtype=proto_dtype,
+      tensor_shape=tensor_shape_pb2.TensorShapeProto(
+          dim=[
+              tensor_shape_pb2.TensorShapeProto.Dim(size=d)
+              for d in values.shape
+          ]
+      ),
   )
 
+  proto.tensor_content = values.tobytes()
+  return proto
 
-def _jax_make_ndarray(*args, **kwargs):  # pylint: disable=unused-argument
-  raise NotImplementedError(
-      "backend.make_ndarray is not implemented for the JAX backend."
-  )
+
+def _jax_make_ndarray(proto):
+  """JAX implementation for make_ndarray."""
+  # pylint: disable=g-direct-tensorflow-import
+  from tensorflow.core.framework import types_pb2
+  # pylint: enable=g-direct-tensorflow-import
+
+  dtype_map = {
+      types_pb2.DT_HALF: np.float16,
+      types_pb2.DT_FLOAT: np.float32,
+      types_pb2.DT_DOUBLE: np.float64,
+      types_pb2.DT_INT32: np.int32,
+      types_pb2.DT_UINT8: np.uint8,
+      types_pb2.DT_UINT16: np.uint16,
+      types_pb2.DT_UINT32: np.uint32,
+      types_pb2.DT_UINT64: np.uint64,
+      types_pb2.DT_INT16: np.int16,
+      types_pb2.DT_INT8: np.int8,
+      types_pb2.DT_INT64: np.int64,
+      types_pb2.DT_COMPLEX64: np.complex64,
+      types_pb2.DT_COMPLEX128: np.complex128,
+      types_pb2.DT_BOOL: np.bool_,
+      types_pb2.DT_STRING: np.bytes_,
+  }
+  if proto.dtype not in dtype_map:
+    raise TypeError(f"Unsupported TensorProto dtype: {proto.dtype}")
+
+  shape = [d.size for d in proto.tensor_shape.dim]
+  dtype = dtype_map[proto.dtype]
+
+  if proto.tensor_content:
+    num_elements = np.prod(shape).item() if shape else 0
+    # When deserializing a string from tensor_content, the itemsize is not
+    # explicitly stored. We must infer it from the content length and shape.
+    if dtype == np.bytes_ and num_elements > 0:
+      content_len = len(proto.tensor_content)
+      itemsize = content_len // num_elements
+      if itemsize * num_elements != content_len:
+        raise ValueError(
+            "Tensor content size is not a multiple of the number of elements"
+            " for string dtype."
+        )
+      dtype = np.dtype(f"S{itemsize}")
+
+    return (
+        np.frombuffer(proto.tensor_content, dtype=dtype).copy().reshape(shape)
+    )
+
+  # Fallback for protos that store data in val fields instead of tensor_content.
+  if dtype == np.float32:
+    val_field = proto.float_val
+  elif dtype == np.float64:
+    val_field = proto.double_val
+  elif dtype == np.int32:
+    val_field = proto.int_val
+  elif dtype == np.int64:
+    val_field = proto.int64_val
+  elif dtype == np.bool_:
+    val_field = proto.bool_val
+  else:
+    if proto.string_val:
+      return np.array(proto.string_val, dtype=np.bytes_).reshape(shape)
+    if not any(shape):
+      return np.array([], dtype=dtype).reshape(shape)
+    raise TypeError(
+        f"Unsupported dtype for TensorProto value field fallback: {dtype}"
+    )
+
+  return np.array(val_field, dtype=dtype).reshape(shape)
 
 
 def _jax_get_indices_where(condition):
@@ -497,12 +613,23 @@ def _jax_convert_to_tensor(data, dtype=None):
   # JAX does not natively support string tensors in the same way TF does.
   # If a string dtype is requested, or if the data is inherently strings,
   # we fall back to a standard NumPy array.
-  if dtype == np.str_ or (
-      dtype is None
-      and isinstance(data, (list, np.ndarray))
-      and np.array(data).dtype.kind in ("S", "U")
-  ):
-    return np.array(data, dtype=np.str_)
+  is_string_target = False
+  if dtype is not None:
+    try:
+      if np.dtype(dtype).kind in ("S", "U"):
+        is_string_target = True
+    except TypeError:
+      # This can happen if dtype is not a valid dtype specifier,
+      # let jax.asarray handle it.
+      pass
+
+  is_string_data = isinstance(data, (list, np.ndarray)) and np.array(
+      data
+  ).dtype.kind in ("S", "U")
+
+  if is_string_target or (dtype is None and is_string_data):
+    return np.array(data, dtype=dtype)
+
   return jax_ops.asarray(data, dtype=dtype)
 
 
@@ -535,18 +662,48 @@ def _tf_nanvar(a, axis=None, keepdims=False):
   return tf.convert_to_tensor(var)
 
 
-def _jax_one_hot(*args, **kwargs):  # pylint: disable=unused-argument
+def _jax_one_hot(
+    indices, depth, on_value=None, off_value=None, axis=None, dtype=None
+):
   """JAX implementation for one_hot."""
-  raise NotImplementedError(
-      "backend.one_hot is not implemented for the JAX backend."
+  import jax.numpy as jnp
+
+  resolved_dtype = _resolve_dtype(dtype, on_value, off_value, 1, 0)
+  jax_axis = -1 if axis is None else axis
+
+  one_hot_result = jax.nn.one_hot(
+      indices, num_classes=depth, dtype=jnp.dtype(resolved_dtype), axis=jax_axis
   )
 
+  on_val = 1 if on_value is None else on_value
+  off_val = 0 if off_value is None else off_value
 
-def _jax_roll(*args, **kwargs):  # pylint: disable=unused-argument
+  if on_val == 1 and off_val == 0:
+    return one_hot_result
+
+  on_tensor = jnp.array(on_val, dtype=jnp.dtype(resolved_dtype))
+  off_tensor = jnp.array(off_val, dtype=jnp.dtype(resolved_dtype))
+
+  return jnp.where(one_hot_result == 1, on_tensor, off_tensor)
+
+
+def _jax_roll(a, shift, axis=None):
   """JAX implementation for roll."""
-  raise NotImplementedError(
-      "backend.roll is not implemented for the JAX backend."
-  )
+  import jax.numpy as jnp
+
+  return jnp.roll(a, shift, axis=axis)
+
+
+def _tf_roll(a, shift: Sequence[int], axis=None):
+  """TensorFlow implementation for roll that handles axis=None."""
+  import tensorflow as tf
+
+  if axis is None:
+    original_shape = tf.shape(a)
+    flat_tensor = tf.reshape(a, [-1])
+    rolled_flat = tf.roll(flat_tensor, shift=shift, axis=0)
+    return tf.reshape(rolled_flat, original_shape)
+  return tf.roll(a, shift, axis=axis)
 
 
 def _jax_enable_op_determinism():
@@ -772,7 +929,7 @@ if _BACKEND == config.Backend.JAX:
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
   int32 = _ops.int32
-  string = np.str_
+  string = np.bytes_
 
   stabilize_rf_roi_grid = _jax_stabilize_rf_roi_grid
 
@@ -904,7 +1061,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reduce_sum = _ops.reduce_sum
   repeat = _ops.repeat
   reshape = _ops.reshape
-  roll = _ops.roll
+  roll = _tf_roll
   set_random_seed = tf_backend.keras.utils.set_random_seed
   split = _ops.split
   stack = _ops.stack

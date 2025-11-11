@@ -4314,7 +4314,9 @@ MOCK_PROTO_NO_REVENUE_PER_KPI = text_format.Parse(
 
 
 # Hyperparameters test data
-DEFAULT_MODEL_SPEC = spec.ModelSpec()
+def get_default_model_spec() -> spec.ModelSpec:
+  return spec.ModelSpec()
+
 
 DEFAULT_HYPERPARAMETERS_PROTO = meridian_pb.Hyperparameters(
     media_effects_dist=_MediaEffectsDist.LOG_NORMAL,
@@ -4331,22 +4333,25 @@ DEFAULT_HYPERPARAMETERS_PROTO = meridian_pb.Hyperparameters(
     global_adstock_decay='geometric',
 )
 
-CUSTOM_MODEL_SPEC_1 = spec.ModelSpec(
-    prior=prior_distribution.PriorDistribution(),
-    media_effects_dist=c.MEDIA_EFFECTS_NORMAL,
-    hill_before_adstock=True,
-    max_lag=777,
-    unique_sigma_for_each_geo=True,
-    media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
-    rf_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
-    knots=2,
-    baseline_geo='baseline_geo',
-    roi_calibration_period=None,
-    rf_roi_calibration_period=None,
-    holdout_id=None,
-    control_population_scaling_id=None,
-    adstock_decay_spec='binomial',
-)
+
+def get_custom_model_spec_1() -> spec.ModelSpec:
+  return spec.ModelSpec(
+      prior=prior_distribution.PriorDistribution(),
+      media_effects_dist=c.MEDIA_EFFECTS_NORMAL,
+      hill_before_adstock=True,
+      max_lag=777,
+      unique_sigma_for_each_geo=True,
+      media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
+      rf_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
+      knots=2,
+      baseline_geo='baseline_geo',
+      roi_calibration_period=None,
+      rf_roi_calibration_period=None,
+      holdout_id=None,
+      control_population_scaling_id=None,
+      adstock_decay_spec='binomial',
+  )
+
 
 CUSTOM_HYPERPARAMETERS_PROTO_1 = meridian_pb.Hyperparameters(
     media_effects_dist=_MediaEffectsDist.NORMAL,
@@ -4366,27 +4371,28 @@ CUSTOM_HYPERPARAMETERS_PROTO_1 = meridian_pb.Hyperparameters(
 )
 
 
-CUSTOM_MODEL_SPEC_2 = spec.ModelSpec(
-    prior=prior_distribution.PriorDistribution(),
-    media_effects_dist='log_normal',
-    hill_before_adstock=True,
-    max_lag=777,
-    unique_sigma_for_each_geo=True,
-    media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
-    rf_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
-    organic_media_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
-    organic_rf_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-    non_media_treatments_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-    non_media_baseline_values=['min', 0.5, 'max'],
-    knots=[1, 5, 8],
-    baseline_geo=3,
-    roi_calibration_period=np.full((2, 3), True),
-    rf_roi_calibration_period=np.full((4, 5), False),
-    holdout_id=np.full((6,), True),
-    control_population_scaling_id=np.full((7, 8), False),
-    non_media_population_scaling_id=np.full((9, 10), False),
-    adstock_decay_spec={'ch_paid_0': 'binomial', 'rf_ch_paid_1': 'geometric'},
-)
+def get_custom_model_spec_2() -> spec.ModelSpec:
+  return spec.ModelSpec(
+      prior=prior_distribution.PriorDistribution(),
+      media_effects_dist='log_normal',
+      hill_before_adstock=True,
+      max_lag=777,
+      unique_sigma_for_each_geo=True,
+      media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
+      rf_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
+      organic_media_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      organic_rf_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+      non_media_treatments_prior_type=c.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+      non_media_baseline_values=['min', 0.5, 'max'],
+      knots=[1, 5, 8],
+      baseline_geo=3,
+      roi_calibration_period=np.full((2, 3), True),
+      rf_roi_calibration_period=np.full((4, 5), False),
+      holdout_id=np.full((6,), True),
+      control_population_scaling_id=np.full((7, 8), False),
+      non_media_population_scaling_id=np.full((9, 10), False),
+      adstock_decay_spec={'ch_paid_0': 'binomial', 'rf_ch_paid_1': 'geometric'},
+  )
 
 CUSTOM_HYPERPARAMETERS_PROTO_2 = meridian_pb.Hyperparameters(
     media_effects_dist=_MediaEffectsDist.LOG_NORMAL,
@@ -4441,24 +4447,27 @@ CUSTOM_HYPERPARAMETERS_PROTO_2 = meridian_pb.Hyperparameters(
     ),
 )
 
-CUSTOM_MODEL_SPEC_3 = spec.ModelSpec(
-    prior=prior_distribution.PriorDistribution(),
-    media_effects_dist=c.MEDIA_EFFECTS_NORMAL,
-    hill_before_adstock=True,
-    max_lag=777,
-    unique_sigma_for_each_geo=True,
-    media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
-    rf_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
-    organic_media_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
-    organic_rf_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
-    non_media_treatments_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
-    baseline_geo='baseline_geo',
-    roi_calibration_period=None,
-    rf_roi_calibration_period=None,
-    holdout_id=None,
-    control_population_scaling_id=None,
-    enable_aks=True,
-)
+
+def get_custom_model_spec_3() -> spec.ModelSpec:
+  return spec.ModelSpec(
+      prior=prior_distribution.PriorDistribution(),
+      media_effects_dist=c.MEDIA_EFFECTS_NORMAL,
+      hill_before_adstock=True,
+      max_lag=777,
+      unique_sigma_for_each_geo=True,
+      media_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
+      rf_prior_type=c.TREATMENT_PRIOR_TYPE_MROI,
+      organic_media_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      organic_rf_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      non_media_treatments_prior_type=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      baseline_geo='baseline_geo',
+      roi_calibration_period=None,
+      rf_roi_calibration_period=None,
+      holdout_id=None,
+      control_population_scaling_id=None,
+      enable_aks=True,
+  )
+
 
 CUSTOM_HYPERPARAMETERS_PROTO_3 = meridian_pb.Hyperparameters(
     media_effects_dist=_MediaEffectsDist.NORMAL,

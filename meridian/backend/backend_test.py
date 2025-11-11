@@ -321,8 +321,8 @@ class BackendTest(parameterized.TestCase):
     if backend_name == _JAX:
       # JAX backend uses numpy unicode strings
       self.assertIsInstance(t, np.ndarray)
-      self.assertEqual(t.dtype.kind, "U")
-      test_utils.assert_allequal(t, np.array(data))
+      self.assertEqual(t.dtype.kind, "S")
+      test_utils.assert_allequal(t, np.array(data, dtype=np.bytes_))
     else:
       # TensorFlow natively supports string tensors (bytes).
       self.assertIsInstance(t, tf.Tensor)
@@ -1044,15 +1044,140 @@ class BackendTest(parameterized.TestCase):
     self.assertFalse(np.all(result == outcome_grid))
     test_utils.assert_allclose(result, expected, atol=1e-6)
 
-  def test_jax_one_hot_raises_not_implemented(self):
-    self._set_backend_for_test(_JAX)
-    with self.assertRaises(NotImplementedError):
-      backend.one_hot(indices=[0, 1], depth=2)
+  @parameterized.product(
+      [
+          dict(
+              input_data=np.array([0, 1, 2, 3, 4]),
+              shift=2,
+              axis=None,
+              expected=np.array([3, 4, 0, 1, 2]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=1,
+              axis=0,
+              expected=np.array([[2, 3], [0, 1]]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=-1,
+              axis=1,
+              expected=np.array([[1, 0], [3, 2]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_roll(self, backend_name, input_data, shift, axis, expected):
+    """Tests that backend.roll works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(input_data)
+    result = backend.roll(tensor, shift, axis=axis)
+    test_utils.assert_allequal(result, expected)
 
-  def test_jax_roll_raises_not_implemented(self):
-    self._set_backend_for_test(_JAX)
-    with self.assertRaises(NotImplementedError):
-      backend.roll(backend.to_tensor([1, 2, 3]), shift=1, axis=0)
+  @parameterized.product(
+      [
+          dict(
+              indices=np.array([0, 2]),
+              depth=3,
+              on_value=None,
+              off_value=None,
+              axis=None,
+              dtype=None,
+              expected=np.array([[1, 0, 0], [0, 0, 1]]),
+          ),
+          dict(
+              indices=np.array([1, 0]),
+              depth=2,
+              on_value=1.0,
+              off_value=-1.0,
+              axis=None,
+              dtype=np.float32,
+              expected=np.array([[-1.0, 1.0], [1.0, -1.0]], dtype=np.float32),
+          ),
+          dict(
+              indices=np.array([0, 1]),
+              depth=2,
+              on_value=5,
+              off_value=1,
+              axis=None,
+              dtype=np.int32,
+              expected=np.array([[5, 1], [1, 5]], dtype=np.int32),
+          ),
+          dict(
+              indices=np.array([0, 1, 0]),
+              depth=2,
+              on_value=None,
+              off_value=None,
+              axis=0,
+              dtype=None,
+              expected=np.array([[1, 0, 1], [0, 1, 0]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_one_hot(
+      self,
+      backend_name,
+      indices,
+      depth,
+      on_value,
+      off_value,
+      axis,
+      dtype,
+      expected,
+  ):
+    """Tests that backend.one_hot works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    result = backend.one_hot(
+        indices,
+        depth,
+        on_value=on_value,
+        off_value=off_value,
+        axis=axis,
+        dtype=dtype,
+    )
+    test_utils.assert_allequal(result, expected)
+    if dtype:
+      # JAX can promote integer dtypes, so we just check kind
+      self.assertEqual(
+          np.dtype(backend.standardize_dtype(result.dtype)).kind,
+          np.dtype(expected.dtype).kind,
+      )
+
+  @parameterized.product(
+      [
+          dict(
+              arr=np.array([1.1, 2.2, 3.3], dtype=np.float32),
+          ),
+          dict(
+              arr=np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32),
+          ),
+          dict(arr=np.array([True, False, True])),
+          dict(
+              arr=np.array([b"hello", b"world"], dtype=np.bytes_),
+          ),
+          dict(
+              arr=np.array([], dtype=np.float32),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_tensor_proto_roundtrip(self, backend_name, arr):
+    """Tests proto conversion roundtrip for both backends."""
+    self._set_backend_for_test(backend_name)
+    proto = backend.make_tensor_proto(arr)
+    result_arr = backend.make_ndarray(proto)
+    test_utils.assert_allequal(
+        result_arr,
+        arr,
+        err_msg=f"Roundtrip failed for dtype {arr.dtype}",
+    )
+    if backend_name == _TF and arr.dtype.kind in ("S", "U"):
+      # tf.make_ndarray converts string protos to numpy arrays of dtype=object
+      # containing bytes. The content is correct, but the dtype differs.
+      self.assertEqual(result_arr.dtype.kind, "O")
+    else:
+      self.assertEqual(result_arr.dtype, arr.dtype)
 
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
