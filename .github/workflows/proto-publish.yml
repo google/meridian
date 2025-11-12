@@ -76,7 +76,8 @@ jobs:
           except FileNotFoundError:
             print(f"Error: File {filepath} not found", file=sys.stderr)
             sys.exit(1)
-          """
+          """ )
+
           if [ $? -ne 0 ]; then
             echo "Failed to get version from ${{ env.PROTO_DIR}}/pyproject.toml"
             exit 1
