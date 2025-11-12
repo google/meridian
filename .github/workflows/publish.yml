@@ -21,6 +21,8 @@ on:
 
 env:
   USE_PYTHON_VERSION: "3.11"
+  BUILD_ARTIFACT_NAME: "meridian-core-package-distributions"
+  PYPI_PACKAGE_NAME: "google-meridian"
 
 jobs:
   build:
@@ -31,6 +33,7 @@ jobs:
       - uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
+          artifact_name: ${{ env.BUILD_ARTIFACT_NAME }}
 
   # Check if the current `meridian.__version__` semver has been incremented. If so, set a
   # `new_version` output.
@@ -78,14 +81,14 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/google-meridian
+      url: https://pypi.org/p/${{ env.PYPI_PACKAGE_NAME }}
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: dist/
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -106,14 +109,14 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/google-meridian
+      url: https://test.pypi.org/p/${{ env.PYPI_PACKAGE_NAME }}
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: dist/
       - name: Publish distribution to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
