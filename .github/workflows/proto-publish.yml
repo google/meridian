@@ -30,6 +30,7 @@ jobs:
           python_version: ${{ env.USE_PYTHON_VERSION }}
           working_directory: ${{ env.PROTO_DIR }}
           output_path: ${{env.PROTO_DIR}}/dist/
+          artifact_name: proto-python-package-distributions
 
   # Check if the current `version` semver has been incremented. If so, set a
   # `new_version` output.
@@ -106,7 +107,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          pattern: proto-python-package-distributions
+          name: proto-python-package-distributions
           path: dist/
 
       - name: Publish distribution to PyPI
@@ -133,7 +134,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          pattern: proto-python-package-distribution
+          name: proto-python-package-distributions
           path: dist/
       - name: Publish distribution to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1

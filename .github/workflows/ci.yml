@@ -29,15 +29,25 @@ jobs:
       - name: Run core tests
         run: pytest -vv -n auto
 
-  build:
-    name: Build distribution
+  # Build meridian "core" and "mmm-proto-schema" distributions.
+  build-distributions:
+    name: Build distributions
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
+      - name: Build meridian distribution
+        uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
+          artifact_name: python-package-distributions
+      - name: Build mmm-proto-schema distribution
+        uses: ./.github/actions/build
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          working_directory: ./proto
+          output_path: ./proto/dist
+          artifact_name: proto-python-package-distributions
 
   # Include for sanity checking that version increment parsing and checking logic works.
   check-version:
