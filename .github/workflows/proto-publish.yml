@@ -1,6 +1,13 @@
 name: Publish Proto # For tagging and publishing releases.
 
 on:
+  push:
+    branches:
+      - main  # This entire workflow only runs on a push to the `main` branch (i.e. POST SUBMIT).
+    paths:
+      - 'proto/**' # Trigger only on changes to the proto directory.
+    tags:
+      - 'proto-v*'  # Trigger only on pushed tags whose names start with 'proto-v'.
   workflow_dispatch:
     inputs:
       publish_proto_to_pypi:  # Creates a boolean `github.event.inputs.publish_to_pypi` variable.
