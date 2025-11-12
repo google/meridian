@@ -22,11 +22,14 @@ jobs:
     name: pytest (python-${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
       - uses: ./.github/actions/install-meridian
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         with:
           python_version: ${{ matrix.python-version }}
       # Run tests (in parallel)
       - name: Run core tests
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         run: pytest -vv -n auto
 
   # Build meridian "core" and "mmm-proto-schema" distributions.
