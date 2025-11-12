@@ -165,10 +165,14 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         inference_data=inference_data.InferenceDataSerde().serialize(
             mmm.inference_data
         ),
-        eda_spec=eda_spec_serde.EDASpecSerde(eda_function_registry).serialize(
-            mmm.eda_spec
-        ),
     )
+    # For backwards compatibility, only serialize EDA spec if it exists.
+    if hasattr(mmm, 'eda_spec'):
+      model_proto.eda_spec.CopyFrom(
+          eda_spec_serde.EDASpecSerde(eda_function_registry).serialize(
+              mmm.eda_spec
+          )
+      )
 
     if include_convergence_info:
       convergence_proto = self._make_model_convergence_proto(mmm)
@@ -300,6 +304,9 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         inference_data=deserialized_inference_data,
     )
 
+    # For backwards compatibility, only deserialize EDA spec if it exists in the
+    # serialized model. Otherwise, warn the user and create a model with default
+    # EDA spec.
     if isinstance(
         ser_meridian, meridian_pb.MeridianModel
     ) and ser_meridian.HasField('eda_spec'):
