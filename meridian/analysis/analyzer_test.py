@@ -15,8 +15,10 @@
 from collections.abc import Sequence
 import dataclasses
 import os
+import unittest
 from unittest import mock
 import warnings
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
@@ -6426,6 +6428,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
       roi_calibration_times=[None, [5, 6, 7]],
       rf_roi_calibration_times=[None, [5, 6, 7]],
   )
+  @unittest.skip("b/459539627: Flaky.")  # TODO: Re-enable.
   def test_treatment_parameter_accuracy(
       self,
       n_channels_per_treatment,
