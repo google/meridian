@@ -90,8 +90,15 @@ jobs:
         id: compare_versions
         run: |
           CURRENT_VERSION="${{ steps.get_version.outputs.value }}"
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' || { echo "Error: No matching previous tag found." >&2; exit 1; })
-          PREVIOUS_VERSION=$(echo "$PREVIOUS_TAG" | sed 's/^v//')
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'proto-v*' || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "Warning: No matching previous tag found with pattern 'proto-v*'. Assuming first version."
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          PREVIOUS_VERSION=$(echo "$PREVIOUS_TAG" | sed 's/^proto-v//')
 
           echo "CURRENT_VERSION: $CURRENT_VERSION"
           echo "PREVIOUS_TAG: $PREVIOUS_TAG"
