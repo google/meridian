@@ -73,10 +73,10 @@ jobs:
             if version:
               print(version)
             else:
-              print(f"Error: Version not found in {filepath} under [project.version]")
+              print(f'Error: Version not found in {filepath} under [project.version]', file=sys.stderr)
               sys.exit(1)
           except FileNotFoundError:
-            print(f"Error: File {filepath} not found", file=sys.stderr)
+            print(f'Error: File {filepath} not found', file=sys.stderr)
             sys.exit(1)
           """ )
 
