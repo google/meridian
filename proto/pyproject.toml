@@ -21,14 +21,12 @@ keywords = [
   "protobuf",
 ]
 
-#dynamic = ["version"]
 version = "1.0.0"
 
 dependencies = [
   "googleapis-common-protos",
-  "google-api-python-client",
   "protobuf",
-  "tensorflow"
+  "tensorflow",
 ]
 
 [project.urls]
@@ -54,10 +52,9 @@ github_includes=[
   "https://github.com/tensorflow/tensorflow.git@v2.18.0",
 ]
 
-[tool.setuptools.packages.find]
-include = [
-  "mmm*",
-]
-exclude = ["*test"]
-
 [tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["mmm*"]
+exclude = ["*test"]
