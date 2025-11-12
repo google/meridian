@@ -1,6 +1,6 @@
 inputs:
   new_version:
-    description: The new Meridian semantic version string to create a tag for.
+    description: The new semantic version string to create a tag for.
     required: true
 
 permissions:
@@ -14,7 +14,7 @@ runs:
       uses: actions/github-script@v6
       with:
         script: |
-          const newTag = 'v${{ inputs.new_version }}';
+          const newTag = '${{ inputs.new_version }}';
           try {
             await github.rest.git.createTag({
               owner: context.repo.owner,

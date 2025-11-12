@@ -3,6 +3,14 @@ inputs:
     description: The Python version of the build toolchain to use.
     required: true
     default: 3.11
+  working_directory:
+    description: The working directory to build the package in.
+    required: false
+    default: .
+  output_path:
+    description: The path to the output directory.
+    required: false
+    default: dist/
 
 runs:
   using: composite
@@ -20,8 +28,9 @@ runs:
     - name: Build a binary wheel and a source tarball
       shell: bash
       run: python3 -m build
+      working-directory: ${{ inputs.working_directory }}
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
-        path: dist/
+        path: ${{ inputs.output_path }}

@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/create-version-tag
         with:
-          new_version: ${{ needs.check-version.outputs.new_version }}
+          new_version: v${{ needs.check-version.outputs.new_version }}
 
   publish-to-pypi:
     name: Publish Python distribution to PyPI
