@@ -39,18 +39,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Build meridian distribution
+      - name: Build meridian core distribution
         uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
-          artifact_name: meridian-core-package-distributions
+          artifact_name: meridian-core-package-distribution
       - name: Build mmm-proto-schema distribution
         uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
           working_directory: ./proto
           output_path: ./proto/dist
-          artifact_name: mmm-proto-package-distributions
+          artifact_name: mmm-proto-package-distribution
 
   # Include for sanity checking that version increment parsing and checking logic works.
   check-version:

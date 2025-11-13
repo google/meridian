@@ -21,7 +21,7 @@ on:
 
 env:
   USE_PYTHON_VERSION: "3.11"
-  BUILD_ARTIFACT_NAME: "meridian-core-package-distributions"
+  BUILD_ARTIFACT_NAME: "meridian-core-package-distribution"
   PYPI_PACKAGE_NAME: "google-meridian"
 
 jobs:

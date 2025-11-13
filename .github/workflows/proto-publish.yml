@@ -24,7 +24,7 @@ on:
 env:
   USE_PYTHON_VERSION: "3.11"
   PROTO_DIR: "proto"
-  BUILD_ARTIFACT_NAME: "mmm-proto-package-distributions"
+  BUILD_ARTIFACT_NAME: "mmm-proto-package-distribution"
   PYPI_PACKAGE_NAME: "mmm-proto-schema"
 
 jobs:
