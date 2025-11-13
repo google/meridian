@@ -15,15 +15,18 @@
 """Module containing Meridian related exploratory data analysis (EDA) functionalities."""
 from __future__ import annotations
 
-from typing import Literal, TYPE_CHECKING, Union
+from typing import Callable, Literal, TYPE_CHECKING, Union
 
 import altair as alt
 from meridian import constants
 from meridian.model.eda import constants as eda_constants
+from meridian.model.eda import eda_engine
 import pandas as pd
+import xarray as xr
 
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
+
 
 __all__ = [
     'MeridianEDA',
@@ -54,6 +57,171 @@ class MeridianEDA:
     """
     # TODO: Implement.
     raise NotImplementedError()
+
+  def plot_kpi_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for KPI variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of KPI',
+        self._meridian.eda_engine.national_kpi_scaled_da,
+        self._meridian.eda_engine.kpi_scaled_da,
+        lambda data: data.to_dataframe()
+        .reset_index()
+        .rename(columns={data.name: constants.VALUE})[[constants.VALUE]]
+        .assign(var=constants.KPI),
+    )
+
+  def plot_frequency_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for frequency variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of frequency',
+        self._meridian.eda_engine.national_all_freq_da,
+        self._meridian.eda_engine.all_freq_da,
+        lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
+            columns={constants.RF_CHANNEL: eda_constants.VARIABLE}
+        ),
+    )
+
+  def plot_reach_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for reach variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of reach',
+        self._meridian.eda_engine.national_all_reach_scaled_da,
+        self._meridian.eda_engine.all_reach_scaled_da,
+        lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
+            columns={constants.RF_CHANNEL: eda_constants.VARIABLE}
+        ),
+    )
+
+  def plot_non_media_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for non-media treatments variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of non-media treatments',
+        self._meridian.eda_engine.national_non_media_scaled_da,
+        self._meridian.eda_engine.non_media_scaled_da,
+        lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
+            columns={constants.NON_MEDIA_CHANNEL: eda_constants.VARIABLE}
+        ),
+    )
+
+  def plot_treatments_excl_non_media_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for treatments variation excluding non-media treatments."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of paid and organic impressions',
+        self._meridian.eda_engine.national_treatment_control_scaled_ds,
+        self._meridian.eda_engine.treatment_control_scaled_ds,
+        lambda data: self._process_stacked_ds(
+            eda_engine.stack_variables(
+                data.drop_dims(
+                    [constants.NON_MEDIA_CHANNEL, constants.CONTROL_VARIABLE],
+                    errors='ignore',
+                )
+            )
+        ),
+    )
+
+  def plot_controls_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for controls variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of controls',
+        self._meridian.eda_engine.national_controls_scaled_da,
+        self._meridian.eda_engine.controls_scaled_da,
+        lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
+            columns={constants.CONTROL_VARIABLE: eda_constants.VARIABLE}
+        ),
+    )
+
+  def plot_spend_boxplot(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the boxplot for spend variation."""
+    return self._plot_boxplots(
+        geos,
+        'Boxplots of spend for each paid channel',
+        self._meridian.eda_engine.national_all_spend_ds,
+        self._meridian.eda_engine.all_spend_ds,
+        lambda data: self._process_stacked_ds(eda_engine.stack_variables(data)),
+    )
+
+  def _plot_boxplots(
+      self,
+      geos: Union[int, list[str], Literal['nationalize']],
+      title_prefix: str,
+      national_data_source: xr.DataArray | xr.Dataset,
+      geo_data_source: xr.DataArray | xr.Dataset,
+      processing_function: Callable[[xr.DataArray | xr.Dataset], pd.DataFrame],
+  ) -> alt.Chart:
+    """Helper function for plotting boxplots."""
+    geos_to_plot = self._validate_and_get_geos_to_plot(geos)
+
+    use_national_data = (
+        self._meridian.is_national or geos == eda_constants.NATIONALIZE
+    )
+    data_source = national_data_source if use_national_data else geo_data_source
+    if data_source is None:
+      raise ValueError(
+          'There is no data to plot! Make sure your InputData contains the'
+          ' component you are triyng to plot.'
+      )
+    charts = []
+
+    for geo_to_plot in geos_to_plot:
+      title = f'{title_prefix} for {geo_to_plot}'
+
+      if use_national_data:
+        plot_data = data_source
+      else:
+        plot_data = data_source.sel(geo=geo_to_plot)
+
+      plot_data = processing_function(plot_data)
+      unique_variables = plot_data[eda_constants.VARIABLE].unique()
+
+      charts.append((
+          alt.Chart(plot_data)
+          .mark_boxplot(ticks=True, size=40, extent=1.5)
+          .encode(
+              x=alt.X(
+                  f'{eda_constants.VARIABLE}:N',
+                  title=None,
+                  sort=unique_variables,
+                  scale=alt.Scale(paddingInner=0.02),
+              ),
+              y=alt.Y(
+                  f'{eda_constants.VALUE}:Q',
+                  title='Value',
+                  sort=unique_variables,
+                  scale=alt.Scale(zero=True),
+              ),
+              color=alt.Color(f'{eda_constants.VARIABLE}:N', legend=None),
+          )
+          .properties(title=title, width=450, height=400)
+      ))
+
+    final_chart = (
+        alt.vconcat(*charts)
+        .resolve_legend(color='independent')
+        .configure_axis(labelAngle=315)
+        .configure_title(anchor='start')
+        .configure_view(stroke=None)
+    )
+    return final_chart
 
   def plot_pairwise_correlation(
       self, geos: Union[int, list[str], Literal['nationalize']] = 1
@@ -184,6 +352,14 @@ class MeridianEDA:
     chart = (heatmap + text).properties(width=350, height=350)
 
     return chart
+
+  def _process_stacked_ds(self, data: xr.DataArray) -> pd.DataFrame:
+    """Processes a stacked Dataset so it can be plotted by Altair."""
+    return (
+        data.rename(eda_constants.VALUE)
+        .to_dataframe()
+        .reset_index()[[eda_constants.VARIABLE, eda_constants.VALUE]]
+    )
 
   def _generate_pairwise_correlation_report(self) -> str:
     """Creates the HTML snippet for Pairwise Correlation report section."""

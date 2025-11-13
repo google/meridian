@@ -18,4 +18,6 @@
 VARIABLE_1 = 'var1'
 VARIABLE_2 = 'var2'
 VARIABLE = 'var'
+VALUE = 'value'
 CORRELATION = 'correlation'
+NATIONALIZE = 'nationalize'
