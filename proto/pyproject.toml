@@ -1,7 +1,7 @@
 [project]
 name = "mmm-proto-schema"
 description = """\
-  This is a private submodule for MMM model representation in protobuf form.\
+  A Meridian submodule for MMM model representation in protobuf form.\
   """
 readme = "README.md"
 requires-python = ">=3.10"
