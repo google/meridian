@@ -20,6 +20,7 @@ from meridian import constants
 from meridian.backend import test_utils
 from meridian.model import model
 from meridian.model import model_test_data
+from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
@@ -2758,6 +2759,210 @@ class EDAEngineTest(
           expected_dims[var],
       )
 
+  # --- Test cases for all_spend_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.MEDIA_SPEND],
+          expected_dims={
+              constants.MEDIA_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="rf_only",
+          input_data_fixture="input_data_with_rf_only",
+          expected_vars=[constants.RF_SPEND],
+          expected_dims={
+              constants.RF_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.RF_SPEND,
+              constants.MEDIA_SPEND,
+          ],
+          expected_dims={
+              constants.MEDIA_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_media_only",
+          input_data_fixture="national_input_data_media_only",
+          expected_vars=[constants.MEDIA_SPEND],
+          expected_dims={
+              constants.MEDIA_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="national_rf_only",
+          input_data_fixture="national_input_data_rf_only",
+          expected_vars=[constants.RF_SPEND],
+          expected_dims={
+              constants.RF_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.RF_SPEND,
+              constants.MEDIA_SPEND,
+          ],
+          expected_dims={
+              constants.MEDIA_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_SPEND: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_all_spend_ds(self, input_data_fixture, expected_vars, expected_dims):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    tc_scaled_ds = engine.all_spend_ds
+    self.assertIsInstance(tc_scaled_ds, xr.Dataset)
+
+    self.assertCountEqual(tc_scaled_ds.data_vars.keys(), expected_vars)
+
+    for var, dims in expected_dims.items():
+      self.assertCountEqual(list(tc_scaled_ds[var].dims), dims)
+
+  # --- Test cases for national_all_spend_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_media_only",
+          input_data_fixture="national_input_data_media_only",
+          expected_vars=[constants.NATIONAL_MEDIA_SPEND],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SPEND: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="national_rf_only",
+          input_data_fixture="national_input_data_rf_only",
+          expected_vars=[constants.NATIONAL_RF_SPEND],
+          expected_dims={
+              constants.NATIONAL_RF_SPEND: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_RF_SPEND,
+              constants.NATIONAL_MEDIA_SPEND,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SPEND: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_SPEND: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.NATIONAL_MEDIA_SPEND],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SPEND: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="rf_only",
+          input_data_fixture="input_data_with_rf_only",
+          expected_vars=[constants.NATIONAL_RF_SPEND],
+          expected_dims={
+              constants.NATIONAL_RF_SPEND: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_RF_SPEND,
+              constants.NATIONAL_MEDIA_SPEND,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SPEND: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_SPEND: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_national_all_spend_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_all_spend_ds = engine.national_all_spend_ds
+    self.assertIsInstance(national_all_spend_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        national_all_spend_ds.data_vars.keys(),
+        expected_vars,
+    )
+
+    for var in expected_vars:
+      self.assertCountEqual(
+          list(national_all_spend_ds[var].dims),
+          expected_dims[var],
+      )
+
   # --- Test cases for all_reach_scaled_da ---
   @parameterized.named_parameters(
       dict(
@@ -5131,6 +5336,40 @@ class EDAEngineTest(
     self.assertIn(
         "An error occurred during check check_pairwise_corr: Another Error",
         outcomes[2].findings[0].explanation,
+    )
+
+  def test_stack_variables(self):
+    media_data = np.array(
+        [[0.0, 1.0, 2.0], [10.0, 11.0, 12.0], [20.0, 21.0, 22.0]],
+        dtype="float32",
+    )
+    rf_data = np.array(
+        [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]], dtype="float32"
+    )
+    media_ds = _create_dataset_with_var_dim(
+        media_data, var_name="national_media_spend"
+    )
+    rf_ds = _create_dataset_with_var_dim(rf_data, var_name="national_rf_spend")
+    ds = xr.merge([media_ds, rf_ds])
+    xr.testing.assert_equal(
+        eda_engine.stack_variables(ds),
+        xr.DataArray(
+            data=np.concatenate([media_data, rf_data], axis=1),
+            dims=[constants.TIME, eda_constants.VARIABLE],
+            coords={
+                constants.TIME: pd.to_datetime(
+                    ["2023-01-01", "2023-01-08", "2023-01-15"]
+                ),
+                eda_constants.VARIABLE: [
+                    "national_media_spend_1",
+                    "national_media_spend_2",
+                    "national_media_spend_3",
+                    "national_rf_spend_1",
+                    "national_rf_spend_2",
+                ],
+            },
+            name=None,
+        ),
     )
 
 

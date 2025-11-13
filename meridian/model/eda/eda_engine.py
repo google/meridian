@@ -175,10 +175,22 @@ def _data_array_like(
   )
 
 
-def _stack_variables(
+def stack_variables(
     ds: xr.Dataset, coord_name: str = _STACK_VAR_COORD_NAME
 ) -> xr.DataArray:
-  """Stacks data variables other than time and geo into a single variable."""
+  """Stacks data variables of a Dataset into a single DataArray.
+
+  This function is designed to work with Datasets that have 'time' or 'geo'
+  dimensions, which are preserved. Other dimensions are stacked into a new
+  dimension.
+
+  Args:
+    ds: The input xarray.Dataset to stack.
+    coord_name: The name of the new coordinate for the stacked dimension.
+
+  Returns:
+    An xarray.DataArray with the specified dimensions stacked.
+  """
   dims = []
   coords = []
   sample_dims = []
@@ -423,10 +435,11 @@ class EDAEngine:
   @functools.cached_property
   def national_media_spend_da(self) -> xr.DataArray | None:
     """Returns the national media spend data array."""
-    if self.media_spend_da is None:
+    media_spend = self.media_spend_da
+    if media_spend is None:
       return None
     if self._is_national_data:
-      national_da = self.media_spend_da.squeeze(constants.GEO, drop=True)
+      national_da = media_spend.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_MEDIA_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -576,10 +589,11 @@ class EDAEngine:
   @functools.cached_property
   def national_rf_spend_da(self) -> xr.DataArray | None:
     """Returns the national RF spend data array."""
-    if self.rf_spend_da is None:
+    rf_spend = self.rf_spend_da
+    if rf_spend is None:
       return None
     if self._is_national_data:
-      national_da = self.rf_spend_da.squeeze(constants.GEO, drop=True)
+      national_da = rf_spend.squeeze(constants.GEO, drop=True)
       national_da.name = constants.NATIONAL_RF_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
@@ -807,9 +821,41 @@ class EDAEngine:
     return xr.merge(to_merge, join='inner')
 
   @functools.cached_property
+  def all_spend_ds(self) -> xr.Dataset:
+    """Returns a Dataset containing all spend data.
+
+    This includes media spend and rf spend.
+    """
+    to_merge = [
+        da
+        for da in [
+            self.media_spend_da,
+            self.rf_spend_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
+
+  @functools.cached_property
+  def national_all_spend_ds(self) -> xr.Dataset:
+    """Returns a Dataset containing all national spend data.
+
+    This includes media spend and rf spend.
+    """
+    to_merge = [
+        da
+        for da in [
+            self.national_media_spend_da,
+            self.national_rf_spend_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
+
+  @functools.cached_property
   def _stacked_treatment_control_scaled_da(self) -> xr.DataArray:
     """Returns a stacked DataArray of treatment_control_scaled_ds."""
-    da = _stack_variables(self.treatment_control_scaled_ds)
+    da = stack_variables(self.treatment_control_scaled_ds)
     da.name = constants.TREATMENT_CONTROL_SCALED
     return da
 
@@ -837,7 +883,7 @@ class EDAEngine:
   @functools.cached_property
   def _stacked_national_treatment_control_scaled_da(self) -> xr.DataArray:
     """Returns a stacked DataArray of national_treatment_control_scaled_ds."""
-    da = _stack_variables(self.national_treatment_control_scaled_ds)
+    da = stack_variables(self.national_treatment_control_scaled_ds)
     da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
     return da
 
