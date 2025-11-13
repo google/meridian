@@ -53,7 +53,6 @@ def _validate_non_media_baseline_values_numbers(
       )
 
 
-# TODO: Refactor the related unit tests to be under DataTensors.
 @dataclasses.dataclass
 class DataTensors(backend.ExtensionType):
   """Container for data variable arguments of Analyzer methods.

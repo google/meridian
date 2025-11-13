@@ -127,6 +127,471 @@ def _build_inference_data(
   return inference_data
 
 
+class DataTensorsTest(backend_test_utils.MeridianTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.input_data_media_and_rf = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian_media_and_rf = model.Meridian(
+        input_data=cls.input_data_media_and_rf,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+    cls.input_data_media_only = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian_media_only = model.Meridian(
+        input_data=cls.input_data_media_only,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+    cls.input_data_rf_only = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian_rf_only = model.Meridian(
+        input_data=cls.input_data_rf_only,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+    cls.input_data_organic_media = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian_organic_media = model.Meridian(
+        input_data=cls.input_data_organic_media,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+
+  def test_init_wrong_dims_controls(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "New `controls` must have 3 dimension(s). Found 2 dimension(s).",
+    ):
+      analyzer.DataTensors(controls=backend.ones((_N_GEOS, _N_TIMES)))
+
+  @parameterized.named_parameters(
+      (
+          "wrong_media_dims",
+          {"media": (_N_GEOS, _N_MEDIA_CHANNELS)},
+          "New `media` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_reach_dims",
+          {"reach": (_N_GEOS, _N_RF_CHANNELS)},
+          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_frequency_dims",
+          {"frequency": (_N_GEOS, _N_RF_CHANNELS)},
+          "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "wrong_revenue_per_kpi_dims",
+          {"revenue_per_kpi": (_N_GEOS,)},
+          (
+              "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
+              " dimension(s)."
+          ),
+      ),
+      (
+          "wrong_media_spend_dims",
+          {"media_spend": (_N_GEOS, _N_MEDIA_CHANNELS)},
+          "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
+      ),
+      (
+          "wrong_rf_spend_dims",
+          {"media_spend": (_N_GEOS, _N_RF_CHANNELS)},
+          "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
+      ),
+      (
+          "organic_media",
+          {"organic_media": (_N_GEOS, _N_ORGANIC_MEDIA_CHANNELS)},
+          "New `organic_media` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "organic_reach",
+          {"organic_reach": (_N_GEOS, _N_ORGANIC_RF_CHANNELS)},
+          "New `organic_reach` must have 3 dimension(s). Found 2 dimension(s).",
+      ),
+      (
+          "non_media_treatments",
+          {"non_media_treatments": (_N_GEOS,)},
+          (
+              "New `non_media_treatments` must have 3 dimension(s). Found 1"
+              " dimension(s)."
+          ),
+      ),
+  )
+  def test_init_wrong_shape_new_param(
+      self,
+      new_param_shapes: dict[str, tuple[int, ...]],
+      expected_error_message: str,
+  ):
+    new_param = {k: backend.ones(v) for k, v in new_param_shapes.items()}
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
+      analyzer.DataTensors(**new_param)
+
+  def test_validate_wrong_geos_media(self):
+    new_data = analyzer.DataTensors(
+        media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+    )
+    with self.assertRaisesRegex(
+        ValueError, "New `media` is expected to have 5 geos. Found 6 geos."
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  def test_validate_wrong_geos_media_spend(self):
+    new_data = analyzer.DataTensors(
+        media_spend=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "New `media_spend` is expected to have 5 geos. Found 6 geos.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA_SPEND],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  def test_validate_wrong_times_media(self):
+    new_data = analyzer.DataTensors(
+        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS))
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "New `media` is expected to have 52 time periods. Found 10 time"
+        " periods.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA],
+          meridian=self.meridian_media_and_rf,
+          allow_modified_times=False,
+      )
+
+  def test_validate_wrong_channels_frequency(self):
+    new_data = analyzer.DataTensors(
+        frequency=backend.ones((_N_GEOS, _N_TIMES, 3))
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "New `frequency` is expected to have 2 channels. Found 3 channels.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.FREQUENCY],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  def test_validate_wrong_channels_reach(self):
+    new_data = analyzer.DataTensors(
+        reach=backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1))
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "New `reach` is expected to have 2 channels. Found 1 channels.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.REACH],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  @parameterized.parameters(["media", "reach", "frequency", "revenue_per_kpi"])
+  def test_validate_missing_new_param_flexible_times(self, missing_param: str):
+    new_data_dict = {
+        constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        constants.REACH: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.FREQUENCY: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+    }
+    new_data_dict.pop(missing_param)
+    new_data = analyzer.DataTensors(**new_data_dict)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following variables"
+        f" are missing: `['{missing_param}']`.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=list(new_data_dict.keys()) + [missing_param],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  def test_validate_new_params_diff_time_dims(self):
+    new_data = analyzer.DataTensors(
+        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        revenue_per_kpi=backend.ones((_N_GEOS, 8)),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "If the time dimension of any variable in `new_data` is modified, then"
+        " all variables must be provided with the same number of time periods."
+        " `revenue_per_kpi` has 8 time periods, which does not match the"
+        " modified number of time periods, 10.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[
+              constants.MEDIA,
+              constants.REACH,
+              constants.FREQUENCY,
+              constants.REVENUE_PER_KPI,
+          ],
+          meridian=self.meridian_media_and_rf,
+      )
+
+  @parameterized.parameters(["media", "revenue_per_kpi"])
+  def test_validate_media_only_missing_new_param(self, missing_param: str):
+    new_data_dict = {
+        constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+    }
+    required_names = list(new_data_dict.keys())
+    new_data_dict.pop(missing_param)
+    new_data = analyzer.DataTensors(**new_data_dict)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of a variable in `new_data` is modified,"
+        " then all variables must be provided in `new_data`. The"
+        f" following variables are missing: `['{missing_param}']`.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=required_names,
+          meridian=self.meridian_media_only,
+      )
+
+  def test_validate_media_only_invalid_new_data(self):
+    new_data = analyzer.DataTensors(
+        reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS))
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "New `reach` is not allowed because the input data to the Meridian"
+        " model does not contain `reach`",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=["reach"], meridian=self.meridian_media_only
+      )
+
+  @parameterized.parameters(["reach", "frequency", "revenue_per_kpi"])
+  def test_validate_rf_only_missing_new_param(self, missing_param: str):
+    new_data_dict = {
+        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
+    }
+    required_names = list(new_data_dict.keys())
+    new_data_dict.pop(missing_param)
+    new_data = analyzer.DataTensors(**new_data_dict)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of a variable in `new_data` is modified, then"
+        " all variables must be provided in `new_data`. The following"
+        f" variables are missing: `['{missing_param}']`.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=required_names, meridian=self.meridian_rf_only
+      )
+
+  @parameterized.product(
+      new_tensors_names=[
+          [],
+          [constants.MEDIA, constants.REACH, constants.FREQUENCY],
+          [
+              constants.MEDIA,
+              constants.REACH,
+              constants.FREQUENCY,
+              constants.CONTROLS,
+          ],
+          [
+              constants.MEDIA,
+              constants.REACH,
+              constants.FREQUENCY,
+              constants.ORGANIC_MEDIA,
+              constants.ORGANIC_REACH,
+              constants.ORGANIC_FREQUENCY,
+              constants.NON_MEDIA_TREATMENTS,
+          ],
+          [
+              constants.MEDIA,
+              constants.REACH,
+              constants.FREQUENCY,
+              constants.REVENUE_PER_KPI,
+          ],
+      ],
+      require_non_paid_channels=[True, False],
+      require_controls=[True, False],
+      require_revenue_per_kpi=[True, False],
+  )
+  def test_fill_missing_data_tensors(
+      self,
+      new_tensors_names: Sequence[str],
+      require_non_paid_channels: bool,
+      require_controls: bool,
+      require_revenue_per_kpi: bool,
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        seed=1,
+    )
+
+    tensors = {}
+    for tensor_name in new_tensors_names:
+      tensors[tensor_name] = getattr(data, tensor_name)
+    new_data = analyzer.DataTensors(**tensors)
+
+    required_tensors_names = [
+        constants.MEDIA,
+        constants.REACH,
+        constants.FREQUENCY,
+    ]
+    if require_controls:
+      required_tensors_names.append(constants.CONTROLS)
+    if require_non_paid_channels:
+      required_tensors_names.extend([
+          constants.ORGANIC_MEDIA,
+          constants.ORGANIC_REACH,
+          constants.ORGANIC_FREQUENCY,
+          constants.NON_MEDIA_TREATMENTS,
+      ])
+    if require_revenue_per_kpi:
+      required_tensors_names.append(constants.REVENUE_PER_KPI)
+
+    filled_tensors = new_data.validate_and_fill_missing_data(
+        required_tensors_names, self.meridian_organic_media
+    )
+    for tensor_name in required_tensors_names:
+      expected_source = (
+          data
+          if tensor_name in new_tensors_names
+          else self.input_data_organic_media
+      )
+      backend_test_utils.assert_allclose(
+          getattr(filled_tensors, tensor_name),
+          getattr(expected_source, tensor_name),
+          rtol=1e-4,
+          atol=1e-4,
+      )
+
+  @parameterized.parameters(["media", "non_media_treatments"])
+  def test_validate_organic_media_missing_new_param_flexible_times(
+      self, missing_param: str
+  ):
+    new_data_dict = {
+        constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        constants.REACH: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.FREQUENCY: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.ORGANIC_MEDIA: backend.ones(
+            (_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)
+        ),
+        constants.ORGANIC_REACH: backend.ones(
+            (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
+        ),
+        constants.ORGANIC_FREQUENCY: backend.ones(
+            (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
+        ),
+        constants.NON_MEDIA_TREATMENTS: backend.ones(
+            (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
+        ),
+        constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+    }
+    required_names = list(new_data_dict.keys())
+    new_data_dict.pop(missing_param)
+    new_data = analyzer.DataTensors(**new_data_dict)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of a variable in `new_data` is modified,"
+        " then all variables must be provided in `new_data`. The"
+        f" following variables are missing: `['{missing_param}']`.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=required_names,
+          meridian=self.meridian_organic_media,
+      )
+
+  def test_validate_organic_media_new_param_not_matching_times(self):
+    new_data = analyzer.DataTensors(
+        media=backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
+        reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        organic_media=backend.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_MEDIA_CHANNELS)
+        ),
+        organic_reach=backend.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
+        ),
+        organic_frequency=backend.ones(
+            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
+        ),
+        non_media_treatments=backend.ones(
+            (_N_GEOS, _N_TIMES, _N_NON_MEDIA_CHANNELS)
+        ),
+        revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES)),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "If the time dimension of any variable in `new_data` is modified, then"
+        " all variables must be provided with the same number of time periods."
+        " `media` has 52 time periods, which does not match the modified number"
+        " of time periods, 10.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[
+              constants.MEDIA,
+              constants.REACH,
+              constants.FREQUENCY,
+              constants.ORGANIC_MEDIA,
+              constants.ORGANIC_REACH,
+              constants.ORGANIC_FREQUENCY,
+              constants.NON_MEDIA_TREATMENTS,
+              constants.REVENUE_PER_KPI,
+          ],
+          meridian=self.meridian_organic_media,
+      )
+
+
 class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   @classmethod
@@ -265,51 +730,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           str(w[0].message),
       )
 
-  def test_expected_outcome_wrong_new_data_dims_raises_exception(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "New `controls` must have 3 dimension(s). Found 2 dimension(s).",
-    ):
-      self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(
-              controls=backend.ones((_N_GEOS, _N_TIMES))
-          ),
-      )
-
-  def test_expected_outcome_wrong_new_data_geos_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `media` is expected to have 5 geos. Found 6 geos.",
-    ):
-      self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(
-              media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
-          ),
-      )
-
-  def test_expected_outcome_wrong_new_data_times_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `media` is expected to have 52 time periods. Found 10 time"
-        " periods.",
-    ):
-      self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(
-              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS))
-          ),
-      )
-
-  def test_expected_outcome_wrong_new_data_channels_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `frequency` is expected to have 2 channels. Found 3 channels.",
-    ):
-      self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(
-              frequency=backend.ones((_N_GEOS, _N_TIMES, 3))
-          ),
-      )
-
   def test_expected_outcome_wrong_kpi_transformation(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -417,68 +837,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           str(w[0].message),
       )
 
-  @parameterized.named_parameters(
-      (
-          "wrong_media_dims",
-          {"media": (5, 1)},
-          "New `media` must have 3 dimension(s). Found 2 dimension(s).",
-      ),
-      (
-          "wrong_reach_dims",
-          {"reach": (5, 1)},
-          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
-      ),
-      (
-          "wrong_frequency_dims",
-          {"frequency": (5, 1)},
-          "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
-      ),
-      (
-          "wrong_revenue_per_kpi_dims",
-          {"revenue_per_kpi": (5,)},
-          (
-              "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
-              " dimension(s)."
-          ),
-      ),
-  )
-  def test_incremental_outcome_wrong_media_param_dims_raises_exception(
-      self,
-      new_param_shapes: dict[str, tuple[int, ...]],
-      expected_error_message: str,
-  ):
-    new_param = {k: backend.ones(v) for k, v in new_param_shapes.items()}
-    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_param)
-      )
-
-  @parameterized.named_parameters(
-      ("missing_media", "media"),
-      ("missing_reach", "reach"),
-      ("missing_frequency", "frequency"),
-      ("missing_revenue_per_kpi", "revenue_per_kpi"),
-  )
-  def test_incremental_outcome_missing_new_param_raises_exception(
-      self, missing_param: str
-  ):
-    new_data_dict = {
-        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
-    }
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "If the time dimension of a variable in `new_data` is modified, then"
-        " all variables must be provided in `new_data`. The following variables"
-        f" are missing: `['{missing_param}']`.",
-    ):
-      new_data_dict.pop(missing_param)
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
-
   def test_incremental_outcome_negative_scaling_factor0(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -575,43 +933,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     ):
       self.analyzer_media_and_rf.incremental_outcome(
           media_selected_times=["random_time", False, True],
-      )
-
-  def test_incremental_outcome_new_params_diff_time_dims_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "If the time dimension of any variable in `new_data` is modified, then"
-        " all variables must be provided with the same number of time periods."
-        " `revenue_per_kpi` has 8 time periods, which does not match the"
-        " modified number of time periods, 10.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=backend.ones((_N_GEOS, 8)),
-          )
-      )
-
-  def test_incremental_outcome_wrong_new_param_n_geos_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `media` is expected to have 5 geos. Found 4 geos.",
-    ):
-      shape = (_N_GEOS - 1, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(media=backend.ones(shape))
-      )
-
-  def test_incremental_outcome_wrong_n_channels_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `reach` is expected to have 2 channels. Found 1 channels.",
-    ):
-      shape = (_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1)
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(reach=backend.ones(shape))
       )
 
   def test_incremental_outcome_wrong_kpi_transformation(self):
@@ -946,53 +1267,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         ]
     )
     backend_test_utils.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
-
-  def test_roi_wrong_new_data_dims_raises_exception(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
-    ):
-      self.analyzer_media_and_rf.roi(
-          new_data=analyzer.DataTensors(
-              media_spend=backend.ones((_N_GEOS, _N_TIMES))
-          ),
-      )
-
-  def test_roi_wrong_new_data_geos_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `media_spend` is expected to have 5 geos. Found 6 geos.",
-    ):
-      self.analyzer_media_and_rf.roi(
-          new_data=analyzer.DataTensors(
-              media_spend=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
-          ),
-      )
-
-  def test_roi_wrong_new_data_times_raises_exception(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "If the time dimension of a variable in `new_data` is modified, then"
-        " all variables must be provided in `new_data`. The following variables"
-        " are missing: `['media', 'reach', 'frequency', 'revenue_per_kpi',"
-        " 'media_spend']`.",
-    ):
-      self.analyzer_media_and_rf.roi(
-          new_data=analyzer.DataTensors(
-              rf_spend=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS))
-          ),
-      )
-
-  def test_roi_wrong_new_data_channels_raises_exception(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `reach` is expected to have 2 channels. Found 3 channels.",
-    ):
-      self.analyzer_media_and_rf.roi(
-          new_data=analyzer.DataTensors(
-              reach=backend.ones((_N_GEOS, _N_TIMES, 3))
-          ),
-      )
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -3509,57 +3783,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
       )
     self.assertEqual(outcome.shape, expected_shape)
 
-  @parameterized.named_parameters(
-      (
-          "missing_media",
-          "media",
-          (
-              "If the time dimension of a variable in `new_data` is modified,"
-              " then all variables must be provided in `new_data`. The"
-              " following variables are missing: `['media']`."
-          ),
-      ),
-      (
-          "missing_revenue_per_kpi",
-          "revenue_per_kpi",
-          (
-              "If the time dimension of a variable in `new_data` is modified,"
-              " then all variables must be provided in `new_data`. The"
-              " following variables are missing: `['revenue_per_kpi']`."
-          ),
-      ),
-  )
-  def test_incremental_outcome_media_only_missing_new_param_raises_exception(
-      self, missing_param: str, error_message: str
-  ):
-    new_data_dict = {
-        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
-    }
-
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        error_message,
-    ):
-      new_data_dict.pop(missing_param)
-      self.analyzer_media_only.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
-
-  def test_incremental_outcome_media_only_invalid_new_data_raises_exception(
-      self,
-  ):
-    with self.assertRaisesRegex(
-        ValueError,
-        "New `reach` is not allowed because the input data to the Meridian"
-        " model does not contain `reach`",
-    ):
-      self.analyzer_media_only.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-          )
-      )
-
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -4097,30 +4320,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
           else (_N_TIMES,)
       )
     self.assertEqual(outcome.shape, expected_shape)
-
-  @parameterized.named_parameters(
-      ("missing_reach", "reach"),
-      ("missing_frequency", "frequency"),
-      ("missing_revenue_per_kpi", "revenue_per_kpi"),
-  )
-  def test_incremental_outcome_rf_only_missing_new_param_raises_exception(
-      self, missing_param: str
-  ):
-    new_data_dict = {
-        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
-    }
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "If the time dimension of a variable in `new_data` is modified, then"
-        " all variables must be provided in `new_data`. The following"
-        f" variables are missing: `['{missing_param}']`.",
-    ):
-      new_data_dict.pop(missing_param)
-      self.analyzer_rf_only.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -5341,98 +5540,6 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
     )
 
   @parameterized.product(
-      new_tensors_names=[
-          [],
-          [constants.MEDIA, constants.REACH, constants.FREQUENCY],
-          [
-              constants.MEDIA,
-              constants.REACH,
-              constants.FREQUENCY,
-              constants.CONTROLS,
-          ],
-          [
-              constants.MEDIA,
-              constants.REACH,
-              constants.FREQUENCY,
-              constants.ORGANIC_MEDIA,
-              constants.ORGANIC_REACH,
-              constants.ORGANIC_FREQUENCY,
-              constants.NON_MEDIA_TREATMENTS,
-          ],
-          [
-              constants.MEDIA,
-              constants.REACH,
-              constants.FREQUENCY,
-              constants.REVENUE_PER_KPI,
-          ],
-      ],
-      require_non_paid_channels=[True, False],
-      require_controls=[True, False],
-      require_revenue_per_kpi=[True, False],
-  )
-  def test_fill_missing_data_tensors(
-      self,
-      new_tensors_names: Sequence[str],
-      require_non_paid_channels: bool,
-      require_controls: bool,
-      require_revenue_per_kpi: bool,
-  ):
-    data1 = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
-        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
-        seed=1,
-    )
-
-    if not new_tensors_names:
-      new_data = analyzer.DataTensors()
-    else:
-      tensors = {}
-      for tensor_name in new_tensors_names:
-        tensors[tensor_name] = getattr(data1, tensor_name)
-      new_data = analyzer.DataTensors(**tensors)
-
-    required_tensors_names = [
-        constants.MEDIA,
-        constants.REACH,
-        constants.FREQUENCY,
-    ]
-    if require_controls:
-      required_tensors_names.append(constants.CONTROLS)
-    if require_non_paid_channels:
-      required_tensors_names.append(constants.ORGANIC_MEDIA)
-      required_tensors_names.append(constants.ORGANIC_REACH)
-      required_tensors_names.append(constants.ORGANIC_FREQUENCY)
-      required_tensors_names.append(constants.NON_MEDIA_TREATMENTS)
-    if require_revenue_per_kpi:
-      required_tensors_names.append(constants.REVENUE_PER_KPI)
-
-    filled_tensors = new_data.validate_and_fill_missing_data(
-        required_tensors_names, self.meridian_non_paid
-    )
-    for tensor_name in required_tensors_names:
-      if tensor_name in new_tensors_names:
-        backend_test_utils.assert_allclose(
-            getattr(filled_tensors, tensor_name),
-            getattr(data1, tensor_name),
-            rtol=1e-4,
-            atol=1e-4,
-        )
-      else:
-        backend_test_utils.assert_allclose(
-            getattr(filled_tensors, tensor_name),
-            getattr(self.input_data_non_paid, tensor_name),
-            rtol=1e-4,
-            atol=1e-4,
-        )
-
-  @parameterized.product(
       selected_geos=[["geo_1", "geo_3"]],
       selected_times=[
           ["2021-04-19", "2021-09-13", "2021-12-13"],
@@ -5609,121 +5716,6 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
         rtol=1e-2,
         atol=1e-2,
     )
-
-  @parameterized.named_parameters(
-      (
-          "missing_media",
-          "media",
-          (
-              "If the time dimension of a variable in `new_data` is modified,"
-              " then all variables must be provided in `new_data`. The"
-              " following variables are missing: `['media']`."
-          ),
-      ),
-      (
-          "missing_non_media_treatments",
-          "non_media_treatments",
-          (
-              "If the time dimension of a variable in `new_data` is modified,"
-              " then all variables must be provided in `new_data`. The"
-              " following variables are missing: `['non_media_treatments']`."
-          ),
-      ),
-  )
-  def test_incremental_outcome_missing_new_param_flexible_times_raises_exception(
-      self, missing_param: str, expected_error_message: str
-  ):
-    new_data_dict = {
-        "media": backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "organic_media": backend.ones((_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)),
-        "organic_reach": backend.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
-        "organic_frequency": backend.ones(
-            (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
-        ),
-        "non_media_treatments": backend.ones(
-            (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
-        ),
-        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
-    }
-    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
-      new_data_dict.pop(missing_param)
-      self.analyzer_non_paid.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
-
-  @parameterized.named_parameters(
-      (
-          "organic_reach",
-          {
-              "reach": (_N_GEOS, _N_RF_CHANNELS),
-          },
-          "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
-      ),
-      (
-          "non_media_treatments",
-          {
-              "non_media_treatments": (_N_GEOS,),
-          },
-          (
-              "New `non_media_treatments` must have 3 dimension(s). Found 1"
-              " dimension(s)."
-          ),
-      ),
-      (
-          "revenue_per_kpi",
-          {
-              "revenue_per_kpi": (_N_GEOS, _N_TIMES, _N_MEDIA_CHANNELS),
-          },
-          (
-              "New `revenue_per_kpi` must have 2 dimension(s). Found 3"
-              " dimension(s)."
-          ),
-      ),
-  )
-  def test_incremental_outcome_wrong_shape_new_param_raises_exception(
-      self,
-      new_data_shapes: dict[str, tuple[int, ...]],
-      expected_error_message: str,
-  ):
-    new_data_dict = {k: backend.ones(v) for k, v in new_data_shapes.items()}
-    with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
-      self.analyzer_non_paid.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
-
-  def test_incremental_outcome_new_param_not_matching_times_raises_exception(
-      self,
-  ):
-    new_data_dict = {
-        "media": backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
-        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "organic_media": backend.ones(
-            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_MEDIA_CHANNELS)
-        ),
-        "organic_reach": backend.ones(
-            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
-        ),
-        "organic_frequency": backend.ones(
-            (_N_GEOS, _N_MEDIA_TIMES, _N_ORGANIC_RF_CHANNELS)
-        ),
-        "non_media_treatments": backend.ones(
-            (_N_GEOS, _N_TIMES, _N_NON_MEDIA_CHANNELS)
-        ),
-        "revenue_per_kpi": backend.ones((_N_GEOS, _N_TIMES)),
-    }
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "If the time dimension of any variable in `new_data` is modified, then"
-        " all variables must be provided with the same number of time periods."
-        " `media` has 52 time periods, which does not match the modified number"
-        " of time periods, 10.",
-    ):
-      self.analyzer_non_paid.incremental_outcome(
-          new_data=analyzer.DataTensors(**new_data_dict)
-      )
 
   @parameterized.product(
       use_posterior=[False, True],
