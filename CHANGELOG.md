@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.3.1] - 2025-11-12
+
+* Fix `schema` dependency issues.
+
 ## [1.3.0] - 2025-11-10
 
 * Add `EDAEngine` for exploratory data analysis.
@@ -405,4 +409,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
 [1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
 [1.3.0]: https://github.com/google/meridian/releases/tag/v1.3.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.3.0...HEAD
+[1.3.1]: https://github.com/google/meridian/releases/tag/v1.3.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.3.1...HEAD
