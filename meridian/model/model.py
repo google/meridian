@@ -14,6 +14,7 @@
 
 """Meridian module for the geo-level Bayesian hierarchical media mix model."""
 
+import collections
 from collections.abc import Mapping, Sequence
 import functools
 import numbers
@@ -34,17 +35,24 @@ from meridian.model import prior_distribution
 from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model import transformers
+from meridian.model.eda import eda_engine
+from meridian.model.eda import eda_outcome
+from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
-
 
 __all__ = [
     "MCMCSamplingError",
     "MCMCOOMError",
     "Meridian",
+    "ModelFittingError",
     "NotFittedModelError",
     "save_mmm",
     "load_mmm",
 ]
+
+
+class ModelFittingError(Exception):
+  """Model has critical issues preventing fitting."""
 
 
 class NotFittedModelError(Exception):
@@ -91,6 +99,10 @@ class Meridian:
     model_spec: A `ModelSpec` object containing the model specification.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
       resulting data from fitting the model.
+    eda_engine: An `EDAEngine` object containing the EDA engine.
+    eda_spec: An `EDASpec` object containing the EDA specification.
+    eda_outcomes: A list of `EDAOutcome` objects containing the outcomes from
+      running critical EDA checks.
     n_geos: Number of geos in the data.
     n_media_channels: Number of media channels in the data.
     n_rf_channels: Number of reach and frequency (RF) channels in the data.
@@ -154,12 +166,15 @@ class Meridian:
       inference_data: (
           az.InferenceData | None
       ) = None,  # for deserializer use only
+      eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
     self._input_data = input_data
     self._model_spec = model_spec if model_spec else spec.ModelSpec()
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
+
+    self._eda_spec = eda_spec
 
     self._validate_data_dependent_model_spec()
     self._validate_injected_inference_data()
@@ -189,6 +204,18 @@ class Meridian:
   @property
   def inference_data(self) -> az.InferenceData:
     return self._inference_data
+
+  @functools.cached_property
+  def eda_engine(self) -> eda_engine.EDAEngine:
+    return eda_engine.EDAEngine(self, spec=self._eda_spec)
+
+  @property
+  def eda_spec(self) -> eda_spec_module.EDASpec:
+    return self._eda_spec
+
+  @property
+  def eda_outcomes(self) -> Sequence[eda_outcome.EDAOutcome]:
+    return self.eda_engine.run_all_critical_checks()
 
   @functools.cached_property
   def media_tensors(self) -> media.MediaTensors:
@@ -568,7 +595,9 @@ class Meridian:
             non_media_treatments_population_scaled[..., channel], axis=[0, 1]
         )
       elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = backend.cast(baseline_value, backend.float32)
+        baseline_for_channel = backend.to_tensor(
+            baseline_value, dtype=backend.float32
+        )
       else:
         raise ValueError(
             f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
@@ -1142,16 +1171,11 @@ class Meridian:
             " time."
         )
 
-  def _kpi_has_variability(self):
-    """Returns True if the KPI has variability across geos and times."""
-    return self.kpi_transformer.population_scaled_stdev != 0
-
   def _validate_kpi_transformer(self):
     """Validates the KPI transformer."""
-    if self._kpi_has_variability():
+    if self.eda_engine.kpi_has_variability:
       return
-
-    kpi = "kpi" if self.is_national else "population_scaled_kpi"
+    kpi = self.eda_engine.kpi_scaled_da.name
 
     if (
         self.n_media_channels > 0
@@ -1576,6 +1600,36 @@ class Meridian:
     """
     self.prior_sampler_callable(n_draws=n_draws, seed=seed)
 
+  def _run_model_fitting_guardrail(self):
+    """Raises an error if the model has critical EDA issues."""
+    error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
+        collections.defaultdict(list)
+    )
+    for outcome in self.eda_outcomes:
+      error_findings = [
+          finding
+          for finding in outcome.findings
+          if finding.severity == eda_outcome.EDASeverity.ERROR
+      ]
+      if error_findings:
+        error_findings_by_type[outcome.check_type].extend(
+            [finding.explanation for finding in error_findings]
+        )
+
+    if error_findings_by_type:
+      error_message_lines = [
+          "Model has critical EDA issues. Please fix before running"
+          " `sample_posterior`.\n"
+      ]
+      for check_type, explanations in error_findings_by_type.items():
+        error_message_lines.append(f"Check type: {check_type.name}")
+        for explanation in explanations:
+          error_message_lines.append(f"- {explanation}")
+      error_message_lines.append(
+          "For further details, please refer to `Meridian.eda_outcomes`."
+      )
+      raise ModelFittingError("\n".join(error_message_lines))
+
   def sample_posterior(
       self,
       n_chains: Sequence[int] | int,
@@ -1653,6 +1707,8 @@ class Meridian:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
+    self._run_model_fitting_guardrail()
+
     self.posterior_sampler_callable(
         n_chains=n_chains,
         n_adapt=n_adapt,

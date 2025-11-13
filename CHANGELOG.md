@@ -25,6 +25,19 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * ``build_design_matrix()`` now detects the temporal dimension name and
   supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
+## [1.3.1] - 2025-11-12
+
+* Fix `schema` dependency issues.
+
+## [1.3.0] - 2025-11-10
+
+* Add `EDAEngine` for exploratory data analysis.
+* Add model fitting guardrail using EDA to `Meridian`.
+* Introduce serde package: a serialization and deserialization library for
+  Meridian model with a protocol buffer schema.
+* Add model quality checks in the `analysis.review` module.
+* Add currency support to optimization summary and visualizer.
+* Expose new hyperparameters in AKS public api.
 * Refactor the TensorFlow RNG handler to use stateless seed generation.
 * Add `selected_geos` arg to the optimizer.
 * Add `selected_geos` arg to `get_aggregated_spend`.
@@ -397,4 +410,6 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.7]: https://github.com/google/meridian/releases/tag/v1.1.7
 [1.2.0]: https://github.com/google/meridian/releases/tag/v1.2.0
 [1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.2.1...HEAD
+[1.3.0]: https://github.com/google/meridian/releases/tag/v1.3.0
+[1.3.1]: https://github.com/google/meridian/releases/tag/v1.3.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.3.1...HEAD

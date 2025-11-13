@@ -30,8 +30,7 @@ import numpy as np
 
 
 class PosteriorMCMCSamplerTest(
-    parameterized.TestCase,
-    absltest.TestCase,
+    test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
 ):
 
@@ -41,6 +40,29 @@ class PosteriorMCMCSamplerTest(
   def setUpClass(cls):
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "_run_model_fitting_guardrail",
+            autospec=True,
+            return_value=None,
+        )
+    )
+
+  def _assert_seeds_equal(self, seed1, seed2):
+    if backend.config.get_backend() == backend.config.Backend.JAX:
+      self.assertEqual(seed1, seed2)
+    else:
+      test_utils.assert_seed_allequal(seed1, seed2)
+
+  def _assert_seeds_not_equal(self, seed1, seed2):
+    if backend.config.get_backend() == backend.config.Backend.JAX:
+      self.assertNotEqual(seed1, seed2)
+    else:
+      test_utils.assert_seed_not_allequal(seed1, seed2)
 
   def test_get_joint_dist_zeros(self):
     model_spec = spec.ModelSpec(
@@ -68,7 +90,7 @@ class PosteriorMCMCSamplerTest(
     )
     sample = (
         meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
-            self._N_DRAWS
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
         )
     )
     test_utils.assert_allequal(
@@ -102,7 +124,7 @@ class PosteriorMCMCSamplerTest(
     )
     sample = (
         meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
-            self._N_DRAWS
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
         )
     )
     test_utils.assert_allequal(
@@ -149,7 +171,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -297,7 +321,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -447,7 +473,9 @@ class PosteriorMCMCSamplerTest(
 
     # Take a single draw of all parameters from the prior distribution.
     par_structtuple = (
-        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(1)
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            1, seed=self.get_next_rng_seed_or_key()
+        )
     )
     par = par_structtuple._asdict()
 
@@ -598,8 +626,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_media_and_rf_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -624,7 +652,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -637,8 +668,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    self._assert_seeds_equal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     media_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_MEDIA_CHANNELS)
@@ -727,8 +760,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_media_only_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -752,7 +785,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -765,8 +801,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    self._assert_seeds_equal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     media_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_MEDIA_CHANNELS)
@@ -847,8 +885,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_media_only_no_controls_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -872,8 +910,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
 
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -886,8 +926,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    self._assert_seeds_equal(actual_seed, expected_seed)
 
     # Control parameters should not exist in the inference data posteriors.
     for param in (
@@ -899,8 +941,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_rf_only_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -924,7 +966,10 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
+
+    expected_seed = backend.RNGHandler(123).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -937,8 +982,10 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=None,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    self._assert_seeds_equal(actual_seed, expected_seed)
     knots_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS)
     rf_channel_shape = (self._N_CHAINS, self._N_KEEP, self._N_RF_CHANNELS)
@@ -1017,8 +1064,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_media_and_rf_sequential_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -1043,21 +1090,21 @@ class PosteriorMCMCSamplerTest(
         n_adapt=self._N_ADAPT,
         n_burnin=self._N_BURNIN,
         n_keep=self._N_KEEP,
+        seed=123,
     )
-    mock_sample_posterior.assert_called_with(
-        n_draws=self._N_BURNIN + self._N_KEEP,
-        joint_dist=mock.ANY,
-        n_chains=self._N_CHAINS,
-        num_adaptation_steps=self._N_ADAPT,
-        current_state=None,
-        init_step_size=None,
-        dual_averaging_kwargs=None,
-        max_tree_depth=10,
-        max_energy_diff=500.0,
-        unrolled_leapfrog_steps=1,
-        parallel_iterations=10,
-        seed=None,
-    )
+
+    handler = backend.RNGHandler(123)
+    expected_seed_1 = handler.get_kernel_seed()
+    handler = handler.advance_handler()
+    expected_seed_2 = handler.get_kernel_seed()
+
+    self.assertEqual(mock_sample_posterior.call_count, 2)
+    first_call_args = mock_sample_posterior.call_args_list[0].kwargs
+    second_call_args = mock_sample_posterior.call_args_list[1].kwargs
+
+    self._assert_seeds_equal(first_call_args["seed"], expected_seed_1)
+    self._assert_seeds_equal(second_call_args["seed"], expected_seed_2)
+
     n_total_chains = self._N_CHAINS * 2
     knots_shape = (n_total_chains, self._N_KEEP, self._N_TIMES_SHORT)
     control_shape = (n_total_chains, self._N_KEEP, self._N_CONTROLS)
@@ -1147,8 +1194,8 @@ class PosteriorMCMCSamplerTest(
   def test_sample_posterior_raises_oom_error_when_limits_exceeded(self):
     self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             side_effect=backend.errors.ResourceExhaustedError(
                 None, None, "Resource exhausted"
@@ -1161,7 +1208,7 @@ class PosteriorMCMCSamplerTest(
         model_spec=spec.ModelSpec(),
     )
 
-    with self.assertRaises(model.MCMCOOMError):
+    with self.assertRaises(posterior_sampler.MCMCOOMError):
       meridian.sample_posterior(
           n_chains=self._N_CHAINS,
           n_adapt=self._N_ADAPT,
@@ -1173,8 +1220,8 @@ class PosteriorMCMCSamplerTest(
     """Checks validation passes with correct shapes."""
     self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -1215,8 +1262,8 @@ class PosteriorMCMCSamplerTest(
     """Checks validation passes with correct shapes."""
     self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -1433,8 +1480,8 @@ class PosteriorMCMCSamplerTest(
     """Checks posterior validation fails with incorrect coordinates."""
     self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -1499,12 +1546,16 @@ class PosteriorMCMCSamplerTest(
       dict(testcase_name="seed_is_pair", seed=[42, 123]),
   )
   def test_sample_posterior_with_seed(self, seed):
-    if seed is not None:
-      seed = backend.random.sanitize_seed(seed)
+    if (
+        backend.config.get_backend() == backend.config.Backend.JAX
+        and isinstance(seed, list)
+    ):
+      self.skipTest("JAX backend does not support sequence seeds.")
+
     mock_sample_posterior = self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]
@@ -1527,6 +1578,8 @@ class PosteriorMCMCSamplerTest(
         n_keep=self._N_KEEP,
         seed=seed,
     )
+
+    expected_seed = backend.RNGHandler(seed).get_kernel_seed()
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -1539,13 +1592,21 @@ class PosteriorMCMCSamplerTest(
         max_energy_diff=500.0,
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
-        seed=seed,
+        seed=mock.ANY,
     )
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+    self._assert_seeds_equal(actual_seed, expected_seed)
 
   @parameterized.named_parameters(
       dict(testcase_name="seed_is_invalid_sequence", seed=[1, 2, 3]),
   )
   def test_sample_posterior_with_invalid_seed_sequence(self, seed):
+    if backend.config.get_backend() == backend.config.Backend.JAX:
+      self.skipTest(
+          "JAX backend validates integer seed, so this TF-specific"
+          " sequence-length test is not applicable."
+      )
+
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Invalid seed: Must be either a single integer (stateful seed) or a"
@@ -1577,9 +1638,7 @@ class PosteriorMCMCSamplerTest(
         trace=self.test_trace,
     )
     with mock.patch.object(
-        posterior_sampler,
-        "_xla_windowed_adaptive_nuts",
-        return_value=mock_return,
+        backend, "xla_windowed_adaptive_nuts", return_value=mock_return
     ) as mock_nuts:
       meridian = model.Meridian(
           input_data=self.short_input_data_with_media_and_rf,
@@ -1607,6 +1666,12 @@ class PosteriorMCMCSamplerTest(
       self, initial_seed
   ):
     """Tests that sequential MCMC batches get independent but reproducible seeds."""
+    if (
+        backend.config.get_backend() == backend.config.Backend.JAX
+        and isinstance(initial_seed, list)
+    ):
+      self.skipTest("JAX backend does not support sequence seeds.")
+
     n_chains_list = [self._N_CHAINS, self._N_CHAINS]
     mock_return = collections.namedtuple(
         "StatesAndTrace", ["all_states", "trace"]
@@ -1618,9 +1683,7 @@ class PosteriorMCMCSamplerTest(
     def run_sampling(seed):
       """Helper to run sampling and return the seeds passed to the kernel."""
       with mock.patch.object(
-          posterior_sampler,
-          "_xla_windowed_adaptive_nuts",
-          return_value=mock_return,
+          backend, "xla_windowed_adaptive_nuts", return_value=mock_return
       ) as mock_nuts:
         meridian = model.Meridian(
             input_data=self.short_input_data_with_media_and_rf,
@@ -1639,10 +1702,10 @@ class PosteriorMCMCSamplerTest(
     seeds2 = run_sampling(initial_seed)
 
     self.assertLen(seeds1, 2)
-    test_utils.assert_allequal(seeds1[0], seeds2[0])
-    test_utils.assert_allequal(seeds1[1], seeds2[1])
+    self._assert_seeds_equal(seeds1[0], seeds2[0])
+    self._assert_seeds_equal(seeds1[1], seeds2[1])
 
-    test_utils.assert_not_allequal(seeds1[0], seeds1[1])
+    self._assert_seeds_not_equal(seeds1[0], seeds1[1])
 
   @parameterized.named_parameters(
       dict(testcase_name="n_chains_is_list", n_chains_type=list),
@@ -1656,8 +1719,8 @@ class PosteriorMCMCSamplerTest(
     )
     self.enter_context(
         mock.patch.object(
-            posterior_sampler,
-            "_xla_windowed_adaptive_nuts",
+            backend,
+            "xla_windowed_adaptive_nuts",
             autospec=True,
             return_value=collections.namedtuple(
                 "StatesAndTrace", ["all_states", "trace"]

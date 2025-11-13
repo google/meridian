@@ -8,12 +8,11 @@ description = """\
   """
 readme = "README.md"
 requires-python = ">=3.10"
-license = {file = "LICENSE"}
+license-files = ["LICENSE"]
 authors = [
   {name = "The Meridian Authors", email="no-reply@google.com"},
 ]
 classifiers = [  # List of https://pypi.org/classifiers/
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Other/Nonlisted Topic",
@@ -22,7 +21,6 @@ classifiers = [  # List of https://pypi.org/classifiers/
 keywords = [
   "mmm",
 ]
-
 # pip dependencies of the project
 # Installed locally with `pip install -e .`
 dependencies = [
@@ -35,13 +33,12 @@ dependencies = [
   "pandas >= 2.2.2, < 3",
   "patsy >= 0.5.3, < 1",
   "scipy >= 1.13.1, < 2",
-  "statsmodels >= 0.12.2",
+  "statsmodels >= 0.14.5",
   "tensorflow >= 2.18, < 2.19",
   "tensorflow-probability >= 0.25, < 0.26",
   "tf-keras >= 2.18, < 2.19",
   "xarray",
 ]
-
 # `version` is automatically set by flit to use `meridian.__version__`
 dynamic = ["version"]
 
@@ -74,13 +71,17 @@ and-cuda = [
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
-
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
     "jax==0.4.26",
     "jaxlib==0.4.26",
-    "tensorflow-probability[substrates-jax] >= 0.25, < 0.26",
+    "tensorflow-probability[substrates-jax]==0.25.0",
+]
+# MMM proto schema.
+schema = [
+  "mmm-proto-schema",
+  "semver",
 ]
 
 [tool.pyink]
@@ -103,7 +104,7 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*"]
+include = ["meridian*", "schema*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]

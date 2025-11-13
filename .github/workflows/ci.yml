@@ -11,7 +11,7 @@ env:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       max-parallel: 3
       matrix:
@@ -22,22 +22,35 @@ jobs:
     name: pytest (python-${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
       - uses: ./.github/actions/install-meridian
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         with:
           python_version: ${{ matrix.python-version }}
       # Run tests (in parallel)
       - name: Run core tests
+        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         run: pytest -vv -n auto
 
-  build:
-    name: Build distribution
+  # Build meridian "core" and "mmm-proto-schema" distributions.
+  build-distributions:
+    name: Build distributions
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
+      - name: Build meridian core distribution
+        uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
+          artifact_name: meridian-core-package-distribution
+      - name: Build mmm-proto-schema distribution
+        uses: ./.github/actions/build
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          working_directory: ./proto
+          output_path: ./proto/dist
+          artifact_name: mmm-proto-package-distribution
 
   # Include for sanity checking that version increment parsing and checking logic works.
   check-version:

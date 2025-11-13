@@ -1,0 +1,20 @@
+# proto-file: third_party/py/meridian/proto/mmm/v1/model/meridian/meridian_model.proto
+# proto-message: TfpDistribution
+
+distribution_type: "HalfNormal"
+parameters {
+  key: "scale"
+  value { scalar_value: 1.0 }
+}
+parameters {
+  key: "name"
+  value { string_value: "scalar_halfnormal" }
+}
+parameters {
+  key: "validate_args"
+  value: { bool_value: false }
+}
+parameters {
+  key: "allow_nan_stats"
+  value: { bool_value: true }
+}

@@ -15,10 +15,20 @@
 """Common testing utilities for Meridian, designed to be backend-agnostic."""
 
 from typing import Any, Optional
+
 from absl.testing import parameterized
+from google.protobuf import descriptor
+from google.protobuf import message
 from meridian import backend
 from meridian.backend import config
 import numpy as np
+
+from tensorflow.python.util.protobuf import compare
+# pylint: disable=g-direct-tensorflow-import
+from tensorflow.core.framework import tensor_pb2
+# pylint: enable=g-direct-tensorflow-import
+
+FieldDescriptor = descriptor.FieldDescriptor
 
 # A type alias for backend-agnostic array-like objects.
 # We use `Any` here to avoid circular dependencies with the backend module
@@ -70,11 +80,36 @@ def assert_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
   np.testing.assert_array_equal(np.array(a), np.array(b), err_msg=err_msg)
 
 
+def assert_seed_allequal(a: Any, b: Any, err_msg: str = ""):
+  """Backend-agnostic assertion to check if two seed objects are equal."""
+  data_a = backend.get_seed_data(a)
+  data_b = backend.get_seed_data(b)
+  if data_a is None and data_b is None:
+    return
+  np.testing.assert_array_equal(data_a, data_b, err_msg=err_msg)
+
+
 def assert_not_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
   """Asserts that two objects are not element-wise equal."""
   np.testing.assert_(
       not np.array_equal(np.array(a), np.array(b)),
       msg=f"Arrays are unexpectedly equal.\n{err_msg}",
+  )
+
+
+def assert_seed_not_allequal(a: Any, b: Any, err_msg: str = ""):
+  """Asserts that two seed objects are not element-wise equal."""
+  data_a = backend.get_seed_data(a)
+  data_b = backend.get_seed_data(b)
+  if data_a is None and data_b is None:
+    raise AssertionError(
+        f"Seeds are unexpectedly equal (both are None). {err_msg}"
+    )
+  if data_a is None or data_b is None:
+    return
+  np.testing.assert_(
+      not np.array_equal(data_a, data_b),
+      msg=f"Seeds are unexpectedly equal.\n{err_msg}",
   )
 
 
@@ -106,6 +141,118 @@ def assert_all_non_negative(a: ArrayLike, err_msg: str = ""):
     raise AssertionError(err_msg or "Array contains negative values.")
 
 
+# --- Proto Utilities ---
+def normalize_tensor_protos(proto: message.Message):
+  """Recursively normalizes TensorProto messages within a proto (In-place).
+
+  This ensures a consistent serialization format across different backends
+  (e.g., JAX vs TF) by repacking TensorProtos using the current backend's
+  canonical method (backend.make_tensor_proto). This handles differences
+  like using `bool_val` versus `tensor_content` for boolean tensors.
+
+  Args:
+    proto: The protobuf message object to normalize. This object is modified in
+      place.
+  """
+  if not isinstance(proto, message.Message):
+    return
+
+  for desc, value in proto.ListFields():
+    if desc.type != FieldDescriptor.TYPE_MESSAGE:
+      continue
+
+    # A map is defined as a repeated field whose message type has the
+    # map_entry option set.
+    is_map = (
+        desc.label == FieldDescriptor.LABEL_REPEATED
+        and desc.message_type.has_options
+        and desc.message_type.GetOptions().map_entry
+    )
+
+    if is_map:
+      for item in value.values():
+        # Helper checks if values are scalars or messages.
+        _process_message_for_normalization(item)
+
+    elif desc.label == FieldDescriptor.LABEL_REPEATED:
+      # Handle standard repeated message fields.
+      for item in value:
+        _process_message_for_normalization(item)
+    else:
+      # Handle singular message fields.
+      _process_message_for_normalization(value)
+
+
+def _process_message_for_normalization(msg: Any):
+  """Helper to process a potential message during normalization traversal."""
+  # Ensure we only process message objects.
+  # If msg is a scalar (e.g., string from map<string, string>), stop recursion.
+  if not isinstance(msg, message.Message):
+    return
+
+  if isinstance(msg, tensor_pb2.TensorProto):
+    _repack_tensor_proto(msg)
+  else:
+    # If it's another message type, recurse into its fields.
+    normalize_tensor_protos(msg)
+
+
+def _repack_tensor_proto(tensor_proto: "tensor_pb2.TensorProto"):
+  """Repacks a TensorProto in place to use a consistent serialization format."""
+  if not tensor_proto.ByteSize():
+    return
+
+  try:
+    data_array = backend.make_ndarray(tensor_proto)
+  except Exception as e:
+    raise ValueError(
+        "Failed to deserialize TensorProto during normalization:"
+        f" {e}\nProto content:\n{tensor_proto}"
+    ) from e
+
+  new_tensor_proto = backend.make_tensor_proto(data_array)
+
+  tensor_proto.Clear()
+  tensor_proto.CopyFrom(new_tensor_proto)
+
+
+def assert_normalized_proto_equal(
+    test_case: parameterized.TestCase,
+    expected: message.Message,
+    actual: message.Message,
+    msg: Optional[str] = None,
+    **kwargs: Any,
+):
+  """Compares two protos after normalizing TensorProto fields.
+
+  Use this instead of compare.assertProtoEqual when protos contain tensors
+  to ensure backend-agnostic comparison.
+
+  Args:
+    test_case: The TestCase instance (self).
+    expected: The expected protobuf message.
+    actual: The actual protobuf message.
+    msg: An optional message to display on failure.
+    **kwargs: Additional keyword arguments passed to assertProto2Equal (e.g.,
+      precision).
+  """
+  # Work on copies to avoid mutating the original objects
+  expected_copy = expected.__class__()
+  expected_copy.CopyFrom(expected)
+  actual_copy = actual.__class__()
+  actual_copy.CopyFrom(actual)
+
+  try:
+    normalize_tensor_protos(expected_copy)
+    normalize_tensor_protos(actual_copy)
+  except ValueError as e:
+    test_case.fail(f"Proto normalization failed: {e}. {msg}")
+
+  compare.assertProtoEqual(
+      test_case, expected_copy, actual_copy, msg=msg, **kwargs
+  )
+
+
 class MeridianTestCase(parameterized.TestCase):
   """Base test class for Meridian providing backend-aware utilities.
 
@@ -113,6 +260,13 @@ class MeridianTestCase(parameterized.TestCase):
   tensor operations into setUp) and provides a unified way to handle random
   number generation across backends (Stateful TF vs Stateless JAX).
   """
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    # Enforce determinism for TensorFlow tests before any tests are run.
+    # This is a no-op with a warning for the JAX backend.
+    backend.enable_op_determinism()
 
   def setUp(self):
     super().setUp()

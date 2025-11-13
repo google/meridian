@@ -16,6 +16,7 @@
 
 # pylint: disable=g-import-not-at-top
 
+import dataclasses
 import importlib
 import os
 import sys
@@ -23,6 +24,7 @@ import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import immutabledict
 import jax
 import jax.numpy as jnp
 from meridian import backend
@@ -307,6 +309,27 @@ class BackendTest(parameterized.TestCase):
       self.assertIsInstance(np_tensor, tf.Tensor)
       self.assertEqual(np_tensor.dtype, tf.float64)
 
+  @parameterized.named_parameters(
+      ("tensorflow", _TF),
+      ("jax", _JAX),
+  )
+  def test_to_tensor_strings(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    data = ["a", "b", "c"]
+    t = backend.to_tensor(data, dtype=backend.string)
+
+    if backend_name == _JAX:
+      # JAX backend uses numpy unicode strings
+      self.assertIsInstance(t, np.ndarray)
+      self.assertEqual(t.dtype.kind, "S")
+      test_utils.assert_allequal(t, np.array(data, dtype=np.bytes_))
+    else:
+      # TensorFlow natively supports string tensors (bytes).
+      self.assertIsInstance(t, tf.Tensor)
+      self.assertEqual(t.dtype, tf.string)
+      expected = np.array([b"a", b"b", b"c"], dtype=object)
+      test_utils.assert_allequal(np.array(t).astype(object), expected)
+
   _concatenate_test_cases = [
       dict(
           testcase_name="axis_0",
@@ -562,13 +585,22 @@ class BackendTest(parameterized.TestCase):
           testcase_name="1d_tensor",
           tensor_in=[10, 20, 30, 40],
           indices=[0, 3, 1],
+          kwargs={},
           expected=np.array([10, 40, 20]),
       ),
       dict(
           testcase_name="2d_tensor",
           tensor_in=[[1, 2], [3, 4], [5, 6]],
           indices=[2, 0],
+          kwargs={},
           expected=np.array([[5, 6], [1, 2]]),
+      ),
+      dict(
+          testcase_name="2d_tensor_axis_1",
+          tensor_in=[[1, 2], [3, 4], [5, 6]],
+          indices=[1, 0],
+          kwargs={"axis": 1},
+          expected=np.array([[2, 1], [4, 3], [6, 5]]),
       ),
   ]
 
@@ -580,11 +612,29 @@ class BackendTest(parameterized.TestCase):
     self._set_backend_for_test(backend_name)
     tensor = backend.to_tensor(test_case["tensor_in"])
     indices = backend.to_tensor(test_case["indices"])
+    kwargs = test_case["kwargs"]
     expected = test_case["expected"]
 
-    result = backend.gather(tensor, indices)
+    result = backend.gather(tensor, indices, **kwargs)
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_gather_strings(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    params = ["channel_A", "channel_B", "channel_C"]
+    indices = backend.to_tensor([0, 2])
+    expected = np.array(["channel_A", "channel_C"])
+
+    result = backend.gather(params, indices)
+
+    # JAX gather on strings returns numpy array (as strings aren't jax types)
+    if backend_name == _JAX:
+      self.assertIsInstance(result, np.ndarray)
+      test_utils.assert_allequal(result, expected)
+    else:
+      self.assertIsInstance(result, backend.Tensor)
+      test_utils.assert_allequal(result.numpy().astype(str), expected)
 
   _boolean_mask_test_cases = [
       dict(
@@ -751,15 +801,24 @@ class BackendTest(parameterized.TestCase):
       self.assertIsInstance(result, backend.Tensor)
       test_utils.assert_allclose(result, expected)
 
-  def test_extension_type_raises_for_jax(self):
+  def test_jax_extension_type_is_pytree(self):
     self._set_backend_for_test(_JAX)
 
-    class MyExtension(backend.ExtensionType):
-      foo: int
-      bar: str
+    @dataclasses.dataclass
+    class MyType(backend.ExtensionType):
+      x: backend.Tensor
+      y: int
+      z: str
 
-    with self.assertRaises(NotImplementedError):
-      MyExtension()
+    obj = MyType(x=jnp.ones(3), y=5, z="hello")
+
+    # Test flattening/unflattening implicitly via jit
+    @jax.jit
+    def f(input_obj):
+      return input_obj.x * input_obj.y
+
+    res = f(obj)
+    test_utils.assert_allclose(res, jnp.ones(3) * 5)
 
   _nanmedian_test_cases = [
       dict(
@@ -802,6 +861,323 @@ class BackendTest(parameterized.TestCase):
 
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
+
+  _nanmean_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.array(3.0),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([2.0, 15.0]),
+      ),
+      dict(
+          testcase_name="2d_axis_1_keepdims",
+          tensor_in=np.array([[1.0, 10.0, np.nan], [np.nan, 20.0, 30.0]]),
+          kwargs={"axis": 1, "keepdims": True},
+          expected=np.array([[5.5], [25.0]]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nanmean_test_cases,
+  )
+  def test_nanmean(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nanmean(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _nansum_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.array(9.0),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([4.0, 30.0]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nansum_test_cases,
+  )
+  def test_nansum(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nansum(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _nanvar_test_cases = [
+      dict(
+          testcase_name="1d_with_nan",
+          tensor_in=np.array([1.0, np.nan, 3.0, 5.0]),
+          kwargs={},
+          expected=np.var([1.0, 3.0, 5.0]),
+      ),
+      dict(
+          testcase_name="2d_axis_0",
+          tensor_in=np.array([[1.0, 10.0], [np.nan, 20.0], [3.0, np.nan]]),
+          kwargs={"axis": 0},
+          expected=np.array([np.var([1.0, 3.0]), np.var([10.0, 20.0])]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_nanvar_test_cases,
+  )
+  def test_nanvar(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(test_case["tensor_in"])
+    kwargs = test_case["kwargs"]
+    expected = test_case["expected"]
+
+    result = backend.nanvar(tensor, **kwargs)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected)
+
+  _stabilize_rf_roi_grid_test_cases = [
+      dict(
+          testcase_name="equivalent_case_max_outcome_on_last_row",
+          spend_grid=np.array([
+              [10.0, 100.0],
+              [20.0, 200.0],
+              [30.0, 300.0],
+              [np.nan, 400.0],
+          ]),
+          outcome_grid=np.array([
+              [1.0, 15.0],
+              [2.0, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+          n_rf_channels=2,
+          expected_tf=np.array([
+              [0.9, 15.0],
+              [1.8, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+          expected_jax=np.array([
+              [0.9, 15.0],
+              [1.8, 30.0],
+              [2.7, 45.0],
+              [np.nan, 60.0],
+          ]),
+      ),
+      dict(
+          testcase_name="divergent_case_max_outcome_not_on_last_row",
+          #  The maximum outcome for the first channel (2.5) is
+          #  on a different row than the maximum spend (30.0). This causes the
+          #  TF logic to calculate an incorrect reference ROI, while the
+          #  index-based JAX logic finds the ROI at the highest spend point.
+          spend_grid=np.array([
+              [10.0, 100.0],
+              [20.0, 200.0],
+              [30.0, 300.0],
+              [np.nan, 400.0],
+          ]),
+          outcome_grid=np.array([
+              [1.0, 15.0],
+              [2.5, 30.0],
+              [2.1, 45.0],
+              [np.nan, 60.0],
+          ]),
+          n_rf_channels=2,
+          expected_tf=np.array([
+              [0.833333, 15.0],
+              [1.666666, 30.0],
+              [2.5, 45.0],
+              [np.nan, 60.0],
+          ]),
+          expected_jax=np.array([
+              [0.7, 15.0],
+              [1.4, 30.0],
+              [2.1, 45.0],
+              [np.nan, 60.0],
+          ]),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_stabilize_rf_roi_grid_test_cases,
+  )
+  def test_stabilize_rf_roi_grid(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    spend_grid = test_case["spend_grid"]
+    outcome_grid = test_case["outcome_grid"]
+    n_rf_channels = test_case["n_rf_channels"]
+
+    if backend_name == _JAX:
+      expected = test_case["expected_jax"]
+    else:
+      expected = test_case["expected_tf"]
+
+    result = backend.stabilize_rf_roi_grid(
+        spend_grid, outcome_grid, n_rf_channels
+    )
+
+    # The function should return a new grid, not modify in-place.
+    self.assertFalse(np.all(result == outcome_grid))
+    test_utils.assert_allclose(result, expected, atol=1e-6)
+
+  @parameterized.product(
+      [
+          dict(
+              input_data=np.array([0, 1, 2, 3, 4]),
+              shift=2,
+              axis=None,
+              expected=np.array([3, 4, 0, 1, 2]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=1,
+              axis=0,
+              expected=np.array([[2, 3], [0, 1]]),
+          ),
+          dict(
+              input_data=np.array([[0, 1], [2, 3]]),
+              shift=-1,
+              axis=1,
+              expected=np.array([[1, 0], [3, 2]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_roll(self, backend_name, input_data, shift, axis, expected):
+    """Tests that backend.roll works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    tensor = backend.to_tensor(input_data)
+    result = backend.roll(tensor, shift, axis=axis)
+    test_utils.assert_allequal(result, expected)
+
+  @parameterized.product(
+      [
+          dict(
+              indices=np.array([0, 2]),
+              depth=3,
+              on_value=None,
+              off_value=None,
+              axis=None,
+              dtype=None,
+              expected=np.array([[1, 0, 0], [0, 0, 1]]),
+          ),
+          dict(
+              indices=np.array([1, 0]),
+              depth=2,
+              on_value=1.0,
+              off_value=-1.0,
+              axis=None,
+              dtype=np.float32,
+              expected=np.array([[-1.0, 1.0], [1.0, -1.0]], dtype=np.float32),
+          ),
+          dict(
+              indices=np.array([0, 1]),
+              depth=2,
+              on_value=5,
+              off_value=1,
+              axis=None,
+              dtype=np.int32,
+              expected=np.array([[5, 1], [1, 5]], dtype=np.int32),
+          ),
+          dict(
+              indices=np.array([0, 1, 0]),
+              depth=2,
+              on_value=None,
+              off_value=None,
+              axis=0,
+              dtype=None,
+              expected=np.array([[1, 0, 1], [0, 1, 0]]),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_one_hot(
+      self,
+      backend_name,
+      indices,
+      depth,
+      on_value,
+      off_value,
+      axis,
+      dtype,
+      expected,
+  ):
+    """Tests that backend.one_hot works consistently across backends."""
+    self._set_backend_for_test(backend_name)
+    result = backend.one_hot(
+        indices,
+        depth,
+        on_value=on_value,
+        off_value=off_value,
+        axis=axis,
+        dtype=dtype,
+    )
+    test_utils.assert_allequal(result, expected)
+    if dtype:
+      # JAX can promote integer dtypes, so we just check kind
+      self.assertEqual(
+          np.dtype(backend.standardize_dtype(result.dtype)).kind,
+          np.dtype(expected.dtype).kind,
+      )
+
+  @parameterized.product(
+      [
+          dict(
+              arr=np.array([1.1, 2.2, 3.3], dtype=np.float32),
+          ),
+          dict(
+              arr=np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32),
+          ),
+          dict(arr=np.array([True, False, True])),
+          dict(
+              arr=np.array([b"hello", b"world"], dtype=np.bytes_),
+          ),
+          dict(
+              arr=np.array([], dtype=np.float32),
+          ),
+      ],
+      backend_name=_ALL_BACKENDS,
+  )
+  def test_tensor_proto_roundtrip(self, backend_name, arr):
+    """Tests proto conversion roundtrip for both backends."""
+    self._set_backend_for_test(backend_name)
+    proto = backend.make_tensor_proto(arr)
+    result_arr = backend.make_ndarray(proto)
+    test_utils.assert_allequal(
+        result_arr,
+        arr,
+        err_msg=f"Roundtrip failed for dtype {arr.dtype}",
+    )
+    if backend_name == _TF and arr.dtype.kind in ("S", "U"):
+      # tf.make_ndarray converts string protos to numpy arrays of dtype=object
+      # containing bytes. The content is correct, but the dtype differs.
+      self.assertEqual(result_arr.dtype.kind, "O")
+    else:
+      self.assertEqual(result_arr.dtype, arr.dtype)
 
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
@@ -959,10 +1335,11 @@ class RNGHandlerTest(BackendTest):
     self.assertEqual(handler._int_seed, seed)
 
     if backend_name == _JAX:
-      expected_key = jax.random.PRNGKey(seed)
-      # Kernel seed should be the sanitized version of the key
-      expected_kernel_seed = backend.random.sanitize_seed(expected_key)
-      self._assert_key_equal(handler.get_kernel_seed(), expected_kernel_seed)
+      # The kernel seed should be a reproducible integer derived from the key.
+      key = jax.random.PRNGKey(seed)
+      _, subkey = jax.random.split(key)
+      expected_int_seed = int(jax.random.randint(subkey, (), 0, 2**31 - 1))
+      self.assertEqual(handler.get_kernel_seed(), expected_int_seed)
     else:
       # TF Regression Safety: Must match (s, s) behavior.
       # The legacy handler explicitly converts int -> (int, int) before
@@ -1017,6 +1394,14 @@ class RNGHandlerTest(BackendTest):
 
     self.assertEqual(handler._int_seed, seed_val)
 
+  def test_jax_initialization_with_prng_key(self):
+    """JAX should accept an existing PRNGKey."""
+    self._set_backend_for_test(_JAX)
+    seed_key = jax.random.PRNGKey(42)
+    handler = backend.RNGHandler(seed_key)
+
+    self._assert_key_equal(handler._key, seed_key)
+
   def test_jax_initialization_with_sequence_seed_raises(self):
     """JAX must not be initialized with a sequence."""
     self._set_backend_for_test(_JAX)
@@ -1065,7 +1450,7 @@ class RNGHandlerTest(BackendTest):
       self.assertIsInstance(seed1, jax.Array)
       self.assertIsInstance(seed2, jax.Array)
       self._assert_key_not_equal(seed1, seed2)
-      self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
+      self.assertNotEqual(handler.get_kernel_seed(), initial_kernel_seed)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_get_next_seed_is_reproducible(self, backend_name):
@@ -1108,7 +1493,7 @@ class RNGHandlerTest(BackendTest):
     new_handler1 = handler.advance_handler()
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(handler.get_kernel_seed(), initial_kernel_seed)
+      self.assertNotEqual(handler.get_kernel_seed(), initial_kernel_seed)
     else:
       test_utils.assert_not_allequal(
           handler.get_kernel_seed(), initial_kernel_seed
@@ -1126,8 +1511,8 @@ class RNGHandlerTest(BackendTest):
     kernel_seed2 = new_handler2.get_kernel_seed()
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(kernel_seed1, initial_kernel_seed)
-      self._assert_key_not_equal(kernel_seed1, kernel_seed2)
+      self.assertNotEqual(kernel_seed1, initial_kernel_seed)
+      self.assertNotEqual(kernel_seed1, kernel_seed2)
     else:
       self.assertFalse(np.array_equal(kernel_seed1, initial_kernel_seed))
       self.assertFalse(np.array_equal(kernel_seed1, kernel_seed2))
@@ -1163,16 +1548,241 @@ class RNGHandlerTest(BackendTest):
 
     for s1, s2 in zip(seq1, seq2):
       if backend_name == _JAX:
-        self._assert_key_equal(s1, s2)
+        self.assertEqual(s1, s2)
       else:
         test_utils.assert_allequal(s1, s2)
 
     if backend_name == _JAX:
-      self._assert_key_not_equal(seq1[0], seq1[1])
-      self._assert_key_not_equal(seq1[1], seq1[2])
+      self.assertNotEqual(seq1[0], seq1[1])
+      self.assertNotEqual(seq1[1], seq1[2])
     else:
       self.assertFalse(np.array_equal(seq1[0], seq1[1]))
       self.assertFalse(np.array_equal(seq1[1], seq1[2]))
+
+
+class JitCompatibilityTest(BackendTest):
+  """Ensures core backend functions operate correctly under JIT compilation."""
+
+  def _compile_and_run(self, func, *args, **kwargs):
+    """Wraps the function in a JIT block and runs it."""
+    jitted_func = backend.function(static_argnums=())(func)
+    # First run triggers compilation
+    res1 = jitted_func(*args, **kwargs)
+    # Second run uses cached compilation
+    res2 = jitted_func(*args, **kwargs)
+    return res1, res2
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_basic_ops(self, backend_name):
+    """Tests common arithmetic and array ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def ops_func(a, b):
+      x = backend.concatenate([a, b], axis=0)
+      y = backend.expand_dims(x, axis=-1)
+      z = backend.reduce_sum(y)
+      w = backend.log(backend.exp(z))
+      return w
+
+    a = backend.to_tensor([1.0, 2.0])
+    b = backend.to_tensor([3.0, 4.0])
+    res1, res2 = self._compile_and_run(ops_func, a, b)
+    test_utils.assert_allclose(res1, res2)
+    # Ensure actual computation matches expected output
+    test_utils.assert_allclose(res1, 10.0)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_gather_and_where(self, backend_name):
+    """Tests gather and where under JIT (consistent implementation)."""
+    self._set_backend_for_test(backend_name)
+
+    def indexing_func(params, indices, mask):
+      g = backend.gather(params, indices)
+      return backend.where((mask) & (g > 2.0), g, 0.0)
+
+    params = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    indices = backend.to_tensor([0, 1, 2, 3])
+    mask = backend.to_tensor([True, False, True, True])
+
+    res1, res2 = self._compile_and_run(indexing_func, params, indices, mask)
+    test_utils.assert_allclose(res1, res2)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_boolean_mask_dynamic_shape(self, backend_name):
+    """Tests boolean_mask under JIT, expecting failure only on JAX."""
+    self._set_backend_for_test(backend_name)
+
+    def mask_func(x, mask):
+      # Dynamic output shape. Allowed in TF graphs, not in JAX compiled frames.
+      return backend.boolean_mask(x, mask)
+
+    x = backend.to_tensor([1.0, 2.0, 3.0, 4.0])
+    mask = backend.to_tensor([True, False, True, True])
+
+    if backend_name == _JAX:
+      with self.assertRaises(
+          (TypeError, jax.errors.NonConcreteBooleanIndexError)
+      ):
+        self._compile_and_run(mask_func, x, mask)
+    else:
+      res1, res2 = self._compile_and_run(mask_func, x, mask)
+      test_utils.assert_allclose(res1, res2)
+      test_utils.assert_allclose(
+          res1, np.array([1.0, 3.0, 4.0], dtype=np.float32)
+      )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_jit_aggregate_ops(self, backend_name):
+    """Tests reduction/aggregation ops under JIT."""
+    self._set_backend_for_test(backend_name)
+
+    def agg_func(x):
+      return backend.stack([
+          backend.reduce_min(x),
+          backend.reduce_max(x),
+          backend.reduce_mean(x),
+          backend.reduce_std(x),
+      ])
+
+    x = backend.to_tensor([1.0, 2.0, 3.0])
+    res1, res2 = self._compile_and_run(agg_func, x)
+    test_utils.assert_allclose(res1, res2)
+
+
+class XlaWindowedAdaptiveNutsTest(BackendTest):
+  """Tests for the backend.xla_windowed_adaptive_nuts wrapper."""
+
+  def _get_test_model(self, dims=2):
+    """Defines a simple multivariate Gaussian model using the active backend."""
+    tfd = backend.tfd
+    loc = backend.zeros(dims, dtype=backend.float32)
+    scale_diag = backend.ones(dims, dtype=backend.float32)
+    return tfd.JointDistributionNamed(
+        {"x": tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)}
+    )
+
+  def _run_sampling(
+      self,
+      backend_name,
+      model,
+      seed_int,
+      n_chains,
+      n_draws,
+      num_adaptation_steps,
+      **kwargs,
+  ):
+    """Helper to execute the sampler reproducibly from an integer seed."""
+    handler = backend.RNGHandler(seed_int)
+    kernel_seed = handler.get_kernel_seed()
+
+    if backend_name == _JAX:
+      self.assertIsInstance(kernel_seed, int)
+    else:
+      self.assertIsInstance(kernel_seed, backend.Tensor)
+      self.assertLen(kernel_seed.shape, 1)
+
+    if backend_name == _JAX:
+      if "dual_averaging_kwargs" in kwargs:
+        kwargs["dual_averaging_kwargs"] = immutabledict.immutabledict(
+            kwargs["dual_averaging_kwargs"]
+        )
+
+    draws, trace = backend.xla_windowed_adaptive_nuts(
+        joint_dist=model,
+        n_chains=n_chains,
+        n_draws=n_draws,
+        num_adaptation_steps=num_adaptation_steps,
+        seed=kernel_seed,
+        **kwargs,
+    )
+    return draws, trace
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_execution_and_shapes(self, backend_name):
+    """Verifies execution, static arg handling (immutabledict), and output shapes."""
+    self._set_backend_for_test(backend_name)
+
+    dims = 3
+    model = self._get_test_model(dims=dims)
+    n_chains = 4
+    n_draws = 8
+    num_adaptation_steps = 5
+
+    draws, trace = self._run_sampling(
+        backend_name=backend_name,
+        model=model,
+        seed_int=42,
+        n_chains=n_chains,
+        n_draws=n_draws,
+        num_adaptation_steps=num_adaptation_steps,
+        max_tree_depth=5,  # Test another static arg
+        dual_averaging_kwargs={"target_accept_prob": 0.8},
+    )
+
+    self.assertIn("x", draws)
+    x_draws = draws["x"]
+    self.assertEqual(tuple(x_draws.shape), (n_draws, n_chains, dims))
+    self.assertIsInstance(x_draws, backend.Tensor)
+
+    self.assertIsInstance(trace, dict)
+    self.assertIn("step_size", trace)
+
+    expected_trace_shape = (n_draws,)
+    self.assertEqual(tuple(trace["step_size"].shape), expected_trace_shape)
+    final_step_size = trace["step_size"][-1]
+    self.assertEqual(tuple(final_step_size.shape), ())
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_reproducibility(self, backend_name):
+    """Ensures the sampling is reproducible given the same initial seed."""
+    self._set_backend_for_test(backend_name)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        seed_int=123,
+    )
+
+    # Running twice with the same seed must yield identical results.
+    draws1, trace1 = self._run_sampling(**common_args)
+    draws2, trace2 = self._run_sampling(**common_args)
+
+    test_utils.assert_allclose(draws1["x"], draws2["x"])
+    test_utils.assert_allclose(trace1["step_size"], trace2["step_size"])
+
+    if "is_accepted" in trace1 and "is_accepted" in trace2:
+      test_utils.assert_allequal(trace1["is_accepted"], trace2["is_accepted"])
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_different_seeds_produce_different_results(self, backend_name):
+    """Ensures different seeds yield different results."""
+    self._set_backend_for_test(backend_name)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+    )
+
+    draws1, _ = self._run_sampling(seed_int=101, **common_args)
+    draws2, _ = self._run_sampling(seed_int=202, **common_args)
+
+    draws1_np = np.array(draws1["x"])
+    draws2_np = np.array(draws2["x"])
+    self.assertFalse(
+        np.allclose(draws1_np, draws2_np),
+        msg=(
+            "Draws from different seeds were identical. This may indicate an"
+            " issue with JAX JIT compilation caching the seed incorrectly."
+        ),
+    )
 
 
 if __name__ == "__main__":

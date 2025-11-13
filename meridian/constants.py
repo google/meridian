@@ -133,6 +133,7 @@ ORGANIC_REACH_SCALED = ORGANIC_PREFIX + REACH_SCALED
 NON_MEDIA_TREATMENTS_SCALED = 'non_media_treatments_scaled'
 CONTROLS_SCALED = 'controls_scaled'
 KPI_SCALED = f'{KPI}_scaled'
+POPULATION_SCALED_KPI = f'{POPULATION}_scaled_{KPI}'
 RF_IMPRESSIONS_SCALED = f'{RF_IMPRESSIONS}_scaled'
 
 # Non-media treatments baseline value constants.
@@ -392,7 +393,6 @@ ALL_NATIONAL_DETERMINISTIC_PARAMETER_NAMES = (
     ETA_OM,
     ETA_ORF,
 )
-
 
 MEDIA_PARAMETERS = (
     ROI_M,
@@ -781,6 +781,7 @@ HILL_NUM_STEPS = 500
 # Summary template params.
 START_DATE = 'start_date'
 END_DATE = 'end_date'
+DEFAULT_CURRENCY = '$'
 SELECTED_GEOS = 'selected_geos'
 CARD_INSIGHTS = 'insights'
 CARD_CHARTS = 'charts'

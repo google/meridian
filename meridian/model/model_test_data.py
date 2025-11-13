@@ -143,6 +143,7 @@ class WithInputDataSamples:
   _short_input_data_with_rf_only: input_data.InputData
   _short_input_data_with_media_and_rf: input_data.InputData
   _national_input_data_media_only: input_data.InputData
+  _national_input_data_rf_only: input_data.InputData
   _national_input_data_media_and_rf: input_data.InputData
   _test_dist_media_and_rf: collections.OrderedDict[str, backend.Tensor]
   _test_dist_media_only: collections.OrderedDict[str, backend.Tensor]
@@ -278,6 +279,16 @@ class WithInputDataSamples:
             n_media_times=cls._N_MEDIA_TIMES_SHORT,
             n_controls=cls._N_CONTROLS,
             n_media_channels=cls._N_MEDIA_CHANNELS,
+            n_rf_channels=cls._N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls._national_input_data_rf_only = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=cls._N_GEOS_NATIONAL,
+            n_times=cls._N_TIMES,
+            n_media_times=cls._N_MEDIA_TIMES,
+            n_controls=cls._N_CONTROLS,
             n_rf_channels=cls._N_RF_CHANNELS,
             seed=0,
         )
@@ -580,6 +591,10 @@ class WithInputDataSamples:
   @property
   def national_input_data_media_only(self) -> input_data.InputData:
     return self._national_input_data_media_only.copy(deep=True)
+
+  @property
+  def national_input_data_rf_only(self) -> input_data.InputData:
+    return self._national_input_data_rf_only.copy(deep=True)
 
   @property
   def national_input_data_media_and_rf(self) -> input_data.InputData:

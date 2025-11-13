@@ -1,0 +1,60 @@
+[project]
+name = "mmm-proto-schema"
+description = """\
+  A Meridian submodule for MMM model representation in protobuf form.\
+  """
+readme = "README.md"
+requires-python = ">=3.10"
+license-files = ["LICENSE"]
+authors = [
+  {name = "The Meridian Authors", email="no-reply@google.com"},
+]
+classifiers = [  # List of https://pypi.org/classifiers/
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Other/Nonlisted Topic",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+keywords = [
+  "mmm",
+  "protobuf",
+]
+
+version = "1.0.0"
+
+dependencies = [
+  "googleapis-common-protos",
+  "protobuf",
+  "tensorflow",
+]
+
+[project.urls]
+homepage = "https://github.com/google/meridian"
+repository = "https://github.com/google/meridian"
+changelog = "https://github.com/google/meridian/blob/main/CHANGELOG.md"
+documentation = "https://developers.google.com/meridian"
+
+[build-system]
+# Build system specify which backend is used to build/install the project (flit,
+# poetry, setuptools,...). All backends are supported by `pip install`
+requires = [
+  "setuptools >= 61.0.0",
+  "tomli; python_version < '3.11'",
+  "grpcio-tools >= 1.66.0, < 1.70.0",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.unified_schema_builder]
+proto_root=""
+github_includes=[
+  "https://github.com/googleapis/googleapis.git@master",  # No version tag available.
+  "https://github.com/tensorflow/tensorflow.git@v2.18.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["mmm*"]
+exclude = ["*test"]

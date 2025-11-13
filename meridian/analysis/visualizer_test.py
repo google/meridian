@@ -1702,9 +1702,12 @@ class MediaSummaryTest(parameterized.TestCase):
     )
 
   def test_media_summary_summary_table_format_monetary(self):
-    df = self.media_summary_revenue.summary_table()
-    self.assertTrue(all("$" in dollar for dollar in df[c.SPEND]))
-    self.assertTrue(all("$" in pct for pct in df[summary_text.INC_OUTCOME_COL]))
+    currency = "₽"
+    df = self.media_summary_revenue.summary_table(currency=currency)
+    self.assertTrue(all(currency in dollar for dollar in df[c.SPEND]))
+    self.assertTrue(
+        all(currency in pct for pct in df[summary_text.INC_OUTCOME_COL])
+    )
 
   def test_media_summary_summary_table_format_credible_interval(self):
     df = self.media_summary_revenue.summary_table()

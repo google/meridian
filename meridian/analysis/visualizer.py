@@ -1510,6 +1510,7 @@ class MediaSummary:
       include_prior: bool = True,
       include_posterior: bool = True,
       include_non_paid_channels: bool = False,
+      currency: str = c.DEFAULT_CURRENCY,
   ) -> pd.DataFrame:
     """Returns a formatted dataframe table of the summary metrics.
 
@@ -1526,6 +1527,7 @@ class MediaSummary:
         reported. If `False`, only the paid channels (media, reach and
         frequency) are included but the summary contains also the metrics
         dependent on spend. Default: `False`.
+      currency: The currency to use for the monetary values. Default: `'$'`.
 
     Returns:
       pandas.DataFrame of formatted summary metrics.
@@ -1608,7 +1610,7 @@ class MediaSummary:
     # Format monetary values.
     for k in monetary_metrics:
       if k in df.columns:
-        df[k] = '$' + df[k].astype(str)
+        df[k] = currency + df[k].astype(str)
 
     # Format the model result data variables as central_tendency (ci_lo, ci_hi).
     index_vars = [c.CHANNEL, c.DISTRIBUTION]

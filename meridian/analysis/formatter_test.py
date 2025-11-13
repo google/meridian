@@ -71,14 +71,14 @@ class FormatterTest(parameterized.TestCase):
     self.assertEqual(formatted_text, expected)
 
   @parameterized.named_parameters(
-      ('zero_precision_thousands', 12345, '$12k'),
-      ('round_up_thousands', 14900, '$15k'),
-      ('million_value', 3.21e6, '$3.2M'),
-      ('billion_value_round_up', 4.28e9, '$4.3B'),
-      ('negative', -12345, '-$12k'),
+      ('zero_precision_thousands', 12345, '$', '$12k'),
+      ('round_up_thousands', 14900, '€', '€15k'),
+      ('million_value', 3.21e6, '£', '£3.2M'),
+      ('billion_value_round_up', 4.28e9, '¥', '¥4.3B'),
+      ('negative', -12345, '₮', '-₮12k'),
   )
-  def test_format_monetary_num_correct(self, num, expected):
-    formatted_number = formatter.format_monetary_num(num)
+  def test_format_monetary_num_correct(self, num, currency, expected):
+    formatted_number = formatter.format_monetary_num(num, currency)
     self.assertEqual(formatted_number, expected)
 
   @parameterized.named_parameters(
