@@ -21,11 +21,12 @@ keywords = [
   "protobuf",
 ]
 
-version = "1.0.0"
+version = "1.0.0.post1"
 
 dependencies = [
   "googleapis-common-protos",
   "protobuf",
+  "semver",
   "tensorflow",
 ]
 
