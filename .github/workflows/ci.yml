@@ -36,6 +36,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # ensure tags/history available for version-check
       - id: version_check
         uses: ./.github/actions/version-check
         with:
@@ -74,7 +76,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ env.USE_PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: '**/pyproject.toml'
       - name: Install proto dependencies and test tools
