@@ -4543,12 +4543,18 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
           selected_geos=None,
           selected_times=None,
       )
-      self.assertLen(w, 1)
-      self.assertTrue(issubclass(w[0].category, UserWarning))
+      # TODO: Remove this once the warning is fixed.
+      user_warnings = [
+          warning
+          for warning in w
+          if not issubclass(warning.category, DeprecationWarning)
+      ]
+      self.assertLen(user_warnings, 1)
+      self.assertTrue(issubclass(user_warnings[0].category, UserWarning))
       self.assertIn(
           "ROI, mROI, Effectiveness, and CPIK are not reported because they do "
           "not have a clear interpretation by time period.",
-          str(w[0].message),
+          str(user_warnings[0].message),
       )
       self.assertNotIn(constants.ROI, media_summary.data_vars)
       self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
@@ -5079,12 +5085,18 @@ class AnalyzerKpiTest(backend_test_utils.MeridianTestCase):
           use_kpi=True,
       )
 
-      self.assertLen(w, 1)
-      self.assertTrue(issubclass(w[0].category, UserWarning))
+      # TODO: Remove this once the warning is fixed.
+      user_warnings = [
+          warning
+          for warning in w
+          if not issubclass(warning.category, DeprecationWarning)
+      ]
+      self.assertLen(user_warnings, 1)
+      self.assertTrue(issubclass(user_warnings[0].category, UserWarning))
       self.assertIn(
           "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`"
           " since in this case, KPI is equal to revenue.",
-          str(w[0].message),
+          str(user_warnings[0].message),
       )
     outcome_with_kpi_false = analyzer_revenue.expected_outcome(
         use_kpi=False,

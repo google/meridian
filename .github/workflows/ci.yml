@@ -45,9 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
-      max-parallel: 3
+      max-parallel: 4
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}
       cancel-in-progress: true
