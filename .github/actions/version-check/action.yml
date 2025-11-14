@@ -22,6 +22,7 @@ runs:
     - uses: ./.github/actions/install-meridian
       with:
         python_version: ${{ inputs.python_version }}
+        extras: ''
     - shell: bash
       run: pip install semver
     - id: version_check
@@ -37,7 +38,6 @@ runs:
           exit 1 # Fail fast
         fi
 
-        #PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "v0.0.0")
         PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' || { echo "Error: No matching previous tag found." >&2; exit 1; })
         PREVIOUS_VERSION=$(echo "$PREVIOUS_TAG" | sed 's/^v//')
 

@@ -115,23 +115,16 @@ class MeridianEDA:
         ),
     )
 
-  def plot_treatments_excl_non_media_boxplot(
+  def plot_treatments_without_non_media_boxplot(
       self, geos: Union[int, list[str], Literal['nationalize']] = 1
   ) -> alt.Chart:
     """Plots the boxplot for treatments variation excluding non-media treatments."""
     return self._plot_boxplots(
         geos,
         'Boxplots of paid and organic impressions',
-        self._meridian.eda_engine.national_treatment_control_scaled_ds,
-        self._meridian.eda_engine.treatment_control_scaled_ds,
-        lambda data: self._process_stacked_ds(
-            eda_engine.stack_variables(
-                data.drop_dims(
-                    [constants.NON_MEDIA_CHANNEL, constants.CONTROL_VARIABLE],
-                    errors='ignore',
-                )
-            )
-        ),
+        self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds,
+        self._meridian.eda_engine.treatments_without_non_media_scaled_ds,
+        lambda data: self._process_stacked_ds(eda_engine.stack_variables(data)),
     )
 
   def plot_controls_boxplot(

@@ -417,10 +417,10 @@ class MeridianEdaTest(parameterized.TestCase):
     self.assertEqual(actual_values, [100, 200, 300, 400, 500, 600])
 
   # ============================================================================
-  # Treatments Excl Non Media Tests (Stacked - Using xr.Dataset)
+  # Treatments Without Non Media Tests (Stacked - Using xr.Dataset)
   # ============================================================================
 
-  def test_plot_treatments_excl_non_media_boxplot_geos(self):
+  def test_plot_treatments_without_non_media_boxplot_geos(self):
     ds = xr.Dataset(
         {
             'media_scaled': (
@@ -429,66 +429,48 @@ class MeridianEdaTest(parameterized.TestCase):
                     [[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]
                 ),
             ),
-            'controls_scaled': (
-                [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
-                np.zeros((self._N_GEOS, self._N_TIMES, self._N_CONTROLS)),
-            ),
-            'non_media_scaled': (
-                [constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL],
-                np.zeros(
-                    (self._N_GEOS, self._N_TIMES, self._N_NON_MEDIA_CHANNELS)
-                ),
-            ),
         },
         coords={
             constants.GEO: self._GEO_NAMES,
             constants.TIME: range(self._N_TIMES),
             constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
-            constants.CONTROL_VARIABLE: self._CONTROL_NAMES,
-            constants.NON_MEDIA_CHANNEL: self._NON_MEDIA_CHANNEL_NAMES,
         },
     )
 
-    self._meridian.eda_engine.treatment_control_scaled_ds = ds
+    self._meridian.eda_engine.treatments_without_non_media_scaled_ds = ds
 
-    plot = self._eda.plot_treatments_excl_non_media_boxplot(geos=['geo_0'])
+    plot = self._eda.plot_treatments_without_non_media_boxplot(geos=['geo_0'])
 
     actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
     self.assertEqual(actual_values, [1, 2, 3, 4, 5, 6])
 
-  def test_plot_treatments_excl_non_media_boxplot_nationalize(self):
+  def test_plot_treatments_without_non_media_boxplot_nationalize(self):
     ds = xr.Dataset(
         {
             'media_scaled': (
                 [constants.GEO, constants.TIME, constants.CHANNEL],
                 np.array([[[10, 20], [30, 40], [50, 60]]]),
             ),
-            'controls_scaled': (
-                [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
-                np.zeros((1, self._N_TIMES, self._N_CONTROLS)),
-            ),
-            'non_media_scaled': (
-                [constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL],
-                np.zeros((1, self._N_TIMES, self._N_NON_MEDIA_CHANNELS)),
-            ),
         },
         coords={
             constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME],
             constants.TIME: range(self._N_TIMES),
             constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
-            constants.CONTROL_VARIABLE: self._CONTROL_NAMES,
-            constants.NON_MEDIA_CHANNEL: self._NON_MEDIA_CHANNEL_NAMES,
         },
     )
 
-    self._meridian.eda_engine.national_treatment_control_scaled_ds = ds
+    self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds = (
+        ds
+    )
 
-    plot = self._eda.plot_treatments_excl_non_media_boxplot(geos='nationalize')
+    plot = self._eda.plot_treatments_without_non_media_boxplot(
+        geos='nationalize'
+    )
 
     actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
     self.assertEqual(actual_values, [10, 20, 30, 40, 50, 60])
 
-  def test_plot_treatments_excl_non_media_boxplot_national_model(self):
+  def test_plot_treatments_without_non_media_boxplot_national_model(self):
     self._meridian.is_national = True
     self._meridian.n_geos = 1
 
@@ -498,27 +480,19 @@ class MeridianEdaTest(parameterized.TestCase):
                 [constants.GEO, constants.TIME, constants.CHANNEL],
                 np.array([[[100, 200], [300, 400], [500, 600]]]),
             ),
-            'controls_scaled': (
-                [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
-                np.zeros((1, self._N_TIMES, self._N_CONTROLS)),
-            ),
-            'non_media_scaled': (
-                [constants.GEO, constants.TIME, constants.NON_MEDIA_CHANNEL],
-                np.zeros((1, self._N_TIMES, self._N_NON_MEDIA_CHANNELS)),
-            ),
         },
         coords={
             constants.GEO: ['national_geo'],
             constants.TIME: range(self._N_TIMES),
             constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
-            constants.CONTROL_VARIABLE: self._CONTROL_NAMES,
-            constants.NON_MEDIA_CHANNEL: self._NON_MEDIA_CHANNEL_NAMES,
         },
     )
 
-    self._meridian.eda_engine.national_treatment_control_scaled_ds = ds
+    self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds = (
+        ds
+    )
 
-    plot = self._eda.plot_treatments_excl_non_media_boxplot()
+    plot = self._eda.plot_treatments_without_non_media_boxplot()
 
     actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
     self.assertEqual(actual_values, [100, 200, 300, 400, 500, 600])

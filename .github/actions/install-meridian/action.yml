@@ -5,6 +5,10 @@ inputs:
     description: The Python version of the build toolchain to use.
     required: true
     default: 3.11
+  extras:
+    description: Optional dependencies to install, in the format '[extra1,extra2]'.
+    required: false
+    default: '[dev,jax,mlflow,schema]'
 
 runs:
   using: composite
@@ -16,6 +20,7 @@ runs:
         cache-dependency-path: '**/pyproject.toml'
     - shell: bash
       run: |
-        pip install -e .[dev,jax,mlflow,schema] --config-settings editable_mode=strict
+        pip install -e proto --config-settings editable_mode=strict
+        pip install -e .${{ inputs.extras }} --config-settings editable_mode=strict
         pip freeze
 

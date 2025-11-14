@@ -2963,6 +2963,267 @@ class EDAEngineTest(
           expected_dims[var],
       )
 
+  # --- Test cases for treatments_without_non_media_scaled_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.MEDIA_SCALED],
+          expected_dims={
+              constants.MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="all_channels",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_vars=[
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.ORGANIC_MEDIA_SCALED,
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+              constants.ORGANIC_MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.ORGANIC_MEDIA_CHANNEL,
+              ],
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.ORGANIC_RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="when_national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="when_national_all_channels",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_vars=[
+              constants.MEDIA_SCALED,
+              constants.RF_IMPRESSIONS_SCALED,
+              constants.ORGANIC_MEDIA_SCALED,
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+              constants.ORGANIC_MEDIA_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.ORGANIC_MEDIA_CHANNEL,
+              ],
+              constants.ORGANIC_RF_IMPRESSIONS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.ORGANIC_RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_treatments_without_non_media_scaled_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    treatments_scaled_ds = engine.treatments_without_non_media_scaled_ds
+    self.assertIsInstance(treatments_scaled_ds, xr.Dataset)
+
+    self.assertCountEqual(treatments_scaled_ds.data_vars.keys(), expected_vars)
+
+    for var, dims in expected_dims.items():
+      self.assertCountEqual(list(treatments_scaled_ds[var].dims), dims)
+
+  # --- Test cases for national_treatments_without_non_media_scaled_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="all_channels",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.ORGANIC_MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.ORGANIC_RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_all_channels",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_vars=[
+              constants.NATIONAL_MEDIA_SCALED,
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED,
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED,
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+              constants.NATIONAL_ORGANIC_MEDIA_SCALED: [
+                  constants.TIME,
+                  constants.ORGANIC_MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_ORGANIC_RF_IMPRESSIONS_SCALED: [
+                  constants.TIME,
+                  constants.ORGANIC_RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_national_treatments_without_non_media_scaled_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_treatments_scaled_ds = (
+        engine.national_treatments_without_non_media_scaled_ds
+    )
+    self.assertIsInstance(national_treatments_scaled_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        national_treatments_scaled_ds.data_vars.keys(),
+        expected_vars,
+    )
+
+    for var in expected_vars:
+      self.assertCountEqual(
+          list(national_treatments_scaled_ds[var].dims),
+          expected_dims[var],
+      )
+
   # --- Test cases for all_reach_scaled_da ---
   @parameterized.named_parameters(
       dict(

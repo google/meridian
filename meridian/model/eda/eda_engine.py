@@ -279,7 +279,7 @@ def _calculate_std(
 
   Returns:
     A tuple where the first element is a Dataset with two data variables:
-    'std_incl_outliers' and 'std_excl_outliers'. The second element is a
+    'std_with_outliers' and 'std_without_outliers'. The second element is a
     DataFrame with columns for variables, geo (if applicable), time, and
     outlier values.
   """
@@ -366,6 +366,7 @@ class EDAEngine:
 
   @functools.cached_property
   def controls_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled controls data array."""
     if self._meridian.input_data.controls is None:
       return None
     controls_scaled_da = _data_array_like(
@@ -400,6 +401,7 @@ class EDAEngine:
 
   @functools.cached_property
   def media_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw media data array."""
     if self._meridian.input_data.media is None:
       return None
     raw_media_da = self._truncate_media_time(self._meridian.input_data.media)
@@ -408,6 +410,7 @@ class EDAEngine:
 
   @functools.cached_property
   def media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled media data array."""
     if self._meridian.input_data.media is None:
       return None
     media_scaled_da = _data_array_like(
@@ -485,6 +488,7 @@ class EDAEngine:
 
   @functools.cached_property
   def organic_media_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw organic media data array."""
     if self._meridian.input_data.organic_media is None:
       return None
     raw_organic_media_da = self._truncate_media_time(
@@ -495,6 +499,7 @@ class EDAEngine:
 
   @functools.cached_property
   def organic_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled organic media data array."""
     if self._meridian.input_data.organic_media is None:
       return None
     organic_media_scaled_da = _data_array_like(
@@ -540,6 +545,7 @@ class EDAEngine:
 
   @functools.cached_property
   def non_media_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled non-media treatments data array."""
     if self._meridian.input_data.non_media_treatments is None:
       return None
     non_media_scaled_da = _data_array_like(
@@ -615,12 +621,14 @@ class EDAEngine:
 
   @property
   def reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw reach data array."""
     if self._rf_data is None:
       return None
     return self._rf_data.reach_raw_da
 
   @property
   def reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled reach data array."""
     if self._rf_data is None:
       return None
     return self._rf_data.reach_scaled_da  # pytype: disable=attribute-error
@@ -641,6 +649,7 @@ class EDAEngine:
 
   @property
   def frequency_da(self) -> xr.DataArray | None:
+    """Returns the frequency data array."""
     if self._rf_data is None:
       return None
     return self._rf_data.frequency_da  # pytype: disable=attribute-error
@@ -654,6 +663,7 @@ class EDAEngine:
 
   @property
   def rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw RF impressions data array."""
     if self._rf_data is None:
       return None
     return self._rf_data.rf_impressions_raw_da
@@ -667,6 +677,7 @@ class EDAEngine:
 
   @property
   def rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled RF impressions data array."""
     if self._rf_data is None:
       return None
     return self._rf_data.rf_impressions_scaled_da
@@ -690,12 +701,14 @@ class EDAEngine:
 
   @property
   def organic_reach_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw organic reach data array."""
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.reach_raw_da
 
   @property
   def organic_reach_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled organic reach data array."""
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.reach_scaled_da  # pytype: disable=attribute-error
@@ -716,6 +729,7 @@ class EDAEngine:
 
   @property
   def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
+    """Returns the scaled organic RF impressions data array."""
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.rf_impressions_scaled_da
@@ -729,6 +743,7 @@ class EDAEngine:
 
   @property
   def organic_frequency_da(self) -> xr.DataArray | None:
+    """Returns the organic frequency data array."""
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.frequency_da  # pytype: disable=attribute-error
@@ -742,6 +757,7 @@ class EDAEngine:
 
   @property
   def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:
+    """Returns the raw organic RF impressions data array."""
     if self._organic_rf_data is None:
       return None
     return self._organic_rf_data.rf_impressions_raw_da
@@ -755,6 +771,7 @@ class EDAEngine:
 
   @functools.cached_property
   def geo_population_da(self) -> xr.DataArray | None:
+    """Returns the geo population data array."""
     if self._is_national_data:
       return None
     return xr.DataArray(
@@ -766,6 +783,7 @@ class EDAEngine:
 
   @functools.cached_property
   def kpi_scaled_da(self) -> xr.DataArray:
+    """Returns the scaled KPI data array."""
     scaled_kpi_da = _data_array_like(
         da=self._meridian.input_data.kpi,
         values=self._meridian.kpi_scaled,
@@ -886,6 +904,22 @@ class EDAEngine:
     da = stack_variables(self.national_treatment_control_scaled_ds)
     da.name = constants.NATIONAL_TREATMENT_CONTROL_SCALED
     return da
+
+  @functools.cached_property
+  def treatments_without_non_media_scaled_ds(self) -> xr.Dataset:
+    """Returns a Dataset of scaled treatments excluding non-media."""
+    return self.treatment_control_scaled_ds.drop_dims(
+        [constants.NON_MEDIA_CHANNEL, constants.CONTROL_VARIABLE],
+        errors='ignore',
+    )
+
+  @functools.cached_property
+  def national_treatments_without_non_media_scaled_ds(self) -> xr.Dataset:
+    """Returns a Dataset of national scaled treatments excluding non-media."""
+    return self.national_treatment_control_scaled_ds.drop_dims(
+        [constants.NON_MEDIA_CHANNEL, constants.CONTROL_VARIABLE],
+        errors='ignore',
+    )
 
   @functools.cached_property
   def all_reach_scaled_da(self) -> xr.DataArray | None:
