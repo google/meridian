@@ -16,6 +16,7 @@
 
 # pylint: disable=g-import-not-at-top
 
+import contextlib
 import dataclasses
 import importlib
 import os
@@ -31,7 +32,9 @@ from meridian import backend
 from meridian.backend import config
 from meridian.backend import test_utils
 import numpy as np
+import pandas as pd
 import tensorflow as tf
+import xarray as xr
 
 
 class BackendInitializationTest(parameterized.TestCase):
@@ -126,6 +129,16 @@ _ALL_BACKENDS = [_TF, _JAX]
 
 
 class BackendTest(parameterized.TestCase):
+
+  @contextlib.contextmanager
+  def _set_jax_x64(self, enabled):
+    """Temporarily sets the jax_enable_x64 flag using the JAX API."""
+    original = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", enabled)
+    try:
+      yield
+    finally:
+      jax.config.update("jax_enable_x64", original)
 
   def setUp(self):
     super().setUp()
@@ -329,6 +342,201 @@ class BackendTest(parameterized.TestCase):
       self.assertEqual(t.dtype, tf.string)
       expected = np.array([b"a", b"b", b"c"], dtype=object)
       test_utils.assert_allequal(np.array(t).astype(object), expected)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_ignores_values_method(self, backend_name):
+    """Tests that objects with a .values() method are not wrongly unwrapped."""
+    self._set_backend_for_test(backend_name)
+
+    class ContainerWithMethod:
+
+      def __init__(self, data):
+        self._data = np.array(data)
+
+      def values(self):
+        """A method named values, distinct from a property."""
+        return self._data
+
+      def __array__(self, *args, **kwargs):  # pylint: disable=unused-argument
+        """Numpy array protocol support."""
+        return self._data
+
+    input_data = [1, 2, 3]
+    container = ContainerWithMethod(input_data)
+
+    tensor = backend.to_tensor(container)
+
+    self.assertIsInstance(tensor, backend.Tensor)
+    test_utils.assert_allequal(tensor, np.array(input_data))
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_unwraps_containers(self, backend_name):
+    """Tests that to_tensor handles container objects correctly."""
+    self._set_backend_for_test(backend_name)
+
+    class Container:
+
+      def __init__(self, values):
+        self.values = values
+
+      # Implementing __array__ makes this object compatible with
+      # np.asarray() and tf.convert_to_tensor(), simulating Pandas/Xarray
+      # behavior.
+      def __array__(self, *args, **kwargs):  # pylint: disable=unused-argument
+        return self.values
+
+    data = np.array([1, 2, 3], dtype=np.int32)
+    container = Container(data)
+
+    tensor = backend.to_tensor(container)
+
+    self.assertIsInstance(tensor, backend.Tensor)
+    test_utils.assert_allequal(tensor, data)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_defaults_float64_behavior(self, backend_name):
+    """Tests backend-specific default handling of float64 inputs."""
+    self._set_backend_for_test(backend_name)
+
+    f64_data = np.array([1.1, 2.2, 3.3], dtype=np.float64)
+    tensor = backend.to_tensor(f64_data)
+
+    if backend_name == _JAX:
+      # JAX backend defaults to float32
+      self.assertEqual(tensor.dtype, backend.float32)
+      test_utils.assert_allclose(tensor, f64_data.astype(np.float32))
+    else:
+      self.assertEqual(tensor.dtype, tf.float64)
+      test_utils.assert_allclose(tensor, f64_data)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_respects_explicit_dtype(self, backend_name):
+    """Tests that explicit dtype arguments override defaults/containers."""
+    self._set_backend_for_test(backend_name)
+
+    class Container:
+
+      def __init__(self, values):
+        self.values = values
+
+      def __array__(self):
+        return self.values
+
+    f64_data = np.array([1.0, 2.0], dtype=np.float64)
+    container = Container(f64_data)
+
+    tensor = backend.to_tensor(container, dtype=backend.int32)
+
+    self.assertEqual(tensor.dtype, backend.int32)
+    test_utils.assert_allequal(tensor, np.array([1, 2], dtype=np.int32))
+
+  def test_to_tensor_warns_on_implicit_downcast_x64_disabled_for_jax(self):
+    """Tests warning issue when float64 is cast to float32 (x64 disabled)."""
+    self._set_backend_for_test(_JAX)
+
+    f64_data = np.array([1.1, 2.2], dtype=np.float64)
+
+    # Mock jax_enable_x64 to return False, simulating x64 disabled
+    with self._set_jax_x64(False):
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        tensor = backend.to_tensor(f64_data)
+
+        relevant_warnings = [
+            x for x in w if "Casting to float32" in str(x.message)
+        ]
+        self.assertNotEmpty(relevant_warnings)
+        self.assertEqual(tensor.dtype, backend.float32)
+
+  def test_to_tensor_defers_to_jax_default_when_x64_enabled_for_jax(self):
+    """Tests no warning is issued when x64 is enabled."""
+    self._set_backend_for_test(_JAX)
+
+    f64_data = np.array([1.1, 2.2], dtype=np.float64)
+
+    with self._set_jax_x64(True):
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        tensor = backend.to_tensor(f64_data)
+
+        relevant_warnings = [
+            x for x in w if "Casting to float32" in str(x.message)
+        ]
+        self.assertEmpty(relevant_warnings)
+
+        # With x64 mode enabled via the mock, JAX will preserve the float64
+        # dtype. We verify our function does the same and does not issue a
+        # warning.
+        expected_dtype = jnp.array(f64_data).dtype
+        self.assertEqual(tensor.dtype, expected_dtype)
+
+  def test_to_tensor_no_warn_explicit_dtype_for_jax(self):
+    """Tests that explicit dtype prevents the downcast warning."""
+    self._set_backend_for_test(_JAX)
+
+    f64_data = np.array([1.1, 2.2], dtype=np.float64)
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      tensor = backend.to_tensor(f64_data, dtype=backend.float32)
+
+      relevant_warnings = [
+          x for x in w if "Casting to float32" in str(x.message)
+      ]
+      self.assertEmpty(relevant_warnings)
+      self.assertEqual(tensor.dtype, backend.float32)
+
+  def test_to_tensor_warns_on_scalar_float_downcast_for_jax(self):
+    """Tests that a warning is issued when scalar float is implicitly cast."""
+    self._set_backend_for_test(_JAX)
+
+    with self._set_jax_x64(False):
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        tensor = backend.to_tensor(1.234)
+
+        relevant_warnings = [
+            x for x in w if "Casting to float32" in str(x.message)
+        ]
+        self.assertNotEmpty(relevant_warnings)
+        self.assertEqual(tensor.dtype, backend.float32)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_supports_pandas_series(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    pd_data = pd.Series([1.1, 2.2, 3.3], name="test_series")
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", category=UserWarning)
+      tensor = backend.to_tensor(pd_data)
+
+    self.assertIsInstance(tensor, backend.Tensor)
+    if backend_name == _JAX:
+      self.assertEqual(tensor.dtype, backend.float32)
+      test_utils.assert_allclose(tensor, pd_data.values.astype(np.float32))
+    else:
+      self.assertEqual(tensor.dtype, tf.float64)
+      test_utils.assert_allclose(tensor, pd_data.values)
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_to_tensor_supports_xarray_dataarray(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    xr_data = xr.DataArray([4.4, 5.5], dims="x", name="test_da")
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", category=UserWarning)
+      tensor = backend.to_tensor(xr_data)
+
+    self.assertIsInstance(tensor, backend.Tensor)
+    if backend_name == _JAX:
+      self.assertEqual(tensor.dtype, backend.float32)
+      test_utils.assert_allclose(tensor, xr_data.values.astype(np.float32))
+    else:
+      self.assertEqual(tensor.dtype, tf.float64)
+      test_utils.assert_allclose(tensor, xr_data.values)
 
   _concatenate_test_cases = [
       dict(

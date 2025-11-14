@@ -609,7 +609,37 @@ def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
 
 
 def _jax_convert_to_tensor(data, dtype=None):
-  """Converts data to a JAX array, handling strings as NumPy arrays."""
+  """Converts data to a JAX array, handling strings as NumPy arrays.
+
+  This function explicitly unwraps objects with a `.values` attribute (e.g.,
+  pandas.DataFrame, xarray.DataArray) to access the underlying NumPy array,
+  provided that `.values` is not a method. This takes precedence over the
+  `__array__` protocol.
+
+  It also handles precision mismatches: if `data` is float64 and `dtype` is
+  not specified, and JAX x64 mode is disabled (default), it issues a warning
+  and explicitly casts to float32 to match the backend default and prevent
+  silent precision loss or type errors in downstream operations.
+
+  Args:
+    data: The data to convert.
+    dtype: The desired data type.
+
+  Returns:
+    A JAX array, or a NumPy array if the dtype is a string type.
+  """
+  # Unwrap xarray.DataArray, pandas.Series, and pandas.DataFrame objects.
+  # These objects wrap the underlying NumPy array in a .values attribute.
+  if hasattr(data, "values") and not callable(data.values):
+    data = data.values
+
+  # Convert to numpy array upfront to simplify dtype inspection below.
+  # A standard Python float is 64-bit, and this conversion allows the
+  # subsequent logic to correctly detect and handle potential float64
+  # downcasting for scalar inputs.
+  if isinstance(data, (list, tuple, float)):
+    data = np.array(data)
+
   # JAX does not natively support string tensors in the same way TF does.
   # If a string dtype is requested, or if the data is inherently strings,
   # we fall back to a standard NumPy array.
@@ -623,12 +653,30 @@ def _jax_convert_to_tensor(data, dtype=None):
       # let jax.asarray handle it.
       pass
 
-  is_string_data = isinstance(data, (list, np.ndarray)) and np.array(
-      data
-  ).dtype.kind in ("S", "U")
+  is_string_data = isinstance(data, np.ndarray) and data.dtype.kind in (
+      "S",
+      "U",
+  )
 
-  if is_string_target or (dtype is None and is_string_data):
+  if is_string_target:
     return np.array(data, dtype=dtype)
+
+  if dtype is None and is_string_data:
+    return data
+
+  # If the user provides float64 data but does not request a specific dtype,
+  # and JAX 64-bit mode is disabled (default), JAX would implicitly truncate.
+  # We cast to float32 and warn the user to prevent silent mismatches.
+  if dtype is None:
+    is_float64_input = hasattr(data, "dtype") and data.dtype == np.float64
+    if is_float64_input:
+      if not jax.config.jax_enable_x64:
+        warnings.warn(
+            "Input data is float64. Casting to float32 to match backend "
+            "default precision.",
+            UserWarning,
+        )
+        dtype = jax_ops.float32
 
   return jax_ops.asarray(data, dtype=dtype)
 
