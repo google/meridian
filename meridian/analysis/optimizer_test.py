@@ -2962,6 +2962,40 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   def test_optimize_when_target_roi_not_met_raises_warning(self):
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'incremental_outcome',
+            autospec=True,
+            return_value=backend.to_tensor(
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+            ),
+        )
+    )
+    # Mock the grid to return historical spend. This ensures a finite, low ROI
+    # that triggers the warning.
+    mock_grid = mock.create_autospec(optimizer.OptimizationGrid, instance=True)
+    mock_grid.historical_spend = _NONOPTIMIZED_SPEND
+    mock_grid.optimal_frequency = None
+
+    channels = self.input_data_media_and_rf.get_all_channels()
+    spend_ds = xr.Dataset(
+        coords={c.CHANNEL: channels},
+        data_vars={
+            c.OPTIMIZED: ([c.CHANNEL], _NONOPTIMIZED_SPEND),
+            c.NON_OPTIMIZED: ([c.CHANNEL], _NONOPTIMIZED_SPEND),
+        },
+    )
+    mock_grid.optimize.return_value = spend_ds
+
+    self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf,
+            'create_optimization_grid',
+            return_value=mock_grid,
+        )
+    )
+
     with self.assertWarnsRegex(
         UserWarning, 'Target ROI constraint was not met.'
     ):

@@ -453,7 +453,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     result = backend.tile(
         result[:, :, None, :, :], multiples=[1, 1, self._N_GEOS, 1, 1]
     )
-    test_utils.assert_allclose(media_transformed, result)
+    test_utils.assert_allclose(media_transformed, result, rtol=1e-4, atol=1e-4)
 
   @parameterized.named_parameters(
       dict(

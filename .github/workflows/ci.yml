@@ -45,13 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        meridian-backend: ["tensorflow", "jax"]
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}
-      cancel-in-progress: true
-    name: pytest (python-${{ matrix.python-version }})
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{ matrix.meridian-backend }}
+      cancel-in-progress: false
+    name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
     steps:
       - uses: actions/checkout@v4
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
@@ -63,6 +64,8 @@ jobs:
       - name: Run core tests
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         run: pytest -vv -n auto --ignore=schema
+        env:
+          MERIDIAN_BACKEND: ${{ matrix.meridian-backend }}
 
   pytest-schema:
     runs-on: ubuntu-latest
