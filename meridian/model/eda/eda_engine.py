@@ -666,14 +666,14 @@ class EDAEngine:
     """Returns the raw RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.rf_impressions_raw_da
+    return self._rf_data.rf_impressions_raw_da  # pytype: disable=attribute-error
 
   @property
   def national_rf_impressions_raw_da(self) -> xr.DataArray | None:
     """Returns the national raw RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_rf_impressions_raw_da
+    return self._rf_data.national_rf_impressions_raw_da  # pytype: disable=attribute-error
 
   @property
   def rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -1026,6 +1026,30 @@ class EDAEngine:
     da = xr.concat(national_freq_das, dim=constants.RF_CHANNEL)
     da.name = constants.NATIONAL_ALL_FREQUENCY
     return da
+
+  @functools.cached_property
+  def paid_raw_impressions_ds(self) -> xr.Dataset:
+    to_merge = [
+        da
+        for da in [
+            self.media_raw_da,
+            self.rf_impressions_raw_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
+
+  @functools.cached_property
+  def national_paid_raw_impressions_ds(self) -> xr.Dataset:
+    to_merge = [
+        da
+        for da in [
+            self.national_media_raw_da,
+            self.national_rf_impressions_raw_da,
+        ]
+        if da is not None
+    ]
+    return xr.merge(to_merge, join='inner')
 
   @property
   def _critical_checks(

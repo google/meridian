@@ -3224,6 +3224,167 @@ class EDAEngineTest(
           expected_dims[var],
       )
 
+  # --- Test cases for paid_raw_impressions_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.MEDIA],
+          expected_dims={
+              constants.MEDIA: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="rf_only",
+          input_data_fixture="input_data_with_rf_only",
+          expected_vars=[constants.RF_IMPRESSIONS],
+          expected_dims={
+              constants.RF_IMPRESSIONS: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.MEDIA,
+              constants.RF_IMPRESSIONS,
+          ],
+          expected_dims={
+              constants.MEDIA: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.MEDIA,
+              constants.RF_IMPRESSIONS,
+          ],
+          expected_dims={
+              constants.MEDIA: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.RF_IMPRESSIONS: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_paid_raw_impressions_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    paid_raw_impressions_ds = engine.paid_raw_impressions_ds
+    self.assertIsInstance(paid_raw_impressions_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        paid_raw_impressions_ds.data_vars.keys(), expected_vars
+    )
+
+    for var, dims in expected_dims.items():
+      self.assertCountEqual(list(paid_raw_impressions_ds[var].dims), dims)
+
+  # --- Test cases for national_paid_raw_impressions_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.NATIONAL_MEDIA],
+          expected_dims={
+              constants.NATIONAL_MEDIA: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="rf_only",
+          input_data_fixture="input_data_with_rf_only",
+          expected_vars=[constants.NATIONAL_RF_IMPRESSIONS],
+          expected_dims={
+              constants.NATIONAL_RF_IMPRESSIONS: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ]
+          },
+      ),
+      dict(
+          testcase_name="media_rf",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_MEDIA,
+              constants.NATIONAL_RF_IMPRESSIONS,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_media_rf",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_vars=[
+              constants.NATIONAL_MEDIA,
+              constants.NATIONAL_RF_IMPRESSIONS,
+          ],
+          expected_dims={
+              constants.NATIONAL_MEDIA: [
+                  constants.TIME,
+                  constants.MEDIA_CHANNEL,
+              ],
+              constants.NATIONAL_RF_IMPRESSIONS: [
+                  constants.TIME,
+                  constants.RF_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_national_paid_raw_impressions_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_paid_raw_impressions_ds = engine.national_paid_raw_impressions_ds
+    self.assertIsInstance(national_paid_raw_impressions_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        national_paid_raw_impressions_ds.data_vars.keys(),
+        expected_vars,
+    )
+
+    for var, dims in expected_dims.items():
+      self.assertCountEqual(
+          list(national_paid_raw_impressions_ds[var].dims), dims
+      )
+
   # --- Test cases for all_reach_scaled_da ---
   @parameterized.named_parameters(
       dict(
