@@ -15,6 +15,8 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants
+from meridian.data import test_utils
+from meridian.model import model
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import meridian_eda
 import numpy as np
@@ -50,6 +52,176 @@ class MeridianEdaTest(parameterized.TestCase):
     )
 
     self._eda = meridian_eda.MeridianEDA(self._meridian)
+
+  # ============================================================================
+  # Relative Spend Share Test
+  # ============================================================================
+
+  def test_plot_relative_spend_share_barchart_geos(self):
+    self._meridian.eda_engine.all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array(
+                    [[[5, 10], [5, 10], [0, 10]], [[0, 0], [0, 0], [0, 0]]]
+                ),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[20], [20], [20]], [[0], [0], [0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: self._GEO_NAMES,
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    plot = self._eda.plot_relative_spend_share_barchart(geos=['geo_0'])
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.1, 0.3, 0.6])
+
+  def test_plot_relative_spend_share_barchart_nationalize(self):
+    self._meridian.eda_engine.national_all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[[10], [10], [10]]]),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[20], [20], [30]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: ['ch_0'],
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    plot = self._eda.plot_relative_spend_share_barchart(geos='nationalize')
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.3, 0.7])
+
+  def test_plot_relative_spend_share_barchart_national_model(self):
+    self._meridian.is_national = True
+    self._meridian.n_geos = 1
+    self._meridian.geo_names = ['national_geo']
+
+    self._meridian.eda_engine.national_all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[[50], [50], [50]]]),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[10], [20], [20]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: ['ch_0'],
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    plot = self._eda.plot_relative_spend_share_barchart()
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.25, 0.75])
+
+  # ============================================================================
+  # Relative Impression Share Tests
+  # ============================================================================
+
+  def test_plot_relative_impression_share_barchart_geos(self):
+    ds = xr.Dataset(
+        {
+            'media_scaled': (
+                [constants.GEO, constants.TIME, constants.CHANNEL],
+                np.array(
+                    [[[50, 0], [0, 25], [0, 25]], [[0, 0], [0, 0], [0, 0]]]
+                ),
+            ),
+        },
+        coords={
+            constants.GEO: self._GEO_NAMES,
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.treatments_without_non_media_scaled_ds = ds
+
+    plot = self._eda.plot_relative_impression_share_barchart(geos=['geo_0'])
+
+    df = plot.data
+    present_vars = df[eda_constants.VARIABLE].unique()
+    for var in present_vars:
+      self.assertIn(var, self._MEDIA_CHANNEL_NAMES)
+
+    actual_values = sorted(df[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.5, 0.5])
+
+  def test_plot_relative_impression_share_barchart_nationalize(self):
+    ds = xr.Dataset(
+        {
+            'media_scaled': (
+                [constants.GEO, constants.TIME, constants.CHANNEL],
+                np.array([[[40, 160], [0, 0], [0, 0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds = (
+        ds
+    )
+
+    plot = self._eda.plot_relative_impression_share_barchart(geos='nationalize')
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.2, 0.8])
+
+  def test_plot_relative_impression_share_barchart_national_model(self):
+    self._meridian.is_national = True
+    self._meridian.n_geos = 1
+    self._meridian.geo_names = ['national_geo']
+
+    ds = xr.Dataset(
+        {
+            'media_scaled': (
+                [constants.GEO, constants.TIME, constants.CHANNEL],
+                np.array([[[10, 90], [0, 0], [0, 0]]]),
+            )
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: self._MEDIA_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds = (
+        ds
+    )
+
+    plot = self._eda.plot_relative_impression_share_barchart()
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [0.1, 0.9])
 
   # ============================================================================
   # KPI Tests
@@ -621,6 +793,128 @@ class MeridianEdaTest(parameterized.TestCase):
         ' component you are triyng to plot.',
     ):
       self._eda.plot_kpi_boxplot()
+
+  # ============================================================================
+  # Chart properties
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='plot_kpi_boxplot',
+          plotting_function='plot_kpi_boxplot',
+          expected_title='Boxplots of scaled KPI',
+          expected_x_title=constants.KPI,
+          expected_y_title=constants.KPI_SCALED,
+      ),
+      dict(
+          testcase_name='plot_spend_boxplot',
+          plotting_function='plot_spend_boxplot',
+          expected_title='Boxplots of spend for each paid channel',
+          expected_x_title=eda_constants.VARIABLE,
+          expected_y_title=constants.SPEND,
+      ),
+      dict(
+          testcase_name='plot_controls_boxplot',
+          plotting_function='plot_controls_boxplot',
+          expected_title='Boxplots of scaled controls',
+          expected_x_title=constants.CONTROL_VARIABLE,
+          expected_y_title=constants.CONTROLS_SCALED,
+      ),
+      dict(
+          testcase_name='plot_treatments_without_non_media_boxplot',
+          plotting_function='plot_treatments_without_non_media_boxplot',
+          expected_title='Boxplots of paid and organic scaled impressions',
+          expected_x_title=eda_constants.VARIABLE,
+          expected_y_title=eda_constants.MEDIA_IMPRESSIONS_SCALED,
+      ),
+      dict(
+          testcase_name='plot_reach_boxplot',
+          plotting_function='plot_reach_boxplot',
+          expected_title='Boxplots of scaled reach',
+          expected_x_title=eda_constants.VARIABLE,
+          expected_y_title=constants.REACH_SCALED,
+      ),
+      dict(
+          testcase_name='plot_frequency_boxplot',
+          plotting_function='plot_frequency_boxplot',
+          expected_title='Boxplots of frequency',
+          expected_x_title=eda_constants.VARIABLE,
+          expected_y_title=constants.FREQUENCY,
+      ),
+      dict(
+          testcase_name='plot_non_media_boxplot',
+          plotting_function='plot_non_media_boxplot',
+          expected_title='Boxplots of non-media treatments',
+          expected_x_title=constants.NON_MEDIA_CHANNEL,
+          expected_y_title=constants.NON_MEDIA_TREATMENTS_SCALED,
+      ),
+      dict(
+          testcase_name='plot_pairwise_correlation',
+          plotting_function='plot_pairwise_correlation',
+          expected_title=(
+              'Pairwise correlations among all treatments and controls'
+          ),
+          expected_x_title=None,
+          expected_y_title=None,
+      ),
+      dict(
+          testcase_name='plot_relative_spend_share_barchart',
+          plotting_function='plot_relative_spend_share_barchart',
+          expected_title=(
+              'Bar chart of relative spend share of all paid media channels'
+          ),
+          expected_x_title=eda_constants.SPEND_SHARE,
+          expected_y_title=constants.CHANNEL,
+      ),
+      dict(
+          testcase_name='plot_relative_impression_share_barchart',
+          plotting_function='plot_relative_impression_share_barchart',
+          expected_title=(
+              'Bar chart of relative scaled impression share of all paid and'
+              ' organic media channels'
+          ),
+          expected_x_title=eda_constants.IMPRESSION_SHARE_SCALED,
+          expected_y_title=constants.CHANNEL,
+      ),
+  )
+  def test_plot_chart_properties(
+      self,
+      plotting_function,
+      expected_title,
+      expected_x_title,
+      expected_y_title,
+  ):
+    data = test_utils.sample_input_data_revenue(
+        n_geos=1,
+        n_times=self._N_TIMES,
+        n_media_channels=3,
+        n_controls=3,
+        n_non_media_channels=2,
+        n_rf_channels=2,
+    )
+    eda = meridian_eda.MeridianEDA(model.Meridian(data))
+    plot = getattr(eda, plotting_function)()
+
+    actual_chart = (
+        plot.vconcat[0]
+        if plotting_function != 'plot_pairwise_correlation'
+        else plot.vconcat[0].layer[0]
+    )
+
+    self.assertEqual(
+        actual_chart.title,
+        f'{expected_title} for {constants.NATIONAL_MODEL_DEFAULT_GEO_NAME}',
+    )
+
+    self.assertEqual(
+        actual_chart.encoding.x.to_dict().get('title'),
+        expected_x_title,
+    )
+
+    self.assertEqual(
+        actual_chart.encoding.y.to_dict().get('title'),
+        expected_y_title,
+    )
 
 
 if __name__ == '__main__':

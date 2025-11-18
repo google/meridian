@@ -58,13 +58,49 @@ class MeridianEDA:
     # TODO: Implement.
     raise NotImplementedError()
 
+  def plot_relative_spend_share_barchart(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the bar chart of the relative spend share of each paid media channel."""
+    return self._plot_barcharts(
+        geos,
+        'Bar chart of relative spend share of all paid media channels',
+        eda_constants.SPEND_SHARE,
+        constants.CHANNEL,
+        self._meridian.eda_engine.national_all_spend_ds,
+        self._meridian.eda_engine.all_spend_ds,
+        lambda data: _calculate_relative_shares(
+            _process_stacked_ds(eda_engine.stack_variables(data))
+        ),
+    )
+
+  def plot_relative_impression_share_barchart(
+      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+  ) -> alt.Chart:
+    """Plots the bar chart of the relative impression share of each media channel."""
+
+    return self._plot_barcharts(
+        geos,
+        'Bar chart of relative scaled impression share of all paid and organic'
+        ' media channels',
+        eda_constants.IMPRESSION_SHARE_SCALED,
+        constants.CHANNEL,
+        self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds,
+        self._meridian.eda_engine.treatments_without_non_media_scaled_ds,
+        lambda data: _calculate_relative_shares(
+            _process_stacked_ds(eda_engine.stack_variables(data))
+        ),
+    )
+
   def plot_kpi_boxplot(
       self, geos: Union[int, list[str], Literal['nationalize']] = 1
   ) -> alt.Chart:
     """Plots the boxplot for KPI variation."""
     return self._plot_boxplots(
         geos,
-        'Boxplots of KPI',
+        'Boxplots of scaled KPI',
+        constants.KPI,
+        constants.KPI_SCALED,
         self._meridian.eda_engine.national_kpi_scaled_da,
         self._meridian.eda_engine.kpi_scaled_da,
         lambda data: data.to_dataframe()
@@ -80,6 +116,8 @@ class MeridianEDA:
     return self._plot_boxplots(
         geos,
         'Boxplots of frequency',
+        eda_constants.VARIABLE,
+        constants.FREQUENCY,
         self._meridian.eda_engine.national_all_freq_da,
         self._meridian.eda_engine.all_freq_da,
         lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
@@ -93,7 +131,9 @@ class MeridianEDA:
     """Plots the boxplot for reach variation."""
     return self._plot_boxplots(
         geos,
-        'Boxplots of reach',
+        'Boxplots of scaled reach',
+        eda_constants.VARIABLE,
+        constants.REACH_SCALED,
         self._meridian.eda_engine.national_all_reach_scaled_da,
         self._meridian.eda_engine.all_reach_scaled_da,
         lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
@@ -108,6 +148,8 @@ class MeridianEDA:
     return self._plot_boxplots(
         geos,
         'Boxplots of non-media treatments',
+        constants.NON_MEDIA_CHANNEL,
+        constants.NON_MEDIA_TREATMENTS_SCALED,
         self._meridian.eda_engine.national_non_media_scaled_da,
         self._meridian.eda_engine.non_media_scaled_da,
         lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
@@ -121,10 +163,12 @@ class MeridianEDA:
     """Plots the boxplot for treatments variation excluding non-media treatments."""
     return self._plot_boxplots(
         geos,
-        'Boxplots of paid and organic impressions',
+        'Boxplots of paid and organic scaled impressions',
+        eda_constants.VARIABLE,
+        eda_constants.MEDIA_IMPRESSIONS_SCALED,
         self._meridian.eda_engine.national_treatments_without_non_media_scaled_ds,
         self._meridian.eda_engine.treatments_without_non_media_scaled_ds,
-        lambda data: self._process_stacked_ds(eda_engine.stack_variables(data)),
+        lambda data: _process_stacked_ds(eda_engine.stack_variables(data)),
     )
 
   def plot_controls_boxplot(
@@ -133,7 +177,9 @@ class MeridianEDA:
     """Plots the boxplot for controls variation."""
     return self._plot_boxplots(
         geos,
-        'Boxplots of controls',
+        'Boxplots of scaled controls',
+        constants.CONTROL_VARIABLE,
+        constants.CONTROLS_SCALED,
         self._meridian.eda_engine.national_controls_scaled_da,
         self._meridian.eda_engine.controls_scaled_da,
         lambda data: pd.melt(data.to_pandas().reset_index(drop=True)).rename(
@@ -148,15 +194,71 @@ class MeridianEDA:
     return self._plot_boxplots(
         geos,
         'Boxplots of spend for each paid channel',
+        eda_constants.VARIABLE,
+        constants.SPEND,
         self._meridian.eda_engine.national_all_spend_ds,
         self._meridian.eda_engine.all_spend_ds,
-        lambda data: self._process_stacked_ds(eda_engine.stack_variables(data)),
+        lambda data: _process_stacked_ds(eda_engine.stack_variables(data)),
     )
+
+  def _plot_barcharts(
+      self,
+      geos: Union[int, list[str], Literal['nationalize']],
+      title_prefix: str,
+      x_axis_title: str,
+      y_axis_title: str,
+      national_data_source: xr.Dataset,
+      geo_data_source: xr.Dataset,
+      processing_function: Callable[[xr.Dataset], pd.DataFrame],
+  ) -> alt.Chart:
+    """Helper function for plotting bar charts."""
+    geos_to_plot = self._validate_and_get_geos_to_plot(geos)
+    charts = []
+    use_national_data = (
+        self._meridian.is_national or geos == eda_constants.NATIONALIZE
+    )
+    for geo_to_plot in geos_to_plot:
+      title = f'{title_prefix} for {geo_to_plot}'
+
+      if use_national_data:
+        plot_data = national_data_source
+      else:
+        plot_data = geo_data_source.sel(geo=geo_to_plot)
+
+      plot_data = processing_function(plot_data)
+
+      charts.append((
+          alt.Chart(plot_data)
+          .mark_bar(
+              size=40,
+          )
+          .encode(
+              x=alt.X(f'{eda_constants.VALUE}:Q', title=x_axis_title),
+              y=alt.Y(
+                  f'{eda_constants.VARIABLE}:N',
+                  sort='-x',
+                  title=y_axis_title,
+                  scale=alt.Scale(paddingInner=0.1),
+              ),
+          )
+          .properties(title=title, width=600, height=400)
+      ))
+
+    final_chart = (
+        alt.vconcat(*charts)
+        .resolve_legend(color='independent')
+        .configure_axis(labelAngle=315)
+        .configure_title(anchor='start')
+        .configure_view(stroke=None)
+    )
+    return final_chart
 
   def _plot_boxplots(
       self,
       geos: Union[int, list[str], Literal['nationalize']],
       title_prefix: str,
+      x_axis_title: str,
+      y_axis_title: str,
       national_data_source: xr.DataArray | xr.Dataset,
       geo_data_source: xr.DataArray | xr.Dataset,
       processing_function: Callable[[xr.DataArray | xr.Dataset], pd.DataFrame],
@@ -192,13 +294,13 @@ class MeridianEDA:
           .encode(
               x=alt.X(
                   f'{eda_constants.VARIABLE}:N',
-                  title=None,
+                  title=x_axis_title,
                   sort=unique_variables,
                   scale=alt.Scale(paddingInner=0.02),
               ),
               y=alt.Y(
                   f'{eda_constants.VALUE}:Q',
-                  title='Value',
+                  title=y_axis_title,
                   sort=unique_variables,
                   scale=alt.Scale(zero=True),
               ),
@@ -346,14 +448,6 @@ class MeridianEDA:
 
     return chart
 
-  def _process_stacked_ds(self, data: xr.DataArray) -> pd.DataFrame:
-    """Processes a stacked Dataset so it can be plotted by Altair."""
-    return (
-        data.rename(eda_constants.VALUE)
-        .to_dataframe()
-        .reset_index()[[eda_constants.VARIABLE, eda_constants.VALUE]]
-    )
-
   def _generate_pairwise_correlation_report(self) -> str:
     """Creates the HTML snippet for Pairwise Correlation report section."""
     # TODO: Implement.
@@ -387,3 +481,22 @@ class MeridianEDA:
         raise ValueError('geos must not contain duplicate values.')
 
     return geos_to_plot
+
+
+def _calculate_relative_shares(df: pd.DataFrame) -> pd.DataFrame:
+  """Calculates the relative shares of each variable to plot for Altair."""
+  return (
+      df.groupby(eda_constants.VARIABLE)[eda_constants.VALUE]
+      .sum()
+      .pipe(lambda s: s / s.sum())
+      .reset_index(name=eda_constants.VALUE)
+  )
+
+
+def _process_stacked_ds(data: xr.DataArray) -> pd.DataFrame:
+  """Processes a stacked Dataset so it can be plotted by Altair."""
+  return (
+      data.rename(eda_constants.VALUE)
+      .to_dataframe()
+      .reset_index()[[eda_constants.VARIABLE, eda_constants.VALUE]]
+  )
