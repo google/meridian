@@ -14,6 +14,12 @@
 
 """Constants specific to MeridianEDA."""
 
+# EDA Outcome constants
+COST_PER_MEDIA_UNIT = 'cost_per_media_unit'
+
+RSQUARED_GEO = 'rsquared_geo'
+RSQUARED_TIME = 'rsquared_time'
+
 # EDA Plotting properties
 VARIABLE_1 = 'var1'
 VARIABLE_2 = 'var2'
