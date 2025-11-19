@@ -15,6 +15,8 @@ limitations under the License.
 #}
 
 <stats>
+  {% include "findings.html.jinja" %}
+
   <stats-title>{{ title }}</stats-title>
   <stat>{{ stat }}</stat>
   {% if delta %}
