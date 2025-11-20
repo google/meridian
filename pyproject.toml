@@ -84,6 +84,13 @@ schema = [
   "semver",
 ]
 
+# Meridian Scenario Planner.
+scenarioplanner = [
+  "google-api-python-client",
+  "google-auth",
+  "mmm-proto-schema",
+]
+
 [tool.pyink]
 # Formatting configuration to follow Google style-guide
 line-length = 80
