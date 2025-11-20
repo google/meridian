@@ -391,6 +391,39 @@ class ReviewerTest(absltest.TestCase):
     self._mock_gof_check_cls.assert_called_once()
     self._mock_pps_check_cls.assert_called_once()
 
+  def test_run_converged_with_fail_and_review(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.FAIL
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.REVIEW
+    )
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+
+    review = reviewer.ModelReviewer(
+        meridian=self._meridian,
+        post_convergence_checks=self._default_post_convergence_checks,
+    )
+    summary = review.run()
+
+    self.assertEqual(summary.overall_status, results.Status.FAIL)
+    self.assertEqual(
+        summary.summary_message,
+        (
+            'Failed: Quality issues were detected in your model. Follow'
+            ' recommendations to address any failed checks and review'
+            ' results to determine if further action is needed.'
+        ),
+    )
+    self.assertLen(summary.results, 6)
+    self._mock_convergence_check_cls.assert_called_once()
+    self._mock_baseline_check_cls.assert_called_once()
+    self._mock_bayesian_ppp_check_cls.assert_called_once()
+    self._mock_roi_consistency_check_cls.assert_called_once()
+    self._mock_gof_check_cls.assert_called_once()
+    self._mock_pps_check_cls.assert_called_once()
+
   def test_run_fail_baseline(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.FAIL
