@@ -1,2 +1,2 @@
 global-exclude *_test.py
-include meridian/analysis/templates/*
+include meridian/templates/*

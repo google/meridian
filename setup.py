@@ -21,7 +21,7 @@ from setuptools.command.build import build
 
 
 class ScssCompileCommand(Command):
-  _templates_path = 'meridian/analysis/templates'
+  _templates_path = 'meridian/templates'
   _scss_output_mapping = {
       'style.scss': 'style.css',
   }

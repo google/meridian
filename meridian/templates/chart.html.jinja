@@ -1,5 +1,5 @@
 {#
-Copyright 2024 Google LLC
+Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,20 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 #}
 
-<chips>
-  <chip>
-    Time period: {{ start_date }} - {{ end_date }}
-  </chip>
-  {% if selected_geos %}
-    {%- set geo_count = selected_geos | length %}
-    {%- set full_list = selected_geos | join(', ') %}
-    <chip title="Selected: {{ full_list }}">
-      Selected geos:
-      {%- if geo_count > 5 %}
-        {{ selected_geos[:5] | join(', ') }}, + {{ geo_count - 5 }} more
-      {%- else %}
-        {{ full_list }}
-      {%- endif %}
-    </chip>
+<chart>
+  <chart-embed id="{{ id }}"></chart-embed>
+  {% if description %}
+    <chart-description>
+      {{ description }}
+    </chart-description>
   {% endif %}
-</chips>
+</chart>
+
+<script type="text/javascript">
+  (() => {
+    const opt = {
+      mode: 'vega-lite',
+      width: 'container',
+      autosize: { type: 'fit', contains: 'padding' }
+    };
+    const spec = JSON.parse({{ chart_json|tojson }});
+    const chartDiv = document.getElementById('{{ id }}');
+    vegaEmbed('#{{ id }}', spec).catch(console.error);
+  })();
+</script>
