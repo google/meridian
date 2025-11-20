@@ -29,6 +29,7 @@ __all__ = [
     "StandardDeviationArtifact",
     "VIFArtifact",
     "KpiInvariabilityArtifact",
+    "CostPerMediaUnitArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
@@ -153,6 +154,23 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
   kpi_stdev: xr.DataArray
 
 
+@dataclasses.dataclass(frozen=True)
+class CostPerMediaUnitArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a Cost per Media Unit analysis.
+
+  Attributes:
+    cost_per_media_unit_da: DataArray of cost per media unit.
+    cost_media_unit_inconsistency_df: DataFrame of time periods where cost and
+      media units are inconsistent (e.g., zero cost with positive media units,
+      or positive cost with zero media units).
+    outlier_df: DataFrame with outliers of cost per media unit.
+  """
+
+  cost_per_media_unit_da: xr.DataArray
+  cost_media_unit_inconsistency_df: pd.DataFrame
+  outlier_df: pd.DataFrame
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -161,6 +179,7 @@ class EDACheckType(enum.Enum):
   STANDARD_DEVIATION = enum.auto()
   MULTICOLLINEARITY = enum.auto()
   KPI_INVARIABILITY = enum.auto()
+  COST_PER_MEDIA_UNIT = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound="AnalysisArtifact")
