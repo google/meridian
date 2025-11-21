@@ -28,6 +28,7 @@ from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
 from meridian.model import model
 import numpy as np
+import pandas as pd
 
 ConfigType = TypeVar("ConfigType", bound=configs.BaseConfig)
 ResultType = TypeVar("ResultType", bound=results.CheckResult)
@@ -207,6 +208,30 @@ class BayesianPPPCheck(
 # ==============================================================================
 # Check: Goodness of Fit
 # ==============================================================================
+def _get_gof_metrics_from_dataframe(
+    gof_df: pd.DataFrame,
+    geo_granularity: str,
+) -> pd.Series:
+  """Returns the goodness of fit metrics from a dataframe.
+
+  Args:
+    geo_df: A DataFrame containing predictive accuracy of the whole data (if
+      holdout set is not used) of filtered to a single evaluation set ("all",
+      "train", or "test").
+    geo_granularity: The geo granularity of the data ("geo" or "national").
+
+  Returns:
+    A Series containing the goodness of fit metrics for the given evaluation set
+    with columns "r_squared", "mape", and "wmape".
+  """
+  gof_metrics_pivoted = gof_df.pivot(
+      index=constants.GEO_GRANULARITY,
+      columns=constants.METRIC,
+      values=constants.VALUE,
+  )
+  return gof_metrics_pivoted.loc[geo_granularity]
+
+
 class GoodnessOfFitCheck(
     BaseCheck[configs.GoodnessOfFitConfig, results.GoodnessOfFitCheckResult]
 ):
@@ -221,38 +246,51 @@ class GoodnessOfFitCheck(
     )
 
     gof_metrics = gof_df[gof_df[constants.GEO_GRANULARITY] == geo_granularity]
-    if constants.EVALUATION_SET_VAR in gof_df.columns:
-      gof_metrics = gof_metrics[
-          gof_metrics[constants.EVALUATION_SET_VAR] == constants.ALL_DATA
+    is_holdout = constants.EVALUATION_SET_VAR in gof_df.columns
+
+    details = {}
+    case = results.GoodnessOfFitCases.PASS
+
+    if is_holdout:
+      for evaluation_set, suffix in [
+          (constants.ALL_DATA, review_constants.ALL_SUFFIX),
+          (constants.TRAIN, review_constants.TRAIN_SUFFIX),
+          (constants.TEST, review_constants.TEST_SUFFIX),
+      ]:
+        set_metrics = gof_metrics[
+            gof_metrics[constants.EVALUATION_SET_VAR] == evaluation_set
+        ]
+        set_metrics_series = _get_gof_metrics_from_dataframe(
+            set_metrics, geo_granularity
+        )
+        details[f"{review_constants.R_SQUARED}_{suffix}"] = (
+            set_metrics_series[constants.R_SQUARED]
+        )
+        details[f"{review_constants.MAPE}_{suffix}"] = (
+            set_metrics_series[constants.MAPE]
+        )
+        details[f"{review_constants.WMAPE}_{suffix}"] = (
+            set_metrics_series[constants.WMAPE]
+        )
+        if set_metrics_series[constants.R_SQUARED] <= 0:
+          case = results.GoodnessOfFitCases.REVIEW
+    else:
+      gof_metrics_series = _get_gof_metrics_from_dataframe(
+          gof_metrics, geo_granularity
+      )
+      details[review_constants.R_SQUARED] = gof_metrics_series[
+          constants.R_SQUARED
       ]
+      details[review_constants.MAPE] = gof_metrics_series[constants.MAPE]
+      details[review_constants.WMAPE] = gof_metrics_series[constants.WMAPE]
+      if gof_metrics_series[constants.R_SQUARED] <= 0:
+        case = results.GoodnessOfFitCases.REVIEW
 
-    gof_metrics_pivoted = gof_metrics.pivot(
-        index=constants.GEO_GRANULARITY,
-        columns=constants.METRIC,
-        values=constants.VALUE,
+    return results.GoodnessOfFitCheckResult(
+        case=case,
+        details=details,
+        is_holdout=is_holdout,
     )
-    gof_metrics_series = gof_metrics_pivoted.loc[geo_granularity]
-
-    r_squared = gof_metrics_series[constants.R_SQUARED]
-    mape = gof_metrics_series[constants.MAPE]
-    wmape = gof_metrics_series[constants.WMAPE]
-
-    details = {
-        review_constants.R_SQUARED: r_squared,
-        review_constants.MAPE: mape,
-        review_constants.WMAPE: wmape,
-    }
-
-    if r_squared > 0:
-      return results.GoodnessOfFitCheckResult(
-          case=results.GoodnessOfFitCases.PASS,
-          details=details,
-      )
-    else:  # r_squared <= 0
-      return results.GoodnessOfFitCheckResult(
-          case=results.GoodnessOfFitCases.REVIEW,
-          details=details,
-      )
 
 
 # ==============================================================================

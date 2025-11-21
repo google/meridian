@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add support for holdout set in `GoodnessOfFitCheck`.
 * Add support for python 3.13 and tensorflow 2.20.
 
 ## [1.3.1] - 2025-11-12
