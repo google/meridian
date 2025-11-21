@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module containing MMM schema util functions."""
+"""Provides tools for converting and wrapping MMM schema data.
 
-from schema.utils import date_range_bucketing
-from schema.utils import time_record
+This package contains modules to transform Marketing Mix Modeling (MMM) protocol
+buffer data into other formats and provides high-level wrappers for easier data
+manipulation, analysis, and reporting.
+"""
+
+from scenarioplanner.converters import dataframe
+from scenarioplanner.converters import mmm
+from scenarioplanner.converters import mmm_converter
+from scenarioplanner.converters import sheets
