@@ -269,29 +269,41 @@ def _find_extreme_corr_pairs(
   )
 
 
-def _calculate_std(
+def _get_outlier_bounds(
     input_da: xr.DataArray,
-) -> tuple[xr.Dataset, pd.DataFrame]:
-  """Helper function to compute std with and without outliers.
+) -> tuple[xr.DataArray, xr.DataArray]:
+  """Computes lower and upper bounds for outliers across time using the IQR method.
 
   Args:
-    input_da: A DataArray for which to calculate the std.
+    input_da: A DataArray for which to calculate outlier bounds.
 
   Returns:
-    A tuple where the first element is a Dataset with two data variables:
-    'std_with_outliers' and 'std_without_outliers'. The second element is a
-    DataFrame with columns for variables, geo (if applicable), time, and
-    outlier values.
+    A tuple containing the lower and upper bounds of outliers as DataArrays.
   """
-  std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
-
   # TODO: Allow users to specify custom outlier definitions.
   q1 = input_da.quantile(_Q1_THRESHOLD, dim=constants.TIME)
   q3 = input_da.quantile(_Q3_THRESHOLD, dim=constants.TIME)
   iqr = q3 - q1
   lower_bound = q1 - _IQR_MULTIPLIER * iqr
   upper_bound = q3 + _IQR_MULTIPLIER * iqr
+  return lower_bound, upper_bound
 
+
+def _calculate_std(
+    input_da: xr.DataArray,
+) -> xr.Dataset:
+  """Helper function to compute std with and without outliers.
+
+  Args:
+    input_da: A DataArray for which to calculate the std.
+
+  Returns:
+    A Dataset with two data variables: 'std_with_outliers' and
+    'std_without_outliers'.
+  """
+  std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
+
+  lower_bound, upper_bound = _get_outlier_bounds(input_da)
   da_no_outlier = input_da.where(
       (input_da >= lower_bound) & (input_da <= upper_bound)
   )
@@ -301,17 +313,30 @@ def _calculate_std(
       _STD_WITH_OUTLIERS_VAR_NAME: std_with_outliers,
       _STD_WITHOUT_OUTLIERS_VAR_NAME: std_without_outliers,
   })
+  return std_ds
 
+
+def _calculate_outliers(
+    input_da: xr.DataArray,
+) -> pd.DataFrame:
+  """Helper function to extract outliers from a DataArray across time.
+
+  Args:
+    input_da: A DataArray from which to extract outliers.
+
+  Returns:
+    A DataFrame with columns for variables, geo (if applicable), time, and
+    outlier values.
+  """
+  lower_bound, upper_bound = _get_outlier_bounds(input_da)
   outlier_da = input_da.where(
       (input_da < lower_bound) | (input_da > upper_bound)
   )
-
   outlier_df = outlier_da.to_dataframe(name=_OUTLIERS_COL_NAME).dropna()
   outlier_df = outlier_df.assign(
       **{_ABS_OUTLIERS_COL_NAME: np.abs(outlier_df[_OUTLIERS_COL_NAME])}
   ).sort_values(by=_ABS_OUTLIERS_COL_NAME, ascending=False, inplace=False)
-
-  return std_ds, outlier_df
+  return outlier_df
 
 
 def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
@@ -342,6 +367,126 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
       dims=[var_dim],
   )
   return vif_da
+
+
+def _check_spend_impression_inconsistency(
+    spend_da: xr.DataArray,
+    impressions_da: xr.DataArray,
+) -> pd.DataFrame:
+  """Checks for inconsistencies between spend and impressions.
+
+  Args:
+    spend_da: DataArray containing spend data.
+    impressions_da: DataArray containing impression data.
+
+  Returns:
+    A DataFrame of inconsistencies where either spend is zero and impressions
+    are
+    positive, or spend is positive and impressions are zero.
+  """
+  spend_impressions_ds = xr.merge([spend_da, impressions_da])
+
+  # Condition 1: spend == 0 and impression > 0
+  zero_spend_positive_mask = (spend_da == 0) & (impressions_da > 0)
+  zero_spend_positive_impression_df = (
+      spend_impressions_ds.where(zero_spend_positive_mask)
+      .to_dataframe()
+      .dropna()
+  )
+
+  # Condition 2: spend > 0 and impression == 0
+  positive_spend_zero_mask = (spend_da > 0) & (impressions_da == 0)
+  positive_spend_zero_impression_df = (
+      spend_impressions_ds.where(positive_spend_zero_mask)
+      .to_dataframe()
+      .dropna()
+  )
+
+  # Combine the two DataFrames
+  inconsistency_df = pd.concat(
+      [zero_spend_positive_impression_df, positive_spend_zero_impression_df]
+  )
+  return inconsistency_df
+
+
+def _check_cost_per_impression(
+    spend_ds: xr.Dataset,
+    impressions_ds: xr.Dataset,
+    level: eda_outcome.AnalysisLevel,
+) -> eda_outcome.EDAOutcome[eda_outcome.CostPerImpressionArtifact]:
+  """Helper to check if the cost per impression is valid."""
+  findings = []
+  # Stack variables first.
+  spend_da = stack_variables(spend_ds, constants.CHANNEL).rename(
+      constants.SPEND
+  )
+  impressions_da = stack_variables(impressions_ds, constants.CHANNEL).rename(
+      constants.IMPRESSIONS
+  )
+
+  # Check for spend and impression consistency
+  spend_impression_inconsistency_df = _check_spend_impression_inconsistency(
+      spend_da,
+      impressions_da,
+  )
+  if not spend_impression_inconsistency_df.empty:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.ATTENTION,
+            explanation=(
+                'There are instances of inconsistent spend and impressions.'
+                ' This occurs when spend is zero but impressions are positive,'
+                ' or when spend is positive but impressions are zero. Please'
+                ' review the outcome artifact for more details.'
+            ),
+        )
+    )
+
+  # Calculate cost per impression
+  # Avoid division by zero by setting cost to NaN where impressions are 0.
+  # Note that both (spend == impression == 0) and (spend > 0 and impression ==
+  # 0) result in NaN, while the latter one is not desired.
+  cost_per_impression_da = xr.where(
+      impressions_da == 0,
+      np.nan,
+      spend_da / impressions_da,
+  )
+  cost_per_impression_da.name = eda_constants.COST_PER_MEDIA_UNIT
+
+  # Check for outliers in cost per impression
+  outlier_df = _calculate_outliers(cost_per_impression_da)
+  if not outlier_df.empty:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.ATTENTION,
+            explanation=(
+                'There are outliers in cost per impression across time.'
+                ' Please review the outcome artifact for more details.'
+            ),
+        )
+    )
+
+  # If no specific findings, add an INFO finding.
+  if not findings:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.INFO,
+            explanation='Please review the cost per impression data.',
+        )
+    )
+
+  artifact = eda_outcome.CostPerImpressionArtifact(
+      level=level,
+      cost_per_impression_da=cost_per_impression_da,
+      spend_impression_inconsistency_df=spend_impression_inconsistency_df,
+      outlier_df=outlier_df,
+  )
+
+  return eda_outcome.EDAOutcome(
+      check_type=eda_outcome.EDACheckType.COST_PER_IMPRESSION,
+      findings=findings,
+      analysis_artifacts=[artifact],
+  )
 
 
 class EDAEngine:
@@ -1500,7 +1645,8 @@ class EDAEngine:
       Optional[eda_outcome.EDAFinding], eda_outcome.StandardDeviationArtifact
   ]:
     """Helper to check standard deviation."""
-    std_ds, outlier_df = _calculate_std(data)
+    std_ds = _calculate_std(data)
+    outlier_df = _calculate_outliers(data)
 
     finding = None
     if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] < _STD_THRESHOLD).any():
@@ -1878,6 +2024,60 @@ class EDAEngine:
         findings=[eda_finding],
         analysis_artifacts=[self._overall_scaled_kpi_invariability_artifact],
     )
+
+  def check_geo_cost_per_impression(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerImpressionArtifact]:
+    """Checks if the cost per impression is valid for geo data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the check is called for a national
+        model.
+    """
+    if self._is_national_data:
+      raise GeoLevelCheckOnNationalModelError(
+          'check_geo_cost_per_impression is not supported for national models.'
+      )
+    return _check_cost_per_impression(
+        self.all_spend_ds,
+        self.paid_raw_impressions_ds,
+        eda_outcome.AnalysisLevel.GEO,
+    )
+
+  def check_national_cost_per_impression(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerImpressionArtifact]:
+    """Checks if the cost per impression is valid for national data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    return _check_cost_per_impression(
+        self.national_all_spend_ds,
+        self.national_paid_raw_impressions_ds,
+        eda_outcome.AnalysisLevel.NATIONAL,
+    )
+
+  def check_cost_per_impression(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerImpressionArtifact]:
+    """Checks if the cost per impression is valid.
+
+    This function checks the following conditions:
+    1. spend == 0 and impression > 0.
+    2. spend > 0 and impression == 0.
+    3. spend_per_impression has outliers.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    if self._is_national_data:
+      return self.check_national_cost_per_impression()
+    else:
+      return self.check_geo_cost_per_impression()
 
   def run_all_critical_checks(self) -> list[eda_outcome.EDAOutcome]:
     """Runs all critical EDA checks.

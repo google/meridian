@@ -29,6 +29,7 @@ __all__ = [
     "StandardDeviationArtifact",
     "VIFArtifact",
     "KpiInvariabilityArtifact",
+    "CostPerImpressionArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
@@ -153,6 +154,23 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
   kpi_stdev: xr.DataArray
 
 
+@dataclasses.dataclass(frozen=True)
+class CostPerImpressionArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a Cost per Impression analysis.
+
+  Attributes:
+    cost_per_impression_da: DataArray of cost per impression.
+    spend_impression_inconsistency_df: DataFrame of time periods where spend and
+      impressions are inconsistent (e.g., zero spend with positive impressions,
+      or positive spend with zero impressions).
+    outlier_df: DataFrame with outliers of cost per impression.
+  """
+
+  cost_per_impression_da: xr.DataArray
+  spend_impression_inconsistency_df: pd.DataFrame
+  outlier_df: pd.DataFrame
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -161,6 +179,7 @@ class EDACheckType(enum.Enum):
   STANDARD_DEVIATION = enum.auto()
   MULTICOLLINEARITY = enum.auto()
   KPI_INVARIABILITY = enum.auto()
+  COST_PER_IMPRESSION = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound="AnalysisArtifact")
