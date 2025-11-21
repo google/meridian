@@ -21,11 +21,11 @@ import os
 import jinja2
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
 from meridian.data import time_coordinates as tc
 from meridian.model import model
+from meridian.templates import formatter
 import pandas as pd
 import xarray as xr
 

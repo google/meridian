@@ -88,7 +88,7 @@ AXIS_CONFIG = immutabledict.immutabledict({
 
 
 _template_loader = jinja2.FileSystemLoader(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates'))
+    os.path.abspath(os.path.dirname(__file__))
 )
 
 

@@ -22,9 +22,9 @@ import altair as alt
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.model import model
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr

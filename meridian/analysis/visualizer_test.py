@@ -20,13 +20,13 @@ import altair as alt
 import arviz as az
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils
 from meridian.analysis import visualizer
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+from meridian.templates import formatter
 import numpy as np
 import xarray as xr
 

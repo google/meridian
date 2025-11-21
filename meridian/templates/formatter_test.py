@@ -16,7 +16,7 @@ from xml.etree import ElementTree as ET
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from meridian.analysis import formatter
+from meridian.templates import formatter
 
 
 class FormatterTest(parameterized.TestCase):

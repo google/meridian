@@ -38,7 +38,6 @@ import arviz as az
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import optimizer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils as analysis_test_utils
@@ -48,6 +47,7 @@ from meridian.data import test_utils as data_test_utils
 from meridian.model import model
 from meridian.model import prior_distribution
 from meridian.model import spec
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
