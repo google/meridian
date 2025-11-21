@@ -48,9 +48,6 @@ _CORRELATION_MATRIX_NAME = 'correlation_matrix'
 _OVERALL_PAIRWISE_CORR_THRESHOLD = 0.999
 _GEO_PAIRWISE_CORR_THRESHOLD = 0.999
 _NATIONAL_PAIRWISE_CORR_THRESHOLD = 0.999
-_EMPTY_DF_FOR_EXTREME_CORR_PAIRS = pd.DataFrame(
-    columns=[_CORR_VAR1, _CORR_VAR2, _CORRELATION_COL_NAME]
-)
 _Q1_THRESHOLD = 0.25
 _Q3_THRESHOLD = 0.75
 _IQR_MULTIPLIER = 1.5
@@ -261,11 +258,19 @@ def _find_extreme_corr_pairs(
   corr_tri = _get_upper_triangle_corr_mat(extreme_corr_da)
   extreme_corr_da = corr_tri.where(abs(corr_tri) > extreme_corr_threshold)
 
-  df = extreme_corr_da.to_dataframe(name=_CORRELATION_COL_NAME).dropna()
-  if df.empty:
-    return _EMPTY_DF_FOR_EXTREME_CORR_PAIRS.copy()
-  return df.sort_values(
-      by=_CORRELATION_COL_NAME, ascending=False, inplace=False
+  return (
+      extreme_corr_da.to_dataframe(name=_CORRELATION_COL_NAME)
+      .dropna()
+      .assign(**{
+          eda_constants.ABS_CORRELATION_COL_NAME: (
+              lambda x: x[_CORRELATION_COL_NAME].abs()
+          )
+      })
+      .sort_values(
+          by=eda_constants.ABS_CORRELATION_COL_NAME,
+          ascending=False,
+          inplace=False,
+      )
   )
 
 

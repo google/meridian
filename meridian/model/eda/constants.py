@@ -14,12 +14,15 @@
 
 """Constants specific to MeridianEDA."""
 
-# EDA Plotting properties
+# EDA Engine constants
 VARIABLE_1 = 'var1'
 VARIABLE_2 = 'var2'
+CORRELATION = 'correlation'
+ABS_CORRELATION_COL_NAME = 'abs_correlation'
+
+# EDA Plotting properties
 VARIABLE = 'var'
 VALUE = 'value'
-CORRELATION = 'correlation'
 NATIONALIZE = 'nationalize'
 MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
