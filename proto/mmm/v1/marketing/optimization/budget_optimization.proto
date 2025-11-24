@@ -1,0 +1,193 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing.optimization;
+
+import "mmm/v1/common/date_interval.proto";
+import "mmm/v1/common/estimate.proto";
+import "mmm/v1/common/kpi_type.proto";
+import "mmm/v1/common/target_metric.proto";
+import "mmm/v1/marketing/analysis/marketing_analysis.proto";
+import "mmm/v1/marketing/marketing_data.proto";
+import "mmm/v1/marketing/new_marketing_data.proto";
+import "mmm/v1/marketing/optimization/constraints.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// A fixed budget scenario for optimizing budget allocations over channels.
+message FixedBudgetScenario {
+  // The budget amount. Required.
+  double total_budget = 1;
+}
+
+// A flexible budget scenario for optimizing budget allocations over channels.
+message FlexibleBudgetScenario {
+  // The constraint parameters on the total budget.
+  BudgetConstraint total_budget_constraint = 1;
+
+  // The constraints on target metrics (e.g. KPI, ROI, etc).
+  repeated TargetMetricConstraint target_metric_constraints = 2;
+}
+
+// Channel level constraint
+message ChannelConstraint {
+  // The name of the channel. Required.
+  string channel_name = 1;
+
+  // The budget constraint on the channel.
+  BudgetConstraint budget_constraint = 2;
+}
+
+// Input to the optimizer.
+message BudgetOptimizationSpec {
+  // The date interval defines the selection of the time points that the
+  // optimization is based upon.
+  common.DateInterval date_interval = 1;
+
+  // The objective to maximize in the budget optimization. Required.
+  common.TargetMetric objective = 2;
+
+  // The type of KPI used to derive the optimization objective. Required.
+  common.KpiType kpi_type = 6;
+
+  // The new marketing data to override the flighting pattern and CPM.
+  // If not provided, the optimization will be based on the historical data.
+  marketing.NewMarketingData new_marketing_data = 7;
+
+  // Whether to use the optimal frequency, If set to `False`, `max_frequency` is
+  // ignored.
+  bool use_optimal_frequency = 8;
+
+  // The max frequency to use for the optimal frequency search space, this field
+  // is ignored if `use_optimal_frequency` is unset or is set to `False`. If not set when
+  // `use_optimal_frequency` is set to `True`, the max frequency of the input
+  // data is used. max_frequency must be greater than 1 if set.
+  float max_frequency = 9;
+
+  // The optimization scenario. Required.
+  oneof scenario {
+    // A fixed budget optimization tries to maximize an objective by optimizing
+    // the budget allocations over channels without changing the total budget
+    // amount.
+    //
+    // For instance, in Meridian, the objective function is chosen to be the
+    // posterior mean of the expected KPI (e.g. sales, revenue, etc).
+    FixedBudgetScenario fixed_budget_scenario = 3;
+
+    // A flexible budget optimization tries to maximize an objective by
+    // optimizing the budget allocations over channels with a flexible total
+    // budget amount.
+    //
+    // For instance, in Meridian, the expected KPI (e.g. revenue) can be
+    // optimized while allowing the total budget to vary: this flexible
+    // optimization in Meridian is constrained on either the minimal marginal
+    // ROI or the target ROI constraints.
+    FlexibleBudgetScenario flexible_budget_scenario = 4;
+  }
+
+  // The constraints on channels.
+  // If a media channel that is present in the model is not represented here,
+  // it will be given the default constraint of `[0, max_budget]`.
+  repeated ChannelConstraint channel_constraints = 5;
+}
+
+// A message representing a grid that details the incremental outcome of
+// marketing spend by channel.
+//
+// Note that this grid is constructed under the assumption that there is no
+// interaction effect across channels, i.e. the spend on one channel will not
+// affect other channels.
+message IncrementalOutcomeGrid {
+  // A data point within the grid representing the outcome of a specific spend
+  // on a particular channel.
+  message Cell {
+    // The amount of marketing spend allocated to the channel.
+    double spend = 1;
+
+    // The incremental outcome achieved through the channel spend. The type
+    // should be indicated by the objective in the optimization spec.
+    //
+    // This is calculated as the difference between the outcome with the given
+    // spend and the outcome with zero spend (outcome(spend) - outcome(0)).
+    common.Estimate incremental_outcome = 2;
+  }
+
+  // A collection of cells in a channel.
+  message ChannelCells {
+    // The name of the marketing channel.
+    string channel_name = 1;
+
+    // The cells in the channel.
+    repeated Cell cells = 2;
+  }
+
+  // The name of the grid. Required.
+  string name = 1;
+
+  // The uniform step size between consecutive spend values within a channel.
+  // Required.
+  double spend_step_size = 2;
+
+  // The collection of cells representing all combinations of spend and
+  // incremental outcome across channels. Required.
+  //
+  // Each channel can have a different spend range, but all spend values within
+  // a channel must be spaced evenly using the specified step size.
+  repeated ChannelCells channel_cells = 3;
+}
+
+// The budget optimization finds the result of optimal budget allocation given
+// an optimization spec.
+message BudgetOptimizationResult {
+  reserved 4;
+
+  // The name of the budget optimization. Required.
+  string name = 1;
+
+  // An optional identifier for a result that belongs to a group of related
+  // results (of different types).
+  // Note that no two `BudgetOptimizationResult`s should share the same group ID
+  // Simple UUID strings are recommended.
+  string group_id = 5;
+
+  // The optimization spec used to generate the result. Required.
+  BudgetOptimizationSpec spec = 2;
+
+  // The analysis on marketing outcome when using the optimized budget.
+  // Required.
+  //
+  // The non-media outcomes are not optimized, but some fields might be impacted
+  // by the change of media outcomes. For example, total contribution would
+  // change, so the contribution share values have to modified accordingly.
+  analysis.MarketingAnalysis optimized_marketing_analysis = 3;
+
+  // The non-optimized marketing outcome. Required.
+  //
+  // In a fixed budget scenario, non-optimized marketing outcome is based on the
+  // budget amount. In a flexible budget scenario, the outcome is based on the
+  // historical spend.
+  analysis.MarketingAnalysis nonoptimized_marketing_analysis = 7;
+
+  // Optional search grid that describes incremental outcomes of spends on
+  // channels. Useful for speeding up optimization analysis.
+  IncrementalOutcomeGrid incremental_outcome_grid = 6;
+}
+
+message BudgetOptimization {
+  // Optimization results for different scenarios.
+  repeated BudgetOptimizationResult results = 1;
+}
