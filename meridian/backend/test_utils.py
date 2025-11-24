@@ -16,6 +16,7 @@
 
 from typing import Any, Optional
 
+import dataclasses
 from absl.testing import parameterized
 from google.protobuf import descriptor
 from google.protobuf import message
@@ -78,6 +79,57 @@ def assert_allequal(a: ArrayLike, b: ArrayLike, err_msg: str = ""):
     AssertionError: If the two arrays are not equal.
   """
   np.testing.assert_array_equal(np.array(a), np.array(b), err_msg=err_msg)
+
+
+def assert_deep_equals(test_case, obj1: Any, obj2: Any, msg: str = ""):
+  """Recursive equality check handling Dataclasses, Lists, and Backend Tensors.
+
+  Args:
+    test_case: The unittest.TestCase instance (self) to use for assertions.
+    obj1: The first object to compare.
+    obj2: The second object to compare.
+    msg: Optional error message prefix.
+  """
+  if obj1 is None or obj2 is None:
+    test_case.assertEqual(obj1, obj2, msg=msg)
+    return
+
+  if (
+      hasattr(obj1, "__array__")
+      or hasattr(obj1, "numpy")
+      or isinstance(obj1, (np.ndarray, backend.Tensor))
+  ):
+    arr1 = np.array(obj1)
+    arr2 = np.array(obj2)
+
+    # Check for non-numeric types where atol/rtol don't apply
+    if arr1.dtype.kind in ("U", "S", "O", "b"):
+      np.testing.assert_array_equal(arr1, arr2, err_msg=msg)
+    else:
+      np.testing.assert_allclose(arr1, arr2, err_msg=msg, rtol=1e-5, atol=1e-5)
+    return
+
+  if dataclasses.is_dataclass(obj1):
+    test_case.assertIs(
+        type(obj1),
+        type(obj2),
+        msg=f"{msg} Type mismatch: {type(obj1)} vs {type(obj2)}",
+    )
+    for field in dataclasses.fields(obj1):
+      val1 = getattr(obj1, field.name)
+      val2 = getattr(obj2, field.name)
+      assert_deep_equals(test_case, val1, val2, msg=f"{msg}.{field.name}")
+    return
+
+  if isinstance(obj1, (list, tuple)):
+    test_case.assertIsInstance(obj2, (list, tuple), msg=f"{msg} Type mismatch")
+    test_case.assertEqual(len(obj1), len(obj2), msg=f"{msg} Length mismatch")
+    for i, (item1, item2) in enumerate(zip(obj1, obj2)):
+      assert_deep_equals(test_case, item1, item2, msg=f"{msg}[{i}]")
+    return
+
+  # Fallback to standard equality for primitives (int, str, float, etc.)
+  test_case.assertEqual(obj1, obj2, msg=msg)
 
 
 def assert_seed_allequal(a: Any, b: Any, err_msg: str = ""):
