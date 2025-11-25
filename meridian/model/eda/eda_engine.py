@@ -269,29 +269,41 @@ def _find_extreme_corr_pairs(
   )
 
 
-def _calculate_std(
+def _get_outlier_bounds(
     input_da: xr.DataArray,
-) -> tuple[xr.Dataset, pd.DataFrame]:
-  """Helper function to compute std with and without outliers.
+) -> tuple[xr.DataArray, xr.DataArray]:
+  """Computes lower and upper bounds for outliers across time using the IQR method.
 
   Args:
-    input_da: A DataArray for which to calculate the std.
+    input_da: A DataArray for which to calculate outlier bounds.
 
   Returns:
-    A tuple where the first element is a Dataset with two data variables:
-    'std_with_outliers' and 'std_without_outliers'. The second element is a
-    DataFrame with columns for variables, geo (if applicable), time, and
-    outlier values.
+    A tuple containing the lower and upper bounds of outliers as DataArrays.
   """
-  std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
-
   # TODO: Allow users to specify custom outlier definitions.
   q1 = input_da.quantile(_Q1_THRESHOLD, dim=constants.TIME)
   q3 = input_da.quantile(_Q3_THRESHOLD, dim=constants.TIME)
   iqr = q3 - q1
   lower_bound = q1 - _IQR_MULTIPLIER * iqr
   upper_bound = q3 + _IQR_MULTIPLIER * iqr
+  return lower_bound, upper_bound
 
+
+def _calculate_std(
+    input_da: xr.DataArray,
+) -> xr.Dataset:
+  """Helper function to compute std with and without outliers.
+
+  Args:
+    input_da: A DataArray for which to calculate the std.
+
+  Returns:
+    A Dataset with two data variables: 'std_with_outliers' and
+    'std_without_outliers'.
+  """
+  std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
+
+  lower_bound, upper_bound = _get_outlier_bounds(input_da)
   da_no_outlier = input_da.where(
       (input_da >= lower_bound) & (input_da <= upper_bound)
   )
@@ -301,17 +313,34 @@ def _calculate_std(
       _STD_WITH_OUTLIERS_VAR_NAME: std_with_outliers,
       _STD_WITHOUT_OUTLIERS_VAR_NAME: std_without_outliers,
   })
+  return std_ds
 
+
+def _calculate_outliers(
+    input_da: xr.DataArray,
+) -> pd.DataFrame:
+  """Helper function to extract outliers from a DataArray across time.
+
+  Args:
+    input_da: A DataArray from which to extract outliers.
+
+  Returns:
+    A DataFrame with columns for variables, geo (if applicable), time, and
+    outlier values.
+  """
+  lower_bound, upper_bound = _get_outlier_bounds(input_da)
   outlier_da = input_da.where(
       (input_da < lower_bound) | (input_da > upper_bound)
   )
-
-  outlier_df = outlier_da.to_dataframe(name=_OUTLIERS_COL_NAME).dropna()
-  outlier_df = outlier_df.assign(
-      **{_ABS_OUTLIERS_COL_NAME: np.abs(outlier_df[_OUTLIERS_COL_NAME])}
-  ).sort_values(by=_ABS_OUTLIERS_COL_NAME, ascending=False, inplace=False)
-
-  return std_ds, outlier_df
+  outlier_df = (
+      outlier_da.to_dataframe(name=_OUTLIERS_COL_NAME)
+      .dropna()
+      .assign(
+          **{_ABS_OUTLIERS_COL_NAME: lambda x: np.abs(x[_OUTLIERS_COL_NAME])}
+      )
+      .sort_values(by=_ABS_OUTLIERS_COL_NAME, ascending=False, inplace=False)
+  )
+  return outlier_df
 
 
 def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
@@ -342,6 +371,117 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
       dims=[var_dim],
   )
   return vif_da
+
+
+def _check_cost_media_unit_inconsistency(
+    cost_da: xr.DataArray,
+    media_units_da: xr.DataArray,
+) -> pd.DataFrame:
+  """Checks for inconsistencies between cost and media units.
+
+  Args:
+    cost_da: DataArray containing cost data.
+    media_units_da: DataArray containing media unit data.
+
+  Returns:
+    A DataFrame of inconsistencies where either cost is zero and media units
+    are
+    positive, or cost is positive and media units are zero.
+  """
+  cost_media_units_ds = xr.merge([cost_da, media_units_da])
+
+  # Condition 1: cost == 0 and media unit > 0
+  zero_cost_positive_mask = (cost_da == 0) & (media_units_da > 0)
+  zero_cost_positive_media_unit_df = (
+      cost_media_units_ds.where(zero_cost_positive_mask).to_dataframe().dropna()
+  )
+
+  # Condition 2: cost > 0 and media unit == 0
+  positive_cost_zero_mask = (cost_da > 0) & (media_units_da == 0)
+  positive_cost_zero_media_unit_df = (
+      cost_media_units_ds.where(positive_cost_zero_mask).to_dataframe().dropna()
+  )
+
+  return pd.concat(
+      [zero_cost_positive_media_unit_df, positive_cost_zero_media_unit_df]
+  )
+
+
+def _check_cost_per_media_unit(
+    cost_ds: xr.Dataset,
+    media_units_ds: xr.Dataset,
+    level: eda_outcome.AnalysisLevel,
+) -> eda_outcome.EDAOutcome[eda_outcome.CostPerMediaUnitArtifact]:
+  """Helper to check if the cost per media unit is valid."""
+  findings = []
+  # Stack variables with the same dimension name, so that they can be operated
+  # on together.
+  cost_da = stack_variables(cost_ds, constants.CHANNEL).rename(constants.SPEND)
+  media_units_da = stack_variables(media_units_ds, constants.CHANNEL).rename(
+      constants.MEDIA_UNITS
+  )
+
+  cost_media_unit_inconsistency_df = _check_cost_media_unit_inconsistency(
+      cost_da,
+      media_units_da,
+  )
+  if not cost_media_unit_inconsistency_df.empty:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.ATTENTION,
+            explanation=(
+                'There are instances of inconsistent cost and media units.'
+                ' This occurs when cost is zero but media units are positive,'
+                ' or when cost is positive but media units are zero. Please'
+                ' review the outcome artifact for more details.'
+            ),
+        )
+    )
+
+  # Calculate cost per media unit
+  # Avoid division by zero by setting cost to NaN where media units are 0.
+  # Note that both (cost == media unit == 0) and (cost > 0 and media unit ==
+  # 0) result in NaN, while the latter one is not desired.
+  cost_per_media_unit_da = xr.where(
+      media_units_da == 0,
+      np.nan,
+      cost_da / media_units_da,
+  )
+  cost_per_media_unit_da.name = eda_constants.COST_PER_MEDIA_UNIT
+
+  outlier_df = _calculate_outliers(cost_per_media_unit_da)
+  if not outlier_df.empty:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.ATTENTION,
+            explanation=(
+                'There are outliers in cost per media unit across time.'
+                ' Please review the outcome artifact for more details.'
+            ),
+        )
+    )
+
+  # If no specific findings, add an INFO finding.
+  if not findings:
+    findings.append(
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.INFO,
+            explanation='Please review the cost per media unit data.',
+        )
+    )
+
+  artifact = eda_outcome.CostPerMediaUnitArtifact(
+      level=level,
+      cost_per_media_unit_da=cost_per_media_unit_da,
+      cost_media_unit_inconsistency_df=cost_media_unit_inconsistency_df,
+      outlier_df=outlier_df,
+  )
+
+  return eda_outcome.EDAOutcome(
+      check_type=eda_outcome.EDACheckType.COST_PER_MEDIA_UNIT,
+      findings=findings,
+      analysis_artifacts=[artifact],
+  )
 
 
 class EDAEngine:
@@ -1028,7 +1168,7 @@ class EDAEngine:
     return da
 
   @functools.cached_property
-  def paid_raw_impressions_ds(self) -> xr.Dataset:
+  def paid_raw_media_units_ds(self) -> xr.Dataset:
     to_merge = [
         da
         for da in [
@@ -1040,7 +1180,7 @@ class EDAEngine:
     return xr.merge(to_merge, join='inner')
 
   @functools.cached_property
-  def national_paid_raw_impressions_ds(self) -> xr.Dataset:
+  def national_paid_raw_media_units_ds(self) -> xr.Dataset:
     to_merge = [
         da
         for da in [
@@ -1488,8 +1628,8 @@ class EDAEngine:
     """
     if self._is_national_data:
       return self.check_national_pairwise_corr()
-    else:
-      return self.check_geo_pairwise_corr()
+
+    return self.check_geo_pairwise_corr()
 
   def _check_std(
       self,
@@ -1497,10 +1637,11 @@ class EDAEngine:
       level: eda_outcome.AnalysisLevel,
       zero_std_message: str,
   ) -> tuple[
-      Optional[eda_outcome.EDAFinding], eda_outcome.StandardDeviationArtifact
+      eda_outcome.EDAFinding | None, eda_outcome.StandardDeviationArtifact
   ]:
     """Helper to check standard deviation."""
-    std_ds, outlier_df = _calculate_std(data)
+    std_ds = _calculate_std(data)
+    outlier_df = _calculate_outliers(data)
 
     finding = None
     if (std_ds[_STD_WITHOUT_OUTLIERS_VAR_NAME] < _STD_THRESHOLD).any():
@@ -1689,8 +1830,8 @@ class EDAEngine:
     """
     if self._is_national_data:
       return self.check_national_std()
-    else:
-      return self.check_geo_std()
+
+    return self.check_geo_std()
 
   def check_geo_vif(self) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
     """Computes geo-level variance inflation factor among treatments and controls."""
@@ -1841,8 +1982,8 @@ class EDAEngine:
     """
     if self._is_national_data:
       return self.check_national_vif()
-    else:
-      return self.check_geo_vif()
+
+    return self.check_geo_vif()
 
   @property
   def kpi_has_variability(self) -> bool:
@@ -1878,6 +2019,60 @@ class EDAEngine:
         findings=[eda_finding],
         analysis_artifacts=[self._overall_scaled_kpi_invariability_artifact],
     )
+
+  def check_geo_cost_per_media_unit(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerMediaUnitArtifact]:
+    """Checks if the cost per media unit is valid for geo data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the check is called for a national
+        model.
+    """
+    if self._is_national_data:
+      raise GeoLevelCheckOnNationalModelError(
+          'check_geo_cost_per_media_unit is not supported for national models.'
+      )
+    return _check_cost_per_media_unit(
+        self.all_spend_ds,
+        self.paid_raw_media_units_ds,
+        eda_outcome.AnalysisLevel.GEO,
+    )
+
+  def check_national_cost_per_media_unit(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerMediaUnitArtifact]:
+    """Checks if the cost per media unit is valid for national data.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    return _check_cost_per_media_unit(
+        self.national_all_spend_ds,
+        self.national_paid_raw_media_units_ds,
+        eda_outcome.AnalysisLevel.NATIONAL,
+    )
+
+  def check_cost_per_media_unit(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.CostPerMediaUnitArtifact]:
+    """Checks if the cost per media unit is valid.
+
+    This function checks the following conditions:
+    1. cost == 0 and media unit > 0.
+    2. cost > 0 and media unit == 0.
+    3. cost_per_media_unit has outliers.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    if self._is_national_data:
+      return self.check_national_cost_per_media_unit()
+
+    return self.check_geo_cost_per_media_unit()
 
   def run_all_critical_checks(self) -> list[eda_outcome.EDAOutcome]:
     """Runs all critical EDA checks.
