@@ -102,7 +102,8 @@ class PairwiseCorrArtifact(AnalysisArtifact):
   Attributes:
     corr_matrix: Pairwise correlation matrix.
     extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
-      correlation threshold.
+      correlation threshold. Includes 'correlation' and 'abs_correlation'
+      columns, and is sorted by 'abs_correlation' in descending order.
     extreme_corr_threshold: The threshold used to identify extreme correlation
       pairs.
   """

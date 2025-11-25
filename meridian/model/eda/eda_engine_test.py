@@ -4024,15 +4024,25 @@ class EDAEngineTest(
         for artifact in outcome.analysis_artifacts
         if artifact.level == eda_outcome.AnalysisLevel.OVERALL
     )
-    self.assertIn(
-        "media_1", overall_artifact.extreme_corr_var_pairs.to_string()
-    )
-    self.assertIn(
-        "media_2", overall_artifact.extreme_corr_var_pairs.to_string()
-    )
     self.assertEqual(
         overall_artifact.extreme_corr_threshold,
         eda_engine._OVERALL_PAIRWISE_CORR_THRESHOLD,
+    )
+    expected_overall_extreme_corr_df = pd.DataFrame(
+        data={
+            eda_engine._CORRELATION_COL_NAME: [1.0],
+            eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [("media_1", "media_2")],
+            names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
+        ),
+    )
+    pd.testing.assert_frame_equal(
+        overall_artifact.extreme_corr_var_pairs,
+        expected_overall_extreme_corr_df,
+        check_dtype=False,
+        atol=1e-6,
     )
 
   def test_check_geo_pairwise_corr_one_attention(self):
@@ -4112,14 +4122,8 @@ class EDAEngineTest(
     )
     self.assertIsInstance(geo_artifact, eda_outcome.PairwiseCorrArtifact)
 
-    pd.testing.assert_frame_equal(
-        overall_artifact.extreme_corr_var_pairs,
-        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
-    )
-    pd.testing.assert_frame_equal(
-        geo_artifact.extreme_corr_var_pairs,
-        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
-    )
+    self.assertEmpty(overall_artifact.extreme_corr_var_pairs)
+    self.assertEmpty(geo_artifact.extreme_corr_var_pairs)
 
   def test_check_geo_pairwise_corr_high_overall_corr(self):
     # Create data where media_1 and control_1 are perfectly correlated across
@@ -4258,17 +4262,6 @@ class EDAEngineTest(
     self.assertEqual(
         outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
     )
-    expected_overall_corr = np.corrcoef(
-        media_data.flatten(), control_data.flatten()
-    )[0, 1]
-
-    # Expected geo correlations:
-    expected_geo_corr = np.array([
-        # geo0: media_1 = [1, 2, 3], control_1 = [1, 2, 3] -> corr = 1.0
-        np.corrcoef(media_data[0, :, 0], control_data[0, :, 0])[0, 1],
-        # geo1: media_1 = [4, 5, 6], control_1 = [6, 5, 4] -> corr = -1.0
-        np.corrcoef(media_data[1, :, 0], control_data[1, :, 0])[0, 1],
-    ])
 
     overall_artifact = next(
         artifact
@@ -4281,21 +4274,186 @@ class EDAEngineTest(
         if artifact.level == eda_outcome.AnalysisLevel.GEO
     )
     overall_corr_mat = overall_artifact.corr_matrix
-    self.assertEqual(overall_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
     geo_corr_mat = geo_artifact.corr_matrix
-    self.assertEqual(geo_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
 
-    # Check overall correlation
-    test_utils.assert_allclose(
-        overall_corr_mat.sel(var1="media_1", var2="control_1").values,
-        expected_overall_corr,
+    expected_overall_corr = np.corrcoef(
+        media_data.flatten(), control_data.flatten()
+    )[0, 1]
+
+    # Expected geo correlations:
+    expected_geo_corr = np.array([
+        # geo0: media_1 = [1, 2, 3], control_1 = [1, 2, 3] -> corr = 1.0
+        np.corrcoef(media_data[0, :, 0], control_data[0, :, 0])[0, 1],
+        # geo1: media_1 = [4, 5, 6], control_1 = [6, 5, 4] -> corr = -1.0
+        np.corrcoef(media_data[1, :, 0], control_data[1, :, 0])[0, 1],
+    ])
+
+    # With correlation values 1.0 and -1.0, and threshold 0.999, both pairs
+    # should be in extreme_corr_var_pairs, sorted by abs_correlation desc.
+    expected_geo_extreme_corr_df = pd.DataFrame(
+        data={
+            eda_engine._CORRELATION_COL_NAME: [1.0, -1.0],
+            eda_constants.ABS_CORRELATION_COL_NAME: [1.0, 1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [
+                ("geo0", "media_1", "control_1"),
+                ("geo1", "media_1", "control_1"),
+            ],
+            names=[
+                constants.GEO,
+                eda_constants.VARIABLE_1,
+                eda_constants.VARIABLE_2,
+            ],
+        ),
     )
 
-    # Check geo correlations
-    test_utils.assert_allclose(
-        geo_corr_mat.sel(var1="media_1", var2="control_1").values,
-        expected_geo_corr,
+    with self.subTest("overall_artifact"):
+      self.assertEqual(
+          overall_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME
+      )
+      # Check overall correlation
+      test_utils.assert_allclose(
+          overall_corr_mat.sel(var1="media_1", var2="control_1").values,
+          expected_overall_corr,
+      )
+      self.assertEmpty(overall_artifact.extreme_corr_var_pairs)
+
+    with self.subTest("geo_artifact"):
+      self.assertEqual(geo_corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
+      # Check geo correlations
+      test_utils.assert_allclose(
+          geo_corr_mat.sel(var1="media_1", var2="control_1").values,
+          expected_geo_corr,
+      )
+      pd.testing.assert_frame_equal(
+          geo_artifact.extreme_corr_var_pairs.sort_index(),
+          expected_geo_extreme_corr_df.sort_index(),
+          check_dtype=False,
+          atol=1e-6,
+      )
+
+  def test_national_extreme_corr_var_pairs_are_correctly_sorted(self):
+    self.enter_context(
+        mock.patch.object(eda_engine, "_NATIONAL_PAIRWISE_CORR_THRESHOLD", 0.7)
     )
+    meridian = model.Meridian(self.national_input_data_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+    # data for forcing correlation order
+    # m0=[1,2,3], c0=[1,2,4], c1=[-1,-2,-2]
+    # c(m0,c0)=0.98198, c(m0,c1)=-0.866025, c(c0,c1)=-0.755928
+    # Abs: 0.98198, 0.866025, 0.755928.
+    data = np.array([
+        [1, 1, -1],
+        [2, 2, -2],
+        [3, 4, -2],
+    ]).astype(float)
+    national_da = (
+        _create_data_array_with_var_dim(data, name="data", var_name="variable")
+        .rename({"variable_dim": eda_engine._STACK_VAR_COORD_NAME})
+        .assign_coords({
+            eda_engine._STACK_VAR_COORD_NAME: [
+                "media_0",
+                "control_0",
+                "control_1",
+            ]
+        })
+    )
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", national_da
+    )
+
+    outcome = engine.check_national_pairwise_corr()
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.NATIONAL)
+
+    self.assertListEqual(
+        artifact.extreme_corr_var_pairs.index.to_list(),
+        [
+            ("media_0", "control_0"),
+            ("media_0", "control_1"),
+            ("control_0", "control_1"),
+        ],
+    )
+
+  def test_geo_extreme_corr_var_pairs_are_correctly_sorted(self):
+    self.enter_context(
+        mock.patch.object(eda_engine, "_GEO_PAIRWISE_CORR_THRESHOLD", 0.7)
+    )
+    self.enter_context(
+        mock.patch.object(eda_engine, "_OVERALL_PAIRWISE_CORR_THRESHOLD", 0.7)
+    )
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+    # data for forcing correlation order
+    # m0=[1,2,3], c0=[1,2,4], c1=[-1,-2,-2]
+    # c(m0,c0)=0.98198, c(m0,c1)=-0.866025, c(c0,c1)=-0.755928
+    # Abs: 0.98198, 0.866025, 0.755928.
+    data_1geo = np.array([
+        [1, 1, -1],
+        [2, 2, -2],
+        [3, 4, -2],
+    ]).astype(float)
+    # Use 2 geos for test
+    n_geos = 2
+    data = np.stack([data_1geo] * n_geos, axis=0)
+    geo_da = (
+        _create_data_array_with_var_dim(data, name="data", var_name="variable")
+        .rename({"variable_dim": eda_engine._STACK_VAR_COORD_NAME})
+        .assign_coords({
+            eda_engine._STACK_VAR_COORD_NAME: [
+                "media_0",
+                "control_0",
+                "control_1",
+            ]
+        })
+    )
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", geo_da
+    )
+    outcome = engine.check_geo_pairwise_corr()
+    overall_artifact = next(
+        art
+        for art in outcome.analysis_artifacts
+        if art.level == eda_outcome.AnalysisLevel.OVERALL
+    )
+    geo_artifact = next(
+        art
+        for art in outcome.analysis_artifacts
+        if art.level == eda_outcome.AnalysisLevel.GEO
+    )
+    geo_df = geo_artifact.extreme_corr_var_pairs.reset_index()
+
+    with self.subTest("overall_artifact"):
+      # Check OVERALL artifact
+      self.assertListEqual(
+          overall_artifact.extreme_corr_var_pairs.index.to_list(),
+          [
+              ("media_0", "control_0"),
+              ("media_0", "control_1"),
+              ("control_0", "control_1"),
+          ],
+      )
+
+    with self.subTest("geo_artifact"):
+      # Check GEO artifact
+      self.assertListEqual(
+          list(
+              zip(
+                  geo_df[eda_constants.VARIABLE_1],
+                  geo_df[eda_constants.VARIABLE_2],
+              )
+          ),
+          [
+              ("media_0", "control_0"),
+              ("media_0", "control_0"),
+              ("media_0", "control_1"),
+              ("media_0", "control_1"),
+              ("control_0", "control_1"),
+              ("control_0", "control_1"),
+          ],
+      )
 
   def test_check_geo_pairwise_corr_raises_error_for_national_model(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
@@ -4339,11 +4497,25 @@ class EDAEngineTest(
 
     artifact = outcome.analysis_artifacts[0]
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.NATIONAL)
-    self.assertIn("media_1", artifact.extreme_corr_var_pairs.to_string())
-    self.assertIn("media_2", artifact.extreme_corr_var_pairs.to_string())
     self.assertEqual(
         artifact.extreme_corr_threshold,
         eda_engine._NATIONAL_PAIRWISE_CORR_THRESHOLD,
+    )
+    expected_national_extreme_corr_df = pd.DataFrame(
+        data={
+            eda_engine._CORRELATION_COL_NAME: [1.0],
+            eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [("media_1", "media_2")],
+            names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
+        ),
+    )
+    pd.testing.assert_frame_equal(
+        artifact.extreme_corr_var_pairs,
+        expected_national_extreme_corr_df,
+        check_dtype=False,
+        atol=1e-6,
     )
 
   def test_check_national_pairwise_corr_info_only(self):
@@ -4376,10 +4548,7 @@ class EDAEngineTest(
     )
 
     artifact = outcome.analysis_artifacts[0]
-    pd.testing.assert_frame_equal(
-        artifact.extreme_corr_var_pairs,
-        eda_engine._EMPTY_DF_FOR_EXTREME_CORR_PAIRS,
-    )
+    self.assertEmpty(artifact.extreme_corr_var_pairs)
 
   def test_check_national_pairwise_corr_corr_matrix_has_correct_coordinates(
       self,
@@ -4429,6 +4598,7 @@ class EDAEngineTest(
         0, 1
     ]
 
+    self.assertLen(outcome.analysis_artifacts, 1)
     artifact = outcome.analysis_artifacts[0]
     corr_mat = artifact.corr_matrix
     self.assertEqual(corr_mat.name, eda_engine._CORRELATION_MATRIX_NAME)
@@ -5166,7 +5336,7 @@ class EDAEngineTest(
     self.assertEqual(overall_artifact.vif_da.shape, (_N_VARS_VIF,))
     # With overall_threshold=1e6 and _get_geo_vif_da(), we expect no overall
     # outliers
-    self.assertTrue(overall_artifact.outlier_df.empty)
+    self.assertEmpty(overall_artifact.outlier_df)
 
   def test_check_geo_vif_geo_artifact_is_correct(self):
     meridian = model.Meridian(self.input_data_with_media_only)
