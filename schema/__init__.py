@@ -26,5 +26,8 @@ except ModuleNotFoundError as exc:
   ) from exc
 
 # pylint: disable=g-import-not-at-top
+from schema import mmm_proto_generator
+from schema import model_consumer
+from schema import processors
 from schema import serde
 from schema import utils

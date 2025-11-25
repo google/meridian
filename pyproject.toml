@@ -84,6 +84,14 @@ schema = [
   "semver",
 ]
 
+# Meridian Scenario Planner.
+scenarioplanner = [
+  "google-api-python-client",
+  "google-auth",
+  "mmm-proto-schema",
+  "semver",
+]
+
 [tool.pyink]
 # Formatting configuration to follow Google style-guide
 line-length = 80
@@ -104,7 +112,7 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*", "schema*"]
+include = ["meridian*", "schema*", "scenarioplanner*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
