@@ -662,6 +662,7 @@ CURRENT_SPEND = 'current_spend'
 
 # Media summary metrics.
 SPEND = 'spend'
+COST = 'cost'
 IMPRESSIONS = 'impressions'
 ROI = 'roi'
 OPTIMIZED_ROI = 'optimized_roi'

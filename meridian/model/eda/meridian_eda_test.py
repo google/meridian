@@ -18,6 +18,7 @@ from meridian import constants
 from meridian.data import test_utils
 from meridian.model import model
 from meridian.model.eda import constants as eda_constants
+from meridian.model.eda import eda_outcome
 from meridian.model.eda import meridian_eda
 import numpy as np
 import xarray as xr
@@ -40,10 +41,9 @@ class MeridianEdaTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self._meridian = mock.MagicMock()
+    self._meridian = mock.MagicMock(spec=model.Meridian)
     self._meridian.is_national = False
     self._meridian.n_geos = self._N_GEOS
-    self._meridian.eda_engine = mock.MagicMock()
 
     self._meridian.input_data.geo = self._GEO_NAMES
 
@@ -52,6 +52,322 @@ class MeridianEdaTest(parameterized.TestCase):
     )
 
     self._eda = meridian_eda.MeridianEDA(self._meridian)
+
+  # ============================================================================
+  # Cost Per Media Unit Test
+  # ============================================================================
+  def test_plot_cost_per_media_unit_time_series_geos(self):
+    self._meridian.eda_engine.all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([
+                    [
+                        [100.0, 0.0],
+                        [200.0, 0.0],
+                        [300.0, 0.0],
+                    ],
+                    [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                ]),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[10.0], [10.0], [10.0]], [[0.0], [0.0], [0.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: self._GEO_NAMES,
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.paid_raw_media_units_ds = xr.Dataset(
+        {
+            'media': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([
+                    [[10.0, 0.0], [20.0, 0.0], [30.0, 0.0]],
+                    [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                ]),
+            ),
+            'rf_impressions': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[1.0], [1.0], [1.0]], [[0.0], [0.0], [0.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: self._GEO_NAMES,
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    mock_artifact = mock.MagicMock(spec=eda_outcome.CostPerMediaUnitArtifact)
+    mock_artifact.cost_per_media_unit_da = xr.DataArray(
+        np.array([
+            [[10.0, np.nan, 10.0], [10.0, np.nan, 10.0], [10.0, np.nan, 10.0]],
+            [
+                [np.nan, np.nan, np.nan],
+                [np.nan, np.nan, np.nan],
+                [np.nan, np.nan, np.nan],
+            ],
+        ]),
+        coords={
+            constants.GEO: self._GEO_NAMES,
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: (
+                self._MEDIA_CHANNEL_NAMES + self._RF_CHANNEL_NAMES
+            ),
+        },
+        dims=[constants.GEO, constants.TIME, constants.CHANNEL],
+        name=eda_constants.COST_PER_MEDIA_UNIT,
+    )
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_geo_artifact = mock.PropertyMock(
+        return_value=mock_artifact
+    )
+
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_geo_cost_per_media_unit',
+        return_value=mock_outcome,
+    ):
+      plot = self._eda.plot_cost_per_media_unit_time_series(geos=['geo_0'])
+
+      actual_cost = np.concatenate([
+          row.hconcat[0].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_media_units = np.concatenate([
+          row.hconcat[1].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_cost_per_media_unit = np.concatenate([
+          row.hconcat[2].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+
+      with self.subTest(name='cost_per_media_unit'):
+        np.testing.assert_allclose(
+            actual_cost_per_media_unit,
+            [10.0, 10.0, 10.0, np.nan, np.nan, np.nan, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='cost'):
+        np.testing.assert_allclose(
+            actual_cost,
+            [100.0, 200.0, 300.0, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='media_units'):
+        np.testing.assert_allclose(
+            actual_media_units,
+            [10.0, 20.0, 30.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        )
+
+  def test_plot_cost_per_media_unit_time_series_nationalize(self):
+    self._meridian.eda_engine.national_all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[
+                    [100.0, 0.0],
+                    [200.0, 0.0],
+                    [300.0, 0.0],
+                ]]),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[10.0], [10.0], [10.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.national_paid_raw_media_units_ds = xr.Dataset(
+        {
+            'media': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[[10.0, 0.0], [20.0, 0.0], [30.0, 0.0]]]),
+            ),
+            'rf_impressions': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[1.0], [1.0], [1.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    mock_artifact = mock.MagicMock(spec=eda_outcome.CostPerMediaUnitArtifact)
+    mock_artifact.cost_per_media_unit_da = xr.DataArray(
+        np.array(
+            [[[10.0, np.nan, 10.0], [10.0, np.nan, 10.0], [10.0, np.nan, 10.0]]]
+        ),
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: (
+                self._MEDIA_CHANNEL_NAMES + self._RF_CHANNEL_NAMES
+            ),
+        },
+        dims=[constants.GEO, constants.TIME, constants.CHANNEL],
+        name=eda_constants.COST_PER_MEDIA_UNIT,
+    )
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_national_artifact = mock.PropertyMock(
+        return_value=mock_artifact
+    )
+
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_national_cost_per_media_unit',
+        return_value=mock_outcome,
+    ):
+      plot = self._eda.plot_cost_per_media_unit_time_series(geos='nationalize')
+
+      actual_cost = np.concatenate([
+          row.hconcat[0].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_media_units = np.concatenate([
+          row.hconcat[1].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_cost_per_media_unit = np.concatenate([
+          row.hconcat[2].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+
+      with self.subTest(name='cost_per_media_unit'):
+        np.testing.assert_allclose(
+            actual_cost_per_media_unit,
+            [10.0, 10.0, 10.0, np.nan, np.nan, np.nan, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='cost'):
+        np.testing.assert_allclose(
+            actual_cost,
+            [100.0, 200.0, 300.0, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='media_units'):
+        np.testing.assert_allclose(
+            actual_media_units, [10.0, 20.0, 30.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+        )
+
+  def test_plot_cost_per_media_unit_time_series_national_model(self):
+    self._meridian.is_national = True
+    self._meridian.n_geos = 1
+
+    self._meridian.eda_engine.national_all_spend_ds = xr.Dataset(
+        {
+            'media_spend': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[
+                    [100.0, 0.0],
+                    [200.0, 0.0],
+                    [300.0, 0.0],
+                ]]),
+            ),
+            'rf_spend': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[10.0], [10.0], [10.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    self._meridian.eda_engine.national_paid_raw_media_units_ds = xr.Dataset(
+        {
+            'media': (
+                [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+                np.array([[[10.0, 0.0], [20.0, 0.0], [30.0, 0.0]]]),
+            ),
+            'rf_impressions': (
+                [constants.GEO, constants.TIME, constants.RF_CHANNEL],
+                np.array([[[1.0], [1.0], [1.0]]]),
+            ),
+        },
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.MEDIA_CHANNEL: self._MEDIA_CHANNEL_NAMES,
+            constants.RF_CHANNEL: self._RF_CHANNEL_NAMES,
+        },
+    )
+
+    mock_artifact = mock.MagicMock(spec=eda_outcome.CostPerMediaUnitArtifact)
+    mock_artifact.cost_per_media_unit_da = xr.DataArray(
+        np.array(
+            [[[10.0, np.nan, 10.0], [10.0, np.nan, 10.0], [10.0, np.nan, 10.0]]]
+        ),
+        coords={
+            constants.GEO: ['national_geo'],
+            constants.TIME: range(self._N_TIMES),
+            constants.CHANNEL: (
+                self._MEDIA_CHANNEL_NAMES + self._RF_CHANNEL_NAMES
+            ),
+        },
+        dims=[constants.GEO, constants.TIME, constants.CHANNEL],
+        name=eda_constants.COST_PER_MEDIA_UNIT,
+    )
+    self._meridian.eda_engine.check_national_cost_per_media_unit.return_value.get_national_artifact = (
+        mock_artifact
+    )
+
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_national_artifact = mock.PropertyMock(
+        return_value=mock_artifact
+    )
+
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_national_cost_per_media_unit',
+        return_value=mock_outcome,
+    ):
+      plot = self._eda.plot_cost_per_media_unit_time_series(geos='nationalize')
+
+      actual_cost = np.concatenate([
+          row.hconcat[0].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_media_units = np.concatenate([
+          row.hconcat[1].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+      actual_cost_per_media_unit = np.concatenate([
+          row.hconcat[2].data[eda_constants.VALUE]
+          for row in plot.vconcat[0].vconcat
+      ])
+
+      with self.subTest(name='cost_per_media_unit'):
+        np.testing.assert_allclose(
+            actual_cost_per_media_unit,
+            [10.0, 10.0, 10.0, np.nan, np.nan, np.nan, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='cost'):
+        np.testing.assert_allclose(
+            actual_cost,
+            [100.0, 200.0, 300.0, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0],
+        )
+      with self.subTest(name='media_units'):
+        np.testing.assert_allclose(
+            actual_media_units, [10.0, 20.0, 30.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+        )
 
   # ============================================================================
   # Relative Spend Share Test
@@ -674,7 +990,7 @@ class MeridianEdaTest(parameterized.TestCase):
   # ============================================================================
 
   def test_plot_pairwise_correlation_geos(self):
-    mock_artifact = mock.MagicMock()
+    mock_artifact = mock.MagicMock(spec=eda_outcome.PairwiseCorrArtifact)
     mock_artifact.corr_matrix = xr.DataArray(
         np.array([[
             [1.0, 0.8],
@@ -692,18 +1008,23 @@ class MeridianEdaTest(parameterized.TestCase):
         ],
         name=eda_constants.CORRELATION,
     )
-    self._meridian.eda_engine.check_geo_pairwise_corr.return_value.get_geo_artifact = (
-        mock_artifact
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_geo_artifact = mock.PropertyMock(
+        return_value=mock_artifact
     )
 
-    plot = self._eda.plot_pairwise_correlation(geos=['geo_0'])
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_geo_pairwise_corr',
+        return_value=mock_outcome,
+    ):
+      plot = self._eda.plot_pairwise_correlation(geos=['geo_0'])
 
-    actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
-    self.assertEqual(actual_values, [0.8])
+      actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
+      self.assertEqual(actual_values, [0.8])
 
   def test_plot_pairwise_correlation_nationalize(self):
-
-    mock_artifact = mock.MagicMock()
+    mock_artifact = mock.MagicMock(spec=eda_outcome.PairwiseCorrArtifact)
     mock_artifact.corr_matrix = xr.DataArray(
         np.array([[1.0, -0.2], [-0.2, 1.0]]),
         coords={
@@ -713,20 +1034,26 @@ class MeridianEdaTest(parameterized.TestCase):
         dims=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
         name=eda_constants.CORRELATION,
     )
-    self._meridian.eda_engine.check_national_pairwise_corr.return_value.get_national_artifact = (
-        mock_artifact
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_national_artifact = mock.PropertyMock(
+        return_value=mock_artifact
     )
 
-    plot = self._eda.plot_pairwise_correlation(geos='nationalize')
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_national_pairwise_corr',
+        return_value=mock_outcome,
+    ):
+      plot = self._eda.plot_pairwise_correlation(geos='nationalize')
 
-    actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
-    self.assertEqual(actual_values, [-0.2])
+      actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
+      self.assertEqual(actual_values, [-0.2])
 
   def test_plot_pairwise_correlation_national_model(self):
     self._meridian.is_national = True
     self._meridian.n_geos = 1
 
-    mock_artifact = mock.MagicMock()
+    mock_artifact = mock.MagicMock(spec=eda_outcome.PairwiseCorrArtifact)
     mock_artifact.corr_matrix = xr.DataArray(
         np.array([[1.0, 0.99], [0.99, 1.0]]),
         coords={
@@ -736,14 +1063,22 @@ class MeridianEdaTest(parameterized.TestCase):
         dims=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
         name=eda_constants.CORRELATION,
     )
-    self._meridian.eda_engine.check_national_pairwise_corr.return_value.get_national_artifact = (
-        mock_artifact
+
+    mock_outcome = mock.MagicMock(spec=eda_outcome.EDAOutcome)
+    type(mock_outcome).get_national_artifact = mock.PropertyMock(
+        return_value=mock_artifact
     )
 
-    plot = self._eda.plot_pairwise_correlation()
+    with mock.patch.object(
+        self._meridian.eda_engine,
+        'check_national_pairwise_corr',
+        return_value=mock_outcome,
+    ):
 
-    actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
-    self.assertEqual(actual_values, [0.99])
+      plot = self._eda.plot_pairwise_correlation()
+
+      actual_values = sorted(plot.data[eda_constants.CORRELATION].tolist())
+      self.assertEqual(actual_values, [0.99])
 
   # ============================================================================
   # Error Scenarios
@@ -876,6 +1211,25 @@ class MeridianEdaTest(parameterized.TestCase):
           expected_x_title=eda_constants.IMPRESSION_SHARE_SCALED,
           expected_y_title=constants.CHANNEL,
       ),
+      dict(
+          testcase_name='plot_cost_per_media_unit_time_series',
+          plotting_function='plot_cost_per_media_unit_time_series',
+          expected_title=(
+              'Time series of cost, media_units, and cost per media unit of'
+              ' media channels'
+          ),
+          expected_x_title=constants.TIME,
+          expected_y_title=[
+              constants.COST,
+              constants.MEDIA_UNITS,
+              eda_constants.COST_PER_MEDIA_UNIT,
+          ],
+          expected_sub_title=[
+              f'{constants.COST} for ch_0',
+              f'{constants.MEDIA_UNITS} for ch_0',
+              f'{eda_constants.COST_PER_MEDIA_UNIT} for ch_0',
+          ],
+      ),
   )
   def test_plot_chart_properties(
       self,
@@ -883,6 +1237,7 @@ class MeridianEdaTest(parameterized.TestCase):
       expected_title,
       expected_x_title,
       expected_y_title,
+      expected_sub_title=None,
   ):
     data = test_utils.sample_input_data_revenue(
         n_geos=1,
@@ -895,26 +1250,49 @@ class MeridianEdaTest(parameterized.TestCase):
     eda = meridian_eda.MeridianEDA(model.Meridian(data))
     plot = getattr(eda, plotting_function)()
 
-    actual_chart = (
-        plot.vconcat[0]
-        if plotting_function != 'plot_pairwise_correlation'
-        else plot.vconcat[0].layer[0]
-    )
+    if plotting_function == 'plot_pairwise_correlation':
+      actual_chart = plot.vconcat[0].layer[0]
+    else:
+      actual_chart = plot.vconcat[0]
 
     self.assertEqual(
         actual_chart.title,
         f'{expected_title} for {constants.NATIONAL_MODEL_DEFAULT_GEO_NAME}',
     )
 
-    self.assertEqual(
-        actual_chart.encoding.x.to_dict().get('title'),
-        expected_x_title,
-    )
+    if expected_sub_title is not None:
+      for i in range(len(expected_y_title)):
+        with self.subTest(i=i):
+          self.assertEqual(
+              actual_chart.vconcat[0]
+              .hconcat[i]
+              .encoding.y.to_dict()
+              .get('axis')
+              .get('title'),
+              expected_y_title[i],
+          )
+          self.assertEqual(
+              actual_chart.vconcat[0]
+              .hconcat[i]
+              .encoding.x.to_dict()
+              .get('axis')
+              .get('title'),
+              expected_x_title,
+          )
+          self.assertEqual(
+              actual_chart.vconcat[0].hconcat[i].title.text,
+              expected_sub_title[i],
+          )
+    else:
+      self.assertEqual(
+          actual_chart.encoding.x.to_dict().get('title'),
+          expected_x_title,
+      )
 
-    self.assertEqual(
-        actual_chart.encoding.y.to_dict().get('title'),
-        expected_y_title,
-    )
+      self.assertEqual(
+          actual_chart.encoding.y.to_dict().get('title'),
+          expected_y_title,
+      )
 
 
 if __name__ == '__main__':

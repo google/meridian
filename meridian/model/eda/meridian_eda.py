@@ -15,7 +15,8 @@
 """Module containing Meridian related exploratory data analysis (EDA) functionalities."""
 from __future__ import annotations
 
-from typing import Callable, Literal, TYPE_CHECKING, Union
+from collections.abc import Sequence
+from typing import Callable, Literal, TYPE_CHECKING
 
 import altair as alt
 from meridian import constants
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
 __all__ = [
     'MeridianEDA',
 ]
+
+Geos = int | Sequence[str] | Literal['nationalize']
 
 
 class MeridianEDA:
@@ -58,9 +61,109 @@ class MeridianEDA:
     # TODO: Implement.
     raise NotImplementedError()
 
-  def plot_relative_spend_share_barchart(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_cost_per_media_unit_time_series(self, geos: Geos = 1) -> alt.Chart:
+    """Plots the cost per media unit time series plot for each paid media channel."""
+    geos_to_plot = self._validate_and_get_geos_to_plot(geos)
+    use_national_data = (
+        self._meridian.is_national or geos == eda_constants.NATIONALIZE
+    )
+
+    if use_national_data:
+      cost_data = self._meridian.eda_engine.national_all_spend_ds
+      media_unit_data = (
+          self._meridian.eda_engine.national_paid_raw_media_units_ds
+      )
+      cost_per_media_unit_artifact = (
+          self._meridian.eda_engine.check_national_cost_per_media_unit().get_national_artifact
+      )
+      select_data = lambda data, geo: data
+    else:
+      cost_data = self._meridian.eda_engine.all_spend_ds
+      media_unit_data = self._meridian.eda_engine.paid_raw_media_units_ds
+      cost_per_media_unit_artifact = (
+          self._meridian.eda_engine.check_geo_cost_per_media_unit().get_geo_artifact
+      )
+      select_data = lambda data, geo: data.sel(geo=geo)
+
+    if cost_per_media_unit_artifact is None:
+      raise ValueError(
+          'EDAOutcome does not contain the Cost Per Media Unit artifact for the'
+          ' requested geo type.'
+      )
+
+    final_charts = []
+    for geo_to_plot in geos_to_plot:
+      cost_plot_data = _process_stacked_ds(
+          eda_engine.stack_variables(select_data(cost_data, geo_to_plot)),
+          include_time=True,
+      )
+      media_unit_plot_data = _process_stacked_ds(
+          eda_engine.stack_variables(select_data(media_unit_data, geo_to_plot)),
+          include_time=True,
+      )
+      cost_per_media_unit_plot_data = _process_stacked_ds(
+          select_data(
+              cost_per_media_unit_artifact.cost_per_media_unit_da, geo_to_plot
+          )
+          .rename({constants.CHANNEL: eda_constants.VARIABLE})
+          .rename(eda_constants.VALUE),
+          include_time=True,
+      )
+
+      channels_to_plot = cost_per_media_unit_plot_data[
+          eda_constants.VARIABLE
+      ].unique()
+      current_geo_charts = []
+      for channel_to_plot in channels_to_plot:
+        current_geo_charts.append(
+            alt.hconcat(
+                _plot_time_series(
+                    cost_plot_data[
+                        cost_plot_data[eda_constants.VARIABLE]
+                        == channel_to_plot
+                    ],
+                    f'{constants.COST} for {channel_to_plot}',
+                    constants.TIME,
+                    constants.COST,
+                ),
+                _plot_time_series(
+                    media_unit_plot_data[
+                        media_unit_plot_data[eda_constants.VARIABLE]
+                        == channel_to_plot
+                    ],
+                    f'{constants.MEDIA_UNITS} for {channel_to_plot}',
+                    constants.TIME,
+                    constants.MEDIA_UNITS,
+                ),
+                _plot_time_series(
+                    cost_per_media_unit_plot_data[
+                        cost_per_media_unit_plot_data[eda_constants.VARIABLE]
+                        == channel_to_plot
+                    ],
+                    f'{eda_constants.COST_PER_MEDIA_UNIT} for'
+                    f' {channel_to_plot}',
+                    constants.TIME,
+                    eda_constants.COST_PER_MEDIA_UNIT,
+                ),
+            )
+        )
+      final_charts.append(
+          alt.vconcat(*current_geo_charts).properties(
+              title=(
+                  'Time series of cost, media_units, and cost per'
+                  f' media unit of media channels for {geo_to_plot}'
+              )
+          )
+      )
+    return (
+        alt.vconcat(*final_charts)
+        .resolve_legend(color='independent')
+        .configure_axis(labelAngle=315)
+        .configure_title(anchor='start')
+        .configure_view(stroke=None)
+    )
+
+  def plot_relative_spend_share_barchart(self, geos: Geos = 1) -> alt.Chart:
     """Plots the bar chart of the relative spend share of each paid media channel."""
     return self._plot_barcharts(
         geos,
@@ -75,7 +178,7 @@ class MeridianEDA:
     )
 
   def plot_relative_impression_share_barchart(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+      self, geos: Geos = 1
   ) -> alt.Chart:
     """Plots the bar chart of the relative impression share of each media channel."""
 
@@ -92,9 +195,7 @@ class MeridianEDA:
         ),
     )
 
-  def plot_kpi_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_kpi_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for KPI variation."""
     return self._plot_boxplots(
         geos,
@@ -109,9 +210,7 @@ class MeridianEDA:
         .assign(var=constants.KPI),
     )
 
-  def plot_frequency_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_frequency_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for frequency variation."""
     return self._plot_boxplots(
         geos,
@@ -125,9 +224,7 @@ class MeridianEDA:
         ),
     )
 
-  def plot_reach_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_reach_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for reach variation."""
     return self._plot_boxplots(
         geos,
@@ -141,9 +238,7 @@ class MeridianEDA:
         ),
     )
 
-  def plot_non_media_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_non_media_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for non-media treatments variation."""
     return self._plot_boxplots(
         geos,
@@ -158,7 +253,7 @@ class MeridianEDA:
     )
 
   def plot_treatments_without_non_media_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
+      self, geos: Geos = 1
   ) -> alt.Chart:
     """Plots the boxplot for treatments variation excluding non-media treatments."""
     return self._plot_boxplots(
@@ -171,9 +266,7 @@ class MeridianEDA:
         lambda data: _process_stacked_ds(eda_engine.stack_variables(data)),
     )
 
-  def plot_controls_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_controls_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for controls variation."""
     return self._plot_boxplots(
         geos,
@@ -187,9 +280,7 @@ class MeridianEDA:
         ),
     )
 
-  def plot_spend_boxplot(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_spend_boxplot(self, geos: Geos = 1) -> alt.Chart:
     """Plots the boxplot for spend variation."""
     return self._plot_boxplots(
         geos,
@@ -203,7 +294,7 @@ class MeridianEDA:
 
   def _plot_barcharts(
       self,
-      geos: Union[int, list[str], Literal['nationalize']],
+      geos: Geos,
       title_prefix: str,
       x_axis_title: str,
       y_axis_title: str,
@@ -255,7 +346,7 @@ class MeridianEDA:
 
   def _plot_boxplots(
       self,
-      geos: Union[int, list[str], Literal['nationalize']],
+      geos: Geos,
       title_prefix: str,
       x_axis_title: str,
       y_axis_title: str,
@@ -318,16 +409,14 @@ class MeridianEDA:
     )
     return final_chart
 
-  def plot_pairwise_correlation(
-      self, geos: Union[int, list[str], Literal['nationalize']] = 1
-  ) -> alt.Chart:
+  def plot_pairwise_correlation(self, geos: Geos = 1) -> alt.Chart:
     """Plots the Pairwise Correlation data.
 
     Args:
       geos: Defines which geos to plot. - int: The number of top geos to plot,
-        ranked by population. - list[str]: A specific list of geo names to plot.
-        - 'nationalize': Aggregates all geos into a single national view.
-        Defaults to 1 (plotting the top geo). If the data is already at a
+        ranked by population. - Sequence[str]: A specific sequence of geo names
+        to plot. - 'nationalize': Aggregates all geos into a single national
+        view. Defaults to 1 (plotting the top geo). If the data is already at a
         national level, this parameter is ignored and a national plot is
         generated.
 
@@ -453,9 +542,7 @@ class MeridianEDA:
     # TODO: Implement.
     raise NotImplementedError()
 
-  def _validate_and_get_geos_to_plot(
-      self, geos: Union[int, list[str], Literal['nationalize']]
-  ) -> list[str]:
+  def _validate_and_get_geos_to_plot(self, geos: Geos) -> Sequence[str]:
     """Validates and returns the geos to plot."""
     ## Validate
     is_national = self._meridian.is_national
@@ -493,10 +580,33 @@ def _calculate_relative_shares(df: pd.DataFrame) -> pd.DataFrame:
   )
 
 
-def _process_stacked_ds(data: xr.DataArray) -> pd.DataFrame:
+def _process_stacked_ds(
+    data: xr.DataArray, include_time: bool = False
+) -> pd.DataFrame:
   """Processes a stacked Dataset so it can be plotted by Altair."""
+  cols = [eda_constants.VARIABLE, eda_constants.VALUE]
+  if include_time:
+    cols.append(constants.TIME)
+  return data.rename(eda_constants.VALUE).to_dataframe().reset_index()[cols]
+
+
+def _plot_time_series(
+    data: pd.DataFrame, title: str, x_axis_title: str, y_axis_title: str
+) -> alt.Chart:
+  """Helper function for plotting time series charts."""
   return (
-      data.rename(eda_constants.VALUE)
-      .to_dataframe()
-      .reset_index()[[eda_constants.VARIABLE, eda_constants.VALUE]]
+      alt.Chart(data)
+      .mark_line(opacity=1)
+      .encode(
+          x=alt.X(
+              f'{constants.TIME}:T',
+              axis=alt.Axis(grid=True, title=x_axis_title, format='%Y-%m'),
+          ),
+          y=alt.Y(
+              f'{eda_constants.VALUE}:Q',
+              axis=alt.Axis(grid=True, title=y_axis_title),
+              scale=alt.Scale(zero=False),
+          ),
+      )
+      .properties(title=alt.TitleParams(text=title, anchor='middle'))
   )
