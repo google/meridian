@@ -19,6 +19,7 @@ from collections.abc import Collection, Sequence
 import copy
 import dataclasses
 import math
+import pprint
 from typing import Any
 from meridian import constants
 from meridian.data import input_data
@@ -289,6 +290,22 @@ class AKS:
     penalty = geo_scaling_factor * base_penalty
 
     aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
+    # Ensure defined knot range covers at least one of the available knot sets.
+    available_knots_lengths = np.unique(
+        np.fromiter(
+            (len(x) for x in aspline[constants.KNOTS_SELECTED]), dtype=int
+        )
+    ).tolist()
+    if not any(
+        min_internal_knots <= k <= max_internal_knots
+        for k in available_knots_lengths
+    ):
+      raise ValueError(
+          f'The range [{min_internal_knots}, {max_internal_knots}] does not'
+          ' contain any of the available knot lengths:'
+          f' {pprint.pformat(available_knots_lengths)}'
+      )
+
     n_knots = np.array([len(x) for x in aspline[constants.KNOTS_SELECTED]])
     feasible_idx = np.where(
         (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)

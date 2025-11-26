@@ -879,6 +879,29 @@ class AKSTest(parameterized.TestCase):
     actual_knots, _ = aks_result.knots, aks_result.model
     self.assertListEqual(actual_knots.tolist(), expected_knots)
 
+  def test_aks_user_provided_min_max_internal_knots_raises(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The range [10, 10] does not contain any of the available knot lengths:"
+        " [0, 1, 4, 6, 8, 22, 39, 44, 48, 51, 55, 60, 62, 69, 70, 79, 80, 84,"
+        " 87, 89]",
+    ):
+      aks_obj.automatic_knot_selection(
+          min_internal_knots=10,
+          max_internal_knots=10,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()
