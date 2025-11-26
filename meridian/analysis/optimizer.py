@@ -1174,10 +1174,12 @@ class OptimizationResults:
       diff = self.optimized_data.total_cpik - self.nonoptimized_data.total_cpik
       non_optimized_performance_title = summary_text.NON_OPTIMIZED_CPIK_LABEL
       non_optimized_performance_stat = (
-          f'${self.nonoptimized_data.total_cpik:.2f}'
+          f'{currency}{self.nonoptimized_data.total_cpik:.2f}'
       )
       optimized_performance_title = summary_text.OPTIMIZED_CPIK_LABEL
-      optimized_performance_stat = f'${self.optimized_data.total_cpik:.2f}'
+      optimized_performance_stat = (
+          f'{currency}{self.optimized_data.total_cpik:.2f}'
+      )
       optimized_performance_diff = formatter.compact_number(diff, 2, currency)
     non_optimized_performance = formatter.StatsSpec(
         title=non_optimized_performance_title,

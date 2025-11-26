@@ -3830,7 +3830,9 @@ class OptimizerOutputTest(parameterized.TestCase):
     return alt.Chart(pd.DataFrame()).mark_point()
 
   def _get_output_summary_html_dom(
-      self, optimization_results: optimizer.OptimizationResults
+      self,
+      optimization_results: optimizer.OptimizationResults,
+      currency: str = c.DEFAULT_CURRENCY,
   ) -> ET.Element:
     outfile_path = tempfile.mkdtemp() + '/optimization'
     outfile_name = 'optimization.html'
@@ -3838,7 +3840,7 @@ class OptimizerOutputTest(parameterized.TestCase):
 
     try:
       optimization_results.output_optimization_summary(
-          outfile_name, outfile_path
+          outfile_name, outfile_path, currency=currency
       )
       with open(fpath, 'r') as f:
         written_html_dom = ET.parse(f)
@@ -4123,6 +4125,67 @@ class OptimizerOutputTest(parameterized.TestCase):
       delta = analysis_test_utils.get_child_element(stats[index], 'delta').text
       self.assertIsNotNone(delta)
       self.assertEqual(delta.strip(), expected_delta)
+
+  def test_output_scenario_plan_card_stats_text_with_euro_currency(self):
+    summary_html_dom = self._get_output_summary_html_dom(
+        self.optimization_results, currency='€'
+    )
+    card = analysis_test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.SCENARIO_PLAN_CARD_ID},
+    )
+    stats_section = analysis_test_utils.get_child_element(card, 'stats-section')
+    stats = stats_section.findall('stats')
+    self.assertLen(stats, 6)
+    (non_optimized_budget, optimized_budget, _, _, _, _) = stats
+
+    with self.subTest('non_optimized_budget'):
+      stat = analysis_test_utils.get_child_element(
+          non_optimized_budget, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€600')
+
+    with self.subTest('optimized_budget'):
+      stat = analysis_test_utils.get_child_element(
+          optimized_budget, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€600')
+      delta = analysis_test_utils.get_child_element(
+          optimized_budget, 'delta'
+      ).text
+      self.assertIsNotNone(delta)
+      self.assertEqual(delta.strip(), '€0')
+
+    # Check CPIK with kpi output
+    summary_html_dom_kpi = self._get_output_summary_html_dom(
+        self.optimization_results_kpi_output, currency='€'
+    )
+    card_kpi = analysis_test_utils.get_child_element(
+        summary_html_dom_kpi,
+        'body/cards/card',
+        attribs={'id': summary_text.SCENARIO_PLAN_CARD_ID},
+    )
+    stats_section_kpi = analysis_test_utils.get_child_element(
+        card_kpi, 'stats-section'
+    )
+    stats_kpi = stats_section_kpi.findall('stats')
+    self.assertLen(stats_kpi, 6)
+    (_, _, non_optimized_cpik, optimized_cpik, _, _) = stats_kpi
+
+    with self.subTest('non_optimized_cpik'):
+      stat = analysis_test_utils.get_child_element(
+          non_optimized_cpik, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€0.79')
+
+    with self.subTest('optimized_cpik'):
+      stat = analysis_test_utils.get_child_element(optimized_cpik, 'stat').text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€0.72')
 
   def test_output_budget_allocation_card_text(self):
     summary_html_dom = self._get_output_summary_html_dom(
