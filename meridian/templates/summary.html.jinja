@@ -42,7 +42,9 @@ limitations under the License.
       </div>
     </div>
 
-    {% include "chips.html.jinja" %}
+    {% if start_date is defined and start_date %}
+      {% include "chips.html.jinja" %}
+    {% endif %}
 
     <cards>
       {# Each card is laid out in a grid. See; .card display layout. #}

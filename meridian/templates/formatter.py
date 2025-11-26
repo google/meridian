@@ -206,6 +206,17 @@ def create_template_env() -> jinja2.Environment:
   )
 
 
+def create_summary_html(
+    template_env: jinja2.Environment,
+    title: str,
+    cards: Sequence[str],
+) -> str:
+  """Creates the HTML snippet for the summary page."""
+  return template_env.get_template('summary.html.jinja').render(
+      title=title, cards=cards
+  )
+
+
 def create_card_html(
     template_env: jinja2.Environment,
     card_spec: CardSpec,

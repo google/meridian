@@ -92,6 +92,20 @@ class FormatterTest(parameterized.TestCase):
     formatted_number = formatter.compact_number(num, precision, currency)
     self.assertEqual(formatted_number, expected)
 
+  def test_create_summary_html(self):
+    template_env = formatter.create_template_env()
+    title = 'Integration Test Report'
+    cards = ['<card>Card 1</card>', '<card>Card 2</card>']
+
+    html_result = formatter.create_summary_html(template_env, title, cards)
+
+    # Since summary.html contains DOCTYPE (which breaks ElementTree XML parser),
+    # we verify the output using string assertions.
+    self.assertIn('<!DOCTYPE html>', html_result)
+    self.assertIn(title, html_result)
+    self.assertIn('<card>Card 1</card>', html_result)
+    self.assertIn('<card>Card 2</card>', html_result)
+
   def test_create_card_html_structure(self):
     template_env = formatter.create_template_env()
     card_spec = formatter.CardSpec(id='test_id', title='test_title')
