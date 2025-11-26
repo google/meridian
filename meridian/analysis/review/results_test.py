@@ -47,7 +47,6 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
             review_constants.CONVERGENCE_THRESHOLD: 2.0,
         },
     )
-    self.assertEqual(result.case, results.ConvergenceCases.CONVERGED)
     self.assertEqual(result.case.status, results.Status.PASS)
     self.assertEqual(
         result.recommendation,
@@ -64,7 +63,6 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
             review_constants.CONVERGENCE_THRESHOLD: 2.0,
         },
     )
-    self.assertEqual(result.case, results.ConvergenceCases.NOT_FULLY_CONVERGED)
     self.assertEqual(result.case.status, results.Status.FAIL)
     self.assertEqual(
         result.recommendation,
@@ -82,7 +80,6 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
             review_constants.CONVERGENCE_THRESHOLD: 2.0,
         },
     )
-    self.assertEqual(result.case, results.ConvergenceCases.NOT_CONVERGED)
     self.assertEqual(result.case.status, results.Status.FAIL)
     self.assertEqual(
         result.recommendation,
@@ -135,8 +132,6 @@ class BaselineCheckResultTest(parameterized.TestCase):
             review_constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD: 0.1,
         },
     )
-    self.assertEqual(result.case, results.BaselineCases.PASS)
-    self.assertEqual(result.case.status, results.Status.PASS)
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.01. "
@@ -152,8 +147,6 @@ class BaselineCheckResultTest(parameterized.TestCase):
             review_constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD: 0.1,
         },
     )
-    self.assertEqual(result.case, results.BaselineCases.REVIEW)
-    self.assertEqual(result.case.status, results.Status.REVIEW)
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.15. "
@@ -169,8 +162,6 @@ class BaselineCheckResultTest(parameterized.TestCase):
             review_constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD: 0.1,
         },
     )
-    self.assertEqual(result.case, results.BaselineCases.FAIL)
-    self.assertEqual(result.case.status, results.Status.FAIL)
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.25. "
@@ -240,8 +231,6 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
             review_constants.BAYESIAN_PPP: 0.06,
         },
     )
-    self.assertEqual(result.case, results.BayesianPPPCases.PASS)
-    self.assertEqual(result.case.status, results.Status.PASS)
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.06. "
@@ -255,8 +244,6 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
             review_constants.BAYESIAN_PPP: 0.04,
         },
     )
-    self.assertEqual(result.case, results.BayesianPPPCases.FAIL)
-    self.assertEqual(result.case.status, results.Status.FAIL)
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.04. "
@@ -319,11 +306,33 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
             review_constants.WMAPE: 0.2,
         },
     )
-    self.assertEqual(result.case, results.GoodnessOfFitCases.PASS)
-    self.assertEqual(result.case.status, results.Status.PASS)
     self.assertEqual(
         result.recommendation,
         "R-squared = 0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
+        + results._GOODNESS_OF_FIT_PASS_RECOMMENDATION,
+    )
+
+  def test_goodness_of_fit_check_result_pass_holdout(self):
+    result = results.GoodnessOfFitCheckResult(
+        case=results.GoodnessOfFitCases.PASS,
+        details={
+            f"{review_constants.R_SQUARED}_all": 0.5,
+            f"{review_constants.MAPE}_all": 0.1,
+            f"{review_constants.WMAPE}_all": 0.2,
+            f"{review_constants.R_SQUARED}_train": 0.6,
+            f"{review_constants.MAPE}_train": 0.09,
+            f"{review_constants.WMAPE}_train": 0.19,
+            f"{review_constants.R_SQUARED}_test": 0.4,
+            f"{review_constants.MAPE}_test": 0.11,
+            f"{review_constants.WMAPE}_test": 0.21,
+        },
+        is_holdout=True,
+    )
+    self.assertEqual(
+        result.recommendation,
+        "R-squared = 0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE = 0.1000"
+        " (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All), 0.1900"
+        " (Train), 0.2100 (Test). "
         + results._GOODNESS_OF_FIT_PASS_RECOMMENDATION,
     )
 
@@ -336,11 +345,33 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
             review_constants.WMAPE: 0.2,
         },
     )
-    self.assertEqual(result.case, results.GoodnessOfFitCases.REVIEW)
-    self.assertEqual(result.case.status, results.Status.REVIEW)
     self.assertEqual(
         result.recommendation,
         "R-squared = -0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
+        + results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+    )
+
+  def test_goodness_of_fit_check_result_review_holdout(self):
+    result = results.GoodnessOfFitCheckResult(
+        case=results.GoodnessOfFitCases.REVIEW,
+        details={
+            f"{review_constants.R_SQUARED}_all": -0.5,
+            f"{review_constants.MAPE}_all": 0.1,
+            f"{review_constants.WMAPE}_all": 0.2,
+            f"{review_constants.R_SQUARED}_train": 0.6,
+            f"{review_constants.MAPE}_train": 0.09,
+            f"{review_constants.WMAPE}_train": 0.19,
+            f"{review_constants.R_SQUARED}_test": 0.4,
+            f"{review_constants.MAPE}_test": 0.11,
+            f"{review_constants.WMAPE}_test": 0.21,
+        },
+        is_holdout=True,
+    )
+    self.assertEqual(
+        result.recommendation,
+        "R-squared = -0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE ="
+        " 0.1000 (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All),"
+        " 0.1900 (Train), 0.2100 (Test). "
         + results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
     )
 

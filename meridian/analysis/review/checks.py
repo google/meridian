@@ -28,6 +28,7 @@ from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
 from meridian.model import model
 import numpy as np
+import pandas as pd
 
 ConfigType = TypeVar("ConfigType", bound=configs.BaseConfig)
 ResultType = TypeVar("ResultType", bound=results.CheckResult)
@@ -207,6 +208,51 @@ class BayesianPPPCheck(
 # ==============================================================================
 # Check: Goodness of Fit
 # ==============================================================================
+def _set_details_from_gof_dataframe(
+    details: dict[str, float],
+    gof_df: pd.DataFrame,
+    geo_granularity: str,
+    suffix: str | None = None,
+) -> None:
+  """Sets the `details` variable of the GoodnessOfFitCheckResult.
+
+  This method takes a DataFrame containing goodness of fit metrics and pivots it
+  to a Series, which is then added to the `details` variable of the
+  `GoodnessOfFitCheckResult`.
+
+  Args:
+    details: A dictionary to store the goodness of fit metrics in.
+    gof_df: A DataFrame containing predictive accuracy of the whole data (if
+      holdout set is not used) of filtered to a single evaluation set ("all",
+      "train", or "test").
+    geo_granularity: The geo granularity of the data ("geo" or "national").
+    suffix: A suffix to add to the metric names (e.g., "all", "train", "test").
+      If None, the metrics are added without a suffix.
+  """
+  gof_metrics_pivoted = gof_df.pivot(
+      index=constants.GEO_GRANULARITY,
+      columns=constants.METRIC,
+      values=constants.VALUE,
+  )
+  gof_metrics_series = gof_metrics_pivoted.loc[geo_granularity]
+  if suffix is not None:
+    details[f"{review_constants.R_SQUARED}_{suffix}"] = gof_metrics_series[
+        constants.R_SQUARED
+    ]
+    details[f"{review_constants.MAPE}_{suffix}"] = gof_metrics_series[
+        constants.MAPE
+    ]
+    details[f"{review_constants.WMAPE}_{suffix}"] = gof_metrics_series[
+        constants.WMAPE
+    ]
+  else:
+    details[review_constants.R_SQUARED] = gof_metrics_series[
+        constants.R_SQUARED
+    ]
+    details[review_constants.MAPE] = gof_metrics_series[constants.MAPE]
+    details[review_constants.WMAPE] = gof_metrics_series[constants.WMAPE]
+
+
 class GoodnessOfFitCheck(
     BaseCheck[configs.GoodnessOfFitConfig, results.GoodnessOfFitCheckResult]
 ):
@@ -221,38 +267,43 @@ class GoodnessOfFitCheck(
     )
 
     gof_metrics = gof_df[gof_df[constants.GEO_GRANULARITY] == geo_granularity]
-    if constants.EVALUATION_SET_VAR in gof_df.columns:
-      gof_metrics = gof_metrics[
-          gof_metrics[constants.EVALUATION_SET_VAR] == constants.ALL_DATA
-      ]
+    is_holdout = constants.EVALUATION_SET_VAR in gof_df.columns
 
-    gof_metrics_pivoted = gof_metrics.pivot(
-        index=constants.GEO_GRANULARITY,
-        columns=constants.METRIC,
-        values=constants.VALUE,
+    details = {}
+    case = results.GoodnessOfFitCases.PASS
+
+    if is_holdout:
+      for evaluation_set, suffix in [
+          (constants.ALL_DATA, review_constants.ALL_SUFFIX),
+          (constants.TRAIN, review_constants.TRAIN_SUFFIX),
+          (constants.TEST, review_constants.TEST_SUFFIX),
+      ]:
+        set_metrics = gof_metrics[
+            gof_metrics[constants.EVALUATION_SET_VAR] == evaluation_set
+        ]
+        _set_details_from_gof_dataframe(
+            details=details,
+            gof_df=set_metrics,
+            geo_granularity=geo_granularity,
+            suffix=suffix,
+        )
+        if details[f"{review_constants.R_SQUARED}_{suffix}"] <= 0:
+          case = results.GoodnessOfFitCases.REVIEW
+    else:
+      _set_details_from_gof_dataframe(
+          details=details,
+          gof_df=gof_metrics,
+          geo_granularity=geo_granularity,
+          suffix=None,
+      )
+      if details[review_constants.R_SQUARED] <= 0:
+        case = results.GoodnessOfFitCases.REVIEW
+
+    return results.GoodnessOfFitCheckResult(
+        case=case,
+        details=details,
+        is_holdout=is_holdout,
     )
-    gof_metrics_series = gof_metrics_pivoted.loc[geo_granularity]
-
-    r_squared = gof_metrics_series[constants.R_SQUARED]
-    mape = gof_metrics_series[constants.MAPE]
-    wmape = gof_metrics_series[constants.WMAPE]
-
-    details = {
-        review_constants.R_SQUARED: r_squared,
-        review_constants.MAPE: mape,
-        review_constants.WMAPE: wmape,
-    }
-
-    if r_squared > 0:
-      return results.GoodnessOfFitCheckResult(
-          case=results.GoodnessOfFitCases.PASS,
-          details=details,
-      )
-    else:  # r_squared <= 0
-      return results.GoodnessOfFitCheckResult(
-          case=results.GoodnessOfFitCases.REVIEW,
-          details=details,
-      )
 
 
 # ==============================================================================

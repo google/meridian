@@ -878,9 +878,15 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
 
   def _get_gof_dataset(
       self,
-      r_squared: float,
-      mape: float,
-      wmape: float,
+      r_squared_all: float,
+      mape_all: float,
+      wmape_all: float,
+      r_squared_train: float,
+      mape_train: float,
+      wmape_train: float,
+      r_squared_test: float,
+      mape_test: float,
+      wmape_test: float,
       is_national: bool = False,
   ) -> xr.Dataset:
     dims = (
@@ -890,15 +896,15 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
     )
     if is_national:
       data = np.array([
-          [[1.0, r_squared], [1.0, 1.0], [1.0, 0.1]],
-          [[1.0, mape], [1.0, 1.0], [1.0, 0.2]],
-          [[1.0, wmape], [1.0, 1.0], [1.0, 0.3]],
+          [[1.0, r_squared_all], [1.0, r_squared_train], [1.0, r_squared_test]],
+          [[1.0, mape_all], [1.0, mape_train], [1.0, mape_test]],
+          [[1.0, wmape_all], [1.0, wmape_train], [1.0, wmape_test]],
       ])
     else:
       data = np.array([
-          [[r_squared, 1.0], [1.0, 1.0], [0.1, 1.0]],
-          [[mape, 1.0], [1.0, 1.0], [0.2, 1.0]],
-          [[wmape, 1.0], [1.0, 1.0], [0.3, 1.0]],
+          [[r_squared_all, 1.0], [r_squared_train, 1.0], [r_squared_test, 1.0]],
+          [[mape_all, 1.0], [mape_train, 1.0], [mape_test, 1.0]],
+          [[wmape_all, 1.0], [wmape_train, 1.0], [wmape_test, 1.0]],
       ])
     coords = {
         constants.METRIC: [
@@ -906,12 +912,12 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
             constants.MAPE,
             constants.WMAPE,
         ],
-        constants.GEO_GRANULARITY: [constants.GEO, constants.NATIONAL],
         constants.EVALUATION_SET_VAR: [
             constants.ALL_DATA,
             constants.TRAIN,
             constants.TEST,
         ],
+        constants.GEO_GRANULARITY: [constants.GEO, constants.NATIONAL],
     }
     return xr.Dataset(
         data_vars={constants.VALUE: (dims, data)},
@@ -957,23 +963,39 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="pass_geo",
-          r_squared=0.5,
+          r_squared_all=0.5,
+          r_squared_train=0.6,
+          r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
           is_national=False,
           expected_case=results.GoodnessOfFitCases.PASS,
       ),
       dict(
-          testcase_name="review_zero_geo",
-          r_squared=0.0,
+          testcase_name="review_zero_all_geo",
+          r_squared_all=0.0,
+          r_squared_train=0.6,
+          r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
           is_national=False,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
       dict(
-          testcase_name="review_negative_geo",
-          r_squared=-0.1,
+          testcase_name="review_negative_train_geo",
+          r_squared_all=0.5,
+          r_squared_train=-0.1,
+          r_squared_test=0.4,
+          mape=0.1,
+          wmape=0.1,
+          is_national=False,
+          expected_case=results.GoodnessOfFitCases.REVIEW,
+      ),
+      dict(
+          testcase_name="review_negative_test_geo",
+          r_squared_all=0.5,
+          r_squared_train=0.6,
+          r_squared_test=-0.1,
           mape=0.1,
           wmape=0.1,
           is_national=False,
@@ -981,34 +1003,48 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="pass_national",
-          r_squared=0.5,
+          r_squared_all=0.5,
+          r_squared_train=0.6,
+          r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
           is_national=True,
           expected_case=results.GoodnessOfFitCases.PASS,
       ),
       dict(
-          testcase_name="review_zero_national",
-          r_squared=0.0,
-          mape=0.1,
-          wmape=0.1,
-          is_national=True,
-          expected_case=results.GoodnessOfFitCases.REVIEW,
-      ),
-      dict(
-          testcase_name="review_negative_national",
-          r_squared=-0.1,
+          testcase_name="review_negative_test_national",
+          r_squared_all=0.5,
+          r_squared_train=0.6,
+          r_squared_test=-0.1,
           mape=0.1,
           wmape=0.1,
           is_national=True,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
   )
-  def test_goodness_of_fit_check(
-      self, r_squared, mape, wmape, is_national, expected_case
+  def test_goodness_of_fit_check_holdout(
+      self,
+      r_squared_all,
+      r_squared_train,
+      r_squared_test,
+      mape,
+      wmape,
+      is_national,
+      expected_case,
   ):
     self.meridian.n_geos = 1 if is_national else 2
-    gof_dataset = self._get_gof_dataset(r_squared, mape, wmape, is_national)
+    gof_dataset = self._get_gof_dataset(
+        r_squared_all=r_squared_all,
+        mape_all=mape,
+        wmape_all=wmape,
+        r_squared_train=r_squared_train,
+        mape_train=mape,
+        wmape_train=wmape,
+        r_squared_test=r_squared_test,
+        mape_test=mape,
+        wmape_test=wmape,
+        is_national=is_national,
+    )
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
     gof_check = checks.GoodnessOfFitCheck(
@@ -1016,12 +1052,16 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
     )
     result = gof_check.run()
     self.assertEqual(result.case, expected_case)
-    self.assertIn(f"R-squared = {r_squared:.4f}", result.recommendation)
-    self.assertIn(f"MAPE = {mape:.4f}", result.recommendation)
-    self.assertIn(f"wMAPE = {wmape:.4f}", result.recommendation)
+    self.assertIn(
+        f"R-squared = {r_squared_all:.4f} (All)", result.recommendation
+    )
+    self.assertIn(f"{r_squared_train:.4f} (Train)", result.recommendation)
+    self.assertIn(f"{r_squared_test:.4f} (Test)", result.recommendation)
+    self.assertIn(f"MAPE = {mape:.4f} (All)", result.recommendation)
+    self.assertIn(f"wMAPE = {wmape:.4f} (All)", result.recommendation)
     if expected_case == results.GoodnessOfFitCases.PASS:
-      self.assertIn(
-          results._GOODNESS_OF_FIT_PASS_RECOMMENDATION, result.recommendation
+      self.assertEndsWith(
+          result.recommendation, results._GOODNESS_OF_FIT_PASS_RECOMMENDATION
       )
     else:
       self.assertIn(

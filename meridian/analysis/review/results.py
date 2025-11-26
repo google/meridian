@@ -319,18 +319,12 @@ class GoodnessOfFitCases(ModelCheckCase, enum.Enum):
 
   PASS = (
       Status.PASS,
-      (
-          "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE ="
-          " {wmape:.4f}."
-      ),
+      "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE = {wmape:.4f}",
       _GOODNESS_OF_FIT_PASS_RECOMMENDATION,
   )
   REVIEW = (
       Status.REVIEW,
-      (
-          "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE ="
-          " {wmape:.4f}."
-      ),
+      "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE = {wmape:.4f}",
       _GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
   )
 
@@ -348,9 +342,28 @@ class GoodnessOfFitCheckResult(CheckResult):
   """The immutable result of the Goodness of Fit Check."""
 
   case: GoodnessOfFitCases
+  is_holdout: bool = False
 
   def __post_init__(self):
-    if any(
+    if self.is_holdout:
+      required_keys = []
+      for suffix in [
+          constants.ALL_SUFFIX,
+          constants.TRAIN_SUFFIX,
+          constants.TEST_SUFFIX,
+      ]:
+        required_keys.extend([
+            f"{constants.R_SQUARED}_{suffix}",
+            f"{constants.MAPE}_{suffix}",
+            f"{constants.WMAPE}_{suffix}",
+        ])
+      if any(key not in self.details for key in required_keys):
+        raise ValueError(
+            "The message template is missing required formatting arguments for"
+            f" holdout case. Required keys: {required_keys}. Details:"
+            f" {self.details}."
+        )
+    elif any(
         key not in self.details
         for key in (
             constants.R_SQUARED,
@@ -363,6 +376,24 @@ class GoodnessOfFitCheckResult(CheckResult):
           " r_squared, mape, wmape. Details:"
           f" {self.details}."
       )
+
+  @property
+  def recommendation(self) -> str:
+    """Returns the check result message."""
+    if self.is_holdout:
+      report_str = (
+          "R-squared = {r_squared_all:.4f} (All),"
+          " {r_squared_train:.4f} (Train), {r_squared_test:.4f} (Test); MAPE"
+          " = {mape_all:.4f} (All), {mape_train:.4f} (Train),"
+          " {mape_test:.4f} (Test); wMAPE = {wmape_all:.4f} (All),"
+          " {wmape_train:.4f} (Train), {wmape_test:.4f} (Test)".format(
+              **self.details
+          )
+      )
+    else:
+      report_str = self.case.message_template.format(**self.details)
+
+    return f"{report_str}. {self.case.recommendation}"
 
 
 # ==============================================================================
