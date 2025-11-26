@@ -5610,6 +5610,37 @@ class EDAEngineTest(
         national_artifact.vif_da.values, expected_national_vif
     )
 
+  def test_check_vif_with_constant_variable(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    shape = (_N_TIMES_VIF,)
+    v1 = _RNG.random(shape)
+    v2 = np.ones(shape)
+    v3 = _RNG.random(shape)
+    data_np = np.stack([v1, v2, v3], axis=-1)
+    data = (
+        _create_data_array_with_var_dim(data_np, "VIF", "var")
+        .rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
+        .assign_coords(
+            {eda_engine._STACK_VAR_COORD_NAME: ["var_1", "var_2", "var_3"]}
+        )
+    )
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
+    )
+
+    outcome = engine.check_national_vif()
+
+    self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
+    self.assertEqual(
+        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+    )
+    self.assertLen(outcome.analysis_artifacts, 1)
+
+    national_artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
+    self.assertEqual(national_artifact.vif_da.sel(var="var_2"), 0)
+
   @parameterized.named_parameters(
       dict(
           testcase_name="national_model",
@@ -6312,7 +6343,7 @@ class EDAEngineTest(
         outcomes[1].findings[0].severity, eda_outcome.EDASeverity.ERROR
     )
     self.assertIn(
-        "An error occurred during check check_vif: Test Error",
+        "An error occurred during running check_vif: ValueError('Test Error')",
         outcomes[1].findings[0].explanation,
     )
 
@@ -6325,7 +6356,8 @@ class EDAEngineTest(
         outcomes[2].findings[0].severity, eda_outcome.EDASeverity.ERROR
     )
     self.assertIn(
-        "An error occurred during check check_pairwise_corr: Another Error",
+        "An error occurred during running check_pairwise_corr:"
+        " TypeError('Another Error')",
         outcomes[2].findings[0].explanation,
     )
 

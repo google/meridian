@@ -361,7 +361,9 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
   """
   num_vars = input_da.sizes[var_dim]
   np_data = input_da.values.reshape(-1, num_vars)
-  np_data_with_const = sm.add_constant(np_data, prepend=True)
+  np_data_with_const = sm.add_constant(
+      np_data, prepend=True, has_constant='add'
+  )
 
   # Compute VIF for each variable excluding const which is the first one in the
   # 'variable' dimension.
@@ -2094,7 +2096,9 @@ class EDAEngine:
       except Exception as e:  # pylint: disable=broad-except
         error_finding = eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.ERROR,
-            explanation=f'An error occurred during check {check.__name__}: {e}',
+            explanation=(
+                f'An error occurred during running {check.__name__}: {e!r}'
+            ),
         )
         outcomes.append(
             eda_outcome.EDAOutcome(

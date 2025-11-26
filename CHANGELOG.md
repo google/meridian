@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fixed an out-of-bounds bug in EDA's VIF check.
+* Added cost per media unit checks to EDA.
 * Add support for holdout set in `GoodnessOfFitCheck`.
 * Introduce modules needed for Meridian Scenario Planner and add
 `scenarioplanner` extra.
