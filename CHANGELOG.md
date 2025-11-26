@@ -26,8 +26,6 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Fixed an out-of-bounds bug in EDA's VIF check.
 * Added cost per media unit checks to EDA.
 * Add support for holdout set in `GoodnessOfFitCheck`.
-* Introduce modules needed for Meridian Scenario Planner and add
-`scenarioplanner` extra.
 * Add support for python 3.13 and tensorflow 2.20.
 
 ## [1.3.1] - 2025-11-12
