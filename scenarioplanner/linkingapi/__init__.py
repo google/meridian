@@ -29,8 +29,8 @@ Typical Usage:
 Example:
 
 ```python
-from lookerstudio.linkingapi import url_generator
-from lookerstudio.converters import sheets
+from scenarioplanner.linkingapi import url_generator
+from scenarioplanner.converters import sheets
 
 # Generate the URL
 looker_studio_report_url = url_generator.create_report_url(

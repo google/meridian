@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Constants shared for the Linking API usage for the Meridian UI.
+"""Constants shared for the Linking API usage for the Meridian Scenario Planner.
 
 Defines constants used in the URL generation process, such as API endpoints and
 parameter names.
