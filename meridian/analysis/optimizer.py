@@ -1340,8 +1340,6 @@ class BudgetOptimizer:
       new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      # TODO: b/409550413 - Remove this argument.
-      selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
       fixed_budget: bool = True,
@@ -1434,9 +1432,6 @@ class BudgetOptimizer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Deprecated. Tuple containing the start and end time
-        dimension coordinates for the duration to run the optimization on.
-        Please Use `start_date` and `end_date` instead.
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format. Default is the first time period of `Meridian.InputData.time` if
         `new_data` is not provided; otherwise it is the first time period of
@@ -1510,17 +1505,6 @@ class BudgetOptimizer:
       An `OptimizationResults` object containing optimized budget allocation
       datasets, along with some of the intermediate values used to derive them.
     """
-    if selected_times is not None:
-      warnings.warn(
-          '`selected_times` is deprecated. Please use `start_date` and'
-          ' `end_date` instead.',
-          DeprecationWarning,
-          stacklevel=2,
-      )
-      deprecated_start_date, deprecated_end_date = selected_times
-      start_date = start_date or deprecated_start_date
-      end_date = end_date or deprecated_end_date
-
     _validate_budget(
         fixed_budget=fixed_budget,
         budget=budget,
@@ -1961,8 +1945,6 @@ class BudgetOptimizer:
       new_data: xr.Dataset | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      # TODO: b/409550413 - Remove this argument.
-      selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
       budget: float | None = None,
@@ -2003,8 +1985,6 @@ class BudgetOptimizer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Deprecated. Tuple containing the start and end time
-        dimension coordinates. Please Use `start_date` and `end_date` instead.
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format. Default is `None`, i.e. the first time period.
       end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
@@ -2063,16 +2043,6 @@ class BudgetOptimizer:
       new_data = analyzer_module.DataTensors()
     if selected_geos is not None and not selected_geos:
       raise ValueError('`selected_geos` must not be empty.')
-    if selected_times is not None:
-      warnings.warn(
-          '`selected_times` is deprecated. Please use `start_date` and'
-          ' `end_date` instead.',
-          DeprecationWarning,
-          stacklevel=2,
-      )
-      deprecated_start_date, deprecated_end_date = selected_times
-      start_date = start_date or deprecated_start_date
-      end_date = end_date or deprecated_end_date
 
     required_tensors = c.PERFORMANCE_DATA + (c.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
