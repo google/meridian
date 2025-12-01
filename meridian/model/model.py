@@ -28,6 +28,7 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
+from meridian.model import context
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import posterior_sampler
@@ -95,6 +96,7 @@ class Meridian:
   """Contains the main functionality for fitting the Meridian MMM model.
 
   Attributes:
+    model_context: A `ModelContext` object containing model context.
     input_data: An `InputData` object containing the input data for the model.
     model_spec: A `ModelSpec` object containing the model specification.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
@@ -168,8 +170,9 @@ class Meridian:
       ) = None,  # for deserializer use only
       eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
-    self._input_data = input_data
-    self._model_spec = model_spec if model_spec else spec.ModelSpec()
+    self.model_context = context.ModelContext(
+        input_data, model_spec if model_spec else spec.ModelSpec()
+    )
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
@@ -185,7 +188,6 @@ class Meridian:
           unique_sigma_for_each_geo=self.model_spec.unique_sigma_for_each_geo,
       )
     self._warn_setting_ignored_priors()
-    self._set_total_media_contribution_prior = False
     self._validate_mroi_priors_non_revenue()
     self._validate_roi_priors_non_revenue()
     self._check_for_negative_effects()
@@ -195,11 +197,11 @@ class Meridian:
 
   @property
   def input_data(self) -> data.InputData:
-    return self._input_data
+    return self.model_context.input_data
 
   @property
   def model_spec(self) -> spec.ModelSpec:
-    return self._model_spec
+    return self.model_context.model_spec
 
   @property
   def inference_data(self) -> az.InferenceData:
@@ -217,298 +219,145 @@ class Meridian:
   def eda_outcomes(self) -> Sequence[eda_outcome.EDAOutcome]:
     return self.eda_engine.run_all_critical_checks()
 
-  @functools.cached_property
+  @property
   def media_tensors(self) -> media.MediaTensors:
-    return media.build_media_tensors(self.input_data, self.model_spec)
+    return self.model_context.media_tensors
 
-  @functools.cached_property
+  @property
   def rf_tensors(self) -> media.RfTensors:
-    return media.build_rf_tensors(self.input_data, self.model_spec)
+    return self.model_context.rf_tensors
 
-  @functools.cached_property
+  @property
   def organic_media_tensors(self) -> media.OrganicMediaTensors:
-    return media.build_organic_media_tensors(self.input_data)
+    return self.model_context.organic_media_tensors
 
-  @functools.cached_property
+  @property
   def organic_rf_tensors(self) -> media.OrganicRfTensors:
-    return media.build_organic_rf_tensors(self.input_data)
+    return self.model_context.organic_rf_tensors
 
-  @functools.cached_property
+  @property
   def kpi(self) -> backend.Tensor:
-    return backend.to_tensor(self.input_data.kpi, dtype=backend.float32)
+    return self.model_context.kpi
 
-  @functools.cached_property
+  @property
   def revenue_per_kpi(self) -> backend.Tensor | None:
-    if self.input_data.revenue_per_kpi is None:
-      return None
-    return backend.to_tensor(
-        self.input_data.revenue_per_kpi, dtype=backend.float32
-    )
+    return self.model_context.revenue_per_kpi
 
-  @functools.cached_property
+  @property
   def controls(self) -> backend.Tensor | None:
-    if self.input_data.controls is None:
-      return None
-    return backend.to_tensor(self.input_data.controls, dtype=backend.float32)
+    return self.model_context.controls
 
-  @functools.cached_property
+  @property
   def non_media_treatments(self) -> backend.Tensor | None:
-    if self.input_data.non_media_treatments is None:
-      return None
-    return backend.to_tensor(
-        self.input_data.non_media_treatments, dtype=backend.float32
-    )
+    return self.model_context.non_media_treatments
 
-  @functools.cached_property
+  @property
   def population(self) -> backend.Tensor:
-    return backend.to_tensor(self.input_data.population, dtype=backend.float32)
+    return self.model_context.population
 
-  @functools.cached_property
+  @property
   def total_spend(self) -> backend.Tensor:
-    return backend.to_tensor(
-        self.input_data.get_total_spend(), dtype=backend.float32
-    )
+    return self.model_context.total_spend
 
-  @functools.cached_property
+  @property
   def total_outcome(self) -> backend.Tensor:
-    return backend.to_tensor(
-        self.input_data.get_total_outcome(), dtype=backend.float32
-    )
+    return self.model_context.total_outcome
 
   @property
   def n_geos(self) -> int:
-    return len(self.input_data.geo)
+    return self.model_context.n_geos
 
   @property
   def n_media_channels(self) -> int:
-    if self.input_data.media_channel is None:
-      return 0
-    return len(self.input_data.media_channel)
+    return self.model_context.n_media_channels
 
   @property
   def n_rf_channels(self) -> int:
-    if self.input_data.rf_channel is None:
-      return 0
-    return len(self.input_data.rf_channel)
+    return self.model_context.n_rf_channels
 
   @property
   def n_organic_media_channels(self) -> int:
-    if self.input_data.organic_media_channel is None:
-      return 0
-    return len(self.input_data.organic_media_channel)
+    return self.model_context.n_organic_media_channels
 
   @property
   def n_organic_rf_channels(self) -> int:
-    if self.input_data.organic_rf_channel is None:
-      return 0
-    return len(self.input_data.organic_rf_channel)
+    return self.model_context.n_organic_rf_channels
 
   @property
   def n_controls(self) -> int:
-    if self.input_data.control_variable is None:
-      return 0
-    return len(self.input_data.control_variable)
+    return self.model_context.n_controls
 
   @property
   def n_non_media_channels(self) -> int:
-    if self.input_data.non_media_channel is None:
-      return 0
-    return len(self.input_data.non_media_channel)
+    return self.model_context.n_non_media_channels
 
   @property
   def n_times(self) -> int:
-    return len(self.input_data.time)
+    return self.model_context.n_times
 
   @property
   def n_media_times(self) -> int:
-    return len(self.input_data.media_time)
+    return self.model_context.n_media_times
 
   @property
   def is_national(self) -> bool:
-    return self.n_geos == 1
+    return self.model_context.is_national
 
-  @functools.cached_property
+  @property
   def knot_info(self) -> knots.KnotInfo:
-    return knots.get_knot_info(
-        n_times=self.n_times,
-        knots=self.model_spec.knots,
-        enable_aks=self.model_spec.enable_aks,
-        data=self.input_data,
-        is_national=self.is_national,
-    )
+    return self.model_context.knot_info
 
-  @functools.cached_property
+  @property
   def controls_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
-    """Returns a `CenteringAndScalingTransformer` for controls, if it exists."""
-    if self.controls is None:
-      return None
+    return self.model_context.controls_transformer
 
-    if self.model_spec.control_population_scaling_id is not None:
-      controls_population_scaling_id = backend.to_tensor(
-          self.model_spec.control_population_scaling_id, dtype=backend.bool_
-      )
-    else:
-      controls_population_scaling_id = None
-
-    return transformers.CenteringAndScalingTransformer(
-        tensor=self.controls,
-        population=self.population,
-        population_scaling_id=controls_population_scaling_id,
-    )
-
-  @functools.cached_property
+  @property
   def non_media_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
-    """Returns a `CenteringAndScalingTransformer` for non-media treatments."""
-    if self.non_media_treatments is None:
-      return None
-    if self.model_spec.non_media_population_scaling_id is not None:
-      non_media_population_scaling_id = backend.to_tensor(
-          self.model_spec.non_media_population_scaling_id, dtype=backend.bool_
-      )
-    else:
-      non_media_population_scaling_id = None
+    return self.model_context.non_media_transformer
 
-    return transformers.CenteringAndScalingTransformer(
-        tensor=self.non_media_treatments,
-        population=self.population,
-        population_scaling_id=non_media_population_scaling_id,
-    )
-
-  @functools.cached_property
+  @property
   def kpi_transformer(self) -> transformers.KpiTransformer:
-    return transformers.KpiTransformer(self.kpi, self.population)
+    return self.model_context.kpi_transformer
 
-  @functools.cached_property
+  @property
   def controls_scaled(self) -> backend.Tensor | None:
-    if self.controls is not None:
-      # If `controls` is defined, then `controls_transformer` is also defined.
-      return self.controls_transformer.forward(self.controls)  # pytype: disable=attribute-error
-    else:
-      return None
+    return self.model_context.controls_scaled
 
-  @functools.cached_property
+  @property
   def non_media_treatments_normalized(self) -> backend.Tensor | None:
-    """Normalized non-media treatments.
+    return self.model_context.non_media_treatments_normalized
 
-    The non-media treatments values are scaled by population (for channels where
-    `non_media_population_scaling_id` is `True`) and normalized by centering and
-    scaling with means and standard deviations.
-    """
-    if self.non_media_transformer is not None:
-      return self.non_media_transformer.forward(
-          self.non_media_treatments
-      )  # pytype: disable=attribute-error
-    else:
-      return None
-
-  @functools.cached_property
+  @property
   def kpi_scaled(self) -> backend.Tensor:
-    return self.kpi_transformer.forward(self.kpi)
+    return self.model_context.kpi_scaled
 
-  @functools.cached_property
+  @property
   def media_effects_dist(self) -> str:
-    if self.is_national:
-      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]
-    else:
-      return self.model_spec.media_effects_dist
+    return self.model_context.media_effects_dist
 
-  @functools.cached_property
+  @property
   def unique_sigma_for_each_geo(self) -> bool:
-    if self.is_national:
-      # Should evaluate to False.
-      return constants.NATIONAL_MODEL_SPEC_ARGS[
-          constants.UNIQUE_SIGMA_FOR_EACH_GEO
-      ]
-    else:
-      return self.model_spec.unique_sigma_for_each_geo
+    return self.model_context.unique_sigma_for_each_geo
 
-  @functools.cached_property
+  @property
   def baseline_geo_idx(self) -> int:
-    """Returns the index of the baseline geo."""
-    if isinstance(self.model_spec.baseline_geo, int):
-      if (
-          self.model_spec.baseline_geo < 0
-          or self.model_spec.baseline_geo >= self.n_geos
-      ):
-        raise ValueError(
-            f"Baseline geo index {self.model_spec.baseline_geo} out of range"
-            f" [0, {self.n_geos - 1}]."
-        )
-      return self.model_spec.baseline_geo
-    elif isinstance(self.model_spec.baseline_geo, str):
-      # np.where returns a 1-D tuple, its first element is an array of found
-      # elements.
-      index = np.where(self.input_data.geo == self.model_spec.baseline_geo)[0]
-      if index.size == 0:
-        raise ValueError(
-            f"Baseline geo '{self.model_spec.baseline_geo}' not found."
-        )
-      # Geos are unique, so index is a 1-element array.
-      return index[0]
-    else:
-      return backend.argmax(self.population)
+    return self.model_context.baseline_geo_idx
 
-  @functools.cached_property
+  @property
   def holdout_id(self) -> backend.Tensor | None:
-    if self.model_spec.holdout_id is None:
-      return None
-    tensor = backend.to_tensor(self.model_spec.holdout_id, dtype=backend.bool_)
-    return tensor[backend.newaxis, ...] if self.is_national else tensor
+    return self.model_context.holdout_id
 
-  @functools.cached_property
+  @property
   def adstock_decay_spec(self) -> adstock_hill.AdstockDecaySpec:
-    """Returns `AdstockDecaySpec` object with correctly mapped channels."""
-    if isinstance(self.model_spec.adstock_decay_spec, str):
-      return adstock_hill.AdstockDecaySpec.from_consistent_type(
-          self.model_spec.adstock_decay_spec
-      )
+    return self.model_context.adstock_decay_spec
 
-    try:
-      return self._create_adstock_decay_functions_from_channel_map(
-          self.model_spec.adstock_decay_spec
-      )
-    except KeyError as e:
-      raise ValueError(
-          "Unrecognized channel names found in `adstock_decay_spec` keys"
-          f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
-          " either contain only channel_names"
-          f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media',"
-          " 'organic_rf'}."
-      ) from e
-
-  @functools.cached_property
+  @property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
-    """Returns broadcasted `PriorDistribution` object."""
-    total_spend = self.input_data.get_total_spend()
-    # Total spend can have 1, 2 or 3 dimensions. Aggregate by channel.
-    if len(total_spend.shape) == 1:
-      # Already aggregated by channel.
-      agg_total_spend = total_spend
-    elif len(total_spend.shape) == 2:
-      agg_total_spend = np.sum(total_spend, axis=(0,))
-    else:
-      agg_total_spend = np.sum(total_spend, axis=(0, 1))
-
-    return self.model_spec.prior.broadcast(
-        n_geos=self.n_geos,
-        n_media_channels=self.n_media_channels,
-        n_rf_channels=self.n_rf_channels,
-        n_organic_media_channels=self.n_organic_media_channels,
-        n_organic_rf_channels=self.n_organic_rf_channels,
-        n_controls=self.n_controls,
-        n_non_media_channels=self.n_non_media_channels,
-        unique_sigma_for_each_geo=self.unique_sigma_for_each_geo,
-        n_knots=self.knot_info.n_knots,
-        is_national=self.is_national,
-        set_total_media_contribution_prior=self._set_total_media_contribution_prior,
-        kpi=np.sum(self.input_data.kpi.values),
-        total_spend=agg_total_spend,
-    )
+    return self.model_context.prior_broadcast
 
   @functools.cached_property
   def prior_sampler_callable(self) -> prior_sampler.PriorDistributionSampler:
@@ -827,58 +676,6 @@ class Meridian:
           f" ({self.n_non_media_channels},)`."
       )
 
-  def _create_adstock_decay_functions_from_channel_map(
-      self, channel_function_map: Mapping[str, str]
-  ) -> adstock_hill.AdstockDecaySpec:
-    """Create `AdstockDecaySpec` from mapping from channels to decay functions."""
-
-    for channel in channel_function_map:
-      if channel not in self.input_data.get_all_adstock_hill_channels():
-        raise KeyError(f"Channel {channel} not found in data.")
-
-    if self.input_data.media_channel is not None:
-      media_channel_builder = self.input_data.get_paid_media_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      media_adstock_function = media_channel_builder(**channel_function_map)
-    else:
-      media_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.rf_channel is not None:
-      rf_channel_builder = self.input_data.get_paid_rf_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      rf_adstock_function = rf_channel_builder(**channel_function_map)
-    else:
-      rf_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.organic_media_channel is not None:
-      organic_media_channel_builder = self.input_data.get_organic_media_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      organic_media_adstock_function = organic_media_channel_builder(
-          **channel_function_map
-      )
-    else:
-      organic_media_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.organic_rf_channel is not None:
-      organic_rf_channel_builder = self.input_data.get_organic_rf_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      organic_rf_adstock_function = organic_rf_channel_builder(
-          **channel_function_map
-      )
-    else:
-      organic_rf_adstock_function = constants.GEOMETRIC_DECAY
-
-    return adstock_hill.AdstockDecaySpec(
-        media=media_adstock_function,
-        rf=rf_adstock_function,
-        organic_media=organic_media_adstock_function,
-        organic_rf=organic_rf_adstock_function,
-    )
-
   def _warn_setting_ignored_priors(self):
     """Raises a warning if ignored priors are set."""
     default_distribution = prior_distribution.PriorDistribution()
@@ -976,7 +773,7 @@ class Meridian:
           or (self.n_media_channels == 0 and default_roi_rf_used)
           or (self.n_rf_channels == 0 and default_roi_m_used)
       ):
-        self._set_total_media_contribution_prior = True
+        self.model_context.set_total_media_contribution_prior = True
         warnings.warn(
             "Consider setting custom ROI priors, as kpi_type was specified as"
             " `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the"
