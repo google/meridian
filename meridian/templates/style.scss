@@ -147,8 +147,32 @@ charts {
     gap: 12px;
   }
 
+  .chart-title-html {
+    color: $text_grey;
+    font-family: $google_sans;
+    font-size: 18px;
+    font-weight: 400;
+    margin-bottom: 10px;
+    line-height: 24px;
+
+    white-space: normal;
+    width: 100%;
+  }
+
+  chart-embed {
+    display: block;
+    // FIX: The chart itself has a hard floor. It will NEVER get smaller than this.
+    min-width: 300px;
+    width: 100%;
+  }
+
   chart {
     @include chart-style;
+    // FIX: The container shrinks with the window...
+    min-width: 0;
+    width: 100%;
+    // ...but if the content (chart-embed) is bigger (300px), it adds a scrollbar.
+    overflow-x: auto;
 
     > chart-description {
       color: $text_grey;
@@ -221,13 +245,15 @@ charts {
 
 stats-section {
   display: flex;
-  flex-direction: row;
-  justify-content: space-around;
+  flex-flow: row wrap;
+  justify-content: flex-start;
+  gap: 40px;
   padding: 32px;
 
   stats {
     display: flex;
     flex-direction: column;
+    flex: 0 0 auto;
 
     > stats-title {
       color: $title_dark_grey;
