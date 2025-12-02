@@ -7,6 +7,7 @@ on:
 
 env:
   USE_PYTHON_VERSION: "3.11"
+  PROTO_DIR: "proto"
 
 jobs:
   # Build meridian "core" and "mmm-proto-schema" distributions.
@@ -36,10 +37,46 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - id: version_check
+
+      - uses: ./.github/actions/install-meridian
+        with:
+          python_version: ${{ inputs.python_version }}
+          extras: ''
+
+      - name: Get version for meridian
+        id: get_meridian_version
+        shell: bash
+        run: |
+          VERSION=$(python -c "import meridian; print(meridian.__version__)")
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check version for meridian
+        id: meridian_version_check
         uses: ./.github/actions/version-check
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
+          semver_prefix: v
+          current_version: ${{ steps.get_meridian_version.outputs.value}}
+
+  check-proto-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      new_version: ${{ steps.compare_versions.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get mmm-proto-schema version
+        id: get_version
+        uses: ./.github/actions/get-proto-version
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+      - name: Check version for mmm-proto-schema
+        id: proto_version_check
+        uses: ./.github/actions/version-check
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          semver_prefix: proto-v
+          current_version: ${{ steps.get_version.outputs.value}}
 
   pytest:
     runs-on: ubuntu-latest
