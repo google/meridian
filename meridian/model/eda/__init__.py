@@ -17,4 +17,3 @@
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
-from meridian.model.eda import meridian_eda

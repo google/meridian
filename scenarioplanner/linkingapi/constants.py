@@ -12,6 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module for Meridian version."""
+"""Constants shared for the Linking API usage for the Meridian UI.
 
-__version__ = "1.3.2"
+Defines constants used in the URL generation process, such as API endpoints and
+parameter names.
+"""
+
+REPORT_TEMPLATE_ID = 'fbd3aeff-fc00-45fd-83f7-1ec5f21c9f56'
+COMMUNITY_CONNECTOR_NAME = 'community'
+COMMUNITY_CONNECTOR_ID = (
+    'AKfycbz-xdEN-GbTuQ9MjEddS-64wLgXwMMTp9a4zFE4PO_kwT6wDgZPsN4Y19oKmLLHD6xk'
+)
+SHEETS_CONNECTOR_NAME = 'googleSheets'
+GA4_MEASUREMENT_ID = 'G-R6C81BNHJ4'
