@@ -21,11 +21,11 @@ import dataclasses
 import math
 import pprint
 from typing import Any
+
 from meridian import constants
 from meridian.data import input_data
 import numpy as np
-# TODO: b/437393442 - migrate patsy
-from patsy import highlevel
+from scipy import interpolate
 from statsmodels.regression import linear_model
 
 
@@ -319,6 +319,17 @@ class AKS:
 
     return AKSResult(knots_sel[opt_idx], model[opt_idx])
 
+  def _get_bspline_matrix(self, x, knots):
+    """Replaces patsy.highlevel.dmatrix('bs(...)', ...)"""
+    # Pad knots at boundaries to match patsy's 'bs()' behavior
+    t = np.concatenate((
+        [x.min()] * (self._DEGREE + 1),
+        np.sort(knots),
+        [x.max()] * (self._DEGREE + 1),
+    ))
+    # Create design matrix (standard numpy array)
+    return interpolate.BSpline.design_matrix(x, t, self._DEGREE).toarray()
+
   def _calculate_initial_knots(
       self,
       x: np.ndarray,
@@ -433,14 +444,7 @@ class AKS:
           'Provided x and y args for aspline must both be 1 dimensional!'
       )
 
-    bs_cmd = (
-        'bs(x,knots=['
-        + ','.join(map(str, knots))
-        + '],degree='
-        + str(self._DEGREE)
-        + ',include_intercept=True)-1'
-    )
-    xmat = highlevel.dmatrix(bs_cmd, {'x': x})
+    xmat = self._get_bspline_matrix(x, knots)
     nrow = xmat.shape[0]
     ncol = xmat.shape[1]
 
@@ -472,10 +476,8 @@ class AKS:
       if converge:
         sel_ls[index_penalty] = sel
         knots_sel[index_penalty] = knots[sel > 0.99]
-        bs_cmd_iter = (
-            f"bs(x,knots=[{','.join(map(str, knots_sel[index_penalty]))}],degree={self._DEGREE},include_intercept=True)-1"
-        )
-        design_mat = highlevel.dmatrix(bs_cmd_iter, {'x': x})
+
+        design_mat = self._get_bspline_matrix(x, knots_sel[index_penalty])
         x_sel[index_penalty] = design_mat
         bs_model = linear_model.OLS(y, x_sel[index_penalty]).fit()
         model[index_penalty] = bs_model
