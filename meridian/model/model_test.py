@@ -306,38 +306,95 @@ class ModelTest(
           testcase_name="roi_m",
           dist_args=([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 0.9),
           dist_name=constants.ROI_M,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
           testcase_name="roi_rf",
           dist_args=(0.0, 0.9),
           dist_name=constants.ROI_RF,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
           testcase_name="mroi_m",
           dist_args=(0.5, 0.9),
           dist_name=constants.MROI_M,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
       ),
       dict(
           testcase_name="mroi_rf",
           dist_args=([0.0, 0.0, 0.0, 0.0], 0.9),
           dist_name=constants.MROI_RF,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+      ),
+      dict(
+          testcase_name="contribution_m",
+          dist_args=(0.0, 0.9),
+          dist_name=constants.CONTRIBUTION_M,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      ),
+      dict(
+          testcase_name="contribution_rf",
+          dist_args=(0.0, 0.9),
+          dist_name=constants.CONTRIBUTION_RF,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
       ),
   )
-  def test_check_for_negative_effect(
-      self, dist_args: tuple[list[float] | float, float], dist_name: str
+  def test_check_for_negative_support_paid_media_raises_error(
+      self,
+      dist_args: tuple[list[float] | float, float],
+      dist_name: str,
+      media_prior_type: str,
   ):
     dist = backend.tfd.Normal(*dist_args, name=dist_name)
     prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Media priors must have non-negative support when"
-        ' `media_effects_dist`="log_normal". Found negative effect in'
-        f" {dist_name}.",
+        ' `media_effects_dist`="log_normal". Found negative prior distribution'
+        f" support for {dist_name}.",
     ):
       model.Meridian(
           input_data=self.input_data_with_media_and_rf,
           model_spec=spec.ModelSpec(
               media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+              media_prior_type=media_prior_type,
+              prior=prior_dist,
+          ),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="contribution_om",
+          dist_args=(0.0, 0.9),
+          dist_name=constants.CONTRIBUTION_OM,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      ),
+      dict(
+          testcase_name="contribution_orf",
+          dist_args=(0.0, 0.9),
+          dist_name=constants.CONTRIBUTION_ORF,
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      ),
+  )
+  def test_check_for_negative_support_organic_media_raises_error(
+      self,
+      dist_args: tuple[list[float] | float, float],
+      dist_name: str,
+      media_prior_type: str,
+  ):
+    dist = backend.tfd.Normal(*dist_args, name=dist_name)
+    prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Media priors must have non-negative support when"
+        ' `media_effects_dist`="log_normal". Found negative prior distribution'
+        f" support for {dist_name}.",
+    ):
+      model.Meridian(
+          input_data=self.input_data_non_media_and_organic,
+          model_spec=spec.ModelSpec(
+              media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+              media_prior_type=media_prior_type,
               prior=prior_dist,
           ),
       )

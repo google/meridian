@@ -77,21 +77,6 @@ def _warn_setting_national_args(**kwargs):
       )
 
 
-def _check_for_negative_effect(
-    dist: backend.tfd.Distribution, media_effects_dist: str
-):
-  """Checks for negative effect in the model."""
-  if (
-      media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
-      and np.any(dist.cdf(0)) > 0
-  ):
-    raise ValueError(
-        "Media priors must have non-negative support when"
-        f' `media_effects_dist`="{media_effects_dist}". Found negative effect'
-        f" in {dist.name}."
-    )
-
-
 class Meridian:
   """Contains the main functionality for fitting the Meridian MMM model.
 
@@ -194,7 +179,7 @@ class Meridian:
     self._set_total_media_contribution_prior = False
     self._validate_mroi_priors_non_revenue()
     self._validate_roi_priors_non_revenue()
-    self._check_for_negative_effects()
+    self._check_media_prior_support()
     self._validate_geo_invariants()
     self._validate_time_invariants()
     self._validate_kpi_transformer()
@@ -1010,14 +995,93 @@ class Meridian:
             " non-revenue and revenue per kpi data is missing."
         )
 
-  def _check_for_negative_effects(self):
+  def _check_media_prior_support(self) -> None:
+    """Checks ROI, mROI, and Contribution prior support when random effects are log-normal.
+
+    Priors for ROI, mROI, and Contribution can only have negative support if the
+    random effects follow a normal distribution. This check enforces that priors
+    have non-negative support when random effects follow a log-normal
+    distribution. This check only applies to geo-level models with log-normal
+    random effects since national models do not have random effects.
+    """
     prior = self.model_spec.prior
     if self.n_media_channels > 0:
-      _check_for_negative_effect(prior.roi_m, self.media_effects_dist)
-      _check_for_negative_effect(prior.mroi_m, self.media_effects_dist)
+      self._check_for_negative_support(
+          prior.roi_m,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+      )
+      self._check_for_negative_support(
+          prior.mroi_m,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+      )
+      self._check_for_negative_support(
+          prior.contribution_m,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      )
     if self.n_rf_channels > 0:
-      _check_for_negative_effect(prior.roi_rf, self.media_effects_dist)
-      _check_for_negative_effect(prior.mroi_rf, self.media_effects_dist)
+      self._check_for_negative_support(
+          prior.roi_rf,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+      )
+      self._check_for_negative_support(
+          prior.mroi_rf,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+      )
+      self._check_for_negative_support(
+          prior.contribution_rf,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      )
+    if self.n_organic_media_channels > 0:
+      self._check_for_negative_support(
+          prior.contribution_om,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      )
+    if self.n_organic_rf_channels > 0:
+      self._check_for_negative_support(
+          prior.contribution_orf,
+          self.media_effects_dist,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      )
+
+  def _check_for_negative_support(
+      self,
+      dist: backend.tfd.Distribution,
+      media_effects_dist: str,
+      prior_type: str,
+  ) -> None:
+    """Checks for negative support in prior distributions.
+
+    When `media_effects_dist` is `MEDIA_EFFECTS_LOG_NORMAL`, prior distributions
+    for media effects must be non-negative. This function raises a ValueError if
+    any part of the distribution's CDF is greater than 0 at 0, indicating some
+    probability mass below zero.
+
+    Args:
+      dist: The distribution to check.
+      media_effects_dist: The type of media effects distribution.
+      prior_type: The prior type that corresponds with current prior under test.
+
+    Raises:
+      ValueError: If the prior distribution has negative support when
+      `media_effects_dist` is `MEDIA_EFFECTS_LOG_NORMAL`.
+    """
+    if (
+        prior_type == self.model_spec.media_prior_type
+        and media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
+        and np.any(dist.cdf(0) > 0)
+    ):
+      raise ValueError(
+          "Media priors must have non-negative support when"
+          f' `media_effects_dist`="{media_effects_dist}". Found negative prior'
+          f" distribution support for {dist.name}."
+      )
 
   def _validate_geo_invariants(self):
     """Validates non-national model invariants."""
