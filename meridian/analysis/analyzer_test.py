@@ -15,7 +15,6 @@
 from collections.abc import Sequence
 import dataclasses
 import os
-import unittest
 from unittest import mock
 import warnings
 
@@ -6432,7 +6431,6 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
       roi_calibration_times=[None, [5, 6, 7]],
       rf_roi_calibration_times=[None, [5, 6, 7]],
   )
-  @unittest.skip("b/459539627: Flaky.")  # TODO: Re-enable.
   def test_treatment_parameter_accuracy(
       self,
       n_channels_per_treatment,
@@ -6452,6 +6450,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
         n_organic_rf_channels=n_channels_per_treatment,
         n_non_media_channels=n_channels_per_treatment,
         seed=1,
+        nonzero_shift=1.0,
     )
 
     # Scale each channel's spend to be between 4-6% of total revenue. (Otherwise
