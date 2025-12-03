@@ -35,6 +35,8 @@ __all__ = [
     'InputDataLoader',
     'XrDatasetDataLoader',
     'DataFrameDataLoader',
+    'CoordToColumns',
+    'CsvDataLoader',
 ]
 
 
