@@ -28,6 +28,7 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
+from meridian.model import context
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import posterior_sampler
@@ -97,6 +98,7 @@ class Meridian:
   Attributes:
     input_data: An `InputData` object containing the input data for the model.
     model_spec: A `ModelSpec` object containing the model specification.
+    model_context: A `ModelContext` object containing the model context.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
       resulting data from fitting the model.
     eda_engine: An `EDAEngine` object containing the EDA engine.
@@ -173,6 +175,10 @@ class Meridian:
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
+    self._model_context = context.ModelContext(
+        input_data=self._input_data,
+        model_spec=self._model_spec,
+    )
 
     self._eda_spec = eda_spec
 
@@ -200,6 +206,10 @@ class Meridian:
   @property
   def model_spec(self) -> spec.ModelSpec:
     return self._model_spec
+
+  @property
+  def model_context(self) -> context.ModelContext:
+    return self._model_context
 
   @property
   def inference_data(self) -> az.InferenceData:
