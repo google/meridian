@@ -51,7 +51,7 @@ jobs:
         meridian-backend: ["tensorflow", "jax"]
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{ matrix.meridian-backend }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
     steps:
       - uses: actions/checkout@v4
