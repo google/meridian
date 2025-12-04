@@ -14,7 +14,7 @@
 
 """Defines ModelContext class for Meridian."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import functools
 import warnings
 
@@ -49,6 +49,7 @@ class ModelContext:
     self._input_data = input_data
     self._model_spec = model_spec
 
+    self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
 
     self._set_total_media_contribution_prior = False
@@ -56,6 +57,81 @@ class ModelContext:
     self._validate_mroi_priors_non_revenue()
     self._validate_roi_priors_non_revenue()
     self._check_media_prior_support()
+    self._validate_geo_invariants()
+    self._validate_time_invariants()
+
+  def _validate_data_dependent_model_spec(self):
+    """Validates that the data dependent model specs have correct shapes."""
+
+    if self._model_spec.roi_calibration_period is not None and (
+        self._model_spec.roi_calibration_period.shape
+        != (
+            self.n_media_times,
+            self.n_media_channels,
+        )
+    ):
+      raise ValueError(
+          "The shape of `roi_calibration_period`"
+          f" {self._model_spec.roi_calibration_period.shape} is different from"
+          f" `(n_media_times, n_media_channels) = ({self.n_media_times},"
+          f" {self.n_media_channels})`."
+      )
+
+    if self._model_spec.rf_roi_calibration_period is not None and (
+        self._model_spec.rf_roi_calibration_period.shape
+        != (
+            self.n_media_times,
+            self.n_rf_channels,
+        )
+    ):
+      raise ValueError(
+          "The shape of `rf_roi_calibration_period`"
+          f" {self._model_spec.rf_roi_calibration_period.shape} is different"
+          f" from `(n_media_times, n_rf_channels) = ({self.n_media_times},"
+          f" {self.n_rf_channels})`."
+      )
+
+    if self._model_spec.holdout_id is not None:
+      if self.is_national and (
+          self._model_spec.holdout_id.shape != (self.n_times,)
+      ):
+        raise ValueError(
+            f"The shape of `holdout_id` {self._model_spec.holdout_id.shape} is"
+            f" different from `(n_times,) = ({self.n_times},)`."
+        )
+      elif not self.is_national and (
+          self._model_spec.holdout_id.shape
+          != (
+              self.n_geos,
+              self.n_times,
+          )
+      ):
+        raise ValueError(
+            f"The shape of `holdout_id` {self._model_spec.holdout_id.shape} is"
+            f" different from `(n_geos, n_times) = ({self.n_geos},"
+            f" {self.n_times})`."
+        )
+
+    if self._model_spec.control_population_scaling_id is not None and (
+        self._model_spec.control_population_scaling_id.shape
+        != (self.n_controls,)
+    ):
+      raise ValueError(
+          "The shape of `control_population_scaling_id`"
+          f" {self._model_spec.control_population_scaling_id.shape} is"
+          f" different from `(n_controls,) = ({self.n_controls},)`."
+      )
+
+    if self._model_spec.non_media_population_scaling_id is not None and (
+        self._model_spec.non_media_population_scaling_id.shape
+        != (self.n_non_media_channels,)
+    ):
+      raise ValueError(
+          "The shape of `non_media_population_scaling_id`"
+          f" {self._model_spec.non_media_population_scaling_id.shape} is"
+          " different from `(n_non_media_channels,) ="
+          f" ({self.n_non_media_channels},)`."
+      )
 
   def _validate_model_spec_shapes(self):
     """Validate shapes of model_spec attributes."""
@@ -103,6 +179,168 @@ class ModelContext:
             "The shape of `control_population_scaling_id`"
             f" {self._model_spec.control_population_scaling_id.shape} is"
             f" different from `(n_controls,) = ({self.n_controls},)`."
+        )
+
+  def _validate_geo_invariants(self):
+    """Validates non-national model invariants."""
+    if self.is_national:
+      return
+
+    if self._input_data.controls is not None:
+      self._check_if_no_geo_variation(
+          self.controls_scaled,
+          constants.CONTROLS,
+          self._input_data.controls.coords[constants.CONTROL_VARIABLE].values,
+      )
+    if self._input_data.non_media_treatments is not None:
+      self._check_if_no_geo_variation(
+          self.non_media_treatments_normalized,
+          constants.NON_MEDIA_TREATMENTS,
+          self._input_data.non_media_treatments.coords[
+              constants.NON_MEDIA_CHANNEL
+          ].values,
+      )
+    if self._input_data.media is not None:
+      self._check_if_no_geo_variation(
+          self.media_tensors.media_scaled,
+          constants.MEDIA,
+          self._input_data.media.coords[constants.MEDIA_CHANNEL].values,
+      )
+    if self._input_data.reach is not None:
+      self._check_if_no_geo_variation(
+          self.rf_tensors.reach_scaled,
+          constants.REACH,
+          self._input_data.reach.coords[constants.RF_CHANNEL].values,
+      )
+    if self._input_data.organic_media is not None:
+      self._check_if_no_geo_variation(
+          self.organic_media_tensors.organic_media_scaled,
+          "organic_media",
+          self._input_data.organic_media.coords[
+              constants.ORGANIC_MEDIA_CHANNEL
+          ].values,
+      )
+    if self._input_data.organic_reach is not None:
+      self._check_if_no_geo_variation(
+          self.organic_rf_tensors.organic_reach_scaled,
+          "organic_reach",
+          self._input_data.organic_reach.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values,
+      )
+
+  def _check_if_no_geo_variation(
+      self,
+      scaled_data: backend.Tensor,
+      data_name: str,
+      data_dims: Sequence[str],
+      epsilon=1e-4,
+  ):
+    """Raise an error if `n_knots == n_time` and data lacks geo variation."""
+
+    # Result shape: [n, d], where d is the number of axes of condition.
+    col_idx_full = backend.get_indices_where(
+        backend.reduce_std(scaled_data, axis=0) < epsilon
+    )[:, 1]
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
+    # We use the shape of scaled_data (instead of `n_time`) because the data may
+    # be padded to account for lagged effects.
+    data_n_time = scaled_data.shape[1]
+    mask = backend.equal(counts, data_n_time)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
+
+    if col_idx_bad.shape[0] and self.knot_info.n_knots == self.n_times:
+      raise ValueError(
+          f"The following {data_name} variables do not vary across geos, making"
+          f" a model with n_knots=n_time unidentifiable: {dims_bad}. This can"
+          " lead to poor model convergence. Since these variables only vary"
+          " across time and not across geo, they are collinear with time and"
+          " redundant in a model with a parameter for each time period.  To"
+          " address this, you can either: (1) decrease the number of knots"
+          " (n_knots < n_time), or (2) drop the listed variables that do not"
+          " vary across geos."
+      )
+
+  def _validate_time_invariants(self):
+    """Validates model time invariants."""
+    if self._input_data.controls is not None:
+      self._check_if_no_time_variation(
+          self.controls_scaled,
+          constants.CONTROLS,
+          self._input_data.controls.coords[constants.CONTROL_VARIABLE].values,
+      )
+    if self._input_data.non_media_treatments is not None:
+      self._check_if_no_time_variation(
+          self.non_media_treatments_normalized,
+          constants.NON_MEDIA_TREATMENTS,
+          self._input_data.non_media_treatments.coords[
+              constants.NON_MEDIA_CHANNEL
+          ].values,
+      )
+    if self._input_data.media is not None:
+      self._check_if_no_time_variation(
+          self.media_tensors.media_scaled,
+          constants.MEDIA,
+          self._input_data.media.coords[constants.MEDIA_CHANNEL].values,
+      )
+    if self._input_data.reach is not None:
+      self._check_if_no_time_variation(
+          self.rf_tensors.reach_scaled,
+          constants.REACH,
+          self._input_data.reach.coords[constants.RF_CHANNEL].values,
+      )
+    if self._input_data.organic_media is not None:
+      self._check_if_no_time_variation(
+          self.organic_media_tensors.organic_media_scaled,
+          constants.ORGANIC_MEDIA,
+          self._input_data.organic_media.coords[
+              constants.ORGANIC_MEDIA_CHANNEL
+          ].values,
+      )
+    if self._input_data.organic_reach is not None:
+      self._check_if_no_time_variation(
+          self.organic_rf_tensors.organic_reach_scaled,
+          constants.ORGANIC_REACH,
+          self._input_data.organic_reach.coords[
+              constants.ORGANIC_RF_CHANNEL
+          ].values,
+      )
+
+  def _check_if_no_time_variation(
+      self,
+      scaled_data: backend.Tensor,
+      data_name: str,
+      data_dims: Sequence[str],
+      epsilon=1e-4,
+  ):
+    """Raise an error if data lacks time variation."""
+
+    # Result shape: [n, d], where d is the number of axes of condition.
+    col_idx_full = backend.get_indices_where(
+        backend.reduce_std(scaled_data, axis=1) < epsilon
+    )[:, 1]
+    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
+    mask = backend.equal(counts, self.n_geos)
+    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
+    dims_bad = backend.gather(data_dims, col_idx_bad)
+    if col_idx_bad.shape[0]:
+      if self.is_national:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            " which is equivalent to no signal at all in a national model:"
+            f" {dims_bad}.  This can lead to poor model convergence. To address"
+            " this, drop the listed variables that do not vary across time."
+        )
+      else:
+        raise ValueError(
+            f"The following {data_name} variables do not vary across time,"
+            f" making a model with geo main effects unidentifiable: {dims_bad}."
+            " This can lead to poor model convergence. Since these variables"
+            " only vary across geo and not across time, they are collinear"
+            " with geo and redundant in a model with geo main effects. To"
+            " address this, drop the listed variables that do not vary across"
+            " time."
         )
 
   @property
