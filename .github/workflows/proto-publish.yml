@@ -48,76 +48,20 @@ jobs:
     outputs:
       new_version: ${{ steps.compare_versions.outputs.new_version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Get mmm-proto-schema version
+        id: get_proto_version
+        uses: ./.github/actions/get-proto-version
         with:
-          fetch-depth: 0  # Important: fetch all tags for comparison
-          fetch-tags: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.USE_PYTHON_VERSION }}
-
-      - name: Install semver
-        shell: bash
-        run: pip install semver
-
-      - name: Get version
-        id: get_version
-        shell: bash
-        run: |
-          VERSION=$(python -c """
-          import sys
-          import tomllib
-
-          try:
-            filepath = '${{ env.PROTO_DIR }}/pyproject.toml'
-            with open(filepath, 'rb') as f:
-              data = tomllib.load(f)
-
-            version = data.get('project', {}).get('version', '')
-            if version:
-              print(version)
-            else:
-              print(f'Error: Version not found in {filepath} under [project.version]', file=sys.stderr)
-              sys.exit(1)
-          except FileNotFoundError:
-            print(f'Error: File {filepath} not found', file=sys.stderr)
-            sys.exit(1)
-          """ )
-
-          if [ $? -ne 0 ]; then
-            echo "Failed to get version from ${{ env.PROTO_DIR}}/pyproject.toml"
-            exit 1
-          fi
-          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          python_version: ${{ env.USE_PYTHON_VERSION }}
 
       - name: Compare versions
         id: compare_versions
-        run: |
-          CURRENT_VERSION="${{ steps.get_version.outputs.value }}"
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'proto-v*' || echo "")
-
-          if [ -z "$PREVIOUS_TAG" ]; then
-            echo "Warning: No matching previous tag found with pattern 'proto-v*'. Assuming first version."
-            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          PREVIOUS_VERSION=$(echo "$PREVIOUS_TAG" | sed 's/^proto-v//')
-
-          echo "CURRENT_VERSION: $CURRENT_VERSION"
-          echo "PREVIOUS_TAG: $PREVIOUS_TAG"
-          echo "PREVIOUS_VERSION: $PREVIOUS_VERSION"
-
-          if [[ $(python3 -m semver compare "$CURRENT_VERSION" "$PREVIOUS_VERSION") -eq 1 ]]; then
-            echo "New version detected: $CURRENT_VERSION"
-            NEW_VERSION=$CURRENT_VERSION
-          else
-            echo "No version increment detected."
-          fi
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/version-check
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          semver_prefix: proto-v
+          current_version: ${{ steps.get_proto_version.outputs.value }}
 
   create-proto-tag:
     needs: check-proto-version
