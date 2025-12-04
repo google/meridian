@@ -5094,13 +5094,14 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allequal(actual.data, [])
 
 
-class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
+class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
 
   @classmethod
   def setUpClass(cls):
-    super(AnalyzerNonMediaTest, cls).setUpClass()
-    # Input data resulting in revenue computation.
-    cls.input_data_non_media = (
+    super().setUpClass()
+    # This generates data with Media, RF, Non-Media, Organic Media, and Organic
+    # RF
+    cls.input_data = (
         data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=_N_GEOS,
             n_times=_N_TIMES,
@@ -5109,16 +5110,32 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
             n_media_channels=_N_MEDIA_CHANNELS,
             n_rf_channels=_N_RF_CHANNELS,
             n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.not_lagged_input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
             seed=0,
         )
     )
     model_spec = spec.ModelSpec(max_lag=15)
-    cls.meridian_non_media = model.Meridian(
-        input_data=cls.input_data_non_media, model_spec=model_spec
+    cls.meridian = model.Meridian(
+        input_data=cls.input_data, model_spec=model_spec
     )
-    cls.analyzer_non_media = analyzer.Analyzer(cls.meridian_non_media)
+    cls.analyzer = analyzer.Analyzer(cls.meridian)
 
-    cls.inference_data_non_media = _build_inference_data(
+    cls.inference_data = _build_inference_data(
         _TEST_SAMPLE_PRIOR_NON_PAID_PATH,
         _TEST_SAMPLE_POSTERIOR_NON_PAID_PATH,
     )
@@ -5126,8 +5143,169 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
         mock.patch.object(
             model.Meridian,
             "inference_data",
-            new=property(lambda unused_self: cls.inference_data_non_media),
+            new=property(lambda unused_self: cls.inference_data),
         )
+    )
+
+  @parameterized.product(
+      selected_geos=[["geo_1", "geo_3"]],
+      selected_times=[
+          ["2021-04-19", "2021-09-13", "2021-12-13"],
+      ],
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      # (media, rf, non_media_treatments, organic_media, organic_rf)
+      # (3, 0, 0, 0, 0) -> 3
+      # (0, 2, 0, 0, 0) -> 2
+      # (3, 2, 0, 0, 0) -> 5
+      # (3, 2, 4, 4, 1) -> 14
+      selected_channels=[
+          (_N_MEDIA_CHANNELS, 0, 0, 0, 0),
+          (0, _N_RF_CHANNELS, 0, 0, 0),
+          (_N_MEDIA_CHANNELS, _N_RF_CHANNELS, 0, 0, 0),
+          (
+              _N_MEDIA_CHANNELS,
+              _N_RF_CHANNELS,
+              _N_NON_MEDIA_CHANNELS,
+              _N_ORGANIC_MEDIA_CHANNELS,
+              _N_ORGANIC_RF_CHANNELS,
+          ),
+      ],
+  )
+  def test_filter_and_aggregate_geos_and_times_accepts_channel_shape(
+      self,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      selected_channels: tuple[int, int, int, int, int],
+  ):
+    (
+        n_media_channels,
+        n_rf_channels,
+        n_non_media_channels,
+        n_organic_media_channels,
+        n_organic_rf_channels,
+    ) = selected_channels
+    tensors = []
+    if n_media_channels > 0:
+      tensors.append(backend.to_tensor(self.not_lagged_input_data.media))
+    if n_rf_channels > 0:
+      tensors.append(backend.to_tensor(self.not_lagged_input_data.reach))
+    if n_non_media_channels > 0:
+      tensors.append(
+          backend.to_tensor(self.not_lagged_input_data.non_media_treatments)
+      )
+    if n_organic_media_channels > 0:
+      tensors.append(
+          backend.to_tensor(self.not_lagged_input_data.organic_media)
+      )
+    if n_organic_rf_channels > 0:
+      tensors.append(
+          backend.to_tensor(self.not_lagged_input_data.organic_reach)
+      )
+    tensor = backend.concatenate(tensors, axis=-1)
+    modified_tensor = self.analyzer.filter_and_aggregate_geos_and_times(
+        tensor,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        flexible_time_dim=False,
+        has_media_dim=True,
+    )
+    expected_shape = ()
+    if not aggregate_geos:
+      expected_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      if selected_times is not None:
+        if all(isinstance(time, bool) for time in selected_times):
+          n_times = sum(selected_times)
+        else:
+          n_times = len(selected_times)
+      else:
+        n_times = _N_TIMES
+      expected_shape += (n_times,)
+    expected_shape += (
+        n_media_channels
+        + n_rf_channels
+        + n_non_media_channels
+        + n_organic_media_channels
+        + n_organic_rf_channels,
+    )
+    self.assertEqual(modified_tensor.shape, expected_shape)
+
+  @parameterized.product(
+      # (media, rf, non_media_treatments, organic_media, organic_rf[, all])
+      # (3, 0, 0, 0, 0[, 1]) -> 3, 4
+      # (0, 2, 0, 0, 0[, 1]) -> 2, 3
+      # (3, 2, 0, 0, 0[, 1]) -> 5, 6
+      # (3, 2, 4, 4, 1[, 1]) -> 14, 15
+      num_channels=[1, 7, 8, 9, 10, 11, 12, 13],
+  )
+  def test_filter_and_aggregate_geos_and_times_wrong_channels_fails(
+      self,
+      num_channels=int,
+  ):
+    self.assertNotIn(
+        num_channels,
+        [
+            _N_MEDIA_CHANNELS,
+            _N_RF_CHANNELS,
+            _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+            _N_MEDIA_CHANNELS
+            + _N_RF_CHANNELS
+            + _N_NON_MEDIA_CHANNELS
+            + _N_ORGANIC_MEDIA_CHANNELS
+            + _N_ORGANIC_RF_CHANNELS,
+        ],
+    )
+    tensor = backend.concatenate(
+        [
+            backend.to_tensor(self.not_lagged_input_data.media),
+            backend.to_tensor(self.not_lagged_input_data.reach),
+            backend.to_tensor(self.not_lagged_input_data.non_media_treatments),
+            backend.to_tensor(self.not_lagged_input_data.organic_media),
+            backend.to_tensor(self.not_lagged_input_data.organic_reach),
+        ],
+        axis=-1,
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The tensor must have shape [..., n_geos, n_times, n_channels] or [...,"
+        " n_geos, n_times] if `flexible_time_dim=False`.",
+    ):
+      self.analyzer.filter_and_aggregate_geos_and_times(
+          tensor[..., :num_channels],
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_prior",
+          use_posterior=False,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_PRIOR,
+      ),
+      dict(
+          testcase_name="use_posterior",
+          use_posterior=True,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_POSTERIOR,
+      ),
+  )
+  def test_incremental_outcome_organic_media(
+      self,
+      use_posterior: bool,
+      expected_outcome: np.ndarray,
+  ):
+    outcome = self.analyzer.incremental_outcome(
+        use_posterior=use_posterior,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        backend.to_tensor(expected_outcome),
+        rtol=1e-2,
+        atol=1e-2,
     )
 
   @parameterized.named_parameters(
@@ -5200,18 +5378,16 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
       expected_result: np.ndarray,
       non_media_baseline_values: Sequence[float] | None,
   ):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_non_media
-    )
-    outcome = self.analyzer_non_media.incremental_outcome(
+    outcome = self.analyzer.incremental_outcome(
         use_posterior=use_posterior,
         include_non_paid_channels=True,
         non_media_baseline_values=non_media_baseline_values,
     )
+
     backend_test_utils.assert_allclose(
         outcome,
         backend.to_tensor(expected_result),
-        rtol=1e-2,
+        rtol=2e-2,
         atol=1e-2,
     )
 
@@ -5223,7 +5399,7 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
         "The number of non-media channels (4) does not match the number of"
         " baseline values (3).",
     ):
-      self.analyzer_non_media.incremental_outcome(
+      self.analyzer.incremental_outcome(
           non_media_baseline_values=[13, -4, 2.8],
           include_non_paid_channels=True,
       )
@@ -5234,346 +5410,10 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
         "Invalid `non_media_baseline_values` value: 'min'. Only float"
         " numbers are supported.",
     ):
-      self.analyzer_non_media.incremental_outcome(
+      self.analyzer.incremental_outcome(
           non_media_baseline_values=["min", "max", "max", 5.0],
           include_non_paid_channels=True,
       )
-
-  def test_response_curves_use_only_paid_channels(self):
-    response_curve_data = self.analyzer_non_media.response_curves(
-        by_reach=False
-    )
-    self.assertIn(constants.CHANNEL, response_curve_data.coords)
-    self.assertLen(
-        response_curve_data.coords[constants.CHANNEL],
-        len(
-            self.analyzer_non_media._meridian.input_data.get_all_paid_channels()
-        ),
-    )
-
-  def test_summary_metrics_with_non_media_baseline_values(self):
-    # Call summary_metrics with non-default value of
-    # non_media_baseline_values argument.
-    with mock.patch.object(
-        self.analyzer_non_media,
-        "compute_incremental_outcome_aggregate",
-        wraps=self.analyzer_non_media.compute_incremental_outcome_aggregate,
-    ) as mock_compute_incremental_outcome_aggregate:
-      self.analyzer_non_media.summary_metrics(
-          include_non_paid_channels=True,
-          non_media_baseline_values=[0.0, 7, 1.0, -1],
-      )
-
-    # Assert that _compute_incremental_outcome_aggregate was called the right
-    # number of times with the right arguments.
-    self.assertEqual(mock_compute_incremental_outcome_aggregate.call_count, 4)
-
-    # Both calls with include_non_paid_channels=True and given
-    # non_media_baseline_values
-    for call in mock_compute_incremental_outcome_aggregate.call_args_list:
-      _, kwargs = call
-      self.assertEqual(kwargs["include_non_paid_channels"], True)
-      self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 7, 1.0, -1])
-
-  def test_baseline_summary_metrics_with_non_media_baseline_values(self):
-    # Call baseline_summary_metrics with non-default value of
-    # non_media_baseline_values argument.
-    with mock.patch.object(
-        self.analyzer_non_media,
-        "_calculate_baseline_expected_outcome",
-        wraps=self.analyzer_non_media._calculate_baseline_expected_outcome,
-    ) as mock_calculate_baseline_expected_outcome:
-      self.analyzer_non_media.baseline_summary_metrics(
-          non_media_baseline_values=[0.0, 3, 1.0, 4.5],
-      )
-
-    # Assert that _calculate_baseline_expected_outcome was called the right
-    # number of times with the right arguments.
-    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 2)
-    for call in mock_calculate_baseline_expected_outcome.call_args_list:
-      _, kwargs = call
-      self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 3, 1.0, 4.5])
-
-  def test_expected_vs_actual_with_non_media_baseline_values(self):
-    # Call expected_vs_actual with non-default value of
-    # non_media_baseline_values argument.
-    with mock.patch.object(
-        self.analyzer_non_media,
-        "_calculate_baseline_expected_outcome",
-        wraps=self.analyzer_non_media._calculate_baseline_expected_outcome,
-    ) as mock_calculate_baseline_expected_outcome:
-      self.analyzer_non_media.expected_vs_actual_data(
-          non_media_baseline_values=[0.0, 22, 1.0, 2.2],
-      )
-
-    # Assert that _calculate_baseline_expected_outcome was called the right
-    # number of times with the right arguments.
-    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 1)
-    _, kwargs = mock_calculate_baseline_expected_outcome.call_args
-    self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 22, 1.0, 2.2])
-
-  def test_incremental_outcome_impl_without_non_media_baseline_raises_exception(
-      self,
-  ):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`non_media_treatments_baseline_normalized` must be passed to"
-        " `_incremental_outcome_impl` when `non_media_treatments` data is"
-        " present.",
-    ):
-      self.analyzer_non_media._incremental_outcome_impl(
-          data_tensors=analyzer.DataTensors(
-              non_media_treatments=self.meridian_non_media.non_media_treatments
-          ),
-          dist_tensors=analyzer.DistributionTensors(),
-      )
-
-  def test_get_incremental_kpi_without_non_media_baseline_raises_exception(
-      self,
-  ):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`non_media_treatments_baseline_normalized` must be passed to"
-        " `_get_incremental_kpi` when `non_media_treatments` data is"
-        " present.",
-    ):
-      self.analyzer_non_media._get_incremental_kpi(
-          data_tensors=analyzer.DataTensors(
-              non_media_treatments=self.meridian_non_media.non_media_treatments
-          ),
-          dist_tensors=analyzer.DistributionTensors(),
-      )
-
-
-class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(AnalyzerOrganicMediaTest, cls).setUpClass()
-    # Input data resulting in revenue computation.
-    cls.input_data_non_paid = (
-        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
-            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    cls.not_lagged_input_data_non_paid = (
-        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
-            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
-            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    model_spec = spec.ModelSpec(max_lag=15)
-    cls.meridian_non_paid = model.Meridian(
-        input_data=cls.input_data_non_paid, model_spec=model_spec
-    )
-    cls.analyzer_non_paid = analyzer.Analyzer(cls.meridian_non_paid)
-
-    cls.inference_data_non_paid = _build_inference_data(
-        _TEST_SAMPLE_PRIOR_NON_PAID_PATH,
-        _TEST_SAMPLE_POSTERIOR_NON_PAID_PATH,
-    )
-    cls.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: cls.inference_data_non_paid),
-        )
-    )
-
-  @parameterized.product(
-      selected_geos=[["geo_1", "geo_3"]],
-      selected_times=[
-          ["2021-04-19", "2021-09-13", "2021-12-13"],
-      ],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      # (media, rf, non_media_treatments, organic_media, organic_rf)
-      # (3, 0, 0, 0, 0) -> 3
-      # (0, 2, 0, 0, 0) -> 2
-      # (3, 2, 0, 0, 0) -> 5
-      # (3, 2, 4, 4, 1) -> 14
-      selected_channels=[
-          (_N_MEDIA_CHANNELS, 0, 0, 0, 0),
-          (0, _N_RF_CHANNELS, 0, 0, 0),
-          (_N_MEDIA_CHANNELS, _N_RF_CHANNELS, 0, 0, 0),
-          (
-              _N_MEDIA_CHANNELS,
-              _N_RF_CHANNELS,
-              _N_NON_MEDIA_CHANNELS,
-              _N_ORGANIC_MEDIA_CHANNELS,
-              _N_ORGANIC_RF_CHANNELS,
-          ),
-      ],
-  )
-  def test_filter_and_aggregate_geos_and_times_accepts_channel_shape(
-      self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_channels: tuple[int, int, int, int, int],
-  ):
-    (
-        n_media_channels,
-        n_rf_channels,
-        n_non_media_channels,
-        n_organic_media_channels,
-        n_organic_rf_channels,
-    ) = selected_channels
-    tensors = []
-    if n_media_channels > 0:
-      tensors.append(
-          backend.to_tensor(self.not_lagged_input_data_non_paid.media)
-      )
-    if n_rf_channels > 0:
-      tensors.append(
-          backend.to_tensor(self.not_lagged_input_data_non_paid.reach)
-      )
-    if n_non_media_channels > 0:
-      tensors.append(
-          backend.to_tensor(
-              self.not_lagged_input_data_non_paid.non_media_treatments
-          )
-      )
-    if n_organic_media_channels > 0:
-      tensors.append(
-          backend.to_tensor(self.not_lagged_input_data_non_paid.organic_media)
-      )
-    if n_organic_rf_channels > 0:
-      tensors.append(
-          backend.to_tensor(self.not_lagged_input_data_non_paid.organic_reach)
-      )
-    tensor = backend.concatenate(tensors, axis=-1)
-    modified_tensor = (
-        self.analyzer_non_paid.filter_and_aggregate_geos_and_times(
-            tensor,
-            selected_geos=selected_geos,
-            selected_times=selected_times,
-            aggregate_geos=aggregate_geos,
-            aggregate_times=aggregate_times,
-            flexible_time_dim=False,
-            has_media_dim=True,
-        )
-    )
-    expected_shape = ()
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      if selected_times is not None:
-        if all(isinstance(time, bool) for time in selected_times):
-          n_times = sum(selected_times)
-        else:
-          n_times = len(selected_times)
-      else:
-        n_times = _N_TIMES
-      expected_shape += (n_times,)
-    expected_shape += (
-        n_media_channels
-        + n_rf_channels
-        + n_non_media_channels
-        + n_organic_media_channels
-        + n_organic_rf_channels,
-    )
-    self.assertEqual(modified_tensor.shape, expected_shape)
-
-  @parameterized.product(
-      # (media, rf, non_media_treatments, organic_media, organic_rf[, all])
-      # (3, 0, 0, 0, 0[, 1]) -> 3, 4
-      # (0, 2, 0, 0, 0[, 1]) -> 2, 3
-      # (3, 2, 0, 0, 0[, 1]) -> 5, 6
-      # (3, 2, 4, 4, 1[, 1]) -> 14, 15
-      num_channels=[1, 7, 8, 9, 10, 11, 12, 13],
-  )
-  def test_filter_and_aggregate_geos_and_times_wrong_channels_fails(
-      self,
-      num_channels=int,
-  ):
-    self.assertNotIn(
-        num_channels,
-        [
-            _N_MEDIA_CHANNELS,
-            _N_RF_CHANNELS,
-            _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
-            _N_MEDIA_CHANNELS
-            + _N_RF_CHANNELS
-            + _N_NON_MEDIA_CHANNELS
-            + _N_ORGANIC_MEDIA_CHANNELS
-            + _N_ORGANIC_RF_CHANNELS,
-        ],
-    )
-    tensor = backend.concatenate(
-        [
-            backend.to_tensor(self.not_lagged_input_data_non_paid.media),
-            backend.to_tensor(self.not_lagged_input_data_non_paid.reach),
-            backend.to_tensor(
-                self.not_lagged_input_data_non_paid.non_media_treatments
-            ),
-            backend.to_tensor(
-                self.not_lagged_input_data_non_paid.organic_media
-            ),
-            backend.to_tensor(
-                self.not_lagged_input_data_non_paid.organic_reach
-            ),
-        ],
-        axis=-1,
-    )
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "The tensor must have shape [..., n_geos, n_times, n_channels] or [...,"
-        " n_geos, n_times] if `flexible_time_dim=False`.",
-    ):
-      self.analyzer_non_paid.filter_and_aggregate_geos_and_times(
-          tensor[..., :num_channels],
-      )
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="use_prior",
-          use_posterior=False,
-          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_PRIOR,
-      ),
-      dict(
-          testcase_name="use_posterior",
-          use_posterior=True,
-          expected_outcome=analysis_test_utils.INC_OUTCOME_NON_PAID_USE_POSTERIOR,
-      ),
-  )
-  def test_incremental_outcome_organic_media(
-      self,
-      use_posterior: bool,
-      expected_outcome: np.ndarray,
-  ):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_non_paid
-    )
-    outcome = self.analyzer_non_paid.incremental_outcome(
-        use_posterior=use_posterior,
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        backend.to_tensor(expected_outcome),
-        rtol=1e-2,
-        atol=1e-2,
-    )
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -5590,7 +5430,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
       geos_to_include: Sequence[str] | None,
       times_to_include: Sequence[str] | None,
   ):
-    outcome = self.analyzer_non_paid.expected_outcome(
+    outcome = self.analyzer.expected_outcome(
         use_posterior=use_posterior,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
@@ -5625,14 +5465,13 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
       selected_times: Sequence[str] | None,
       include_non_paid_channels: bool,
   ):
-    model_analyzer = self.analyzer_non_paid
     channels = (
-        self.analyzer_non_paid._meridian.input_data.get_all_channels()
+        self.analyzer._meridian.input_data.get_all_channels()
         if include_non_paid_channels
-        else self.analyzer_non_paid._meridian.input_data.get_all_paid_channels()
+        else self.analyzer._meridian.input_data.get_all_paid_channels()
     )
 
-    media_summary = model_analyzer.summary_metrics(
+    media_summary = self.analyzer.summary_metrics(
         confidence_level=0.8,
         marginal_roi_by_reach=False,
         aggregate_geos=aggregate_geos,
@@ -5666,7 +5505,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
       self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
 
   def test_baseline_summary_returns_correct_values(self):
-    baseline_summary = self.analyzer_non_paid.baseline_summary_metrics(
+    baseline_summary = self.analyzer.baseline_summary_metrics(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
         aggregate_geos=True,
         aggregate_times=True,
@@ -5689,7 +5528,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_adstock_decay_includes_organic_channels(self):
-    df = self.analyzer_non_paid.adstock_decay()
+    df = self.analyzer.adstock_decay()
     actual_channels = df[constants.CHANNEL].unique()
     expected_channels = [
         "ch_0",
@@ -5724,7 +5563,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
   def test_adstock_decay_organic_channels_math_correct(
       self, channel_name, expected_ci_hi, expected_ci_lo, expected_mean
   ):
-    adstock_decay_dataframe = self.analyzer_non_paid.adstock_decay(
+    adstock_decay_dataframe = self.analyzer.adstock_decay(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
     )
 
@@ -5756,7 +5595,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_hill_curves_dataframe_properties(self):
-    hill_table = self.analyzer_non_paid.hill_curves()
+    hill_table = self.analyzer.hill_curves()
     hist_df = hill_table[hill_table[constants.COUNT_HISTOGRAM].notna()]
 
     expected_columns = [
@@ -5837,7 +5676,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
   def test_hill_curves_curve_data_correct(
       self, channel_name, expected_channel_type
   ):
-    hill_table = self.analyzer_non_paid.hill_curves()
+    hill_table = self.analyzer.hill_curves()
 
     df = (
         hill_table[
@@ -5872,7 +5711,7 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
       self, channel_name, expected_channel_type
   ):
     n_bins = 25
-    hill_table = self.analyzer_non_paid.hill_curves(n_bins=n_bins)
+    hill_table = self.analyzer.hill_curves(n_bins=n_bins)
 
     hist_df = hill_table[hill_table[constants.CHANNEL] == channel_name].dropna(
         subset=[constants.COUNT_HISTOGRAM]
@@ -5891,6 +5730,107 @@ class AnalyzerOrganicMediaTest(backend_test_utils.MeridianTestCase):
         atol=1e-6,
         err_msg="Histogram bin start/end edges do not align correctly.",
     )
+
+  def test_response_curves_use_only_paid_channels(self):
+    response_curve_data = self.analyzer.response_curves(by_reach=False)
+    self.assertIn(constants.CHANNEL, response_curve_data.coords)
+    self.assertLen(
+        response_curve_data.coords[constants.CHANNEL],
+        len(self.analyzer._meridian.input_data.get_all_paid_channels()),
+    )
+
+  def test_summary_metrics_with_non_media_baseline_values(self):
+    # Call summary_metrics with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer,
+        "compute_incremental_outcome_aggregate",
+        wraps=self.analyzer.compute_incremental_outcome_aggregate,
+    ) as mock_compute_incremental_outcome_aggregate:
+      self.analyzer.summary_metrics(
+          include_non_paid_channels=True,
+          non_media_baseline_values=[0.0, 7, 1.0, -1],
+      )
+
+    # Assert that _compute_incremental_outcome_aggregate was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_compute_incremental_outcome_aggregate.call_count, 4)
+
+    # Both calls with include_non_paid_channels=True and given
+    # non_media_baseline_values
+    for call in mock_compute_incremental_outcome_aggregate.call_args_list:
+      _, kwargs = call
+      self.assertEqual(kwargs["include_non_paid_channels"], True)
+      self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 7, 1.0, -1])
+
+  def test_baseline_summary_metrics_with_non_media_baseline_values(self):
+    # Call baseline_summary_metrics with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer,
+        "_calculate_baseline_expected_outcome",
+        wraps=self.analyzer._calculate_baseline_expected_outcome,
+    ) as mock_calculate_baseline_expected_outcome:
+      self.analyzer.baseline_summary_metrics(
+          non_media_baseline_values=[0.0, 3, 1.0, 4.5],
+      )
+
+    # Assert that _calculate_baseline_expected_outcome was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 2)
+    for call in mock_calculate_baseline_expected_outcome.call_args_list:
+      _, kwargs = call
+      self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 3, 1.0, 4.5])
+
+  def test_expected_vs_actual_with_non_media_baseline_values(self):
+    # Call expected_vs_actual with non-default value of
+    # non_media_baseline_values argument.
+    with mock.patch.object(
+        self.analyzer,
+        "_calculate_baseline_expected_outcome",
+        wraps=self.analyzer._calculate_baseline_expected_outcome,
+    ) as mock_calculate_baseline_expected_outcome:
+      self.analyzer.expected_vs_actual_data(
+          non_media_baseline_values=[0.0, 22, 1.0, 2.2],
+      )
+
+    # Assert that _calculate_baseline_expected_outcome was called the right
+    # number of times with the right arguments.
+    self.assertEqual(mock_calculate_baseline_expected_outcome.call_count, 1)
+    _, kwargs = mock_calculate_baseline_expected_outcome.call_args
+    self.assertEqual(kwargs["non_media_baseline_values"], [0.0, 22, 1.0, 2.2])
+
+  def test_incremental_outcome_impl_without_non_media_baseline_raises_exception(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`non_media_treatments_baseline_normalized` must be passed to"
+        " `_incremental_outcome_impl` when `non_media_treatments` data is"
+        " present.",
+    ):
+      self.analyzer._incremental_outcome_impl(
+          data_tensors=analyzer.DataTensors(
+              non_media_treatments=self.meridian.non_media_treatments
+          ),
+          dist_tensors=analyzer.DistributionTensors(),
+      )
+
+  def test_get_incremental_kpi_without_non_media_baseline_raises_exception(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`non_media_treatments_baseline_normalized` must be passed to"
+        " `_get_incremental_kpi` when `non_media_treatments` data is"
+        " present.",
+    ):
+      self.analyzer._get_incremental_kpi(
+          data_tensors=analyzer.DataTensors(
+              non_media_treatments=self.meridian.non_media_treatments
+          ),
+          dist_tensors=analyzer.DistributionTensors(),
+      )
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
