@@ -14,8 +14,7 @@
 
 """Auxiliary functions for knots calculations."""
 
-import bisect
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterator, Sequence
 import copy
 import dataclasses
 import math
@@ -36,14 +35,14 @@ __all__ = [
 ]
 
 
-# TODO: Reimplement with a more readable method.
 def _find_neighboring_knots_indices(
+    *,
     times: np.ndarray,
     knot_locations: np.ndarray,
-) -> Sequence[Sequence[int] | None]:
-  """Return indices of neighboring knot locations.
+) -> Iterator[Sequence[int]]:
+  """Yields indices of neighboring knot locations for each time point.
 
-  Returns indices in `knot_locations` that correspond to the neighboring knot
+  Yields indices in `knot_locations` that correspond to the neighboring knot
   locations for each time period. If a time point is at or before the first
   knot, the first knot is the only neighboring knot. If a time point is after
   the last knot, the last knot is the only neighboring knot.
@@ -52,24 +51,21 @@ def _find_neighboring_knots_indices(
     times: Times `0, 1, 2,..., (n_times-1)`.
     knot_locations: The location of knots within `0, 1, 2,..., (n_times-1)`.
 
-  Returns:
-    List of length `n_times`. Each element is the indices of the neighboring
-    knot locations for the respective time period. If a time point is at or
-    before the first knot, the first knot is the only neighboring knot. If a
-    time point is after the last knot, the last knot is the only neighboring
-    knot.
+  Yields:
+    The indices of the neighboring knot locations for the respective time
+    period. If a time point is at or before the first knot, the first knot is
+    the only neighboring knot. If a time point is after the last knot, the last
+    knot is the only neighboring knot.
   """
-  neighboring_knots_indices = [None] * len(times)
-  for t in times:
-    # knot_locations assumed to be sorted.
-    if t <= knot_locations[0]:
-      neighboring_knots_indices[t] = [0]
-    elif t >= knot_locations[-1]:
-      neighboring_knots_indices[t] = [len(knot_locations) - 1]
+  n_knots = len(knot_locations)
+  indices = np.searchsorted(knot_locations, times, side='left')
+  for i, time in enumerate(times):
+    if time <= knot_locations[0]:
+      yield [0]
+    elif time >= knot_locations[-1]:
+      yield [n_knots - 1]
     else:
-      bisect_index = bisect.bisect_left(knot_locations, t)
-      neighboring_knots_indices[t] = [bisect_index - 1, bisect_index]
-  return neighboring_knots_indices
+      yield [indices[i] - 1, indices[i]]
 
 
 def l1_distance_weights(
@@ -116,10 +112,9 @@ def l1_distance_weights(
 
   w = np.zeros(time_minus_knot.shape, dtype=np.float32)
   neighboring_knots_indices = _find_neighboring_knots_indices(
-      times, knot_locations
+      times=times, knot_locations=knot_locations
   )
-  for t in times:
-    idx = neighboring_knots_indices[t]
+  for t, idx in enumerate(neighboring_knots_indices):
     if len(idx) == 1:
       w[idx, t] = 1
     else:
