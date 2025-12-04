@@ -15,7 +15,6 @@
 import dataclasses
 import os
 from unittest import mock
-import warnings
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -23,7 +22,6 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
-from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import adstock_hill
 from meridian.model import equations
@@ -179,77 +177,6 @@ class ModelTest(
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
     self.assertEqual(meridian.equations, self.mock_equations.return_value)
     self.mock_equations.assert_called_once_with(meridian.model_context)
-
-  def test_init_with_default_national_parameters_works(self):
-    data = self.national_input_data_media_only
-    meridian = model.Meridian(input_data=data)
-
-    # Compare input data.
-    self.assertEqual(meridian.input_data, data)
-
-    # Create sample model spec for comparison
-    expected_spec = spec.ModelSpec()
-
-    # Compare model spec.
-    self.assertEqual(repr(meridian.model_spec), repr(expected_spec))
-
-  def test_init_geo_args_no_warning(self):
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("module")
-      model.Meridian(
-          input_data=self.input_data_with_media_only,
-          model_spec=spec.ModelSpec(
-              media_effects_dist="normal", unique_sigma_for_each_geo=True
-          ),
-      )
-      self.assertEmpty(w)
-
-  def test_init_national_args_with_broadcast_warnings(self):
-    with warnings.catch_warnings(record=True) as warns:
-      warnings.simplefilter("module")
-      _ = model.Meridian(
-          input_data=self.national_input_data_media_only,
-          model_spec=spec.ModelSpec(
-              media_effects_dist=constants.MEDIA_EFFECTS_NORMAL
-          ),
-      ).prior_broadcast
-      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
-      # xi_c, eta_om, eta_orf, xi_n)
-      self.assertLen(warns, 7)
-      for w in warns:
-        self.assertTrue(issubclass(w.category, UserWarning))
-        self.assertIn(
-            "Hierarchical distribution parameters must be deterministically"
-            " zero for national models.",
-            str(w.message),
-        )
-
-  def test_init_national_args_with_model_spec_warnings(self):
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("module")
-      _ = model.Meridian(
-          input_data=self.national_input_data_media_only,
-          model_spec=spec.ModelSpec(unique_sigma_for_each_geo=True),
-      ).prior_broadcast
-      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
-      # xi_c, eta_om, eta_orf, xi_n) + 2 from model spec.
-      self.assertLen(w, 9)
-      self.assertTrue(
-          any(
-              "In a nationally aggregated model, the `media_effects_dist` will"
-              " be reset to `normal`."
-              in str(warning.message)
-              for warning in w
-          )
-      )
-      self.assertTrue(
-          any(
-              "In a nationally aggregated model, the"
-              " `unique_sigma_for_each_geo` will be reset to `False`."
-              in str(warning.message)
-              for warning in w
-          )
-      )
 
   def test_base_geo_properties(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
@@ -576,77 +503,6 @@ class ModelTest(
     # Validate sigma -- unique_sigma_for_each_geo is False by default, so sigma
     # should be a scalar batch.
     self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="1d",
-          get_total_spend=np.array([1.0, 2.0, 3.0, 4.0]),
-          expected_total_spend=np.array([1.0, 2.0, 3.0, 4.0]),
-      ),
-      dict(
-          testcase_name="2d",
-          get_total_spend=np.array([[1.0, 2.0], [4.0, 5.0]]),
-          expected_total_spend=np.array([5.0, 7.0]),
-      ),
-      dict(
-          testcase_name="3d",
-          get_total_spend=np.array([
-              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-              [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]],
-          ]),
-          expected_total_spend=np.array([55.0, 77.0, 99.0]),
-      ),
-  )
-  def test_broadcast_is_called_non_revenue_no_revenue_per_kpi_total_spend(
-      self, get_total_spend: np.ndarray, expected_total_spend: np.ndarray
-  ):
-    mock_get_total_spend = self.enter_context(
-        mock.patch.object(
-            input_data.InputData,
-            "get_total_spend",
-            autospec=True,
-        )
-    )
-    mock_get_total_spend.return_value = get_total_spend
-    mock_broadcast = self.enter_context(
-        mock.patch.object(
-            prior_distribution.PriorDistribution,
-            "broadcast",
-            autospec=True,
-        )
-    )
-    meridian = model.Meridian(
-        input_data=self.input_data_non_revenue_no_revenue_per_kpi
-    )
-    _ = meridian.prior_broadcast
-
-    _, mock_kwargs = mock_broadcast.call_args
-    self.assertEqual(mock_kwargs["set_total_media_contribution_prior"], True)
-    self.assertEqual(mock_kwargs["kpi"], np.sum(meridian.input_data.kpi))
-    np.testing.assert_allclose(mock_kwargs["total_spend"], expected_total_spend)
-
-  def test_default_roi_prior_distribution_raises_warning(
-      self,
-  ):
-    data = self.input_data_non_revenue_no_revenue_per_kpi
-    with warnings.catch_warnings(record=True) as warns:
-      # Cause all warnings to always be triggered.
-      warnings.simplefilter("always")
-
-      meridian = model.Meridian(input_data=data)
-
-      _ = meridian.prior_broadcast
-      self.assertLen(warns, 1, f"warns: {[w.message for w in warns]}")
-      for w in warns:
-        self.assertTrue(issubclass(w.category, UserWarning))
-        self.assertIn(
-            "Consider setting custom ROI priors, as kpi_type was specified as"
-            " `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the"
-            " total media contribution prior will be used with `p_mean=0.4` and"
-            " `p_sd=0.2`. Further documentation available at "
-            " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior",
-            str(w.message),
-        )
 
   def test_adstock_hill_media_missing_required_n_times_output(self):
     with self.assertRaisesRegex(
@@ -1012,21 +868,6 @@ class NonPaidModelTest(
         autospec=True,
     )
     self.mock_equations = self.enter_context(self._equations_patcher)
-
-  def test_init_with_wrong_non_media_population_scaling_id_shape_fails(self):
-    data = self.input_data_non_media_and_organic
-    model_spec = spec.ModelSpec(
-        non_media_population_scaling_id=np.ones((7), dtype=bool)
-    )
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "The shape of `non_media_population_scaling_id` (7,) is different from"
-        " `(n_non_media_channels,) = (2,)`.",
-    ):
-      model.Meridian(
-          input_data=data,
-          model_spec=model_spec,
-      )
 
   def test_base_geo_properties(self):
     data = self.input_data_non_media_and_organic
@@ -2167,22 +2008,6 @@ class NonPaidModelTest(
     )
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
-
-  def test_aks_returns_correct_knot_info(self):
-    data, expected_knot_info = (
-        data_test_utils.sample_input_data_for_aks_with_expected_knot_info()
-    )
-    model_spec = spec.ModelSpec(enable_aks=True)
-    actual_knot_info = model.Meridian(
-        input_data=data, model_spec=model_spec
-    ).knot_info
-    self.assertEqual(actual_knot_info.n_knots, expected_knot_info.n_knots)
-    np.testing.assert_equal(
-        actual_knot_info.knot_locations, expected_knot_info.knot_locations
-    )
-    np.testing.assert_equal(
-        actual_knot_info.weights, expected_knot_info.weights
-    )
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
+from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
 from meridian.model import knots as knots_module
@@ -148,9 +149,24 @@ class ContextTest(
         "The shape of `control_population_scaling_id` (7,) is different from"
         " `(n_controls,) = (2,)`.",
     ):
-      _ = context.ModelContext(
+      context.ModelContext(
           input_data=self.input_data_with_media_and_rf, model_spec=model_spec
-      ).controls_scaled
+      )
+
+  def test_init_with_wrong_non_media_population_scaling_id_shape_fails(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(
+        non_media_population_scaling_id=np.ones((7), dtype=bool)
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of `non_media_population_scaling_id` (7,) is different from"
+        " `(n_non_media_channels,) = (2,)`.",
+    ):
+      context.ModelContext(
+          input_data=data,
+          model_spec=model_spec,
+      )
 
   @parameterized.named_parameters(
       ("none", None, 200), ("int", 3, 3), ("list", [0, 50, 100, 150], 4)
@@ -970,6 +986,219 @@ class ContextTest(
           ),
           model_spec=spec.ModelSpec(),
       )
+
+  def test_custom_priors_not_passed_in_ok(self):
+    data = self.input_data_non_revenue_no_revenue_per_kpi
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec.ModelSpec(
+            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+        ),
+    )
+    # Compare input data.
+    self.assertEqual(model_context.input_data, data)
+
+    # Create sample model spec for comparison
+    sample_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+
+    # Compare model spec.
+    self.assertEqual(repr(model_context.model_spec), repr(sample_spec))
+
+  def test_custom_priors_okay_with_array_params(self):
+    prior = prior_distribution.PriorDistribution(
+        roi_m=backend.tfd.LogNormal([1, 1], [1, 1])
+    )
+    data = self.input_data_non_revenue_no_revenue_per_kpi
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec.ModelSpec(prior=prior),
+    )
+    # Compare input data.
+    self.assertEqual(model_context.input_data, data)
+
+    # Create sample model spec for comparison
+    sample_spec = spec.ModelSpec(prior=prior)
+
+    # Compare model spec.
+    self.assertEqual(repr(model_context.model_spec), repr(sample_spec))
+
+  def test_get_knot_info_fails(self):
+    error_msg = "Knots must be all non-negative."
+    with mock.patch.object(
+        knots_module,
+        "get_knot_info",
+        autospec=True,
+        side_effect=ValueError(error_msg),
+    ):
+      with self.assertRaisesWithLiteralMatch(ValueError, error_msg):
+        _ = context.ModelContext(
+            input_data=self.input_data_with_media_only,
+            model_spec=spec.ModelSpec(knots=4),
+        ).knot_info
+
+  def test_init_with_default_parameters_works(self):
+    data = self.input_data_with_media_only
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    # Compare input data.
+    self.assertEqual(model_context.input_data, data)
+
+    # Create sample model spec for comparison
+    sample_spec = spec.ModelSpec()
+
+    # Compare model spec.
+    self.assertEqual(repr(model_context.model_spec), repr(sample_spec))
+
+  def test_init_with_default_national_parameters_works(self):
+    data = self.national_input_data_media_only
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    # Compare input data.
+    self.assertEqual(model_context.input_data, data)
+
+    # Create sample model spec for comparison
+    expected_spec = spec.ModelSpec()
+
+    # Compare model spec.
+    self.assertEqual(repr(model_context.model_spec), repr(expected_spec))
+
+  def test_init_geo_args_no_warning(self):
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("module")
+      context.ModelContext(
+          input_data=self.input_data_with_media_only,
+          model_spec=spec.ModelSpec(
+              media_effects_dist="normal", unique_sigma_for_each_geo=True
+          ),
+      )
+      self.assertEmpty(w)
+
+  def test_init_national_args_with_broadcast_warnings(self):
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter("module")
+      _ = context.ModelContext(
+          input_data=self.national_input_data_media_only,
+          model_spec=spec.ModelSpec(
+              media_effects_dist=constants.MEDIA_EFFECTS_NORMAL
+          ),
+      ).prior_broadcast
+      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
+      # xi_c, eta_om, eta_orf, xi_n)
+      self.assertLen(warns, 7)
+      for w in warns:
+        self.assertTrue(issubclass(w.category, UserWarning))
+        self.assertIn(
+            "Hierarchical distribution parameters must be deterministically"
+            " zero for national models.",
+            str(w.message),
+        )
+
+  def test_init_national_args_with_model_spec_warnings(self):
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("module")
+      _ = context.ModelContext(
+          input_data=self.national_input_data_media_only,
+          model_spec=spec.ModelSpec(unique_sigma_for_each_geo=True),
+      ).prior_broadcast
+      # 7 warnings from the broadcasting (tau_g_excl_baseline, eta_m, eta_rf,
+      # xi_c, eta_om, eta_orf, xi_n).
+      self.assertLen(w, 7)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="1d",
+          get_total_spend=np.array([1.0, 2.0, 3.0, 4.0]),
+          expected_total_spend=np.array([1.0, 2.0, 3.0, 4.0]),
+      ),
+      dict(
+          testcase_name="2d",
+          get_total_spend=np.array([[1.0, 2.0], [4.0, 5.0]]),
+          expected_total_spend=np.array([5.0, 7.0]),
+      ),
+      dict(
+          testcase_name="3d",
+          get_total_spend=np.array([
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+              [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]],
+          ]),
+          expected_total_spend=np.array([55.0, 77.0, 99.0]),
+      ),
+  )
+  def test_broadcast_is_called_non_revenue_no_revenue_per_kpi_total_spend(
+      self, get_total_spend: np.ndarray, expected_total_spend: np.ndarray
+  ):
+    mock_get_total_spend = self.enter_context(
+        mock.patch.object(
+            input_data.InputData,
+            "get_total_spend",
+            autospec=True,
+        )
+    )
+    mock_get_total_spend.return_value = get_total_spend
+    mock_broadcast = self.enter_context(
+        mock.patch.object(
+            prior_distribution.PriorDistribution,
+            "broadcast",
+            autospec=True,
+        )
+    )
+    model_context = context.ModelContext(
+        input_data=self.input_data_non_revenue_no_revenue_per_kpi,
+        model_spec=spec.ModelSpec(),
+    )
+    _ = model_context.prior_broadcast
+
+    _, mock_kwargs = mock_broadcast.call_args
+    self.assertEqual(mock_kwargs["set_total_media_contribution_prior"], True)
+    self.assertEqual(mock_kwargs["kpi"], np.sum(model_context.input_data.kpi))
+    np.testing.assert_allclose(mock_kwargs["total_spend"], expected_total_spend)
+
+  def test_default_roi_prior_distribution_raises_warning(
+      self,
+  ):
+    data = self.input_data_non_revenue_no_revenue_per_kpi
+    with warnings.catch_warnings(record=True) as warns:
+      # Cause all warnings to always be triggered.
+      warnings.simplefilter("always")
+
+      model_context = context.ModelContext(
+          input_data=data, model_spec=spec.ModelSpec()
+      )
+
+      _ = model_context.prior_broadcast
+      self.assertLen(warns, 1, f"warns: {[w.message for w in warns]}")
+      for w in warns:
+        self.assertTrue(issubclass(w.category, UserWarning))
+        self.assertIn(
+            "Consider setting custom ROI priors, as kpi_type was specified as"
+            " `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the"
+            " total media contribution prior will be used with `p_mean=0.4` and"
+            " `p_sd=0.2`. Further documentation available at "
+            " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior",
+            str(w.message),
+        )
+
+  def test_aks_returns_correct_knot_info(self):
+    data, expected_knot_info = (
+        data_test_utils.sample_input_data_for_aks_with_expected_knot_info()
+    )
+    model_spec = spec.ModelSpec(enable_aks=True)
+    actual_knot_info = context.ModelContext(
+        input_data=data, model_spec=model_spec
+    ).knot_info
+    self.assertEqual(actual_knot_info.n_knots, expected_knot_info.n_knots)
+    np.testing.assert_equal(
+        actual_knot_info.knot_locations, expected_knot_info.knot_locations
+    )
+    np.testing.assert_equal(
+        actual_knot_info.weights, expected_knot_info.weights
+    )
 
 
 class AdstockDecaySpecFromChannelMappingTest(
