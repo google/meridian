@@ -192,6 +192,22 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         input_data=cls.input_data_organic_media,
         model_spec=spec.ModelSpec(max_lag=15),
     )
+    cls.input_data_non_media = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian_non_media = model.Meridian(
+        input_data=cls.input_data_non_media,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
 
   def test_init_wrong_dims_controls(self):
     with self.assertRaisesWithLiteralMatch(
@@ -203,22 +219,22 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
   @parameterized.named_parameters(
       (
           "wrong_media_dims",
-          {"media": (_N_GEOS, _N_MEDIA_CHANNELS)},
+          {constants.MEDIA: (_N_GEOS, _N_MEDIA_CHANNELS)},
           "New `media` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_reach_dims",
-          {"reach": (_N_GEOS, _N_RF_CHANNELS)},
+          {constants.REACH: (_N_GEOS, _N_RF_CHANNELS)},
           "New `reach` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_frequency_dims",
-          {"frequency": (_N_GEOS, _N_RF_CHANNELS)},
+          {constants.FREQUENCY: (_N_GEOS, _N_RF_CHANNELS)},
           "New `frequency` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "wrong_revenue_per_kpi_dims",
-          {"revenue_per_kpi": (_N_GEOS,)},
+          {constants.REVENUE_PER_KPI: (_N_GEOS,)},
           (
               "New `revenue_per_kpi` must have 2 dimension(s). Found 1"
               " dimension(s)."
@@ -226,27 +242,27 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
       ),
       (
           "wrong_media_spend_dims",
-          {"media_spend": (_N_GEOS, _N_MEDIA_CHANNELS)},
+          {constants.MEDIA_SPEND: (_N_GEOS, _N_MEDIA_CHANNELS)},
           "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
       ),
       (
           "wrong_rf_spend_dims",
-          {"media_spend": (_N_GEOS, _N_RF_CHANNELS)},
-          "New `media_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
+          {constants.RF_SPEND: (_N_GEOS, _N_RF_CHANNELS)},
+          "New `rf_spend` must have 1 or 3 dimensions. Found 2 dimensions.",
       ),
       (
           "organic_media",
-          {"organic_media": (_N_GEOS, _N_ORGANIC_MEDIA_CHANNELS)},
+          {constants.ORGANIC_MEDIA: (_N_GEOS, _N_ORGANIC_MEDIA_CHANNELS)},
           "New `organic_media` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "organic_reach",
-          {"organic_reach": (_N_GEOS, _N_ORGANIC_RF_CHANNELS)},
+          {constants.ORGANIC_REACH: (_N_GEOS, _N_ORGANIC_RF_CHANNELS)},
           "New `organic_reach` must have 3 dimension(s). Found 2 dimension(s).",
       ),
       (
           "non_media_treatments",
-          {"non_media_treatments": (_N_GEOS,)},
+          {constants.NON_MEDIA_TREATMENTS: (_N_GEOS,)},
           (
               "New `non_media_treatments` must have 3 dimension(s). Found 1"
               " dimension(s)."
@@ -328,7 +344,12 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
           meridian=self.meridian_media_and_rf,
       )
 
-  @parameterized.parameters(["media", "reach", "frequency", "revenue_per_kpi"])
+  @parameterized.parameters([
+      constants.MEDIA,
+      constants.REACH,
+      constants.FREQUENCY,
+      constants.REVENUE_PER_KPI,
+  ])
   def test_validate_missing_new_param_flexible_times(self, missing_param: str):
     new_data_dict = {
         constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
@@ -373,7 +394,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
           meridian=self.meridian_media_and_rf,
       )
 
-  @parameterized.parameters(["media", "revenue_per_kpi"])
+  @parameterized.parameters([constants.MEDIA, constants.REVENUE_PER_KPI])
   def test_validate_media_only_missing_new_param(self, missing_param: str):
     new_data_dict = {
         constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
@@ -403,15 +424,20 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         " model does not contain `reach`",
     ):
       new_data.validate_and_fill_missing_data(
-          required_tensors_names=["reach"], meridian=self.meridian_media_only
+          required_tensors_names=[constants.REACH],
+          meridian=self.meridian_media_only,
       )
 
-  @parameterized.parameters(["reach", "frequency", "revenue_per_kpi"])
+  @parameterized.parameters([
+      constants.REACH,
+      constants.FREQUENCY,
+      constants.REVENUE_PER_KPI,
+  ])
   def test_validate_rf_only_missing_new_param(self, missing_param: str):
     new_data_dict = {
-        "reach": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "frequency": backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-        "revenue_per_kpi": backend.ones((_N_GEOS, 10)),
+        constants.REACH: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.FREQUENCY: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
     }
     required_names = list(new_data_dict.keys())
     new_data_dict.pop(missing_param)
@@ -514,7 +540,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
           atol=1e-4,
       )
 
-  @parameterized.parameters(["media", "non_media_treatments"])
+  @parameterized.parameters([constants.MEDIA, constants.NON_MEDIA_TREATMENTS])
   def test_validate_organic_media_missing_new_param_flexible_times(
       self, missing_param: str
   ):
@@ -588,6 +614,56 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
               constants.REVENUE_PER_KPI,
           ],
           meridian=self.meridian_organic_media,
+      )
+
+  @parameterized.named_parameters(
+      (
+          "media_spend",
+          constants.MEDIA_SPEND,
+          "A `media_spend` value was passed",
+      ),
+      (
+          "controls",
+          constants.CONTROLS,
+          "A `controls` value was passed",
+      ),
+  )
+  def test_validate_warns_on_unexpected_params(
+      self, param_name: str, warning_msg: str
+  ) -> None:
+    if param_name == constants.CONTROLS:
+      tensor = self.meridian_media_and_rf.controls
+    elif param_name == constants.MEDIA_SPEND:
+      tensor = self.meridian_media_and_rf.media_tensors.media_spend
+    else:
+      tensor = getattr(self.meridian_media_and_rf.input_data, param_name)
+
+    new_data = analyzer.DataTensors(**{param_name: tensor})
+    required = [constants.MEDIA]
+
+    with self.assertWarnsRegex(UserWarning, warning_msg):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=required, meridian=self.meridian_media_and_rf
+      )
+
+  def test_validate_non_media_missing_new_param_flexible_times(self) -> None:
+    new_data = analyzer.DataTensors(
+        non_media_treatments=self.meridian_non_media.non_media_treatments[
+            :, :2, :
+        ]
+    )
+    required = [
+        constants.MEDIA,
+        constants.REACH,
+        constants.FREQUENCY,
+        constants.REVENUE_PER_KPI,
+        constants.NON_MEDIA_TREATMENTS,
+    ]
+    with self.assertRaisesRegex(
+        ValueError, "If the time dimension .* missing: .*"
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=required, meridian=self.meridian_non_media
       )
 
 
@@ -713,22 +789,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         atol=0.1,
     )
 
-  def test_expected_outcome_new_media_spend_raises_warning(self):
-    with warnings.catch_warnings(record=True) as w:
-      self.analyzer_media_and_rf.expected_outcome(
-          new_data=analyzer.DataTensors(
-              media_spend=self.meridian_media_and_rf.media_tensors.media_spend
-          ),
-      )
-
-      self.assertLen(w, 1)
-      self.assertTrue(issubclass(w[0].category, UserWarning))
-      self.assertIn(
-          "A `media_spend` value was passed in the `new_data` argument. "
-          "This is not supported and will be ignored.",
-          str(w[0].message),
-      )
-
   def test_expected_outcome_wrong_kpi_transformation(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -819,22 +879,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=1e-3,
         atol=1e-3,
     )
-
-  def test_incremental_outcome_new_controls_raises_warning(self):
-    with warnings.catch_warnings(record=True) as w:
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              controls=self.meridian_media_and_rf.controls
-          ),
-      )
-
-      self.assertLen(w, 1)
-      self.assertTrue(issubclass(w[0].category, UserWarning))
-      self.assertIn(
-          "A `controls` value was passed in the `new_data` argument. This is"
-          " not supported and will be ignored.",
-          str(w[0].message),
-      )
 
   def test_incremental_outcome_negative_scaling_factor0(self):
     with self.assertRaisesRegex(
@@ -5352,21 +5396,6 @@ class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
         rtol=1e-2,
         atol=1e-2,
     )
-
-  def test_incremental_outcome_wrong_non_media_raises_exception(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "If the time dimension of a variable in `new_data` is modified, then"
-        " all variables must be provided in `new_data`. The following variables"
-        " are missing: `['media', 'reach', 'frequency', 'revenue_per_kpi']`.",
-    ):
-      self.analyzer_non_media.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              non_media_treatments=self.meridian_non_media.non_media_treatments[
-                  :, :2, :
-              ]
-          ),
-      )
 
   def test_incremental_outcome_wrong_baseline_types_shape_raises_exception(
       self,
