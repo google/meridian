@@ -17,6 +17,7 @@
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import eda
+from meridian.model import equations
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import model

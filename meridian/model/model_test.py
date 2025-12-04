@@ -28,6 +28,7 @@ from meridian.backend import test_utils
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import adstock_hill
+from meridian.model import equations
 from meridian.model import knots as knots_module
 from meridian.model import model
 from meridian.model import model_test_data
@@ -77,6 +78,13 @@ class ModelTest(
             seed=0,
         )
     )
+
+    self._equations_patcher = mock.patch.object(
+        equations,
+        "ModelEquations",
+        autospec=True,
+    )
+    self.mock_equations = self.enter_context(self._equations_patcher)
 
   def test_validate_media_prior_type_mroi(self):
     with self.assertRaisesWithLiteralMatch(
@@ -325,6 +333,11 @@ class ModelTest(
 
     self.assertIsInstance(meridian.eda_engine, eda_engine.EDAEngine)
     self.assertEqual(meridian.eda_spec, expected_eda_spec)
+
+  def test_equations_initialization(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    self.assertEqual(meridian.equations, self.mock_equations.return_value)
+    self.mock_equations.assert_called_once_with(meridian.model_context)
 
   def test_init_with_default_national_parameters_works(self):
     data = self.national_input_data_media_only
@@ -1308,31 +1321,6 @@ class ModelTest(
         rtol=1e-4,
     )
 
-  def test_save_and_load_works(self):
-    # The create_tempdir() method below internally uses command line flag
-    # (--test_tmpdir) and such flags are not marked as parsed by default
-    # when running with pytest. Marking as parsed directly here to make the
-    # pytest run pass.
-    flags.FLAGS.mark_as_parsed()
-    file_path = os.path.join(self.create_tempdir().full_path, "joblib")
-    mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
-    model.save_mmm(mmm, str(file_path))
-    self.assertTrue(os.path.exists(file_path))
-    new_mmm = model.load_mmm(file_path)
-    for attr in dir(mmm):
-      if isinstance(getattr(mmm, attr), (int, bool)):
-        with self.subTest(name=attr):
-          self.assertEqual(getattr(mmm, attr), getattr(new_mmm, attr))
-      elif isinstance(getattr(mmm, attr), backend.Tensor):
-        with self.subTest(name=attr):
-          test_utils.assert_allclose(getattr(mmm, attr), getattr(new_mmm, attr))
-
-  def test_load_error(self):
-    with self.assertRaisesWithLiteralMatch(
-        FileNotFoundError, "No such file or directory: this/path/does/not/exist"
-    ):
-      model.load_mmm("this/path/does/not/exist")
-
   def test_run_model_fitting_guardrail_error_message(self):
     # Create mock EDA outcomes with ERROR severity findings
     mock_finding1 = mock.Mock()
@@ -1378,6 +1366,44 @@ class ModelTest(
       meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
 
 
+class ModelPersistenceTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def test_save_and_load_works(self):
+    # The create_tempdir() method below internally uses command line flag
+    # (--test_tmpdir) and such flags are not marked as parsed by default
+    # when running with pytest. Marking as parsed directly here to make the
+    # pytest run pass.
+    flags.FLAGS.mark_as_parsed()
+    file_path = os.path.join(self.create_tempdir().full_path, "joblib")
+    mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
+    model.save_mmm(mmm, str(file_path))
+    self.assertTrue(os.path.exists(file_path))
+    new_mmm = model.load_mmm(file_path)
+    for attr in dir(mmm):
+      if isinstance(getattr(mmm, attr), (int, bool)):
+        with self.subTest(name=attr):
+          self.assertEqual(getattr(mmm, attr), getattr(new_mmm, attr))
+      elif isinstance(getattr(mmm, attr), backend.Tensor):
+        with self.subTest(name=attr):
+          test_utils.assert_allclose(getattr(mmm, attr), getattr(new_mmm, attr))
+
+  def test_load_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        FileNotFoundError, "No such file or directory: this/path/does/not/exist"
+    ):
+      model.load_mmm("this/path/does/not/exist")
+
+
 class NonPaidModelTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -1389,6 +1415,15 @@ class NonPaidModelTest(
   def setUpClass(cls):
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self._equations_patcher = mock.patch.object(
+        equations,
+        "ModelEquations",
+        autospec=True,
+    )
+    self.mock_equations = self.enter_context(self._equations_patcher)
 
   def test_init_with_wrong_non_media_population_scaling_id_shape_fails(self):
     data = self.input_data_non_media_and_organic
