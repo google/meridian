@@ -46,11 +46,37 @@ class ModelTest(
 ):
 
   input_data_samples = model_test_data.WithInputDataSamples
+  _N_GEOS_SMALL = 3
+  _N_TIMES_SMALL = 5
+  _N_MEDIA_TIMES_SMALL = 6
 
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.small_data = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=self._N_GEOS_SMALL,
+            n_times=self._N_TIMES_SMALL,
+            n_media_times=self._N_MEDIA_TIMES_SMALL,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    self.small_data_no_revenue_per_kpi = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS_SMALL,
+            n_times=self._N_TIMES_SMALL,
+            n_media_times=self._N_MEDIA_TIMES_SMALL,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
 
   def test_validate_media_prior_type_mroi(self):
     with self.assertRaisesWithLiteralMatch(
@@ -1207,6 +1233,80 @@ class ModelTest(
 
     mocks_called_names = [mc[0] for mc in manager.mock_calls]
     self.assertEqual(mocks_called_names, expected_called_names)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="normal",
+          input_data_name="small_data",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=False,
+          expected_coef=[[0.004037, 0.004037, 0.004037]],
+      ),
+      dict(
+          testcase_name="normal_no_revenue_per_kpi",
+          input_data_name="small_data_no_revenue_per_kpi",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=False,
+          expected_coef=[[0.001286, 0.001286, 0.001286]],
+      ),
+      dict(
+          testcase_name="log_normal",
+          input_data_name="small_data",
+          media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+          is_non_media=False,
+          expected_coef=[[-5.512325, -5.512325, -5.512325]],
+      ),
+      dict(
+          testcase_name="non_media_normal",
+          input_data_name="small_data_no_revenue_per_kpi",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=True,
+          expected_coef=[[0.001286, 0.001286]],
+      ),
+  )
+  def test_calculate_beta_x(
+      self,
+      *,
+      input_data_name: str,
+      media_effects_dist: str,
+      is_non_media: bool,
+      expected_coef: np.ndarray,
+  ):
+    data = getattr(self, input_data_name)
+    mmm = model.Meridian(
+        input_data=data,
+        model_spec=spec.ModelSpec(media_effects_dist=media_effects_dist),
+    )
+    n_channels = (
+        self._N_NON_MEDIA_CHANNELS if is_non_media else self._N_MEDIA_CHANNELS
+    )
+    eta_x = backend.to_tensor([[0.0] * n_channels], dtype=backend.float32)
+    beta_gx_dev = backend.zeros(
+        (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float32
+    )
+    linear_predictor_counterfactual_difference = backend.to_tensor(
+        np.ones(
+            (1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)
+        ),
+        dtype=backend.float32,
+    )
+    incremental_outcome_x = backend.to_tensor(
+        [[1.0] * n_channels], dtype=backend.float32
+    )
+
+    calculated_beta_x = mmm.calculate_beta_x(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+    )
+
+    test_utils.assert_allclose(
+        calculated_beta_x,
+        backend.to_tensor(expected_coef, dtype=backend.float32),
+        rtol=1e-4,
+    )
 
   def test_save_and_load_works(self):
     # The create_tempdir() method below internally uses command line flag
@@ -2388,20 +2488,56 @@ class NonPaidModelTest(
     actual_baseline = meridian.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
 
-  def test_compute_non_media_treatments_baseline_mixed(self):
+  def test_compute_non_media_treatments_baseline_mixed_float_and_string(
+      self,
+  ) -> None:
     """Tests baseline calculation with mixed float and string values."""
     data = self.input_data_non_media_and_organic
     baseline_values = ["min", 5.0]
+    model_spec = spec.ModelSpec(
+        non_media_baseline_values=baseline_values,
+    )
     meridian = model.Meridian(
         input_data=data,
-        model_spec=spec.ModelSpec(non_media_baseline_values=baseline_values),
+        model_spec=model_spec,
     )
     non_media_treatments = meridian.non_media_treatments
+    _, baseline_value_float = baseline_values
     expected_baseline_min = backend.reduce_min(
         non_media_treatments[..., 0], axis=[0, 1]
     )
     expected_baseline_float = backend.to_tensor(
-        baseline_values[1], dtype=backend.float32
+        baseline_value_float, dtype=backend.float32
+    )
+    expected_baseline = backend.stack(
+        [expected_baseline_min, expected_baseline_float], axis=-1
+    )
+    test_utils.assert_allclose(
+        expected_baseline, meridian.compute_non_media_treatments_baseline()
+    )
+
+  def test_compute_non_media_treatments_baseline_mixed_with_population_scaling(
+      self,
+  ) -> None:
+    """Tests baseline calculation with population scaling."""
+    data = self.input_data_non_media_and_organic
+    baseline_values = ["min", 5.0]
+    model_spec = spec.ModelSpec(
+        non_media_baseline_values=baseline_values,
+        non_media_population_scaling_id=backend.to_tensor([True, False]),
+    )
+    meridian = model.Meridian(
+        input_data=data,
+        model_spec=model_spec,
+    )
+    non_media_treatments = meridian.non_media_treatments
+    _, baseline_value_float = baseline_values
+    expected_baseline_min = backend.reduce_min(
+        non_media_treatments[..., 0] / meridian.population[:, np.newaxis],
+        axis=[0, 1],
+    )
+    expected_baseline_float = backend.to_tensor(
+        baseline_value_float, dtype=backend.float32
     )
     expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1
