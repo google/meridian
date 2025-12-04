@@ -28,7 +28,6 @@ from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
-from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
 import xarray as xr
@@ -804,6 +803,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times=[False, True],
       geos_to_include=[None, ["geo_1", "geo_3"]],
       times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
   )
   def test_expected_outcome_media_and_rf_returns_correct_shape(
       self,
@@ -812,6 +812,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times: bool,
       geos_to_include: Sequence[str] | None,
       times_to_include: Sequence[str] | None,
+      use_kpi: bool,
   ):
     outcome = self.analyzer_media_and_rf.expected_outcome(
         use_posterior=use_posterior,
@@ -819,6 +820,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         aggregate_times=aggregate_times,
         selected_geos=geos_to_include,
         selected_times=times_to_include,
+        use_kpi=use_kpi,
     )
     expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
     if not aggregate_geos:
@@ -1052,6 +1054,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           ["2021-04-19", "2021-09-13", "2021-12-13"],
           [False] * (_N_TIMES - 3) + [True] * 3,
       ],
+      use_kpi=[False, True],
   )
   def test_incremental_outcome_media_and_rf_returns_correct_shape(
       self,
@@ -1060,6 +1063,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times: bool,
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | None,
+      use_kpi: bool,
   ):
     outcome = self.analyzer_media_and_rf.incremental_outcome(
         use_posterior=use_posterior,
@@ -1067,6 +1071,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         aggregate_times=aggregate_times,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        use_kpi=use_kpi,
     )
     expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
     if not aggregate_geos:
@@ -1200,6 +1205,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       selected_geos=[None, ["geo_1", "geo_3"]],
       selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
       by_reach=[False, True],
+      use_kpi=[False, True],
   )
   def test_marginal_roi_media_and_rf_returns_correct_shape(
       self,
@@ -1208,6 +1214,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | None,
       by_reach: bool,
+      use_kpi: bool,
   ):
     type(self.meridian_media_and_rf).inference_data = mock.PropertyMock(
         return_value=self.inference_data_media_and_rf
@@ -1218,6 +1225,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         selected_geos=selected_geos,
         selected_times=selected_times,
         by_reach=by_reach,
+        use_kpi=use_kpi,
     )
     expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
     if not aggregate_geos:
@@ -1316,6 +1324,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_geos=[False, True],
       selected_geos=[None, ["geo_1", "geo_3"]],
       selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
   )
   def test_roi_media_and_rf_returns_correct_shape(
       self,
@@ -1323,12 +1332,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_geos: bool,
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | None,
+      use_kpi: bool,
   ):
     roi = self.analyzer_media_and_rf.roi(
         use_posterior=use_posterior,
         aggregate_geos=aggregate_geos,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        use_kpi=use_kpi,
     )
     expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
     if not aggregate_geos:
@@ -1659,6 +1670,125 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=1e-3,
     )
 
+  def test_summary_metrics_kpi_values(self):
+    """Verifies that use_kpi=True produces different (and correct) metric values."""
+    media_summary = self.analyzer_media_and_rf.summary_metrics(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+        use_kpi=True,
+    )
+    self.assertEqual(
+        list(media_summary.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.PCT_OF_CONTRIBUTION,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.incremental_outcome,
+        analysis_test_utils.SAMPLE_INC_OUTCOME_KPI,
+        atol=1e-2,
+        rtol=1e-2,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi,
+        analysis_test_utils.SAMPLE_ROI_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.effectiveness,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  @parameterized.named_parameters(
+      ("marginal_roi", "marginal_roi"),
+      ("roi", "roi"),
+      ("summary_metrics", "summary_metrics"),
+      ("predictive_accuracy", "predictive_accuracy"),
+  )
+  def test_no_revenue_data_use_kpi_false_warning_and_fallback(
+      self, method_name
+  ):
+    input_data = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    mmm = model.Meridian(input_data=input_data)
+    type(mmm).inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    analyzer_no_rev = analyzer.Analyzer(mmm)
+
+    method = getattr(analyzer_no_rev, method_name)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Revenue analysis is not available when `revenue_per_kpi` is"
+        " unknown. Defaulting to KPI analysis.",
+    ):
+      result_false = method(use_kpi=False)
+
+    result_true = method(use_kpi=True)
+
+    if isinstance(result_false, xr.Dataset):
+      xr.testing.assert_allclose(result_false, result_true)
+    else:
+      backend_test_utils.assert_allclose(result_false, result_true)
+
+  def test_public_methods_revenue_type_use_kpi_true_has_no_effect(self):
+    input_data = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
+    )
+    mmm = model.Meridian(input_data=input_data)
+    type(mmm).inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_and_rf
+    )
+    analyzer_rev = analyzer.Analyzer(mmm)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`",
+    ):
+      res_true = analyzer_rev.expected_outcome(use_kpi=True)
+
+    res_false = analyzer_rev.expected_outcome(use_kpi=False)
+    backend_test_utils.assert_allclose(res_true, res_false)
+
   def test_media_summary_with_new_data_returns_correct_values(self):
     data1 = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
         n_geos=_N_GEOS,
@@ -1865,6 +1995,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times=[False, True],
       selected_geos=[None, ["geo_1", "geo_3"]],
       selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
   )
   def test_media_summary_returns_correct_shapes(
       self,
@@ -1872,6 +2003,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times: bool,
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | None,
+      use_kpi: bool,
   ):
     analyzer_ = self.analyzer_media_and_rf
     num_channels = _N_MEDIA_CHANNELS + _N_RF_CHANNELS
@@ -1883,6 +2015,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         aggregate_times=aggregate_times,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        use_kpi=use_kpi,
     )
     expected_channel_shape = ()
     if not aggregate_geos:
@@ -1995,6 +2128,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times=[False, True],
       selected_geos=[None, ["geo_1", "geo_3"]],
       selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
   )
   def test_baseline_summary_returns_correct_shapes(
       self,
@@ -2002,6 +2136,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       aggregate_times: bool,
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | None,
+      use_kpi: bool,
   ):
     analyzer_ = self.analyzer_media_and_rf
 
@@ -2011,6 +2146,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         aggregate_times=aggregate_times,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        use_kpi=use_kpi,
     )
     expected_geo_and_time_shape = ()
     if not aggregate_geos:
@@ -2144,6 +2280,31 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertEqual(actual.confidence_level, expected.confidence_level)
     self.assertEqual(actual.use_posterior, expected.use_posterior)
 
+  def test_optimal_frequency_kpi_returns_correct_structure(self):
+    """Verifies that use_kpi=True for optimal_freq returns correct structure."""
+    result = self.analyzer_media_and_rf.optimal_freq(
+        freq_grid=[1.0, 2.0, 3.0],
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        use_posterior=True,
+        use_kpi=True,
+    )
+
+    self.assertIsInstance(result, xr.Dataset)
+    self.assertEqual(
+        list(result.data_vars.keys()),
+        [
+            constants.ROI,
+            constants.OPTIMAL_FREQUENCY,
+            constants.OPTIMIZED_INCREMENTAL_OUTCOME,
+            constants.OPTIMIZED_ROI,
+            constants.OPTIMIZED_EFFECTIVENESS,
+            constants.OPTIMIZED_MROI_BY_REACH,
+            constants.OPTIMIZED_MROI_BY_FREQUENCY,
+            constants.OPTIMIZED_CPIK,
+        ],
+    )
+    self.assertFalse(result.attrs[constants.IS_REVENUE_KPI])
+
   def test_optimal_freq_new_times_data_correct(self):
     max_lag = 15
     n_new_times = 15
@@ -2220,6 +2381,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         list(df.columns),
         [constants.METRIC, constants.GEO_GRANULARITY, constants.VALUE],
     )
+
+  def test_predictive_accuracy_kpi_returns_correct_structure(self):
+    """Verifies predictive accuracy structure when use_kpi=True."""
+    dataset = self.analyzer_media_and_rf.predictive_accuracy(use_kpi=True)
+
+    self.assertListEqual(
+        list(dataset[constants.METRIC].values),
+        [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
+    )
+    self.assertFalse(np.isnan(dataset[constants.VALUE]).all())
 
   @mock.patch.object(
       model.Meridian, "is_national", new=property(lambda unused_self: True)
@@ -4921,359 +5092,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
   ):
     actual = self.analyzer_rf_only.get_aggregated_spend(include_rf=False)
     backend_test_utils.assert_allequal(actual.data, [])
-
-
-class AnalyzerKpiTest(backend_test_utils.MeridianTestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(AnalyzerKpiTest, cls).setUpClass()
-
-    input_data = (
-        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    # Use the backend's TFP and bijectors
-    cpik_prior = backend.tfd.LogNormal(0.5, 0.5)
-    roi_prior = backend.tfd.TransformedDistribution(
-        cpik_prior, backend.bijectors.Reciprocal()
-    )
-    custom_prior = prior_distribution.PriorDistribution(
-        roi_m=roi_prior, roi_rf=roi_prior
-    )
-    model_spec = spec.ModelSpec(prior=custom_prior)
-    cls.meridian_kpi = model.Meridian(
-        input_data=input_data, model_spec=model_spec
-    )
-    cls.analyzer_kpi = analyzer.Analyzer(cls.meridian_kpi)
-    inference_data = _build_inference_data(
-        _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
-        _TEST_SAMPLE_POSTERIOR_MEDIA_AND_RF_PATH,
-    )
-    cls.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: inference_data),
-        )
-    )
-
-  def test_use_kpi_expected_vs_actual_data_expected_outcome_correct_usage(self):
-    mock_expected_outcome = self.enter_context(
-        mock.patch.object(
-            self.analyzer_kpi,
-            "expected_outcome",
-            return_value=backend.ones((
-                _N_CHAINS,
-                _N_DRAWS,
-                _N_GEOS,
-                _N_TIMES,
-            )),
-        )
-    )
-    self.analyzer_kpi.expected_vs_actual_data()
-    _, mock_kwargs = mock_expected_outcome.call_args
-    self.assertEqual(mock_kwargs["use_kpi"], True)
-
-  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_vs_actual(self):
-    expected_vs_actual = self.analyzer_kpi.expected_vs_actual_data(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
-    )
-    backend_test_utils.assert_allclose(
-        list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
-        list(self.meridian_kpi.kpi[:5]),
-        atol=1e-3,
-    )
-
-  def test_use_kpi_no_revenue_per_kpi_correct_usage_media_summary_metrics(self):
-    media_summary = self.analyzer_kpi.summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-        selected_geos=None,
-        selected_times=None,
-        use_kpi=True,
-    )
-    self.assertEqual(
-        list(media_summary.data_vars.keys()),
-        [
-            constants.IMPRESSIONS,
-            constants.PCT_OF_IMPRESSIONS,
-            constants.SPEND,
-            constants.PCT_OF_SPEND,
-            constants.CPM,
-            constants.INCREMENTAL_OUTCOME,
-            constants.PCT_OF_CONTRIBUTION,
-            constants.ROI,
-            constants.EFFECTIVENESS,
-            constants.MROI,
-            constants.CPIK,
-        ],
-    )
-    # Check the metrics that differ when `use_kpi=True`.
-    backend_test_utils.assert_allclose(
-        media_summary.incremental_outcome,
-        analysis_test_utils.SAMPLE_INC_OUTCOME_KPI,
-        atol=1e-2,
-        rtol=1e-2,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.roi,
-        analysis_test_utils.SAMPLE_ROI_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.effectiveness,
-        analysis_test_utils.SAMPLE_EFFECTIVENESS_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.mroi,
-        analysis_test_utils.SAMPLE_MROI_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-
-  def test_marginal_roi_no_revenue_data_use_kpi_false_has_no_effect(self):
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      mroi_with_kpi_false = self.analyzer_kpi.marginal_roi(use_kpi=False)
-    mroi_with_kpi_true = self.analyzer_kpi.marginal_roi(use_kpi=True)
-    backend_test_utils.assert_allclose(mroi_with_kpi_false, mroi_with_kpi_true)
-
-  def test_roi_no_revenue_data_use_kpi_false_has_no_effect(self):
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      roi_with_kpi_false = self.analyzer_kpi.roi(use_kpi=False)
-    roi_with_kpi_true = self.analyzer_kpi.roi(use_kpi=True)
-    backend_test_utils.assert_allclose(roi_with_kpi_false, roi_with_kpi_true)
-
-  def test_summary_metrics_no_revenue_data_use_kpi_false_has_no_effect(self):
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      summary_false = self.analyzer_kpi.summary_metrics(use_kpi=False)
-    summary_true = self.analyzer_kpi.summary_metrics(use_kpi=True)
-    xr.testing.assert_allclose(summary_false, summary_true)
-
-  def test_predictive_accuracy_no_revenue_data_use_kpi_false_has_no_effect(
-      self,
-  ):
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      accuracy_false = self.analyzer_kpi.predictive_accuracy(use_kpi=False)
-    accuracy_true = self.analyzer_kpi.predictive_accuracy(use_kpi=True)
-    xr.testing.assert_allclose(accuracy_false, accuracy_true)
-
-  def test_use_kpi_correct_usage_response_curves(self):
-    mock_incremental_outcome = self.enter_context(
-        mock.patch.object(
-            self.analyzer_kpi,
-            "incremental_outcome",
-            return_value=backend.ones((
-                _N_CHAINS,
-                _N_DRAWS,
-                _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
-            )),
-        )
-    )
-    self.analyzer_kpi.response_curves(use_kpi=True)
-    _, mock_kwargs = mock_incremental_outcome.call_args
-    self.assertEqual(mock_kwargs["use_kpi"], True)
-
-  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_outcome(self):
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      self.analyzer_kpi.expected_outcome()
-
-  def test_expected_outcome_revenue_kpi_use_kpi_true_has_no_effect(self):
-    input_data_revenue = data_test_utils.sample_input_data_revenue(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        seed=0,
-    )
-    mmm_revenue = model.Meridian(input_data=input_data_revenue)
-    analyzer_revenue = analyzer.Analyzer(mmm_revenue)
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      outcome_with_kpi_true = analyzer_revenue.expected_outcome(
-          use_kpi=True,
-      )
-
-      # TODO: Remove this once the warning is fixed.
-      user_warnings = [
-          warning
-          for warning in w
-          if not issubclass(warning.category, DeprecationWarning)
-      ]
-      self.assertLen(user_warnings, 1)
-      self.assertTrue(issubclass(user_warnings[0].category, UserWarning))
-      self.assertIn(
-          "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`"
-          " since in this case, KPI is equal to revenue.",
-          str(user_warnings[0].message),
-      )
-    outcome_with_kpi_false = analyzer_revenue.expected_outcome(
-        use_kpi=False,
-    )
-    backend_test_utils.assert_allclose(
-        outcome_with_kpi_true, outcome_with_kpi_false
-    )
-
-  def test_optimal_frequency_data_no_revenue_per_kpi_correct(self):
-    actual = self.analyzer_kpi.optimal_freq(
-        freq_grid=[1.0, 2.0, 3.0],
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        use_posterior=True,
-        use_kpi=True,
-    )
-    expected = xr.Dataset(
-        coords={
-            constants.FREQUENCY: [1.0, 2.0, 3.0],
-            constants.RF_CHANNEL: ["rf_ch_0", "rf_ch_1"],
-            constants.METRIC: [
-                constants.MEAN,
-                constants.MEDIAN,
-                constants.CI_LO,
-                constants.CI_HI,
-            ],
-        },
-        data_vars={
-            constants.ROI: (
-                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [
-                        [1.45663321, 1.46222901, 0.51041067, 2.39638948],
-                        [2.12286782, 2.09572244, 0.54957443, 3.752141],
-                    ],
-                    [
-                        [0.78908628, 0.79023874, 0.31107241, 1.2646476],
-                        [1.17641282, 1.16203976, 0.35569778, 2.02744746],
-                    ],
-                    [
-                        [0.54987603, 0.5502463, 0.22928859, 0.86951894],
-                        [0.81452322, 0.80485409, 0.26908818, 1.38052571],
-                    ],
-                ],
-            ),
-            constants.OPTIMAL_FREQUENCY: ([constants.RF_CHANNEL], [1.0, 1.0]),
-            constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [396.44, 397.96, 138.92, 652.21],
-                    [611.12, 603.30, 158.21, 1080.15],
-                ],
-            ),
-            constants.OPTIMIZED_ROI: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1.45663321, 1.462229, 0.51041068, 2.39638944],
-                    [2.12286782, 2.0957224, 0.54957444, 3.75214096],
-                ],
-            ),
-            constants.OPTIMIZED_EFFECTIVENESS: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1.211769e-04, 1.216424e-04, 4.246090e-05, 1.993549e-04],
-                    [1.747521e-04, 1.725175e-04, 4.524036e-05, 3.088720e-04],
-                ],
-            ),
-            constants.OPTIMIZED_MROI_BY_REACH: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1.4566362, 1.4622416, 0.5104058, 2.396392],
-                    [2.1228676, 2.095724, 0.5495737, 3.7521646],
-                ],
-            ),
-            constants.OPTIMIZED_MROI_BY_FREQUENCY: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [0.17261705, 0.17397353, 0.14313781, 0.19791752],
-                    [0.4224712, 0.41871762, 0.22409489, 0.62984283],
-                ],
-            ),
-            constants.OPTIMIZED_CPIK: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1.1664926, 1.1397777, 0.41729444, 1.9592067],
-                    [1.041547, 1.0384206, 0.26651454, 1.8195891],
-                ],
-            ),
-        },
-        attrs={
-            constants.CONFIDENCE_LEVEL: constants.DEFAULT_CONFIDENCE_LEVEL,
-            "use_posterior": True,
-        },
-    )
-
-    xr.testing.assert_allclose(actual, expected, atol=0.1)
-    xr.testing.assert_allclose(actual.frequency, expected.frequency)
-    xr.testing.assert_allclose(actual.rf_channel, expected.rf_channel)
-    xr.testing.assert_allclose(actual.metric, expected.metric)
-    xr.testing.assert_allclose(actual.roi, expected.roi, atol=0.01)
-    xr.testing.assert_allclose(
-        actual.optimal_frequency, expected.optimal_frequency
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_incremental_outcome,
-        expected.optimized_incremental_outcome,
-        atol=0.1,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_effectiveness,
-        expected.optimized_effectiveness,
-        atol=0.000001,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_roi,
-        expected.optimized_roi,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_reach,
-        expected.optimized_mroi_by_reach,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_frequency,
-        expected.optimized_mroi_by_frequency,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_cpik,
-        expected.optimized_cpik,
-        atol=0.01,
-    )
-    self.assertEqual(actual.confidence_level, expected.confidence_level)
-    self.assertEqual(actual.use_posterior, expected.use_posterior)
 
 
 class AnalyzerNonMediaTest(backend_test_utils.MeridianTestCase):
