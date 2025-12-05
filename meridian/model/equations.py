@@ -24,11 +24,12 @@ from collections.abc import Sequence
 
 from meridian import backend
 from meridian import constants
+from meridian.model import adstock_hill
 from meridian.model import context
 
 
 __all__ = [
-    'ModelEquations',
+    "ModelEquations",
 ]
 
 
@@ -47,7 +48,56 @@ class ModelEquations:
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
-    raise NotImplementedError
+    """Transforms media or using Adstock and Hill functions in the desired order.
+
+    Args:
+      media: Tensor of dimensions `(n_geos, n_media_times, n_media_channels)`
+        containing non-negative media execution values. Typically this is
+        impressions, but it can be any metric, such as `media_spend`. Clicks are
+        often used for paid search ads.
+      alpha: Uniform distribution for Adstock and Hill calculations.
+      ec: Shifted half-normal distribution for Adstock and Hill calculations.
+      slope: Deterministic distribution for Adstock and Hill calculations.
+      decay_functions: String or sequence of strings denoting the adstock decay
+        function(s) for each channel. Default: 'geometric'.
+      n_times_output: Number of time periods to output. This argument is
+        optional when the number of time periods in `media` equals
+        `n_media_times`, in which case `n_times_output` defaults to `n_times`.
+
+    Returns:
+      Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
+      representing Adstock and Hill-transformed media.
+    """
+    if n_times_output is None and (
+        media.shape[1] == self._context.n_media_times
+    ):
+      n_times_output = self._context.n_times
+    elif n_times_output is None:
+      raise ValueError(
+          "n_times_output is required. This argument is only optional when "
+          "`media` has a number of time periods equal to `n_media_times`."
+      )
+
+    adstock_transformer = adstock_hill.AdstockTransformer(
+        alpha=alpha,
+        max_lag=self._context.model_spec.max_lag,
+        n_times_output=n_times_output,
+        decay_functions=decay_functions,
+    )
+    hill_transformer = adstock_hill.HillTransformer(
+        ec=ec,
+        slope=slope,
+    )
+    transformers_list = (
+        [hill_transformer, adstock_transformer]
+        if self._context.model_spec.hill_before_adstock
+        else [adstock_transformer, hill_transformer]
+    )
+
+    media_out = media
+    for transformer in transformers_list:
+      media_out = transformer.forward(media_out)
+    return media_out
 
   def adstock_hill_rf(
       self,
@@ -59,7 +109,50 @@ class ModelEquations:
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
-    raise NotImplementedError
+    """Transforms reach and frequency (RF) using Hill and Adstock functions.
+
+    Args:
+      reach: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
+        containing non-negative media for reach.
+      frequency: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
+        containing non-negative media for frequency.
+      alpha: Uniform distribution for Adstock and Hill calculations.
+      ec: Shifted half-normal distribution for Adstock and Hill calculations.
+      slope: Deterministic distribution for Adstock and Hill calculations.
+      decay_functions: String or sequence of strings denoting the adstock decay
+        function(s) for each channel. Default: 'geometric'.
+      n_times_output: Number of time periods to output. This argument is
+        optional when the number of time periods in `reach` equals
+        `n_media_times`, in which case `n_times_output` defaults to `n_times`.
+
+    Returns:
+      Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
+      representing Hill and Adstock-transformed RF.
+    """
+    if n_times_output is None and (
+        reach.shape[1] == self._context.n_media_times
+    ):
+      n_times_output = self._context.n_times
+    elif n_times_output is None:
+      raise ValueError(
+          "n_times_output is required. This argument is only optional when "
+          "`reach` has a number of time periods equal to `n_media_times`."
+      )
+
+    hill_transformer = adstock_hill.HillTransformer(
+        ec=ec,
+        slope=slope,
+    )
+    adstock_transformer = adstock_hill.AdstockTransformer(
+        alpha=alpha,
+        max_lag=self._context.model_spec.max_lag,
+        n_times_output=n_times_output,
+        decay_functions=decay_functions,
+    )
+    adj_frequency = hill_transformer.forward(frequency)
+    rf_out = adstock_transformer.forward(reach * adj_frequency)
+
+    return rf_out
 
   def compute_non_media_treatments_baseline(
       self,

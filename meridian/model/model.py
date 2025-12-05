@@ -828,6 +828,7 @@ class Meridian:
     )
     return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
 
+  # TODO: Deprecate in favor of ModelEquations.adstock_hill_media.
   def adstock_hill_media(
       self,
       media: backend.Tensor,  # pylint: disable=redefined-outer-name
@@ -858,34 +859,16 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
-    if n_times_output is None and (media.shape[1] == self.n_media_times):
-      n_times_output = self.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`media` has a number of time periods equal to `self.n_media_times`."
-      )
-    adstock_transformer = adstock_hill.AdstockTransformer(
+    return self.equations.adstock_hill_media(
+        media=media,
         alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
-        decay_functions=decay_functions,
-    )
-    hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
         slope=slope,
-    )
-    transformers_list = (
-        [hill_transformer, adstock_transformer]
-        if self.model_spec.hill_before_adstock
-        else [adstock_transformer, hill_transformer]
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
     )
 
-    media_out = media
-    for transformer in transformers_list:
-      media_out = transformer.forward(media_out)
-    return media_out
-
+  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def adstock_hill_rf(
       self,
       reach: backend.Tensor,
@@ -917,27 +900,15 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
-    if n_times_output is None and (reach.shape[1] == self.n_media_times):
-      n_times_output = self.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`reach` has a number of time periods equal to `self.n_media_times`."
-      )
-    hill_transformer = adstock_hill.HillTransformer(
+    return self.equations.adstock_hill_rf(
+        reach=reach,
+        frequency=frequency,
+        alpha=alpha,
         ec=ec,
         slope=slope,
-    )
-    adstock_transformer = adstock_hill.AdstockTransformer(
-        alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
         decay_functions=decay_functions,
+        n_times_output=n_times_output,
     )
-    adj_frequency = hill_transformer.forward(frequency)
-    rf_out = adstock_transformer.forward(reach * adj_frequency)
-
-    return rf_out
 
   def populate_cached_properties(self):
     """Eagerly activates all cached properties.

@@ -15,6 +15,7 @@
 import dataclasses
 import os
 from unittest import mock
+
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -23,7 +24,6 @@ from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
-from meridian.model import adstock_hill
 from meridian.model import equations
 from meridian.model import knots as knots_module
 from meridian.model import model
@@ -73,13 +73,6 @@ class ModelTest(
             seed=0,
         )
     )
-
-    self._equations_patcher = mock.patch.object(
-        equations,
-        "ModelEquations",
-        autospec=True,
-    )
-    self.mock_equations = self.enter_context(self._equations_patcher)
 
   def test_custom_priors_not_passed_in_ok(self):
     data = self.input_data_non_revenue_no_revenue_per_kpi
@@ -175,8 +168,7 @@ class ModelTest(
 
   def test_equations_initialization(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
-    self.assertEqual(meridian.equations, self.mock_equations.return_value)
-    self.mock_equations.assert_called_once_with(meridian.model_context)
+    self.assertIsInstance(meridian.equations, equations.ModelEquations)
 
   def test_base_geo_properties(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
@@ -504,195 +496,7 @@ class ModelTest(
     # should be a scalar batch.
     self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
-  def test_adstock_hill_media_missing_required_n_times_output(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "n_times_output is required. This argument is only optional when"
-        " `media` has a number of time periods equal to `self.n_media_times`.",
-    ):
-      meridian = model.Meridian(
-          input_data=self.input_data_with_media_only,
-          model_spec=spec.ModelSpec(),
-      )
-      meridian.adstock_hill_media(
-          media=meridian.media_tensors.media[:, :-8, :],
-          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          decay_functions=meridian.adstock_decay_spec.media,
-      )
-
-  def test_adstock_hill_media_n_times_output(self):
-    with mock.patch.object(
-        adstock_hill, "AdstockTransformer", autosepc=True
-    ) as mock_adstock_cls:
-      data = self.input_data_with_media_only
-      mock_adstock_cls.return_value.forward.return_value = data.media
-      meridian = model.Meridian(
-          input_data=data,
-          model_spec=spec.ModelSpec(),
-      )
-      meridian.adstock_hill_media(
-          media=meridian.media_tensors.media,
-          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          decay_functions=meridian.adstock_decay_spec.media,
-          n_times_output=8,
-      )
-
-      calls = mock_adstock_cls.call_args_list
-      _, mock_kwargs = calls[0]
-      self.assertEqual(mock_kwargs["n_times_output"], 8)
-
-  # TODO Move this test to a higher-level public API unit test.
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="adstock_first",
-          hill_before_adstock=False,
-          expected_called_names=["mock_adstock", "mock_hill"],
-      ),
-      dict(
-          testcase_name="hill_first",
-          hill_before_adstock=True,
-          expected_called_names=["mock_hill", "mock_adstock"],
-      ),
-  )
-  def test_adstock_hill_media(
-      self,
-      hill_before_adstock,
-      expected_called_names,
-  ):
-    data = self.input_data_with_media_only
-    mock_hill = self.enter_context(
-        mock.patch.object(
-            adstock_hill.HillTransformer,
-            "forward",
-            autospec=True,
-            return_value=data.media,
-        )
-    )
-    mock_adstock = self.enter_context(
-        mock.patch.object(
-            adstock_hill.AdstockTransformer,
-            "forward",
-            autospec=True,
-            return_value=data.media,
-        )
-    )
-    manager = mock.Mock()
-    manager.attach_mock(mock_adstock, "mock_adstock")
-    manager.attach_mock(mock_hill, "mock_hill")
-
-    meridian = model.Meridian(
-        input_data=data,
-        model_spec=spec.ModelSpec(
-            hill_before_adstock=hill_before_adstock,
-        ),
-    )
-    meridian.adstock_hill_media(
-        media=meridian.media_tensors.media,
-        alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-        ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-        slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-        decay_functions=meridian.adstock_decay_spec.media,
-    )
-
-    mock_hill.assert_called_once()
-    mock_adstock.assert_called_once()
-
-    mocks_called_names = [mc[0] for mc in manager.mock_calls]
-    self.assertEqual(mocks_called_names, expected_called_names)
-
-  def test_adstock_hill_rf_missing_required_n_times_output(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "n_times_output is required. This argument is only optional when"
-        " `reach` has a number of time periods equal to `self.n_media_times`.",
-    ):
-      meridian = model.Meridian(
-          input_data=self.input_data_with_media_and_rf,
-          model_spec=spec.ModelSpec(),
-      )
-      meridian.adstock_hill_rf(
-          reach=meridian.rf_tensors.reach[:, :-8, :],
-          frequency=meridian.rf_tensors.frequency,
-          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
-          decay_functions=meridian.adstock_decay_spec.rf,
-      )
-
-  def test_adstock_hill_rf_n_times_output(self):
-    with mock.patch.object(
-        adstock_hill, "AdstockTransformer", autosepc=True
-    ) as mock_adstock_cls:
-      data = self.input_data_with_media_and_rf
-      mock_adstock_cls.return_value.forward.return_value = data.media
-      meridian = model.Meridian(
-          input_data=data,
-          model_spec=spec.ModelSpec(),
-      )
-      meridian.adstock_hill_rf(
-          reach=meridian.rf_tensors.reach,
-          frequency=meridian.rf_tensors.frequency,
-          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
-          decay_functions=meridian.adstock_decay_spec.rf,
-          n_times_output=8,
-      )
-
-      calls = mock_adstock_cls.call_args_list
-      _, mock_kwargs = calls[0]
-      self.assertEqual(mock_kwargs["n_times_output"], 8)
-
-  # TODO Move this test to a higher-level public API unit test.
-  def test_adstock_hill_rf(
-      self,
-  ):
-    data = self.input_data_with_media_and_rf
-    mock_hill = self.enter_context(
-        mock.patch.object(
-            adstock_hill.HillTransformer,
-            "forward",
-            autospec=True,
-            return_value=data.frequency,
-        )
-    )
-    mock_adstock = self.enter_context(
-        mock.patch.object(
-            adstock_hill.AdstockTransformer,
-            "forward",
-            autospec=True,
-            return_value=data.reach * data.frequency,
-        )
-    )
-    manager = mock.Mock()
-    manager.attach_mock(mock_adstock, "mock_adstock")
-    manager.attach_mock(mock_hill, "mock_hill")
-
-    meridian = model.Meridian(
-        input_data=data,
-        model_spec=spec.ModelSpec(),
-    )
-    meridian.adstock_hill_rf(
-        reach=meridian.rf_tensors.reach,
-        frequency=meridian.rf_tensors.frequency,
-        alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-        ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-        slope=np.ones(shape=(self._N_RF_CHANNELS,)),
-        decay_functions=meridian.adstock_decay_spec.rf,
-    )
-
-    expected_called_names = ["mock_hill", "mock_adstock"]
-
-    mock_hill.assert_called_once()
-    mock_adstock.assert_called_once()
-
-    mocks_called_names = [mc[0] for mc in manager.mock_calls]
-    self.assertEqual(mocks_called_names, expected_called_names)
-
+  # TODO: Move to `equations_test`.
   @parameterized.named_parameters(
       dict(
           testcase_name="normal",
@@ -859,15 +663,6 @@ class NonPaidModelTest(
   def setUpClass(cls):
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
-
-  def setUp(self):
-    super().setUp()
-    self._equations_patcher = mock.patch.object(
-        equations,
-        "ModelEquations",
-        autospec=True,
-    )
-    self.mock_equations = self.enter_context(self._equations_patcher)
 
   def test_base_geo_properties(self):
     data = self.input_data_non_media_and_organic
@@ -1188,6 +983,7 @@ class NonPaidModelTest(
         atol=atol,
     )
 
+  # TODO: Move this integration test to a separate module.
   def test_get_joint_dist_constants(self):
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
@@ -1234,6 +1030,7 @@ class NonPaidModelTest(
         backend.zeros(shape=(self._N_DRAWS, self._N_GEOS, self._N_TIMES_SHORT)),
     )
 
+  # TODO: Move this integration test to a separate module.
   @parameterized.named_parameters(
       dict(
           testcase_name="default_normal_failing",
@@ -1534,6 +1331,7 @@ class NonPaidModelTest(
         rtol=1e-3,
     )
 
+  # TODO: Move this integration test to a separate module.
   def test_inference_data_non_paid_correct_dims(self):
     data = self.input_data_non_media_and_organic
     model_spec = spec.ModelSpec()
@@ -1560,6 +1358,7 @@ class NonPaidModelTest(
         self.assertIn(dim, prior_coords)
         self.assertLen(prior_coords[dim], shape_dim)
 
+  # TODO: Move this integration test to a separate module.
   def test_inference_data_with_unique_sigma_geo_correct_dims(self):
     data = self.input_data_non_media_and_organic
     model_spec = spec.ModelSpec(unique_sigma_for_each_geo=True)
@@ -1586,6 +1385,7 @@ class NonPaidModelTest(
         self.assertIn(dim, prior_coords)
         self.assertLen(prior_coords[dim], shape_dim)
 
+  # TODO: Move this integration test to a separate module.
   def test_validate_injected_inference_data_correct_shapes(self):
     """Checks validation passes with correct shapes."""
     data = self.input_data_non_media_and_organic
@@ -1619,6 +1419,7 @@ class NonPaidModelTest(
         meridian_with_inference_data.inference_data, inference_data
     )
 
+  # TODO: Move this integration test to a separate module.
   @parameterized.named_parameters(
       dict(
           testcase_name="non_media_channels",
@@ -1736,6 +1537,7 @@ class NonPaidModelTest(
           inference_data=inference_data,
       )
 
+  # TODO: Move this integration test to a separate module.
   @parameterized.named_parameters(
       dict(
           testcase_name="sigma_dims_unique_sigma",
