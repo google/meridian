@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.3.3] - 2025-12-04
+
+* Update github actions
+
 ## [1.3.2] - 2025-11-26
 
 * Fixed an out-of-bounds bug in EDA's VIF check.
@@ -419,4 +423,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.3.0]: https://github.com/google/meridian/releases/tag/v1.3.0
 [1.3.1]: https://github.com/google/meridian/releases/tag/v1.3.1
 [1.3.2]: https://github.com/google/meridian/releases/tag/v1.3.2
-[Unreleased]: https://github.com/google/meridian/compare/v1.3.2...HEAD
+[1.3.3]: https://github.com/google/meridian/releases/tag/v1.3.3
+[Unreleased]: https://github.com/google/meridian/compare/v1.3.3...HEAD
