@@ -298,6 +298,7 @@ class InputData:
     self._validate_time_formats()
     self._validate_times()
     self._validate_geos()
+    self._validate_no_negative_values()
 
   def _convert_geos_to_strings(self):
     """Converts geo coordinates to strings in all relevant DataArrays."""
@@ -552,6 +553,26 @@ class InputData:
       raise ValueError(
           "Revenue per KPI values must not be all zero or negative."
       )
+
+  def _validate_no_negative_values(self):
+    """Validates no negative values for applicable fields."""
+
+    fields_to_loggable_name = {
+        "media_spend": "Media Spend",
+        "rf_spend": "RF Spend",
+        "media": "Media",
+        "reach": "Reach",
+        "frequency": "Frequency",
+        "organic_media": "Organic Media",
+        "organic_reach": "Organic Reach",
+        "organic_frequency": "Organic Frequency",
+    }
+
+    for field_key, field_name in fields_to_loggable_name.items():
+      da = getattr(self, field_key)
+      if da is not None:
+        if (da.values < 0).any():
+          raise ValueError(f"{field_name} values must be non-negative.")
 
   def _validate_names(self):
     """Verifies that the names of the data arrays are correct."""
