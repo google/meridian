@@ -1,0 +1,62 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing;
+
+import "google/api/field_behavior.proto";
+import "mmm/v1/common/date_interval.proto";
+import "mmm/v1/marketing/marketing_data.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "NewMarketingDataProto";
+
+// A new marketing data point used for model inference. This contains
+// independent marketing data at a specific geo and time.
+message NewMarketingDataPoint {
+  // Geo info of this data point. Required for a geo model.
+  GeoInfo geo_info = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // Date interval covered by this data point.
+  // This can represent either a coordinate point, or an aggregation over a time
+  // dimension's coordinates. In the case of the latter, this field should be
+  // defined with `[start, end + interval]` value, where `start` and `end` are
+  // the first and last coordinate in that time dimension, respectively.
+  common.DateInterval date_interval = 2
+      [(google.api.field_behavior) = REQUIRED];
+
+  // The media variables associated with the marketing at this geo and time.
+  repeated MediaVariable media_variables = 3
+      [(google.api.field_behavior) = OPTIONAL];
+
+  // The reach and frequency variables associated with the marketing at this geo
+  // and time.
+  repeated ReachFrequencyVariable reach_frequency_variables = 5
+      [(google.api.field_behavior) = OPTIONAL];
+
+  // The revenue per KPI associated with the marketing at this geo and time.
+  // Required for revenue analysis.
+  double revenue_per_kpi = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// A collection of independent marketing data points for different combinations
+// of geo locations and times, used to override training data for model
+// inference. This can span any time period, including times overlapping with
+// and beyond the modeling period.
+message NewMarketingData {
+  // The independent marketing data points for each geo and time.
+  repeated NewMarketingDataPoint marketing_data_points = 1
+      [(google.api.field_behavior) = OPTIONAL];
+}

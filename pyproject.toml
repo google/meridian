@@ -79,7 +79,7 @@ jax = [
 ]
 # MMM proto schema.
 schema = [
-  "mmm-proto-schema",
+  "mmm-proto-schema @ file:./proto",
   "semver",
 ]
 
@@ -103,7 +103,7 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["meridian*", "schema*"]
+include = ["meridian*", "schema*","scenarioplanner*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]
