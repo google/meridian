@@ -158,14 +158,12 @@ class Meridian:
       ) = None,  # for deserializer use only
       eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
-    self._input_data = input_data
-    self._model_spec = model_spec if model_spec else spec.ModelSpec()
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
     self._model_context = context.ModelContext(
-        input_data=self._input_data,
-        model_spec=self._model_spec,
+        input_data=input_data,
+        model_spec=model_spec if model_spec else spec.ModelSpec(),
     )
     self._equations = equations.ModelEquations(self._model_context)
 
@@ -182,11 +180,11 @@ class Meridian:
 
   @property
   def input_data(self) -> data.InputData:
-    return self._input_data
+    return self._model_context.input_data
 
   @property
   def model_spec(self) -> spec.ModelSpec:
-    return self._model_spec
+    return self._model_context.model_spec
 
   @property
   def model_context(self) -> context.ModelContext:
