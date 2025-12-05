@@ -582,6 +582,9 @@ message MeridianModel {
   // The semantic version of the Meridian library used to generate this model.
   string model_version = 2 [features.field_presence = EXPLICIT];
 
+  // The ArviZ version used to serialize inference data.
+  string arviz_version = 20 [features.field_presence = EXPLICIT];
+
   Hyperparameters hyperparameters = 3;
   PriorDistributions prior_distributions = 11 [deprecated = true];
   PriorTfpDistributions prior_tfp_distributions = 18;
