@@ -1475,119 +1475,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     backend_test_utils.assert_allclose(actual, expected)
 
-  def test_hill_histogram_column_names(self):
-    hill_histogram_table = (
-        self.analyzer_media_and_rf._get_hill_histogram_dataframe(n_bins=25)
-    )
-    self.assertEqual(
-        list(hill_histogram_table.columns),
-        [
-            constants.CHANNEL,
-            constants.CHANNEL_TYPE,
-            constants.SCALED_COUNT_HISTOGRAM,
-            constants.COUNT_HISTOGRAM,
-            constants.START_INTERVAL_HISTOGRAM,
-            constants.END_INTERVAL_HISTOGRAM,
-        ],
-    )
-
-  def test_hill_calculation_dataframe_properties(self):
-    hill_table = self.analyzer_media_and_rf.hill_curves()
-
-    self.assertEqual(
-        list(hill_table.columns),
-        [
-            constants.CHANNEL,
-            constants.MEDIA_UNITS,
-            constants.DISTRIBUTION,
-            constants.CI_HI,
-            constants.CI_LO,
-            constants.MEAN,
-            constants.CHANNEL_TYPE,
-            constants.SCALED_COUNT_HISTOGRAM,
-            constants.COUNT_HISTOGRAM,
-            constants.START_INTERVAL_HISTOGRAM,
-            constants.END_INTERVAL_HISTOGRAM,
-        ],
-    )
-    self.assertContainsSubset(
-        list(set(hill_table[constants.CHANNEL])),
-        ["ch_0", "ch_1", "ch_2", "rf_ch_0", "rf_ch_1"],
-    )
-    ci_lo_col = list(hill_table[constants.CI_LO].notna())
-    ci_hi_col = list(hill_table[constants.CI_HI].notna())
-    mean_col = list(hill_table[constants.MEAN].notna())
-
-    for i, e in enumerate(mean_col):
-      ci_lo_val = ci_lo_col[i]
-      ci_hi_val = ci_hi_col[i]
-      self.assertGreaterEqual(e, ci_lo_val)
-      self.assertLessEqual(e, ci_hi_val)
-
-  def test_hill_calculation_curve_data_correct(self):
-    hill_table = self.analyzer_media_and_rf.hill_curves()
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.CI_HI])[:5],
-        np.array(analysis_test_utils.HILL_CURVES_CI_HI),
-        atol=1e-5,
-    )
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.CI_LO])[:5],
-        np.array(analysis_test_utils.HILL_CURVES_CI_LO),
-        atol=1e-5,
-    )
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.MEAN])[:5],
-        np.array(analysis_test_utils.HILL_CURVES_MEAN),
-        atol=1e-5,
-    )
-
-  def test_hill_calculation_histogram_data_correct(self):
-    hill_table = self.analyzer_media_and_rf.hill_curves()
-    # The Histogram data is in the bottom portion of the DataFrame for
-    # Altair plotting purposes.
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.SCALED_COUNT_HISTOGRAM])[-5:],
-        np.array(analysis_test_utils.HILL_CURVES_SCALED_COUNT_HISTOGRAM),
-        atol=1e-5,
-    )
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.COUNT_HISTOGRAM])[-5:],
-        np.array(analysis_test_utils.HILL_CURVES_COUNT_HISTOGRAM),
-        atol=1e-5,
-    )
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.START_INTERVAL_HISTOGRAM])[-5:],
-        np.array(analysis_test_utils.HILL_CURVES_START_INTERVAL_HISTOGRAM),
-        atol=1e-5,
-    )
-    backend_test_utils.assert_allclose(
-        list(hill_table[constants.END_INTERVAL_HISTOGRAM])[-5:],
-        np.array(analysis_test_utils.HILL_CURVES_END_INTERVAL_HISTOGRAM),
-        atol=1e-5,
-    )
-
-  @mock.patch("meridian.analysis.analyzer.np.histogram")
-  def test_hill_curves_scaled_histogram_avoids_nan_on_zero_counts(
-      self, mock_np_histogram
-  ):
-    n_bins = 10
-    mock_counts = np.zeros(n_bins)
-    mock_buckets = np.linspace(0, 1, n_bins + 1)
-    mock_np_histogram.return_value = (mock_counts, mock_buckets)
-
-    hill_curves_df = self.analyzer_media_and_rf.hill_curves(n_bins=n_bins)
-    histogram_part = hill_curves_df[
-        (hill_curves_df[constants.CHANNEL_TYPE] == constants.MEDIA)
-        & (hill_curves_df[constants.COUNT_HISTOGRAM].notna())
-    ].copy()
-
-    has_nan = histogram_part[constants.SCALED_COUNT_HISTOGRAM].isna().any()
-    self.assertFalse(
-        has_nan,
-        "NaN found in scaled_count_histogram.",
-    )
-
   def test_media_summary_returns_correct_values(self):
     media_summary = self.analyzer_media_and_rf.summary_metrics(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -2782,118 +2669,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           " not be split.",
           str(w[0].message),
       )
-
-  def test_adstock_decay_dataframe(self):
-    adstock_decay_dataframe = self.analyzer_media_and_rf.adstock_decay(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
-    )
-
-    self.assertEqual(
-        list(adstock_decay_dataframe.columns),
-        [
-            constants.CHANNEL,
-            constants.TIME_UNITS,
-            constants.DISTRIBUTION,
-            constants.CI_HI,
-            constants.CI_LO,
-            constants.MEAN,
-            constants.IS_INT_TIME_UNIT,
-        ],
-    )
-    self.assertContainsSubset(
-        list(set(adstock_decay_dataframe[constants.CHANNEL])),
-        ["rf_ch_0", "rf_ch_1", "ch_0", "ch_1", "ch_2"],
-    )
-    for i, e in enumerate(list(adstock_decay_dataframe[constants.MEAN])):
-      self.assertGreaterEqual(
-          e, list(adstock_decay_dataframe[constants.CI_LO])[i]
-      )
-      self.assertLessEqual(e, list(adstock_decay_dataframe[constants.CI_HI])[i])
-
-  def test_adstock_decay_effect_values(self):
-    adstock_decay_dataframe = self.analyzer_media_and_rf.adstock_decay(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
-    )
-
-    first_channel = adstock_decay_dataframe[constants.CHANNEL].iloc[0]
-    first_channel_df = adstock_decay_dataframe[
-        adstock_decay_dataframe[constants.CHANNEL] == first_channel
-    ]
-    prior_df = first_channel_df[
-        first_channel_df[constants.DISTRIBUTION] == constants.PRIOR
-    ]
-    posterior_df = first_channel_df[
-        first_channel_df[constants.DISTRIBUTION] == constants.POSTERIOR
-    ]
-
-    mean_arr_prior = list(prior_df[constants.MEAN])
-    ci_lo_arr_prior = list(prior_df[constants.CI_LO])
-    ci_hi_arr_prior = list(prior_df[constants.CI_HI])
-
-    mean_arr_posterior = list(posterior_df[constants.MEAN])
-    ci_lo_arr_posterior = list(posterior_df[constants.CI_LO])
-    ci_hi_arr_posterior = list(posterior_df[constants.CI_HI])
-
-    # Make sure values are monotonically decreasing throughout DataFrame slice
-    # for one channel.
-    for i in range(len(mean_arr_prior) - 1):
-      self.assertLessEqual(mean_arr_prior[i + 1], mean_arr_prior[i])
-      self.assertLessEqual(ci_lo_arr_prior[i + 1], ci_lo_arr_prior[i])
-      self.assertLessEqual(ci_hi_arr_prior[i + 1], ci_hi_arr_prior[i])
-
-      self.assertLessEqual(mean_arr_posterior[i + 1], mean_arr_posterior[i])
-      self.assertLessEqual(ci_lo_arr_posterior[i + 1], ci_lo_arr_posterior[i])
-      self.assertLessEqual(ci_hi_arr_posterior[i + 1], ci_hi_arr_posterior[i])
-
-  def test_adstock_decay_math_correct(self):
-    adstock_decay_dataframe = self.analyzer_media_and_rf.adstock_decay(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
-    )
-
-    first_channel = adstock_decay_dataframe[constants.CHANNEL].iloc[0]
-    first_channel_df = adstock_decay_dataframe[
-        adstock_decay_dataframe[constants.CHANNEL] == first_channel
-    ]
-
-    backend_test_utils.assert_allclose(
-        list(first_channel_df[constants.CI_HI])[:5],
-        analysis_test_utils.ADSTOCK_DECAY_CI_HI,
-        atol=1e-3,
-    )
-
-    backend_test_utils.assert_allclose(
-        list(first_channel_df[constants.CI_LO])[:5],
-        analysis_test_utils.ADSTOCK_DECAY_CI_LO,
-        atol=1e-3,
-    )
-
-    backend_test_utils.assert_allclose(
-        list(first_channel_df[constants.MEAN])[:5],
-        analysis_test_utils.ADSTOCK_DECAY_MEAN,
-        atol=1e-3,
-    )
-
-  def test_adstock_decay_time_unit_integer_indication_correct(self):
-    adstock_decay_dataframe = self.analyzer_media_and_rf.adstock_decay(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
-    )
-    is_true_df = adstock_decay_dataframe[
-        adstock_decay_dataframe[constants.IS_INT_TIME_UNIT]
-    ]
-    for i in range(len(is_true_df[constants.TIME_UNITS])):
-      self.assertEqual(
-          list(is_true_df[constants.TIME_UNITS])[i],
-          int(list(is_true_df[constants.TIME_UNITS])[i]),
-      )
-
-  def test_adstock_decay_index_is_standard_range_index(self):
-    analyzer_ = self.analyzer_media_and_rf
-    adstock_df = analyzer_.adstock_decay()
-
-    self.assertNotEmpty(adstock_df)
-    self.assertEqual(adstock_df.index.start, 0)
-    self.assertEqual(adstock_df.index.step, 1)
-    self.assertLen(adstock_df, adstock_df.index.stop)
 
   def test_get_historical_spend_deprecated_warning(self):
     with self.assertWarnsRegex(
@@ -5527,9 +5302,23 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         rtol=1e-2,
     )
 
-  def test_adstock_decay_includes_organic_channels(self):
-    df = self.analyzer.adstock_decay()
-    actual_channels = df[constants.CHANNEL].unique()
+  def test_adstock_decay_dataframe(self):
+    adstock_decay_dataframe = self.analyzer.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+
+    self.assertEqual(
+        list(adstock_decay_dataframe.columns),
+        [
+            constants.CHANNEL,
+            constants.TIME_UNITS,
+            constants.DISTRIBUTION,
+            constants.CI_HI,
+            constants.CI_LO,
+            constants.MEAN,
+            constants.IS_INT_TIME_UNIT,
+        ],
+    )
     expected_channels = [
         "ch_0",
         "ch_1",
@@ -5542,7 +5331,79 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         "organic_media_3",
         "organic_rf_ch_0",
     ]
-    self.assertSameElements(expected_channels, actual_channels)
+    self.assertSameElements(
+        expected_channels, adstock_decay_dataframe[constants.CHANNEL].unique()
+    )
+
+    for i, e in enumerate(list(adstock_decay_dataframe[constants.MEAN])):
+      self.assertGreaterEqual(
+          e, list(adstock_decay_dataframe[constants.CI_LO])[i]
+      )
+      self.assertLessEqual(e, list(adstock_decay_dataframe[constants.CI_HI])[i])
+
+  def test_adstock_decay_effect_values(self):
+    adstock_decay_dataframe = self.analyzer.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+
+    first_channel = adstock_decay_dataframe[constants.CHANNEL].iloc[0]
+    first_channel_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.CHANNEL] == first_channel
+    ]
+    prior_df = first_channel_df[
+        first_channel_df[constants.DISTRIBUTION] == constants.PRIOR
+    ]
+    posterior_df = first_channel_df[
+        first_channel_df[constants.DISTRIBUTION] == constants.POSTERIOR
+    ]
+
+    mean_arr_prior = list(prior_df[constants.MEAN])
+    ci_lo_arr_prior = list(prior_df[constants.CI_LO])
+    ci_hi_arr_prior = list(prior_df[constants.CI_HI])
+
+    mean_arr_posterior = list(posterior_df[constants.MEAN])
+    ci_lo_arr_posterior = list(posterior_df[constants.CI_LO])
+    ci_hi_arr_posterior = list(posterior_df[constants.CI_HI])
+
+    # Make sure values are monotonically decreasing throughout DataFrame slice
+    # for one channel.
+    for i in range(len(mean_arr_prior) - 1):
+      self.assertLessEqual(mean_arr_prior[i + 1], mean_arr_prior[i])
+      self.assertLessEqual(ci_lo_arr_prior[i + 1], ci_lo_arr_prior[i])
+      self.assertLessEqual(ci_hi_arr_prior[i + 1], ci_hi_arr_prior[i])
+
+      self.assertLessEqual(mean_arr_posterior[i + 1], mean_arr_posterior[i])
+      self.assertLessEqual(ci_lo_arr_posterior[i + 1], ci_lo_arr_posterior[i])
+      self.assertLessEqual(ci_hi_arr_posterior[i + 1], ci_hi_arr_posterior[i])
+
+  def test_adstock_decay_math_correct(self):
+    """Verifies values for Paid Media channels."""
+    adstock_decay_dataframe = self.analyzer.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+
+    # Testing "ch_0" (Paid Media)
+    first_channel_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.CHANNEL] == "ch_0"
+    ]
+
+    backend_test_utils.assert_allclose(
+        list(first_channel_df[constants.CI_HI])[:5],
+        analysis_test_utils.ADSTOCK_DECAY_CI_HI,
+        atol=1e-3,
+    )
+
+    backend_test_utils.assert_allclose(
+        list(first_channel_df[constants.CI_LO])[:5],
+        analysis_test_utils.ADSTOCK_DECAY_CI_LO,
+        atol=1e-3,
+    )
+
+    backend_test_utils.assert_allclose(
+        list(first_channel_df[constants.MEAN])[:5],
+        analysis_test_utils.ADSTOCK_DECAY_MEAN,
+        atol=1e-3,
+    )
 
   @parameterized.named_parameters(
       dict(
@@ -5594,7 +5455,44 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  def test_hill_curves_dataframe_properties(self):
+  def test_adstock_decay_time_unit_integer_indication_correct(self):
+    adstock_decay_dataframe = self.analyzer.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+    is_true_df = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.IS_INT_TIME_UNIT]
+    ]
+    for i in range(len(is_true_df[constants.TIME_UNITS])):
+      self.assertEqual(
+          list(is_true_df[constants.TIME_UNITS])[i],
+          int(list(is_true_df[constants.TIME_UNITS])[i]),
+      )
+
+  def test_adstock_decay_index_is_standard_range_index(self):
+    adstock_df = self.analyzer.adstock_decay()
+
+    self.assertNotEmpty(adstock_df)
+    self.assertEqual(adstock_df.index.start, 0)
+    self.assertEqual(adstock_df.index.step, 1)
+    self.assertLen(adstock_df, adstock_df.index.stop)
+
+  def test_hill_histogram_column_names(self):
+    hill_histogram_table = self.analyzer._get_hill_histogram_dataframe(
+        n_bins=25
+    )
+    self.assertEqual(
+        list(hill_histogram_table.columns),
+        [
+            constants.CHANNEL,
+            constants.CHANNEL_TYPE,
+            constants.SCALED_COUNT_HISTOGRAM,
+            constants.COUNT_HISTOGRAM,
+            constants.START_INTERVAL_HISTOGRAM,
+            constants.END_INTERVAL_HISTOGRAM,
+        ],
+    )
+
+  def test_hill_calculation_dataframe_properties(self):
     hill_table = self.analyzer.hill_curves()
     hist_df = hill_table[hill_table[constants.COUNT_HISTOGRAM].notna()]
 
@@ -5661,6 +5559,69 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
     )
     self.assertTrue(hist_df.index.is_unique)
 
+    # Check CI properties for valid rows (where MEAN is present)
+    curve_df = hill_table[hill_table[constants.MEAN].notna()]
+    ci_lo_col = list(curve_df[constants.CI_LO])
+    ci_hi_col = list(curve_df[constants.CI_HI])
+    mean_col = list(curve_df[constants.MEAN])
+
+    for i, e in enumerate(mean_col):
+      self.assertGreaterEqual(e, ci_lo_col[i])
+      self.assertLessEqual(e, ci_hi_col[i])
+
+  def test_hill_calculation_curve_data_correct(self):
+    """Verifies Paid Media values."""
+    hill_table = self.analyzer.hill_curves()
+    hill_table = hill_table[
+        hill_table[constants.CHANNEL_TYPE] == constants.MEDIA
+    ]
+
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.CI_HI])[:5],
+        np.array(analysis_test_utils.HILL_CURVES_CI_HI),
+        atol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.CI_LO])[:5],
+        np.array(analysis_test_utils.HILL_CURVES_CI_LO),
+        atol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.MEAN])[:5],
+        np.array(analysis_test_utils.HILL_CURVES_MEAN),
+        atol=1e-5,
+    )
+
+  def test_hill_calculation_histogram_data_correct(self):
+    """Verifies Paid Media values."""
+    hill_table = self.analyzer.hill_curves()
+    hill_table = hill_table[
+        hill_table[constants.CHANNEL_TYPE] == constants.MEDIA
+    ]
+
+    # The Histogram data is in the bottom portion of the DataFrame for
+    # Altair plotting purposes.
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.SCALED_COUNT_HISTOGRAM])[-5:],
+        np.array(analysis_test_utils.HILL_CURVES_SCALED_COUNT_HISTOGRAM),
+        atol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.COUNT_HISTOGRAM])[-5:],
+        np.array(analysis_test_utils.HILL_CURVES_COUNT_HISTOGRAM),
+        atol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.START_INTERVAL_HISTOGRAM])[-5:],
+        np.array(analysis_test_utils.HILL_CURVES_START_INTERVAL_HISTOGRAM),
+        atol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        list(hill_table[constants.END_INTERVAL_HISTOGRAM])[-5:],
+        np.array(analysis_test_utils.HILL_CURVES_END_INTERVAL_HISTOGRAM),
+        atol=1e-5,
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="organic_media_test",
@@ -5673,7 +5634,7 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
           expected_channel_type=constants.ORGANIC_RF,
       ),
   )
-  def test_hill_curves_curve_data_correct(
+  def test_hill_curves_organic_curve_data_correct(
       self, channel_name, expected_channel_type
   ):
     hill_table = self.analyzer.hill_curves()
@@ -5707,7 +5668,7 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
           expected_channel_type=constants.ORGANIC_RF,
       ),
   )
-  def test_hill_curves_histogram_data_correct(
+  def test_hill_curves_organic_histogram_data_correct(
       self, channel_name, expected_channel_type
   ):
     n_bins = 25
@@ -5831,6 +5792,27 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
           ),
           dist_tensors=analyzer.DistributionTensors(),
       )
+
+  @mock.patch("meridian.analysis.analyzer.np.histogram")
+  def test_hill_curves_scaled_histogram_avoids_nan_on_zero_counts(
+      self, mock_np_histogram
+  ):
+    n_bins = 10
+    mock_counts = np.zeros(n_bins)
+    mock_buckets = np.linspace(0, 1, n_bins + 1)
+    mock_np_histogram.return_value = (mock_counts, mock_buckets)
+
+    hill_curves_df = self.analyzer.hill_curves(n_bins=n_bins)
+    histogram_part = hill_curves_df[
+        (hill_curves_df[constants.CHANNEL_TYPE] == constants.MEDIA)
+        & (hill_curves_df[constants.COUNT_HISTOGRAM].notna())
+    ].copy()
+
+    has_nan = histogram_part[constants.SCALED_COUNT_HISTOGRAM].isna().any()
+    self.assertFalse(
+        has_nan,
+        "NaN found in scaled_count_histogram.",
+    )
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
