@@ -25,13 +25,27 @@ limitations under the License.
 
 <script type="text/javascript">
   (() => {
-    const opt = {
-      mode: 'vega-lite',
-      width: 'container',
-      autosize: { type: 'fit', contains: 'padding' }
-    };
     const spec = JSON.parse({{ chart_json|tojson }});
-    const chartDiv = document.getElementById('{{ id }}');
+    const element = document.getElementById('{{ id }}');
+
+    spec.width = "container";
+    spec.autosize = { type: 'fit', contains: 'padding' };
+
+    // This is for the pie chart: If legend is absolute ('none'), move to bottom and grow chart to 450px
+    spec.layer?.forEach(l => {
+      const leg = l.encoding?.color?.legend;
+      if (leg?.orient === 'none') { leg.orient = 'bottom'; delete leg.legendY; spec.height = 450; }
+    });
+
+    // Title Fix: Extract title to HTML div so it wraps naturally on small screens
+    if (spec.title) {
+      const div = document.createElement('div');
+      div.className = 'chart-title-html';
+      div.innerText = typeof spec.title === 'string' ? spec.title : spec.title.text;
+      element.parentNode.insertBefore(div, element);
+      delete spec.title;
+    }
+
     vegaEmbed('#{{ id }}', spec).catch(console.error);
   })();
 </script>
