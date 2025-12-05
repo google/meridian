@@ -318,7 +318,7 @@ class Summarizer:
         chart_json=media_summary.plot_contribution_waterfall_chart().to_json(),
     )
     lead_channels = self._get_sorted_posterior_mean_metrics_df(
-        media_summary, [c.INCREMENTAL_OUTCOME]
+        media_summary, [c.INCREMENTAL_OUTCOME], include_non_paid_channels=True
     )[c.CHANNEL][:2]
     formatted_channels = [channel.title() for channel in lead_channels]
 
@@ -358,9 +358,14 @@ class Summarizer:
       media_summary: visualizer.MediaSummary,
       metrics: Sequence[str],
       ascending: bool = False,
+      include_non_paid_channels: bool = False,
   ) -> pd.DataFrame:
+    if include_non_paid_channels:
+      summary_metrics = media_summary.get_all_summary_metrics()
+    else:
+      summary_metrics = media_summary.get_paid_summary_metrics()
     return (
-        media_summary.get_paid_summary_metrics()[metrics]
+        summary_metrics[metrics]
         .sel(distribution=c.POSTERIOR, metric=c.MEAN)
         .drop_sel(channel=c.ALL_CHANNELS)
         .to_dataframe()
