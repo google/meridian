@@ -2008,7 +2008,9 @@ class EDAEngine:
         >= _STD_THRESHOLD
     )
 
-  def check_overall_kpi_invariability(self) -> eda_outcome.EDAOutcome:
+  def check_overall_kpi_invariability(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.KpiInvariabilityArtifact]:
     """Checks if the KPI is constant across all geos and times."""
     kpi = self._overall_scaled_kpi_invariability_artifact.kpi_da.name
     geo_text = '' if self._is_national_data else 'geos and '
@@ -2089,18 +2091,19 @@ class EDAEngine:
 
     return self.check_geo_cost_per_media_unit()
 
-  def run_all_critical_checks(self) -> list[eda_outcome.EDAOutcome]:
+  def run_all_critical_checks(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     """Runs all critical EDA checks.
 
     Critical checks are those that can result in EDASeverity.ERROR findings.
 
     Returns:
-      A list of EDA outcomes, one for each check.
+      A CriticalCheckEDAOutcomes object containing the results of all critical
+      checks.
     """
-    outcomes = []
+    outcomes = {}
     for check, check_type in self._critical_checks:
       try:
-        outcomes.append(check())
+        outcomes[check_type] = check()
       except Exception as e:  # pylint: disable=broad-except
         error_finding = eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.ERROR,
@@ -2108,14 +2111,19 @@ class EDAEngine:
                 f'An error occurred during running {check.__name__}: {e!r}'
             ),
         )
-        outcomes.append(
-            eda_outcome.EDAOutcome(
-                check_type=check_type,
-                findings=[error_finding],
-                analysis_artifacts=[],
-            )
+        outcomes[check_type] = eda_outcome.EDAOutcome(
+            check_type=check_type,
+            findings=[error_finding],
+            analysis_artifacts=[],
         )
-    return outcomes
+
+    return eda_outcome.CriticalCheckEDAOutcomes(
+        kpi_invariability=outcomes[eda_outcome.EDACheckType.KPI_INVARIABILITY],
+        multicollinearity=outcomes[eda_outcome.EDACheckType.MULTICOLLINEARITY],
+        pairwise_correlation=outcomes[
+            eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+        ],
+    )
 
   def check_variable_geo_time_collinearity(
       self,

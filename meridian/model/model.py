@@ -16,6 +16,7 @@
 
 import collections
 from collections.abc import Mapping, Sequence
+import dataclasses
 import functools
 import os
 import warnings
@@ -206,7 +207,7 @@ class Meridian:
     return self._eda_spec
 
   @property
-  def eda_outcomes(self) -> Sequence[eda_outcome.EDAOutcome]:
+  def eda_outcomes(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     return self.eda_engine.run_all_critical_checks()
 
   @functools.cached_property
@@ -908,7 +909,8 @@ class Meridian:
     error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
         collections.defaultdict(list)
     )
-    for outcome in self.eda_outcomes:
+    for field in dataclasses.fields(self.eda_outcomes):
+      outcome = getattr(self.eda_outcomes, field.name)
       error_findings = [
           finding
           for finding in outcome.findings

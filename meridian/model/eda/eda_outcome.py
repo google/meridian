@@ -34,6 +34,7 @@ __all__ = [
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
+    "CriticalCheckEDAOutcomes",
 ]
 
 
@@ -239,3 +240,18 @@ class EDAOutcome(typing.Generic[ArtifactType]):
   def get_overall_artifact(self) -> ArtifactType:
     """Returns the overall-level analysis artifact."""
     return self._get_artifact_by_level(AnalysisLevel.OVERALL)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CriticalCheckEDAOutcomes:
+  """Encapsulates the outcomes of all critical EDA checks.
+
+  Attributes:
+    kpi_invariability: Outcome of the KPI invariability check.
+    multicollinearity: Outcome of the multicollinearity (VIF) check.
+    pairwise_correlation: Outcome of the pairwise correlation check.
+  """
+
+  kpi_invariability: EDAOutcome[KpiInvariabilityArtifact]
+  multicollinearity: EDAOutcome[VIFArtifact]
+  pairwise_correlation: EDAOutcome[PairwiseCorrArtifact]
