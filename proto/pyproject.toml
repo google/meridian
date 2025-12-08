@@ -21,7 +21,7 @@ keywords = [
   "protobuf",
 ]
 
-version = "1.0.0"
+version = "1.1.0"
 
 dependencies = [
   "googleapis-common-protos",
@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://github.com/google/meridian"
-repository = "https://github.com/google/meridian"
-changelog = "https://github.com/google/meridian/blob/main/CHANGELOG.md"
-documentation = "https://developers.google.com/meridian"
+homepage = "https://github.com/google/meridian/tree/main/proto"
+repository = "https://github.com/google/meridian/tree/main/proto"
+changelog = "https://github.com/google/meridian/tree/main/proto/CHANGELOG.md"
+documentation = "https://developers.google.com/meridian/docs/user-guide/mmm-unified-schema"
 
 [build-system]
 # Build system specify which backend is used to build/install the project (flit,

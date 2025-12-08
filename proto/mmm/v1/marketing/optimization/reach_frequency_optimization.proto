@@ -1,0 +1,157 @@
+// Copyright 2025 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.marketing.optimization;
+
+import "mmm/v1/common/date_interval.proto";
+import "mmm/v1/common/estimate.proto";
+import "mmm/v1/common/kpi_type.proto";
+import "mmm/v1/common/target_metric.proto";
+import "mmm/v1/marketing/analysis/marketing_analysis.proto";
+import "mmm/v1/marketing/marketing_data.proto";
+import "mmm/v1/marketing/optimization/constraints.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// Reach and frequency metric.
+message ReachFrequency {
+  // Reach value. Required.
+  int64 reach = 1;
+
+  // Average frequency value. Required.
+  double average_frequency = 2;
+}
+
+// Channel level constraint for channel that has reach frequency information.
+message RfChannelConstraint {
+  // The name of the channel. Required.
+  string channel_name = 1;
+
+  // The budget constraint on the channel.
+  BudgetConstraint budget_constraint = 2;
+
+  // The frequency constraint on the channel.
+  FrequencyConstraint frequency_constraint = 3;
+}
+
+message ReachFrequencyOptimizationSpec {
+  // The date interval defines the selection of the time points that the
+  // optimization is based upon.
+  common.DateInterval date_interval = 1;
+
+  // The objective to maximize in the reach frequency optimization. Required.
+  common.TargetMetric objective = 2;
+
+  // The type of KPI used to derive the optimization objective. Required.
+  common.KpiType kpi_type = 6;
+
+  // The constraints on target metrics (e.g. KPI, ROI, etc).
+  repeated TargetMetricConstraint target_metric_constraints = 3;
+
+  // The constraint on the total budget.
+  BudgetConstraint total_budget_constraint = 4;
+
+  // The constraints on channels that have reach frequency information.
+  repeated RfChannelConstraint rf_channel_constraints = 5;
+}
+
+// Reach frequency optimization result for channel that has reach frequency
+// information.
+message OptimizedChannelFrequency {
+  // The name of the channel. Required.
+  string channel_name = 1;
+
+  // The optimal average frequency of the channel. Required.
+  double optimal_average_frequency = 2;
+}
+
+// A message representing a grid that details the outcome of reach frequency by
+// channel.
+//
+// Note that this grid is constructed under the assumption that there is no
+// interaction effect across channels, i.e. the reach frequency on one channel
+// will not affect other channels.
+message FrequencyOutcomeGrid {
+  // A data point within the grid representing the outcome of a specific reach
+  // frequency on a particular channel.
+  message Cell {
+    // The reach and frequency of the channel.
+    ReachFrequency reach_frequency = 1;
+
+    // The outcome achieved through the channel reach frequency. The type should
+    // be indicated by the objective in the optimization spec.
+    common.Estimate outcome = 2;
+  }
+
+  // A collection of cells in a channel.
+  message ChannelCells {
+    // The name of the marketing channel.
+    string channel_name = 1;
+
+    // The cells in the channel.
+    repeated Cell cells = 2;
+  }
+
+  // The name of the grid. Required.
+  string name = 1;
+
+  // The uniform step size between consecutive frequency values within a
+  // channel. Required.
+  double frequency_step_size = 2;
+
+  // The collection of cells representing all combinations of reach frequency
+  // and outcome across channels. Required.
+  repeated ChannelCells channel_cells = 3;
+}
+
+message ReachFrequencyOptimizationResult {
+  reserved 5;
+
+  // The name of the reach frequency optimization. Required.
+  string name = 1;
+
+  // An optional identifier for a result that belongs to a group of related
+  // results (of different types).
+  // Note that no two `ReachFrequencyOptimizationResult`s should share the same
+  // group ID.
+  // Simple UUID strings are recommended.
+  string group_id = 6;
+
+  // The optimization spec used to generate the result. Required.
+  ReachFrequencyOptimizationSpec spec = 2;
+
+  // Optimal average frequency results by channel. Required.
+  //
+  // Media channels without reach frequency data won't be shown.
+  repeated OptimizedChannelFrequency optimized_channel_frequencies = 3;
+
+  // The analysis on marketing outcome when using the optimal channel
+  // frequencies. Required.
+  //
+  // The non-media outcomes are not optimized, but some fields might be impacted
+  // by the change of media outcomes. For example, total contribution would
+  // change, so the contribution share values have to modified accordingly.
+  analysis.MarketingAnalysis optimized_marketing_analysis = 4;
+
+  // Optional grid that describes the outcomes of reach frequency on channels.
+  FrequencyOutcomeGrid frequency_outcome_grid = 7;
+}
+
+message ReachFrequencyOptimization {
+  // Optimization results for different scenarios.
+  repeated ReachFrequencyOptimizationResult results = 1;
+}
