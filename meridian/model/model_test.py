@@ -548,7 +548,7 @@ class ModelTest(
         (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float32
     )
     linear_predictor_counterfactual_difference = backend.to_tensor(
-        np.ones((1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)),
+        backend.ones((1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)),
         dtype=backend.float32,
     )
     incremental_outcome_x = backend.to_tensor(

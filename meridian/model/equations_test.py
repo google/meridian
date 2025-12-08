@@ -23,7 +23,6 @@ from meridian.model import context
 from meridian.model import equations
 from meridian.model import model_test_data
 from meridian.model import spec
-import numpy as np
 
 
 class ComputeAdstockHillsTest(
@@ -61,9 +60,9 @@ class ComputeAdstockHillsTest(
     ):
       self.equations.adstock_hill_media(
           media=media[:, :-8, :],
-          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
       )
 
@@ -82,9 +81,9 @@ class ComputeAdstockHillsTest(
 
       self.equations.adstock_hill_media(
           media=media,
-          alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-          slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
           n_times_output=8,
       )
@@ -141,9 +140,9 @@ class ComputeAdstockHillsTest(
 
     self.equations.adstock_hill_media(
         media=media,
-        alpha=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-        ec=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
-        slope=np.ones(shape=(self._N_MEDIA_CHANNELS,)),
+        alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+        ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+        slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
         decay_functions=constants.GEOMETRIC_DECAY,
     )
 
@@ -170,9 +169,9 @@ class ComputeAdstockHillsTest(
       self.equations.adstock_hill_rf(
           reach=reach[:, :-8, :],
           frequency=frequency,
-          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
       )
 
@@ -194,9 +193,9 @@ class ComputeAdstockHillsTest(
       self.equations.adstock_hill_rf(
           reach=reach,
           frequency=frequency,
-          alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-          ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-          slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
           n_times_output=8,
       )
@@ -237,9 +236,9 @@ class ComputeAdstockHillsTest(
     self.equations.adstock_hill_rf(
         reach=reach,
         frequency=frequency,
-        alpha=np.ones(shape=(self._N_RF_CHANNELS,)),
-        ec=np.ones(shape=(self._N_RF_CHANNELS,)),
-        slope=np.ones(shape=(self._N_RF_CHANNELS,)),
+        alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+        ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+        slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
         decay_functions=constants.GEOMETRIC_DECAY,
     )
 
