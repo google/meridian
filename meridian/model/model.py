@@ -17,7 +17,6 @@
 import collections
 from collections.abc import Mapping, Sequence
 import functools
-import numbers
 import os
 import warnings
 
@@ -158,14 +157,12 @@ class Meridian:
       ) = None,  # for deserializer use only
       eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
-    self._input_data = input_data
-    self._model_spec = model_spec if model_spec else spec.ModelSpec()
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
     self._model_context = context.ModelContext(
-        input_data=self._input_data,
-        model_spec=self._model_spec,
+        input_data=input_data,
+        model_spec=model_spec if model_spec else spec.ModelSpec(),
     )
     self._equations = equations.ModelEquations(self._model_context)
 
@@ -182,11 +179,11 @@ class Meridian:
 
   @property
   def input_data(self) -> data.InputData:
-    return self._input_data
+    return self._model_context.input_data
 
   @property
   def model_spec(self) -> spec.ModelSpec:
-    return self._model_spec
+    return self._model_context.model_spec
 
   @property
   def model_context(self) -> context.ModelContext:
@@ -373,6 +370,8 @@ class Meridian:
     """A `PosteriorMCMCSampler` callable bound to this model."""
     return posterior_sampler.PosteriorMCMCSampler(self)
 
+  # TODO: Deprecate this method in favor of the one in
+  # `equations.py`.
   def compute_non_media_treatments_baseline(
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
@@ -395,69 +394,9 @@ class Meridian:
       A tensor of shape `(n_non_media_channels,)` containing the
       baseline values for each non-media treatment channel.
     """
-    if non_media_baseline_values is None:
-      non_media_baseline_values = self.model_spec.non_media_baseline_values
-
-    no_op_scaling_factor = backend.ones_like(self.population)[
-        :, backend.newaxis, backend.newaxis
-    ]
-    if self.model_spec.non_media_population_scaling_id is not None:
-      scaling_factors = backend.where(
-          self.model_spec.non_media_population_scaling_id,
-          self.population[:, backend.newaxis, backend.newaxis],
-          no_op_scaling_factor,
-      )
-    else:
-      scaling_factors = no_op_scaling_factor
-
-    non_media_treatments_population_scaled = backend.divide_no_nan(
-        self.non_media_treatments, scaling_factors
+    return self.equations.compute_non_media_treatments_baseline(
+        non_media_baseline_values=non_media_baseline_values
     )
-
-    if non_media_baseline_values is None:
-      # If non_media_baseline_values is not provided, use the minimum
-      # value for each non_media treatment channel as the baseline.
-      non_media_baseline_values_filled = [
-          constants.NON_MEDIA_BASELINE_MIN
-      ] * non_media_treatments_population_scaled.shape[-1]
-    else:
-      non_media_baseline_values_filled = non_media_baseline_values
-
-    if non_media_treatments_population_scaled.shape[-1] != len(
-        non_media_baseline_values_filled
-    ):
-      raise ValueError(
-          "The number of non-media channels"
-          f" ({non_media_treatments_population_scaled.shape[-1]}) does not"
-          " match the number of baseline values"
-          f" ({len(non_media_baseline_values_filled)})."
-      )
-
-    baseline_list = []
-    for channel in range(non_media_treatments_population_scaled.shape[-1]):
-      baseline_value = non_media_baseline_values_filled[channel]
-
-      if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
-        baseline_for_channel = backend.reduce_min(
-            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
-        )
-      elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
-        baseline_for_channel = backend.reduce_max(
-            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
-        )
-      elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = backend.to_tensor(
-            baseline_value, dtype=backend.float32
-        )
-      else:
-        raise ValueError(
-            f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
-            " float numbers and strings 'min' and 'max' are supported."
-        )
-
-      baseline_list.append(baseline_for_channel)
-
-    return backend.stack(baseline_list, axis=-1)
 
   def expand_selected_time_dims(
       self,

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from unittest import mock
-
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import backend
@@ -27,7 +26,7 @@ from meridian.model import spec
 import numpy as np
 
 
-class ModelEquationsTest(
+class ComputeAdstockHillsTest(
     test_utils.MeridianTestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
@@ -252,9 +251,6 @@ class ModelEquationsTest(
     mocks_called_names = [mc[0] for mc in manager.mock_calls]
     self.assertEqual(mocks_called_names, expected_called_names)
 
-  def test_compute_non_media_treatments_baseline(self):
-    pass
-
   def test_linear_predictor_counterfactual_difference_media(self):
     pass
 
@@ -263,6 +259,151 @@ class ModelEquationsTest(
 
   def test_calculate_beta_x(self):
     pass
+
+
+class ComputeNonMediaTreatmentsBaselineTest(
+    test_utils.MeridianTestCase,
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def test_compute_non_media_treatments_baseline_wrong_baseline_values_shape_raises_exception(
+      self,
+  ):
+    data = self.input_data_non_media_and_organic
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The number of non-media channels (2) does not match the number of"
+        " baseline values (3).",
+    ):
+      model_spec = spec.ModelSpec(
+          non_media_baseline_values=["min", "max", "min"]
+      )
+      model_context_instance = context.ModelContext(data, model_spec)
+      eqs = equations.ModelEquations(model_context=model_context_instance)
+      _ = eqs.compute_non_media_treatments_baseline()
+
+  def test_compute_non_media_treatments_baseline_fails_with_wrong_baseline_type(
+      self,
+  ):
+    data = self.input_data_non_media_and_organic
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Invalid non_media_baseline_values value: 'wrong'. Only"
+        " float numbers and strings 'min' and 'max' are supported.",
+    ):
+      model_spec = spec.ModelSpec(
+          non_media_baseline_values=[
+              "max",
+              "wrong",
+          ]
+      )
+      model_context_instance = context.ModelContext(data, model_spec)
+      eqs = equations.ModelEquations(model_context=model_context_instance)
+      _ = eqs.compute_non_media_treatments_baseline()
+
+  def test_compute_non_media_treatments_baseline_default(self):
+    """Tests default baseline calculation (all 'min')."""
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(non_media_baseline_values=None)
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    non_media_treatments = eqs._context.non_media_treatments
+    expected_baseline = backend.reduce_min(non_media_treatments, axis=[0, 1])
+    actual_baseline = eqs.compute_non_media_treatments_baseline()
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
+
+  def test_compute_non_media_treatments_baseline_strings(self):
+    """Tests baseline calculation with 'min' and 'max' strings."""
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(non_media_baseline_values=["min", "max"])
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    non_media_treatments = eqs._context.non_media_treatments
+    expected_baseline_min = backend.reduce_min(
+        non_media_treatments[..., 0], axis=[0, 1]
+    )
+    expected_baseline_max = backend.reduce_max(
+        non_media_treatments[..., 1], axis=[0, 1]
+    )
+    expected_baseline = backend.stack(
+        [expected_baseline_min, expected_baseline_max], axis=-1
+    )
+    actual_baseline = eqs.compute_non_media_treatments_baseline()
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
+
+  def test_compute_non_media_treatments_baseline_floats(self):
+    """Tests baseline calculation with float values."""
+    data = self.input_data_non_media_and_organic
+    baseline_values = [10.5, -2.3]
+    model_spec = spec.ModelSpec(non_media_baseline_values=baseline_values)
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    expected_baseline = backend.to_tensor(
+        baseline_values, dtype=backend.float32
+    )
+    actual_baseline = eqs.compute_non_media_treatments_baseline()
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
+
+  def test_compute_non_media_treatments_baseline_mixed_float_and_string(
+      self,
+  ) -> None:
+    """Tests baseline calculation with mixed float and string values."""
+    data = self.input_data_non_media_and_organic
+    baseline_values = ["min", 5.0]
+    model_spec = spec.ModelSpec(
+        non_media_baseline_values=baseline_values,
+    )
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    non_media_treatments = eqs._context.non_media_treatments
+    _, baseline_value_float = baseline_values
+    expected_baseline_min = backend.reduce_min(
+        non_media_treatments[..., 0], axis=[0, 1]
+    )
+    expected_baseline_float = backend.to_tensor(
+        baseline_value_float, dtype=backend.float32
+    )
+    expected_baseline = backend.stack(
+        [expected_baseline_min, expected_baseline_float], axis=-1
+    )
+    test_utils.assert_allclose(
+        expected_baseline, eqs.compute_non_media_treatments_baseline()
+    )
+
+  def test_compute_non_media_treatments_baseline_mixed_with_population_scaling(
+      self,
+  ) -> None:
+    """Tests baseline calculation with population scaling."""
+    data = self.input_data_non_media_and_organic
+    baseline_values = ["min", 5.0]
+    model_spec = spec.ModelSpec(
+        non_media_baseline_values=baseline_values,
+        non_media_population_scaling_id=backend.to_tensor([True, False]),
+    )
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    non_media_treatments = eqs._context.non_media_treatments
+    _, baseline_value_float = baseline_values
+    expected_baseline_min = backend.reduce_min(
+        non_media_treatments[..., 0]
+        / eqs._context.population[:, backend.newaxis],
+        axis=[0, 1],
+    )
+    expected_baseline_float = backend.to_tensor(
+        baseline_value_float, dtype=backend.float32
+    )
+    expected_baseline = backend.stack(
+        [expected_baseline_min, expected_baseline_float], axis=-1
+    )
+    actual_baseline = eqs.compute_non_media_treatments_baseline()
+    test_utils.assert_allclose(expected_baseline, actual_baseline)
 
 
 if __name__ == "__main__":

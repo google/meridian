@@ -21,6 +21,7 @@ during model fitting. It requires a `ModelContext` instance for data access.
 """
 
 from collections.abc import Sequence
+import numbers
 
 from meridian import backend
 from meridian import constants
@@ -158,7 +159,89 @@ class ModelEquations:
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
   ) -> backend.Tensor:
-    raise NotImplementedError
+    """Computes the baseline for each non-media treatment channel.
+
+    Args:
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is either a float (which means
+        that the fixed value will be used as baseline for the given channel) or
+        one of the strings "min" or "max" (which mean that the global minimum or
+        maximum value will be used as baseline for the values of the given
+        non_media treatment channel). If float values are provided, it is
+        expected that they are scaled by population for the channels where
+        `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
+        `model_spec.non_media_baseline_values` is used, which defaults to the
+        minimum value for each non_media treatment channel.
+
+    Returns:
+      A tensor of shape `(n_non_media_channels,)` containing the
+      baseline values for each non-media treatment channel.
+    """
+    if non_media_baseline_values is None:
+      non_media_baseline_values = (
+          self._context.model_spec.non_media_baseline_values
+      )
+
+    no_op_scaling_factor = backend.ones_like(self._context.population)[
+        :, backend.newaxis, backend.newaxis
+    ]
+    if self._context.model_spec.non_media_population_scaling_id is not None:
+      scaling_factors = backend.where(
+          self._context.model_spec.non_media_population_scaling_id,
+          self._context.population[:, backend.newaxis, backend.newaxis],
+          no_op_scaling_factor,
+      )
+    else:
+      scaling_factors = no_op_scaling_factor
+
+    non_media_treatments_population_scaled = backend.divide_no_nan(
+        self._context.non_media_treatments, scaling_factors
+    )
+
+    if non_media_baseline_values is None:
+      # If non_media_baseline_values is not provided, use the minimum
+      # value for each non_media treatment channel as the baseline.
+      non_media_baseline_values_filled = [
+          constants.NON_MEDIA_BASELINE_MIN
+      ] * non_media_treatments_population_scaled.shape[-1]
+    else:
+      non_media_baseline_values_filled = non_media_baseline_values
+
+    if non_media_treatments_population_scaled.shape[-1] != len(
+        non_media_baseline_values_filled
+    ):
+      raise ValueError(
+          "The number of non-media channels"
+          f" ({non_media_treatments_population_scaled.shape[-1]}) does not"
+          " match the number of baseline values"
+          f" ({len(non_media_baseline_values_filled)})."
+      )
+
+    baseline_list = []
+    for channel in range(non_media_treatments_population_scaled.shape[-1]):
+      baseline_value = non_media_baseline_values_filled[channel]
+
+      if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
+        baseline_for_channel = backend.reduce_min(
+            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
+        )
+      elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
+        baseline_for_channel = backend.reduce_max(
+            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
+        )
+      elif isinstance(baseline_value, numbers.Number):
+        baseline_for_channel = backend.to_tensor(
+            baseline_value, dtype=backend.float32
+        )
+      else:
+        raise ValueError(
+            f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
+            " float numbers and strings 'min' and 'max' are supported."
+        )
+
+      baseline_list.append(baseline_for_channel)
+
+    return backend.stack(baseline_list, axis=-1)
 
   def linear_predictor_counterfactual_difference_media(
       self,
