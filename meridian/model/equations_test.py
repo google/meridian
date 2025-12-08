@@ -19,15 +19,17 @@ from absl.testing import parameterized
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
+from meridian.data import test_utils as data_test_utils
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
+from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import spec
 import numpy as np
 
 
-class ModelEquationsTest(
+class ComputeAdstockHillsTest(
     test_utils.MeridianTestCase,
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
@@ -255,13 +257,143 @@ class ModelEquationsTest(
   def test_compute_non_media_treatments_baseline(self):
     pass
 
+
+class CalculateBetaXTest(
+    test_utils.MeridianTestCase,
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+  _N_GEOS_SMALL = 3
+  _N_TIMES_SMALL = 5
+  _N_MEDIA_TIMES_SMALL = 6
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.small_data = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=self._N_GEOS_SMALL,
+            n_times=self._N_TIMES_SMALL,
+            n_media_times=self._N_MEDIA_TIMES_SMALL,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    self.small_data_no_revenue_per_kpi = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS_SMALL,
+            n_times=self._N_TIMES_SMALL,
+            n_media_times=self._N_MEDIA_TIMES_SMALL,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_non_media_channels=self._N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="normal",
+          input_data_name="small_data",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=False,
+          expected_coef=[[0.004037, 0.004037, 0.004037]],
+      ),
+      dict(
+          testcase_name="normal_no_revenue_per_kpi",
+          input_data_name="small_data_no_revenue_per_kpi",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=False,
+          expected_coef=[[0.001286, 0.001286, 0.001286]],
+      ),
+      dict(
+          testcase_name="log_normal",
+          input_data_name="small_data",
+          media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+          is_non_media=False,
+          expected_coef=[[-5.512325, -5.512325, -5.512325]],
+      ),
+      dict(
+          testcase_name="non_media_normal",
+          input_data_name="small_data_no_revenue_per_kpi",
+          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+          is_non_media=True,
+          expected_coef=[[0.001286, 0.001286]],
+      ),
+  )
+  def test_calculate_beta_x(
+      self,
+      *,
+      input_data_name: str,
+      media_effects_dist: str,
+      is_non_media: bool,
+      expected_coef: np.ndarray,
+  ):
+    data = getattr(self, input_data_name)
+    mmm = model.Meridian(
+        input_data=data,
+        model_spec=spec.ModelSpec(media_effects_dist=media_effects_dist),
+    )
+    n_channels = (
+        self._N_NON_MEDIA_CHANNELS if is_non_media else self._N_MEDIA_CHANNELS
+    )
+    eta_x = backend.to_tensor([[0.0] * n_channels], dtype=backend.float32)
+    beta_gx_dev = backend.zeros(
+        (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float32
+    )
+    linear_predictor_counterfactual_difference = backend.to_tensor(
+        np.ones((1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)),
+        dtype=backend.float32,
+    )
+    incremental_outcome_x = backend.to_tensor(
+        [[1.0] * n_channels], dtype=backend.float32
+    )
+
+    calculated_beta_x = mmm.equations.calculate_beta_x(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+    )
+
+    test_utils.assert_allclose(
+        calculated_beta_x,
+        backend.to_tensor(expected_coef, dtype=backend.float32),
+        rtol=1e-4,
+    )
+
+
+# TODO: Add tests for linear predictor counterfactual difference.
+class LinearPredictorCounterfactualDifferenceTest(
+    test_utils.MeridianTestCase,
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.mock_context = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+    )
+    self.equations = equations.ModelEquations(model_context=self.mock_context)
+
   def test_linear_predictor_counterfactual_difference_media(self):
     pass
 
   def test_linear_predictor_counterfactual_difference_rf(self):
-    pass
-
-  def test_calculate_beta_x(self):
     pass
 
 

@@ -659,6 +659,7 @@ class Meridian:
           f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
 
+  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def linear_predictor_counterfactual_difference_media(
       self,
       media_transformed: backend.Tensor,
@@ -687,21 +688,14 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    if self.media_tensors.prior_media_scaled_counterfactual is None:
-      return media_transformed
-    media_transformed_counterfactual = self.adstock_hill_media(
-        self.media_tensors.prior_media_scaled_counterfactual,
-        alpha_m,
-        ec_m,
-        slope_m,
-        decay_functions=self.adstock_decay_spec.media,
-    )
-    # Absolute values is needed because the difference is negative for mROI
-    # priors and positive for ROI and contribution priors.
-    return backend.absolute(
-        media_transformed - media_transformed_counterfactual
+    return self.equations.linear_predictor_counterfactual_difference_media(
+        media_transformed=media_transformed,
+        alpha_m=alpha_m,
+        ec_m=ec_m,
+        slope_m=slope_m,
     )
 
+  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def linear_predictor_counterfactual_difference_rf(
       self,
       rf_transformed: backend.Tensor,
@@ -730,20 +724,14 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    if self.rf_tensors.prior_reach_scaled_counterfactual is None:
-      return rf_transformed
-    rf_transformed_counterfactual = self.adstock_hill_rf(
-        reach=self.rf_tensors.prior_reach_scaled_counterfactual,
-        frequency=self.rf_tensors.frequency,
-        alpha=alpha_rf,
-        ec=ec_rf,
-        slope=slope_rf,
-        decay_functions=self.adstock_decay_spec.rf,
+    return self.equations.linear_predictor_counterfactual_difference_rf(
+        rf_transformed=rf_transformed,
+        alpha_rf=alpha_rf,
+        ec_rf=ec_rf,
+        slope_rf=slope_rf,
     )
-    # Absolute values is needed because the difference is negative for mROI
-    # priors and positive for ROI and contribution priors.
-    return backend.absolute(rf_transformed - rf_transformed_counterfactual)
 
+  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def calculate_beta_x(
       self,
       is_non_media: bool,
@@ -789,44 +777,13 @@ class Meridian:
       The coefficient mean parameter of the treatment variable, which has
       dimension equal to the number of treatment channels..
     """
-    if is_non_media:
-      random_effects_normal = True
-    else:
-      random_effects_normal = (
-          self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-      )
-    if self.revenue_per_kpi is None:
-      revenue_per_kpi = backend.ones(
-          [self.n_geos, self.n_times], dtype=backend.float32
-      )
-    else:
-      revenue_per_kpi = self.revenue_per_kpi
-    incremental_outcome_gx_over_beta_gx = backend.einsum(
-        "...gtx,gt,g,->...gx",
-        linear_predictor_counterfactual_difference,
-        revenue_per_kpi,
-        self.population,
-        self.kpi_transformer.population_scaled_stdev,
+    return self.equations.calculate_beta_x(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
     )
-    if random_effects_normal:
-      numerator_term_x = backend.einsum(
-          "...gx,...gx,...x->...x",
-          incremental_outcome_gx_over_beta_gx,
-          beta_gx_dev,
-          eta_x,
-      )
-      denominator_term_x = backend.einsum(
-          "...gx->...x", incremental_outcome_gx_over_beta_gx
-      )
-      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
-    # For log-normal random effects, beta_x and eta_x are not mean & std.
-    # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
-    denominator_term_x = backend.einsum(
-        "...gx,...gx->...x",
-        incremental_outcome_gx_over_beta_gx,
-        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
-    )
-    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
 
   # TODO: Deprecate in favor of ModelEquations.adstock_hill_media.
   def adstock_hill_media(
