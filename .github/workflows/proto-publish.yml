@@ -90,6 +90,8 @@ jobs:
         (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/proto-v'))
         || (github.event_name == 'workflow_dispatch'
             && github.event.inputs.publish_proto_to_pypi == 'true')
+        || (github.event_name == 'push' && github.ref == 'refs/heads/main'
+            && needs.check-proto-version.outputs.new_version != '')
       )
     runs-on: ubuntu-latest
     environment:
