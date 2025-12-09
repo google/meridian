@@ -243,6 +243,12 @@ class ModelDiagnostics:
 
     groupby = posterior_df.columns.tolist()
     groupby.remove(parameter)
+
+    parameter_99_max = prior_posterior_df[parameter].quantile(0.99)
+    # Remove outliers that make the chart hard to read.
+    prior_posterior_df[parameter] = prior_posterior_df[parameter].clip(
+        upper=parameter_99_max * c.OUTLIER_CLIP_FACTOR
+    )
     plot = (
         alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_density(
@@ -269,7 +275,7 @@ class ModelDiagnostics:
         title=formatter.custom_title_params(
             summary_text.PRIOR_POSTERIOR_DIST_CHART_TITLE
         )
-    ).configure_axis(**formatter.TEXT_CONFIG)
+    ).configure_axis(**formatter.TEXT_CONFIG).interactive()
 
   def plot_rhat_boxplot(self) -> alt.Chart:
     """Plots the R-hat box plot.
