@@ -12,7 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module containing MMM schema util functions."""
+"""`Converter` class for all dataframe converters."""
 
-from schema.utils import date_range_bucketing
-from schema.utils import time_record
+import abc
+from collections.abc import Iterator
+
+from scenarioplanner.converters import mmm
+import pandas as pd
+
+
+__all__ = ["Converter"]
+
+
+class Converter(abc.ABC):
+  """Converts a trained model and analyses to one or more data frame tables.
+
+  Attributes:
+    mmm: An `Mmm` proto wrapper.
+  """
+
+  def __init__(
+      self,
+      mmm_wrapper: mmm.Mmm,
+  ):
+    self._mmm = mmm_wrapper
+
+  @abc.abstractmethod
+  def __call__(self) -> Iterator[tuple[str, pd.DataFrame]]:
+    raise NotImplementedError()

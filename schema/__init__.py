@@ -14,11 +14,11 @@
 
 """Module containing MMM schema library."""
 
-try:  # pylint: disable=g-statement-before-imports
+try:
   # A quick check for schema dependencies.
   # If this fails, it's likely because meridian was installed without
   # `pip install google-meridian[schema]`.
-  from mmm.v1.model.meridian import meridian_model_pb2  # pylint: disable=g-import-not-at-top
+  from mmm.v1.model.meridian import meridian_model_pb2
 except ModuleNotFoundError as exc:
   raise ImportError(
       'Schema dependencies not found. Please install meridian with '
@@ -26,5 +26,8 @@ except ModuleNotFoundError as exc:
   ) from exc
 
 # pylint: disable=g-import-not-at-top
+from schema import mmm_proto_generator
+from schema import model_consumer
+from schema import processors
 from schema import serde
 from schema import utils
