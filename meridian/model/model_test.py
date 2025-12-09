@@ -496,79 +496,6 @@ class ModelTest(
     # should be a scalar batch.
     self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
-  # TODO: Move to `equations_test`.
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="normal",
-          input_data_name="small_data",
-          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
-          is_non_media=False,
-          expected_coef=[[0.004037, 0.004037, 0.004037]],
-      ),
-      dict(
-          testcase_name="normal_no_revenue_per_kpi",
-          input_data_name="small_data_no_revenue_per_kpi",
-          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
-          is_non_media=False,
-          expected_coef=[[0.001286, 0.001286, 0.001286]],
-      ),
-      dict(
-          testcase_name="log_normal",
-          input_data_name="small_data",
-          media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
-          is_non_media=False,
-          expected_coef=[[-5.512325, -5.512325, -5.512325]],
-      ),
-      dict(
-          testcase_name="non_media_normal",
-          input_data_name="small_data_no_revenue_per_kpi",
-          media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
-          is_non_media=True,
-          expected_coef=[[0.001286, 0.001286]],
-      ),
-  )
-  def test_calculate_beta_x(
-      self,
-      *,
-      input_data_name: str,
-      media_effects_dist: str,
-      is_non_media: bool,
-      expected_coef: np.ndarray,
-  ):
-    data = getattr(self, input_data_name)
-    mmm = model.Meridian(
-        input_data=data,
-        model_spec=spec.ModelSpec(media_effects_dist=media_effects_dist),
-    )
-    n_channels = (
-        self._N_NON_MEDIA_CHANNELS if is_non_media else self._N_MEDIA_CHANNELS
-    )
-    eta_x = backend.to_tensor([[0.0] * n_channels], dtype=backend.float32)
-    beta_gx_dev = backend.zeros(
-        (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float32
-    )
-    linear_predictor_counterfactual_difference = backend.to_tensor(
-        backend.ones((1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)),
-        dtype=backend.float32,
-    )
-    incremental_outcome_x = backend.to_tensor(
-        [[1.0] * n_channels], dtype=backend.float32
-    )
-
-    calculated_beta_x = mmm.calculate_beta_x(
-        is_non_media=is_non_media,
-        incremental_outcome_x=incremental_outcome_x,
-        linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-        eta_x=eta_x,
-        beta_gx_dev=beta_gx_dev,
-    )
-
-    test_utils.assert_allclose(
-        calculated_beta_x,
-        backend.to_tensor(expected_coef, dtype=backend.float32),
-        rtol=1e-4,
-    )
-
   def test_run_model_fitting_guardrail_error_message(self):
     # Create mock EDA outcomes with ERROR severity findings
     mock_finding1 = mock.Mock()
@@ -1670,6 +1597,168 @@ class NonPaidModelTest(
           model_spec=model_spec,
           inference_data=inference_data,
       )
+
+
+class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.mock_equations = mock.create_autospec(
+        equations.ModelEquations, instance=True, spec_set=True
+    )
+    # Patch ModelEquations to return our mock
+    self.enter_context(
+        mock.patch.object(
+            equations, "ModelEquations", return_value=self.mock_equations
+        )
+    )
+    # We need a minimal Meridian object. We can mock input_data.
+    self.mock_input_data = mock.create_autospec(
+        model.data.InputData, instance=True, spec_set=True
+    )
+    # We need to mock ModelContext as well since Meridian init creates it
+    self.mock_context = mock.create_autospec(
+        model.context.ModelContext, instance=True, spec_set=True
+    )
+    self.mock_context.is_national = False
+    self.enter_context(
+        mock.patch.object(
+            model.context, "ModelContext", return_value=self.mock_context
+        )
+    )
+
+    # Patch EDAEngine to avoid initialization errors
+    self.mock_eda_engine = mock.create_autospec(
+        eda_engine.EDAEngine, instance=True, spec_set=True
+    )
+    self.mock_eda_engine.kpi_has_variability = True
+    self.enter_context(
+        mock.patch.object(
+            eda_engine, "EDAEngine", return_value=self.mock_eda_engine
+        )
+    )
+
+    self.mmm = model.Meridian(input_data=self.mock_input_data)
+    # Verify equations was set to our mock (sanity check of the setup)
+    self.assertIs(self.mmm.equations, self.mock_equations)
+
+  def test_adstock_hill_media_delegates(self):
+    media_val = mock.Mock()
+    alpha = mock.Mock()
+    ec = mock.Mock()
+    slope = mock.Mock()
+    decay_functions = "geometric"
+    n_times_output = 10
+
+    self.mmm.adstock_hill_media(
+        media=media_val,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
+    )
+
+    self.mock_equations.adstock_hill_media.assert_called_once_with(
+        media=media_val,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
+    )
+
+  def test_adstock_hill_rf_delegates(self):
+    reach = mock.Mock()
+    frequency = mock.Mock()
+    alpha = mock.Mock()
+    ec = mock.Mock()
+    slope = mock.Mock()
+    decay_functions = "geometric"
+    n_times_output = 10
+
+    self.mmm.adstock_hill_rf(
+        reach=reach,
+        frequency=frequency,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
+    )
+
+    self.mock_equations.adstock_hill_rf.assert_called_once_with(
+        reach=reach,
+        frequency=frequency,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
+    )
+
+  def test_calculate_beta_x_delegates(self):
+    is_non_media = True
+    incremental_outcome_x = mock.Mock()
+    linear_predictor_diff = mock.Mock()
+    eta_x = mock.Mock()
+    beta_gx_dev = mock.Mock()
+
+    self.mmm.calculate_beta_x(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_diff,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+    )
+
+    self.mock_equations.calculate_beta_x.assert_called_once_with(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_diff,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+    )
+
+  def test_linear_predictor_counterfactual_difference_media_delegates(self):
+    media_transformed = mock.Mock()
+    alpha_m = mock.Mock()
+    ec_m = mock.Mock()
+    slope_m = mock.Mock()
+
+    self.mmm.linear_predictor_counterfactual_difference_media(
+        media_transformed=media_transformed,
+        alpha_m=alpha_m,
+        ec_m=ec_m,
+        slope_m=slope_m,
+    )
+
+    self.mock_equations.linear_predictor_counterfactual_difference_media.assert_called_once_with(
+        media_transformed=media_transformed,
+        alpha_m=alpha_m,
+        ec_m=ec_m,
+        slope_m=slope_m,
+    )
+
+  def test_linear_predictor_counterfactual_difference_rf_delegates(self):
+    rf_transformed = mock.Mock()
+    alpha_rf = mock.Mock()
+    ec_rf = mock.Mock()
+    slope_rf = mock.Mock()
+
+    self.mmm.linear_predictor_counterfactual_difference_rf(
+        rf_transformed=rf_transformed,
+        alpha_rf=alpha_rf,
+        ec_rf=ec_rf,
+        slope_rf=slope_rf,
+    )
+
+    self.mock_equations.linear_predictor_counterfactual_difference_rf.assert_called_once_with(
+        rf_transformed=rf_transformed,
+        alpha_rf=alpha_rf,
+        ec_rf=ec_rf,
+        slope_rf=slope_rf,
+    )
 
 
 if __name__ == "__main__":
