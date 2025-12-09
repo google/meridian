@@ -905,6 +905,68 @@ class ModelContext:
         organic_rf=organic_rf_adstock_function,
     )
 
+  def create_inference_data_coords(
+      self, n_chains: int, n_draws: int
+  ) -> Mapping[str, np.ndarray | Sequence[str]]:
+    """Creates data coordinates for inference data."""
+    media_channel_names = (
+        self.input_data.media_channel
+        if self.input_data.media_channel is not None
+        else np.array([])
+    )
+    rf_channel_names = (
+        self.input_data.rf_channel
+        if self.input_data.rf_channel is not None
+        else np.array([])
+    )
+    organic_media_channel_names = (
+        self.input_data.organic_media_channel
+        if self.input_data.organic_media_channel is not None
+        else np.array([])
+    )
+    organic_rf_channel_names = (
+        self.input_data.organic_rf_channel
+        if self.input_data.organic_rf_channel is not None
+        else np.array([])
+    )
+    non_media_channel_names = (
+        self.input_data.non_media_channel
+        if self.input_data.non_media_channel is not None
+        else np.array([])
+    )
+    control_variable_names = (
+        self.input_data.control_variable
+        if self.input_data.control_variable is not None
+        else np.array([])
+    )
+    return {
+        constants.CHAIN: np.arange(n_chains),
+        constants.DRAW: np.arange(n_draws),
+        constants.GEO: self.input_data.geo,
+        constants.TIME: self.input_data.time,
+        constants.MEDIA_TIME: self.input_data.media_time,
+        constants.KNOTS: np.arange(self.knot_info.n_knots),
+        constants.CONTROL_VARIABLE: control_variable_names,
+        constants.NON_MEDIA_CHANNEL: non_media_channel_names,
+        constants.MEDIA_CHANNEL: media_channel_names,
+        constants.RF_CHANNEL: rf_channel_names,
+        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,
+        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,
+    }
+
+  def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
+    """Creates data dimensions for inference data."""
+    inference_dims = dict(constants.INFERENCE_DIMS)
+    if self.unique_sigma_for_each_geo:
+      inference_dims[constants.SIGMA] = [constants.GEO]
+    else:
+      inference_dims[constants.SIGMA] = []
+
+    return {
+        param: [constants.CHAIN, constants.DRAW] + list(dims)
+        for param, dims in inference_dims.items()
+    }
+
   def populate_cached_properties(self):
     """Eagerly activates all cached properties.
 

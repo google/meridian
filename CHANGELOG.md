@@ -24,6 +24,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Add EDA check for treatment/control geo and time collinearity.
+* Refactored `model.Meridian` with stateful `ModelContext` and stateless
+  `ModelEquations` helper classes.
+* Refactored samplers classes for direct injection of `ModelContext` and
+  `ModelEquations` classes.
 
 ## [1.4.0] - 2025-12-08
 

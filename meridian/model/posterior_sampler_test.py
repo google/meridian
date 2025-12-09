@@ -1757,5 +1757,64 @@ class PosteriorMCMCSamplerTest(
     mock_get_joint_dist_unpinned.assert_called_once()
 
 
+class PosteriorMCMCSamplerInitTest(
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+
+  def test_init_with_meridian(self):
+    sampler = posterior_sampler.PosteriorMCMCSampler(self.meridian)
+    self.assertIs(sampler._meridian, self.meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+
+  def test_init_with_model_context_and_model_equations(self):
+    sampler = posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.meridian.model_context,
+        model_equations=self.meridian.model_equations,
+    )
+    self.assertIsNone(sampler._meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="none_args",
+          kwargs={},
+      ),
+      dict(
+          testcase_name="only_model_context",
+          kwargs={"model_context": mock.MagicMock()},
+      ),
+      dict(
+          testcase_name="only_model_equations",
+          kwargs={"model_equations": mock.MagicMock()},
+      ),
+  )
+  def test_init_raises_error_with_invalid_args(
+      self,
+      kwargs,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or both `model_context` and `model_equations`"
+        " must be provided.",
+    ):
+      posterior_sampler.PosteriorMCMCSampler(**kwargs)
+
+
 if __name__ == "__main__":
   absltest.main()
