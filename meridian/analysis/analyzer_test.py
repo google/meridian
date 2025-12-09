@@ -2053,175 +2053,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
     self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
 
-  def test_optimal_frequency_data_media_and_rf_correct(self):
-    actual = self.analyzer_media_and_rf.optimal_freq(
-        freq_grid=[1.0, 2.0, 3.0],
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        use_posterior=True,
-    )
-    expected = xr.Dataset(
-        coords={
-            constants.FREQUENCY: [1.0, 2.0, 3.0],
-            constants.RF_CHANNEL: ["rf_ch_0", "rf_ch_1"],
-            constants.METRIC: [
-                constants.MEAN,
-                constants.MEDIAN,
-                constants.CI_LO,
-                constants.CI_HI,
-            ],
-        },
-        data_vars={
-            constants.ROI: (
-                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [
-                        [4.57, 4.59, 1.6, 7.52],
-                        [6.61, 6.52, 1.69, 11.7],
-                    ],  # freq=1.0
-                    [
-                        [2.48, 2.48, 0.98, 3.97],
-                        [3.66, 3.61, 1.1, 6.32],
-                    ],  # freq=2.0
-                    [
-                        [1.73, 1.73, 0.72, 2.73],
-                        [2.54, 2.50, 0.83, 4.3],
-                    ],  # freq=3.0
-                ],
-            ),
-            constants.OPTIMAL_FREQUENCY: ([constants.RF_CHANNEL], [1.0, 1.0]),
-            constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1244.8, 1249.58, 436.19, 2047.89],
-                    [1902.85, 1878.92, 487.06, 3368.2],
-                ],
-            ),
-            constants.OPTIMIZED_EFFECTIVENESS: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [0.00038, 0.000382, 0.000133, 0.000626],
-                    [0.000544, 0.000537, 0.000139, 0.000963],
-                ],
-            ),
-            constants.OPTIMIZED_ROI: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[4.57, 4.59, 1.6, 7.52], [6.61, 6.52, 1.69, 11.7]],
-            ),
-            constants.OPTIMIZED_MROI_BY_REACH: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[4.57, 4.59, 1.6, 7.52], [6.61, 6.52, 1.69, 11.7]],
-            ),
-            constants.OPTIMIZED_MROI_BY_FREQUENCY: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[0.54, 0.54, 0.45, 0.62], [1.31, 1.30, 0.69, 1.96]],
-            ),
-            constants.OPTIMIZED_CPIK: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[1.16, 1.13, 0.417, 1.95], [1.06, 1.05, 0.268, 1.85]],
-            ),
-        },
-        attrs={
-            constants.CONFIDENCE_LEVEL: constants.DEFAULT_CONFIDENCE_LEVEL,
-            "use_posterior": True,
-        },
-    )
-
-    xr.testing.assert_allclose(actual, expected, atol=0.1)
-    xr.testing.assert_allclose(actual.frequency, expected.frequency)
-    xr.testing.assert_allclose(actual.rf_channel, expected.rf_channel)
-    xr.testing.assert_allclose(actual.metric, expected.metric)
-    xr.testing.assert_allclose(actual.roi, expected.roi, atol=0.1)
-    xr.testing.assert_allclose(
-        actual.optimal_frequency, expected.optimal_frequency
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_incremental_outcome,
-        expected.optimized_incremental_outcome,
-        atol=0.1,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_effectiveness,
-        expected.optimized_effectiveness,
-        atol=0.00001,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_roi,
-        expected.optimized_roi,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_reach,
-        expected.optimized_mroi_by_reach,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_frequency,
-        expected.optimized_mroi_by_frequency,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_cpik,
-        expected.optimized_cpik,
-        atol=0.01,
-    )
-    self.assertEqual(actual.confidence_level, expected.confidence_level)
-    self.assertEqual(actual.use_posterior, expected.use_posterior)
-
-  def test_optimal_frequency_kpi_returns_correct_structure(self):
-    """Verifies that use_kpi=True for optimal_freq returns correct structure."""
-    result = self.analyzer_media_and_rf.optimal_freq(
-        freq_grid=[1.0, 2.0, 3.0],
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        use_posterior=True,
-        use_kpi=True,
-    )
-
-    self.assertIsInstance(result, xr.Dataset)
-    self.assertEqual(
-        list(result.data_vars.keys()),
-        [
-            constants.ROI,
-            constants.OPTIMAL_FREQUENCY,
-            constants.OPTIMIZED_INCREMENTAL_OUTCOME,
-            constants.OPTIMIZED_ROI,
-            constants.OPTIMIZED_EFFECTIVENESS,
-            constants.OPTIMIZED_MROI_BY_REACH,
-            constants.OPTIMIZED_MROI_BY_FREQUENCY,
-            constants.OPTIMIZED_CPIK,
-        ],
-    )
-    self.assertFalse(result.attrs[constants.IS_REVENUE_KPI])
-
-  def test_optimal_freq_new_times_data_correct(self):
-    max_lag = 15
-    n_new_times = 15
-    total_times = max_lag + n_new_times
-    actual = self.analyzer_media_and_rf.optimal_freq(
-        new_data=analyzer.DataTensors(
-            rf_impressions=self.meridian_media_and_rf.rf_tensors.reach[
-                ..., -total_times:, :
-            ]
-            * self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -total_times:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -total_times:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -total_times:
-            ],
-        ),
-        freq_grid=[1.0, 2.0, 3.0],
-        selected_times=[False] * max_lag + [True] * n_new_times,
-    )
-    expected = self.analyzer_media_and_rf.optimal_freq(
-        selected_times=list(self.input_data_media_and_rf.time.values)[
-            -n_new_times:
-        ],
-        freq_grid=[1.0, 2.0, 3.0],
-    )
-    xr.testing.assert_allclose(actual, expected)
-
   def test_rhat_media_and_rf_correct(self):
     rhat = self.analyzer_media_and_rf.get_rhat()
     self.assertSetEqual(
@@ -2670,335 +2501,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           str(w[0].message),
       )
 
-  def test_get_historical_spend_deprecated_warning(self):
-    with self.assertWarnsRegex(
-        DeprecationWarning,
-        "`get_historical_spend` is deprecated. Please use"
-        " `get_aggregated_spend` with `new_data=None` instead.",
-    ):
-      self.analyzer_media_and_rf.get_historical_spend(
-          selected_times=None, include_media=True, include_rf=True
-      )
-
-  def test_get_historical_spend_calls_get_aggregated_spend(self):
-    with mock.patch.object(
-        self.analyzer_media_and_rf,
-        "get_aggregated_spend",
-        autospec=True,
-    ) as mock_get_aggregated_spend:
-      self.analyzer_media_and_rf.get_historical_spend(
-          selected_times=None, include_media=True, include_rf=True
-      )
-      mock_get_aggregated_spend.assert_called_once_with(
-          selected_times=None, include_media=True, include_rf=True
-      )
-
-  def test_get_aggregated_spend_correct_channel_names(self):
-    actual_hist_spend = self.analyzer_media_and_rf.get_aggregated_spend()
-    expected_channel_names = (
-        self.input_data_media_and_rf.get_all_paid_channels()
-    )
-
-    self.assertSameElements(
-        expected_channel_names, actual_hist_spend.channel.data
-    )
-
-  def test_get_aggregated_spend_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
-    self.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: None),
-        )
-    )
-
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=1,
-        n_times=3,
-        n_media_times=4,
-        n_media_channels=2,
-        n_rf_channels=1,
-        seed=0,
-    )
-
-    # Avoid the pytype check complaint.
-    assert data.media_channel is not None and data.rf_channel is not None
-
-    data.media_spend = xr.DataArray(
-        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
-        dims=["geo", "time", "media_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "media_channel": data.media_channel.values,
-        },
-    )
-    data.rf_spend = xr.DataArray(
-        np.array([[[3.0], [3.1], [3.2]]]),
-        dims=["geo", "time", "rf_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "rf_channel": data.rf_channel.values,
-        },
-    )
-
-    model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    # All times are selected.
-    actual_hist_spend = meridian_analyzer.get_aggregated_spend()
-    expected_all_spend = np.array([3.3, 6.3, 9.3])
-    backend_test_utils.assert_allclose(
-        expected_all_spend, actual_hist_spend.data
-    )
-
-  def test_get_aggregated_spend_new_data_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
-    self.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: None),
-        )
-    )
-
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=1,
-        n_times=3,
-        n_media_times=4,
-        n_media_channels=2,
-        n_rf_channels=1,
-        seed=0,
-    )
-
-    # Avoid the pytype check complaint.
-    assert data.media_channel is not None and data.rf_channel is not None
-
-    data.media_spend = xr.DataArray(
-        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
-        dims=["geo", "time", "media_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "media_channel": data.media_channel.values,
-        },
-    )
-    data.rf_spend = xr.DataArray(
-        np.array([[[3.0], [3.1], [3.2]]]),
-        dims=["geo", "time", "rf_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "rf_channel": data.rf_channel.values,
-        },
-    )
-
-    model_spec = spec.ModelSpec()
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    # All times are selected.
-    new_media_spend = backend.to_tensor([[[1, 2], [2, 3], [3, 4]]])
-    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
-        new_data=analyzer.DataTensors(media_spend=new_media_spend)
-    )
-    expected_all_spend = np.array([6, 9, 9.3])
-    backend_test_utils.assert_allclose(
-        expected_all_spend, actual_hist_spend.data
-    )
-
-  def test_get_aggregated_spend_selected_times_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
-    self.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: None),
-        )
-    )
-
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=1,
-        n_times=3,
-        n_media_times=4,
-        n_media_channels=2,
-        n_rf_channels=1,
-        seed=0,
-    )
-
-    # Avoid the pytype check complaint.
-    assert data.media_channel is not None and data.rf_channel is not None
-
-    data.media_spend = xr.DataArray(
-        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
-        dims=["geo", "time", "media_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "media_channel": data.media_channel.values,
-        },
-    )
-    data.rf_spend = xr.DataArray(
-        np.array([[[3.0], [3.1], [3.2]]]),
-        dims=["geo", "time", "rf_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "rf_channel": data.rf_channel.values,
-        },
-    )
-
-    model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    # The first two times are selected.
-    selected_times = ["2021-01-25", "2021-02-01"]
-
-    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
-        selected_times=selected_times
-    )
-    expected_all_spend = np.array([2.1, 4.1, 6.1])
-    backend_test_utils.assert_allclose(
-        expected_all_spend, actual_hist_spend.data
-    )
-
-  def test_get_aggregated_spend_selected_geos_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
-    self.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: None),
-        )
-    )
-
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=2,
-        n_times=2,
-        n_media_times=3,
-        n_media_channels=1,
-        n_rf_channels=1,
-        seed=0,
-    )
-
-    # Avoid the pytype check complaint.
-    assert data.media_channel is not None and data.rf_channel is not None
-
-    data.media_spend = xr.DataArray(
-        np.array([[[1.0], [1.1]], [[1.2], [1.3]]]),
-        dims=["geo", "time", "media_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "media_channel": data.media_channel.values,
-        },
-    )
-    data.rf_spend = xr.DataArray(
-        np.array([[[2.0], [2.1]], [[2.2], [2.3]]]),
-        dims=["geo", "time", "rf_channel"],
-        coords={
-            "geo": data.geo.values,
-            "time": data.time.values,
-            "rf_channel": data.rf_channel.values,
-        },
-    )
-
-    model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    # Select only first geo.
-    selected_geos = ["geo_0"]
-
-    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
-        selected_geos=selected_geos
-    )
-    expected_all_spend = np.array([1.0 + 1.1, 2.0 + 2.1])
-    backend_test_utils.assert_allclose(
-        expected_all_spend, actual_hist_spend.data
-    )
-
-  def test_get_aggregated_spend_with_single_dim_spends(self):
-    seed = 0
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        seed=seed,
-    )
-    data.media_spend = data_test_utils.random_media_spend_nd_da(
-        n_geos=None,
-        n_times=None,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        seed=seed,
-    )
-    data.rf_spend = data_test_utils.random_rf_spend_nd_da(
-        n_geos=None,
-        n_times=None,
-        n_rf_channels=_N_RF_CHANNELS,
-        seed=seed,
-    )
-    model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    n_sub_times = 4
-    n_sub_geos = 3
-
-    selected_geos = data.geo.values.tolist()[:n_sub_geos]
-    selected_times = data.time.values[-n_sub_times:].tolist()
-    actual_hist_spends = meridian_analyzer.get_aggregated_spend(
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-
-    # The spend is interpolated based on the ratio of media execution in the
-    # selected times to the media execution in the entire time period.
-    # Shape (n_geos, n_times, n_media_channels + n_rf_channels)
-    all_media_exe_values = data.get_all_media_and_rf()
-
-    # Get the media execution values in the selected times.
-    # Shape (n_media_channels + n_rf_channels)
-    target_media_exe_values = np.sum(
-        all_media_exe_values[:n_sub_geos, -n_sub_times:], axis=(0, 1)
-    )
-    # Get the media execution values in the entire time period.
-    # Shape (n_media_channels + n_rf_channels)
-    total_media_exe_values = np.sum(
-        all_media_exe_values[:, -meridian.n_times :], axis=(0, 1)
-    )
-    # The ratio will be used to interpolate the spend.
-    ratio = target_media_exe_values / total_media_exe_values
-    # Shape (n_media_channels + n_rf_channels)
-    expected_all_spend = data.get_total_spend() * ratio
-
-    backend_test_utils.assert_allclose(
-        expected_all_spend, actual_hist_spends.data
-    )
-
-  def test_get_aggregated_spend_with_empty_times(self):
-    actual = self.analyzer_media_and_rf.get_aggregated_spend(selected_times=[])
-    backend_test_utils.assert_allequal(
-        actual.data, np.zeros((_N_MEDIA_CHANNELS + _N_RF_CHANNELS))
-    )
-
-  def test_get_aggregated_spend_with_no_channel_selected(self):
-    selected_times = self.input_data_media_and_rf.time.values.tolist()
-
-    with self.assertRaisesRegex(
-        ValueError, "At least one of include_media or include_rf must be True."
-    ):
-      self.analyzer_media_and_rf.get_aggregated_spend(
-          selected_times, include_media=False, include_rf=False
-      )
-
   def test_response_curves_selected_times_wrong_type(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -3302,114 +2804,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
     self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_negative_baseline_probability_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    prob = self.analyzer_media_and_rf.negative_baseline_probability(
-        use_posterior=use_posterior,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-
-    self.assertEqual(prob.shape, ())
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="prior",
-          use_posterior=False,
-          selected_geos=None,
-          selected_times=None,
-          expected_value=0.6,
-      ),
-      dict(
-          testcase_name="prior_selected_times",
-          use_posterior=False,
-          selected_geos=None,
-          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.7,
-      ),
-      dict(
-          testcase_name="prior_selected_geos",
-          use_posterior=False,
-          selected_geos=("geo_1", "geo_3"),
-          selected_times=None,
-          expected_value=0.4,
-      ),
-      dict(
-          testcase_name="prior_selected_geos_times",
-          use_posterior=False,
-          selected_geos=("geo_1", "geo_3"),
-          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.6,
-      ),
-      dict(
-          testcase_name="posterior",
-          use_posterior=True,
-          selected_geos=None,
-          selected_times=None,
-          expected_value=0.0,
-      ),
-      dict(
-          testcase_name="posterior_selected_times",
-          use_posterior=True,
-          selected_geos=None,
-          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.0,
-      ),
-      dict(
-          testcase_name="posterior_selected_geos",
-          use_posterior=True,
-          selected_geos=("geo_1", "geo_3"),
-          selected_times=None,
-          expected_value=0.0,
-      ),
-      dict(
-          testcase_name="posterior_selected_geos_times",
-          use_posterior=True,
-          selected_geos=("geo_1", "geo_3"),
-          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.05,
-      ),
-  )
-  def test_negative_baseline_probability_returns_correct_values(
-      self,
-      use_posterior,
-      selected_geos,
-      selected_times,
-      expected_value,
-  ):
-    """Exact output tests for `Analyzer.negative_baseline_probability`.
-
-    Test outputs are generated from the dataset that is itself created by
-    `test_utils.sample_input_data_non_revenue_revenue_per_kpi`. Changes to the
-    simulated dataset can cause this test to fail.
-
-    Args:
-      use_posterior: bool, whether to use posterior
-      selected_geos: tuple of str or None
-      selected_times: tuple of str or None
-      expected_value: float, expected negative baseline probability
-    """
-    prob = self.analyzer_media_and_rf.negative_baseline_probability(
-        use_posterior=use_posterior,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    backend_test_utils.assert_allclose(
-        prob,
-        expected_value,
-        atol=1e-5,
-        rtol=1e-5,
-    )
 
 
 class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
@@ -5812,6 +5206,570 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
     self.assertFalse(
         has_nan,
         "NaN found in scaled_count_histogram.",
+    )
+
+  def test_get_historical_spend_deprecated_warning(self):
+    with self.assertWarnsRegex(
+        DeprecationWarning,
+        "`get_historical_spend` is deprecated. Please use"
+        " `get_aggregated_spend` with `new_data=None` instead.",
+    ):
+      self.analyzer.get_historical_spend(
+          selected_times=None, include_media=True, include_rf=True
+      )
+
+  def test_get_historical_spend_calls_get_aggregated_spend(self):
+    with mock.patch.object(
+        self.analyzer,
+        "get_aggregated_spend",
+        autospec=True,
+    ) as mock_get_aggregated_spend:
+      self.analyzer.get_historical_spend(
+          selected_times=None, include_media=True, include_rf=True
+      )
+      mock_get_aggregated_spend.assert_called_once_with(
+          selected_times=None, include_media=True, include_rf=True
+      )
+
+  def test_get_aggregated_spend_correct_channel_names(self):
+    actual_hist_spend = self.analyzer.get_aggregated_spend()
+    expected_channel_names = self.input_data.get_all_paid_channels()
+
+    self.assertSameElements(
+        expected_channel_names, actual_hist_spend.channel.data
+    )
+
+  def test_get_aggregated_spend_correct_values(self):
+    # Set it to None to avoid the dimension checks on inference data.
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: None),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    # All times are selected.
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend()
+    expected_all_spend = np.array([3.3, 6.3, 9.3])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  def test_get_aggregated_spend_new_data_correct_values(self):
+    # Set it to None to avoid the dimension checks on inference data.
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: None),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec()
+    meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    # All times are selected.
+    new_media_spend = backend.to_tensor([[[1, 2], [2, 3], [3, 4]]])
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        new_data=analyzer.DataTensors(media_spend=new_media_spend)
+    )
+    expected_all_spend = np.array([6, 9, 9.3])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  def test_get_aggregated_spend_selected_times_correct_values(self):
+    # Set it to None to avoid the dimension checks on inference data.
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: None),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    # The first two times are selected.
+    selected_times = ["2021-01-25", "2021-02-01"]
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        selected_times=selected_times
+    )
+    expected_all_spend = np.array([2.1, 4.1, 6.1])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  def test_get_aggregated_spend_selected_geos_correct_values(self):
+    # Set it to None to avoid the dimension checks on inference data.
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: None),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=2,
+        n_times=2,
+        n_media_times=3,
+        n_media_channels=1,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0], [1.1]], [[1.2], [1.3]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[2.0], [2.1]], [[2.2], [2.3]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    # Select only first geo.
+    selected_geos = ["geo_0"]
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        selected_geos=selected_geos
+    )
+    expected_all_spend = np.array([1.0 + 1.1, 2.0 + 2.1])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  def test_get_aggregated_spend_with_single_dim_spends(self):
+    seed = 0
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=seed,
+    )
+    data.media_spend = data_test_utils.random_media_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        seed=seed,
+    )
+    data.rf_spend = data_test_utils.random_rf_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=seed,
+    )
+    model_spec = spec.ModelSpec(max_lag=15)
+
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    n_sub_times = 4
+    n_sub_geos = 3
+
+    selected_geos = data.geo.values.tolist()[:n_sub_geos]
+    selected_times = data.time.values[-n_sub_times:].tolist()
+    actual_hist_spends = meridian_analyzer.get_aggregated_spend(
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    # The spend is interpolated based on the ratio of media execution in the
+    # selected times to the media execution in the entire time period.
+    # Shape (n_geos, n_times, n_media_channels + n_rf_channels)
+    all_media_exe_values = data.get_all_media_and_rf()
+
+    # Get the media execution values in the selected times.
+    # Shape (n_media_channels + n_rf_channels)
+    target_media_exe_values = np.sum(
+        all_media_exe_values[:n_sub_geos, -n_sub_times:], axis=(0, 1)
+    )
+    # Get the media execution values in the entire time period.
+    # Shape (n_media_channels + n_rf_channels)
+    total_media_exe_values = np.sum(
+        all_media_exe_values[:, -meridian.n_times :], axis=(0, 1)
+    )
+    # The ratio will be used to interpolate the spend.
+    ratio = target_media_exe_values / total_media_exe_values
+    # Shape (n_media_channels + n_rf_channels)
+    expected_all_spend = data.get_total_spend() * ratio
+
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spends.data
+    )
+
+  def test_get_aggregated_spend_with_empty_times(self):
+    actual = self.analyzer.get_aggregated_spend(selected_times=[])
+    backend_test_utils.assert_allequal(
+        actual.data, np.zeros((_N_MEDIA_CHANNELS + _N_RF_CHANNELS))
+    )
+
+  def test_get_aggregated_spend_with_no_channel_selected(self):
+    selected_times = self.input_data.time.values.tolist()
+
+    with self.assertRaisesRegex(
+        ValueError, "At least one of include_media or include_rf must be True."
+    ):
+      self.analyzer.get_aggregated_spend(
+          selected_times, include_media=False, include_rf=False
+      )
+
+  def test_optimal_frequency_data_correct(self):
+    """Verifies that optimal_freq returns correct data."""
+    actual = self.analyzer.optimal_freq(
+        freq_grid=[1.0, 2.0, 3.0],
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        use_posterior=True,
+    )
+
+    expected = xr.Dataset(
+        coords={
+            constants.FREQUENCY: [1.0, 2.0, 3.0],
+            constants.RF_CHANNEL: ["rf_ch_0", "rf_ch_1"],
+            constants.METRIC: [
+                constants.MEAN,
+                constants.MEDIAN,
+                constants.CI_LO,
+                constants.CI_HI,
+            ],
+        },
+        data_vars={
+            constants.ROI: (
+                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [
+                        [2.80743504, 2.83065104, 1.38872945, 4.16265583],
+                        [2.24276924, 2.21290541, 1.82031965, 2.69688964],
+                    ],
+                    [
+                        [3.18731356, 3.13503218, 2.29848957, 4.12022591],
+                        [1.2510097, 1.23370111, 0.97951347, 1.54065883],
+                    ],
+                    [
+                        [2.99529672, 2.98246479, 1.61403883, 4.40213966],
+                        [0.87875795, 0.86645776, 0.68025917, 1.08998716],
+                    ],
+                ],
+            ),
+            constants.OPTIMAL_FREQUENCY: (
+                [constants.RF_CHANNEL],
+                [2.0, 1.0],
+            ),
+            constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [867.4761, 853.2468, 625.569, 1121.3823],
+                    [645.64105, 637.04395, 524.02765, 776.3717],
+                ],
+            ),
+            constants.OPTIMIZED_EFFECTIVENESS: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [0.00026515, 0.0002608, 0.00019121, 0.00034276],
+                    [0.00018462, 0.00018216, 0.00014985, 0.000222],
+                ],
+            ),
+            constants.OPTIMIZED_ROI: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [3.1873136, 3.1350322, 2.2984896, 4.120226],
+                    [2.2427692, 2.2129054, 1.8203197, 2.6968896],
+                ],
+            ),
+            constants.OPTIMIZED_MROI_BY_REACH: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [3.1873164, 3.1350555, 2.2984552, 4.120374],
+                    [2.2427614, 2.2128677, 1.8203465, 2.6968539],
+                ],
+            ),
+            constants.OPTIMIZED_MROI_BY_FREQUENCY: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [3.5786705, 3.4893715, 0.32168087, 6.922775],
+                    [0.39557335, 0.38793004, 0.19770184, 0.6012672],
+                ],
+            ),
+            constants.OPTIMIZED_CPIK: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [1.0647482, 1.0699524, 0.7621226, 1.3661181],
+                    [1.4501528, 1.4600611, 1.1643094, 1.7249733],
+                ],
+            ),
+        },
+        attrs={
+            constants.CONFIDENCE_LEVEL: constants.DEFAULT_CONFIDENCE_LEVEL,
+            "use_posterior": True,
+        },
+    )
+
+    xr.testing.assert_allclose(actual, expected, atol=0.1)
+
+  def test_optimal_frequency_kpi_returns_correct_structure(self):
+    """Verifies that use_kpi=True for optimal_freq returns correct structure."""
+    result = self.analyzer.optimal_freq(
+        freq_grid=[1.0, 2.0, 3.0],
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        use_posterior=True,
+        use_kpi=True,
+    )
+
+    self.assertIsInstance(result, xr.Dataset)
+    self.assertEqual(
+        list(result.data_vars.keys()),
+        [
+            constants.ROI,
+            constants.OPTIMAL_FREQUENCY,
+            constants.OPTIMIZED_INCREMENTAL_OUTCOME,
+            constants.OPTIMIZED_ROI,
+            constants.OPTIMIZED_EFFECTIVENESS,
+            constants.OPTIMIZED_MROI_BY_REACH,
+            constants.OPTIMIZED_MROI_BY_FREQUENCY,
+            constants.OPTIMIZED_CPIK,
+        ],
+    )
+    self.assertFalse(result.attrs[constants.IS_REVENUE_KPI])
+
+  def test_optimal_freq_new_times_data_correct(self):
+    max_lag = 15
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    actual = self.analyzer.optimal_freq(
+        new_data=analyzer.DataTensors(
+            rf_impressions=self.meridian.rf_tensors.reach[..., -total_times:, :]
+            * self.meridian.rf_tensors.frequency[..., -total_times:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+        ),
+        freq_grid=[1.0, 2.0, 3.0],
+        selected_times=[False] * max_lag + [True] * n_new_times,
+    )
+    expected = self.analyzer.optimal_freq(
+        selected_times=list(self.input_data.time.values)[-n_new_times:],
+        freq_grid=[1.0, 2.0, 3.0],
+    )
+    xr.testing.assert_allclose(actual, expected)
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_negative_baseline_probability_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    prob = self.analyzer.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    self.assertEqual(prob.shape, ())
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="prior",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=0.5,
+      ),
+      dict(
+          testcase_name="prior_selected_times",
+          use_posterior=False,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.5,
+      ),
+      dict(
+          testcase_name="prior_selected_geos",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=0.5,
+      ),
+      dict(
+          testcase_name="prior_selected_geos_times",
+          use_posterior=False,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=0.5,
+      ),
+      dict(
+          testcase_name="posterior",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=None,
+          expected_value=1.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_times",
+          use_posterior=True,
+          selected_geos=None,
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=1.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=None,
+          expected_value=1.0,
+      ),
+      dict(
+          testcase_name="posterior_selected_geos_times",
+          use_posterior=True,
+          selected_geos=("geo_1", "geo_3"),
+          selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
+          expected_value=1.0,
+      ),
+  )
+  def test_negative_baseline_probability_returns_correct_values(
+      self,
+      use_posterior,
+      selected_geos,
+      selected_times,
+      expected_value,
+  ):
+    """Exact output tests for `Analyzer.negative_baseline_probability`."""
+    prob = self.analyzer.negative_baseline_probability(
+        use_posterior=use_posterior,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    backend_test_utils.assert_allclose(
+        prob,
+        expected_value,
+        atol=1e-5,
+        rtol=1e-5,
     )
 
 
