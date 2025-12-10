@@ -191,6 +191,7 @@ class MmmUiProtoGenerator:
         grid_name=rf_opt_grid_name,
         group_id=budget_opt_spec.group_id,
         confidence_level=budget_opt_spec.confidence_level,
+        max_frequency=budget_opt_spec.max_frequency,
     )
 
   def _enumerate_dates_open_end(
