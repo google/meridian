@@ -1199,282 +1199,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         (_N_CHAINS, _N_KEEP, 15, _N_MEDIA_CHANNELS + _N_RF_CHANNELS),
     )
 
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      by_reach=[False, True],
-      use_kpi=[False, True],
-  )
-  def test_marginal_roi_media_and_rf_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      by_reach: bool,
-      use_kpi: bool,
-  ):
-    type(self.meridian_media_and_rf).inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    mroi = self.analyzer_media_and_rf.marginal_roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        by_reach=by_reach,
-        use_kpi=use_kpi,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
-    self.assertEqual(mroi.shape, expected_shape)
-
-  # The purpose of this test is to prevent accidental logic change.
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="use_prior",
-          use_posterior=False,
-          by_reach=False,
-          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR,
-      ),
-      dict(
-          testcase_name="use_prior_by_reach",
-          use_posterior=False,
-          by_reach=True,
-          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR_BY_REACH,
-      ),
-      dict(
-          testcase_name="use_posterior",
-          use_posterior=True,
-          by_reach=False,
-          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR,
-      ),
-      dict(
-          testcase_name="use_posterior_by_reach",
-          use_posterior=True,
-          by_reach=True,
-          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR_BY_REACH,
-      ),
-  )
-  def test_marginal_roi_media_and_rf(
-      self,
-      use_posterior: bool,
-      by_reach: bool,
-      expected_mroi: tuple[float, ...],
-  ):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    mroi = self.analyzer_media_and_rf.marginal_roi(
-        by_reach=by_reach,
-        use_posterior=use_posterior,
-    )
-    backend_test_utils.assert_allclose(
-        mroi,
-        backend.to_tensor(expected_mroi),
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-  def test_marginal_roi_new_times_data_correct(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    max_lag = 15
-    n_new_times = 15
-    total_times = max_lag + n_new_times
-    actual = self.analyzer_media_and_rf.marginal_roi(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[
-                ..., -total_times:, :
-            ],
-            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-                ..., -total_times:, :
-            ],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[
-                ..., -total_times:, :
-            ],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -total_times:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -total_times:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -total_times:
-            ],
-        ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
-    )
-    expected = self.analyzer_media_and_rf.marginal_roi(
-        selected_times=list(self.input_data_media_and_rf.time.values)[
-            -n_new_times:
-        ]
-    )
-    backend_test_utils.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      use_kpi=[False, True],
-  )
-  def test_roi_media_and_rf_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      use_kpi: bool,
-  ):
-    roi = self.analyzer_media_and_rf.roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        use_kpi=use_kpi,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
-    self.assertEqual(roi.shape, expected_shape)
-
-  def test_roi_media_and_rf_default_returns_correct_value(self):
-    roi = self.analyzer_media_and_rf.roi()
-    total_spend = (
-        self.analyzer_media_and_rf.filter_and_aggregate_geos_and_times(
-            self.meridian_media_and_rf.total_spend
-        )
-    )
-    expected_roi = (
-        self.analyzer_media_and_rf.incremental_outcome() / total_spend
-    )
-    backend_test_utils.assert_allclose(expected_roi, roi)
-
-  def test_roi_media_and_rf_new_params_correct(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    max_lag = 15
-    n_new_times = 15
-    total_times = max_lag + n_new_times
-    actual = self.analyzer_media_and_rf.roi(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[
-                ..., -total_times:, :
-            ],
-            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-                ..., -total_times:, :
-            ],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[
-                ..., -total_times:, :
-            ],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -total_times:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -total_times:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -total_times:
-            ],
-        ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
-    )
-    expected = self.analyzer_media_and_rf.roi(
-        selected_times=list(self.input_data_media_and_rf.time.values)[
-            -n_new_times:
-        ]
-    )
-    backend_test_utils.assert_allclose(actual, expected)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_cpik_media_and_rf_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    cpik = self.analyzer_media_and_rf.cpik(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
-    self.assertEqual(cpik.shape, expected_shape)
-
-  def test_cpik_media_and_rf_default_returns_correct_value(self):
-    cpik = self.analyzer_media_and_rf.cpik()
-    total_spend = (
-        self.analyzer_media_and_rf.filter_and_aggregate_geos_and_times(
-            self.meridian_media_and_rf.total_spend
-        )
-    )
-    expected_cpik = (
-        total_spend
-        / self.analyzer_media_and_rf.incremental_outcome(use_kpi=True)
-    )
-    backend_test_utils.assert_allclose(expected_cpik, cpik)
-
-  def test_cpik_new_times_data_correct(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    max_lag = 15
-    n_new_times = 15
-    total_times = max_lag + n_new_times
-    actual = self.analyzer_media_and_rf.cpik(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[
-                ..., -total_times:, :
-            ],
-            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-                ..., -total_times:, :
-            ],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[
-                ..., -total_times:, :
-            ],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -total_times:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -total_times:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -total_times:
-            ],
-        ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
-    )
-    expected = self.analyzer_media_and_rf.cpik(
-        selected_times=list(self.input_data_media_and_rf.time.values)[
-            -n_new_times:
-        ]
-    )
-    backend_test_utils.assert_allclose(actual, expected)
-
   def test_media_summary_returns_correct_values(self):
     media_summary = self.analyzer_media_and_rf.summary_metrics(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -5771,6 +5495,227 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         atol=1e-5,
         rtol=1e-5,
     )
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      by_reach=[False, True],
+      use_kpi=[False, True],
+  )
+  def test_marginal_roi_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      by_reach: bool,
+      use_kpi: bool,
+  ):
+    mroi = self.analyzer.marginal_roi(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        by_reach=by_reach,
+        use_kpi=use_kpi,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
+    self.assertEqual(mroi.shape, expected_shape)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_prior",
+          use_posterior=False,
+          by_reach=False,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR,
+      ),
+      dict(
+          testcase_name="use_prior_by_reach",
+          use_posterior=False,
+          by_reach=True,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_PRIOR_BY_REACH,
+      ),
+      dict(
+          testcase_name="use_posterior",
+          use_posterior=True,
+          by_reach=False,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR,
+      ),
+      dict(
+          testcase_name="use_posterior_by_reach",
+          use_posterior=True,
+          by_reach=True,
+          expected_mroi=analysis_test_utils.MROI_MEDIA_AND_RF_USE_POSTERIOR_BY_REACH,
+      ),
+  )
+  def test_marginal_roi_values(
+      self,
+      use_posterior: bool,
+      by_reach: bool,
+      expected_mroi: tuple[float, ...],
+  ):
+    mroi = self.analyzer.marginal_roi(
+        by_reach=by_reach,
+        use_posterior=use_posterior,
+    )
+
+    backend_test_utils.assert_allclose(
+        mroi,
+        backend.to_tensor(expected_mroi),
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_marginal_roi_new_times_data_correct(self):
+    max_lag = 15
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    actual = self.analyzer.marginal_roi(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -total_times:, :],
+            media_spend=self.meridian.media_tensors.media_spend[
+                ..., -total_times:, :
+            ],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+        ),
+        selected_times=[False] * max_lag + [True] * n_new_times,
+    )
+    expected = self.analyzer.marginal_roi(
+        selected_times=list(self.input_data.time.values)[-n_new_times:]
+    )
+    backend_test_utils.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
+  )
+  def test_roi_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      use_kpi: bool,
+  ):
+    roi = self.analyzer.roi(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        use_kpi=use_kpi,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
+    self.assertEqual(roi.shape, expected_shape)
+
+  def test_roi_default_returns_correct_value(self):
+    roi = self.analyzer.roi()
+    total_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.total_spend
+    )
+    expected_roi = (
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)
+        / total_spend
+    )
+    backend_test_utils.assert_allclose(expected_roi, roi)
+
+  def test_roi_new_params_correct(self):
+    max_lag = 15
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    actual = self.analyzer.roi(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -total_times:, :],
+            media_spend=self.meridian.media_tensors.media_spend[
+                ..., -total_times:, :
+            ],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+        ),
+        selected_times=[False] * max_lag + [True] * n_new_times,
+    )
+    expected = self.analyzer.roi(
+        selected_times=list(self.input_data.time.values)[-n_new_times:]
+    )
+    backend_test_utils.assert_allclose(actual, expected)
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_cpik_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    cpik = self.analyzer.cpik(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
+    self.assertEqual(cpik.shape, expected_shape)
+
+  def test_cpik_default_returns_correct_value(self):
+    cpik = self.analyzer.cpik()
+    total_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.total_spend
+    )
+    expected_cpik = total_spend / self.analyzer.incremental_outcome(
+        use_kpi=True, include_non_paid_channels=False
+    )
+    backend_test_utils.assert_allclose(expected_cpik, cpik)
+
+  def test_cpik_new_times_data_correct(self):
+    max_lag = 15
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    actual = self.analyzer.cpik(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -total_times:, :],
+            media_spend=self.meridian.media_tensors.media_spend[
+                ..., -total_times:, :
+            ],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+        ),
+        selected_times=[False] * max_lag + [True] * n_new_times,
+    )
+    expected = self.analyzer.cpik(
+        selected_times=list(self.input_data.time.values)[-n_new_times:]
+    )
+    backend_test_utils.assert_allclose(actual, expected)
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
