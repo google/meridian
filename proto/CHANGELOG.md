@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add field to record ArviZ version in meridian_model proto definition.
+
 ## [1.1.0] - 2025-12-08
 
 * Add proto definitions needed for Meridian Scenario Planner.
