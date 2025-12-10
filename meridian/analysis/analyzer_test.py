@@ -2945,6 +2945,16 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         roi, backend.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
     )
 
+  def test_roi_zero_media_spend_returns_inf(self):
+    new_media_spend = backend.zeros_like(
+        self.meridian_media_only.media_tensors.media_spend,
+        dtype=backend.float32,
+    )
+    roi = self.analyzer_media_only.roi(
+        new_data=analyzer.DataTensors(media_spend=new_media_spend)
+    )
+    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))
+
   def test_optimal_frequency_data_media_only_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,

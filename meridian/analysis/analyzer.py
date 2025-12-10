@@ -2511,26 +2511,28 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
-      denominator = self.filter_and_aggregate_geos_and_times(
-          spend,
-          aggregate_times=True,
-          flexible_time_dim=True,
-          has_media_dim=True,
-          **dim_kwargs,
+      return backend.divide(
+          incremental_outcome,
+          self.filter_and_aggregate_geos_and_times(
+              spend,
+              aggregate_times=True,
+              flexible_time_dim=True,
+              has_media_dim=True,
+              **dim_kwargs,
+          ),
       )
-    else:
-      if not aggregate_geos:
-        # This check should not be reachable. It is here to protect against
-        # future changes to self._validate_geo_and_time_granularity. If
-        # spend_inc.ndim is not 3 and either of `aggregate_geos` or
-        # `aggregate_times` is `False`, then
-        # self._validate_geo_and_time_granularity should raise an error.
-        raise ValueError(
-            "aggregate_geos must be True if spend does not have a geo "
-            "dimension."
-        )
-      denominator = spend
-    return backend.divide_no_nan(incremental_outcome, denominator)
+
+    if not aggregate_geos:
+      # This check should not be reachable. It is here to protect against
+      # future changes to self._validate_geo_and_time_granularity. If
+      # spend_inc.ndim is not 3 and either of `aggregate_geos` or
+      # `aggregate_times` is `False`, then
+      # self._validate_geo_and_time_granularity should raise an error.
+      raise ValueError(
+          "aggregate_geos must be True if spend does not have a geo "
+          "dimension."
+      )
+    return backend.divide(incremental_outcome, spend)
 
   def cpik(
       self,
