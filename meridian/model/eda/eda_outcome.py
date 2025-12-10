@@ -203,18 +203,22 @@ class EDAOutcome(typing.Generic[ArtifactType]):
   findings: list[EDAFinding]
   analysis_artifacts: list[ArtifactType]
 
-  @property
-  def get_geo_artifact(self) -> ArtifactType | None:
+  def get_geo_artifact(self) -> ArtifactType:
     """Returns the geo-level analysis artifact."""
     for artifact in self.analysis_artifacts:
       if artifact.level == AnalysisLevel.GEO:
         return artifact
-    return None
+    raise ValueError(
+        f"The EDAOutcome for {self.check_type.name} check does not have a geo"
+        " artifact."
+    )
 
-  @property
-  def get_national_artifact(self) -> ArtifactType | None:
+  def get_national_artifact(self) -> ArtifactType:
     """Returns the national-level analysis artifact."""
     for artifact in self.analysis_artifacts:
       if artifact.level == AnalysisLevel.NATIONAL:
         return artifact
-    return None
+    raise ValueError(
+        f"The EDAOutcome for {self.check_type.name} check does not have a"
+        " national artifact."
+    )
