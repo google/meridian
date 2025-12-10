@@ -701,93 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
-    # `use_kpi` is respected
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      self.assertTrue(self.analyzer_media_and_rf._use_kpi(use_kpi=True))
-      self.assertEmpty(w)
-
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      self.assertFalse(self.analyzer_media_and_rf._use_kpi(use_kpi=False))
-      self.assertEmpty(w)
-
-  def test_use_kpi_direct_calls_revenue(self):
-    input_data_revenue = data_test_utils.sample_input_data_revenue(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        seed=0,
-    )
-    mmm_revenue = model.Meridian(input_data=input_data_revenue)
-    analyzer_revenue = analyzer.Analyzer(mmm_revenue)
-
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`",
-    ):
-      self.assertFalse(analyzer_revenue._use_kpi(use_kpi=True))
-
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      self.assertFalse(analyzer_revenue._use_kpi(use_kpi=False))
-      self.assertEmpty(w)
-
-  def test_use_kpi_direct_calls_non_revenue_no_revenue_per_kpi(self):
-    input_data_non_revenue_no_revenue_per_kpi = (
-        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    mmm_non_revenue = model.Meridian(
-        input_data=input_data_non_revenue_no_revenue_per_kpi
-    )
-    analyzer_non_revenue = analyzer.Analyzer(mmm_non_revenue)
-
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      self.assertTrue(analyzer_non_revenue._use_kpi(use_kpi=True))
-      self.assertEmpty(w)
-
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      self.assertTrue(analyzer_non_revenue._use_kpi(use_kpi=False))
-
-  def test_get_central_tendency_and_ci(self):
-    data = np.array([[[10.0, 7, 4], [3, 2, 1]], [[1, 2, 3], [4, 5, 6.0]]])
-    result = analyzer.get_central_tendency_and_ci(data, confidence_level=0.9)
-    np.testing.assert_allclose(
-        result,
-        np.array([[4.5, 1.3, 9.1], [4.0, 2.0, 6.7], [3.5, 1.3, 5.7]]),
-        atol=0.1,
-    )
-
-  def test_get_central_tendency_and_ci_returns_median(self):
-    data = np.array([[[10.0, 7, 4], [3, 2, 1]], [[1, 2, 3], [4, 5, 6.0]]])
-    result = analyzer.get_central_tendency_and_ci(
-        data, confidence_level=0.9, include_median=True
-    )
-    np.testing.assert_allclose(
-        result,
-        np.array(
-            [[4.5, 3.5, 1.3, 9.1], [4.0, 3.5, 2.0, 6.7], [3.5, 3.5, 1.3, 5.7]]
-        ),
-        atol=0.1,
-    )
-
   def test_expected_outcome_wrong_kpi_transformation(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -1332,73 +1245,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
         rtol=1e-3,
     )
-
-  @parameterized.named_parameters(
-      ("marginal_roi", "marginal_roi"),
-      ("roi", "roi"),
-      ("summary_metrics", "summary_metrics"),
-      ("predictive_accuracy", "predictive_accuracy"),
-  )
-  def test_no_revenue_data_use_kpi_false_warning_and_fallback(
-      self, method_name
-  ):
-    input_data = (
-        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    mmm = model.Meridian(input_data=input_data)
-    type(mmm).inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    analyzer_no_rev = analyzer.Analyzer(mmm)
-
-    method = getattr(analyzer_no_rev, method_name)
-
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
-    ):
-      result_false = method(use_kpi=False)
-
-    result_true = method(use_kpi=True)
-
-    if isinstance(result_false, xr.Dataset):
-      xr.testing.assert_allclose(result_false, result_true)
-    else:
-      backend_test_utils.assert_allclose(result_false, result_true)
-
-  def test_public_methods_revenue_type_use_kpi_true_has_no_effect(self):
-    input_data = data_test_utils.sample_input_data_revenue(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        seed=0,
-    )
-    mmm = model.Meridian(input_data=input_data)
-    type(mmm).inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    analyzer_rev = analyzer.Analyzer(mmm)
-
-    with self.assertWarnsRegex(
-        UserWarning,
-        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`",
-    ):
-      res_true = analyzer_rev.expected_outcome(use_kpi=True)
-
-    res_false = analyzer_rev.expected_outcome(use_kpi=False)
-    backend_test_utils.assert_allclose(res_true, res_false)
 
   def test_media_summary_with_new_data_returns_correct_values(self):
     data1 = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
@@ -4038,6 +3884,172 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
             "inference_data",
             new=property(lambda unused_self: cls.inference_data),
         )
+    )
+
+  def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
+    # `use_kpi` is respected
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      self.assertTrue(self.analyzer._use_kpi(use_kpi=True))
+      self.assertEmpty(w)
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      self.assertFalse(self.analyzer._use_kpi(use_kpi=False))
+      self.assertEmpty(w)
+
+  def test_use_kpi_direct_calls_revenue(self):
+    input_data_revenue = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        seed=0,
+    )
+    mmm_revenue = model.Meridian(input_data=input_data_revenue)
+    analyzer_revenue = analyzer.Analyzer(mmm_revenue)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`",
+    ):
+      self.assertFalse(analyzer_revenue._use_kpi(use_kpi=True))
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      self.assertFalse(analyzer_revenue._use_kpi(use_kpi=False))
+      self.assertEmpty(w)
+
+  def test_use_kpi_direct_calls_non_revenue_no_revenue_per_kpi(self):
+    input_data_non_revenue_no_revenue_per_kpi = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    mmm_non_revenue = model.Meridian(
+        input_data=input_data_non_revenue_no_revenue_per_kpi
+    )
+    analyzer_non_revenue = analyzer.Analyzer(mmm_non_revenue)
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      self.assertTrue(analyzer_non_revenue._use_kpi(use_kpi=True))
+      self.assertEmpty(w)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Revenue analysis is not available when `revenue_per_kpi` is"
+        " unknown. Defaulting to KPI analysis.",
+    ):
+      self.assertTrue(analyzer_non_revenue._use_kpi(use_kpi=False))
+
+  @parameterized.named_parameters(
+      ("marginal_roi", "marginal_roi"),
+      ("roi", "roi"),
+      ("summary_metrics", "summary_metrics"),
+      ("predictive_accuracy", "predictive_accuracy"),
+  )
+  def test_no_revenue_data_use_kpi_false_warning_and_fallback(
+      self, method_name
+  ):
+    input_data = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+            n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    mmm = model.Meridian(input_data=input_data)
+    type(mmm).inference_data = mock.PropertyMock(
+        return_value=self.inference_data
+    )
+    analyzer_no_rev = analyzer.Analyzer(mmm)
+
+    method = getattr(analyzer_no_rev, method_name)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Revenue analysis is not available when `revenue_per_kpi` is"
+        " unknown. Defaulting to KPI analysis.",
+    ):
+      result_false = method(use_kpi=False)
+
+    result_true = method(use_kpi=True)
+
+    if isinstance(result_false, xr.Dataset):
+      xr.testing.assert_allclose(result_false, result_true)
+    else:
+      backend_test_utils.assert_allclose(result_false, result_true)
+
+  def test_public_methods_revenue_type_use_kpi_true_has_no_effect(self):
+    input_data = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        seed=0,
+    )
+    mmm = model.Meridian(input_data=input_data)
+    type(mmm).inference_data = mock.PropertyMock(
+        return_value=self.inference_data
+    )
+    analyzer_rev = analyzer.Analyzer(mmm)
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`",
+    ):
+      res_true = analyzer_rev.expected_outcome(use_kpi=True)
+
+    res_false = analyzer_rev.expected_outcome(use_kpi=False)
+    backend_test_utils.assert_allclose(res_true, res_false)
+
+  def test_get_central_tendency_and_ci(self):
+    data = np.array([[[10.0, 7, 4], [3, 2, 1]], [[1, 2, 3], [4, 5, 6.0]]])
+    result = analyzer.get_central_tendency_and_ci(data, confidence_level=0.9)
+    np.testing.assert_allclose(
+        result,
+        np.array([[4.5, 1.3, 9.1], [4.0, 2.0, 6.7], [3.5, 1.3, 5.7]]),
+        atol=0.1,
+    )
+
+  def test_get_central_tendency_and_ci_returns_median(self):
+    data = np.array([[[10.0, 7, 4], [3, 2, 1]], [[1, 2, 3], [4, 5, 6.0]]])
+    result = analyzer.get_central_tendency_and_ci(
+        data, confidence_level=0.9, include_median=True
+    )
+    np.testing.assert_allclose(
+        result,
+        np.array(
+            [[4.5, 3.5, 1.3, 9.1], [4.0, 3.5, 2.0, 6.7], [3.5, 3.5, 1.3, 5.7]]
+        ),
+        atol=0.1,
     )
 
   @parameterized.product(
