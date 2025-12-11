@@ -141,7 +141,7 @@ __all__ = [
 ]
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class MediaSummarySpec(model_processor.Spec):
   """Stores parameters needed for creating media summary metrics.
 
@@ -172,7 +172,6 @@ class MediaSummarySpec(model_processor.Spec):
   aggregate_times: bool = True
   marginal_roi_by_reach: bool = True
   include_non_paid_channels: bool = False
-  # b/384034128 Use new args in `summary_metrics`.
   new_data: analyzer.DataTensors | None = None
   media_selected_times: Sequence[bool] | None = None
 
@@ -368,15 +367,16 @@ class MarketingProcessor(
     marketing_analysis_list: list[marketing_analysis_pb2.MarketingAnalysis] = []
 
     for spec in marketing_analysis_specs:
-      if (
-          spec.incremental_outcome_spec is not None
-          and spec.incremental_outcome_spec.new_data is not None
-          and spec.incremental_outcome_spec.new_data.time is not None
-      ):
+      if spec.incremental_outcome_spec is not None:
+        new_data = spec.incremental_outcome_spec.new_data
+      elif spec.media_summary_spec is not None:
+        new_data = spec.media_summary_spec.new_data
+      else:
+        new_data = None
+
+      if new_data is not None and new_data.time is not None:
         new_time_coords = time_coordinates.TimeCoordinates.from_dates(
-            np.asarray(spec.incremental_outcome_spec.new_data.time)
-            .astype(str)
-            .tolist()
+            np.asarray(new_data.time).astype(str).tolist()
         )
         resolver = spec.resolver(new_time_coords)
       else:
@@ -507,6 +507,7 @@ class MarketingProcessor(
         selected_times=selected_times,
         aggregate_geos=True,
         aggregate_times=media_summary_spec.aggregate_times,
+        new_data=media_summary_spec.new_data,
         confidence_level=confidence_level,
     )
 
