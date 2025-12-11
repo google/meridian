@@ -701,100 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_expected_outcome_wrong_kpi_transformation(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "use_kpi=False is only supported when inverse_transform_outcome=True.",
-    ):
-      self.analyzer_media_and_rf.expected_outcome(
-          inverse_transform_outcome=False, use_kpi=False
-      )
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      geos_to_include=[None, ["geo_1", "geo_3"]],
-      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      use_kpi=[False, True],
-  )
-  def test_expected_outcome_media_and_rf_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      geos_to_include: Sequence[str] | None,
-      times_to_include: Sequence[str] | None,
-      use_kpi: bool,
-  ):
-    outcome = self.analyzer_media_and_rf.expected_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=geos_to_include,
-        selected_times=times_to_include,
-        use_kpi=use_kpi,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(times_to_include),)
-          if times_to_include is not None
-          else (_N_TIMES,)
-      )
-    self.assertEqual(outcome.shape, expected_shape)
-
-  def test_expected_outcome_new_data(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    expected = self.analyzer_media_and_rf.expected_outcome()
-    # Set new data with only certain param overrides matching the existing data.
-    # The params not provided should use the existing data and the result will
-    # be overridden. Using the same training data should result in the same
-    # expected outcome as the original data.
-    outcome = self.analyzer_media_and_rf.expected_outcome(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media,
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency,
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi,
-        ),
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        expected,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-  def test_expected_outcome_new_data_result(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    default = self.analyzer_media_and_rf.expected_outcome()
-    outcome = self.analyzer_media_and_rf.expected_outcome(
-        new_data=analyzer.DataTensors(
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi * 2.0,
-        ),
-        use_kpi=False,
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        default * 2.0,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        analysis_test_utils.EXP_OUTCOME_MEDIA_AND_RF,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
   def test_incremental_outcome_negative_scaling_factor0(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -4060,6 +3966,94 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
             [[4.5, 3.5, 1.3, 9.1], [4.0, 3.5, 2.0, 6.7], [3.5, 3.5, 1.3, 5.7]]
         ),
         atol=0.1,
+    )
+
+  def test_expected_outcome_wrong_kpi_transformation(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "use_kpi=False is only supported when inverse_transform_outcome=True.",
+    ):
+      self.analyzer.expected_outcome(
+          inverse_transform_outcome=False, use_kpi=False
+      )
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      geos_to_include=[None, ["geo_1", "geo_3"]],
+      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
+  )
+  def test_expected_outcome_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      geos_to_include: Sequence[str] | None,
+      times_to_include: Sequence[str] | None,
+      use_kpi: bool,
+  ):
+    outcome = self.analyzer.expected_outcome(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        selected_geos=geos_to_include,
+        selected_times=times_to_include,
+        use_kpi=use_kpi,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      expected_shape += (
+          (len(times_to_include),)
+          if times_to_include is not None
+          else (_N_TIMES,)
+      )
+    self.assertEqual(outcome.shape, expected_shape)
+
+  def test_expected_outcome_new_data(self):
+    expected = self.analyzer.expected_outcome()
+    # Set new data with only certain param overrides matching the existing data.
+    # The params not provided should use the existing data and the result will
+    # be overridden. Using the same training data should result in the same
+    # expected outcome as the original data.
+    outcome = self.analyzer.expected_outcome(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media,
+            frequency=self.meridian.rf_tensors.frequency,
+            revenue_per_kpi=self.meridian.revenue_per_kpi,
+        ),
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        expected,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_expected_outcome_new_data_result(self):
+    default = self.analyzer.expected_outcome()
+    outcome = self.analyzer.expected_outcome(
+        new_data=analyzer.DataTensors(
+            revenue_per_kpi=self.meridian.revenue_per_kpi * 2.0,
+        ),
+        use_kpi=False,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        default * 2.0,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        analysis_test_utils.EXP_OUTCOME_MEDIA_AND_RF,
+        rtol=1e-3,
+        atol=1e-3,
     )
 
   @parameterized.product(
