@@ -30,6 +30,7 @@ __all__ = [
     "VIFArtifact",
     "KpiInvariabilityArtifact",
     "CostPerMediaUnitArtifact",
+    "VariableGeoTimeCollinearityArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
@@ -172,6 +173,18 @@ class CostPerMediaUnitArtifact(AnalysisArtifact):
   outlier_df: pd.DataFrame
 
 
+@dataclasses.dataclass(frozen=True)
+class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from a Geo/Time Collinearity analysis for Treatment/Control variables.
+
+  Attributes:
+    rsquared_ds: Dataset containing adjusted R-squared values for treatments and
+      controls regressed against 'geo' and 'time'.
+  """
+
+  rsquared_ds: xr.Dataset
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -181,6 +194,7 @@ class EDACheckType(enum.Enum):
   MULTICOLLINEARITY = enum.auto()
   KPI_INVARIABILITY = enum.auto()
   COST_PER_MEDIA_UNIT = enum.auto()
+  VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound="AnalysisArtifact")

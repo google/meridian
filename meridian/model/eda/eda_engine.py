@@ -365,8 +365,7 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
       np_data, prepend=True, has_constant='add'
   )
 
-  # Compute VIF for each variable excluding const which is the first one in the
-  # 'variable' dimension.
+  # Compute VIF for each variable, skipping the constant term at index 0.
   vifs = [
       outliers_influence.variance_inflation_factor(np_data_with_const, i)
       for i in range(1, num_vars + 1)
@@ -489,6 +488,15 @@ def _check_cost_per_media_unit(
       findings=findings,
       analysis_artifacts=[artifact],
   )
+
+
+def _calc_adj_r2(da: xr.DataArray, regressor: str) -> xr.DataArray:
+  """Calculates adjusted R-squared for a DataArray against a regressor."""
+  tmp_name = 'dep_var'
+  df = da.to_dataframe(name=tmp_name).reset_index()
+  formula = f'{tmp_name} ~ C({regressor})'
+  ols = sm.OLS.from_formula(formula, df).fit()
+  return xr.DataArray(ols.rsquared_adj)
 
 
 class EDAEngine:
@@ -2108,3 +2116,68 @@ class EDAEngine:
             )
         )
     return outcomes
+
+  def check_variable_geo_time_collinearity(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.VariableGeoTimeCollinearityArtifact]:
+    """Compute adjusted R-squared for treatments and controls vs geo and time.
+
+    These checks are applied to geo-level dataset only.
+
+    Returns:
+      An EDAOutcome object containing a VariableGeoTimeCollinearityArtifact.
+      The artifact includes a Dataset with 'rsquared_geo' and 'rsquared_time',
+      showing the adjusted R-squared values for each treatment/control variable
+      when regressed against 'geo' and 'time', respectively.
+    """
+    if self._is_national_data:
+      raise ValueError(
+          'check_variable_geo_time_collinearity is not supported for national'
+          ' models.'
+      )
+
+    grouped_da = self._stacked_treatment_control_scaled_da.groupby(
+        _STACK_VAR_COORD_NAME
+    )
+    rsq_geo = grouped_da.map(_calc_adj_r2, args=(constants.GEO,))
+    rsq_time = grouped_da.map(_calc_adj_r2, args=(constants.TIME,))
+
+    rsquared_ds = xr.Dataset({
+        eda_constants.RSQUARED_GEO: rsq_geo,
+        eda_constants.RSQUARED_TIME: rsq_time,
+    })
+
+    artifact = eda_outcome.VariableGeoTimeCollinearityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        rsquared_ds=rsquared_ds,
+    )
+    findings = [
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.INFO,
+            explanation=(
+                'This check regresses each variable against time as a'
+                ' categorical variable. In this case, high R-squared indicates'
+                ' low geo variation of a variable. This could lead to a weakly'
+                ' identifiable and non-converging model if a large number of'
+                ' knots are used. Consider dropping the variable with very high'
+                ' R-squared or reducing `knots` argument in `ModelSpec`.'
+            ),
+        ),
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.INFO,
+            explanation=(
+                'This check regresses each variable against geo as a'
+                ' categorical variable. In this case, high R-squared indicates'
+                ' low time variation of a variable. This could lead to a weakly'
+                ' identifiable and non-converging model due to geo main'
+                ' effects. Consider dropping the variable with very high'
+                ' R-squared.'
+            ),
+        ),
+    ]
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.VARIABLE_GEO_TIME_COLLINEARITY,
+        findings=findings,
+        analysis_artifacts=[artifact],
+    )

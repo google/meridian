@@ -5968,11 +5968,9 @@ class EDAEngineTest(
 
     with self.subTest("findings"):
       self.assertLen(outcome.findings, expected_findings_count)
-      self.assertTrue(
-          all(
-              finding.severity == expected_severity
-              for finding in outcome.findings
-          )
+      self.assertEqual(
+          [finding.severity for finding in outcome.findings],
+          [expected_severity] * expected_findings_count,
       )
 
     with self.subTest("analysis_artifacts"):
@@ -6080,11 +6078,9 @@ class EDAEngineTest(
 
     with self.subTest("findings"):
       self.assertLen(outcome.findings, expected_findings_count)
-      self.assertTrue(
-          all(
-              finding.severity == expected_severity
-              for finding in outcome.findings
-          )
+      self.assertEqual(
+          [finding.severity for finding in outcome.findings],
+          [expected_severity] * expected_findings_count,
       )
 
     with self.subTest("analysis_artifacts"):
@@ -6389,6 +6385,125 @@ class EDAEngineTest(
             name=None,
         ),
     )
+
+  def test_check_variable_geo_time_collinearity_raises_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    with self.assertRaisesRegex(
+        ValueError,
+        "check_variable_geo_time_collinearity is not supported for national"
+        " models.",
+    ):
+      engine.check_variable_geo_time_collinearity()
+
+  def test_check_variable_geo_time_collinearity_geo_model_output_correct(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    outcome = engine.check_variable_geo_time_collinearity()
+
+    with self.subTest("check_type"):
+      self.assertEqual(
+          outcome.check_type,
+          eda_outcome.EDACheckType.VARIABLE_GEO_TIME_COLLINEARITY,
+      )
+    with self.subTest("findings"):
+      self.assertLen(outcome.findings, 2)
+      self.assertEqual(
+          [finding.severity for finding in outcome.findings],
+          [eda_outcome.EDASeverity.INFO] * 2,
+      )
+      self.assertIn(
+          "reducing `knots` argument in `ModelSpec`.",
+          outcome.findings[0].explanation,
+      )
+      self.assertIn(
+          "regresses each variable against geo as a categorical variable.",
+          outcome.findings[1].explanation,
+      )
+    with self.subTest("analysis_artifacts"):
+      self.assertLen(outcome.analysis_artifacts, 1)
+      artifact = outcome.analysis_artifacts[0]
+      self.assertIsInstance(
+          artifact, eda_outcome.VariableGeoTimeCollinearityArtifact
+      )
+      self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+      self.assertIn(eda_constants.RSQUARED_GEO, artifact.rsquared_ds.data_vars)
+      self.assertIn(eda_constants.RSQUARED_TIME, artifact.rsquared_ds.data_vars)
+
+  def test_check_variable_geo_time_collinearity_geo_model_r2_values_correct(
+      self,
+  ):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    n_geos = 3
+    n_times = 5
+    geo_dependent_data = np.tile(np.arange(n_geos), (n_times, 1)).T.reshape(
+        n_geos, n_times, 1
+    )
+    time_dependent_data = np.tile(np.arange(n_times), (n_geos, 1)).reshape(
+        n_geos, n_times, 1
+    )
+
+    mock_data = np.concatenate(
+        [geo_dependent_data, time_dependent_data], axis=-1
+    )
+
+    mock_da = _create_data_array_with_var_dim(
+        mock_data,
+        name=constants.TREATMENT_CONTROL_SCALED,
+        var_name="var",
+    )
+    mock_da = mock_da.rename({"var_dim": eda_engine._STACK_VAR_COORD_NAME})
+    mock_da = mock_da.assign_coords({
+        eda_engine._STACK_VAR_COORD_NAME: [
+            "var_geo_dependent",
+            "var_time_dependent",
+        ]
+    })
+
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", mock_da
+    )
+
+    outcome = engine.check_variable_geo_time_collinearity()
+
+    self.assertLen(outcome.analysis_artifacts, 1)
+    artifact = outcome.analysis_artifacts[0]
+    self.assertIsInstance(
+        artifact, eda_outcome.VariableGeoTimeCollinearityArtifact
+    )
+    rsquared_ds = artifact.rsquared_ds
+
+    with self.subTest("geo_dependent_variable"):
+      # Check var_geo_dependent: r2_geo should be ~1, r2_time should be low
+      self.assertAlmostEqual(
+          rsquared_ds[eda_constants.RSQUARED_GEO]
+          .sel({eda_engine._STACK_VAR_COORD_NAME: "var_geo_dependent"})
+          .item(),
+          1.0,
+      )
+      self.assertLessEqual(
+          rsquared_ds[eda_constants.RSQUARED_TIME]
+          .sel({eda_engine._STACK_VAR_COORD_NAME: "var_geo_dependent"})
+          .item(),
+          0.0,
+      )
+
+    with self.subTest("time_dependent_variable"):
+      # Check var_time_dependent: r2_geo should be low, r2_time should be ~1
+      self.assertLessEqual(
+          rsquared_ds[eda_constants.RSQUARED_GEO]
+          .sel({eda_engine._STACK_VAR_COORD_NAME: "var_time_dependent"})
+          .item(),
+          0.0,
+      )
+      self.assertAlmostEqual(
+          rsquared_ds[eda_constants.RSQUARED_TIME]
+          .sel({eda_engine._STACK_VAR_COORD_NAME: "var_time_dependent"})
+          .item(),
+          1.0,
+      )
 
 
 if __name__ == "__main__":
