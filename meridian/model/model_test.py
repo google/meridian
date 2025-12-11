@@ -168,7 +168,7 @@ class ModelTest(
 
   def test_equations_initialization(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
-    self.assertIsInstance(meridian.equations, equations.ModelEquations)
+    self.assertIsInstance(meridian.model_equations, equations.ModelEquations)
 
   def test_base_geo_properties(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
@@ -1640,7 +1640,7 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
 
     self.mmm = model.Meridian(input_data=self.mock_input_data)
     # Verify equations was set to our mock (sanity check of the setup)
-    self.assertIs(self.mmm.equations, self.mock_equations)
+    self.assertIs(self.mmm.model_equations, self.mock_equations)
 
   def test_adstock_hill_media_delegates(self):
     media_val = mock.Mock()

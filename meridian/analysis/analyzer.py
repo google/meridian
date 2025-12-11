@@ -863,6 +863,7 @@ class Analyzer:
     # Make the meridian object ready for methods in this analyzer that create
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
+
     self._meridian.populate_cached_properties()
 
   @backend.function(jit_compile=True)

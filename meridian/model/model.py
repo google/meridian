@@ -84,7 +84,7 @@ class Meridian:
     input_data: An `InputData` object containing the input data for the model.
     model_spec: A `ModelSpec` object containing the model specification.
     model_context: A `ModelContext` object containing the model context.
-    equations: A `ModelEquations` object containing stateless mathematical
+    model_equations: A `ModelEquations` object containing stateless mathematical
       functions and utilities for Meridian MMM.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
       resulting data from fitting the model.
@@ -164,7 +164,7 @@ class Meridian:
         input_data=input_data,
         model_spec=model_spec if model_spec else spec.ModelSpec(),
     )
-    self._equations = equations.ModelEquations(self._model_context)
+    self._model_equations = equations.ModelEquations(self._model_context)
 
     self._eda_spec = eda_spec
 
@@ -190,8 +190,8 @@ class Meridian:
     return self._model_context
 
   @property
-  def equations(self) -> equations.ModelEquations:
-    return self._equations
+  def model_equations(self) -> equations.ModelEquations:
+    return self._model_equations
 
   @property
   def inference_data(self) -> az.InferenceData:
@@ -394,7 +394,7 @@ class Meridian:
       A tensor of shape `(n_non_media_channels,)` containing the
       baseline values for each non-media treatment channel.
     """
-    return self.equations.compute_non_media_treatments_baseline(
+    return self.model_equations.compute_non_media_treatments_baseline(
         non_media_baseline_values=non_media_baseline_values
     )
 
@@ -627,11 +627,13 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    return self.equations.linear_predictor_counterfactual_difference_media(
-        media_transformed=media_transformed,
-        alpha_m=alpha_m,
-        ec_m=ec_m,
-        slope_m=slope_m,
+    return (
+        self.model_equations.linear_predictor_counterfactual_difference_media(
+            media_transformed=media_transformed,
+            alpha_m=alpha_m,
+            ec_m=ec_m,
+            slope_m=slope_m,
+        )
     )
 
   # TODO: Deprecate in favor of
@@ -664,7 +666,7 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    return self.equations.linear_predictor_counterfactual_difference_rf(
+    return self.model_equations.linear_predictor_counterfactual_difference_rf(
         rf_transformed=rf_transformed,
         alpha_rf=alpha_rf,
         ec_rf=ec_rf,
@@ -717,7 +719,7 @@ class Meridian:
       The coefficient mean parameter of the treatment variable, which has
       dimension equal to the number of treatment channels..
     """
-    return self.equations.calculate_beta_x(
+    return self.model_equations.calculate_beta_x(
         is_non_media=is_non_media,
         incremental_outcome_x=incremental_outcome_x,
         linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -756,7 +758,7 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
-    return self.equations.adstock_hill_media(
+    return self.model_equations.adstock_hill_media(
         media=media,
         alpha=alpha,
         ec=ec,
@@ -797,7 +799,7 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
-    return self.equations.adstock_hill_rf(
+    return self.model_equations.adstock_hill_rf(
         reach=reach,
         frequency=frequency,
         alpha=alpha,
