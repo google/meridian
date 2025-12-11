@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Raise exception for ROI-based priors when a channel has zero total spend.
 * Add EDA check for treatment/control geo and time collinearity.
 
 ## [1.4.0] - 2025-12-08

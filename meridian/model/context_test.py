@@ -33,6 +33,11 @@ import numpy as np
 import xarray as xr
 
 
+# Data dimensions for sample input.
+_N_MEDIA_CHANNELS = 3
+_MEDIA_CHANNEL_NAMES = ["ch_0", "ch_1", "ch_2"]
+
+
 class ContextTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -1431,6 +1436,76 @@ class AdstockDecaySpecFromChannelMappingTest(
         "one or more of {'media', 'rf', 'organic_media', 'organic_rf'}.",
     ):
       _ = model_context.adstock_decay_spec
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="roi",
+          media_prior_type=constants.ROI,
+      ),
+      dict(
+          testcase_name="mroi",
+          media_prior_type=constants.MROI,
+      ),
+  )
+  def test_validate_media_spend_for_roi_based_priors_raises_error(
+      self, media_prior_type: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=_N_MEDIA_CHANNELS,
+    )
+    spend = data_test_utils.random_media_spend_nd_da(
+        n_media_channels=_N_MEDIA_CHANNELS,
+        explicit_media_channel_names=_MEDIA_CHANNEL_NAMES,
+    )
+
+    # Update spend values to zero for a single channel.
+    channel_to_zero = _MEDIA_CHANNEL_NAMES[0]
+    spend.loc[{constants.MEDIA_CHANNEL: channel_to_zero}] = 0
+    data.media_spend = spend
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        f"Channels '{channel_to_zero}' have zero total spend. Unable to use"
+        f" '{media_prior_type}' prior type for channels with zero spend.",
+    ):
+      context.ModelContext(
+          input_data=data,
+          model_spec=spec.ModelSpec(media_prior_type=media_prior_type),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="roi",
+          media_prior_type=constants.ROI,
+      ),
+      dict(
+          testcase_name="mroi",
+          media_prior_type=constants.MROI,
+      ),
+  )
+  def test_validate_media_spend_for_roi_based_priors_initialized(
+      self, media_prior_type: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=_N_MEDIA_CHANNELS,
+    )
+    spend = data_test_utils.random_media_spend_nd_da(
+        n_media_channels=_N_MEDIA_CHANNELS,
+        explicit_media_channel_names=_MEDIA_CHANNEL_NAMES,
+    )
+
+    # Update spend values to zero for a single channel.
+    channel_to_zero = _MEDIA_CHANNEL_NAMES[0]
+    spend.loc[{constants.MEDIA_CHANNEL: channel_to_zero}] = 0
+    data.media_spend = spend
+
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec.ModelSpec(media_prior_type=media_prior_type),
+    )
+
+    # Check model_context was initialized successfully
+    self.assertEqual(model_context.input_data, data)
 
 
 if __name__ == "__main__":
