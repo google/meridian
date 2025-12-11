@@ -217,22 +217,25 @@ class EDAOutcome(typing.Generic[ArtifactType]):
   findings: list[EDAFinding]
   analysis_artifacts: list[ArtifactType]
 
+  def _get_artifact_by_level(self, level: AnalysisLevel) -> ArtifactType:
+    """Helper method to retrieve artifact by level."""
+    for artifact in self.analysis_artifacts:
+      if artifact.level == level:
+        return artifact
+
+    raise ValueError(
+        f"The EDAOutcome for {self.check_type.name} check does not have "
+        f"{level.name.lower()} artifact."
+    )
+
   def get_geo_artifact(self) -> ArtifactType:
     """Returns the geo-level analysis artifact."""
-    for artifact in self.analysis_artifacts:
-      if artifact.level == AnalysisLevel.GEO:
-        return artifact
-    raise ValueError(
-        f"The EDAOutcome for {self.check_type.name} check does not have a geo"
-        " artifact."
-    )
+    return self._get_artifact_by_level(AnalysisLevel.GEO)
 
   def get_national_artifact(self) -> ArtifactType:
     """Returns the national-level analysis artifact."""
-    for artifact in self.analysis_artifacts:
-      if artifact.level == AnalysisLevel.NATIONAL:
-        return artifact
-    raise ValueError(
-        f"The EDAOutcome for {self.check_type.name} check does not have a"
-        " national artifact."
-    )
+    return self._get_artifact_by_level(AnalysisLevel.NATIONAL)
+
+  def get_overall_artifact(self) -> ArtifactType:
+    """Returns the overall-level analysis artifact."""
+    return self._get_artifact_by_level(AnalysisLevel.OVERALL)

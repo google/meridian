@@ -83,25 +83,42 @@ class EdaOutcomeTest(parameterized.TestCase):
       analysis_artifacts=[_NATIONAL_ARTIFACT],
   )
 
-  def test_get_national_artifact(self):
+  def test_get_national_artifact_success(self):
     self.assertEqual(
         self._NATIONAL_OUTCOME.get_national_artifact(), self._NATIONAL_ARTIFACT
     )
+
+  def test_get_national_artifact_raises_error(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        'The EDAOutcome for PAIRWISE_CORRELATION check does not have a national'
+        'The EDAOutcome for PAIRWISE_CORRELATION check does not have national'
         ' artifact.',
     ):
       _ = self._GEO_OUTCOME.get_national_artifact()
 
-  def test_get_geo_artifact(self):
+  def test_get_geo_artifact_success(self):
     self.assertEqual(self._GEO_OUTCOME.get_geo_artifact(), self._GEO_ARTIFACT)
+
+  def test_get_geo_artifact_raises_error(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        'The EDAOutcome for PAIRWISE_CORRELATION check does not have a geo'
+        'The EDAOutcome for PAIRWISE_CORRELATION check does not have geo'
         ' artifact.',
     ):
       _ = self._NATIONAL_OUTCOME.get_geo_artifact()
+
+  def test_get_overall_artifact_success(self):
+    self.assertEqual(
+        self._GEO_OUTCOME.get_overall_artifact(), self._OVERALL_ARTIFACT
+    )
+
+  def test_get_overall_artifact_raises_error(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'The EDAOutcome for PAIRWISE_CORRELATION check does not have overall'
+        ' artifact.',
+    ):
+      _ = self._NATIONAL_OUTCOME.get_overall_artifact()
 
 
 if __name__ == '__main__':
