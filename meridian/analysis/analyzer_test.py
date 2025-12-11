@@ -701,323 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_incremental_outcome_negative_scaling_factor0(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "scaling_factor0 must be non-negative.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(scaling_factor0=-0.01)
-
-  def test_incremental_outcome_negative_scaling_factor1(self):
-    with self.assertRaisesRegex(
-        ValueError, "scaling_factor1 must be non-negative."
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(scaling_factor1=-0.01)
-
-  def test_incremental_outcome_scaling_factor1_less_than_scaling_factor0(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "scaling_factor1 must be greater than scaling_factor0. Got"
-        " scaling_factor1=1.0 and scaling_factor0=1.1.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          scaling_factor0=1.1, scaling_factor1=1.0
-      )
-
-  def test_incremental_outcome_flexible_times_selected_times_wrong_type(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `selected_times` must be a list of booleans with length"
-        r" equal to the number of time periods in the new data, or \(2\)"
-        " `selected_times` must be a list of strings and `new_time` must be"
-        " provided and `selected_times` must be a subset of `new_time`.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
-          ),
-          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
-      )
-
-  def test_incremental_outcome_flexible_times_media_selected_times_wrong_type(
-      self,
-  ):
-    with self.assertRaisesRegex(
-        ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `media_selected_times` must be a list of booleans with"
-        r" length equal to the number of time periods in the new data, or \(2\)"
-        " `media_selected_times` must be a list of strings and `new_time` must"
-        " be provided and `media_selected_times` must be a subset of"
-        " `new_time`.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          new_data=analyzer.DataTensors(
-              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
-              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
-              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
-          ),
-          media_selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
-      )
-
-  def test_incremental_outcome_media_selected_times_wrong_length(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "Boolean `media_selected_times` must have the same number of elements "
-        "as there are time period coordinates in the media tensors.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True],
-      )
-
-  def test_incremental_outcome_media_selected_times_wrong_time_dim_names(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`media_selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          media_selected_times=["random_time"],
-      )
-
-  def test_incremental_outcome_incorrect_media_selected_times_type(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`media_selected_times` must be a list of strings or a list of"
-        " booleans.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          media_selected_times=["random_time", False, True],
-      )
-
-  def test_incremental_outcome_wrong_kpi_transformation(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "use_kpi=False is only supported when inverse_transform_outcome=True.",
-    ):
-      self.analyzer_media_and_rf.incremental_outcome(
-          inverse_transform_outcome=False, use_kpi=False
-      )
-
-  def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        new_data=analyzer.DataTensors(
-            revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES))
-        ),
-    )
-    self.assertEqual(
-        outcome.shape, (_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS + _N_RF_CHANNELS)
-    )
-
-  def test_incremental_outcome_media_selected_times_all_false_returns_zero(
-      self,
-  ):
-    no_media_times = self.analyzer_media_and_rf.incremental_outcome(
-        media_selected_times=[False] * _N_MEDIA_TIMES
-    )
-    backend_test_utils.assert_allequal(
-        no_media_times, backend.zeros_like(no_media_times)
-    )
-
-  def test_incremental_outcome_no_overlap_between_media_and_selected_times(
-      self,
-  ):
-    # If for any time period where media_selected_times is True, selected_times
-    # is False for this time period and the following `max_lag` time periods,
-    # then the incremental outcome should be zero.
-    max_lag = self.meridian_media_and_rf.model_spec.max_lag
-    media_selected_times = [
-        self.meridian_media_and_rf.input_data.media_time.values[0]
-    ]
-    selected_times = [False] * (max_lag + 1) + [True] * (_N_TIMES - max_lag - 1)
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        selected_times=selected_times,
-        media_selected_times=media_selected_times,
-    )
-    backend_test_utils.assert_allequal(outcome, backend.zeros_like(outcome))
-
-  def test_incremental_outcome_media_and_selected_times_overlap_non_zero(self):
-    # Incremental outcome should be non-zero when there is at least one time
-    # period of overlap between media_selected_times and selected_times. In this
-    # case, media_selected_times is True for week 1 and selected_times is True
-    # for week `max_lag+1` and the following weeks.
-    max_lag = self.meridian_media_and_rf.model_spec.max_lag
-    excess_times = _N_MEDIA_TIMES - _N_TIMES
-    media_selected_times = [True] + [False] * (_N_MEDIA_TIMES - 1)
-    selected_times = [False] * (max_lag - excess_times) + [True] * (
-        _N_TIMES - max_lag + excess_times
-    )
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        selected_times=selected_times,
-        media_selected_times=media_selected_times,
-    )
-    mean_inc_outcome = backend.reduce_mean(outcome, axis=(0, 1))
-    self.assertFalse(np.all(np.array(mean_inc_outcome) == 0))
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[
-          None,
-          ["2021-04-19", "2021-09-13", "2021-12-13"],
-          [False] * (_N_TIMES - 3) + [True] * 3,
-      ],
-      use_kpi=[False, True],
-  )
-  def test_incremental_outcome_media_and_rf_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      use_kpi: bool,
-  ):
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        use_kpi=use_kpi,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      if selected_times is not None:
-        if all(isinstance(time, bool) for time in selected_times):
-          n_times = sum(selected_times)
-        else:
-          n_times = len(selected_times)
-      else:
-        n_times = _N_TIMES
-      expected_shape += (n_times,)
-    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
-    self.assertEqual(outcome.shape, expected_shape)
-
-  # The purpose of this test is to prevent accidental logic change.
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="use_prior",
-          use_posterior=False,
-          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_PRIOR,
-      ),
-      dict(
-          testcase_name="use_posterior",
-          use_posterior=True,
-          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_POSTERIOR,
-      ),
-  )
-  def test_incremental_outcome_media_and_rf(
-      self,
-      use_posterior: bool,
-      expected_outcome: np.ndarray,
-  ):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        use_posterior=use_posterior,
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        backend.to_tensor(expected_outcome),
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-  def test_compute_incremental_outcome_aggregate_media_and_rf(self):
-    mock_incremental_outcome = np.ones(
-        (_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS + _N_RF_CHANNELS)
-    )
-    self.enter_context(
-        mock.patch.object(
-            self.analyzer_media_and_rf,
-            "incremental_outcome",
-            return_value=mock_incremental_outcome,
-        )
-    )
-    incremental_outcome_with_totals = np.full(
-        (_N_CHAINS, _N_DRAWS, 1),
-        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
-        dtype=np.float64,
-    )
-    outcome = self.analyzer_media_and_rf.compute_incremental_outcome_aggregate(
-        use_posterior=True
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        backend.concatenate(
-            [
-                backend.to_tensor(mock_incremental_outcome),
-                backend.to_tensor(incremental_outcome_with_totals),
-            ],
-            -1,
-        ),
-    )
-
-  # The purpose of this test is to prevent accidental logic change.
-  def test_incremental_outcome_media_and_rf_new_params(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[..., -10:, :],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -10:, :],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -10:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -10:
-            ],
-        ),
-    )
-    backend_test_utils.assert_allclose(
-        outcome,
-        backend.to_tensor(
-            analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_NEW_PARAMS
-        ),
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-  def test_incremental_outcome_media_and_rf_new_params_correct_shape(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    outcome = self.analyzer_media_and_rf.incremental_outcome(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[..., -15:, :],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -15:, :],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -15:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -15:
-            ],
-        ),
-        aggregate_times=False,
-    )
-    self.assertEqual(
-        outcome.shape,
-        (_N_CHAINS, _N_KEEP, 15, _N_MEDIA_CHANNELS + _N_RF_CHANNELS),
-    )
-
   def test_media_summary_returns_correct_values(self):
     media_summary = self.analyzer_media_and_rf.summary_metrics(
         confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
@@ -4054,6 +3737,347 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         analysis_test_utils.EXP_OUTCOME_MEDIA_AND_RF,
         rtol=1e-3,
         atol=1e-3,
+    )
+
+  def test_incremental_outcome_negative_scaling_factor0(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "scaling_factor0 must be non-negative.",
+    ):
+      self.analyzer.incremental_outcome(scaling_factor0=-0.01)
+
+  def test_incremental_outcome_negative_scaling_factor1(self):
+    with self.assertRaisesRegex(
+        ValueError, "scaling_factor1 must be non-negative."
+    ):
+      self.analyzer.incremental_outcome(scaling_factor1=-0.01)
+
+  def test_incremental_outcome_scaling_factor1_less_than_scaling_factor0(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "scaling_factor1 must be greater than scaling_factor0. Got"
+        " scaling_factor1=1.0 and scaling_factor0=1.1.",
+    ):
+      self.analyzer.incremental_outcome(
+          scaling_factor0=1.1, scaling_factor1=1.0
+      )
+
+  def test_incremental_outcome_flexible_times_selected_times_wrong_type(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
+        " provided with a different number of time periods than in `InputData`,"
+        r" then \(1\) `selected_times` must be a list of booleans with length"
+        r" equal to the number of time periods in the new data, or \(2\)"
+        " `selected_times` must be a list of strings and `new_time` must be"
+        " provided and `selected_times` must be a subset of `new_time`.",
+    ):
+      self.analyzer.incremental_outcome(
+          new_data=analyzer.DataTensors(
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              organic_media=backend.ones(
+                  (_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)
+              ),
+              organic_reach=backend.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
+              organic_frequency=backend.ones(
+                  (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
+              ),
+              non_media_treatments=backend.ones(
+                  (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
+              ),
+              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
+          ),
+          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+      )
+
+  def test_incremental_outcome_flexible_times_media_selected_times_wrong_type(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
+        " provided with a different number of time periods than in `InputData`,"
+        r" then \(1\) `media_selected_times` must be a list of booleans with"
+        r" length equal to the number of time periods in the new data, or \(2\)"
+        " `media_selected_times` must be a list of strings and `new_time` must"
+        " be provided and `media_selected_times` must be a subset of"
+        " `new_time`.",
+    ):
+      self.analyzer.incremental_outcome(
+          new_data=analyzer.DataTensors(
+              media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+              reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+              organic_media=backend.ones(
+                  (_N_GEOS, 10, _N_ORGANIC_MEDIA_CHANNELS)
+              ),
+              organic_reach=backend.ones((_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)),
+              organic_frequency=backend.ones(
+                  (_N_GEOS, 10, _N_ORGANIC_RF_CHANNELS)
+              ),
+              non_media_treatments=backend.ones(
+                  (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
+              ),
+              revenue_per_kpi=backend.ones((_N_GEOS, 10)),
+          ),
+          media_selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+      )
+
+  def test_incremental_outcome_media_selected_times_wrong_length(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Boolean `media_selected_times` must have the same number of elements "
+        "as there are time period coordinates in the media tensors.",
+    ):
+      self.analyzer.incremental_outcome(
+          media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True],
+      )
+
+  def test_incremental_outcome_media_selected_times_wrong_time_dim_names(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`media_selected_times` must match the time dimension names from "
+        "meridian.InputData.",
+    ):
+      self.analyzer.incremental_outcome(
+          media_selected_times=["random_time"],
+      )
+
+  def test_incremental_outcome_incorrect_media_selected_times_type(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`media_selected_times` must be a list of strings or a list of"
+        " booleans.",
+    ):
+      self.analyzer.incremental_outcome(
+          media_selected_times=["random_time", False, True],
+      )
+
+  def test_incremental_outcome_wrong_kpi_transformation(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "use_kpi=False is only supported when inverse_transform_outcome=True.",
+    ):
+      self.analyzer.incremental_outcome(
+          inverse_transform_outcome=False, use_kpi=False
+      )
+
+  def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
+    n_channels = (
+        _N_MEDIA_CHANNELS
+        + _N_RF_CHANNELS
+        + _N_NON_MEDIA_CHANNELS
+        + _N_ORGANIC_MEDIA_CHANNELS
+        + _N_ORGANIC_RF_CHANNELS
+    )
+    outcome = self.analyzer.incremental_outcome(
+        new_data=analyzer.DataTensors(
+            revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES))
+        ),
+    )
+    self.assertEqual(outcome.shape, (_N_CHAINS, _N_KEEP, n_channels))
+
+  def test_incremental_outcome_media_selected_times_all_false_returns_zero(
+      self,
+  ):
+    no_media_times = self.analyzer.incremental_outcome(
+        media_selected_times=[False] * _N_MEDIA_TIMES,
+        include_non_paid_channels=False,
+    )
+    backend_test_utils.assert_allequal(
+        no_media_times, backend.zeros_like(no_media_times)
+    )
+
+  def test_incremental_outcome_no_overlap_between_media_and_selected_times(
+      self,
+  ):
+    # If for any time period where media_selected_times is True, selected_times
+    # is False for this time period and the following `max_lag` time periods,
+    # then the incremental outcome should be zero.
+    max_lag = self.meridian.model_spec.max_lag
+    media_selected_times = [self.meridian.input_data.media_time.values[0]]
+    selected_times = [False] * (max_lag + 1) + [True] * (_N_TIMES - max_lag - 1)
+    outcome = self.analyzer.incremental_outcome(
+        selected_times=selected_times,
+        media_selected_times=media_selected_times,
+        include_non_paid_channels=False,
+    )
+    backend_test_utils.assert_allequal(outcome, backend.zeros_like(outcome))
+
+  def test_incremental_outcome_media_and_selected_times_overlap_non_zero(self):
+    # Incremental outcome should be non-zero when there is at least one time
+    # period of overlap between media_selected_times and selected_times. In this
+    # case, media_selected_times is True for week 1 and selected_times is True
+    # for week `max_lag+1` and the following weeks.
+    max_lag = self.meridian.model_spec.max_lag
+    excess_times = _N_MEDIA_TIMES - _N_TIMES
+    media_selected_times = [True] + [False] * (_N_MEDIA_TIMES - 1)
+    selected_times = [False] * (max_lag - excess_times) + [True] * (
+        _N_TIMES - max_lag + excess_times
+    )
+    outcome = self.analyzer.incremental_outcome(
+        selected_times=selected_times,
+        media_selected_times=media_selected_times,
+    )
+    mean_inc_outcome = backend.reduce_mean(outcome, axis=(0, 1))
+    self.assertFalse(np.all(np.array(mean_inc_outcome) == 0))
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[
+          None,
+          ["2021-04-19", "2021-09-13", "2021-12-13"],
+          [False] * (_N_TIMES - 3) + [True] * 3,
+      ],
+      use_kpi=[False, True],
+  )
+  def test_incremental_outcome_media_and_rf_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      use_kpi: bool,
+  ):
+    outcome = self.analyzer.incremental_outcome(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        use_kpi=use_kpi,
+        include_non_paid_channels=False,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      if selected_times is not None:
+        if all(isinstance(time, bool) for time in selected_times):
+          n_times = sum(selected_times)
+        else:
+          n_times = len(selected_times)
+      else:
+        n_times = _N_TIMES
+      expected_shape += (n_times,)
+    expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
+    self.assertEqual(outcome.shape, expected_shape)
+
+  # The purpose of this test is to prevent accidental logic change.
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_prior",
+          use_posterior=False,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_PRIOR,
+      ),
+      dict(
+          testcase_name="use_posterior",
+          use_posterior=True,
+          expected_outcome=analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_USE_POSTERIOR,
+      ),
+  )
+  def test_incremental_outcome_media_and_rf(
+      self,
+      use_posterior: bool,
+      expected_outcome: np.ndarray,
+  ):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data
+    )
+    outcome = self.analyzer.incremental_outcome(
+        use_posterior=use_posterior,
+        include_non_paid_channels=False,
+    )
+    print(
+        "Actual outcome for"
+        f" test_incremental_outcome_media_and_rf(use_posterior={use_posterior}):\n{outcome}"
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        backend.to_tensor(expected_outcome),
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_compute_incremental_outcome_aggregate_media_and_rf(self):
+    mock_incremental_outcome = np.ones(
+        (_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS + _N_RF_CHANNELS)
+    )
+    with mock.patch.object(
+        self.analyzer,
+        "incremental_outcome",
+        return_value=mock_incremental_outcome,
+    ):
+      incremental_outcome_with_totals = np.full(
+          (_N_CHAINS, _N_DRAWS, 1),
+          _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+          dtype=np.float64,
+      )
+      outcome = self.analyzer.compute_incremental_outcome_aggregate(
+          use_posterior=True,
+          include_non_paid_channels=False,
+      )
+      backend_test_utils.assert_allclose(
+          outcome,
+          backend.concatenate(
+              [
+                  backend.to_tensor(mock_incremental_outcome),
+                  backend.to_tensor(incremental_outcome_with_totals),
+              ],
+              -1,
+          ),
+      )
+
+  # The purpose of this test is to prevent accidental logic change.
+  def test_incremental_outcome_media_and_rf_new_params(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data
+    )
+    outcome = self.analyzer.incremental_outcome(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -10:, :],
+            reach=self.meridian.rf_tensors.reach[..., -10:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -10:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -10:],
+        ),
+        include_non_paid_channels=False,
+    )
+    backend_test_utils.assert_allclose(
+        outcome,
+        backend.to_tensor(
+            analysis_test_utils.INC_OUTCOME_MEDIA_AND_RF_NEW_PARAMS
+        ),
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_incremental_outcome_media_and_rf_new_params_correct_shape(self):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data
+    )
+    outcome = self.analyzer.incremental_outcome(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -15:, :],
+            reach=self.meridian.rf_tensors.reach[..., -15:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],
+        ),
+        aggregate_times=False,
+        include_non_paid_channels=False,
+    )
+    self.assertEqual(
+        outcome.shape,
+        (_N_CHAINS, _N_KEEP, 15, _N_MEDIA_CHANNELS + _N_RF_CHANNELS),
     )
 
   @parameterized.product(
