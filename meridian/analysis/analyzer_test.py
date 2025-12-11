@@ -3451,6 +3451,7 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
             n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
             n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
             seed=0,
+            nonzero_shift=1.0,
         )
     )
     cls.not_lagged_input_data = (
@@ -3465,6 +3466,7 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
             n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
             n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
             seed=0,
+            nonzero_shift=1.0,
         )
     )
     model_spec = spec.ModelSpec(max_lag=15)
@@ -3998,10 +4000,6 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         use_posterior=use_posterior,
         include_non_paid_channels=False,
     )
-    print(
-        "Actual outcome for"
-        f" test_incremental_outcome_media_and_rf(use_posterior={use_posterior}):\n{outcome}"
-    )
     backend_test_utils.assert_allclose(
         outcome,
         backend.to_tensor(expected_outcome),
@@ -4257,7 +4255,7 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
       dict(
           testcase_name="all_min",
           use_posterior=True,
-          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_USE_POSTERIOR,
+          expected_result=analysis_test_utils.INC_OUTCOME_NON_MEDIA_MIN,
           non_media_baseline_values=[
               -7.229473,
               -7.1908092,
@@ -5326,16 +5324,16 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
                 [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
                 [
                     [
-                        [2.80743504, 2.83065104, 1.38872945, 4.16265583],
-                        [2.24276924, 2.21290541, 1.82031965, 2.69688964],
+                        [1.87995589, 1.89611471, 0.94143367, 2.77492642],
+                        [1.54409409, 1.52347374, 1.24998319, 1.86007643],
                     ],
                     [
-                        [3.18731356, 3.13503218, 2.29848957, 4.12022591],
-                        [1.2510097, 1.23370111, 0.97951347, 1.54065883],
+                        [2.14786601, 2.11210585, 1.53225815, 2.79395390],
+                        [0.86134517, 0.84939533, 0.67261636, 1.06261110],
                     ],
                     [
-                        [2.99529672, 2.98246479, 1.61403883, 4.40213966],
-                        [0.87875795, 0.86645776, 0.68025917, 1.08998716],
+                        [2.02160525, 2.01261830, 1.07597828, 2.98439527],
+                        [0.60505420, 0.59656411, 0.46712375, 0.75177753],
                     ],
                 ],
             ),
@@ -5346,43 +5344,43 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
             constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [867.4761, 853.2468, 625.569, 1121.3823],
-                    [645.64105, 637.04395, 524.02765, 776.3717],
-                ],
-            ),
-            constants.OPTIMIZED_EFFECTIVENESS: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [0.00026515, 0.0002608, 0.00019121, 0.00034276],
-                    [0.00018462, 0.00018216, 0.00014985, 0.000222],
+                    [1110.80200195, 1092.30798340, 792.43090820, 1444.93640137],
+                    [822.81188965, 811.82385254, 666.08703613, 991.19152832],
                 ],
             ),
             constants.OPTIMIZED_ROI: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [3.1873136, 3.1350322, 2.2984896, 4.120226],
-                    [2.2427692, 2.2129054, 1.8203197, 2.6968896],
+                    [2.14786601, 2.11210585, 1.53225815, 2.79395390],
+                    [1.54409409, 1.52347374, 1.24998319, 1.86007643],
+                ],
+            ),
+            constants.OPTIMIZED_EFFECTIVENESS: (
+                [constants.RF_CHANNEL, constants.METRIC],
+                [
+                    [0.00027731, 0.00027270, 0.00019783, 0.00036073],
+                    [0.00019437, 0.00019178, 0.00015735, 0.00023415],
                 ],
             ),
             constants.OPTIMIZED_MROI_BY_REACH: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [3.1873164, 3.1350555, 2.2984552, 4.120374],
-                    [2.2427614, 2.2128677, 1.8203465, 2.6968539],
+                    [2.14786744, 2.11213827, 1.53223789, 2.79396868],
+                    [1.54409289, 1.52347136, 1.24995458, 1.86003268],
                 ],
             ),
             constants.OPTIMIZED_MROI_BY_FREQUENCY: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [3.5786705, 3.4893715, 0.32168087, 6.922775],
-                    [0.39557335, 0.38793004, 0.19770184, 0.6012672],
+                    [2.42458034, 2.36427331, 0.21445109, 4.69357109],
+                    [0.27252775, 0.26730531, 0.13575560, 0.41464081],
                 ],
             ),
             constants.OPTIMIZED_CPIK: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [1.0647482, 1.0699524, 0.7621226, 1.3661181],
-                    [1.4501528, 1.4600611, 1.1643094, 1.7249733],
+                    [1.58747256, 1.59502435, 1.12389696, 2.04926896],
+                    [2.10803270, 2.12235498, 1.68811047, 2.51203609],
                 ],
             ),
         },
