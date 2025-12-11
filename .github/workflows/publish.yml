@@ -90,7 +90,8 @@ jobs:
         (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/'))
         || (github.event_name == 'workflow_dispatch'
             && github.event.inputs.publish_to_pypi == 'true')
-        || needs.check-version.outputs.new_version != ''
+        || (github.event_name == 'push' && github.ref == 'refs/heads/main'
+            && needs.check-version.outputs.new_version != '')
       )
     runs-on: ubuntu-latest
     environment:
