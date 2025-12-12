@@ -2254,7 +2254,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         "organic_media_3",
         "organic_rf_ch_0",
     ]
-    self.assertSameElements(
+    self.assertCountEqual(
         expected_channels, adstock_decay_dataframe[constants.CHANNEL].unique()
     )
 
@@ -2571,7 +2571,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         .dropna(subset=[constants.MEAN])
     )
 
-    self.assertFalse(df.empty)
+    self.assertNotEmpty(df)
     self.assertEqual(df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type)
     self.assertTrue(df[constants.MEAN].is_monotonic_increasing)
     self.assertLessEqual(df[constants.MEAN].iloc[-1], 1.0)
@@ -2601,7 +2601,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         subset=[constants.COUNT_HISTOGRAM]
     )
 
-    self.assertFalse(hist_df.empty)
+    self.assertNotEmpty(hist_df)
     self.assertLen(hist_df, n_bins)
     self.assertEqual(
         hist_df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type
@@ -2764,7 +2764,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     actual_hist_spend = self.analyzer.get_aggregated_spend()
     expected_channel_names = self.input_data.get_all_paid_channels()
 
-    self.assertSameElements(
+    self.assertCountEqual(
         expected_channel_names, actual_hist_spend.channel.data
     )
 
