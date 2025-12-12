@@ -43,6 +43,7 @@ import dataclasses
 import os
 import warnings
 
+import arviz as az
 from google.protobuf import text_format
 import meridian
 from meridian import backend
@@ -165,6 +166,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         inference_data=inference_data.InferenceDataSerde().serialize(
             mmm.inference_data
         ),
+        arviz_version=az.__version__,
     )
     # For backwards compatibility, only serialize EDA spec if it exists.
     if hasattr(mmm, 'eda_spec'):

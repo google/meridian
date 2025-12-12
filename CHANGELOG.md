@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Include ArviZ version in model serialization.
 * Add more non-negative checks for model input data.
 * Add EDA check for treatment/control geo and time collinearity.
 
