@@ -21,9 +21,12 @@ import numbers
 from typing import Any, Optional
 import warnings
 
+import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.model import adstock_hill
+from meridian.model import context
+from meridian.model import equations
 from meridian.model import model
 from meridian.model import transformers
 import numpy as np
@@ -858,13 +861,22 @@ def _central_tendency_and_ci_by_prior_and_posterior(
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
-  def __init__(self, meridian: model.Meridian):
+  # TODO: Remove `self._meridian`.
+  def __init__(
+      self,
+      meridian: model.Meridian,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+      inference_data: az.InferenceData | None = None,
+  ):
     self._meridian = meridian
     # Make the meridian object ready for methods in this analyzer that create
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
-
     self._meridian.populate_cached_properties()
+    self._model_context = model_context or self._meridian.model_context
+    self._model_equations = model_equations or self._meridian.model_equations
+    self._inference_data = inference_data or self._meridian.inference_data
 
   @backend.function(jit_compile=True)
   def _get_kpi_means(
@@ -903,7 +915,7 @@ class Analyzer:
     result = tau_gt + backend.einsum(
         "...gtm,...gm->...gt", combined_media_transformed, combined_beta
     )
-    if self._meridian.controls is not None:
+    if self._model_context.controls is not None:
       result += backend.einsum(
           "...gtc,...gc->...gt",
           data_tensors.controls,
@@ -934,20 +946,20 @@ class Analyzer:
       UserWarning: If the KPI type is revenue and use_kpi is True or if
       `use_kpi=False` but `revenue_per_kpi` is not available.
     """
-    if use_kpi and self._meridian.input_data.kpi_type == constants.REVENUE:
+    if use_kpi and self._model_context.input_data.kpi_type == constants.REVENUE:
       warnings.warn(
           "Setting `use_kpi=True` has no effect when `kpi_type=REVENUE`"
           " since in this case, KPI is equal to revenue."
       )
       return False
 
-    if not use_kpi and self._meridian.input_data.revenue_per_kpi is None:
+    if not use_kpi and self._model_context.input_data.revenue_per_kpi is None:
       warnings.warn(
           "Revenue analysis is not available when `revenue_per_kpi` is"
           " unknown. Defaulting to KPI analysis."
       )
 
-    return use_kpi or self._meridian.input_data.revenue_per_kpi is None
+    return use_kpi or self._model_context.input_data.revenue_per_kpi is None
 
   def _get_adstock_dataframe(
       self,
@@ -973,36 +985,37 @@ class Analyzer:
       ci_lo, and mean decayed effects for either media or RF channel types.
     """
     window_size = min(
-        self._meridian.model_spec.max_lag + 1, self._meridian.n_media_times
+        self._model_context.model_spec.max_lag + 1,
+        self._model_context.n_media_times,
     )
     if channel_type == constants.MEDIA:
       prior = self._meridian.inference_data.prior.alpha_m.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_m.values,
-          (-1, self._meridian.n_media_channels),
+          (-1, self._model_context.n_media_channels),
       )
-      decay_functions = self._meridian.adstock_decay_spec.media
+      decay_functions = self._model_context.adstock_decay_spec.media
     elif channel_type == constants.RF:
       prior = self._meridian.inference_data.prior.alpha_rf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_rf.values,
-          (-1, self._meridian.n_rf_channels),
+          (-1, self._model_context.n_rf_channels),
       )
-      decay_functions = self._meridian.adstock_decay_spec.rf
+      decay_functions = self._model_context.adstock_decay_spec.rf
     elif channel_type == constants.ORGANIC_MEDIA:
       prior = self._meridian.inference_data.prior.alpha_om.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_om.values,
-          (-1, self._meridian.n_organic_media_channels),
+          (-1, self._model_context.n_organic_media_channels),
       )
-      decay_functions = self._meridian.adstock_decay_spec.organic_media
+      decay_functions = self._model_context.adstock_decay_spec.organic_media
     elif channel_type == constants.ORGANIC_RF:
       prior = self._meridian.inference_data.prior.alpha_orf.values[0]
       posterior = np.reshape(
           self._meridian.inference_data.posterior.alpha_orf.values,
-          (-1, self._meridian.n_organic_rf_channels),
+          (-1, self._model_context.n_organic_rf_channels),
       )
-      decay_functions = self._meridian.adstock_decay_spec.organic_rf
+      decay_functions = self._model_context.adstock_decay_spec.organic_rf
     else:
       raise ValueError(
           f"Unsupported channel type for adstock decay: '{channel_type}'. "
@@ -1104,65 +1117,65 @@ class Analyzer:
     """
     if new_data is None:
       return DataTensors(
-          media=self._meridian.media_tensors.media_scaled,
-          reach=self._meridian.rf_tensors.reach_scaled,
-          frequency=self._meridian.rf_tensors.frequency,
-          organic_media=self._meridian.organic_media_tensors.organic_media_scaled,
-          organic_reach=self._meridian.organic_rf_tensors.organic_reach_scaled,
-          organic_frequency=self._meridian.organic_rf_tensors.organic_frequency,
-          non_media_treatments=self._meridian.non_media_treatments_normalized,
-          controls=self._meridian.controls_scaled,
-          revenue_per_kpi=self._meridian.revenue_per_kpi,
+          media=self._model_context.media_tensors.media_scaled,
+          reach=self._model_context.rf_tensors.reach_scaled,
+          frequency=self._model_context.rf_tensors.frequency,
+          organic_media=self._model_context.organic_media_tensors.organic_media_scaled,
+          organic_reach=self._model_context.organic_rf_tensors.organic_reach_scaled,
+          organic_frequency=self._model_context.organic_rf_tensors.organic_frequency,
+          non_media_treatments=self._model_context.non_media_treatments_normalized,
+          controls=self._model_context.controls_scaled,
+          revenue_per_kpi=self._model_context.revenue_per_kpi,
       )
     media_scaled = _transformed_new_or_scaled(
         new_variable=new_data.media,
-        transformer=self._meridian.media_tensors.media_transformer,
-        scaled_variable=self._meridian.media_tensors.media_scaled,
+        transformer=self._model_context.media_tensors.media_transformer,
+        scaled_variable=self._model_context.media_tensors.media_scaled,
     )
 
     reach_scaled = _transformed_new_or_scaled(
         new_variable=new_data.reach,
-        transformer=self._meridian.rf_tensors.reach_transformer,
-        scaled_variable=self._meridian.rf_tensors.reach_scaled,
+        transformer=self._model_context.rf_tensors.reach_transformer,
+        scaled_variable=self._model_context.rf_tensors.reach_scaled,
     )
 
     frequency = (
         new_data.frequency
         if new_data.frequency is not None
-        else self._meridian.rf_tensors.frequency
+        else self._model_context.rf_tensors.frequency
     )
 
     controls_scaled = _transformed_new_or_scaled(
         new_variable=new_data.controls,
-        transformer=self._meridian.controls_transformer,
-        scaled_variable=self._meridian.controls_scaled,
+        transformer=self._model_context.controls_transformer,
+        scaled_variable=self._model_context.controls_scaled,
     )
     revenue_per_kpi = (
         new_data.revenue_per_kpi
         if new_data.revenue_per_kpi is not None
-        else self._meridian.revenue_per_kpi
+        else self._model_context.revenue_per_kpi
     )
 
     if include_non_paid_channels:
       organic_media_scaled = _transformed_new_or_scaled(
           new_variable=new_data.organic_media,
-          transformer=self._meridian.organic_media_tensors.organic_media_transformer,
-          scaled_variable=self._meridian.organic_media_tensors.organic_media_scaled,
+          transformer=self._model_context.organic_media_tensors.organic_media_transformer,
+          scaled_variable=self._model_context.organic_media_tensors.organic_media_scaled,
       )
       organic_reach_scaled = _transformed_new_or_scaled(
           new_variable=new_data.organic_reach,
-          transformer=self._meridian.organic_rf_tensors.organic_reach_transformer,
-          scaled_variable=self._meridian.organic_rf_tensors.organic_reach_scaled,
+          transformer=self._model_context.organic_rf_tensors.organic_reach_transformer,
+          scaled_variable=self._model_context.organic_rf_tensors.organic_reach_scaled,
       )
       organic_frequency = (
           new_data.organic_frequency
           if new_data.organic_frequency is not None
-          else self._meridian.organic_rf_tensors.organic_frequency
+          else self._model_context.organic_rf_tensors.organic_frequency
       )
       non_media_treatments_normalized = _transformed_new_or_scaled(
           new_variable=new_data.non_media_treatments,
-          transformer=self._meridian.non_media_transformer,
-          scaled_variable=self._meridian.non_media_treatments_normalized,
+          transformer=self._model_context.non_media_transformer,
+          scaled_variable=self._model_context.non_media_treatments_normalized,
       )
       return DataTensors(
           media=media_scaled,
@@ -1199,14 +1212,14 @@ class Analyzer:
       and organic RF parameters names in inference data.
     """
     params = []
-    if self._meridian.media_tensors.media is not None:
+    if self._model_context.media_tensors.media is not None:
       params.extend([
           constants.EC_M,
           constants.SLOPE_M,
           constants.ALPHA_M,
           constants.BETA_GM,
       ])
-    if self._meridian.rf_tensors.reach is not None:
+    if self._model_context.rf_tensors.reach is not None:
       params.extend([
           constants.EC_RF,
           constants.SLOPE_RF,
@@ -1214,21 +1227,21 @@ class Analyzer:
           constants.BETA_GRF,
       ])
     if include_non_paid_channels:
-      if self._meridian.organic_media_tensors.organic_media is not None:
+      if self._model_context.organic_media_tensors.organic_media is not None:
         params.extend([
             constants.EC_OM,
             constants.SLOPE_OM,
             constants.ALPHA_OM,
             constants.BETA_GOM,
         ])
-      if self._meridian.organic_rf_tensors.organic_reach is not None:
+      if self._model_context.organic_rf_tensors.organic_reach is not None:
         params.extend([
             constants.EC_ORF,
             constants.SLOPE_ORF,
             constants.ALPHA_ORF,
             constants.BETA_GORF,
         ])
-      if self._meridian.non_media_treatments is not None:
+      if self._model_context.non_media_treatments is not None:
         params.extend([
             constants.GAMMA_GN,
         ])
@@ -1262,12 +1275,12 @@ class Analyzer:
     combined_betas = []
     if data_tensors.media is not None:
       combined_medias.append(
-          self._meridian.adstock_hill_media(
+          self._model_equations.adstock_hill_media(
               media=data_tensors.media,
               alpha=dist_tensors.alpha_m,
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
-              decay_functions=self._meridian.adstock_decay_spec.media,
+              decay_functions=self._model_context.adstock_decay_spec.media,
               n_times_output=n_times_output,
           )
       )
@@ -1275,38 +1288,38 @@ class Analyzer:
 
     if data_tensors.reach is not None:
       combined_medias.append(
-          self._meridian.adstock_hill_rf(
+          self._model_equations.adstock_hill_rf(
               reach=data_tensors.reach,
               frequency=data_tensors.frequency,
               alpha=dist_tensors.alpha_rf,
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
-              decay_functions=self._meridian.adstock_decay_spec.rf,
+              decay_functions=self._model_context.adstock_decay_spec.rf,
               n_times_output=n_times_output,
           )
       )
       combined_betas.append(dist_tensors.beta_grf)
     if data_tensors.organic_media is not None:
       combined_medias.append(
-          self._meridian.adstock_hill_media(
+          self._model_equations.adstock_hill_media(
               media=data_tensors.organic_media,
               alpha=dist_tensors.alpha_om,
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
-              decay_functions=self._meridian.adstock_decay_spec.organic_media,
+              decay_functions=self._model_context.adstock_decay_spec.organic_media,
               n_times_output=n_times_output,
           )
       )
       combined_betas.append(dist_tensors.beta_gom)
     if data_tensors.organic_reach is not None:
       combined_medias.append(
-          self._meridian.adstock_hill_rf(
+          self._model_equations.adstock_hill_rf(
               reach=data_tensors.organic_reach,
               frequency=data_tensors.organic_frequency,
               alpha=dist_tensors.alpha_orf,
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
-              decay_functions=self._meridian.adstock_decay_spec.organic_rf,
+              decay_functions=self._model_context.adstock_decay_spec.organic_rf,
               n_times_output=n_times_output,
           )
       )
@@ -1356,7 +1369,7 @@ class Analyzer:
     Returns:
       A tensor with filtered and/or aggregated geo and time dimensions.
     """
-    mmm = self._meridian
+    m_context = self._model_context
 
     # Validate the tensor shape and determine if it has a media dimension.
     if flexible_time_dim:
@@ -1368,17 +1381,17 @@ class Analyzer:
         )
       n_times = tensor.shape[-2] if has_media_dim else tensor.shape[-1]
     else:
-      n_times = mmm.n_times
+      n_times = m_context.n_times
     # Allowed subsets of channels: media, RF, media+RF, all channels.
     allowed_n_channels = [
-        mmm.n_media_channels,
-        mmm.n_rf_channels,
-        mmm.n_media_channels + mmm.n_rf_channels,
-        mmm.n_media_channels
-        + mmm.n_rf_channels
-        + mmm.n_non_media_channels
-        + mmm.n_organic_media_channels
-        + mmm.n_organic_rf_channels,
+        m_context.n_media_channels,
+        m_context.n_rf_channels,
+        m_context.n_media_channels + m_context.n_rf_channels,
+        m_context.n_media_channels
+        + m_context.n_rf_channels
+        + m_context.n_non_media_channels
+        + m_context.n_organic_media_channels
+        + m_context.n_organic_rf_channels,
     ]
     # Allow extra channel if aggregated (All_Channels) value is included.
     allowed_channel_dim = allowed_n_channels + [
@@ -1387,10 +1400,10 @@ class Analyzer:
     expected_shapes_w_media = [
         backend.TensorShape(shape)
         for shape in itertools.product(
-            [mmm.n_geos], [n_times], allowed_channel_dim
+            [m_context.n_geos], [n_times], allowed_channel_dim
         )
     ]
-    expected_shape_wo_media = backend.TensorShape([mmm.n_geos, n_times])
+    expected_shape_wo_media = backend.TensorShape([m_context.n_geos, n_times])
     if not flexible_time_dim:
       if tensor.shape[-3:] in expected_shapes_w_media:
         has_media_dim = True
@@ -1418,13 +1431,15 @@ class Analyzer:
 
     # Validate the selected geo and time dimensions and create a mask.
     if selected_geos is not None:
-      if any(geo not in mmm.input_data.geo for geo in selected_geos):
+      if any(geo not in m_context.input_data.geo for geo in selected_geos):
         raise ValueError(
             "`selected_geos` must match the geo dimension names from "
             "meridian.InputData."
         )
       geo_indices = [
-          i for i, x in enumerate(mmm.input_data.geo) if x in selected_geos
+          i
+          for i, x in enumerate(m_context.input_data.geo)
+          if x in selected_geos
       ]
       tensor = backend.gather(
           tensor,
@@ -1435,14 +1450,16 @@ class Analyzer:
     if selected_times is not None:
       _validate_selected_times(
           selected_times=selected_times,
-          input_times=mmm.input_data.time,
+          input_times=m_context.input_data.time,
           n_times=tensor.shape[time_dim],
           arg_name="selected_times",
           comparison_arg_name="`tensor`",
       )
       if _is_str_list(selected_times):
         time_indices = [
-            i for i, x in enumerate(mmm.input_data.time) if x in selected_times
+            i
+            for i, x in enumerate(m_context.input_data.time)
+            if x in selected_times
         ]
         tensor = backend.gather(
             tensor,
@@ -1559,7 +1576,7 @@ class Analyzer:
     """
     use_kpi = self._use_kpi(use_kpi)
     self._check_kpi_transformation(inverse_transform_outcome, use_kpi)
-    if self._meridian.is_national:
+    if self._model_context.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
@@ -1597,7 +1614,7 @@ class Analyzer:
     n_draws = params.draw.size
     n_chains = params.chain.size
     outcome_means = backend.zeros(
-        (n_chains, 0, self._meridian.n_geos, self._meridian.n_times)
+        (n_chains, 0, self._model_context.n_geos, self._model_context.n_times)
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = (
@@ -1605,7 +1622,7 @@ class Analyzer:
             constants.MU_T,
             constants.TAU_G,
         ]
-        + ([constants.GAMMA_GC] if self._meridian.n_controls else [])
+        + ([constants.GAMMA_GC] if self._model_context.n_controls else [])
         + self._get_causal_param_names(include_non_paid_channels=True)
     )
     outcome_means_temps = []
@@ -1627,7 +1644,7 @@ class Analyzer:
         [outcome_means, *outcome_means_temps], axis=1
     )
     if inverse_transform_outcome:
-      outcome_means = self._meridian.kpi_transformer.inverse(outcome_means)
+      outcome_means = self._model_context.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
         outcome_means *= filled_tensors.revenue_per_kpi
 
@@ -1701,7 +1718,7 @@ class Analyzer:
           " `_get_incremental_kpi` when `non_media_treatments` data is"
           " present."
       )
-    n_media_times = self._meridian.n_media_times
+    n_media_times = self._model_context.n_media_times
     if data_tensors.media is not None:
       n_times = data_tensors.media.shape[1]  # pytype: disable=attribute-error
       n_times_output = n_times if n_times != n_media_times else None
@@ -1760,11 +1777,11 @@ class Analyzer:
     """
     use_kpi = self._use_kpi(use_kpi)
     if revenue_per_kpi is None:
-      revenue_per_kpi = self._meridian.revenue_per_kpi
-    t1 = self._meridian.kpi_transformer.inverse(
+      revenue_per_kpi = self._model_context.revenue_per_kpi
+    t1 = self._model_context.kpi_transformer.inverse(
         backend.einsum("...m->m...", modeled_incremental_outcome)
     )
-    t2 = self._meridian.kpi_transformer.inverse(backend.zeros_like(t1))
+    t2 = self._model_context.kpi_transformer.inverse(backend.zeros_like(t1))
     kpi = backend.einsum("m...->...m", t1 - t2)
 
     if use_kpi:
@@ -2051,10 +2068,10 @@ class Analyzer:
         dimension and not all treatment variables are provided in `new_data`
         with matching time dimensions.
     """
-    mmm = self._meridian
+    m_context = self._model_context
     use_kpi = self._use_kpi(use_kpi)
     self._check_kpi_transformation(inverse_transform_outcome, use_kpi)
-    if self._meridian.is_national:
+    if m_context.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
@@ -2062,7 +2079,7 @@ class Analyzer:
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
 
-    if dist_type not in mmm.inference_data.groups():
+    if dist_type not in self._meridian.inference_data.groups():
       raise model.NotFittedModelError(
           f"sample_{dist_type}() must be called prior to calling this method."
       )
@@ -2090,18 +2107,18 @@ class Analyzer:
     new_n_media_times = data_tensors.get_modified_times(self._meridian)
 
     if new_n_media_times is None:
-      new_n_media_times = mmm.n_media_times
+      new_n_media_times = m_context.n_media_times
       _validate_selected_times(
           selected_times=selected_times,
-          input_times=mmm.input_data.time,
-          n_times=mmm.n_times,
+          input_times=m_context.input_data.time,
+          n_times=m_context.n_times,
           arg_name="selected_times",
           comparison_arg_name="the input data",
       )
       _validate_selected_times(
           selected_times=media_selected_times,
-          input_times=mmm.input_data.media_time,
-          n_times=mmm.n_media_times,
+          input_times=m_context.input_data.media_time,
+          n_times=m_context.n_media_times,
           arg_name="media_selected_times",
           comparison_arg_name="the media tensors",
       )
@@ -2116,7 +2133,7 @@ class Analyzer:
     else:
       if all(isinstance(time, str) for time in media_selected_times):
         media_selected_times = [
-            x in media_selected_times for x in mmm.input_data.media_time
+            x in media_selected_times for x in m_context.input_data.media_time
         ]
 
     # Set counterfactual tensors based on the scaling factors and the media
@@ -2130,11 +2147,11 @@ class Analyzer:
 
     if data_tensors.non_media_treatments is not None:
       non_media_treatments_baseline_scaled = (
-          self._meridian.compute_non_media_treatments_baseline(
+          self._model_equations.compute_non_media_treatments_baseline(
               non_media_baseline_values=non_media_baseline_values,
           )
       )
-      non_media_treatments_baseline_normalized = self._meridian.non_media_transformer.forward(  # pytype: disable=attribute-error
+      non_media_treatments_baseline_normalized = self._model_context.non_media_transformer.forward(  # pytype: disable=attribute-error
           non_media_treatments_baseline_scaled,
           apply_population_scaling=False,
       )
@@ -2253,23 +2270,23 @@ class Analyzer:
       ValueError: If the geo or time granularity arguments are not valid for the
         ROI analysis.
     """
-    if self._meridian.is_national:
+    if self._model_context.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
       )
     if selected_geos is not None or not aggregate_geos:
       if (
-          self._meridian.media_tensors.media_spend is not None
-          and not self._meridian.input_data.media_spend_has_geo_dimension
+          self._model_context.media_tensors.media_spend is not None
+          and not self._model_context.input_data.media_spend_has_geo_dimension
       ):
         raise ValueError(
             "`selected_geos` and `aggregate_geos=False` are not allowed because"
             " Meridian `media_spend` data does not have a geo dimension."
         )
       if (
-          self._meridian.rf_tensors.rf_spend is not None
-          and not self._meridian.input_data.rf_spend_has_geo_dimension
+          self._model_context.rf_tensors.rf_spend is not None
+          and not self._model_context.input_data.rf_spend_has_geo_dimension
       ):
         raise ValueError(
             "`selected_geos` and `aggregate_geos=False` are not allowed because"
@@ -2278,16 +2295,16 @@ class Analyzer:
 
     if selected_times is not None:
       if (
-          self._meridian.media_tensors.media_spend is not None
-          and not self._meridian.input_data.media_spend_has_time_dimension
+          self._model_context.media_tensors.media_spend is not None
+          and not self._model_context.input_data.media_spend_has_time_dimension
       ):
         raise ValueError(
             "`selected_times` is not allowed because Meridian `media_spend`"
             " data does not have a time dimension."
         )
       if (
-          self._meridian.rf_tensors.rf_spend is not None
-          and not self._meridian.input_data.rf_spend_has_time_dimension
+          self._model_context.rf_tensors.rf_spend is not None
+          and not self._model_context.input_data.rf_spend_has_time_dimension
       ):
         raise ValueError(
             "`selected_times` is not allowed because Meridian `rf_spend` data"
@@ -2530,8 +2547,7 @@ class Analyzer:
       # `aggregate_times` is `False`, then
       # self._validate_geo_and_time_granularity should raise an error.
       raise ValueError(
-          "aggregate_geos must be True if spend does not have a geo "
-          "dimension."
+          "aggregate_geos must be True if spend does not have a geo dimension."
       )
     return backend.divide(incremental_outcome, spend)
 
@@ -2650,8 +2666,12 @@ class Analyzer:
           draws, confidence_level=confidence_level
       )
 
-    train_draws = np.where(self._meridian.model_spec.holdout_id, np.nan, draws)
-    test_draws = np.where(self._meridian.model_spec.holdout_id, draws, np.nan)
+    train_draws = np.where(
+        self._model_context.model_spec.holdout_id, np.nan, draws
+    )
+    test_draws = np.where(
+        self._model_context.model_spec.holdout_id, draws, np.nan
+    )
     draws_by_evaluation_set = np.stack(
         [train_draws, test_draws, draws], axis=0
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, n_geos, n_times)
@@ -2672,13 +2692,17 @@ class Analyzer:
 
   def _can_split_by_holdout_id(self, split_by_holdout_id: bool) -> bool:
     """Returns whether the data can be split by holdout_id."""
-    if split_by_holdout_id and self._meridian.model_spec.holdout_id is None:
+    if (
+        split_by_holdout_id
+        and self._model_context.model_spec.holdout_id is None
+    ):
       warnings.warn(
           "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
           " not be split."
       )
     return (
-        split_by_holdout_id and self._meridian.model_spec.holdout_id is not None
+        split_by_holdout_id
+        and self._model_context.model_spec.holdout_id is not None
     )
 
   def expected_vs_actual_data(
@@ -2716,7 +2740,7 @@ class Analyzer:
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
     use_kpi = self._use_kpi(use_kpi)
-    mmm = self._meridian
+    m_context = self._model_context
     can_split_by_holdout = self._can_split_by_holdout_id(split_by_holdout_id)
     expected_outcome = self.expected_outcome(
         aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi
@@ -2745,7 +2769,9 @@ class Analyzer:
     )
     actual = np.asarray(
         self.filter_and_aggregate_geos_and_times(
-            mmm.kpi if use_kpi else mmm.kpi * mmm.revenue_per_kpi,
+            m_context.kpi
+            if use_kpi
+            else m_context.kpi * m_context.revenue_per_kpi,
             aggregate_geos=aggregate_geos,
             aggregate_times=aggregate_times,
         )
@@ -2757,9 +2783,9 @@ class Analyzer:
     }
 
     if not aggregate_geos:
-      coords[constants.GEO] = mmm.input_data.geo.data
+      coords[constants.GEO] = m_context.input_data.geo.data
     if not aggregate_times:
-      coords[constants.TIME] = mmm.input_data.time.data
+      coords[constants.TIME] = m_context.input_data.time.data
     if can_split_by_holdout:
       coords[constants.EVALUATION_SET_VAR] = list(constants.EVALUATION_SET)
 
@@ -2819,56 +2845,57 @@ class Analyzer:
       n_draws, n_geos, n_times)`. The `n_geos` and `n_times` dimensions is
       dropped if `aggregate_geos=True` or `aggregate_time=True`, respectively.
     """
+    ctx = self._model_context
     new_media = (
-        backend.zeros_like(self._meridian.media_tensors.media)
-        if self._meridian.media_tensors.media is not None
+        backend.zeros_like(ctx.media_tensors.media)
+        if ctx.media_tensors.media is not None
         else None
     )
     # Frequency is not needed because the reach is zero.
     new_reach = (
-        backend.zeros_like(self._meridian.rf_tensors.reach)
-        if self._meridian.rf_tensors.reach is not None
+        backend.zeros_like(ctx.rf_tensors.reach)
+        if ctx.rf_tensors.reach is not None
         else None
     )
     new_organic_media = (
-        backend.zeros_like(self._meridian.organic_media_tensors.organic_media)
-        if self._meridian.organic_media_tensors.organic_media is not None
+        backend.zeros_like(ctx.organic_media_tensors.organic_media)
+        if ctx.organic_media_tensors.organic_media is not None
         else None
     )
     new_organic_reach = (
-        backend.zeros_like(self._meridian.organic_rf_tensors.organic_reach)
-        if self._meridian.organic_rf_tensors.organic_reach is not None
+        backend.zeros_like(ctx.organic_rf_tensors.organic_reach)
+        if ctx.organic_rf_tensors.organic_reach is not None
         else None
     )
-    if self._meridian.non_media_treatments is not None:
-      if self._meridian.model_spec.non_media_population_scaling_id is not None:
+    if ctx.non_media_treatments is not None:
+      if ctx.model_spec.non_media_population_scaling_id is not None:
         scaling_factors = backend.where(
-            self._meridian.model_spec.non_media_population_scaling_id,
-            self._meridian.population[:, backend.newaxis, backend.newaxis],
-            backend.ones_like(self._meridian.population)[
+            ctx.model_spec.non_media_population_scaling_id,
+            ctx.population[:, backend.newaxis, backend.newaxis],
+            backend.ones_like(ctx.population)[
                 :, backend.newaxis, backend.newaxis
             ],
         )
       else:
-        scaling_factors = backend.ones_like(self._meridian.population)[
+        scaling_factors = backend.ones_like(ctx.population)[
             :, backend.newaxis, backend.newaxis
         ]
 
-      baseline = self._meridian.compute_non_media_treatments_baseline(
+      baseline = self._model_equations.compute_non_media_treatments_baseline(
           non_media_baseline_values=non_media_baseline_values,
       )
       new_non_media_treatments_population_scaled = backend.broadcast_to(
           backend.to_tensor(baseline, dtype=backend.float32)[
               backend.newaxis, backend.newaxis, :
           ],
-          self._meridian.non_media_treatments.shape,
+          ctx.non_media_treatments.shape,
       )
       new_non_media_treatments = (
           new_non_media_treatments_population_scaled * scaling_factors
       )
     else:
       new_non_media_treatments = None
-    new_controls = self._meridian.controls
+    new_controls = ctx.controls
 
     new_data = DataTensors(
         media=new_media,
@@ -3137,14 +3164,14 @@ class Analyzer:
         + (constants.CHANNEL,)
     )
     channels = (
-        self._meridian.input_data.get_all_channels()
+        self._model_context.input_data.get_all_channels()
         if include_non_paid_channels
-        else self._meridian.input_data.get_all_paid_channels()
+        else self._model_context.input_data.get_all_paid_channels()
     )
     xr_coords = {constants.CHANNEL: list(channels) + [constants.ALL_CHANNELS]}
     if not aggregate_geos:
       geo_dims = (
-          self._meridian.input_data.geo.data
+          self._model_context.input_data.geo.data
           if selected_geos is None
           else selected_geos
       )
@@ -3153,7 +3180,7 @@ class Analyzer:
       # Get the time coordinates for flexible time dimensions.
       modified_times = new_data.get_modified_times(self._meridian)
       if modified_times is None:
-        times = self._meridian.input_data.time.data
+        times = self._model_context.input_data.time.data
       else:
         times = np.arange(modified_times)
 
@@ -3265,9 +3292,9 @@ class Analyzer:
     new_spend_tensors = new_data.filter_fields(
         constants.SPEND_DATA
     ).validate_and_fill_missing_data(constants.SPEND_DATA, self._meridian)
-    if self._meridian.n_media_channels > 0:
+    if self._model_context.n_media_channels > 0:
       spend_list.append(new_spend_tensors.media_spend)
-    if self._meridian.n_rf_channels > 0:
+    if self._model_context.n_rf_channels > 0:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
@@ -3420,13 +3447,13 @@ class Analyzer:
     )
     n_times = (
         data_tensors.get_modified_times(self._meridian)
-        or self._meridian.n_times
+        or self._model_context.n_times
     )
     impressions_list = []
-    if self._meridian.n_media_channels > 0:
+    if self._model_context.n_media_channels > 0:
       impressions_list.append(data_tensors.media[:, -n_times:, :])
 
-    if self._meridian.n_rf_channels > 0:
+    if self._model_context.n_rf_channels > 0:
       if optimal_frequency is None:
         new_frequency = data_tensors.frequency
       else:
@@ -3438,9 +3465,9 @@ class Analyzer:
       )
 
     if include_non_paid_channels:
-      if self._meridian.n_organic_media_channels > 0:
+      if self._model_context.n_organic_media_channels > 0:
         impressions_list.append(data_tensors.organic_media[:, -n_times:, :])
-      if self._meridian.n_organic_rf_channels > 0:
+      if self._model_context.n_organic_rf_channels > 0:
         if optimal_frequency is None:
           new_organic_frequency = data_tensors.organic_frequency
         else:
@@ -3452,7 +3479,7 @@ class Analyzer:
             data_tensors.organic_reach[:, -n_times:, :]
             * new_organic_frequency[:, -n_times:, :]
         )
-      if self._meridian.n_non_media_channels > 0:
+      if self._model_context.n_non_media_channels > 0:
         impressions_list.append(data_tensors.non_media_treatments)
 
     return self.filter_and_aggregate_geos_and_times(
@@ -3527,14 +3554,14 @@ class Analyzer:
     xr_coords = {constants.CHANNEL: [constants.BASELINE]}
     if not aggregate_geos:
       geo_dims = (
-          self._meridian.input_data.geo.data
+          self._model_context.input_data.geo.data
           if selected_geos is None
           else selected_geos
       )
       xr_coords[constants.GEO] = geo_dims
     if not aggregate_times:
       time_dims = (
-          self._meridian.input_data.time.data
+          self._model_context.input_data.time.data
           if selected_times is None
           else selected_times
       )
@@ -3698,7 +3725,7 @@ class Analyzer:
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
     use_kpi = self._use_kpi(use_kpi)
     new_data = new_data or DataTensors()
-    if self._meridian.n_rf_channels == 0:
+    if self._model_context.n_rf_channels == 0:
       raise ValueError(
           "Must have at least one channel with reach and frequency data."
       )
@@ -3718,23 +3745,28 @@ class Analyzer:
     # TODO: Once treatment type filtering is added, remove adding
     # dummy media and media spend to `roi()` and `summary_metrics()`. This is a
     # hack to use `roi()` and `summary_metrics()` for RF only analysis.
-    has_media = self._meridian.n_media_channels > 0
+    has_media = self._model_context.n_media_channels > 0
     n_media_times = (
         filled_data.get_modified_times(self._meridian)
-        or self._meridian.n_media_times
+        or self._model_context.n_media_times
     )
     n_times = (
-        filled_data.get_modified_times(self._meridian) or self._meridian.n_times
+        filled_data.get_modified_times(self._meridian)
+        or self._model_context.n_times
     )
-    dummy_media = backend.ones(
-        (self._meridian.n_geos, n_media_times, self._meridian.n_media_channels)
-    )
-    dummy_media_spend = backend.ones(
-        (self._meridian.n_geos, n_times, self._meridian.n_media_channels)
-    )
+    dummy_media = backend.ones((
+        self._model_context.n_geos,
+        n_media_times,
+        self._model_context.n_media_channels,
+    ))
+    dummy_media_spend = backend.ones((
+        self._model_context.n_geos,
+        n_times,
+        self._model_context.n_media_channels,
+    ))
 
     max_freq = max_frequency or np.max(
-        np.array(self._meridian.rf_tensors.frequency)
+        np.array(self._model_context.rf_tensors.frequency)
     )
     if freq_grid is None:
       freq_grid = np.arange(1, max_freq, 0.1)
@@ -3742,7 +3774,9 @@ class Analyzer:
     # Create a frequency grid for shape (len(freq_grid), n_rf_channels, 4) where
     # the last argument is for the mean, median, lower and upper confidence
     # intervals.
-    metric_grid = np.zeros((len(freq_grid), self._meridian.n_rf_channels, 4))
+    metric_grid = np.zeros(
+        (len(freq_grid), self._model_context.n_rf_channels, 4)
+    )
 
     for i, freq in enumerate(freq_grid):
       new_frequency = backend.ones_like(filled_data.rf_impressions) * freq
@@ -3762,15 +3796,15 @@ class Analyzer:
           selected_times=selected_times,
           aggregate_geos=True,
           use_kpi=use_kpi,
-      )[..., -self._meridian.n_rf_channels :]
+      )[..., -self._model_context.n_rf_channels :]
       metric_grid[i, :] = get_central_tendency_and_ci(
           metric_grid_temp, confidence_level, include_median=True
       )
 
     optimal_freq_idx = np.nanargmax(metric_grid[:, :, 0], axis=0)
     rf_channel_values = (
-        self._meridian.input_data.rf_channel.values
-        if self._meridian.input_data.rf_channel is not None
+        self._model_context.input_data.rf_channel.values
+        if self._model_context.input_data.rf_channel is not None
         else []
     )
 
@@ -3919,7 +3953,7 @@ class Analyzer:
       three metrics are computed for each.
     """
     use_kpi = self._use_kpi(use_kpi)
-    if self._meridian.is_national:
+    if self._model_context.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
       )
@@ -3940,9 +3974,11 @@ class Analyzer:
         constants.GEO_GRANULARITY: [constants.GEO, constants.NATIONAL],
     }
     if use_kpi:
-      input_tensor = self._meridian.kpi
+      input_tensor = self._model_context.kpi
     else:
-      input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
+      input_tensor = (
+          self._model_context.kpi * self._model_context.revenue_per_kpi
+      )
     actual = np.asarray(
         self.filter_and_aggregate_geos_and_times(
             tensor=input_tensor,
@@ -3959,7 +3995,7 @@ class Analyzer:
     rsquared_national, mape_national, wmape_national = (
         self._predictive_accuracy_helper(np.sum(actual, 0), np.sum(expected, 0))
     )
-    if self._meridian.model_spec.holdout_id is None:
+    if self._model_context.model_spec.holdout_id is None:
       rsquared_arr = [rsquared, rsquared_national]
       mape_arr = [mape, mape_national]
       wmape_arr = [wmape, wmape_national]
@@ -3973,7 +4009,9 @@ class Analyzer:
       xr_coords[constants.EVALUATION_SET_VAR] = list(constants.EVALUATION_SET)
 
       holdout_id = self._filter_holdout_id_for_selected_geos_and_times(
-          self._meridian.model_spec.holdout_id, selected_geos, selected_times
+          self._model_context.model_spec.holdout_id,
+          selected_geos,
+          selected_times,
       )
 
       nansum = lambda x: np.where(
@@ -4003,7 +4041,7 @@ class Analyzer:
       )
       xr_data = {constants.VALUE: (xr_dims, stacked_total)}
       dataset = xr.Dataset(data_vars=xr_data, coords=xr_coords)
-    if self._meridian.is_national:
+    if self._model_context.is_national:
       # Remove the geo-level coordinate.
       dataset = dataset.sel(geo_granularity=[constants.NATIONAL])
     return dataset
@@ -4041,14 +4079,18 @@ class Analyzer:
   ) -> np.ndarray:
     """Filters the holdout_id array for selected times and geos."""
 
-    if selected_geos is not None and not self._meridian.is_national:
-      geo_mask = [x in selected_geos for x in self._meridian.input_data.geo]
+    if selected_geos is not None and not self._model_context.is_national:
+      geo_mask = [
+          x in selected_geos for x in self._model_context.input_data.geo
+      ]
       holdout_id = holdout_id[geo_mask]
 
     if selected_times is not None:
-      time_mask = [x in selected_times for x in self._meridian.input_data.time]
+      time_mask = [
+          x in selected_times for x in self._model_context.input_data.time
+      ]
       # If model is national, holdout_id will have only 1 dimension.
-      if self._meridian.is_national:
+      if self._model_context.is_national:
         holdout_id = holdout_id[time_mask]
       else:
         holdout_id = holdout_id[:, time_mask]
@@ -4129,7 +4171,7 @@ class Analyzer:
     rhat_summary = []
     for param in rhat:
       # Skip if parameter is deterministic according to the prior.
-      if self._meridian.prior_broadcast.has_deterministic_param(param):
+      if self._model_context.prior_broadcast.has_deterministic_param(param):
         continue
 
       if rhat[param].ndim == 2:
@@ -4486,50 +4528,52 @@ class Analyzer:
     """
     if (
         channel_type == constants.MEDIA
-        and self._meridian.input_data.media_channel is not None
+        and self._model_context.input_data.media_channel is not None
     ):
       ec = constants.EC_M
       slope = constants.SLOPE_M
-      channels = self._meridian.input_data.media_channel.values
-      transformer = self._meridian.media_tensors.media_transformer
+      channels = self._model_context.input_data.media_channel.values
+      transformer = self._model_context.media_tensors.media_transformer
       linspace_max_values = np.max(
-          np.array(self._meridian.media_tensors.media_scaled), axis=(0, 1)
+          np.array(self._model_context.media_tensors.media_scaled), axis=(0, 1)
       )
     elif (
         channel_type == constants.RF
-        and self._meridian.input_data.rf_channel is not None
+        and self._model_context.input_data.rf_channel is not None
     ):
       ec = constants.EC_RF
       slope = constants.SLOPE_RF
-      channels = self._meridian.input_data.rf_channel.values
+      channels = self._model_context.input_data.rf_channel.values
       transformer = None
       linspace_max_values = np.max(
-          np.array(self._meridian.rf_tensors.frequency), axis=(0, 1)
+          np.array(self._model_context.rf_tensors.frequency), axis=(0, 1)
       )
     elif (
         channel_type == constants.ORGANIC_MEDIA
-        and self._meridian.input_data.organic_media_channel is not None
+        and self._model_context.input_data.organic_media_channel is not None
     ):
       ec = constants.EC_OM
       slope = constants.SLOPE_OM
-      channels = self._meridian.input_data.organic_media_channel.values
+      channels = self._model_context.input_data.organic_media_channel.values
       transformer = (
-          self._meridian.organic_media_tensors.organic_media_transformer
+          self._model_context.organic_media_tensors.organic_media_transformer
       )
       linspace_max_values = np.max(
-          np.array(self._meridian.organic_media_tensors.organic_media_scaled),
+          np.array(
+              self._model_context.organic_media_tensors.organic_media_scaled
+          ),
           axis=(0, 1),
       )
     elif (
         channel_type == constants.ORGANIC_RF
-        and self._meridian.input_data.organic_rf_channel is not None
+        and self._model_context.input_data.organic_rf_channel is not None
     ):
       ec = constants.EC_ORF
       slope = constants.SLOPE_ORF
-      channels = self._meridian.input_data.organic_rf_channel.values
+      channels = self._model_context.input_data.organic_rf_channel.values
       transformer = None
       linspace_max_values = np.max(
-          np.array(self._meridian.organic_rf_tensors.organic_frequency),
+          np.array(self._model_context.organic_rf_tensors.organic_frequency),
           axis=(0, 1),
       )
     else:
@@ -4716,77 +4760,81 @@ class Analyzer:
       distribution of media units per capita for media channels or average
       frequency for RF channels over weeks and geos for the Hill plots.
     """
-    n_geos = self._meridian.n_geos
-    n_media_times = self._meridian.n_media_times
+    n_geos = self._model_context.n_geos
+    n_media_times = self._model_context.n_media_times
 
     df_list = []
 
     # RF.
-    if self._meridian.input_data.rf_channel is not None:
-      frequency = self._meridian.rf_tensors.frequency
+    if self._model_context.input_data.rf_channel is not None:
+      frequency = self._model_context.rf_tensors.frequency
       if frequency is not None:
         reshaped_frequency = backend.reshape(
-            frequency, (n_geos * n_media_times, self._meridian.n_rf_channels)
+            frequency,
+            (n_geos * n_media_times, self._model_context.n_rf_channels),
         )
         rf_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.RF,
             data_to_histogram=reshaped_frequency,
-            channel_names=self._meridian.input_data.rf_channel.values,
+            channel_names=self._model_context.input_data.rf_channel.values,
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(rf_hist_data))
 
     # Media.
-    if self._meridian.input_data.media_channel is not None:
-      transformer = self._meridian.media_tensors.media_transformer
-      scaled = self._meridian.media_tensors.media_scaled
+    if self._model_context.input_data.media_channel is not None:
+      transformer = self._model_context.media_tensors.media_transformer
+      scaled = self._model_context.media_tensors.media_scaled
       if transformer is not None and scaled is not None:
         population_scaled_median = transformer.population_scaled_median_m
         scaled_media_units = scaled * population_scaled_median
         reshaped_scaled_media_units = backend.reshape(
             scaled_media_units,
-            (n_geos * n_media_times, self._meridian.n_media_channels),
+            (n_geos * n_media_times, self._model_context.n_media_channels),
         )
         media_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.MEDIA,
             data_to_histogram=reshaped_scaled_media_units,
-            channel_names=self._meridian.input_data.media_channel.values,
+            channel_names=self._model_context.input_data.media_channel.values,
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(media_hist_data))
     # Organic media.
-    if self._meridian.input_data.organic_media_channel is not None:
+    if self._model_context.input_data.organic_media_channel is not None:
       transformer_om = (
-          self._meridian.organic_media_tensors.organic_media_transformer
+          self._model_context.organic_media_tensors.organic_media_transformer
       )
-      scaled_om = self._meridian.organic_media_tensors.organic_media_scaled
+      scaled_om = self._model_context.organic_media_tensors.organic_media_scaled
       if transformer_om is not None and scaled_om is not None:
         population_scaled_median_om = transformer_om.population_scaled_median_m
         scaled_organic_media_units = scaled_om * population_scaled_median_om
         reshaped_scaled_organic_media_units = backend.reshape(
             scaled_organic_media_units,
-            (n_geos * n_media_times, self._meridian.n_organic_media_channels),
+            (
+                n_geos * n_media_times,
+                self._model_context.n_organic_media_channels,
+            ),
         )
         organic_media_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.ORGANIC_MEDIA,
             data_to_histogram=reshaped_scaled_organic_media_units,
-            channel_names=self._meridian.input_data.organic_media_channel.values,
+            channel_names=self._model_context.input_data.organic_media_channel.values,
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(organic_media_hist_data))
 
     # Organic RF.
-    if self._meridian.input_data.organic_rf_channel is not None:
-      frequency = self._meridian.organic_rf_tensors.organic_frequency
+    if self._model_context.input_data.organic_rf_channel is not None:
+      frequency = self._model_context.organic_rf_tensors.organic_frequency
       if frequency is not None:
         reshaped_frequency = backend.reshape(
             frequency,
-            (n_geos * n_media_times, self._meridian.n_organic_rf_channels),
+            (n_geos * n_media_times, self._model_context.n_organic_rf_channels),
         )
         organic_rf_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.ORGANIC_RF,
             data_to_histogram=reshaped_frequency,
-            channel_names=self._meridian.input_data.organic_rf_channel.values,
+            channel_names=self._model_context.input_data.organic_rf_channel.values,
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(organic_rf_hist_data))
@@ -4839,10 +4887,10 @@ class Analyzer:
 
     final_dfs = [pd.DataFrame()]
     for n_channels, channel_type in [
-        (self._meridian.n_media_channels, constants.MEDIA),
-        (self._meridian.n_rf_channels, constants.RF),
-        (self._meridian.n_organic_media_channels, constants.ORGANIC_MEDIA),
-        (self._meridian.n_organic_rf_channels, constants.ORGANIC_RF),
+        (self._model_context.n_media_channels, constants.MEDIA),
+        (self._model_context.n_rf_channels, constants.RF),
+        (self._model_context.n_organic_media_channels, constants.ORGANIC_MEDIA),
+        (self._model_context.n_organic_rf_channels, constants.ORGANIC_RF),
     ]:
       if n_channels > 0:
         hill_df = self._get_hill_curves_dataframe(
@@ -5076,9 +5124,9 @@ class Analyzer:
     if not include_media:
       aggregated_media_spend = empty_da
     elif (
-        self._meridian.media_tensors.media is None
-        or self._meridian.media_tensors.media_spend is None
-        or self._meridian.input_data.media_channel is None
+        self._model_context.media_tensors.media is None
+        or self._model_context.media_tensors.media_spend is None
+        or self._model_context.input_data.media_channel is None
     ):
       warnings.warn(
           "Requested spends for paid media channels that do not have R&F"
@@ -5091,16 +5139,18 @@ class Analyzer:
           selected_times=selected_times,
           media_execution_values=filled_data.media,
           channel_spend=filled_data.media_spend,
-          channel_names=list(self._meridian.input_data.media_channel.values),
+          channel_names=list(
+              self._model_context.input_data.media_channel.values
+          ),
       )
 
     if not include_rf:
       aggregated_rf_spend = empty_da
     elif (
-        self._meridian.input_data.rf_channel is None
-        or self._meridian.rf_tensors.reach is None
-        or self._meridian.rf_tensors.frequency is None
-        or self._meridian.rf_tensors.rf_spend is None
+        self._model_context.input_data.rf_channel is None
+        or self._model_context.rf_tensors.reach is None
+        or self._model_context.rf_tensors.frequency is None
+        or self._model_context.rf_tensors.rf_spend is None
     ):
       warnings.warn(
           "Requested spends for paid media channels with R&F data, but the"
@@ -5114,7 +5164,7 @@ class Analyzer:
           selected_times=selected_times,
           media_execution_values=rf_execution_values,
           channel_spend=filled_data.rf_spend,
-          channel_names=list(self._meridian.input_data.rf_channel.values),
+          channel_names=list(self._model_context.input_data.rf_channel.values),
       )
 
     return xr.concat(
@@ -5175,9 +5225,9 @@ class Analyzer:
     # channel_spend.ndim can only be 3 or 1.
     else:
       # media spend can have more time points than the model time points
-      if media_execution_values.shape[1] == self._meridian.n_media_times:
+      if media_execution_values.shape[1] == self._model_context.n_media_times:
         media_exe_values = media_execution_values[
-            :, -self._meridian.n_times :, :
+            :, -self._model_context.n_times :, :
         ]
       else:
         media_exe_values = media_execution_values

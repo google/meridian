@@ -27,6 +27,7 @@ from meridian.analysis import analyzer
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import test_utils as data_test_utils
+from meridian.model import context
 from meridian.model import model
 from meridian.model import spec
 import numpy as np
@@ -4167,7 +4168,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertFalse(np.isnan(dataset[constants.VALUE]).all())
 
   @mock.patch.object(
-      model.Meridian, "is_national", new=property(lambda unused_self: True)
+      context.ModelContext,
+      "is_national",
+      new=property(lambda unused_self: True),
   )
   def test_predictive_accuracy_national(self):
     predictive_accuracy_dataset = self.analyzer.predictive_accuracy()

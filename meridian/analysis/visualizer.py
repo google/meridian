@@ -19,10 +19,13 @@ import functools
 from typing import Mapping
 import warnings
 import altair as alt
+import arviz as az
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
+from meridian.model import context
+from meridian.model import equations
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
@@ -46,9 +49,21 @@ alt.data_transformers.disable_max_rows()
 class ModelDiagnostics:
   """Generates model diagnostics plots from the Meridian model fitting."""
 
-  def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
+  def __init__(
+      self,
+      meridian: model.Meridian,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+      inference_data: az.InferenceData | None = None,
+      use_kpi: bool = False,
+  ):
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        meridian=meridian,
+        model_context=model_context,
+        model_equations=model_equations,
+        inference_data=inference_data,
+    )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
   @functools.lru_cache(maxsize=128)
@@ -271,11 +286,15 @@ class ModelDiagnostics:
           x=c.INDEPENDENT
       )
 
-    return plot.properties(
-        title=formatter.custom_title_params(
-            summary_text.PRIOR_POSTERIOR_DIST_CHART_TITLE
+    return (
+        plot.properties(
+            title=formatter.custom_title_params(
+                summary_text.PRIOR_POSTERIOR_DIST_CHART_TITLE
+            )
         )
-    ).configure_axis(**formatter.TEXT_CONFIG).interactive()
+        .configure_axis(**formatter.TEXT_CONFIG)
+        .interactive()
+    )
 
   def plot_rhat_boxplot(self) -> alt.Chart:
     """Plots the R-hat box plot.
@@ -374,6 +393,9 @@ class ModelFit:
   def __init__(
       self,
       meridian: model.Meridian,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+      inference_data: az.InferenceData | None = None,
       use_kpi: bool = False,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
   ):
@@ -381,13 +403,26 @@ class ModelFit:
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
+      model_context: A `ModelContext` object containing the model context. If
+        not provided, the model context from the `meridian` object is used.
+      model_equations: A `ModelEquations` object containing stateless
+        mathematical functions and utilities for Meridian MMM. If not provided,
+        the model equations from the `meridian` object are used.
+      inference_data: An `arviz.InferenceData` object containing the resulting
+        data from fitting the model. If not provided, the inference data from
+        the `meridian` object is used.
       use_kpi: If `True`, plots the incremental KPI. Otherwise, plots the
         incremental revenue using the revenue per KPI (if available).
       confidence_level: Confidence level for expected outcome credible intervals
         represented as a value between zero and one. Default is `0.9`.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        meridian=meridian,
+        model_context=model_context,
+        model_equations=model_equations,
+        inference_data=inference_data,
+    )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
     self._model_fit_data = self._analyzer.expected_vs_actual_data(
         use_kpi=self._use_kpi, confidence_level=confidence_level
@@ -843,6 +878,9 @@ class MediaEffects:
   def __init__(
       self,
       meridian: model.Meridian,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+      inference_data: az.InferenceData | None = None,
       by_reach: bool = True,
       use_kpi: bool = False,
   ):
@@ -850,6 +888,11 @@ class MediaEffects:
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
+      model_context: A `ModelContext` object containing the model context.
+      model_equations: A `ModelEquations` object containing stateless
+        mathematical functions and utilities for Meridian MMM.
+      inference_data: An `arviz.InferenceData` object containing the resulting
+        data from fitting the model.
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
@@ -857,7 +900,12 @@ class MediaEffects:
         the incremental revenue using the revenue per KPI (if available).
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        meridian=meridian,
+        model_context=model_context,
+        model_equations=model_equations,
+        inference_data=inference_data,
+    )
     self._by_reach = by_reach
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
@@ -1404,6 +1452,9 @@ class MediaSummary:
   def __init__(
       self,
       meridian: model.Meridian,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+      inference_data: az.InferenceData | None = None,
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       selected_times: Sequence[str] | None = None,
       marginal_roi_by_reach: bool = True,
@@ -1414,6 +1465,11 @@ class MediaSummary:
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
+      model_context: A `ModelContext` object containing the model context.
+      model_equations: A `ModelEquations` object containing stateless
+        mathematical functions and utilities for Meridian MMM.
+      inference_data:  An `arviz.InferenceData` object containing the resulting
+        data from fitting the model..
       confidence_level: Confidence level for media summary metrics credible
         intervals, represented as a value between zero and one.
       selected_times: Optional list containing a subset of times to include. By
@@ -1431,7 +1487,12 @@ class MediaSummary:
       use_kpi: If `True`, use KPI instead of revenue.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        meridian=meridian,
+        model_context=model_context,
+        model_equations=model_equations,
+        inference_data=inference_data,
+    )
     self._confidence_level = confidence_level
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach

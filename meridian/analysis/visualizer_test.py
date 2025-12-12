@@ -25,6 +25,7 @@ from meridian.analysis import test_utils
 from meridian.analysis import visualizer
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.model import context
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
@@ -57,8 +58,14 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     cls.meridian = mock.create_autospec(
         model.Meridian, instance=True, input_data=cls.input_data
     )
+    cls.model_context = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=cls.input_data
+    )
+    # TODO: Remove mocking Meridian class.
     cls.meridian.input_data.kpi_type = c.REVENUE
     cls.meridian.input_data.revenue_per_kpi = None
+    cls.model_context.input_data.kpi_type = c.REVENUE
+    cls.model_context.input_data.revenue_per_kpi = None
     inference_data = az.InferenceData()
     inference_data.prior = xr.open_dataset(
         os.path.join(_TEST_DATA_DIR, "sample_prior_media_and_rf.nc")
@@ -75,7 +82,9 @@ class ModelDiagnosticsTest(parameterized.TestCase):
             "predictive_accuracy",
         )
     )
-    cls.model_diagnostics = visualizer.ModelDiagnostics(cls.meridian)
+    cls.model_diagnostics = visualizer.ModelDiagnostics(
+        meridian=cls.meridian, model_context=cls.model_context
+    )
 
   def test_predictive_accuracy_called_correctly(self):
     self.mock_analyzer_method.reset_mock()
@@ -446,6 +455,12 @@ class ModelFitTest(absltest.TestCase):
     )
     meridian_revenue.input_data.kpi_type = c.REVENUE
     meridian_revenue.input_data.revenue_per_kpi = revenue_per_kpi
+
+    context_revenue = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=cls.input_data_1
+    )
+    context_revenue.input_data.kpi_type = c.REVENUE
+    context_revenue.input_data.revenue_per_kpi = revenue_per_kpi
     # Label = `KPI`.
     meridian_kpi = mock.create_autospec(
         model.Meridian,
@@ -454,6 +469,12 @@ class ModelFitTest(absltest.TestCase):
     )
     meridian_kpi.input_data.kpi_type = c.NON_REVENUE
     meridian_kpi.input_data.revenue_per_kpi = None
+
+    context_kpi = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=cls.input_data_2
+    )
+    context_kpi.input_data.kpi_type = c.NON_REVENUE
+    context_kpi.input_data.revenue_per_kpi = None
     # Label = `Revenue`.
     meridian_revenue_2 = mock.create_autospec(
         model.Meridian,
@@ -462,6 +483,13 @@ class ModelFitTest(absltest.TestCase):
     )
     meridian_revenue_2.input_data.kpi_type = c.NON_REVENUE
     meridian_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
+    context_revenue_2 = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=cls.input_data_3
+    )
+    context_revenue_2.input_data.kpi_type = c.NON_REVENUE
+    context_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
     mock_model_fit_data = test_utils.generate_model_fit_data()
     cls.mock_analyzer_method = cls.enter_context(
         mock.patch.object(
@@ -470,9 +498,15 @@ class ModelFitTest(absltest.TestCase):
             return_value=mock_model_fit_data,
         )
     )
-    cls.model_fit_kpi_type_revenue = visualizer.ModelFit(meridian_revenue)
-    cls.model_fit_kpi_type_kpi = visualizer.ModelFit(meridian_kpi)
-    cls.model_fit_kpi_type_revenue_2 = visualizer.ModelFit(meridian_revenue_2)
+    cls.model_fit_kpi_type_revenue = visualizer.ModelFit(
+        meridian=meridian_revenue, model_context=context_revenue
+    )
+    cls.model_fit_kpi_type_kpi = visualizer.ModelFit(
+        meridian=meridian_kpi, model_context=context_kpi
+    )
+    cls.model_fit_kpi_type_revenue_2 = visualizer.ModelFit(
+        meridian=meridian_revenue_2, model_context=context_revenue_2
+    )
 
   def test_model_fit_plot_different_scenarios_labels_correct(self):
     # Verifies each of the three kpi_type and revenue_per_kpi scenarios have
@@ -953,6 +987,14 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     cls.meridian_revenue.input_data.kpi_type = c.REVENUE
     cls.meridian_revenue.input_data.revenue_per_kpi = revenue_per_kpi
+
+    cls.context_revenue = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=cls.input_data_1,
+    )
+    cls.context_revenue.input_data.kpi_type = c.REVENUE
+    cls.context_revenue.input_data.revenue_per_kpi = revenue_per_kpi
     # Label = `KPI`.
     meridian_kpi = mock.create_autospec(
         model.Meridian,
@@ -961,6 +1003,14 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     meridian_kpi.input_data.kpi_type = c.NON_REVENUE
     meridian_kpi.input_data.revenue_per_kpi = None
+
+    context_kpi = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=cls.input_data_2,
+    )
+    context_kpi.input_data.kpi_type = c.NON_REVENUE
+    context_kpi.input_data.revenue_per_kpi = None
     # Label = `Revenue`.
     meridian_revenue_2 = mock.create_autospec(
         model.Meridian,
@@ -969,6 +1019,15 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     meridian_revenue_2.input_data.kpi_type = c.NON_REVENUE
     meridian_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
+    context_revenue_2 = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=cls.input_data_3,
+    )
+    context_revenue_2.input_data.kpi_type = c.NON_REVENUE
+    context_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
     cls.mock_response_curves_data = test_utils.generate_response_curve_data()
     cls.mock_response_curves_method = cls.enter_context(
         mock.patch.object(
@@ -994,11 +1053,14 @@ class MediaEffectsTest(parameterized.TestCase):
         )
     )
     cls.media_effects_kpi_type_revenue = visualizer.MediaEffects(
-        cls.meridian_revenue
+        meridian=cls.meridian_revenue, model_context=cls.context_revenue
     )
-    cls.media_effects_kpi_type_kpi = visualizer.MediaEffects(meridian_kpi)
+    cls.media_effects_kpi_type_kpi = visualizer.MediaEffects(
+        meridian=meridian_kpi, model_context=context_kpi
+    )
     cls.media_effects_kpi_type_revenue_2 = visualizer.MediaEffects(
-        meridian_revenue_2
+        meridian=meridian_revenue_2,
+        model_context=context_revenue_2,
     )
 
   def test_media_effects_plot_different_scenarios_labels_correct(self):
@@ -1505,6 +1567,15 @@ class MediaSummaryTest(parameterized.TestCase):
     )
     self.meridian_revenue.input_data.kpi_type = c.REVENUE
     self.meridian_revenue.input_data.revenue_per_kpi = revenue_per_kpi
+
+    self.context_revenue = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=self.input_data_1,
+    )
+    self.context_revenue.input_data.kpi_type = c.REVENUE
+    self.context_revenue.input_data.revenue_per_kpi = revenue_per_kpi
+
     # Label = `KPI`.
     meridian_kpi = mock.create_autospec(
         model.Meridian,
@@ -1513,6 +1584,15 @@ class MediaSummaryTest(parameterized.TestCase):
     )
     meridian_kpi.input_data.kpi_type = c.NON_REVENUE
     meridian_kpi.input_data.revenue_per_kpi = None
+
+    self.context_kpi = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=self.input_data_2,
+    )
+    self.context_kpi.input_data.kpi_type = c.NON_REVENUE
+    self.context_kpi.input_data.revenue_per_kpi = None
+
     # Label = `Revenue`.
     meridian_revenue_2 = mock.create_autospec(
         model.Meridian,
@@ -1521,6 +1601,15 @@ class MediaSummaryTest(parameterized.TestCase):
     )
     meridian_revenue_2.input_data.kpi_type = c.NON_REVENUE
     meridian_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
+    self.context_revenue_2 = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=self.input_data_3,
+    )
+    self.context_revenue_2.input_data.kpi_type = c.NON_REVENUE
+    self.context_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+
     self.mock_paid_media_metrics = test_utils.generate_paid_summary_metrics()
     self.mock_all_summary_metrics = test_utils.generate_all_summary_metrics()
 
@@ -1537,9 +1626,15 @@ class MediaSummaryTest(parameterized.TestCase):
             side_effect=mock_summary_metrics,
         )
     )
-    self.media_summary_revenue = visualizer.MediaSummary(self.meridian_revenue)
-    self.media_summary_kpi = visualizer.MediaSummary(meridian_kpi)
-    self.media_summary_revenue_2 = visualizer.MediaSummary(meridian_revenue_2)
+    self.media_summary_revenue = visualizer.MediaSummary(
+        meridian=self.meridian_revenue, model_context=self.context_revenue
+    )
+    self.media_summary_kpi = visualizer.MediaSummary(
+        meridian=meridian_kpi, model_context=self.context_kpi
+    )
+    self.media_summary_revenue_2 = visualizer.MediaSummary(
+        meridian=meridian_revenue_2, model_context=self.context_revenue_2
+    )
 
   def test_media_summary_init_non_media_baseline_values(self):
     non_media_baseline_values = [2, 3]
