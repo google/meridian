@@ -701,325 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_response_curves_check_both_channel_types_returns_correct_spend(self):
-    response_curve_data = self.analyzer_media_and_rf.response_curves(
-        by_reach=False
-    )
-    response_data_spend = response_curve_data.spend.values
-
-    media_summary_spend = self.analyzer_media_and_rf.summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-    ).spend[:-1]
-    backend_test_utils.assert_allequal(
-        media_summary_spend * 2,
-        response_data_spend[-1],
-    )
-
-  def test_response_curves_selected_times_wrong_type(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must be a list of strings or a list of booleans.",
-    ):
-      self.analyzer_media_and_rf.response_curves(
-          selected_times=["random_time", False, True],
-      )
-
-  def test_response_curves_selected_times_wrong_time_dim_names(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer_media_and_rf.response_curves(selected_times=["random_time"])
-
-  def test_response_curves_selected_times_no_new_data_wrong_time(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer_media_and_rf.response_curves(
-          selected_times=["2022-01-01"]  # Not in input_data.time
-      )
-
-  def test_response_curves_new_data_selected_times_wrong_time(self):
-    n_new_times = 15
-    new_data = analyzer.DataTensors(
-        media=self.meridian_media_and_rf.media_tensors.media[
-            ..., -n_new_times:, :
-        ],
-        reach=self.meridian_media_and_rf.rf_tensors.reach[
-            ..., -n_new_times:, :
-        ],
-        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-            ..., -n_new_times:, :
-        ],
-        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-            ..., -n_new_times:
-        ],
-        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-            ..., -n_new_times:, :
-        ],
-        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-            ..., -n_new_times:, :
-        ],
-        time=self.meridian_media_and_rf.input_data.time.values[-n_new_times:],
-    )
-    with self.assertRaisesRegex(
-        ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `selected_times` must be a list of booleans with length"
-        r" equal to the number of time periods in the new data, or \(2\)"
-        " `selected_times` must be a list of strings and `new_time` must be"
-        " provided and `selected_times` must be a subset of `new_time`.",
-    ):
-      self.analyzer_media_and_rf.response_curves(
-          new_data=new_data, selected_times=["2022-01-01"]
-      )
-
-  @parameterized.named_parameters(
-      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
-      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
-  )
-  def test_response_curves_new_times(self, use_optimal_frequency):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    n_new_times = 15
-    new_data = analyzer.DataTensors(
-        media=self.meridian_media_and_rf.media_tensors.media[
-            ..., -n_new_times:, :
-        ],
-        reach=self.meridian_media_and_rf.rf_tensors.reach[
-            ..., -n_new_times:, :
-        ],
-        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-            ..., -n_new_times:, :
-        ],
-        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-            ..., -n_new_times:
-        ],
-        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-            ..., -n_new_times:, :
-        ],
-        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-            ..., -n_new_times:, :
-        ],
-        time=self.meridian_media_and_rf.input_data.time.values[-n_new_times:],
-    )
-    response_curve_data = self.analyzer_media_and_rf.response_curves(
-        new_data=new_data,
-        use_optimal_frequency=use_optimal_frequency,
-    )
-
-    # Check coords and shapes.
-    self.assertEqual(
-        list(response_curve_data.coords.keys()),
-        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
-    )
-    self.assertNotIn(constants.TIME, response_curve_data.coords)
-    self.assertEqual(
-        list(response_curve_data.data_vars.keys()),
-        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
-    )
-    self.assertEqual(
-        response_curve_data.sizes[constants.CHANNEL],
-        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
-    )
-    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
-    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
-
-    # Spend for multiplier 1.0 should match the aggregated spend from new_data.
-    expected_spend = self.analyzer_media_and_rf.get_aggregated_spend(
-        new_data=new_data
-    )
-    backend_test_utils.assert_allclose(
-        response_curve_data[constants.SPEND].sel(spend_multiplier=1.0),
-        expected_spend.data,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-    # Incremental outcome for multiplier 1.0 should match the result of
-    # incremental_outcome called directly with the new_data.
-    if use_optimal_frequency:
-      opt_freq_data = analyzer.DataTensors(
-          media=new_data.media,
-          rf_impressions=new_data.reach * new_data.frequency,
-          media_spend=new_data.media_spend,
-          rf_spend=new_data.rf_spend,
-          revenue_per_kpi=new_data.revenue_per_kpi,
-      )
-      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
-          new_data=opt_freq_data,
-      ).optimal_frequency
-      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(
-          optimal_frequency, dtype=backend.float32
-      )
-      reach = backend.divide_no_nan(
-          new_data.reach * new_data.frequency, frequency
-      )
-      inc_outcome_new_data = analyzer.DataTensors(
-          media=new_data.media,
-          reach=reach,
-          frequency=frequency,
-          media_spend=new_data.media_spend,
-          rf_spend=new_data.rf_spend,
-          revenue_per_kpi=new_data.revenue_per_kpi,
-      )
-    else:
-      inc_outcome_new_data = new_data
-    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
-        new_data=inc_outcome_new_data,
-        include_non_paid_channels=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-    )
-    inc_outcome_multiplier_1 = response_curve_data[
-        constants.INCREMENTAL_OUTCOME
-    ].sel(spend_multiplier=1.0, metric="mean")
-    backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),
-        inc_outcome_multiplier_1.values,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-  def test_response_curves_new_times_data_correct(self):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    max_lag = self.meridian_media_and_rf.model_spec.max_lag
-    n_new_times = 15
-    total_times = max_lag + n_new_times
-    selected_times_str = self.meridian_media_and_rf.input_data.time.values[
-        -n_new_times:
-    ].tolist()
-    new_data_times = self.meridian_media_and_rf.input_data.time.values[
-        -total_times:
-    ].tolist()
-
-    new_data = analyzer.DataTensors(
-        media=self.meridian_media_and_rf.media_tensors.media[
-            ..., -total_times:, :
-        ],
-        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-            ..., -total_times:, :
-        ],
-        reach=self.meridian_media_and_rf.rf_tensors.reach[
-            ..., -total_times:, :
-        ],
-        frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-            ..., -total_times:, :
-        ],
-        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-            ..., -total_times:, :
-        ],
-        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-            ..., -total_times:
-        ],
-        time=new_data_times,
-    )
-    actual = self.analyzer_media_and_rf.response_curves(
-        new_data=new_data,
-        selected_times=selected_times_str,
-    )
-    expected = self.analyzer_media_and_rf.response_curves(
-        selected_times=selected_times_str
-    )
-    xr.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
-
-  @parameterized.named_parameters(
-      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
-      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
-  )
-  def test_response_curves_new_data_same_times(self, use_optimal_frequency):
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=self.inference_data_media_and_rf
-    )
-    # Modify only the media tensor, keep other tensors the same.
-    new_media = self.meridian_media_and_rf.media_tensors.media * 2
-    new_data = analyzer.DataTensors(
-        media=new_media,
-    )
-    response_curve_data = self.analyzer_media_and_rf.response_curves(
-        new_data=new_data,
-        use_optimal_frequency=use_optimal_frequency,
-    )
-    original_response_curve_data = self.analyzer_media_and_rf.response_curves(
-        use_optimal_frequency=use_optimal_frequency,
-    )
-
-    # Spend should be the same as original.
-    backend_test_utils.assert_allclose(
-        response_curve_data[constants.SPEND].values,
-        original_response_curve_data[constants.SPEND].values,
-    )
-
-    # Incremental outcome for multiplier 1.0 should match the result of
-    # incremental_outcome called directly with the new_data.
-    if use_optimal_frequency:
-      opt_freq_data = analyzer.DataTensors(
-          media=new_data.media,
-          rf_impressions=self.meridian_media_and_rf.rf_tensors.reach
-          * self.meridian_media_and_rf.rf_tensors.frequency,
-          media_spend=self.meridian_media_and_rf.media_tensors.media_spend,
-          rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend,
-          revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi,
-      )
-      optimal_frequency = self.analyzer_media_and_rf.optimal_freq(
-          new_data=opt_freq_data,
-      ).optimal_frequency
-      frequency = backend.ones_like(
-          self.meridian_media_and_rf.rf_tensors.frequency
-      ) * backend.to_tensor(optimal_frequency, dtype=backend.float32)
-      reach = backend.divide_no_nan(
-          self.meridian_media_and_rf.rf_tensors.reach
-          * self.meridian_media_and_rf.rf_tensors.frequency,
-          frequency,
-      )
-      inc_outcome_new_data = analyzer.DataTensors(
-          media=new_data.media,
-          reach=reach,
-          frequency=frequency,
-      )
-    else:
-      inc_outcome_new_data = new_data
-    expected_inc_outcome = self.analyzer_media_and_rf.incremental_outcome(
-        new_data=inc_outcome_new_data,
-        include_non_paid_channels=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-    )
-    inc_outcome_multiplier_1 = response_curve_data[
-        constants.INCREMENTAL_OUTCOME
-    ].sel(spend_multiplier=1.0, metric="mean")
-    backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),
-        inc_outcome_multiplier_1.values,
-        rtol=1e-3,
-        atol=1e-3,
-    )
-
-    # Check coords and shapes.
-    self.assertEqual(
-        list(response_curve_data.coords.keys()),
-        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
-    )
-    self.assertEqual(
-        list(response_curve_data.data_vars.keys()),
-        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
-    )
-    self.assertEqual(
-        response_curve_data.sizes[constants.CHANNEL],
-        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
-    )
-    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
-    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
-
 
 class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
 
@@ -5750,6 +5431,327 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
           " not be split.",
           str(w[0].message),
       )
+
+  def test_response_curves_check_both_channel_types_returns_correct_spend(self):
+    response_curve_data = self.analyzer.response_curves(by_reach=False)
+    response_data_spend = response_curve_data.spend.values
+
+    media_summary_spend = self.analyzer.summary_metrics(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        marginal_roi_by_reach=False,
+    ).spend[:-1]
+    backend_test_utils.assert_allequal(
+        media_summary_spend * 2,
+        response_data_spend[-1],
+    )
+
+  def test_response_curves_selected_times_wrong_type(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must be a list of strings or a list of booleans.",
+    ):
+      self.analyzer.response_curves(
+          selected_times=["random_time", False, True],
+      )
+
+  def test_response_curves_selected_times_wrong_time_dim_names(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must match the time dimension names from "
+        "meridian.InputData.",
+    ):
+      self.analyzer.response_curves(selected_times=["random_time"])
+
+  def test_response_curves_selected_times_no_new_data_wrong_time(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`selected_times` must match the time dimension names from "
+        "meridian.InputData.",
+    ):
+      self.analyzer.response_curves(
+          selected_times=["2022-01-01"]  # Not in input_data.time
+      )
+
+  def test_response_curves_new_data_selected_times_wrong_time(self):
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian.media_tensors.media[..., -n_new_times:, :],
+        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],
+        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],
+        media_spend=self.meridian.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],
+        organic_media=self.meridian.organic_media_tensors.organic_media[
+            ..., -n_new_times:, :
+        ],
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+            ..., -n_new_times:, :
+        ],
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+            ..., -n_new_times:, :
+        ],
+        non_media_treatments=self.meridian.non_media_treatments[
+            ..., -n_new_times:, :
+        ],
+        time=self.meridian.input_data.time.values[-n_new_times:],
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
+        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
+        " provided with a different number of time periods than in `InputData`,"
+        r" then \(1\) `selected_times` must be a list of booleans with length"
+        r" equal to the number of time periods in the new data, or \(2\)"
+        " `selected_times` must be a list of strings and `new_time` must be"
+        " provided and `selected_times` must be a subset of `new_time`.",
+    ):
+      self.analyzer.response_curves(
+          new_data=new_data, selected_times=["2022-01-01"]
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_times(self, use_optimal_frequency):
+    n_new_times = 15
+    new_data = analyzer.DataTensors(
+        media=self.meridian.media_tensors.media[..., -n_new_times:, :],
+        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],
+        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],
+        media_spend=self.meridian.media_tensors.media_spend[
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],
+        organic_media=self.meridian.organic_media_tensors.organic_media[
+            ..., -n_new_times:, :
+        ],
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+            ..., -n_new_times:, :
+        ],
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+            ..., -n_new_times:, :
+        ],
+        non_media_treatments=self.meridian.non_media_treatments[
+            ..., -n_new_times:, :
+        ],
+        time=self.meridian.input_data.time.values[-n_new_times:],
+    )
+    response_curve_data = self.analyzer.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertNotIn(constants.TIME, response_curve_data.coords)
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
+    # Spend for multiplier 1.0 should match the aggregated spend from new_data.
+    expected_spend = self.analyzer.get_aggregated_spend(new_data=new_data)
+    backend_test_utils.assert_allclose(
+        response_curve_data[constants.SPEND].sel(spend_multiplier=1.0),
+        expected_spend.data,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=new_data.reach * new_data.frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+          organic_media=new_data.organic_media,
+          organic_reach=new_data.organic_reach,
+          organic_frequency=new_data.organic_frequency,
+          non_media_treatments=new_data.non_media_treatments,
+      )
+      optimal_frequency = self.analyzer.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(
+          optimal_frequency, dtype=backend.float32
+      )
+      reach = backend.divide_no_nan(
+          new_data.reach * new_data.frequency, frequency
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+          media_spend=new_data.media_spend,
+          rf_spend=new_data.rf_spend,
+          revenue_per_kpi=new_data.revenue_per_kpi,
+          organic_media=new_data.organic_media,
+          organic_reach=new_data.organic_reach,
+          organic_frequency=new_data.organic_frequency,
+          non_media_treatments=new_data.non_media_treatments,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    backend_test_utils.assert_allclose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+  def test_response_curves_new_times_data_correct(self):
+    max_lag = self.meridian.model_spec.max_lag
+    n_new_times = 15
+    total_times = max_lag + n_new_times
+    selected_times_str = self.meridian.input_data.time.values[
+        -n_new_times:
+    ].tolist()
+    new_data_times = self.meridian.input_data.time.values[
+        -total_times:
+    ].tolist()
+
+    new_data = analyzer.DataTensors(
+        media=self.meridian.media_tensors.media[..., -total_times:, :],
+        media_spend=self.meridian.media_tensors.media_spend[
+            ..., -total_times:, :
+        ],
+        reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
+        frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+        organic_media=self.meridian.organic_media_tensors.organic_media[
+            ..., -total_times:, :
+        ],
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+            ..., -total_times:, :
+        ],
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+            ..., -total_times:, :
+        ],
+        non_media_treatments=self.meridian.non_media_treatments[
+            ..., -total_times:, :
+        ],
+        time=new_data_times,
+    )
+    actual = self.analyzer.response_curves(
+        new_data=new_data,
+        selected_times=selected_times_str,
+    )
+    expected = self.analyzer.response_curves(selected_times=selected_times_str)
+    xr.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
+      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+  )
+  def test_response_curves_new_data_same_times(self, use_optimal_frequency):
+    # Modify only the media tensor, keep other tensors the same.
+    new_media = self.meridian.media_tensors.media * 2
+    new_data = analyzer.DataTensors(
+        media=new_media,
+    )
+    response_curve_data = self.analyzer.response_curves(
+        new_data=new_data,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+    original_response_curve_data = self.analyzer.response_curves(
+        use_optimal_frequency=use_optimal_frequency,
+    )
+
+    # Spend should be the same as original.
+    backend_test_utils.assert_allclose(
+        response_curve_data[constants.SPEND].values,
+        original_response_curve_data[constants.SPEND].values,
+    )
+
+    # Incremental outcome for multiplier 1.0 should match the result of
+    # incremental_outcome called directly with the new_data.
+    if use_optimal_frequency:
+      opt_freq_data = analyzer.DataTensors(
+          media=new_data.media,
+          rf_impressions=self.meridian.rf_tensors.reach
+          * self.meridian.rf_tensors.frequency,
+          media_spend=self.meridian.media_tensors.media_spend,
+          rf_spend=self.meridian.rf_tensors.rf_spend,
+          revenue_per_kpi=self.meridian.revenue_per_kpi,
+          organic_media=self.meridian.organic_media_tensors.organic_media,
+          organic_reach=self.meridian.organic_rf_tensors.organic_reach,
+          organic_frequency=self.meridian.organic_rf_tensors.organic_frequency,
+          non_media_treatments=self.meridian.non_media_treatments,
+      )
+      optimal_frequency = self.analyzer.optimal_freq(
+          new_data=opt_freq_data,
+      ).optimal_frequency
+      frequency = backend.ones_like(
+          self.meridian.rf_tensors.frequency
+      ) * backend.to_tensor(optimal_frequency, dtype=backend.float32)
+      reach = backend.divide_no_nan(
+          self.meridian.rf_tensors.reach * self.meridian.rf_tensors.frequency,
+          frequency,
+      )
+      inc_outcome_new_data = analyzer.DataTensors(
+          media=new_data.media,
+          reach=reach,
+          frequency=frequency,
+      )
+    else:
+      inc_outcome_new_data = new_data
+    expected_inc_outcome = self.analyzer.incremental_outcome(
+        new_data=inc_outcome_new_data,
+        include_non_paid_channels=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+    )
+    inc_outcome_multiplier_1 = response_curve_data[
+        constants.INCREMENTAL_OUTCOME
+    ].sel(spend_multiplier=1.0, metric="mean")
+    backend_test_utils.assert_allclose(
+        np.mean(expected_inc_outcome, axis=(0, 1)),
+        inc_outcome_multiplier_1.values,
+        rtol=1e-3,
+        atol=1e-3,
+    )
+
+    # Check coords and shapes.
+    self.assertEqual(
+        list(response_curve_data.coords.keys()),
+        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
+    )
+    self.assertEqual(
+        list(response_curve_data.data_vars.keys()),
+        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
+    )
+    self.assertEqual(
+        response_curve_data.sizes[constants.CHANNEL],
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
+    self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
