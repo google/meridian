@@ -913,153 +913,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
           selected_times=["random_time", False, True],
       )
 
-  @parameterized.product(
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[
-          None,
-          ["2021-04-19", "2021-09-13", "2021-12-13"],
-          [False] * (_N_TIMES - 3) + [True] * 3,
-      ],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-  )
-  def test_filter_and_aggregate_geos_and_times_returns_correct_shape(
-      self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-  ):
-    tensor = backend.to_tensor(self.input_data_media_only.media_spend)
-    modified_tensor = (
-        self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-            tensor,
-            selected_geos=selected_geos,
-            selected_times=selected_times,
-            aggregate_geos=aggregate_geos,
-            aggregate_times=aggregate_times,
-        )
-    )
-    expected_shape = ()
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      if selected_times is not None:
-        if all(isinstance(time, bool) for time in selected_times):
-          n_times = sum(selected_times)
-        else:
-          n_times = len(selected_times)
-      else:
-        n_times = _N_TIMES
-      expected_shape += (n_times,)
-    expected_shape += (_N_MEDIA_CHANNELS,)
-    self.assertEqual(modified_tensor.shape, expected_shape)
-
-  @parameterized.product(
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      optimal_frequency=[None, [1.0, 3.0]],
-  )
-  def test_get_aggregated_impressions_returns_correct_shape(
-      self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      optimal_frequency: Sequence[float] | None,
-  ):
-    impressions = self.analyzer_media_only.get_aggregated_impressions(
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        optimal_frequency=optimal_frequency,
-    )
-    expected_shape = ()
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS,)
-    self.assertEqual(impressions.shape, expected_shape)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      geos_to_include=[None, ["geo_1", "geo_3"]],
-      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_expected_outcome_media_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      geos_to_include: Sequence[str] | None,
-      times_to_include: Sequence[str] | None,
-  ):
-    outcome = self.analyzer_media_only.expected_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=geos_to_include,
-        selected_times=times_to_include,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(times_to_include),)
-          if times_to_include is not None
-          else (_N_TIMES,)
-      )
-    self.assertEqual(outcome.shape, expected_shape)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_incremental_outcome_media_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    outcome = self.analyzer_media_only.incremental_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS,)
-    self.assertEqual(outcome.shape, expected_shape)
-
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
       dict(
@@ -1108,36 +961,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      by_reach=[False, True],
-  )
-  def test_marginal_roi_media_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      by_reach: bool,
-  ):
-    mroi = self.analyzer_media_only.marginal_roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        by_reach=by_reach,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS,)
-    self.assertEqual(mroi.shape, expected_shape)
-
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
       dict(
@@ -1179,72 +1002,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_roi_media_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    roi = self.analyzer_media_only.roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_MEDIA_CHANNELS,)
-    self.assertEqual(roi.shape, expected_shape)
-
-  def test_roi_media_only_spend_1d_returns_correct_value(self):
-    total_spend = self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-        self.meridian_media_only.media_tensors.media_spend
-    )
-    roi = self.analyzer_media_only.roi(
-        new_data=analyzer.DataTensors(media_spend=total_spend)
-    )
-    expected_roi = self.analyzer_media_only.incremental_outcome() / total_spend
-    backend_test_utils.assert_allclose(roi, expected_roi)
-
-  def test_roi_media_only_default_returns_correct_value(self):
-    roi = self.analyzer_media_only.roi()
-    total_spend = self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-        self.meridian_media_only.media_tensors.media_spend
-    )
-    expected_roi = self.analyzer_media_only.incremental_outcome() / total_spend
-    backend_test_utils.assert_allclose(expected_roi, roi)
-
-  def test_roi_zero_media_returns_zero(self):
-    new_media = backend.zeros_like(
-        self.meridian_media_only.media_tensors.media, dtype=backend.float32
-    )
-    roi = self.analyzer_media_only.roi(
-        new_data=analyzer.DataTensors(media=new_media)
-    )
-    backend_test_utils.assert_allclose(
-        roi, backend.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
-    )
-
-  def test_roi_zero_media_spend_returns_inf(self):
-    new_media_spend = backend.zeros_like(
-        self.meridian_media_only.media_tensors.media_spend,
-        dtype=backend.float32,
-    )
-    roi = self.analyzer_media_only.roi(
-        new_data=analyzer.DataTensors(media_spend=new_media_spend)
-    )
-    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))
-
   def test_optimal_frequency_data_media_only_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -1268,150 +1025,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         - set([constants.SLOPE_M]),
     )
 
-  def test_response_curves_returns_correct_data(self):
-    response_curve_data = self.analyzer_media_only.response_curves()
-    self.assertEqual(
-        list(response_curve_data.coords.keys()),
-        [constants.CHANNEL, constants.METRIC, constants.SPEND_MULTIPLIER],
-    )
-    self.assertEqual(
-        list(response_curve_data.data_vars.keys()),
-        [constants.SPEND, constants.INCREMENTAL_OUTCOME],
-    )
-    response_curves_df = (
-        response_curve_data[[constants.SPEND, constants.INCREMENTAL_OUTCOME]]
-        .to_dataframe()
-        .reset_index()
-        .pivot(
-            index=[
-                constants.CHANNEL,
-                constants.SPEND,
-                constants.SPEND_MULTIPLIER,
-            ],
-            columns=constants.METRIC,
-            values=constants.INCREMENTAL_OUTCOME,
-        )
-    ).reset_index()
-    self.assertContainsSubset(
-        list(set(response_curves_df[constants.CHANNEL])),
-        ["ch_0", "ch_2", "ch_1"],
-    )
-    self.assertEqual(max(response_curves_df[constants.SPEND_MULTIPLIER]), 2.0)
-    for i, mean in enumerate(response_curves_df[constants.MEAN]):
-      self.assertGreaterEqual(mean, response_curves_df[constants.CI_LO][i])
-      self.assertLessEqual(mean, response_curves_df[constants.CI_HI][i])
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_media_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    model_analyzer = self.analyzer_media_only
-    num_channels = _N_MEDIA_CHANNELS
-
-    media_summary = model_analyzer.summary_metrics(
-        confidence_level=0.8,
-        marginal_roi_by_reach=False,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_channel_shape = ()
-    if not aggregate_geos:
-      expected_channel_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_channel_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # (ch_1, ch_2, ..., Total_media, [mean, median, ci_lo, ci_hi],
-    # [prior, posterior])
-    expected_channel_shape += (num_channels + 1,)
-    expected_shape = expected_channel_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.impressions.shape, expected_channel_shape)
-    self.assertEqual(
-        media_summary.pct_of_impressions.shape, expected_channel_shape
-    )
-    self.assertEqual(media_summary.spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.pct_of_spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.cpm.shape, expected_channel_shape)
-    self.assertEqual(media_summary.incremental_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-    if aggregate_times:
-      self.assertEqual(media_summary.roi.shape, expected_shape)
-      self.assertEqual(media_summary.effectiveness.shape, expected_shape)
-      self.assertEqual(media_summary.mroi.shape, expected_shape)
-      self.assertEqual(media_summary.cpik.shape, expected_shape)
-    else:
-      self.assertNotIn(constants.ROI, media_summary.data_vars)
-      self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
-      self.assertNotIn(constants.MROI, media_summary.data_vars)
-      self.assertNotIn(constants.CPIK, media_summary.data_vars)
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_baseline_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    analyzer_ = self.analyzer_media_only
-
-    media_summary = analyzer_.baseline_summary_metrics(
-        confidence_level=0.8,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_geo_and_time_shape = ()
-    if not aggregate_geos:
-      expected_geo_and_time_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_geo_and_time_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # ([mean, median, ci_lo, ci_hi], [prior, posterior])
-    expected_shape = expected_geo_and_time_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-
-  def test_get_aggregated_spend_correct_channel_names(self):
-    actual_hist_spend = self.analyzer_media_only.get_aggregated_spend(
-        selected_times=None, include_rf=False
-    )
-    expected_channel_names = self.input_data_media_only.get_all_paid_channels()
-
-    self.assertSameElements(
-        expected_channel_names, actual_hist_spend.channel.data
-    )
-
   def test_get_aggregated_spend_requests_rf_when_no_rf_throws_warning(self):
     with self.assertWarnsRegex(
         UserWarning,
@@ -1425,82 +1038,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   ):
     actual = self.analyzer_media_only.get_aggregated_spend(include_media=False)
     backend_test_utils.assert_allequal(actual.data, [])
-
-
-class AnalyzerMediaOnlyNoControlsTest(backend_test_utils.MeridianTestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(AnalyzerMediaOnlyNoControlsTest, cls).setUpClass()
-
-    cls.input_data_media_only_no_controls = (
-        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=0,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            seed=0,
-        )
-    )
-
-    model_spec = spec.ModelSpec(max_lag=15)
-    cls.meridian_media_only_no_controls = model.Meridian(
-        input_data=cls.input_data_media_only_no_controls, model_spec=model_spec
-    )
-    cls.analyzer_media_only_no_controls = analyzer.Analyzer(
-        cls.meridian_media_only_no_controls
-    )
-
-    cls.inference_data_media_only_no_controls = _build_inference_data(
-        _TEST_SAMPLE_PRIOR_MEDIA_ONLY_NO_CONTROLS_PATH,
-        _TEST_SAMPLE_POSTERIOR_MEDIA_ONLY_NO_CONTROLS_PATH,
-    )
-
-    cls.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(
-                lambda unused_self: cls.inference_data_media_only_no_controls
-            ),
-        )
-    )
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      geos_to_include=[None, ["geo_1", "geo_3"]],
-      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_expected_outcome_media_only_no_controls_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      geos_to_include: Sequence[str] | None,
-      times_to_include: Sequence[str] | None,
-  ):
-    outcome = self.analyzer_media_only_no_controls.expected_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=geos_to_include,
-        selected_times=times_to_include,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(times_to_include),)
-          if times_to_include is not None
-          else (_N_TIMES,)
-      )
-    self.assertEqual(outcome.shape, expected_shape)
 
 
 class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
@@ -1538,75 +1075,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
             new=property(lambda unused_self: cls.inference_data_rf_only),
         )
     )
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      geos_to_include=[None, ["geo_1", "geo_3"]],
-      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_expected_outcome_rf_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      geos_to_include: Sequence[str] | None,
-      times_to_include: Sequence[str] | None,
-  ):
-    outcome = self.analyzer_rf_only.expected_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=geos_to_include,
-        selected_times=times_to_include,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(times_to_include),)
-          if times_to_include is not None
-          else (_N_TIMES,)
-      )
-    self.assertEqual(outcome.shape, expected_shape)
-
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_incremental_outcome_rf_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    outcome = self.analyzer_rf_only.incremental_outcome(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-    expected_shape += (_N_RF_CHANNELS,)
-    self.assertEqual(outcome.shape, expected_shape)
 
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
@@ -1655,36 +1123,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      by_reach=[False, True],
-  )
-  def test_marginal_roi_rf_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      by_reach: bool,
-  ):
-    mroi = self.analyzer_rf_only.marginal_roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        by_reach=by_reach,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_RF_CHANNELS,)
-    self.assertEqual(mroi.shape, expected_shape)
-
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
       dict(
@@ -1729,254 +1167,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  @parameterized.product(
-      use_posterior=[False, True],
-      aggregate_geos=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_roi_rf_only_returns_correct_shape(
-      self,
-      use_posterior: bool,
-      aggregate_geos: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    roi = self.analyzer_rf_only.roi(
-        use_posterior=use_posterior,
-        aggregate_geos=aggregate_geos,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
-    if not aggregate_geos:
-      expected_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    expected_shape += (_N_RF_CHANNELS,)
-    self.assertEqual(roi.shape, expected_shape)
-
-  def test_roi_rf_only_default_returns_correct_value(self):
-    roi = self.analyzer_rf_only.roi()
-    total_spend = self.analyzer_rf_only.filter_and_aggregate_geos_and_times(
-        self.meridian_rf_only.rf_tensors.rf_spend
-    )
-    expected_roi = self.analyzer_rf_only.incremental_outcome() / total_spend
-    backend_test_utils.assert_allclose(expected_roi, roi)
-
-  def test_by_reach_returns_correct_values(self):
-    mroi = self.analyzer_rf_only.marginal_roi(
-        use_posterior=True,
-        aggregate_geos=True,
-        selected_geos=None,
-        selected_times=None,
-        by_reach=True,
-    )
-    roi = self.analyzer_rf_only.roi(
-        use_posterior=True,
-        aggregate_geos=True,
-        selected_geos=None,
-        selected_times=None,
-    )
-    backend_test_utils.assert_allclose(
-        mroi,
-        roi,
-        atol=1e-2,
-        rtol=1e-2,
-    )
-
-  def test_media_summary_warns_if_time_not_aggregated(self):
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      media_summary = self.analyzer_rf_only.summary_metrics(
-          confidence_level=0.8,
-          marginal_roi_by_reach=False,
-          aggregate_geos=True,
-          aggregate_times=False,
-          selected_geos=None,
-          selected_times=None,
-      )
-      # TODO: Remove this once the warning is fixed.
-      user_warnings = [
-          warning
-          for warning in w
-          if not issubclass(warning.category, DeprecationWarning)
-      ]
-      self.assertLen(user_warnings, 1)
-      self.assertTrue(issubclass(user_warnings[0].category, UserWarning))
-      self.assertIn(
-          "ROI, mROI, Effectiveness, and CPIK are not reported because they do "
-          "not have a clear interpretation by time period.",
-          str(user_warnings[0].message),
-      )
-      self.assertNotIn(constants.ROI, media_summary.data_vars)
-      self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
-      self.assertNotIn(constants.MROI, media_summary.data_vars)
-      self.assertNotIn(constants.CPIK, media_summary.data_vars)
-
-  def test_optimal_frequency_data_rf_only_correct(self):
-    actual = self.analyzer_rf_only.optimal_freq(
-        freq_grid=[1.0, 2.0, 3.0],
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        use_posterior=True,
-    )
-    expected = xr.Dataset(
-        coords={
-            constants.FREQUENCY: [1.0, 2.0, 3.0],
-            constants.RF_CHANNEL: ["rf_ch_0", "rf_ch_1"],
-            constants.METRIC: [
-                constants.MEAN,
-                constants.MEDIAN,
-                constants.CI_LO,
-                constants.CI_HI,
-            ],
-        },
-        data_vars={
-            constants.ROI: (
-                [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [
-                        [3.34, 1.81, 0.20, 10.17],
-                        [7.15, 7.77, 0.42, 13.10],
-                    ],  # freq=1.0
-                    [
-                        [4.76, 3.24, 0.66, 10.79],
-                        [4.83, 5.25, 1.13, 7.86],
-                    ],  # freq=2.0
-                    [
-                        [4.87, 3.70, 1.17, 9.60],
-                        [3.72, 3.91, 1.47, 5.71],
-                    ],  # freq=3.0
-                ],
-            ),
-            constants.OPTIMAL_FREQUENCY: ([constants.RF_CHANNEL], [3.0, 1.0]),
-            constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1326.76, 1008.16, 320.44, 2614.4],
-                    [2060.22, 2238.75, 122.18, 3772.43],
-                ],
-            ),
-            constants.OPTIMIZED_EFFECTIVENESS: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [4.055367e-04, 3.081534e-04, 9.794392e-05, 7.991136e-04],
-                    [5.891235e-04, 6.401768e-04, 3.493646e-05, 1.078733e-03],
-                ],
-            ),
-            constants.OPTIMIZED_ROI: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[4.87, 3.70, 1.18, 9.61], [7.16, 7.77, 0.42, 13.10]],
-            ),
-            constants.OPTIMIZED_MROI_BY_REACH: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[4.87, 3.70, 1.18, 9.59], [7.16, 7.78, 0.42, 13.12]],
-            ),
-            constants.OPTIMIZED_MROI_BY_FREQUENCY: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [[4.21, 3.26, 2.58, 8.68], [3.11, 3.80, 1.14, 3.95]],
-            ),
-            constants.OPTIMIZED_CPIK: (
-                [constants.RF_CHANNEL, constants.METRIC],
-                [
-                    [1.496, 1.523, 0.329, 2.666],
-                    [2.191, 0.726, 0.239, 7.546],
-                ],
-            ),
-        },
-        attrs={
-            constants.CONFIDENCE_LEVEL: constants.DEFAULT_CONFIDENCE_LEVEL,
-            "use_posterior": True,
-        },
-    )
-
-    xr.testing.assert_allclose(actual, expected, atol=0.1)
-    xr.testing.assert_allclose(actual.frequency, expected.frequency)
-    xr.testing.assert_allclose(actual.rf_channel, expected.rf_channel)
-    xr.testing.assert_allclose(actual.metric, expected.metric)
-    xr.testing.assert_allclose(actual.roi, expected.roi, atol=0.05)
-    xr.testing.assert_allclose(
-        actual.optimal_frequency, expected.optimal_frequency
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_incremental_outcome,
-        expected.optimized_incremental_outcome,
-        atol=0.1,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_effectiveness,
-        expected.optimized_effectiveness,
-        atol=0.00001,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_roi,
-        expected.optimized_roi,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_reach,
-        expected.optimized_mroi_by_reach,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_mroi_by_frequency,
-        expected.optimized_mroi_by_frequency,
-        atol=0.01,
-    )
-    xr.testing.assert_allclose(
-        actual.optimized_cpik,
-        expected.optimized_cpik,
-        atol=0.01,
-    )
-    self.assertEqual(actual.confidence_level, expected.confidence_level)
-    self.assertEqual(actual.use_posterior, expected.use_posterior)
-
-  def test_optimal_frequency_freq_grid(self):
-    max_freq = np.max(
-        np.array(self.analyzer_rf_only._meridian.rf_tensors.frequency)
-    )
-    freq_grid = list(np.arange(1, max_freq, 0.1))
-    roi = np.zeros(
-        (len(freq_grid), self.analyzer_rf_only._meridian.n_rf_channels, 3)
-    )
-    for i, freq in enumerate(freq_grid):
-      new_frequency = (
-          backend.ones_like(
-              self.analyzer_rf_only._meridian.rf_tensors.frequency
-          )
-          * freq
-      )
-      new_reach = (
-          self.analyzer_rf_only._meridian.rf_tensors.frequency
-          * self.analyzer_rf_only._meridian.rf_tensors.reach
-          / new_frequency
-      )
-      dim_kwargs = {
-          "selected_geos": None,
-          "selected_times": None,
-          "aggregate_geos": True,
-      }
-      roi_temp = self.analyzer_rf_only.roi(
-          new_data=analyzer.DataTensors(
-              reach=new_reach, frequency=new_frequency
-          ),
-          use_posterior=True,
-          **dim_kwargs,
-      )[..., -self.analyzer_rf_only._meridian.n_rf_channels :]
-      roi[i, :, 0] = np.mean(roi_temp, (0, 1))
-      roi[i, :, 1] = np.quantile(roi_temp, (1 - 0.9) / 2, (0, 1))
-      roi[i, :, 2] = np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
-
-      backend_test_utils.assert_allequal(
-          roi[i, :, 0], np.mean(roi_temp, (0, 1))
-      )
-      backend_test_utils.assert_allequal(
-          roi[i, :, 1], np.quantile(roi_temp, (1 - 0.9) / 2, (0, 1))
-      )
-      backend_test_utils.assert_allequal(
-          roi[i, :, 2], np.quantile(roi_temp, (1 + 0.9) / 2, (0, 1))
-      )
-
   def test_rhat_rf_only_correct(self):
     rhat = self.analyzer_rf_only.get_rhat()
     self.assertSetEqual(
@@ -1990,130 +1180,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
     self.assertSetEqual(
         set(rhat_summary.param),
         set(constants.COMMON_PARAMETER_NAMES + constants.RF_PARAMETER_NAMES),
-    )
-
-  def test_response_curves_check_only_rf_channels_returns_correct_spend(self):
-    response_curve_data = self.analyzer_rf_only.response_curves(by_reach=False)
-    response_data_spend = response_curve_data.spend.values
-
-    media_summary_spend = self.analyzer_rf_only.summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-    ).spend[:-1]
-    backend_test_utils.assert_allequal(
-        media_summary_spend * 2,
-        response_data_spend[-1],
-    )
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_media_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    model_analyzer = self.analyzer_rf_only
-    num_channels = _N_RF_CHANNELS
-
-    media_summary = model_analyzer.summary_metrics(
-        confidence_level=0.8,
-        marginal_roi_by_reach=False,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_channel_shape = ()
-    if not aggregate_geos:
-      expected_channel_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_channel_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # (ch_1, ch_2, ..., Total_media, [mean, median,ci_lo, ci_hi],
-    # [prior, posterior])
-    expected_channel_shape += (num_channels + 1,)
-    expected_shape = expected_channel_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.impressions.shape, expected_channel_shape)
-    self.assertEqual(
-        media_summary.pct_of_impressions.shape, expected_channel_shape
-    )
-    self.assertEqual(media_summary.spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.pct_of_spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.cpm.shape, expected_channel_shape)
-    self.assertEqual(media_summary.incremental_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-    if aggregate_times:
-      self.assertEqual(media_summary.roi.shape, expected_shape)
-      self.assertEqual(media_summary.effectiveness.shape, expected_shape)
-      self.assertEqual(media_summary.mroi.shape, expected_shape)
-      self.assertEqual(media_summary.cpik.shape, expected_shape)
-    else:
-      self.assertNotIn(constants.ROI, media_summary.data_vars)
-      self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
-      self.assertNotIn(constants.MROI, media_summary.data_vars)
-      self.assertNotIn(constants.CPIK, media_summary.data_vars)
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_baseline_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    analyzer_ = self.analyzer_rf_only
-
-    media_summary = analyzer_.baseline_summary_metrics(
-        confidence_level=0.8,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    expected_geo_and_time_shape = ()
-    if not aggregate_geos:
-      expected_geo_and_time_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_geo_and_time_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # ([mean, median, ci_lo, ci_hi], [prior, posterior])
-    expected_shape = expected_geo_and_time_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-
-  def test_get_aggregated_spend_correct_channel_names(self):
-    actual_hist_spend = self.analyzer_rf_only.get_aggregated_spend(
-        selected_times=None, include_media=False
-    )
-    expected_channel_names = self.input_data_rf_only.get_all_paid_channels()
-
-    self.assertSameElements(
-        expected_channel_names, actual_hist_spend.channel.data
     )
 
   def test_get_aggregated_spend_requests_media_when_no_media_throws_warning(
@@ -4397,6 +3463,57 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     backend_test_utils.assert_allclose(actual, expected)
 
+  def test_roi_spend_1d_returns_correct_value(self):
+    total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.media_tensors.media_spend
+    )
+    total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.rf_tensors.rf_spend
+    )
+
+    backend_test_utils.assert_allclose(
+        self.analyzer.roi(
+            new_data=analyzer.DataTensors(
+                media_spend=total_media_spend, rf_spend=total_rf_spend
+            )
+        ),
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)
+        / backend.concatenate([total_media_spend, total_rf_spend], axis=-1),
+    )
+
+  def test_roi_zero_media_returns_zero(self):
+    new_data = analyzer.DataTensors(
+        media=backend.zeros_like(self.meridian.media_tensors.media),
+        reach=backend.zeros_like(self.meridian.rf_tensors.reach),
+    )
+
+    backend_test_utils.assert_allclose(
+        self.analyzer.roi(new_data=new_data),
+        backend.zeros((
+            _N_CHAINS,
+            _N_KEEP,
+            self.meridian.n_media_channels + self.meridian.n_rf_channels,
+        )),
+        atol=2e-6,
+    )
+
+  def test_roi_zero_media_spend_returns_inf(self):
+    new_media_spend = backend.zeros_like(
+        self.meridian.media_tensors.media_spend, dtype=backend.float32
+    )
+    new_rf_spend = backend.zeros_like(
+        self.meridian.rf_tensors.rf_spend, dtype=backend.float32
+    )
+
+    roi = self.analyzer.roi(
+        new_data=analyzer.DataTensors(
+            media_spend=new_media_spend,
+            rf_spend=new_rf_spend
+        )
+    )
+
+    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -4455,6 +3572,24 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         selected_times=list(self.input_data.time.values)[-n_new_times:]
     )
     backend_test_utils.assert_allclose(actual, expected)
+
+  def test_media_summary_warns_if_time_not_aggregated(self):
+    with self.assertWarnsRegex(
+        UserWarning,
+        "ROI, mROI, Effectiveness, and CPIK are not reported because they do "
+        "not have a clear interpretation by time period.",
+    ):
+      media_summary = self.analyzer.summary_metrics(
+          aggregate_times=False,
+      )
+
+    self.assertNotIn(constants.ROI, media_summary.data_vars)
+    self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
+    self.assertNotIn(constants.MROI, media_summary.data_vars)
+    self.assertNotIn(constants.CPIK, media_summary.data_vars)
+
+    self.assertIn(constants.INCREMENTAL_OUTCOME, media_summary.data_vars)
+    self.assertIn(constants.SPEND, media_summary.data_vars)
 
   def test_media_summary_returns_correct_values(self):
     media_summary = self.analyzer.summary_metrics(
