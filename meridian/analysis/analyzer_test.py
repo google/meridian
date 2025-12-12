@@ -701,517 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_media_summary_returns_correct_values(self):
-    media_summary = self.analyzer_media_and_rf.summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-        selected_geos=None,
-        selected_times=None,
-    )
-    self.assertEqual(
-        list(media_summary.data_vars.keys()),
-        [
-            constants.IMPRESSIONS,
-            constants.PCT_OF_IMPRESSIONS,
-            constants.SPEND,
-            constants.PCT_OF_SPEND,
-            constants.CPM,
-            constants.INCREMENTAL_OUTCOME,
-            constants.PCT_OF_CONTRIBUTION,
-            constants.ROI,
-            constants.EFFECTIVENESS,
-            constants.MROI,
-            constants.CPIK,
-        ],
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.impressions, analysis_test_utils.SAMPLE_IMPRESSIONS
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_impressions,
-        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.spend,
-        analysis_test_utils.SAMPLE_SPEND,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_spend,
-        analysis_test_utils.SAMPLE_PCT_OF_SPEND,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.cpm,
-        analysis_test_utils.SAMPLE_CPM,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.incremental_outcome,
-        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_contribution,
-        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.roi, analysis_test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.effectiveness,
-        analysis_test_utils.SAMPLE_EFFECTIVENESS,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.mroi,
-        analysis_test_utils.SAMPLE_MROI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.cpik,
-        analysis_test_utils.SAMPLE_CPIK,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-
-  def test_summary_metrics_kpi_values(self):
-    """Verifies that use_kpi=True produces different (and correct) metric values."""
-    media_summary = self.analyzer_media_and_rf.summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-        selected_geos=None,
-        selected_times=None,
-        use_kpi=True,
-    )
-    self.assertEqual(
-        list(media_summary.data_vars.keys()),
-        [
-            constants.IMPRESSIONS,
-            constants.PCT_OF_IMPRESSIONS,
-            constants.SPEND,
-            constants.PCT_OF_SPEND,
-            constants.CPM,
-            constants.INCREMENTAL_OUTCOME,
-            constants.PCT_OF_CONTRIBUTION,
-            constants.ROI,
-            constants.EFFECTIVENESS,
-            constants.MROI,
-            constants.CPIK,
-        ],
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.incremental_outcome,
-        analysis_test_utils.SAMPLE_INC_OUTCOME_KPI,
-        atol=1e-2,
-        rtol=1e-2,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.roi,
-        analysis_test_utils.SAMPLE_ROI_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.effectiveness,
-        analysis_test_utils.SAMPLE_EFFECTIVENESS_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.mroi,
-        analysis_test_utils.SAMPLE_MROI_KPI,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-
-  def test_media_summary_with_new_data_returns_correct_values(self):
-    data1 = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=_N_GEOS,
-        n_times=_N_TIMES,
-        n_media_times=_N_MEDIA_TIMES,
-        n_controls=_N_CONTROLS,
-        n_media_channels=_N_MEDIA_CHANNELS,
-        n_rf_channels=_N_RF_CHANNELS,
-        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
-        seed=1,
-    )
-    new_data = analyzer.DataTensors(
-        media=backend.to_tensor(data1.media, dtype=backend.float32),
-        reach=backend.to_tensor(data1.reach, dtype=backend.float32),
-        media_spend=backend.to_tensor(data1.media_spend, dtype=backend.float32),
-    )
-    media_summary = self.analyzer_media_and_rf.summary_metrics(
-        new_data=new_data,
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        marginal_roi_by_reach=False,
-        aggregate_geos=True,
-        aggregate_times=True,
-        selected_geos=None,
-        selected_times=None,
-    )
-    self.assertEqual(
-        list(media_summary.data_vars.keys()),
-        [
-            constants.IMPRESSIONS,
-            constants.PCT_OF_IMPRESSIONS,
-            constants.SPEND,
-            constants.PCT_OF_SPEND,
-            constants.CPM,
-            constants.INCREMENTAL_OUTCOME,
-            constants.PCT_OF_CONTRIBUTION,
-            constants.ROI,
-            constants.EFFECTIVENESS,
-            constants.MROI,
-            constants.CPIK,
-        ],
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.impressions),
-            analysis_test_utils.SAMPLE_IMPRESSIONS,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.impressions,
-        analysis_test_utils.SAMPLE_IMPRESSIONS_NEW_DATA,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.pct_of_impressions),
-            analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_impressions,
-        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS_NEW_DATA,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.spend), analysis_test_utils.SAMPLE_SPEND
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.spend,
-        analysis_test_utils.SAMPLE_SPEND_NEW_DATA,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.pct_of_spend),
-            analysis_test_utils.SAMPLE_PCT_OF_SPEND,
-            atol=1e-4,
-            rtol=1e-4,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_spend,
-        analysis_test_utils.SAMPLE_PCT_OF_SPEND_NEW_DATA,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    self.assertFalse(
-        np.allclose(np.array(media_summary.cpm), analysis_test_utils.SAMPLE_CPM)
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.cpm,
-        analysis_test_utils.SAMPLE_CPM_NEW_DATA,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.incremental_outcome),
-            analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
-            atol=1e-3,
-            rtol=1e-3,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.incremental_outcome,
-        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.pct_of_contribution),
-            analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
-            atol=1e-3,
-            rtol=1e-3,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.pct_of_contribution,
-        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.roi),
-            analysis_test_utils.SAMPLE_ROI,
-            atol=1e-3,
-            rtol=1e-3,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.roi,
-        analysis_test_utils.SAMPLE_ROI_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.effectiveness),
-            analysis_test_utils.SAMPLE_EFFECTIVENESS,
-            atol=1e-4,
-            rtol=1e-4,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.effectiveness,
-        analysis_test_utils.SAMPLE_EFFECTIVENESS_NEW_DATA,
-        atol=1e-4,
-        rtol=1e-4,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.mroi),
-            analysis_test_utils.SAMPLE_MROI,
-            atol=1e-3,
-            rtol=1e-3,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.mroi,
-        analysis_test_utils.SAMPLE_MROI_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-    self.assertFalse(
-        np.allclose(
-            np.array(media_summary.cpik),
-            analysis_test_utils.SAMPLE_CPIK,
-            atol=1e-3,
-            rtol=1e-3,
-        )
-    )
-    backend_test_utils.assert_allclose(
-        media_summary.cpik,
-        analysis_test_utils.SAMPLE_CPIK_NEW_DATA,
-        atol=1e-3,
-        rtol=1e-3,
-    )
-
-  def test_baseline_summary_returns_correct_values(self):
-    baseline_summary = self.analyzer_media_and_rf.baseline_summary_metrics(
-        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
-        aggregate_geos=True,
-        aggregate_times=True,
-        selected_geos=None,
-        selected_times=None,
-    )
-    self.assertIsNotNone(baseline_summary.baseline_outcome)
-    self.assertIsNotNone(baseline_summary.pct_of_contribution)
-    backend_test_utils.assert_allclose(
-        baseline_summary.baseline_outcome,
-        analysis_test_utils.SAMPLE_BASELINE_EXPECTED_OUTCOME,
-        atol=1e-2,
-        rtol=1e-2,
-    )
-    backend_test_utils.assert_allclose(
-        baseline_summary.pct_of_contribution,
-        analysis_test_utils.SAMPLE_BASELINE_PCT_OF_CONTRIBUTION,
-        atol=1e-2,
-        rtol=1e-2,
-    )
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      use_kpi=[False, True],
-  )
-  def test_media_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      use_kpi: bool,
-  ):
-    analyzer_ = self.analyzer_media_and_rf
-    num_channels = _N_MEDIA_CHANNELS + _N_RF_CHANNELS
-
-    media_summary = analyzer_.summary_metrics(
-        confidence_level=0.8,
-        marginal_roi_by_reach=False,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        use_kpi=use_kpi,
-    )
-    expected_channel_shape = ()
-    if not aggregate_geos:
-      expected_channel_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_channel_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # (ch_1, ch_2, ..., All_Channels, [mean, median, ci_lo, ci_hi],
-    # [prior, posterior])
-    expected_channel_shape += (num_channels + 1,)
-    expected_shape = expected_channel_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.impressions.shape, expected_channel_shape)
-    self.assertEqual(
-        media_summary.pct_of_impressions.shape, expected_channel_shape
-    )
-    self.assertEqual(media_summary.spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.pct_of_spend.shape, expected_channel_shape)
-    self.assertEqual(media_summary.cpm.shape, expected_channel_shape)
-    self.assertEqual(media_summary.incremental_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-    if aggregate_times:
-      self.assertEqual(media_summary.roi.shape, expected_shape)
-      self.assertEqual(media_summary.effectiveness.shape, expected_shape)
-      self.assertEqual(media_summary.mroi.shape, expected_shape)
-      self.assertEqual(media_summary.cpik.shape, expected_shape)
-    else:
-      self.assertNotIn(constants.ROI, media_summary.data_vars)
-      self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
-      self.assertNotIn(constants.MROI, media_summary.data_vars)
-      self.assertNotIn(constants.CPIK, media_summary.data_vars)
-
-  def test_summary_metrics_new_times_data_returns_correct_variables(self):
-    summary_metrics = self.analyzer_media_and_rf.summary_metrics(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[..., -15:, :],
-            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-                ..., -15:, :
-            ],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -15:, :],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -15:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -15:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -15:
-            ],
-        )
-    )
-    self.assertEqual(
-        list(summary_metrics.data_vars.keys()),
-        [
-            constants.IMPRESSIONS,
-            constants.PCT_OF_IMPRESSIONS,
-            constants.SPEND,
-            constants.PCT_OF_SPEND,
-            constants.CPM,
-            constants.INCREMENTAL_OUTCOME,
-            constants.ROI,
-            constants.EFFECTIVENESS,
-            constants.MROI,
-            constants.CPIK,
-        ],
-    )
-
-  def test_summary_metrics_new_times_data_aggregate_times_false(self):
-    summary_metrics = self.analyzer_media_and_rf.summary_metrics(
-        new_data=analyzer.DataTensors(
-            media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
-            media_spend=self.meridian_media_and_rf.media_tensors.media_spend[
-                ..., -5:, :
-            ],
-            reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
-            frequency=self.meridian_media_and_rf.rf_tensors.frequency[
-                ..., -5:, :
-            ],
-            rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[
-                ..., -5:, :
-            ],
-            revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[
-                ..., -5:
-            ],
-        ),
-        selected_times=[False, False, True, True, False],
-        aggregate_times=False,
-    )
-    self.assertEqual(list(summary_metrics.time), [2, 3])
-    self.assertEqual(
-        list(summary_metrics.data_vars.keys()),
-        [
-            "impressions",
-            "pct_of_impressions",
-            "spend",
-            "pct_of_spend",
-            "cpm",
-            "incremental_outcome",
-        ],
-    )
-
-  @parameterized.product(
-      aggregate_geos=[False, True],
-      aggregate_times=[False, True],
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-      use_kpi=[False, True],
-  )
-  def test_baseline_summary_returns_correct_shapes(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-      use_kpi: bool,
-  ):
-    analyzer_ = self.analyzer_media_and_rf
-
-    media_summary = analyzer_.baseline_summary_metrics(
-        confidence_level=0.8,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        use_kpi=use_kpi,
-    )
-    expected_geo_and_time_shape = ()
-    if not aggregate_geos:
-      expected_geo_and_time_shape += (
-          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
-      )
-    if not aggregate_times:
-      expected_geo_and_time_shape += (
-          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
-      )
-
-    # ([mean, median, ci_lo, ci_hi], [prior, posterior])
-    expected_shape = expected_geo_and_time_shape + (
-        4,
-        2,
-    )
-    self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
-    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
-
   def test_rhat_media_and_rf_correct(self):
     rhat = self.analyzer_media_and_rf.get_rhat()
     self.assertSetEqual(
@@ -5754,6 +5243,512 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
         selected_times=list(self.input_data.time.values)[-n_new_times:]
     )
     backend_test_utils.assert_allclose(actual, expected)
+
+  def test_media_summary_returns_correct_values(self):
+    media_summary = self.analyzer.summary_metrics(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self.assertEqual(
+        list(media_summary.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.PCT_OF_CONTRIBUTION,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.impressions, analysis_test_utils.SAMPLE_IMPRESSIONS
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_impressions,
+        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.spend,
+        analysis_test_utils.SAMPLE_SPEND,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_spend,
+        analysis_test_utils.SAMPLE_PCT_OF_SPEND,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.cpm,
+        analysis_test_utils.SAMPLE_CPM,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.incremental_outcome,
+        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_contribution,
+        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi, analysis_test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.effectiveness,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.cpik,
+        analysis_test_utils.SAMPLE_CPIK,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  def test_summary_metrics_kpi_values(self):
+    """Verifies that use_kpi=True produces different (and correct) metric values."""
+    media_summary = self.analyzer.summary_metrics(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+        use_kpi=True,
+    )
+    self.assertEqual(
+        list(media_summary.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.PCT_OF_CONTRIBUTION,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
+
+    backend_test_utils.assert_allclose(
+        media_summary.incremental_outcome,
+        analysis_test_utils.SAMPLE_INC_OUTCOME_KPI,
+        atol=1e-2,
+        rtol=1e-2,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi,
+        analysis_test_utils.SAMPLE_ROI_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.effectiveness,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI_KPI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  def test_media_summary_with_new_data_returns_correct_values(self):
+    data1 = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        seed=1,
+    )
+    new_data = analyzer.DataTensors(
+        media=backend.to_tensor(data1.media, dtype=backend.float32),
+        reach=backend.to_tensor(data1.reach, dtype=backend.float32),
+        media_spend=backend.to_tensor(data1.media_spend, dtype=backend.float32),
+        organic_media=backend.to_tensor(
+            data1.organic_media, dtype=backend.float32
+        ),
+        organic_reach=backend.to_tensor(
+            data1.organic_reach, dtype=backend.float32
+        ),
+    )
+    media_summary = self.analyzer.summary_metrics(
+        new_data=new_data,
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self.assertEqual(
+        list(media_summary.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.PCT_OF_CONTRIBUTION,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
+
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.impressions),
+            analysis_test_utils.SAMPLE_IMPRESSIONS,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.impressions,
+        analysis_test_utils.SAMPLE_IMPRESSIONS_NEW_DATA,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_impressions),
+            analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_impressions,
+        analysis_test_utils.SAMPLE_PCT_OF_IMPRESSIONS_NEW_DATA,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.spend), analysis_test_utils.SAMPLE_SPEND
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.spend,
+        analysis_test_utils.SAMPLE_SPEND_NEW_DATA,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_spend),
+            analysis_test_utils.SAMPLE_PCT_OF_SPEND,
+            atol=1e-4,
+            rtol=1e-4,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_spend,
+        analysis_test_utils.SAMPLE_PCT_OF_SPEND_NEW_DATA,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    self.assertFalse(
+        np.allclose(np.array(media_summary.cpm), analysis_test_utils.SAMPLE_CPM)
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.cpm,
+        analysis_test_utils.SAMPLE_CPM_NEW_DATA,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.incremental_outcome),
+            analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.incremental_outcome,
+        analysis_test_utils.SAMPLE_INCREMENTAL_OUTCOME_NEW_DATA,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.pct_of_contribution),
+            analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.pct_of_contribution,
+        analysis_test_utils.SAMPLE_PCT_OF_CONTRIBUTION_NEW_DATA,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.roi),
+            analysis_test_utils.SAMPLE_ROI,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi,
+        analysis_test_utils.SAMPLE_ROI_NEW_DATA,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.effectiveness),
+            analysis_test_utils.SAMPLE_EFFECTIVENESS,
+            atol=1e-4,
+            rtol=1e-4,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.effectiveness,
+        analysis_test_utils.SAMPLE_EFFECTIVENESS_NEW_DATA,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.mroi),
+            analysis_test_utils.SAMPLE_MROI,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI_NEW_DATA,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+    self.assertFalse(
+        np.allclose(
+            np.array(media_summary.cpik),
+            analysis_test_utils.SAMPLE_CPIK,
+            atol=1e-3,
+            rtol=1e-3,
+        )
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.cpik,
+        analysis_test_utils.SAMPLE_CPIK_NEW_DATA,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  @parameterized.product(
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
+  )
+  def test_media_summary_returns_correct_shapes(
+      self,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      use_kpi: bool,
+  ):
+    analyzer_ = self.analyzer
+
+    num_paid_channels = _N_MEDIA_CHANNELS + _N_RF_CHANNELS
+
+    media_summary = analyzer_.summary_metrics(
+        confidence_level=0.8,
+        marginal_roi_by_reach=False,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        use_kpi=use_kpi,
+    )
+
+    base_shape = ()
+    if not aggregate_geos:
+      base_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      base_shape += (
+          (len(selected_times),)
+          if selected_times is not None
+          else (media_summary.sizes[constants.TIME],)
+      )
+
+    expected_channel_shape = base_shape + (num_paid_channels + 1,)
+    expected_metric_shape = expected_channel_shape + (4, 2)
+
+    self.assertEqual(media_summary.impressions.shape, expected_channel_shape)
+    self.assertEqual(
+        media_summary.pct_of_impressions.shape, expected_channel_shape
+    )
+    self.assertEqual(media_summary.spend.shape, expected_channel_shape)
+    self.assertEqual(media_summary.pct_of_spend.shape, expected_channel_shape)
+    self.assertEqual(media_summary.cpm.shape, expected_channel_shape)
+
+    self.assertEqual(
+        media_summary.incremental_outcome.shape, expected_metric_shape
+    )
+    self.assertEqual(
+        media_summary.pct_of_contribution.shape, expected_metric_shape
+    )
+
+    if aggregate_times:
+      self.assertEqual(media_summary.roi.shape, expected_metric_shape)
+      self.assertEqual(media_summary.mroi.shape, expected_metric_shape)
+      self.assertEqual(media_summary.cpik.shape, expected_metric_shape)
+      self.assertEqual(media_summary.effectiveness.shape, expected_metric_shape)
+    else:
+      self.assertNotIn(constants.ROI, media_summary.data_vars)
+      self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
+      self.assertNotIn(constants.MROI, media_summary.data_vars)
+      self.assertNotIn(constants.CPIK, media_summary.data_vars)
+
+  def test_summary_metrics_new_times_data_returns_correct_variables(self):
+    summary_metrics = self.analyzer.summary_metrics(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -15:, :],
+            media_spend=self.meridian.media_tensors.media_spend[..., -15:, :],
+            reach=self.meridian.rf_tensors.reach[..., -15:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -15:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],
+            organic_media=self.meridian.organic_media_tensors.organic_media[
+                ..., -15:, :
+            ],
+            organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+                ..., -15:, :
+            ],
+            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+                ..., -15:, :
+            ],
+        )
+    )
+    self.assertEqual(
+        list(summary_metrics.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_OUTCOME,
+            constants.ROI,
+            constants.EFFECTIVENESS,
+            constants.MROI,
+            constants.CPIK,
+        ],
+    )
+
+  def test_summary_metrics_new_times_data_aggregate_times_false(self):
+    summary_metrics = self.analyzer.summary_metrics(
+        new_data=analyzer.DataTensors(
+            media=self.meridian.media_tensors.media[..., -5:, :],
+            media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],
+            reach=self.meridian.rf_tensors.reach[..., -5:, :],
+            frequency=self.meridian.rf_tensors.frequency[..., -5:, :],
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],
+            organic_media=self.meridian.organic_media_tensors.organic_media[
+                ..., -5:, :
+            ],
+            organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+                ..., -5:, :
+            ],
+            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+                ..., -5:, :
+            ],
+        ),
+        selected_times=[False, False, True, True, False],
+        aggregate_times=False,
+    )
+    self.assertEqual(list(summary_metrics.time), [2, 3])
+    self.assertEqual(
+        list(summary_metrics.data_vars.keys()),
+        [
+            "impressions",
+            "pct_of_impressions",
+            "spend",
+            "pct_of_spend",
+            "cpm",
+            "incremental_outcome",
+        ],
+    )
+
+  @parameterized.product(
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+      use_kpi=[False, True],
+  )
+  def test_baseline_summary_returns_correct_shapes(
+      self,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      use_kpi: bool,
+  ):
+    analyzer_ = self.analyzer
+
+    media_summary = analyzer_.baseline_summary_metrics(
+        confidence_level=0.8,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        use_kpi=use_kpi,
+    )
+    expected_geo_and_time_shape = ()
+    if not aggregate_geos:
+      expected_geo_and_time_shape += (
+          (len(selected_geos),) if selected_geos is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      expected_geo_and_time_shape += (
+          (len(selected_times),) if selected_times is not None else (_N_TIMES,)
+      )
+
+    # ([mean, median, ci_lo, ci_hi], [prior, posterior])
+    expected_shape = expected_geo_and_time_shape + (
+        4,
+        2,
+    )
+    self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
+    self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
