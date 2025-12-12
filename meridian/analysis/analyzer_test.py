@@ -14,6 +14,7 @@
 
 from collections.abc import Sequence
 import dataclasses
+import itertools
 import os
 from unittest import mock
 import warnings
@@ -736,19 +737,23 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
 
   def test_rhat_summary_national_correct(self):
     rhat_summary = self.analyzer_national.rhat_summary()
-    self.assertEqual(rhat_summary.shape, (31, 7))
-    self.assertSetEqual(
-        set(rhat_summary.param),
-        set(
-            constants.COMMON_PARAMETER_NAMES
-            + constants.MEDIA_PARAMETER_NAMES
-            + constants.RF_PARAMETER_NAMES
-            + constants.ORGANIC_MEDIA_PARAMETER_NAMES
-            + constants.ORGANIC_RF_PARAMETER_NAMES
-            + constants.NON_MEDIA_PARAMETER_NAMES
-        )
-        - set(constants.ALL_NATIONAL_DETERMINISTIC_PARAMETER_NAMES),
-    )
+    expected_param_names = set(
+        itertools.chain.from_iterable((
+            constants.COMMON_PARAMETER_NAMES,
+            constants.MEDIA_PARAMETER_NAMES,
+            constants.RF_PARAMETER_NAMES,
+            constants.ORGANIC_MEDIA_PARAMETER_NAMES,
+            constants.ORGANIC_RF_PARAMETER_NAMES,
+            constants.NON_MEDIA_PARAMETER_NAMES,
+        ))
+    ) - set(constants.ALL_NATIONAL_DETERMINISTIC_PARAMETER_NAMES)
+    with self.subTest("test_shape"):
+      self.assertEqual(rhat_summary.shape, (len(expected_param_names), 7))
+    with self.subTest("test_param_names"):
+      self.assertSetEqual(
+          set(rhat_summary.param),
+          expected_param_names,
+      )
 
   @parameterized.product(
       selected_geos=[None, ["geo_0"]],
