@@ -3242,16 +3242,22 @@ class Analyzer:
             "Effectiveness is not reported because it does not have a clear"
             " interpretation by time period."
         )
-        return xr.merge([
-            incremental_outcome,
-            pct_of_contribution,
-        ])
+        return xr.merge(
+            [
+                incremental_outcome,
+                pct_of_contribution,
+            ],
+            compat="no_conflicts",
+        )
       else:
-        return xr.merge([
-            incremental_outcome,
-            pct_of_contribution,
-            effectiveness,
-        ])
+        return xr.merge(
+            [
+                incremental_outcome,
+                pct_of_contribution,
+                effectiveness,
+            ],
+            compat="no_conflicts",
+        )
 
     # If non-paid channels are not included, return all metrics, paid and
     # non-paid.
@@ -3291,11 +3297,14 @@ class Analyzer:
           "ROI, mROI, Effectiveness, and CPIK are not reported because they "
           "do not have a clear interpretation by time period."
       )
-      return xr.merge([
-          spend_data,
-          incremental_outcome,
-          pct_of_contribution,
-      ])
+      return xr.merge(
+          [
+              spend_data,
+              incremental_outcome,
+              pct_of_contribution,
+          ],
+          compat="no_conflicts",
+      )
     else:
       roi = self._compute_roi_aggregate(
           incremental_outcome_prior=incremental_outcome_prior,
@@ -3342,15 +3351,18 @@ class Analyzer:
           xr_coords=xr_coords_with_ci_and_distribution,
           confidence_level=confidence_level,
       )
-      return xr.merge([
-          spend_data,
-          incremental_outcome,
-          pct_of_contribution,
-          roi,
-          effectiveness,
-          mroi,
-          cpik,
-      ])
+      return xr.merge(
+          [
+              spend_data,
+              incremental_outcome,
+              pct_of_contribution,
+              roi,
+              effectiveness,
+              mroi,
+              cpik,
+          ],
+          compat="no_conflicts",
+      )
 
   def get_aggregated_impressions(
       self,
@@ -3588,10 +3600,13 @@ class Analyzer:
         confidence_level=confidence_level,
     ).sel(channel=constants.BASELINE)
 
-    return xr.merge([
-        baseline_outcome,
-        baseline_pct_of_contribution,
-    ])
+    return xr.merge(
+        [
+            baseline_outcome,
+            baseline_pct_of_contribution,
+        ],
+        compat="no_conflicts",
+    )
 
   def optimal_freq(
       self,

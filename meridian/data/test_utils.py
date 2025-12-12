@@ -1476,53 +1476,37 @@ def random_dataset(
       constant_value=constant_population_value,
   )
 
-  dataset = xr.combine_by_coords(
-      [kpi, population] + ([controls] if controls is not None else [])
-  )
+  to_merge = [kpi, population]
+  if controls is not None:
+    to_merge.append(controls)
   if revenue_per_kpi is not None:
-    dataset = xr.combine_by_coords([dataset, revenue_per_kpi])
+    to_merge.append(revenue_per_kpi)
   if media is not None:
-    media_renamed = (
-        media.rename({'media_time': 'time'}) if remove_media_time else media
-    )
-
-    dataset = xr.combine_by_coords([dataset, media_renamed, media_spend])
+    if remove_media_time:
+      media = media.rename({'media_time': 'time'})
+    to_merge.append(media)
+    to_merge.append(media_spend)
   if reach is not None:
-    reach_renamed = (
-        reach.rename({'media_time': 'time'}) if remove_media_time else reach
-    )
-    frequency_renamed = (
-        frequency.rename({'media_time': 'time'})
-        if remove_media_time
-        else frequency
-    )
-    dataset = xr.combine_by_coords(
-        [dataset, reach_renamed, frequency_renamed, rf_spend]
-    )
+    if remove_media_time:
+      reach = reach.rename({'media_time': 'time'})
+      frequency = frequency.rename({'media_time': 'time'})
+    to_merge.append(reach)
+    to_merge.append(frequency)
+    to_merge.append(rf_spend)
   if non_media_treatments is not None:
-    dataset = xr.combine_by_coords([dataset, non_media_treatments])
+    to_merge.append(non_media_treatments)
   if organic_media is not None:
-    organic_media_renamed = (
-        organic_media.rename({'media_time': 'time'})
-        if remove_media_time
-        else organic_media
-    )
-    dataset = xr.combine_by_coords([dataset, organic_media_renamed])
+    if remove_media_time:
+      organic_media = organic_media.rename({'media_time': 'time'})
+    to_merge.append(organic_media)
   if organic_reach is not None:
-    organic_reach_renamed = (
-        organic_reach.rename({'media_time': 'time'})
-        if remove_media_time
-        else organic_reach
-    )
-    organic_frequency_renamed = (
-        organic_frequency.rename({'media_time': 'time'})
-        if remove_media_time
-        else organic_frequency
-    )
-    dataset = xr.combine_by_coords(
-        [dataset, organic_reach_renamed, organic_frequency_renamed]
-    )
-  return dataset
+    if remove_media_time:
+      organic_reach = organic_reach.rename({'media_time': 'time'})
+      organic_frequency = organic_frequency.rename({'media_time': 'time'})
+    to_merge.append(organic_reach)
+    to_merge.append(organic_frequency)
+
+  return xr.merge(to_merge, join='outer', compat='no_conflicts')
 
 
 def dataset_to_dataframe(
