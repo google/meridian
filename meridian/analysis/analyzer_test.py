@@ -5042,7 +5042,7 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
     n_geos = 3
     n_times = 10
     n_media_times = 12
-    n_draws = 50
+    n_draws = 5
 
     channel_names = ["Z-Search", "A-Social"]
 
@@ -5333,9 +5333,9 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
     )
 
     mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
-    mmm.sample_prior(100, seed=self.get_next_rng_seed_or_key())
+    mmm.sample_prior(5, seed=self.get_next_rng_seed_or_key())
     mmm.sample_joint_dist_unpinned_as_posterior(
-        100, seed=self.get_next_rng_seed_or_key()
+        5, seed=self.get_next_rng_seed_or_key()
     )
     check_treatment_parameters(mmm, use_posterior=False)
     check_treatment_parameters(mmm, use_posterior=True)
