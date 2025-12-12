@@ -138,12 +138,12 @@ class AutologTest(parameterized.TestCase):
     cls.mock_analyzer_method = cls.enter_context(
         mock.patch.object(analyzer.Analyzer, "predictive_accuracy")
     )
-    prior_sampler.PriorDistributionSampler.__call__ = cls.enter_context(
+    cls.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
             "__call__",
             autospec=True,
-            return_value=az.InferenceData(),
+            return_value={},
         )
     )
     posterior_sampler.PosteriorMCMCSampler.__call__ = cls.enter_context(
