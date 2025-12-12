@@ -666,42 +666,6 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
       )
 
 
-class AnalyzerTest(backend_test_utils.MeridianTestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(AnalyzerTest, cls).setUpClass()
-    # Input data resulting in revenue computation.
-    cls.input_data_media_and_rf = (
-        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-            n_geos=_N_GEOS,
-            n_times=_N_TIMES,
-            n_media_times=_N_MEDIA_TIMES,
-            n_controls=_N_CONTROLS,
-            n_media_channels=_N_MEDIA_CHANNELS,
-            n_rf_channels=_N_RF_CHANNELS,
-            seed=0,
-        )
-    )
-    model_spec = spec.ModelSpec(max_lag=15)
-    cls.meridian_media_and_rf = model.Meridian(
-        input_data=cls.input_data_media_and_rf, model_spec=model_spec
-    )
-    cls.analyzer_media_and_rf = analyzer.Analyzer(cls.meridian_media_and_rf)
-
-    cls.inference_data_media_and_rf = _build_inference_data(
-        _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
-        _TEST_SAMPLE_POSTERIOR_MEDIA_AND_RF_PATH,
-    )
-    cls.enter_context(
-        mock.patch.object(
-            model.Meridian,
-            "inference_data",
-            new=property(lambda unused_self: cls.inference_data_media_and_rf),
-        )
-    )
-
-
 class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
 
   @classmethod
@@ -2169,7 +2133,7 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allequal(actual.data, [])
 
 
-class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
+class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   @classmethod
   def setUpClass(cls):
