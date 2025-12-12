@@ -2716,7 +2716,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           dist_tensors=analyzer.DistributionTensors(),
       )
 
-  @mock.patch("meridian.analysis.analyzer.np.histogram")
+  @mock.patch.object(analyzer.np, "histogram", autospec=True, spec_set=True)
   def test_hill_curves_scaled_histogram_avoids_nan_on_zero_counts(
       self, mock_np_histogram
   ):
@@ -3507,8 +3507,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     roi = self.analyzer.roi(
         new_data=analyzer.DataTensors(
-            media_spend=new_media_spend,
-            rf_spend=new_rf_spend
+            media_spend=new_media_spend, rf_spend=new_rf_spend
         )
     )
 
@@ -4856,7 +4855,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 class AnalyzerNotFittedTest(absltest.TestCase):
 
   def test_rhat_summary_media_and_rf_pre_fitting_raises_exception(self):
-    not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
+    not_fitted_mmm = mock.create_autospec(
+        model.Meridian, instance=True, spec_set=True
+    )
     type(not_fitted_mmm).inference_data = mock.PropertyMock(
         return_value=az.InferenceData()
     )
