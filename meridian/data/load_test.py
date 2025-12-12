@@ -395,7 +395,7 @@ class InputDataLoaderTest(parameterized.TestCase):
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Invalid time label: '2023-W4'. Expected format:"
+        "Invalid media_time label: '2023-W4'. Expected format:"
         f" '{constants.DATE_FORMAT}'",
     ):
       _ = load.XrDatasetDataLoader(

@@ -21,11 +21,11 @@ validation logic and an overall final validation logic before a valid
 
 import abc
 from collections.abc import Sequence
-import datetime
 import warnings
 from meridian import constants
 from meridian.data import input_data
 from meridian.data import time_coordinates as tc
+from meridian.data import validator
 import natsort
 import numpy as np
 import xarray as xr
@@ -676,14 +676,7 @@ class InputDataBuilder(abc.ABC):
 
       # Assume that the time coordinate labels are date-formatted strings.
       # We don't currently support other, arbitrary object types in the builder.
-      for time in da.coords[time_dimension_name].values:
-        try:
-          _ = datetime.datetime.strptime(time, constants.DATE_FORMAT)
-        except ValueError as exc:
-          raise ValueError(
-              f"Invalid time label: '{time}'. Expected format:"
-              f" '{constants.DATE_FORMAT}'"
-          ) from exc
+      validator.validate_time_coord_format(da)
 
     if len(da.coords[constants.GEO].values.tolist()) == 1:
       da = da.assign_coords(

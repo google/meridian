@@ -158,7 +158,7 @@ class InputDataTest(parameterized.TestCase):
 
   def test_construct_media_only_invalid_media_time_values(self):
     with self.assertRaisesRegex(
-        ValueError, expected_regex="Invalid media_time label: week-04"
+        ValueError, expected_regex="Invalid media_time label: 'week-04'"
     ):
       input_data.InputData(
           controls=self.not_lagged_controls,
@@ -492,7 +492,7 @@ class InputDataTest(parameterized.TestCase):
 
   def test_construct_media_only_invalid_controls_time_values(self):
     with self.assertRaisesRegex(
-        ValueError, expected_regex="Invalid time label: week-04"
+        ValueError, expected_regex="Invalid time label: 'week-04'"
     ):
       input_data.InputData(
           controls=self.not_lagged_controls_invalid_time_values,

@@ -20,13 +20,13 @@ The `InputData` class is used to store all the input data to the model.
 from collections import abc
 from collections.abc import Sequence
 import dataclasses
-import datetime as dt
 import functools
 import warnings
 
 from meridian import constants
 from meridian.data import arg_builder
 from meridian.data import time_coordinates as tc
+from meridian.data import validator
 import numpy as np
 import xarray as xr
 
@@ -762,52 +762,10 @@ class InputData:
 
   def _validate_time_formats(self):
     """Validates the time coordinate format for all variables."""
-    self._validate_time_coord_format(self.kpi)
-    self._validate_time_coord_format(self.revenue_per_kpi)
-    self._validate_time_coord_format(self.controls)
-    self._validate_time_coord_format(self.media)
-    self._validate_time_coord_format(self.media_spend)
-    self._validate_time_coord_format(self.reach)
-    self._validate_time_coord_format(self.frequency)
-    self._validate_time_coord_format(self.rf_spend)
-    self._validate_time_coord_format(self.organic_media)
-    self._validate_time_coord_format(self.organic_reach)
-    self._validate_time_coord_format(self.organic_frequency)
-    self._validate_time_coord_format(self.non_media_treatments)
-
-  def _validate_time_coord_format(self, array: xr.DataArray | None):
-    """Validates the `time` dimensions format of the selected DataArray.
-
-    The `time` dimension of the selected array must have labels that are
-    formatted in the Meridian conventional `"yyyy-mm-dd"` format.
-
-    Args:
-      array: An optional DataArray to validate.
-    """
-    if array is None:
-      return
-
-    time_values = array.coords.get(constants.TIME, None)
-    if time_values is not None:
-      for time in time_values:
-        try:
-          _ = dt.datetime.strptime(time.item(), constants.DATE_FORMAT)
-        except (TypeError, ValueError) as exc:
-          raise ValueError(
-              f"Invalid time label: {time.item()}. Expected format:"
-              f" {constants.DATE_FORMAT}"
-          ) from exc
-
-    media_time_values = array.coords.get(constants.MEDIA_TIME, None)
-    if media_time_values is not None:
-      for time in media_time_values:
-        try:
-          _ = dt.datetime.strptime(time.item(), constants.DATE_FORMAT)
-        except (TypeError, ValueError) as exc:
-          raise ValueError(
-              f"Invalid media_time label: {time.item()}. Expected format:"
-              f" {constants.DATE_FORMAT}"
-          ) from exc
+    for field in dataclasses.fields(self):
+      attr = getattr(self, field.name)
+      if field.name != constants.POPULATION and isinstance(attr, xr.DataArray):
+        validator.validate_time_coord_format(attr)
 
   def _check_unique_names(self, dim: str, array: xr.DataArray | None):
     """Checks if a DataArray contains unique names on the specified dimension."""
