@@ -282,7 +282,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
     )
     with self.assertRaisesRegex(
-        ValueError, "New `media` is expected to have 5 geos. Found 6 geos."
+        ValueError, r"New `media` is expected to have 5 geos\. Found 6 geos\."
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA],
@@ -295,7 +295,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        "New `media_spend` is expected to have 5 geos. Found 6 geos.",
+        r"New `media_spend` is expected to have 5 geos\. Found 6 geos\.",
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA_SPEND],
@@ -308,8 +308,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        "New `media` is expected to have 52 time periods. Found 10 time"
-        " periods.",
+        r"New `media` is expected to have 52 time periods\. Found 10 time"
+        r" periods\.",
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA],
@@ -323,7 +323,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        "New `frequency` is expected to have 2 channels. Found 3 channels.",
+        r"New `frequency` is expected to have 2 channels\. Found 3 channels\.",
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.FREQUENCY],
@@ -336,7 +336,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        "New `reach` is expected to have 2 channels. Found 1 channels.",
+        r"New `reach` is expected to have 2 channels\. Found 1 channels\.",
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.REACH],
@@ -380,8 +380,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         ValueError,
         "If the time dimension of any variable in `new_data` is modified, then"
         " all variables must be provided with the same number of time periods."
-        " `revenue_per_kpi` has 8 time periods, which does not match the"
-        " modified number of time periods, 10.",
+        r" `revenue_per_kpi` has 8 time periods, which does not match the"
+        r" modified number of time periods, 10\.",
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[
@@ -797,8 +797,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_n_dim(self):
     with self.assertRaisesRegex(
         ValueError,
-        "The tensor must have at least 3 dimensions if `has_media_dim=True` or"
-        " at least 2 dimensions if `has_media_dim=False`.",
+        r"The tensor must have at least 3 dimensions if `has_media_dim=True` or"
+        r" at least 2 dimensions if `has_media_dim=False`\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.population),
@@ -871,8 +871,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_geos(self):
     with self.assertRaisesRegex(
         ValueError,
-        "`selected_geos` must match the geo dimension names from "
-        "meridian.InputData.",
+        r"`selected_geos` must match the geo dimension names from "
+        r"meridian\.InputData\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -882,8 +882,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_time_dim_names(self):
     with self.assertRaisesRegex(
         ValueError,
-        "`selected_times` must match the time dimension names from "
-        "meridian.InputData.",
+        r"`selected_times` must match the time dimension names from "
+        r"meridian\.InputData\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -893,8 +893,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_time_bool(self):
     with self.assertRaisesRegex(
         ValueError,
-        "Boolean `selected_times` must have the same number of elements as "
-        "there are time period coordinates in `tensor`.",
+        r"Boolean `selected_times` must have the same number of elements as "
+        r"there are time period coordinates in `tensor`\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -906,7 +906,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(
         ValueError,
-        "`selected_times` must be a list of strings or a list of booleans.",
+        r"`selected_times` must be a list of strings or a list of booleans\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -1005,7 +1005,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_optimal_frequency_data_media_only_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,
-        "Must have at least one channel with reach and frequency data.",
+        r"Must have at least one channel with reach and frequency data\.",
     ):
       self.analyzer_media_only.optimal_freq()
 
@@ -1321,7 +1321,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     with self.assertWarnsRegex(
         UserWarning,
         "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
+        r" unknown\. Defaulting to KPI analysis\.",
     ):
       self.assertTrue(analyzer_non_revenue._use_kpi(use_kpi=False))
 
@@ -1359,7 +1359,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     with self.assertWarnsRegex(
         UserWarning,
         "Revenue analysis is not available when `revenue_per_kpi` is"
-        " unknown. Defaulting to KPI analysis.",
+        r" unknown\. Defaulting to KPI analysis\.",
     ):
       result_false = method(use_kpi=False)
 
@@ -1430,7 +1430,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     method = getattr(self.analyzer, method_name)
     with self.assertRaisesRegex(
         ValueError,
-        "use_kpi=False is only supported when inverse_transform_outcome=True.",
+        r"use_kpi=False is only supported when"
+        r" inverse_transform_outcome=True\.",
     ):
       method(inverse_transform_outcome=False, use_kpi=False)
 
@@ -1520,15 +1521,15 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_incremental_outcome_negative_scaling_factors(self, factor_name):
     kwargs = {factor_name: -0.01}
     with self.assertRaisesRegex(
-        ValueError, f"{factor_name} must be non-negative."
+        ValueError, rf"{factor_name} must be non-negative\."
     ):
       self.analyzer.incremental_outcome(**kwargs)
 
   def test_incremental_outcome_scaling_factor1_less_than_scaling_factor0(self):
     with self.assertRaisesRegex(
         ValueError,
-        "scaling_factor1 must be greater than scaling_factor0. Got"
-        " scaling_factor1=1.0 and scaling_factor0=1.1.",
+        r"scaling_factor1 must be greater than scaling_factor0\. Got"
+        r" scaling_factor1=1\.0 and scaling_factor0=1\.1\.",
     ):
       self.analyzer.incremental_outcome(
           scaling_factor0=1.1, scaling_factor1=1.0
@@ -1542,8 +1543,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         " provided with a different number of time periods than in `InputData`,"
         r" then \(1\) `selected_times` must be a list of booleans with length"
         r" equal to the number of time periods in the new data, or \(2\)"
-        " `selected_times` must be a list of strings and `new_time` must be"
-        " provided and `selected_times` must be a subset of `new_time`.",
+        r" `selected_times` must be a list of strings and `new_time` must be"
+        r" provided and `selected_times` must be a subset of `new_time`\.",
     ):
       self.analyzer.incremental_outcome(
           new_data=analyzer.DataTensors(
@@ -1575,9 +1576,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         " provided with a different number of time periods than in `InputData`,"
         r" then \(1\) `media_selected_times` must be a list of booleans with"
         r" length equal to the number of time periods in the new data, or \(2\)"
-        " `media_selected_times` must be a list of strings and `new_time` must"
-        " be provided and `media_selected_times` must be a subset of"
-        " `new_time`.",
+        r" `media_selected_times` must be a list of strings and `new_time` must"
+        r" be provided and `media_selected_times` must be a subset of"
+        r" `new_time`\.",
     ):
       self.analyzer.incremental_outcome(
           new_data=analyzer.DataTensors(
@@ -1604,25 +1605,25 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           testcase_name="wrong_length",
           media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True],
           expected_message=(
-              "Boolean `media_selected_times` must have the same number of"
-              " elements as there are time period coordinates in the media"
-              " tensors."
+              r"Boolean `media_selected_times` must have the same number of"
+              r" elements as there are time period coordinates in the media"
+              r" tensors\."
           ),
       ),
       dict(
           testcase_name="wrong_names",
           media_selected_times=["random_time"],
           expected_message=(
-              "`media_selected_times` must match the time dimension names from"
-              " meridian.InputData."
+              r"`media_selected_times` must match the time dimension names from"
+              r" meridian\.InputData\."
           ),
       ),
       dict(
           testcase_name="wrong_type",
           media_selected_times=["random_time", False, True],
           expected_message=(
-              "`media_selected_times` must be a list of strings or a list of"
-              " booleans."
+              r"`media_selected_times` must be a list of strings or a list of"
+              r" booleans\."
           ),
       ),
   )
@@ -2688,9 +2689,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(
         ValueError,
-        "`non_media_treatments_baseline_normalized` must be passed to"
-        " `_incremental_outcome_impl` when `non_media_treatments` data is"
-        " present.",
+        r"`non_media_treatments_baseline_normalized` must be passed to"
+        r" `_incremental_outcome_impl` when `non_media_treatments` data is"
+        r" present\.",
     ):
       self.analyzer._incremental_outcome_impl(
           data_tensors=analyzer.DataTensors(
@@ -2704,9 +2705,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(
         ValueError,
-        "`non_media_treatments_baseline_normalized` must be passed to"
-        " `_get_incremental_kpi` when `non_media_treatments` data is"
-        " present.",
+        r"`non_media_treatments_baseline_normalized` must be passed to"
+        r" `_get_incremental_kpi` when `non_media_treatments` data is"
+        r" present\.",
     ):
       self.analyzer._get_incremental_kpi(
           data_tensors=analyzer.DataTensors(
@@ -4547,24 +4548,24 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           testcase_name="wrong_type",
           selected_times=["random_time", False, True],
           expected_message=(
-              "`selected_times` must be a list of strings or a list of"
-              " booleans."
+              r"`selected_times` must be a list of strings or a list of"
+              r" booleans\."
           ),
       ),
       dict(
           testcase_name="wrong_time_dim_names",
           selected_times=["random_time"],
           expected_message=(
-              "`selected_times` must match the time dimension names from "
-              "meridian.InputData."
+              r"`selected_times` must match the time dimension names from "
+              r"meridian\.InputData\."
           ),
       ),
       dict(
           testcase_name="no_new_data_wrong_time",
           selected_times=["2022-01-01"],
           expected_message=(
-              "`selected_times` must match the time dimension names from "
-              "meridian.InputData."
+              r"`selected_times` must match the time dimension names from "
+              r"meridian\.InputData\."
           ),
       ),
   )
@@ -4606,8 +4607,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         " provided with a different number of time periods than in `InputData`,"
         r" then \(1\) `selected_times` must be a list of booleans with length"
         r" equal to the number of time periods in the new data, or \(2\)"
-        " `selected_times` must be a list of strings and `new_time` must be"
-        " provided and `selected_times` must be a subset of `new_time`.",
+        r" `selected_times` must be a list of strings and `new_time` must be"
+        r" provided and `selected_times` must be a subset of `new_time`\.",
     ):
       self.analyzer.response_curves(
           new_data=new_data, selected_times=["2022-01-01"]
