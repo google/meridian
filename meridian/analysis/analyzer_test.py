@@ -104,6 +104,33 @@ _N_NON_MEDIA_CHANNELS = 4
 _N_ORGANIC_MEDIA_CHANNELS = 4
 _N_ORGANIC_RF_CHANNELS = 1
 
+# Channel names expected in the sample input data, corresponding to the
+# dimension constants above.
+_SAMPLE_PAID_MEDIA_CHANNELS = frozenset({
+    "ch_0",
+    "ch_1",
+    "ch_2",
+})
+_SAMPLE_RF_CHANNELS = frozenset({
+    "rf_ch_0",
+    "rf_ch_1",
+})
+_SAMPLE_ORGANIC_MEDIA_CHANNELS = frozenset({
+    "organic_media_0",
+    "organic_media_1",
+    "organic_media_2",
+    "organic_media_3",
+})
+_SAMPLE_ORGANIC_RF_CHANNELS = frozenset({
+    "organic_rf_ch_0",
+})
+_SAMPLE_ALL_CHANNELS = (
+    _SAMPLE_PAID_MEDIA_CHANNELS
+    | _SAMPLE_RF_CHANNELS
+    | _SAMPLE_ORGANIC_MEDIA_CHANNELS
+    | _SAMPLE_ORGANIC_RF_CHANNELS
+)
+
 
 def _convert_with_swap(array: xr.DataArray) -> backend.Tensor:
   """Converts DataArray to backend.Tensor and swaps first two dimensions."""
@@ -2243,20 +2270,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.IS_INT_TIME_UNIT,
         ],
     )
-    expected_channels = [
-        "ch_0",
-        "ch_1",
-        "ch_2",
-        "rf_ch_0",
-        "rf_ch_1",
-        "organic_media_0",
-        "organic_media_1",
-        "organic_media_2",
-        "organic_media_3",
-        "organic_rf_ch_0",
-    ]
-    self.assertCountEqual(
-        expected_channels, adstock_decay_dataframe[constants.CHANNEL].unique()
+    self.assertSetEqual(
+        set(adstock_decay_dataframe[constants.CHANNEL].unique()),
+        _SAMPLE_ALL_CHANNELS,
     )
 
     for i, e in enumerate(list(adstock_decay_dataframe[constants.MEAN])):
@@ -2436,26 +2452,15 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertListEqual(list(hill_table.columns), expected_columns)
 
     all_channels_present = set(hill_table[constants.CHANNEL].unique())
-    expected_paid_media = {"ch_0", "ch_1", "ch_2"}
-    expected_rf = {"rf_ch_0", "rf_ch_1"}
-    expected_organic_media = {
-        "organic_media_0",
-        "organic_media_1",
-        "organic_media_2",
-        "organic_media_3",
-    }
-    expected_organic_rf = {"organic_rf_ch_0"}
-    self.assertTrue(expected_paid_media.issubset(all_channels_present))
-    self.assertTrue(expected_rf.issubset(all_channels_present))
-    self.assertTrue(expected_organic_media.issubset(all_channels_present))
-    self.assertTrue(expected_organic_rf.issubset(all_channels_present))
+    self.assertSetEqual(all_channels_present, _SAMPLE_ALL_CHANNELS)
+
     self.assertSetEqual(
         set(
             hill_table[hill_table[constants.CHANNEL_TYPE] == constants.MEDIA][
                 constants.CHANNEL
             ].unique()
         ),
-        expected_paid_media,
+        _SAMPLE_PAID_MEDIA_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2463,7 +2468,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 constants.CHANNEL
             ].unique()
         ),
-        expected_rf,
+        _SAMPLE_RF_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2471,7 +2476,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_MEDIA
             ][constants.CHANNEL].unique()
         ),
-        expected_organic_media,
+        _SAMPLE_ORGANIC_MEDIA_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2479,7 +2484,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_RF
             ][constants.CHANNEL].unique()
         ),
-        expected_organic_rf,
+        _SAMPLE_ORGANIC_RF_CHANNELS,
     )
     self.assertTrue(hist_df.index.is_unique)
 
