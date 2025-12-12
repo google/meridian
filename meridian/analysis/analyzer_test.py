@@ -701,215 +701,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-  def test_rhat_media_and_rf_correct(self):
-    rhat = self.analyzer_media_and_rf.get_rhat()
-    self.assertSetEqual(
-        set(rhat.keys()),
-        set(
-            constants.COMMON_PARAMETER_NAMES
-            + constants.MEDIA_PARAMETER_NAMES
-            + constants.RF_PARAMETER_NAMES
-        ),
-    )
-
-  def test_rhat_summary_media_and_rf_correct(self):
-    rhat_summary = self.analyzer_media_and_rf.rhat_summary()
-    self.assertEqual(rhat_summary.shape, (20, 7))
-    self.assertSetEqual(
-        set(rhat_summary.param),
-        set(
-            constants.COMMON_PARAMETER_NAMES
-            + constants.MEDIA_PARAMETER_NAMES
-            + constants.RF_PARAMETER_NAMES
-        )
-        - set([constants.SLOPE_M]),
-    )
-
-  def test_predictive_accuracy_without_holdout_id_columns_correct(self):
-    predictive_accuracy_dataset = (
-        self.analyzer_media_and_rf.predictive_accuracy()
-    )
-
-    self.assertListEqual(
-        list(predictive_accuracy_dataset[constants.METRIC].values),
-        [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
-    )
-    self.assertListEqual(
-        list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
-        [constants.GEO, constants.NATIONAL],
-    )
-    df = (
-        predictive_accuracy_dataset[constants.VALUE]
-        .to_dataframe()
-        .reset_index()
-    )
-    self.assertListEqual(
-        list(df.columns),
-        [constants.METRIC, constants.GEO_GRANULARITY, constants.VALUE],
-    )
-
-  def test_predictive_accuracy_kpi_returns_correct_structure(self):
-    """Verifies predictive accuracy structure when use_kpi=True."""
-    dataset = self.analyzer_media_and_rf.predictive_accuracy(use_kpi=True)
-
-    self.assertListEqual(
-        list(dataset[constants.METRIC].values),
-        [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
-    )
-    self.assertFalse(np.isnan(dataset[constants.VALUE]).all())
-
-  @mock.patch.object(
-      model.Meridian, "is_national", new=property(lambda unused_self: True)
-  )
-  def test_predictive_accuracy_national(self):
-    predictive_accuracy_dataset = (
-        self.analyzer_media_and_rf.predictive_accuracy()
-    )
-    self.assertListEqual(
-        list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
-        [constants.NATIONAL],
-    )
-
-  @parameterized.product(
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_predictive_accuracy_without_holdout_id_parameterized(
-      self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    predictive_accuracy_dims_kwargs = {
-        "selected_geos": selected_geos,
-        "selected_times": selected_times,
-    }
-    predictive_accuracy_dataset = (
-        self.analyzer_media_and_rf.predictive_accuracy(
-            **predictive_accuracy_dims_kwargs,
-        )
-    )
-    df = (
-        predictive_accuracy_dataset[constants.VALUE]
-        .to_dataframe()
-        .reset_index()
-    )
-
-    if not selected_geos and not selected_times:
-      backend_test_utils.assert_allclose(
-          list(df[constants.VALUE]),
-          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_NO_GEOS_OR_TIMES,
-          atol=1e-3,
-      )
-    elif selected_geos and not selected_times:
-      backend_test_utils.assert_allclose(
-          list(df[constants.VALUE]),
-          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_GEOS_NO_TIMES,
-          atol=1e-3,
-      )
-    elif not selected_geos and selected_times:
-      backend_test_utils.assert_allclose(
-          list(df[constants.VALUE]),
-          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_NO_GEOS,
-          atol=1e-3,
-      )
-    else:
-      backend_test_utils.assert_allclose(
-          list(df[constants.VALUE]),
-          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_AND_GEOS,
-          atol=1e-3,
-      )
-
-  def test_predictive_accuracy_with_holdout_id_table_properties_correct(self):
-    n_geos = self.meridian_media_and_rf.n_geos
-    n_times = self.meridian_media_and_rf.n_times
-    holdout_id = np.full([n_geos, n_times], False)
-    for i in range(n_geos):
-      holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
-          True
-      )
-    model_spec = spec.ModelSpec(holdout_id=holdout_id)
-    meridian = model.Meridian(
-        model_spec=model_spec, input_data=self.input_data_media_and_rf
-    )
-    analyzer_holdout_id = analyzer.Analyzer(meridian)
-    predictive_accuracy_dataset = analyzer_holdout_id.predictive_accuracy()
-    df = (
-        predictive_accuracy_dataset[constants.VALUE]
-        .to_dataframe()
-        .reset_index()
-    )
-    self.assertListEqual(
-        list(df.columns),
-        [
-            constants.METRIC,
-            constants.GEO_GRANULARITY,
-            constants.EVALUATION_SET_VAR,
-            constants.VALUE,
-        ],
-    )
-
-  @parameterized.product(
-      selected_geos=[None, ["geo_1", "geo_3"]],
-      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
-  )
-  def test_predictive_accuracy_with_holdout_id_correct(
-      self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | None,
-  ):
-    n_geos = len(self.input_data_media_and_rf.geo)
-    n_times = len(self.input_data_media_and_rf.time)
-
-    np.random.seed(0)
-
-    holdout_id = np.full([n_geos, n_times], False)
-    for i in range(n_geos):
-      holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
-          True
-      )
-    model_spec = spec.ModelSpec(holdout_id=holdout_id)  # Set holdout_id
-    meridian = model.Meridian(
-        model_spec=model_spec, input_data=self.input_data_media_and_rf
-    )
-    analyzer_holdout_id = analyzer.Analyzer(meridian)
-
-    predictive_accuracy_dims_kwargs = {
-        "selected_geos": selected_geos,
-        "selected_times": selected_times,
-    }
-
-    predictive_accuracy_dataset = analyzer_holdout_id.predictive_accuracy(
-        **predictive_accuracy_dims_kwargs,
-    )
-    df = (
-        predictive_accuracy_dataset[constants.VALUE]
-        .to_dataframe()
-        .reset_index()
-    )
-
-    if not selected_geos and not selected_times:
-      expected_values = (
-          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NO_GEOS_OR_TIMES
-      )
-    elif selected_geos and not selected_times:
-      expected_values = (
-          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_GEOS_NO_TIMES
-      )
-    elif not selected_geos and selected_times:
-      expected_values = (
-          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_NO_GEOS
-      )
-    else:
-      expected_values = (
-          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_AND_GEO
-      )
-
-    backend_test_utils.assert_allclose(
-        list(df[constants.VALUE]),
-        expected_values,
-        atol=2e-3,
-    )
-
   def test_response_curves_check_both_channel_types_returns_correct_spend(self):
     response_curve_data = self.analyzer_media_and_rf.response_curves(
         by_reach=False
@@ -924,230 +715,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         media_summary_spend * 2,
         response_data_spend[-1],
     )
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="default",
-          aggregate_geos=False,
-          aggregate_times=False,
-          holdout_id=None,
-          split_by_holdout_id=False,
-          expected_shape=(
-              _N_GEOS,
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-          ),
-          expected_actual_shape=(_N_GEOS, _N_TIMES),
-      ),
-      dict(
-          testcase_name="split_by_holdout_id_true_wo_holdout_id",
-          aggregate_geos=False,
-          aggregate_times=False,
-          holdout_id=None,
-          split_by_holdout_id=True,
-          expected_shape=(
-              _N_GEOS,
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-          ),
-          expected_actual_shape=(_N_GEOS, _N_TIMES),
-      ),
-      dict(
-          testcase_name="split_by_holdout_id_true_w_holdout_id",
-          aggregate_geos=False,
-          aggregate_times=False,
-          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
-          split_by_holdout_id=True,
-          expected_shape=(
-              _N_GEOS,
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-              3,  # [train, test, all]
-          ),
-          expected_actual_shape=(_N_GEOS, _N_TIMES),
-      ),
-      dict(
-          testcase_name="split_by_holdout_id_false_w_holdout_id",
-          aggregate_geos=False,
-          aggregate_times=False,
-          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
-          split_by_holdout_id=False,
-          expected_shape=(
-              _N_GEOS,
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-          ),
-          expected_actual_shape=(_N_GEOS, _N_TIMES),
-      ),
-      dict(
-          testcase_name="aggregate_geos_wo_split",
-          aggregate_geos=True,
-          aggregate_times=False,
-          holdout_id=None,
-          split_by_holdout_id=False,
-          expected_shape=(
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-          ),
-          expected_actual_shape=(_N_TIMES,),
-      ),
-      dict(
-          testcase_name="aggregate_geos_w_split",
-          aggregate_geos=True,
-          aggregate_times=False,
-          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
-          split_by_holdout_id=True,
-          expected_shape=(
-              _N_TIMES,
-              3,  # [mean, ci_lo, ci_hi]
-              3,  # [train, test, all]
-          ),
-          expected_actual_shape=(_N_TIMES,),
-      ),
-      dict(
-          testcase_name="aggregate_times_wo_split",
-          aggregate_geos=False,
-          aggregate_times=True,
-          holdout_id=None,
-          split_by_holdout_id=False,
-          expected_shape=(
-              _N_GEOS,
-              3,  # [mean, ci_lo, ci_hi]
-          ),
-          expected_actual_shape=(_N_GEOS,),
-      ),
-      dict(
-          testcase_name="aggregate_times_w_split",
-          aggregate_geos=False,
-          aggregate_times=True,
-          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
-          split_by_holdout_id=True,
-          expected_shape=(
-              _N_GEOS,
-              3,  # [mean, ci_lo, ci_hi]
-              3,  # [train, test, all]
-          ),
-          expected_actual_shape=(_N_GEOS,),
-      ),
-      dict(
-          testcase_name="aggregate_geos_and_times_wo_split",
-          aggregate_geos=True,
-          aggregate_times=True,
-          holdout_id=None,
-          split_by_holdout_id=False,
-          expected_shape=(3,),  # [mean, ci_lo, ci_hi]
-          expected_actual_shape=(),
-      ),
-      dict(
-          testcase_name="aggregate_geos_and_times_w_split",
-          aggregate_geos=True,
-          aggregate_times=True,
-          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
-          split_by_holdout_id=True,
-          expected_shape=(
-              3,  # [mean, ci_lo, ci_hi]
-              3,  # [train, test, all]
-          ),
-          expected_actual_shape=(),
-      ),
-  )
-  def test_expected_vs_actual_correct_data(
-      self,
-      aggregate_geos: bool,
-      aggregate_times: bool,
-      holdout_id: np.ndarray | None,
-      split_by_holdout_id: bool,
-      expected_shape: tuple[int, ...],
-      expected_actual_shape: tuple[int, ...],
-  ):
-    model_spec = spec.ModelSpec(holdout_id=holdout_id)
-    meridian = model.Meridian(
-        model_spec=model_spec, input_data=self.input_data_media_and_rf
-    )
-    meridian_analyzer = analyzer.Analyzer(meridian)
-
-    ds = meridian_analyzer.expected_vs_actual_data(
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        split_by_holdout_id=split_by_holdout_id,
-    )
-
-    expected_actual_values = (
-        meridian.kpi
-        if self.input_data_media_and_rf.revenue_per_kpi is None
-        else meridian.kpi * self.input_data_media_and_rf.revenue_per_kpi
-    )  # shape (n_geos, n_times)
-
-    axis_to_sum = tuple(
-        ([0] if aggregate_geos else []) + ([1] if aggregate_times else [])
-    )
-    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)
-
-    if aggregate_geos:
-      self.assertNotIn(constants.GEO, ds.coords)
-    else:
-      self.assertListEqual(
-          list(ds.geo.values), list(self.input_data_media_and_rf.geo.values)
-      )
-
-    if aggregate_times:
-      self.assertNotIn(constants.TIME, ds.coords)
-    else:
-      self.assertListEqual(
-          list(ds.time.values), list(self.input_data_media_and_rf.time.values)
-      )
-
-    self.assertListEqual(
-        list(ds.metric.values),
-        [constants.MEAN, constants.CI_LO, constants.CI_HI],
-    )
-
-    self.assertEqual(ds.expected.shape, expected_shape)
-    self.assertEqual(ds.baseline.shape, expected_shape)
-    self.assertEqual(ds.actual.shape, expected_actual_shape)
-    self.assertEqual(ds.confidence_level, constants.DEFAULT_CONFIDENCE_LEVEL)
-
-    np.testing.assert_array_less(
-        ds.expected.sel(metric=constants.MEAN),
-        ds.expected.sel(metric=constants.CI_HI),
-    )
-    np.testing.assert_array_less(
-        ds.expected.sel(metric=constants.CI_LO),
-        ds.expected.sel(metric=constants.MEAN),
-    )
-    np.testing.assert_array_less(
-        ds.baseline.sel(metric=constants.MEAN),
-        ds.baseline.sel(metric=constants.CI_HI),
-    )
-    np.testing.assert_array_less(
-        ds.baseline.sel(metric=constants.CI_LO),
-        ds.baseline.sel(metric=constants.MEAN),
-    )
-    np.testing.assert_array_less(ds.baseline, ds.expected)
-
-    # Test the math for a sample of the actual outcome metrics.
-    backend_test_utils.assert_allclose(
-        ds.actual.values,
-        expected_actual_values,
-        atol=1e-5,
-    )
-
-  def test_expected_vs_actual_warns_if_split_by_holdout_id_without_holdout_id(
-      self,
-  ):
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      self.analyzer_media_and_rf.expected_vs_actual_data(
-          split_by_holdout_id=True
-      )
-
-      self.assertLen(w, 1)
-      self.assertTrue(issubclass(w[0].category, UserWarning))
-      self.assertIn(
-          "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
-          " not be split.",
-          str(w[0].message),
-      )
 
   def test_response_curves_selected_times_wrong_type(self):
     with self.assertRaisesRegex(
@@ -5749,6 +5316,440 @@ class AnalyzerComprehensiveTest(backend_test_utils.MeridianTestCase):
     )
     self.assertEqual(media_summary.baseline_outcome.shape, expected_shape)
     self.assertEqual(media_summary.pct_of_contribution.shape, expected_shape)
+
+  def test_rhat_media_and_rf_correct(self):
+    rhat = self.analyzer.get_rhat()
+    expected_params = (
+        set(constants.COMMON_PARAMETER_NAMES)
+        | set(constants.MEDIA_PARAMETER_NAMES)
+        | set(constants.RF_PARAMETER_NAMES)
+        | set(constants.ORGANIC_MEDIA_PARAMETER_NAMES)
+        | set(constants.ORGANIC_RF_PARAMETER_NAMES)
+        | set(constants.NON_MEDIA_PARAMETER_NAMES)
+    ) - {
+        constants.CONTRIBUTION_OM,
+        constants.CONTRIBUTION_ORF,
+        constants.CONTRIBUTION_N,
+    }
+
+    self.assertSetEqual(set(rhat.keys()), expected_params)
+
+  def test_rhat_summary_media_and_rf_correct(self):
+    rhat_summary = self.analyzer.rhat_summary()
+    all_params = (
+        set(constants.COMMON_PARAMETER_NAMES)
+        | set(constants.MEDIA_PARAMETER_NAMES)
+        | set(constants.RF_PARAMETER_NAMES)
+        | set(constants.ORGANIC_MEDIA_PARAMETER_NAMES)
+        | set(constants.ORGANIC_RF_PARAMETER_NAMES)
+        | set(constants.NON_MEDIA_PARAMETER_NAMES)
+    )
+    excluded_params = {
+        constants.CONTRIBUTION_OM,
+        constants.CONTRIBUTION_ORF,
+        constants.CONTRIBUTION_N,
+        constants.SLOPE_M,
+        constants.SLOPE_OM,
+    }
+    expected_params = all_params - excluded_params
+
+    self.assertEqual(rhat_summary.shape, (len(expected_params), 7))
+    self.assertSetEqual(set(rhat_summary.param), expected_params)
+
+  def test_predictive_accuracy_without_holdout_id_columns_correct(self):
+    predictive_accuracy_dataset = self.analyzer.predictive_accuracy()
+
+    self.assertListEqual(
+        list(predictive_accuracy_dataset[constants.METRIC].values),
+        [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
+    )
+    self.assertListEqual(
+        list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
+        [constants.GEO, constants.NATIONAL],
+    )
+    df = (
+        predictive_accuracy_dataset[constants.VALUE]
+        .to_dataframe()
+        .reset_index()
+    )
+    self.assertListEqual(
+        list(df.columns),
+        [constants.METRIC, constants.GEO_GRANULARITY, constants.VALUE],
+    )
+
+  def test_predictive_accuracy_kpi_returns_correct_structure(self):
+    """Verifies predictive accuracy structure when use_kpi=True."""
+    dataset = self.analyzer.predictive_accuracy(use_kpi=True)
+
+    self.assertListEqual(
+        list(dataset[constants.METRIC].values),
+        [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
+    )
+    self.assertFalse(np.isnan(dataset[constants.VALUE]).all())
+
+  @mock.patch.object(
+      model.Meridian, "is_national", new=property(lambda unused_self: True)
+  )
+  def test_predictive_accuracy_national(self):
+    predictive_accuracy_dataset = self.analyzer.predictive_accuracy()
+    self.assertListEqual(
+        list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
+        [constants.NATIONAL],
+    )
+
+  @parameterized.product(
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_predictive_accuracy_without_holdout_id_parameterized(
+      self,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    predictive_accuracy_dims_kwargs = {
+        "selected_geos": selected_geos,
+        "selected_times": selected_times,
+    }
+    predictive_accuracy_dataset = self.analyzer.predictive_accuracy(
+        **predictive_accuracy_dims_kwargs,
+    )
+    df = (
+        predictive_accuracy_dataset[constants.VALUE]
+        .to_dataframe()
+        .reset_index()
+    )
+
+    actual_values = list(df[constants.VALUE])
+    if not selected_geos and not selected_times:
+      backend_test_utils.assert_allclose(
+          actual_values,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_NO_GEOS_OR_TIMES,
+          atol=1e-3,
+      )
+    elif selected_geos and not selected_times:
+      backend_test_utils.assert_allclose(
+          actual_values,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_GEOS_NO_TIMES,
+          atol=1e-3,
+      )
+    elif not selected_geos and selected_times:
+      backend_test_utils.assert_allclose(
+          actual_values,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_NO_GEOS,
+          atol=1e-3,
+      )
+    else:
+      backend_test_utils.assert_allclose(
+          actual_values,
+          analysis_test_utils.PREDICTIVE_ACCURACY_NO_HOLDOUT_ID_TIMES_AND_GEOS,
+          atol=1e-3,
+      )
+
+  def test_predictive_accuracy_with_holdout_id_table_properties_correct(self):
+    n_geos = self.meridian.n_geos
+    n_times = self.meridian.n_times
+    holdout_id = np.full([n_geos, n_times], False)
+    for i in range(n_geos):
+      holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
+          True
+      )
+    model_spec = spec.ModelSpec(holdout_id=holdout_id)
+    meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
+    analyzer_holdout_id = analyzer.Analyzer(meridian)
+    predictive_accuracy_dataset = analyzer_holdout_id.predictive_accuracy()
+    df = (
+        predictive_accuracy_dataset[constants.VALUE]
+        .to_dataframe()
+        .reset_index()
+    )
+    self.assertListEqual(
+        list(df.columns),
+        [
+            constants.METRIC,
+            constants.GEO_GRANULARITY,
+            constants.EVALUATION_SET_VAR,
+            constants.VALUE,
+        ],
+    )
+
+  @parameterized.product(
+      selected_geos=[None, ["geo_1", "geo_3"]],
+      selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_predictive_accuracy_with_holdout_id_correct(
+      self,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+  ):
+    n_geos = len(self.input_data.geo)
+    n_times = len(self.input_data.time)
+
+    np.random.seed(0)
+
+    holdout_id = np.full([n_geos, n_times], False)
+    for i in range(n_geos):
+      holdout_id[i, np.random.choice(n_times, int(np.round(0.2 * n_times)))] = (
+          True
+      )
+    model_spec = spec.ModelSpec(holdout_id=holdout_id)  # Set holdout_id
+    meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
+    analyzer_holdout_id = analyzer.Analyzer(meridian)
+
+    predictive_accuracy_dims_kwargs = {
+        "selected_geos": selected_geos,
+        "selected_times": selected_times,
+    }
+
+    predictive_accuracy_dataset = analyzer_holdout_id.predictive_accuracy(
+        **predictive_accuracy_dims_kwargs,
+    )
+    df = (
+        predictive_accuracy_dataset[constants.VALUE]
+        .to_dataframe()
+        .reset_index()
+    )
+
+    actual_values = list(df[constants.VALUE])
+
+    if not selected_geos and not selected_times:
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_NO_GEOS_OR_TIMES
+      )
+    elif selected_geos and not selected_times:
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_GEOS_NO_TIMES
+      )
+    elif not selected_geos and selected_times:
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_NO_GEOS
+      )
+    else:
+      expected_values = (
+          analysis_test_utils.PREDICTIVE_ACCURACY_HOLDOUT_ID_TIMES_AND_GEO
+      )
+
+    backend_test_utils.assert_allclose(
+        actual_values,
+        expected_values,
+        atol=2e-3,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default",
+          aggregate_geos=False,
+          aggregate_times=False,
+          holdout_id=None,
+          split_by_holdout_id=False,
+          expected_shape=(
+              _N_GEOS,
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+          ),
+          expected_actual_shape=(_N_GEOS, _N_TIMES),
+      ),
+      dict(
+          testcase_name="split_by_holdout_id_true_wo_holdout_id",
+          aggregate_geos=False,
+          aggregate_times=False,
+          holdout_id=None,
+          split_by_holdout_id=True,
+          expected_shape=(
+              _N_GEOS,
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+          ),
+          expected_actual_shape=(_N_GEOS, _N_TIMES),
+      ),
+      dict(
+          testcase_name="split_by_holdout_id_true_w_holdout_id",
+          aggregate_geos=False,
+          aggregate_times=False,
+          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
+          split_by_holdout_id=True,
+          expected_shape=(
+              _N_GEOS,
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+              3,  # [train, test, all]
+          ),
+          expected_actual_shape=(_N_GEOS, _N_TIMES),
+      ),
+      dict(
+          testcase_name="split_by_holdout_id_false_w_holdout_id",
+          aggregate_geos=False,
+          aggregate_times=False,
+          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
+          split_by_holdout_id=False,
+          expected_shape=(
+              _N_GEOS,
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+          ),
+          expected_actual_shape=(_N_GEOS, _N_TIMES),
+      ),
+      dict(
+          testcase_name="aggregate_geos_wo_split",
+          aggregate_geos=True,
+          aggregate_times=False,
+          holdout_id=None,
+          split_by_holdout_id=False,
+          expected_shape=(
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+          ),
+          expected_actual_shape=(_N_TIMES,),
+      ),
+      dict(
+          testcase_name="aggregate_geos_w_split",
+          aggregate_geos=True,
+          aggregate_times=False,
+          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
+          split_by_holdout_id=True,
+          expected_shape=(
+              _N_TIMES,
+              3,  # [mean, ci_lo, ci_hi]
+              3,  # [train, test, all]
+          ),
+          expected_actual_shape=(_N_TIMES,),
+      ),
+      dict(
+          testcase_name="aggregate_times_wo_split",
+          aggregate_geos=False,
+          aggregate_times=True,
+          holdout_id=None,
+          split_by_holdout_id=False,
+          expected_shape=(
+              _N_GEOS,
+              3,  # [mean, ci_lo, ci_hi]
+          ),
+          expected_actual_shape=(_N_GEOS,),
+      ),
+      dict(
+          testcase_name="aggregate_times_w_split",
+          aggregate_geos=False,
+          aggregate_times=True,
+          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
+          split_by_holdout_id=True,
+          expected_shape=(
+              _N_GEOS,
+              3,  # [mean, ci_lo, ci_hi]
+              3,  # [train, test, all]
+          ),
+          expected_actual_shape=(_N_GEOS,),
+      ),
+      dict(
+          testcase_name="aggregate_geos_and_times_wo_split",
+          aggregate_geos=True,
+          aggregate_times=True,
+          holdout_id=None,
+          split_by_holdout_id=False,
+          expected_shape=(3,),  # [mean, ci_lo, ci_hi]
+          expected_actual_shape=(),
+      ),
+      dict(
+          testcase_name="aggregate_geos_and_times_w_split",
+          aggregate_geos=True,
+          aggregate_times=True,
+          holdout_id=np.random.choice([True, False], size=(_N_GEOS, _N_TIMES)),
+          split_by_holdout_id=True,
+          expected_shape=(
+              3,  # [mean, ci_lo, ci_hi]
+              3,  # [train, test, all]
+          ),
+          expected_actual_shape=(),
+      ),
+  )
+  def test_expected_vs_actual_correct_data(
+      self,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      holdout_id: np.ndarray | None,
+      split_by_holdout_id: bool,
+      expected_shape: tuple[int, ...],
+      expected_actual_shape: tuple[int, ...],
+  ):
+    model_spec = spec.ModelSpec(holdout_id=holdout_id)
+    meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
+    meridian_analyzer = analyzer.Analyzer(meridian)
+
+    ds = meridian_analyzer.expected_vs_actual_data(
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        split_by_holdout_id=split_by_holdout_id,
+    )
+
+    expected_actual_values = (
+        meridian.kpi
+        if self.input_data.revenue_per_kpi is None
+        else meridian.kpi * self.input_data.revenue_per_kpi
+    )  # shape (n_geos, n_times)
+
+    axis_to_sum = tuple(
+        ([0] if aggregate_geos else []) + ([1] if aggregate_times else [])
+    )
+    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)
+
+    if aggregate_geos:
+      self.assertNotIn(constants.GEO, ds.coords)
+    else:
+      self.assertListEqual(
+          list(ds.geo.values), list(self.input_data.geo.values)
+      )
+
+    if aggregate_times:
+      self.assertNotIn(constants.TIME, ds.coords)
+    else:
+      self.assertListEqual(
+          list(ds.time.values), list(self.input_data.time.values)
+      )
+
+    self.assertListEqual(
+        list(ds.metric.values),
+        [constants.MEAN, constants.CI_LO, constants.CI_HI],
+    )
+
+    self.assertEqual(ds.expected.shape, expected_shape)
+    self.assertEqual(ds.baseline.shape, expected_shape)
+    self.assertEqual(ds.actual.shape, expected_actual_shape)
+    self.assertEqual(ds.confidence_level, constants.DEFAULT_CONFIDENCE_LEVEL)
+
+    np.testing.assert_array_less(
+        ds.expected.sel(metric=constants.MEAN),
+        ds.expected.sel(metric=constants.CI_HI),
+    )
+    np.testing.assert_array_less(
+        ds.expected.sel(metric=constants.CI_LO),
+        ds.expected.sel(metric=constants.MEAN),
+    )
+    np.testing.assert_array_less(
+        ds.baseline.sel(metric=constants.MEAN),
+        ds.baseline.sel(metric=constants.CI_HI),
+    )
+    np.testing.assert_array_less(
+        ds.baseline.sel(metric=constants.CI_LO),
+        ds.baseline.sel(metric=constants.MEAN),
+    )
+    backend_test_utils.assert_allclose(
+        ds.actual.values,
+        expected_actual_values,
+        atol=1e-5,
+    )
+
+  def test_expected_vs_actual_warns_if_split_by_holdout_id_without_holdout_id(
+      self,
+  ):
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      self.analyzer.expected_vs_actual_data(split_by_holdout_id=True)
+
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn(
+          "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
+          " not be split.",
+          str(w[0].message),
+      )
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):
