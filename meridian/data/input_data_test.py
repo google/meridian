@@ -254,6 +254,33 @@ class InputDataTest(parameterized.TestCase):
           media_spend=self.media_spend,
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_spend", field="media_spend", name="Media Spend"
+      ),
+      dict(testcase_name="rf_spend", field="rf_spend", name="RF Spend"),
+      dict(testcase_name="reach", field="reach", name="Reach"),
+      dict(testcase_name="frequency", field="frequency", name="Frequency"),
+  )
+  def test_validate_no_negative_values(self, field: str, name: str):
+    maybe_flip = lambda da, key: (da * -1) if key == field else (da * 1)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        expected_exception_message=f"{name} values must be non-negative.",
+    ):
+      input_data.InputData(
+          controls=self.lagged_controls,
+          kpi=self.lagged_kpi,
+          kpi_type=constants.REVENUE,
+          population=self.population,
+          revenue_per_kpi=self.revenue_per_kpi,
+          media_spend=maybe_flip(self.media_spend, "media_spend"),
+          rf_spend=maybe_flip(self.rf_spend, "rf_spend"),
+          media=self.lagged_media,
+          reach=maybe_flip(self.lagged_reach, "reach"),
+          frequency=maybe_flip(self.lagged_frequency, "frequency"),
+      )
+
   def test_validate_revenue_per_kpi_negative_values(self):
     with self.assertRaisesRegex(
         ValueError,
@@ -2024,6 +2051,63 @@ class NonpaidInputDataTest(parameterized.TestCase):
       else:
         # Non-DataArray fields should always be the same instance
         self.assertIs(original_value, copied_value)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_spend",
+          field="media_spend",
+          name="Media Spend",
+      ),
+      dict(
+          testcase_name="rf_spend",
+          field="rf_spend",
+          name="RF Spend",
+      ),
+      dict(
+          testcase_name="reach",
+          field="reach",
+          name="Reach",
+      ),
+      dict(
+          testcase_name="frequency",
+          field="frequency",
+          name="Frequency",
+      ),
+      dict(
+          testcase_name="organic_reach",
+          field="organic_reach",
+          name="Organic Reach",
+      ),
+      dict(
+          testcase_name="organic_frequency",
+          field="organic_frequency",
+          name="Organic Frequency",
+      ),
+  )
+  def test_validate_no_negative_values(self, field: str, name: str):
+    maybe_flip = lambda da, key: (da * -1) if key == field else (da * 1)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        expected_exception_message=f"{name} values must be non-negative.",
+    ):
+      input_data.InputData(
+          controls=self.controls,
+          kpi=self.kpi,
+          kpi_type=constants.NON_REVENUE,
+          revenue_per_kpi=self.revenue_per_kpi,
+          non_media_treatments=self.non_media_treatments,
+          population=self.population,
+          media=self.lagged_media,
+          media_spend=maybe_flip(self.media_spend, "media_spend"),
+          reach=maybe_flip(self.lagged_reach, "reach"),
+          frequency=maybe_flip(self.lagged_frequency, "frequency"),
+          rf_spend=maybe_flip(self.rf_spend, "rf_spend"),
+          organic_media=self.lagged_organic_media,
+          organic_reach=maybe_flip(self.lagged_organic_reach, "organic_reach"),
+          organic_frequency=maybe_flip(
+              self.lagged_organic_frequency, "organic_frequency"
+          ),
+      )
 
 
 if __name__ == "__main__":
