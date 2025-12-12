@@ -104,6 +104,33 @@ _N_NON_MEDIA_CHANNELS = 4
 _N_ORGANIC_MEDIA_CHANNELS = 4
 _N_ORGANIC_RF_CHANNELS = 1
 
+# Channel names expected in the sample input data, corresponding to the
+# dimension constants above.
+_SAMPLE_PAID_MEDIA_CHANNELS = frozenset({
+    "ch_0",
+    "ch_1",
+    "ch_2",
+})
+_SAMPLE_RF_CHANNELS = frozenset({
+    "rf_ch_0",
+    "rf_ch_1",
+})
+_SAMPLE_ORGANIC_MEDIA_CHANNELS = frozenset({
+    "organic_media_0",
+    "organic_media_1",
+    "organic_media_2",
+    "organic_media_3",
+})
+_SAMPLE_ORGANIC_RF_CHANNELS = frozenset({
+    "organic_rf_ch_0",
+})
+_SAMPLE_ALL_CHANNELS = (
+    _SAMPLE_PAID_MEDIA_CHANNELS
+    | _SAMPLE_RF_CHANNELS
+    | _SAMPLE_ORGANIC_MEDIA_CHANNELS
+    | _SAMPLE_ORGANIC_RF_CHANNELS
+)
+
 
 def _convert_with_swap(array: xr.DataArray) -> backend.Tensor:
   """Converts DataArray to backend.Tensor and swaps first two dimensions."""
@@ -2243,27 +2270,23 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.IS_INT_TIME_UNIT,
         ],
     )
-    expected_channels = [
-        "ch_0",
-        "ch_1",
-        "ch_2",
-        "rf_ch_0",
-        "rf_ch_1",
-        "organic_media_0",
-        "organic_media_1",
-        "organic_media_2",
-        "organic_media_3",
-        "organic_rf_ch_0",
-    ]
-    self.assertCountEqual(
-        expected_channels, adstock_decay_dataframe[constants.CHANNEL].unique()
+    self.assertSetEqual(
+        set(adstock_decay_dataframe[constants.CHANNEL].unique()),
+        _SAMPLE_ALL_CHANNELS,
     )
 
-    for i, e in enumerate(list(adstock_decay_dataframe[constants.MEAN])):
-      self.assertGreaterEqual(
-          e, list(adstock_decay_dataframe[constants.CI_LO])[i]
-      )
-      self.assertLessEqual(e, list(adstock_decay_dataframe[constants.CI_HI])[i])
+    mean_col = adstock_decay_dataframe[constants.MEAN]
+    ci_lo_col = adstock_decay_dataframe[constants.CI_LO]
+    ci_hi_col = adstock_decay_dataframe[constants.CI_HI]
+
+    self.assertEmpty(
+        adstock_decay_dataframe[mean_col < ci_lo_col],
+        msg="Mean expected to be greater than or equal to CI_LO",
+    )
+    self.assertEmpty(
+        adstock_decay_dataframe[mean_col > ci_hi_col],
+        msg="Mean expected to be less than or equal to CI_HI",
+    )
 
   def test_adstock_decay_effect_values(self):
     adstock_decay_dataframe = self.analyzer.adstock_decay(
@@ -2281,24 +2304,39 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         first_channel_df[constants.DISTRIBUTION] == constants.POSTERIOR
     ]
 
-    mean_arr_prior = list(prior_df[constants.MEAN])
-    ci_lo_arr_prior = list(prior_df[constants.CI_LO])
-    ci_hi_arr_prior = list(prior_df[constants.CI_HI])
+    mean_arr_prior = np.array(prior_df[constants.MEAN])
+    ci_lo_arr_prior = np.array(prior_df[constants.CI_LO])
+    ci_hi_arr_prior = np.array(prior_df[constants.CI_HI])
 
-    mean_arr_posterior = list(posterior_df[constants.MEAN])
-    ci_lo_arr_posterior = list(posterior_df[constants.CI_LO])
-    ci_hi_arr_posterior = list(posterior_df[constants.CI_HI])
+    mean_arr_posterior = np.array(posterior_df[constants.MEAN])
+    ci_lo_arr_posterior = np.array(posterior_df[constants.CI_LO])
+    ci_hi_arr_posterior = np.array(posterior_df[constants.CI_HI])
 
-    # Make sure values are monotonically decreasing throughout DataFrame slice
-    # for one channel.
-    for i in range(len(mean_arr_prior) - 1):
-      self.assertLessEqual(mean_arr_prior[i + 1], mean_arr_prior[i])
-      self.assertLessEqual(ci_lo_arr_prior[i + 1], ci_lo_arr_prior[i])
-      self.assertLessEqual(ci_hi_arr_prior[i + 1], ci_hi_arr_prior[i])
+    self.assertTrue(
+        (np.diff(mean_arr_prior) <= 0).all(),
+        msg="Prior Means are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_lo_arr_prior) <= 0).all(),
+        msg="Prior CI_LOs are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_hi_arr_prior) <= 0).all(),
+        msg="Prior CI_HIs are not monotonically decreasing",
+    )
 
-      self.assertLessEqual(mean_arr_posterior[i + 1], mean_arr_posterior[i])
-      self.assertLessEqual(ci_lo_arr_posterior[i + 1], ci_lo_arr_posterior[i])
-      self.assertLessEqual(ci_hi_arr_posterior[i + 1], ci_hi_arr_posterior[i])
+    self.assertTrue(
+        (np.diff(mean_arr_posterior) <= 0).all(),
+        msg="Posterior Means are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_lo_arr_posterior) <= 0).all(),
+        msg="Posterior CI_LOs are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_hi_arr_posterior) <= 0).all(),
+        msg="Posterior CI_HIs are not monotonically decreasing",
+    )
 
   def test_adstock_decay_math_correct(self):
     """Verifies values for Paid Media channels."""
@@ -2436,26 +2474,15 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertListEqual(list(hill_table.columns), expected_columns)
 
     all_channels_present = set(hill_table[constants.CHANNEL].unique())
-    expected_paid_media = {"ch_0", "ch_1", "ch_2"}
-    expected_rf = {"rf_ch_0", "rf_ch_1"}
-    expected_organic_media = {
-        "organic_media_0",
-        "organic_media_1",
-        "organic_media_2",
-        "organic_media_3",
-    }
-    expected_organic_rf = {"organic_rf_ch_0"}
-    self.assertTrue(expected_paid_media.issubset(all_channels_present))
-    self.assertTrue(expected_rf.issubset(all_channels_present))
-    self.assertTrue(expected_organic_media.issubset(all_channels_present))
-    self.assertTrue(expected_organic_rf.issubset(all_channels_present))
+    self.assertSetEqual(all_channels_present, _SAMPLE_ALL_CHANNELS)
+
     self.assertSetEqual(
         set(
             hill_table[hill_table[constants.CHANNEL_TYPE] == constants.MEDIA][
                 constants.CHANNEL
             ].unique()
         ),
-        expected_paid_media,
+        _SAMPLE_PAID_MEDIA_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2463,7 +2490,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 constants.CHANNEL
             ].unique()
         ),
-        expected_rf,
+        _SAMPLE_RF_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2471,7 +2498,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_MEDIA
             ][constants.CHANNEL].unique()
         ),
-        expected_organic_media,
+        _SAMPLE_ORGANIC_MEDIA_CHANNELS,
     )
     self.assertSetEqual(
         set(
@@ -2479,19 +2506,24 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_RF
             ][constants.CHANNEL].unique()
         ),
-        expected_organic_rf,
+        _SAMPLE_ORGANIC_RF_CHANNELS,
     )
     self.assertTrue(hist_df.index.is_unique)
 
     # Check CI properties for valid rows (where MEAN is present)
     curve_df = hill_table[hill_table[constants.MEAN].notna()]
-    ci_lo_col = list(curve_df[constants.CI_LO])
-    ci_hi_col = list(curve_df[constants.CI_HI])
-    mean_col = list(curve_df[constants.MEAN])
+    ci_lo_col = curve_df[constants.CI_LO]
+    ci_hi_col = curve_df[constants.CI_HI]
+    mean_col = curve_df[constants.MEAN]
 
-    for i, e in enumerate(mean_col):
-      self.assertGreaterEqual(e, ci_lo_col[i])
-      self.assertLessEqual(e, ci_hi_col[i])
+    self.assertEmpty(
+        curve_df[mean_col < ci_lo_col],
+        msg="Mean expected to be >= CI_LO",
+    )
+    self.assertEmpty(
+        curve_df[mean_col > ci_hi_col],
+        msg="Mean expected to be <= CI_HI",
+    )
 
   def test_hill_calculation_curve_data_correct(self):
     """Verifies Paid Media values."""
