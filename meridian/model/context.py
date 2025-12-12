@@ -59,6 +59,7 @@ class ModelContext:
     self._check_media_prior_support()
     self._validate_geo_invariants()
     self._validate_time_invariants()
+    self._validate_media_spend_for_roi_based_priors()
 
   def _validate_data_dependent_model_spec(self):
     """Validates that the data dependent model specs have correct shapes."""
@@ -923,3 +924,32 @@ class ModelContext:
     ]
     for attr in cached_properties:
       _ = getattr(self, attr)
+
+  def _validate_media_spend_for_roi_based_priors(self) -> None:
+    """Validates non-zero media spend when provided with ROI-based priors.
+
+    Zero total spend in a media channel when using ROI-based priors can lead to
+    mathematical impossibilities that prevent the model from converging.
+
+    Raises:
+      ValueError if any media channel has zero total spend and the model is
+      provided with ROI-based priors.
+    """
+    media_prior_type = self.model_spec.effective_media_prior_type
+    has_roi_based_priors = media_prior_type in [
+        constants.TREATMENT_PRIOR_TYPE_ROI,
+        constants.TREATMENT_PRIOR_TYPE_MROI,
+    ]
+    aggregated_media_spend = self.input_data.aggregate_media_spend()
+    zero_spend_channels = (
+        aggregated_media_spend.coords[constants.MEDIA_CHANNEL]
+        .where(aggregated_media_spend == 0, drop=True)
+        .values
+    )
+
+    if has_roi_based_priors and zero_spend_channels.size > 0:
+      raise ValueError(
+          f"Channels '{', '.join(list(zero_spend_channels))}' have zero total"
+          f" spend. Unable to use '{media_prior_type}' prior type for channels"
+          " with zero spend."
+      )
