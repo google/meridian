@@ -1420,14 +1420,19 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         atol=0.1,
     )
 
-  def test_expected_outcome_wrong_kpi_transformation(self):
+  @parameterized.named_parameters(
+      dict(testcase_name="expected_outcome", method_name="expected_outcome"),
+      dict(
+          testcase_name="incremental_outcome", method_name="incremental_outcome"
+      ),
+  )
+  def test_wrong_kpi_transformation_error(self, method_name):
+    method = getattr(self.analyzer, method_name)
     with self.assertRaisesRegex(
         ValueError,
         "use_kpi=False is only supported when inverse_transform_outcome=True.",
     ):
-      self.analyzer.expected_outcome(
-          inverse_transform_outcome=False, use_kpi=False
-      )
+      method(inverse_transform_outcome=False, use_kpi=False)
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -1508,18 +1513,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
-  def test_incremental_outcome_negative_scaling_factor0(self):
+  @parameterized.named_parameters(
+      ("scaling_factor0", "scaling_factor0"),
+      ("scaling_factor1", "scaling_factor1"),
+  )
+  def test_incremental_outcome_negative_scaling_factors(self, factor_name):
+    kwargs = {factor_name: -0.01}
     with self.assertRaisesRegex(
-        ValueError,
-        "scaling_factor0 must be non-negative.",
+        ValueError, f"{factor_name} must be non-negative."
     ):
-      self.analyzer.incremental_outcome(scaling_factor0=-0.01)
-
-  def test_incremental_outcome_negative_scaling_factor1(self):
-    with self.assertRaisesRegex(
-        ValueError, "scaling_factor1 must be non-negative."
-    ):
-      self.analyzer.incremental_outcome(scaling_factor1=-0.01)
+      self.analyzer.incremental_outcome(**kwargs)
 
   def test_incremental_outcome_scaling_factor1_less_than_scaling_factor0(self):
     with self.assertRaisesRegex(
@@ -1596,43 +1599,39 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           media_selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
 
-  def test_incremental_outcome_media_selected_times_wrong_length(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "Boolean `media_selected_times` must have the same number of elements "
-        "as there are time period coordinates in the media tensors.",
-    ):
-      self.analyzer.incremental_outcome(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="wrong_length",
           media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True],
-      )
-
-  def test_incremental_outcome_media_selected_times_wrong_time_dim_names(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`media_selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer.incremental_outcome(
+          expected_message=(
+              "Boolean `media_selected_times` must have the same number of"
+              " elements as there are time period coordinates in the media"
+              " tensors."
+          ),
+      ),
+      dict(
+          testcase_name="wrong_names",
           media_selected_times=["random_time"],
-      )
-
-  def test_incremental_outcome_incorrect_media_selected_times_type(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`media_selected_times` must be a list of strings or a list of"
-        " booleans.",
-    ):
-      self.analyzer.incremental_outcome(
+          expected_message=(
+              "`media_selected_times` must match the time dimension names from"
+              " meridian.InputData."
+          ),
+      ),
+      dict(
+          testcase_name="wrong_type",
           media_selected_times=["random_time", False, True],
-      )
-
-  def test_incremental_outcome_wrong_kpi_transformation(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "use_kpi=False is only supported when inverse_transform_outcome=True.",
-    ):
+          expected_message=(
+              "`media_selected_times` must be a list of strings or a list of"
+              " booleans."
+          ),
+      ),
+  )
+  def test_incremental_outcome_media_selected_times_validation(
+      self, media_selected_times, expected_message
+  ):
+    with self.assertRaisesRegex(ValueError, expected_message):
       self.analyzer.incremental_outcome(
-          inverse_transform_outcome=False, use_kpi=False
+          media_selected_times=media_selected_times
       )
 
   def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
@@ -4543,32 +4542,37 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         response_data_spend[-1],
     )
 
-  def test_response_curves_selected_times_wrong_type(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must be a list of strings or a list of booleans.",
-    ):
-      self.analyzer.response_curves(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="wrong_type",
           selected_times=["random_time", False, True],
-      )
-
-  def test_response_curves_selected_times_wrong_time_dim_names(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer.response_curves(selected_times=["random_time"])
-
-  def test_response_curves_selected_times_no_new_data_wrong_time(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "`selected_times` must match the time dimension names from "
-        "meridian.InputData.",
-    ):
-      self.analyzer.response_curves(
-          selected_times=["2022-01-01"]  # Not in input_data.time
-      )
+          expected_message=(
+              "`selected_times` must be a list of strings or a list of"
+              " booleans."
+          ),
+      ),
+      dict(
+          testcase_name="wrong_time_dim_names",
+          selected_times=["random_time"],
+          expected_message=(
+              "`selected_times` must match the time dimension names from "
+              "meridian.InputData."
+          ),
+      ),
+      dict(
+          testcase_name="no_new_data_wrong_time",
+          selected_times=["2022-01-01"],
+          expected_message=(
+              "`selected_times` must match the time dimension names from "
+              "meridian.InputData."
+          ),
+      ),
+  )
+  def test_response_curves_selected_times_errors(
+      self, selected_times, expected_message
+  ):
+    with self.assertRaisesRegex(ValueError, expected_message):
+      self.analyzer.response_curves(selected_times=selected_times)
 
   def test_response_curves_new_data_selected_times_wrong_time(self):
     n_new_times = 15
