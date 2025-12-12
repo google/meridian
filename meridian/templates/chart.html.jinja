@@ -25,13 +25,7 @@ limitations under the License.
 
 <script type="text/javascript">
   (() => {
-    const opt = {
-      mode: 'vega-lite',
-      width: 'container',
-      autosize: { type: 'fit', contains: 'padding' }
-    };
     const spec = JSON.parse({{ chart_json|tojson }});
-    const chartDiv = document.getElementById('{{ id }}');
     vegaEmbed('#{{ id }}', spec).catch(console.error);
   })();
 </script>
