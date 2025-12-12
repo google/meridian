@@ -1040,6 +1040,15 @@ def save_mmm(mmm: Meridian, file_path: str):
     mmm: Model object to save.
     file_path: File path to save a pickled model object.
   """
+  warnings.warn(
+      "save_mmm is deprecated and will be removed in a future release. Please"
+      " use `schema.serde.meridian_serde.save_meridian` instead. See"
+      " https://developers.google.com/meridian/docs/user-guide/saving-model-object"
+      " for details.",
+      DeprecationWarning,
+      stacklevel=2,
+  )
+
   if not os.path.exists(os.path.dirname(file_path)):
     os.makedirs(os.path.dirname(file_path))
 
@@ -1063,6 +1072,15 @@ def load_mmm(file_path: str) -> Meridian:
   Raises:
       FileNotFoundError: If `file_path` does not exist.
   """
+  warnings.warn(
+      "load_mmm is deprecated and will be removed in a future release. Please"
+      " use `meridian.schema.serde.meridian_serde.load_meridian` instead. See"
+      " https://developers.google.com/meridian/docs/user-guide/saving-model-object"
+      " for details.",
+      DeprecationWarning,
+      stacklevel=2,
+  )
+
   try:
     with open(file_path, "rb") as f:
       mmm = joblib.load(f)

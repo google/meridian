@@ -553,17 +553,20 @@ class ModelPersistenceTest(
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
 
-  def test_save_and_load_works(self):
+  def setUp(self):
+    super().setUp()
     # The create_tempdir() method below internally uses command line flag
     # (--test_tmpdir) and such flags are not marked as parsed by default
     # when running with pytest. Marking as parsed directly here to make the
     # pytest run pass.
     flags.FLAGS.mark_as_parsed()
-    file_path = os.path.join(self.create_tempdir().full_path, "joblib")
+    self.file_path = os.path.join(self.create_tempdir().full_path, "joblib")
+
+  def test_save_and_load_works(self):
     mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
-    model.save_mmm(mmm, str(file_path))
-    self.assertTrue(os.path.exists(file_path))
-    new_mmm = model.load_mmm(file_path)
+    model.save_mmm(mmm, str(self.file_path))
+    self.assertTrue(os.path.exists(self.file_path))
+    new_mmm = model.load_mmm(self.file_path)
     for attr in dir(mmm):
       if isinstance(getattr(mmm, attr), (int, bool)):
         with self.subTest(name=attr):
@@ -577,6 +580,13 @@ class ModelPersistenceTest(
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
     ):
       model.load_mmm("this/path/does/not/exist")
+
+  def test_save_and_load_warning(self):
+    mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
+    with self.assertWarns(DeprecationWarning):
+      model.save_mmm(mmm, str(self.file_path))
+    with self.assertWarns(DeprecationWarning):
+      model.load_mmm(self.file_path)
 
 
 class NonPaidModelTest(
