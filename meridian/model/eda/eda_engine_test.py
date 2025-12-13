@@ -171,6 +171,21 @@ def _create_ndarray_with_std_below_threshold(
     return mock_array.reshape(1, n_times)
 
 
+def _create_eda_outcome(
+    check_type: eda_outcome.EDACheckType,
+    severity: eda_outcome.EDASeverity,
+) -> eda_outcome.EDAOutcome:
+  """Creates an EDAOutcome with a single finding."""
+  explanation = f"{check_type.name}: {severity.name}"
+  return eda_outcome.EDAOutcome(
+      check_type=check_type,
+      findings=[
+          eda_outcome.EDAFinding(severity=severity, explanation=explanation)
+      ],
+      analysis_artifacts=[],
+  )
+
+
 class EDAEngineTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -220,21 +235,6 @@ class EDAEngineTest(
         mock_check.side_effect = result
       else:
         mock_check.return_value = result
-
-  def _create_eda_outcome(
-      self,
-      check_type: eda_outcome.EDACheckType,
-      severity: eda_outcome.EDASeverity,
-  ) -> eda_outcome.EDAOutcome:
-    """Creates an EDAOutcome with a single finding."""
-    explanation = f"{check_type.name}: {severity.name}"
-    return eda_outcome.EDAOutcome(
-        check_type=check_type,
-        findings=[
-            eda_outcome.EDAFinding(severity=severity, explanation=explanation)
-        ],
-        analysis_artifacts=[],
-    )
 
   def _mock_eda_engine_property(self, property_name, return_value):
     self.enter_context(
@@ -5655,7 +5655,7 @@ class EDAEngineTest(
     meridian.is_national = is_national
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_outcome = self._create_eda_outcome(
+    mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.STANDARD_DEVIATION,
         eda_outcome.EDASeverity.INFO,
     )
@@ -5687,7 +5687,7 @@ class EDAEngineTest(
     meridian.is_national = is_national
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_outcome = self._create_eda_outcome(
+    mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.MULTICOLLINEARITY,
         eda_outcome.EDASeverity.INFO,
     )
@@ -5721,7 +5721,7 @@ class EDAEngineTest(
     meridian.is_national = is_national
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_outcome = self._create_eda_outcome(
+    mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
         eda_outcome.EDASeverity.INFO,
     )
@@ -6118,7 +6118,7 @@ class EDAEngineTest(
     meridian.is_national = is_national
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_outcome = self._create_eda_outcome(
+    mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.COST_PER_MEDIA_UNIT,
         eda_outcome.EDASeverity.INFO,
     )
@@ -6242,15 +6242,15 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     mock_results = {
-        "check_overall_kpi_invariability": self._create_eda_outcome(
+        "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.INFO,
         ),
-        "check_vif": self._create_eda_outcome(
+        "check_vif": _create_eda_outcome(
             eda_outcome.EDACheckType.MULTICOLLINEARITY,
             eda_outcome.EDASeverity.INFO,
         ),
-        "check_pairwise_corr": self._create_eda_outcome(
+        "check_pairwise_corr": _create_eda_outcome(
             eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
             eda_outcome.EDASeverity.INFO,
         ),
@@ -6259,11 +6259,27 @@ class EDAEngineTest(
 
     outcomes = engine.run_all_critical_checks()
 
-    self.assertLen(outcomes, 3)
-    for outcome in outcomes:
-      self.assertLen(outcome.findings, 1)
+    self.assertIsInstance(outcomes, eda_outcome.CriticalCheckEDAOutcomes)
+
+    with self.subTest("kpi_invariability"):
+      self.assertLen(outcomes.kpi_invariability.findings, 1)
       self.assertEqual(
-          outcome.findings[0].severity, eda_outcome.EDASeverity.INFO
+          outcomes.kpi_invariability.findings[0].severity,
+          eda_outcome.EDASeverity.INFO,
+      )
+
+    with self.subTest("multicollinearity"):
+      self.assertLen(outcomes.multicollinearity.findings, 1)
+      self.assertEqual(
+          outcomes.multicollinearity.findings[0].severity,
+          eda_outcome.EDASeverity.INFO,
+      )
+
+    with self.subTest("pairwise_correlation"):
+      self.assertLen(outcomes.pairwise_correlation.findings, 1)
+      self.assertEqual(
+          outcomes.pairwise_correlation.findings[0].severity,
+          eda_outcome.EDASeverity.INFO,
       )
 
   def test_run_all_critical_checks_with_non_info_findings(self):
@@ -6271,15 +6287,15 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     mock_results = {
-        "check_overall_kpi_invariability": self._create_eda_outcome(
+        "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.ERROR,
         ),
-        "check_vif": self._create_eda_outcome(
+        "check_vif": _create_eda_outcome(
             eda_outcome.EDACheckType.MULTICOLLINEARITY,
             eda_outcome.EDASeverity.ATTENTION,
         ),
-        "check_pairwise_corr": self._create_eda_outcome(
+        "check_pairwise_corr": _create_eda_outcome(
             eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
             eda_outcome.EDASeverity.INFO,
         ),
@@ -6288,22 +6304,35 @@ class EDAEngineTest(
 
     outcomes = engine.run_all_critical_checks()
 
-    self.assertLen(outcomes, 3)
-    expected_severities = [
-        eda_outcome.EDASeverity.ERROR,
-        eda_outcome.EDASeverity.ATTENTION,
-        eda_outcome.EDASeverity.INFO,
-    ]
-    for i, outcome in enumerate(outcomes):
-      self.assertLen(outcome.findings, 1)
-      self.assertEqual(outcome.findings[0].severity, expected_severities[i])
+    self.assertIsInstance(outcomes, eda_outcome.CriticalCheckEDAOutcomes)
+
+    with self.subTest("kpi_invariability"):
+      self.assertLen(outcomes.kpi_invariability.findings, 1)
+      self.assertEqual(
+          outcomes.kpi_invariability.findings[0].severity,
+          eda_outcome.EDASeverity.ERROR,
+      )
+
+    with self.subTest("multicollinearity"):
+      self.assertLen(outcomes.multicollinearity.findings, 1)
+      self.assertEqual(
+          outcomes.multicollinearity.findings[0].severity,
+          eda_outcome.EDASeverity.ATTENTION,
+      )
+
+    with self.subTest("pairwise_correlation"):
+      self.assertLen(outcomes.pairwise_correlation.findings, 1)
+      self.assertEqual(
+          outcomes.pairwise_correlation.findings[0].severity,
+          eda_outcome.EDASeverity.INFO,
+      )
 
   def test_run_all_critical_checks_with_exception(self):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
     mock_results = {
-        "check_overall_kpi_invariability": self._create_eda_outcome(
+        "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.INFO,
         ),
@@ -6314,43 +6343,50 @@ class EDAEngineTest(
 
     outcomes = engine.run_all_critical_checks()
 
-    self.assertLen(outcomes, 3)
+    self.assertIsInstance(outcomes, eda_outcome.CriticalCheckEDAOutcomes)
 
-    # Check check_overall_kpi_invariability
-    self.assertEqual(
-        outcomes[0].check_type, eda_outcome.EDACheckType.KPI_INVARIABILITY
-    )
-    self.assertLen(outcomes[0].findings, 1)
-    self.assertEqual(
-        outcomes[0].findings[0].severity, eda_outcome.EDASeverity.INFO
-    )
+    with self.subTest("kpi_invariability"):
+      self.assertEqual(
+          outcomes.kpi_invariability.check_type,
+          eda_outcome.EDACheckType.KPI_INVARIABILITY,
+      )
+      self.assertLen(outcomes.kpi_invariability.findings, 1)
+      self.assertEqual(
+          outcomes.kpi_invariability.findings[0].severity,
+          eda_outcome.EDASeverity.INFO,
+      )
 
-    # Check check_vif (should catch ValueError)
-    self.assertEqual(
-        outcomes[1].check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
-    )
-    self.assertLen(outcomes[1].findings, 1)
-    self.assertEqual(
-        outcomes[1].findings[0].severity, eda_outcome.EDASeverity.ERROR
-    )
-    self.assertIn(
-        "An error occurred during running check_vif: ValueError('Test Error')",
-        outcomes[1].findings[0].explanation,
-    )
+    with self.subTest("multicollinearity"):
+      self.assertEqual(
+          outcomes.multicollinearity.check_type,
+          eda_outcome.EDACheckType.MULTICOLLINEARITY,
+      )
+      self.assertLen(outcomes.multicollinearity.findings, 1)
+      self.assertEqual(
+          outcomes.multicollinearity.findings[0].severity,
+          eda_outcome.EDASeverity.ERROR,
+      )
+      self.assertIn(
+          "An error occurred during running check_vif: ValueError('Test"
+          " Error')",
+          outcomes.multicollinearity.findings[0].explanation,
+      )
 
-    # Check check_pairwise_corr (should catch TypeError)
-    self.assertEqual(
-        outcomes[2].check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
-    )
-    self.assertLen(outcomes[2].findings, 1)
-    self.assertEqual(
-        outcomes[2].findings[0].severity, eda_outcome.EDASeverity.ERROR
-    )
-    self.assertIn(
-        "An error occurred during running check_pairwise_corr:"
-        " TypeError('Another Error')",
-        outcomes[2].findings[0].explanation,
-    )
+    with self.subTest("pairwise_correlation"):
+      self.assertEqual(
+          outcomes.pairwise_correlation.check_type,
+          eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
+      )
+      self.assertLen(outcomes.pairwise_correlation.findings, 1)
+      self.assertEqual(
+          outcomes.pairwise_correlation.findings[0].severity,
+          eda_outcome.EDASeverity.ERROR,
+      )
+      self.assertIn(
+          "An error occurred during running check_pairwise_corr:"
+          " TypeError('Another Error')",
+          outcomes.pairwise_correlation.findings[0].explanation,
+      )
 
   def test_stack_variables(self):
     media_data = np.array(

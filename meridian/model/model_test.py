@@ -497,43 +497,65 @@ class ModelTest(
     self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
 
   def test_run_model_fitting_guardrail_error_message(self):
-    # Create mock EDA outcomes with ERROR severity findings
-    mock_finding1 = mock.Mock()
-    mock_finding1.severity = eda_outcome.EDASeverity.ERROR
-    mock_finding1.explanation = "Error explanation for PAIRWISE_CORR 1."
+    finding_corr_1 = eda_outcome.EDAFinding(
+        severity=eda_outcome.EDASeverity.ERROR,
+        explanation="Error explanation for PAIRWISE_CORR 1.",
+    )
+    finding_corr_2 = eda_outcome.EDAFinding(
+        severity=eda_outcome.EDASeverity.ERROR,
+        explanation="Error explanation for PAIRWISE_CORR 2.",
+    )
+    finding_vif_1 = eda_outcome.EDAFinding(
+        severity=eda_outcome.EDASeverity.ERROR,
+        explanation="Error explanation for MULTICOLLINEARITY 1.",
+    )
 
-    mock_finding2 = mock.Mock()
-    mock_finding2.severity = eda_outcome.EDASeverity.ERROR
-    mock_finding2.explanation = "Error explanation for PAIRWISE_CORR 2."
+    outcome_corr = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
+        findings=[finding_corr_1, finding_corr_2],
+        analysis_artifacts=[],
+    )
+    outcome_vif = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.MULTICOLLINEARITY,
+        findings=[finding_vif_1],
+        analysis_artifacts=[],
+    )
+    outcome_kpi = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.KPI_INVARIABILITY,
+        findings=[],
+        analysis_artifacts=[],
+    )
 
-    mock_finding3 = mock.Mock()
-    mock_finding3.severity = eda_outcome.EDASeverity.ERROR
-    mock_finding3.explanation = "Error explanation for MULTICOLLINEARITY 1."
+    critical_outcomes = eda_outcome.CriticalCheckEDAOutcomes(
+        kpi_invariability=outcome_kpi,
+        multicollinearity=outcome_vif,
+        pairwise_correlation=outcome_corr,
+    )
 
-    mock_outcome1 = mock.Mock()
-    mock_outcome1.check_type = eda_outcome.EDACheckType.PAIRWISE_CORRELATION
-    mock_outcome1.findings = [mock_finding1, mock_finding2]
-
-    mock_outcome2 = mock.Mock()
-    mock_outcome2.check_type = eda_outcome.EDACheckType.MULTICOLLINEARITY
-    mock_outcome2.findings = [mock_finding3]
-
-    mock_eda_outcomes = self.enter_context(
-        mock.patch(
-            "meridian.model.model.Meridian.eda_outcomes",
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "eda_outcomes",
             new_callable=mock.PropertyMock,
+            return_value=critical_outcomes,
         )
     )
-    mock_eda_outcomes.return_value = [mock_outcome1, mock_outcome2]
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
 
+    # The error message order is deterministic based on
+    # `eda_outcome.CriticalCheckEDAOutcomes` dataclass field order:
+    # 1. kpi (empty)
+    # 2. multicollinearity
+    # 3. pairwise_correlation
     expected_error_message = (
         "Model has critical EDA issues. Please fix before running"
-        " `sample_posterior`.\n\nCheck type: PAIRWISE_CORRELATION\n- Error"
-        " explanation for PAIRWISE_CORR 1.\n- Error explanation for"
-        " PAIRWISE_CORR 2.\nCheck type: MULTICOLLINEARITY\n- Error explanation"
-        " for MULTICOLLINEARITY 1.\nFor further details, please refer to"
-        " `Meridian.eda_outcomes`."
+        " `sample_posterior`.\n\n"
+        "Check type: MULTICOLLINEARITY\n"
+        "- Error explanation for MULTICOLLINEARITY 1.\n"
+        "Check type: PAIRWISE_CORRELATION\n"
+        "- Error explanation for PAIRWISE_CORR 1.\n"
+        "- Error explanation for PAIRWISE_CORR 2.\n"
+        "For further details, please refer to `Meridian.eda_outcomes`."
     )
     with self.assertRaisesWithLiteralMatch(
         model.ModelFittingError, expected_error_message
