@@ -26,6 +26,7 @@ keywords = [
 dependencies = [
   "arviz",
   "altair >= 5",
+  "bidict",
   "immutabledict",
   "joblib",
   "natsort >= 7.1.1, < 8",

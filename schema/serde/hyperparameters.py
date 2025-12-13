@@ -16,12 +16,14 @@
 
 import warnings
 
+import bidict
 from meridian import backend
 from meridian import constants as c
 from meridian.model import spec
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from schema.serde import constants as sc
 from schema.serde import serde
+from schema.utils import proto_enum_converter
 import numpy as np
 
 _MediaEffectsDist = meridian_pb.MediaEffectsDistribution
@@ -31,101 +33,44 @@ _NonMediaBaselineFunction = (
     meridian_pb.NonMediaBaselineValue.NonMediaBaselineFunction
 )
 
+media_effects_converter = proto_enum_converter.ProtoEnumConverter(
+    enum_display_name="Media effects distribution",
+    enum_message=_MediaEffectsDist,
+    mapping=bidict.bidict({
+        c.MEDIA_EFFECTS_LOG_NORMAL: "LOG_NORMAL",
+        c.MEDIA_EFFECTS_NORMAL: "NORMAL",
+    }),
+    enum_unspecified=_MediaEffectsDist.MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED,
+    default_when_unspecified=c.MEDIA_EFFECTS_LOG_NORMAL,
+)
 
-def _media_effects_dist_to_proto_enum(
-    media_effect_dict: str,
-) -> _MediaEffectsDist:
-  match media_effect_dict:
-    case c.MEDIA_EFFECTS_LOG_NORMAL:
-      return _MediaEffectsDist.LOG_NORMAL
-    case c.MEDIA_EFFECTS_NORMAL:
-      return _MediaEffectsDist.NORMAL
-    case _:
-      return _MediaEffectsDist.MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED
+paid_media_prior_type_converter = proto_enum_converter.ProtoEnumConverter(
+    enum_display_name="Paid media prior type",
+    enum_message=_PaidMediaPriorType,
+    mapping=bidict.bidict({
+        c.TREATMENT_PRIOR_TYPE_ROI: "ROI",
+        c.TREATMENT_PRIOR_TYPE_MROI: "MROI",
+        c.TREATMENT_PRIOR_TYPE_COEFFICIENT: "COEFFICIENT",
+        c.TREATMENT_PRIOR_TYPE_CONTRIBUTION: "CONTRIBUTION",
+    }),
+    enum_unspecified=_PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED,
+    default_when_unspecified=None,
+)
 
-
-def _proto_enum_to_media_effects_dist(
-    proto_enum: _MediaEffectsDist,
-) -> str:
-  """Converts a `_MediaEffectsDist` enum to its string representation."""
-  match proto_enum:
-    case _MediaEffectsDist.LOG_NORMAL:
-      return c.MEDIA_EFFECTS_LOG_NORMAL
-    case _MediaEffectsDist.NORMAL:
-      return c.MEDIA_EFFECTS_NORMAL
-    case _MediaEffectsDist.MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED:
-      warnings.warn(
-          "Media effects distribution is unspecified. Resolving to"
-          " 'log-normal'."
-      )
-      return c.MEDIA_EFFECTS_LOG_NORMAL
-    case _:
-      raise ValueError(
-          "Unsupported MediaEffectsDistribution proto enum value:"
-          f" {proto_enum}."
-      )
-
-
-def _paid_media_prior_type_to_proto_enum(
-    paid_media_prior_type: str | None,
-) -> _PaidMediaPriorType:
-  """Converts a paid media prior type string to its proto enum."""
-  if paid_media_prior_type is None:
-    return _PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED
-  try:
-    return _PaidMediaPriorType.Value(paid_media_prior_type.upper())
-  except ValueError:
-    warnings.warn(
-        f"Invalid paid media prior type: {paid_media_prior_type}. Resolving to"
-        " PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED."
-    )
-    return _PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED
-
-
-def _proto_enum_to_paid_media_prior_type(
-    proto_enum: _PaidMediaPriorType,
-) -> str | None:
-  """Converts a `_PaidMediaPriorType` enum to its string representation."""
-  if proto_enum == _PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED:
-    return None
-  return _PaidMediaPriorType.Name(proto_enum).lower()
-
-
-def _non_paid_prior_type_to_proto_enum(
-    non_paid_prior_type: str,
-) -> _NonPaidTreatmentsPriorType:
-  """Converts a non-paid prior type string to its proto enum."""
-  try:
-    return _NonPaidTreatmentsPriorType.Value(
-        f"NON_PAID_TREATMENTS_PRIOR_TYPE_{non_paid_prior_type.upper()}"
-    )
-  except ValueError:
-    warnings.warn(
-        f"Invalid non-paid prior type: {non_paid_prior_type}. Resolving to"
-        " NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION."
-    )
-    return (
-        _NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION
-    )
-
-
-def _proto_enum_to_non_paid_prior_type(
-    proto_enum: _NonPaidTreatmentsPriorType,
-) -> str:
-  """Converts a `_NonPaidTreatmentsPriorType` enum to its string representation."""
-  if (
-      proto_enum
-      == _NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_UNSPECIFIED
-  ):
-    warnings.warn(
-        "Non-paid prior type is unspecified. Resolving to 'contribution'."
-    )
-    return c.TREATMENT_PRIOR_TYPE_CONTRIBUTION
-  return (
-      _NonPaidTreatmentsPriorType.Name(proto_enum)
-      .replace("NON_PAID_TREATMENTS_PRIOR_TYPE_", "")
-      .lower()
-  )
+non_paid_treatments_prior_type_converter = proto_enum_converter.ProtoEnumConverter(
+    enum_display_name="Non-paid treatments prior type",
+    enum_message=_NonPaidTreatmentsPriorType,
+    mapping=bidict.bidict({
+        c.TREATMENT_PRIOR_TYPE_COEFFICIENT: (
+            "NON_PAID_TREATMENTS_PRIOR_TYPE_COEFFICIENT"
+        ),
+        c.TREATMENT_PRIOR_TYPE_CONTRIBUTION: (
+            "NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION"
+        ),
+    }),
+    enum_unspecified=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_UNSPECIFIED,
+    default_when_unspecified=c.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+)
 
 
 class HyperparametersSerde(
@@ -141,25 +86,27 @@ class HyperparametersSerde(
   def serialize(self, obj: spec.ModelSpec) -> meridian_pb.Hyperparameters:
     """Serializes the given ModelSpec into a `Hyperparameters` proto."""
     hyperparameters_proto = meridian_pb.Hyperparameters(
-        media_effects_dist=_media_effects_dist_to_proto_enum(
+        media_effects_dist=media_effects_converter.to_proto(
             obj.media_effects_dist
         ),
         hill_before_adstock=obj.hill_before_adstock,
         unique_sigma_for_each_geo=obj.unique_sigma_for_each_geo,
-        media_prior_type=_paid_media_prior_type_to_proto_enum(
+        media_prior_type=paid_media_prior_type_converter.to_proto(
             obj.media_prior_type
         ),
-        rf_prior_type=_paid_media_prior_type_to_proto_enum(obj.rf_prior_type),
-        paid_media_prior_type=_paid_media_prior_type_to_proto_enum(
+        rf_prior_type=paid_media_prior_type_converter.to_proto(
+            obj.rf_prior_type
+        ),
+        paid_media_prior_type=paid_media_prior_type_converter.to_proto(
             obj.paid_media_prior_type
         ),
-        organic_media_prior_type=_non_paid_prior_type_to_proto_enum(
+        organic_media_prior_type=non_paid_treatments_prior_type_converter.to_proto(
             obj.organic_media_prior_type
         ),
-        organic_rf_prior_type=_non_paid_prior_type_to_proto_enum(
+        organic_rf_prior_type=non_paid_treatments_prior_type_converter.to_proto(
             obj.organic_rf_prior_type
         ),
-        non_media_treatments_prior_type=_non_paid_prior_type_to_proto_enum(
+        non_media_treatments_prior_type=non_paid_treatments_prior_type_converter.to_proto(
             obj.non_media_treatments_prior_type
         ),
         enable_aks=obj.enable_aks,
@@ -326,28 +273,28 @@ class HyperparametersSerde(
       adstock_decay_spec = sc.DEFAULT_DECAY
 
     return spec.ModelSpec(
-        media_effects_dist=_proto_enum_to_media_effects_dist(
+        media_effects_dist=media_effects_converter.from_proto(
             serialized.media_effects_dist
         ),
         hill_before_adstock=serialized.hill_before_adstock,
         max_lag=max_lag,
         unique_sigma_for_each_geo=serialized.unique_sigma_for_each_geo,
-        media_prior_type=_proto_enum_to_paid_media_prior_type(
+        media_prior_type=paid_media_prior_type_converter.from_proto(
             serialized.media_prior_type
         ),
-        rf_prior_type=_proto_enum_to_paid_media_prior_type(
+        rf_prior_type=paid_media_prior_type_converter.from_proto(
             serialized.rf_prior_type
         ),
-        paid_media_prior_type=_proto_enum_to_paid_media_prior_type(
+        paid_media_prior_type=paid_media_prior_type_converter.from_proto(
             serialized.paid_media_prior_type
         ),
-        organic_media_prior_type=_proto_enum_to_non_paid_prior_type(
+        organic_media_prior_type=non_paid_treatments_prior_type_converter.from_proto(
             serialized.organic_media_prior_type
         ),
-        organic_rf_prior_type=_proto_enum_to_non_paid_prior_type(
+        organic_rf_prior_type=non_paid_treatments_prior_type_converter.from_proto(
             serialized.organic_rf_prior_type
         ),
-        non_media_treatments_prior_type=_proto_enum_to_non_paid_prior_type(
+        non_media_treatments_prior_type=non_paid_treatments_prior_type_converter.from_proto(
             serialized.non_media_treatments_prior_type
         ),
         non_media_baseline_values=non_media_baseline_values,

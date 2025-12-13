@@ -15,4 +15,5 @@
 """Module containing MMM schema util functions."""
 
 from schema.utils import date_range_bucketing
+from schema.utils import proto_enum_converter
 from schema.utils import time_record
