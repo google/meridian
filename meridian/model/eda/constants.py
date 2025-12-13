@@ -22,6 +22,12 @@ VARIABLE_1 = 'var1'
 VARIABLE_2 = 'var2'
 CORRELATION = 'correlation'
 ABS_CORRELATION_COL_NAME = 'abs_correlation'
+PAIRWISE_CORRELATION_CHECK_INFO = (
+    'Please review the computed pairwise correlations. Note that'
+    ' high pairwise correlation may cause model identifiability'
+    ' and convergence issues. Consider combining the variables if'
+    ' high correlation exists.'
+)
 
 # EDA Plotting properties
 VARIABLE = 'var'
@@ -31,3 +37,11 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
+
+# Report properties
+REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
+RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
+RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
+PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
+EXTREME_CORR_VAR_PAIRS_TABLE_ID = 'extreme-corr-var-pairs'
+EXTREME_CORR_VAR_PAIRS_TABLE_TITLE = 'Extreme Correlation Pairs'

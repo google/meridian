@@ -18,13 +18,15 @@ limitations under the License.
   <card-title>
     {{ title }}
   </card-title>
-  <card-insights>
-    <card-insights-icon>
-      <img src="https://www.gstatic.com/images/icons/material/system/svg/insights_24px.svg"
-            alt="insights icon" />
-    </card-insights-icon>
-    {{ insights }} {# `insights` is a pre-rendered HTML snippet. #}
-  </card-insights>
+  {% if insights %}
+    <card-insights>
+      <card-insights-icon>
+        <img src="https://www.gstatic.com/images/icons/material/system/svg/insights_24px.svg"
+              alt="insights icon" />
+      </card-insights-icon>
+      {{ insights }} {# `insights` is a pre-rendered HTML snippet. #}
+    </card-insights>
+  {% endif %}
   {% if stats %}
     <stats-section>
       {% for item in stats %} {# Each `item` is a pre-rendered HTML snippet. #}
