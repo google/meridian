@@ -1030,6 +1030,28 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
+  def test_marginal_roi_zero_media_spend_returns_inf(self):
+    new_media_spend = backend.zeros_like(
+        self.meridian_media_only.media_tensors.media_spend,
+        dtype=backend.float32,
+    )
+    mroi = self.analyzer_media_only.marginal_roi(
+        new_data=analyzer.DataTensors(media_spend=new_media_spend)
+    )
+    np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))
+
+  def test_cpik_zero_media_spend_returns_zero(self):
+    new_media_spend = backend.zeros_like(
+        self.meridian_media_only.media_tensors.media_spend,
+        dtype=backend.float32,
+    )
+    cpik = self.analyzer_media_only.cpik(
+        new_data=analyzer.DataTensors(media_spend=new_media_spend)
+    )
+    backend_test_utils.assert_allclose(
+        cpik, backend.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
+    )
+
   def test_optimal_frequency_data_media_only_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,

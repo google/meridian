@@ -2414,25 +2414,27 @@ class Analyzer:
     )
     spend_inc = filled_data.total_spend() * incremental_increase
     if spend_inc is not None and spend_inc.ndim == 3:
-      denominator = self.filter_and_aggregate_geos_and_times(
-          spend_inc,
-          aggregate_times=True,
-          flexible_time_dim=True,
-          has_media_dim=True,
-          **dim_kwargs,
+      return backend.divide(
+          numerator,
+          self.filter_and_aggregate_geos_and_times(
+              spend_inc,
+              aggregate_times=True,
+              flexible_time_dim=True,
+              has_media_dim=True,
+              **dim_kwargs,
+          )
       )
-    else:
-      if not aggregate_geos:
-        # This check should not be reachable. It is here to protect against
-        # future changes to self._validate_geo_and_time_granularity. If
-        # spend_inc.ndim is not 3 and `aggregate_geos` is `False`, then
-        # self._validate_geo_and_time_granularity should raise an error.
-        raise ValueError(
-            "aggregate_geos must be True if spend does not have a geo "
-            "dimension."
-        )
-      denominator = spend_inc
-    return backend.divide_no_nan(numerator, denominator)
+
+    if not aggregate_geos:
+      # This check should not be reachable. It is here to protect against
+      # future changes to self._validate_geo_and_time_granularity. If
+      # spend_inc.ndim is not 3 and `aggregate_geos` is `False`, then
+      # self._validate_geo_and_time_granularity should raise an error.
+      raise ValueError(
+          "aggregate_geos must be True if spend does not have a geo "
+          "dimension."
+      )
+    return backend.divide(numerator, spend_inc)
 
   def roi(
       self,
@@ -2624,7 +2626,7 @@ class Analyzer:
         aggregate_geos=aggregate_geos,
         batch_size=batch_size,
     )
-    return backend.divide_no_nan(1.0, roi)
+    return backend.divide(1, roi)
 
   def _mean_and_ci_by_eval_set(
       self,
@@ -4325,7 +4327,7 @@ class Analyzer:
           ).optimal_frequency,
           dtype=backend.float32,
       )
-      reach = backend.divide_no_nan(
+      reach = backend.divide(
           filled_data.reach * filled_data.frequency,
           frequency,
       )
@@ -5237,7 +5239,7 @@ class Analyzer:
           media_exe_values,
           **dim_kwargs,
       )
-      imputed_cpmu = backend.divide_no_nan(
+      imputed_cpmu = backend.divide(
           channel_spend,
           np.sum(media_exe_values, (0, 1)),
       )
