@@ -263,6 +263,25 @@ charts {
       max-width: 450px;
     }
   }
+
+  text-block {
+    @include chart-style;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+
+    .text-content {
+      color: $text_grey;
+      font-family: $roboto;
+      font-size: 14px;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 20px;
+      letter-spacing: 0.2px;
+
+      padding: 10px 0;
+    }
+  }
 }
 
 stats-section {

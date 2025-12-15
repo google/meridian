@@ -27,6 +27,7 @@ from meridian.model import transformers
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -374,8 +375,7 @@ def _check_cost_media_unit_inconsistency(
 
   Returns:
     A DataFrame of inconsistencies where either cost is zero and media units
-    are
-    positive, or cost is positive and media units are zero.
+    are positive, or cost is positive and media units are zero.
   """
   cost_media_units_ds = xr.merge([cost_da, media_units_da])
 
@@ -414,6 +414,26 @@ def _check_cost_per_media_unit(
       cost_da,
       media_units_da,
   )
+
+  # Calculate cost per media unit. Avoid division by zero by setting cost to
+  # NaN where media units are 0. Note that both (cost == media unit == 0) and
+  # (cost > 0 and media unit == 0) result in NaN, while the latter one is not
+  # desired.
+  cost_per_media_unit_da = xr.where(
+      media_units_da == 0,
+      np.nan,
+      cost_da / media_units_da,
+  )
+  cost_per_media_unit_da.name = eda_constants.COST_PER_MEDIA_UNIT
+  outlier_df = _calculate_outliers(cost_per_media_unit_da)
+
+  artifact = eda_outcome.CostPerMediaUnitArtifact(
+      level=level,
+      cost_per_media_unit_da=cost_per_media_unit_da,
+      cost_media_unit_inconsistency_df=cost_media_unit_inconsistency_df,
+      outlier_df=outlier_df,
+  )
+
   if not cost_media_unit_inconsistency_df.empty:
     findings.append(
         eda_outcome.EDAFinding(
@@ -424,21 +444,11 @@ def _check_cost_per_media_unit(
                 ' or when cost is positive but media units are zero. Please'
                 ' review the outcome artifact for more details.'
             ),
+            finding_type=eda_outcome.FindingType.COST_MEDIA_UNIT_INCONSISTENCY,
+            associated_artifact=artifact,
         )
     )
 
-  # Calculate cost per media unit
-  # Avoid division by zero by setting cost to NaN where media units are 0.
-  # Note that both (cost == media unit == 0) and (cost > 0 and media unit ==
-  # 0) result in NaN, while the latter one is not desired.
-  cost_per_media_unit_da = xr.where(
-      media_units_da == 0,
-      np.nan,
-      cost_da / media_units_da,
-  )
-  cost_per_media_unit_da.name = eda_constants.COST_PER_MEDIA_UNIT
-
-  outlier_df = _calculate_outliers(cost_per_media_unit_da)
   if not outlier_df.empty:
     findings.append(
         eda_outcome.EDAFinding(
@@ -447,6 +457,8 @@ def _check_cost_per_media_unit(
                 'There are outliers in cost per media unit across time.'
                 ' Please review the outcome artifact for more details.'
             ),
+            finding_type=eda_outcome.FindingType.OUTLIER,
+            associated_artifact=artifact,
         )
     )
 
@@ -456,15 +468,9 @@ def _check_cost_per_media_unit(
         eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.INFO,
             explanation='Please review the cost per media unit data.',
+            finding_type=eda_outcome.FindingType.INFO,
         )
     )
-
-  artifact = eda_outcome.CostPerMediaUnitArtifact(
-      level=level,
-      cost_per_media_unit_da=cost_per_media_unit_da,
-      cost_media_unit_inconsistency_df=cost_media_unit_inconsistency_df,
-      outlier_df=outlier_df,
-  )
 
   return eda_outcome.EDAOutcome(
       check_type=eda_outcome.EDACheckType.COST_PER_MEDIA_UNIT,
@@ -1487,17 +1493,24 @@ class EDAEngine:
             extreme_corr_threshold=eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
         )
     )
+    overall_artifact = eda_outcome.PairwiseCorrArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        corr_matrix=overall_corr_mat,
+        extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
+        extreme_corr_threshold=eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
+    )
+
     if not overall_extreme_corr_var_pairs_df.empty:
       var_pairs = overall_extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
               explanation=(
-                  'Some variables have perfect pairwise correlation across all'
-                  ' times and geos. For each pair of perfectly-correlated'
-                  ' variables, please remove one of the variables from the'
-                  f' model.\nPairs with perfect correlation: {var_pairs}'
+                  f'{eda_constants.EXTREME_CORR_VAR_PAIRS_OVERALL_ERROR}\n{eda_constants.PAIRS_WITH_PERFECT_CORRELATION}'
+                  f'{formatter.format_list(var_pairs)}'
               ),
+              finding_type=eda_outcome.FindingType.EXTREME_CORR_VAR_PAIRS,
+              associated_artifact=overall_artifact,
           )
       )
 
@@ -1507,21 +1520,28 @@ class EDAEngine:
             extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
         )
     )
-    # Overall correlation and per-geo correlation findings are mutually
-    # exclusive, and overall correlation finding takes precedence.
-    if (
-        overall_extreme_corr_var_pairs_df.empty
-        and not geo_extreme_corr_var_pairs_df.empty
-    ):
+    # Pairs that cause overall level findings are very likely to cause geo
+    # level findings as well, so we exclude them when determining geo-level
+    # findings. This is to avoid over-reporting findings.
+    overall_pairs_index = overall_extreme_corr_var_pairs_df.index
+    is_in_overall = geo_extreme_corr_var_pairs_df.index.droplevel(
+        constants.GEO
+    ).isin(overall_pairs_index)
+    geo_df_for_attention = geo_extreme_corr_var_pairs_df[~is_in_overall]
+    geo_artifact = eda_outcome.PairwiseCorrArtifact(
+        level=eda_outcome.AnalysisLevel.GEO,
+        corr_matrix=geo_corr_mat,
+        extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
+        extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
+    )
+
+    if not geo_df_for_attention.empty:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ATTENTION,
-              explanation=(
-                  'Some variables have perfect pairwise correlation in certain'
-                  ' geo(s). Consider checking your data, and/or combining these'
-                  ' variables if they also have high pairwise correlations in'
-                  ' other geos.'
-              ),
+              explanation=eda_constants.EXTREME_CORR_VAR_PAIRS_GEO_ATTENTION,
+              finding_type=eda_outcome.FindingType.EXTREME_CORR_VAR_PAIRS,
+              associated_artifact=geo_artifact,
           )
       )
 
@@ -1532,28 +1552,14 @@ class EDAEngine:
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
               explanation=(eda_constants.PAIRWISE_CORRELATION_CHECK_INFO),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
-
-    pairwise_corr_artifacts = [
-        eda_outcome.PairwiseCorrArtifact(
-            level=eda_outcome.AnalysisLevel.OVERALL,
-            corr_matrix=overall_corr_mat,
-            extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
-            extreme_corr_threshold=eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
-        ),
-        eda_outcome.PairwiseCorrArtifact(
-            level=eda_outcome.AnalysisLevel.GEO,
-            corr_matrix=geo_corr_mat,
-            extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
-            extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
-        ),
-    ]
 
     return eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
         findings=findings,
-        analysis_artifacts=pairwise_corr_artifacts,
+        analysis_artifacts=[overall_artifact, geo_artifact],
     )
 
   def check_national_pairwise_corr(
@@ -1573,17 +1579,24 @@ class EDAEngine:
         corr_mat, eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD
     )
 
+    artifact = eda_outcome.PairwiseCorrArtifact(
+        level=eda_outcome.AnalysisLevel.NATIONAL,
+        corr_matrix=corr_mat,
+        extreme_corr_var_pairs=extreme_corr_var_pairs_df,
+        extreme_corr_threshold=eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD,
+    )
+
     if not extreme_corr_var_pairs_df.empty:
       var_pairs = extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
               explanation=(
-                  'Some variables have perfect pairwise correlation across all'
-                  ' times. For each pair of perfectly-correlated'
-                  ' variables, please remove one of the variables from the'
-                  f' model.\nPairs with perfect correlation: {var_pairs}'
+                  f'{eda_constants.EXTREME_CORR_VAR_PAIRS_NATIONAL_ERROR}\n{eda_constants.PAIRS_WITH_PERFECT_CORRELATION}'
+                  f'{formatter.format_list(var_pairs)}'
               ),
+              finding_type=eda_outcome.FindingType.EXTREME_CORR_VAR_PAIRS,
+              associated_artifact=artifact,
           )
       )
     else:
@@ -1591,21 +1604,14 @@ class EDAEngine:
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
               explanation=(eda_constants.PAIRWISE_CORRELATION_CHECK_INFO),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
 
-    pairwise_corr_artifacts = [
-        eda_outcome.PairwiseCorrArtifact(
-            level=eda_outcome.AnalysisLevel.NATIONAL,
-            corr_matrix=corr_mat,
-            extreme_corr_var_pairs=extreme_corr_var_pairs_df,
-            extreme_corr_threshold=eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD,
-        )
-    ]
     return eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
         findings=findings,
-        analysis_artifacts=pairwise_corr_artifacts,
+        analysis_artifacts=[artifact],
     )
 
   def check_pairwise_corr(
@@ -1633,6 +1639,13 @@ class EDAEngine:
     std_ds = _calculate_std(data)
     outlier_df = _calculate_outliers(data)
 
+    artifact = eda_outcome.StandardDeviationArtifact(
+        variable=str(data.name),
+        level=level,
+        std_ds=std_ds,
+        outlier_df=outlier_df,
+    )
+
     finding = None
     if (
         std_ds[eda_constants.STD_WITHOUT_OUTLIERS_VAR_NAME]
@@ -1641,14 +1654,9 @@ class EDAEngine:
       finding = eda_outcome.EDAFinding(
           severity=eda_outcome.EDASeverity.ATTENTION,
           explanation=zero_std_message,
+          finding_type=eda_outcome.FindingType.STDEV,
+          associated_artifact=artifact,
       )
-
-    artifact = eda_outcome.StandardDeviationArtifact(
-        variable=str(data.name),
-        level=level,
-        std_ds=std_ds,
-        outlier_df=outlier_df,
-    )
 
     return finding, artifact
 
@@ -1725,6 +1733,7 @@ class EDAEngine:
                   'Please review any identified outliers and the standard'
                   ' deviation.'
               ),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
 
@@ -1804,6 +1813,7 @@ class EDAEngine:
                   'Please review any identified outliers and the standard'
                   ' deviation.'
               ),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
 
@@ -1881,9 +1891,21 @@ class EDAEngine:
                   ' consider combining variables.\n'
                   f'Variables with extreme VIF: {high_vif_vars}'
               ),
+              finding_type=eda_outcome.FindingType.OUTLIER,
+              associated_artifact=overall_vif_artifact,
           )
       )
-    elif not extreme_geo_vif_df.empty:
+
+    # Variables that cause overall level findings are very likely to cause
+    # geo-level findings as well, so we exclude them when determining
+    # geo-level findings. This is to avoid over-reporting findings.
+    overall_vars_index = extreme_overall_vif_df.index
+    is_in_overall = extreme_geo_vif_df.index.get_level_values(
+        eda_constants.VARIABLE
+    ).isin(overall_vars_index)
+    geo_df_for_attention = extreme_geo_vif_df[~is_in_overall]
+
+    if not geo_df_for_attention.empty:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ATTENTION,
@@ -1893,9 +1915,12 @@ class EDAEngine:
                   ' data, and/or combining these variables if they also have'
                   ' high VIF in other geos.'
               ),
+              finding_type=eda_outcome.FindingType.OUTLIER,
+              associated_artifact=geo_vif_artifact,
           )
       )
-    else:
+
+    if not findings:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
@@ -1905,6 +1930,7 @@ class EDAEngine:
                   ' jeopardize model identifiability and model convergence.'
                   ' Consider combining the variables if high VIF occurs.'
               ),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
 
@@ -1947,6 +1973,8 @@ class EDAEngine:
                   ' combining variables.\n'
                   f'Variables with extreme VIF: {high_vif_vars}'
               ),
+              finding_type=eda_outcome.FindingType.OUTLIER,
+              associated_artifact=national_vif_artifact,
           )
       )
     else:
@@ -1959,6 +1987,7 @@ class EDAEngine:
                   ' jeopardize model identifiability and model convergence.'
                   ' Consider combining the variables if high VIF occurs.'
               ),
+              finding_type=eda_outcome.FindingType.INFO,
           )
       )
     return eda_outcome.EDAOutcome(
@@ -1990,7 +2019,8 @@ class EDAEngine:
       self,
   ) -> eda_outcome.EDAOutcome[eda_outcome.KpiInvariabilityArtifact]:
     """Checks if the KPI is constant across all geos and times."""
-    kpi = self._overall_scaled_kpi_invariability_artifact.kpi_da.name
+    artifact = self._overall_scaled_kpi_invariability_artifact
+    kpi = artifact.kpi_da.name
     geo_text = '' if self._is_national_data else 'geos and '
 
     if not self.kpi_has_variability:
@@ -2000,6 +2030,8 @@ class EDAEngine:
               f'`{kpi}` is constant across all {geo_text}times, indicating no'
               ' signal in the data. Please fix this data error.'
           ),
+          finding_type=eda_outcome.FindingType.STDEV,
+          associated_artifact=artifact,
       )
     else:
       eda_finding = eda_outcome.EDAFinding(
@@ -2007,12 +2039,13 @@ class EDAEngine:
           explanation=(
               f'The {kpi} has variability across {geo_text}times in the data.'
           ),
+          finding_type=eda_outcome.FindingType.INFO,
       )
 
     return eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.KPI_INVARIABILITY,
         findings=[eda_finding],
-        analysis_artifacts=[self._overall_scaled_kpi_invariability_artifact],
+        analysis_artifacts=[artifact],
     )
 
   def check_geo_cost_per_media_unit(
@@ -2088,6 +2121,7 @@ class EDAEngine:
             explanation=(
                 f'An error occurred during running {check.__name__}: {e!r}'
             ),
+            finding_type=eda_outcome.FindingType.CRITICAL,
         )
         outcomes[check_type] = eda_outcome.EDAOutcome(
             check_type=check_type,
@@ -2141,10 +2175,12 @@ class EDAEngine:
         eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.INFO,
             explanation=eda_constants.R_SQUARED_TIME_INFO,
+            finding_type=eda_outcome.FindingType.INFO,
         ),
         eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.INFO,
             explanation=eda_constants.R_SQUARED_GEO_INFO,
+            finding_type=eda_outcome.FindingType.INFO,
         ),
     ]
 

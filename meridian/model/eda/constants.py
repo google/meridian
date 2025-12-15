@@ -48,7 +48,6 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
-TOP_5_CHANNELS = 5
 PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     domain=[-1.0, 0.0, 1.0],
     range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
@@ -60,8 +59,13 @@ REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
+PERFECT_PAIRWISE_CORRELATION_TEXT_ID = 'perfect-pairwise-correlation-text'
+PERFECT_PAIRWISE_CORRELATION_TABLE_ID = 'perfect-pairwise-correlation-table'
+EXTREME_VIF_TEXT_ID = 'extreme-vif-text'
+EXTREME_VIF_TABLE_ID = 'extreme-vif-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
+DISPLAY_LIMIT = 5
 
 
 # Finding messages
@@ -71,6 +75,47 @@ PAIRWISE_CORRELATION_CHECK_INFO = (
     ' and convergence issues. Consider combining the variables if'
     ' high correlation exists.'
 )
+EXTREME_CORR_VAR_PAIRS_GEO_ATTENTION = (
+    'Some variables have perfect pairwise correlation in certain'
+    ' geo(s). Consider checking your data, and/or combining these'
+    ' variables if they also have high pairwise correlations in'
+    ' other geos.'
+)
+EXTREME_CORR_VAR_PAIRS_OVERALL_ERROR = (
+    'Some variables have perfect pairwise correlation across all'
+    ' times and geos. For each pair of perfectly-correlated'
+    ' variables, please remove one of the variables from the'
+    ' model.'
+)
+EXTREME_CORR_VAR_PAIRS_NATIONAL_ERROR = (
+    'Some variables have perfect pairwise correlation across all'
+    ' times. For each pair of perfectly-correlated'
+    ' variables, please remove one of the variables from the'
+    ' model.'
+)
+PAIRS_WITH_PERFECT_CORRELATION = 'Pairs with perfect correlation: '
+MULTICOLLINEARITY_GEO_ATTENTION = (
+    'Some variables have extreme multicollinearity (with VIF >'
+    ' {geo_threshold}) in certain geo(s). Consider checking your'
+    ' data, and/or combining these variables if they also have'
+    ' high VIF in other geos.'
+)
+MULTICOLLINEARITY_OVERALL_ERROR = (
+    'Some variables have extreme multicollinearity (VIF'
+    ' >{overall_threshold}) across all times and geos. To'
+    ' address multicollinearity, please drop any variable that'
+    ' is a linear combination of other variables. Otherwise,'
+    ' consider combining variables.'
+)
+MULTICOLLINEARITY_NATIONAL_ERROR = (
+    'Some variables have extreme multicollinearity (with VIF >'
+    ' {national_threshold}) across all times. To address'
+    ' multicollinearity, please drop any variable that is a'
+    ' linear combination of other variables. Otherwise, consider'
+    ' combining variables.'
+)
+VARIABLES_WITH_EXTREME_VIF = 'Variables with extreme VIF: '
+
 R_SQUARED_TIME_INFO = (
     'This check regresses each variable against time as a'
     ' categorical variable. In this case, high R-squared indicates'

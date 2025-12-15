@@ -83,42 +83,33 @@ class EdaOutcomeTest(parameterized.TestCase):
       analysis_artifacts=[_NATIONAL_ARTIFACT],
   )
 
-  def test_get_national_artifact_success(self):
+  def test_get_national_artifacts_success(self):
     self.assertEqual(
-        self._NATIONAL_OUTCOME.get_national_artifact(), self._NATIONAL_ARTIFACT
+        self._NATIONAL_OUTCOME.get_national_artifacts(),
+        [self._NATIONAL_ARTIFACT],
     )
 
-  def test_get_national_artifact_raises_error(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        'The EDAOutcome for PAIRWISE_CORRELATION check does not have national'
-        ' artifact.',
-    ):
-      _ = self._GEO_OUTCOME.get_national_artifact()
+  def test_get_national_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have national artifacts'):
+      self._GEO_OUTCOME.get_national_artifacts()
 
-  def test_get_geo_artifact_success(self):
-    self.assertEqual(self._GEO_OUTCOME.get_geo_artifact(), self._GEO_ARTIFACT)
-
-  def test_get_geo_artifact_raises_error(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        'The EDAOutcome for PAIRWISE_CORRELATION check does not have geo'
-        ' artifact.',
-    ):
-      _ = self._NATIONAL_OUTCOME.get_geo_artifact()
-
-  def test_get_overall_artifact_success(self):
+  def test_get_geo_artifacts_success(self):
     self.assertEqual(
-        self._GEO_OUTCOME.get_overall_artifact(), self._OVERALL_ARTIFACT
+        self._GEO_OUTCOME.get_geo_artifacts(), [self._GEO_ARTIFACT]
     )
 
-  def test_get_overall_artifact_raises_error(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        'The EDAOutcome for PAIRWISE_CORRELATION check does not have overall'
-        ' artifact.',
-    ):
-      _ = self._NATIONAL_OUTCOME.get_overall_artifact()
+  def test_get_geo_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have geo artifacts'):
+      self._NATIONAL_OUTCOME.get_geo_artifacts()
+
+  def test_get_overall_artifacts_success(self):
+    self.assertEqual(
+        self._GEO_OUTCOME.get_overall_artifacts(), [self._OVERALL_ARTIFACT]
+    )
+
+  def test_get_overall_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have overall artifacts'):
+      self._NATIONAL_OUTCOME.get_overall_artifacts()
 
 
 if __name__ == '__main__':

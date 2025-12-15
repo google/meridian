@@ -92,6 +92,16 @@ class FormatterTest(parameterized.TestCase):
     formatted_number = formatter.compact_number(num, precision, currency)
     self.assertEqual(formatted_number, expected)
 
+  @parameterized.named_parameters(
+      ('empty_list', [], ''),
+      ('single_item', ['A'], 'A'),
+      ('multiple_strings', ['A', 'B', 'C'], 'A, B, C'),
+      ('mixed_types', ['A', 1, 2.5], 'A, 1, 2.5'),
+  )
+  def test_format_list(self, items, expected):
+    formatted_list = formatter.format_list(items)
+    self.assertEqual(formatted_list, expected)
+
   def test_create_summary_html(self):
     template_env = formatter.create_template_env()
     title = 'Integration Test Report'
@@ -176,6 +186,31 @@ class FormatterTest(parameterized.TestCase):
     self.assertContainsSubset('test_chart_description', chart_html[0][1].text)
     self.assertEqual(chart_html[1].tag, 'script')
     self.assertContainsSubset('test_chart_json', chart_html[1].text)
+
+  def test_create_card_html_text_spec(self):
+    """Tests that TextSpec is correctly rendered in create_card_html."""
+    template_env = formatter.create_template_env()
+    card_spec = formatter.CardSpec(id='test_id', title='test_title')
+    text_spec = formatter.TextSpec(
+        id='text_id', text='Some plain text content.'
+    )
+    card_html = ET.fromstring(
+        formatter.create_card_html(
+            template_env, card_spec, insights=None, chart_specs=[text_spec]
+        )
+    )
+
+    charts_elem = card_html.find('charts')
+    self.assertIsNotNone(charts_elem)
+
+    text_block = charts_elem.find('text-block')
+    self.assertIsNotNone(text_block)
+    self.assertEqual(text_block.get('id'), 'text_id')
+
+    text_content = text_block.find('div')
+    self.assertIsNotNone(text_content)
+    self.assertEqual(text_content.get('class'), 'text-content')
+    self.assertIn('Some plain text content.', text_content.text)
 
   def test_create_card_html_mulitple_stats(self):
     template_env = formatter.create_template_env()
@@ -307,6 +342,46 @@ class FormatterTest(parameterized.TestCase):
     info_p = info_elem.find('p')
     self.assertIsNotNone(info_p)
     self.assertIn('Table Info', info_p.text)
+
+  def test_create_card_html_text_findings(self):
+    """Tests that errors, warnings, and infos render inside a text block."""
+    template_env = formatter.create_template_env()
+    card_spec = formatter.CardSpec(id='test_id', title='test_title')
+    text_spec = formatter.TextSpec(
+        id='text_id',
+        text='Text content',
+        errors=['Text Error'],
+        warnings=['Text Warning'],
+        infos=['Text Info'],
+    )
+    card_html = ET.fromstring(
+        formatter.create_card_html(
+            template_env, card_spec, insights=None, chart_specs=[text_spec]
+        )
+    )
+
+    charts_elem = card_html.find('charts')
+    self.assertIsNotNone(charts_elem)
+    text_block = charts_elem.find('text-block')
+    self.assertIsNotNone(text_block)
+
+    error_elem = text_block.find('errors')
+    self.assertIsNotNone(error_elem)
+    error_p = error_elem.find('p')
+    self.assertIsNotNone(error_p)
+    self.assertIn('Text Error', error_p.text)
+
+    warning_elem = text_block.find('warnings')
+    self.assertIsNotNone(warning_elem)
+    warning_p = warning_elem.find('p')
+    self.assertIsNotNone(warning_p)
+    self.assertIn('Text Warning', warning_p.text)
+
+    info_elem = text_block.find('infos')
+    self.assertIsNotNone(info_elem)
+    info_p = info_elem.find('p')
+    self.assertIsNotNone(info_p)
+    self.assertIn('Text Info', info_p.text)
 
 
 if __name__ == '__main__':

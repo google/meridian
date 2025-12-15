@@ -18,6 +18,7 @@ from collections.abc import Sequence
 import dataclasses
 import math
 import os
+from typing import Any
 
 import altair as alt
 import immutabledict
@@ -30,6 +31,7 @@ __all__ = [
     'ChartSpec',
     'TableSpec',
     'StatsSpec',
+    'TextSpec',
     'create_template_env',
     'create_card_html',
 ]
@@ -68,6 +70,15 @@ class StatsSpec:
   title: str
   stat: str
   delta: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class TextSpec:
+  id: str
+  text: str
+  errors: Sequence[str] | None = None
+  warnings: Sequence[str] | None = None
+  infos: Sequence[str] | None = None
 
 
 TEXT_CONFIG = immutabledict.immutabledict({
@@ -204,6 +215,14 @@ def format_monetary_num(num: float, currency: str) -> str:
   return compact_number(num, precision=precision, currency=currency)
 
 
+def format_list(items: Sequence[Any]) -> str:
+  """Formats a sequence of items into a clean comma-separated string.
+
+  Example: ['A', 'B'] -> "A, B"
+  """
+  return ', '.join(str(item) for item in items)
+
+
 def create_template_env() -> jinja2.Environment:
   """Creates a Jinja2 template environment."""
   return jinja2.Environment(
@@ -227,7 +246,7 @@ def create_card_html(
     template_env: jinja2.Environment,
     card_spec: CardSpec,
     insights: str | None = None,
-    chart_specs: Sequence[ChartSpec | TableSpec] | None = None,
+    chart_specs: Sequence[ChartSpec | TableSpec | TextSpec] | None = None,
     stats_specs: Sequence[StatsSpec] | None = None,
 ) -> str:
   """Creates a card's HTML snippet that includes given card and chart specs."""
@@ -262,15 +281,18 @@ def _create_stats_htmls(
 
 def _create_charts_htmls(
     template_env: jinja2.Environment,
-    specs: Sequence[ChartSpec | TableSpec],
+    specs: Sequence[ChartSpec | TableSpec | TextSpec],
 ) -> Sequence[str]:
   """Creates a list of chart HTML snippets given a list of chart specs."""
   chart_template = template_env.get_template('chart.html.jinja')
   table_template = template_env.get_template('table.html.jinja')
+  text_template = template_env.get_template('text.html.jinja')
   htmls = []
   for spec in specs:
     if isinstance(spec, ChartSpec):
       htmls.append(chart_template.render(dataclasses.asdict(spec)))
-    else:
+    elif isinstance(spec, TableSpec):
       htmls.append(table_template.render(dataclasses.asdict(spec)))
+    else:
+      htmls.append(text_template.render(dataclasses.asdict(spec)))
   return htmls
