@@ -4172,8 +4172,17 @@ class Analyzer:
 
     rhat_summary = []
     for param in rhat:
+      # `tau_g` and `tau_g_excl_baseline` are the only parameters that have
+      # inconsistent names in the prior and the posterior. Here, we ensure that
+      # the `has_deterministic_param` takes the right parameter name.
+      param_name = (
+          constants.TAU_G_EXCL_BASELINE if param == constants.TAU_G else param
+      )
+
       # Skip if parameter is deterministic according to the prior.
-      if self._model_context.prior_broadcast.has_deterministic_param(param):
+      if self._model_context.prior_broadcast.has_deterministic_param(
+          param_name
+      ):
         continue
 
       if rhat[param].ndim == 2:
