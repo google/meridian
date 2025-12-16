@@ -107,7 +107,7 @@ jobs:
           path: dist/
 
       - name: Publish distribution to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1
         with:
           verbose: true
 
@@ -133,7 +133,7 @@ jobs:
           name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: dist/
       - name: Publish distribution to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1
         with:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
