@@ -362,7 +362,10 @@ class Meridian:
   @functools.cached_property
   def prior_sampler_callable(self) -> prior_sampler.PriorDistributionSampler:
     """A `PriorDistributionSampler` callable bound to this model."""
-    return prior_sampler.PriorDistributionSampler(self)
+    return prior_sampler.PriorDistributionSampler(
+        model_context=self.model_context,
+        model_equations=self.model_equations,
+    )
 
   @functools.cached_property
   def posterior_sampler_callable(
@@ -902,7 +905,17 @@ class Meridian:
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
     """
-    self.prior_sampler_callable(n_draws=n_draws, seed=seed)
+    prior_draws = self.prior_sampler_callable(n_draws=n_draws, seed=seed)
+    # Create Arviz InferenceData for prior draws.
+    prior_coords = self.create_inference_data_coords(1, n_draws)
+    prior_dims = self.create_inference_data_dims()
+    prior_inference_data = az.convert_to_inference_data(
+        prior_draws,
+        coords=prior_coords,
+        dims=prior_dims,
+        group=constants.PRIOR,
+    )
+    self.inference_data.extend(prior_inference_data, join="right")
 
   def _run_model_fitting_guardrail(self):
     """Raises an error if the model has critical EDA issues."""

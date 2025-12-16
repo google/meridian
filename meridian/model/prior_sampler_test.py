@@ -720,5 +720,69 @@ class PriorDistributionSamplerTest(
         getattr(prior, var)
 
 
+class PriorDistributionSamplerInitTest(
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+
+  def test_init_with_meridian(self):
+    sampler = prior_sampler.PriorDistributionSampler(self.meridian)
+    self.assertIs(sampler._meridian, self.meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+
+  def test_init_with_model_context_and_model_equations(self):
+    sampler = prior_sampler.PriorDistributionSampler(
+        model_context=self.meridian.model_context,
+        model_equations=self.meridian.model_equations,
+    )
+    self.assertIsNone(sampler._meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+
+  def test_init_raises_error_if_meridian_and_context_and_equations_are_none(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or both `model_context` and `model_equations`"
+        " must be provided.",
+    ):
+      prior_sampler.PriorDistributionSampler()
+
+  def test_init_raises_error_if_only_model_context_is_provided(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or both `model_context` and `model_equations`"
+        " must be provided.",
+    ):
+      prior_sampler.PriorDistributionSampler(
+          model_context=self.meridian.model_context
+      )
+
+  def test_init_raises_error_if_only_model_equations_is_provided(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or both `model_context` and `model_equations`"
+        " must be provided.",
+    ):
+      prior_sampler.PriorDistributionSampler(
+          model_equations=self.meridian.model_equations
+      )
+
+
 if __name__ == "__main__":
   absltest.main()

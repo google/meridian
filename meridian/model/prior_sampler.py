@@ -15,12 +15,15 @@
 """Module for sampling prior distributions in a Meridian model."""
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
+import warnings
 
-import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import context
+from meridian.model import equations
 
+# TODO: Break this circular dependency.
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
@@ -63,8 +66,34 @@ def _get_tau_g(
 class PriorDistributionSampler:
   """A callable that samples from a model spec's prior distributions."""
 
-  def __init__(self, meridian: "model.Meridian"):
-    self._meridian = meridian
+  # TODO: Deprecate direct injection of `model.Meridian`.
+  def __init__(
+      self,
+      meridian: Optional["model.Meridian"] = None,
+      *,
+      model_context: context.ModelContext | None = None,
+      model_equations: equations.ModelEquations | None = None,
+  ):
+    if meridian is not None:
+      warnings.warn(
+          "Initializing PriorDistributionSampler with a Meridian object is"
+          " deprecated and will be removed in a future version. Please use"
+          " `model_context` and `model_equations` instead.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      self._meridian = meridian
+      self._model_context = meridian.model_context
+      self._model_equations = meridian.model_equations
+    elif model_context is not None and model_equations is not None:
+      self._meridian = None
+      self._model_context = model_context
+      self._model_equations = model_equations
+    else:
+      raise ValueError(
+          "Either `meridian` or both `model_context` and `model_equations` must"
+          " be provided."
+      )
 
   def _sample_media_priors(
       self,
@@ -82,9 +111,9 @@ class PriorDistributionSampler:
       n_media_channels]` or `[n_draws, n_media_channels]` containing the
       samples.
     """
-    mmm = self._meridian
+    ctx = self._model_context
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     sample_shape = [1, n_draws]
 
     media_vars = {
@@ -103,11 +132,11 @@ class PriorDistributionSampler:
     }
     beta_gm_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
-        [mmm.n_geos, mmm.n_media_channels],
+        [ctx.n_geos, ctx.n_media_channels],
         name=constants.BETA_GM_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
-    prior_type = mmm.model_spec.effective_media_prior_type
+    prior_type = ctx.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       media_vars[constants.BETA_M] = prior.beta_m.sample(
           sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -131,24 +160,22 @@ class PriorDistributionSampler:
       else:
         raise ValueError(f"Unsupported prior type: {prior_type}")
       incremental_outcome_m = (
-          treatment_parameter_m * mmm.media_tensors.prior_denominator
+          treatment_parameter_m * ctx.media_tensors.prior_denominator
       )
-      media_transformed = mmm.adstock_hill_media(
-          media=mmm.media_tensors.media_scaled,
+      media_transformed = self._model_equations.adstock_hill_media(
+          media=ctx.media_tensors.media_scaled,
           alpha=media_vars[constants.ALPHA_M],
           ec=media_vars[constants.EC_M],
           slope=media_vars[constants.SLOPE_M],
-          decay_functions=mmm.adstock_decay_spec.media,
+          decay_functions=ctx.adstock_decay_spec.media,
       )
-      linear_predictor_counterfactual_difference = (
-          mmm.linear_predictor_counterfactual_difference_media(
-              media_transformed=media_transformed,
-              alpha_m=media_vars[constants.ALPHA_M],
-              ec_m=media_vars[constants.EC_M],
-              slope_m=media_vars[constants.SLOPE_M],
-          )
+      linear_predictor_counterfactual_difference = self._model_equations.linear_predictor_counterfactual_difference_media(
+          media_transformed=media_transformed,
+          alpha_m=media_vars[constants.ALPHA_M],
+          ec_m=media_vars[constants.EC_M],
+          slope_m=media_vars[constants.SLOPE_M],
       )
-      beta_m_value = mmm.calculate_beta_x(
+      beta_m_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_m,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -165,7 +192,7 @@ class PriorDistributionSampler:
     )
     beta_gm_value = (
         beta_eta_combined
-        if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
     media_vars[constants.BETA_GM] = backend.tfd.Deterministic(
@@ -190,9 +217,9 @@ class PriorDistributionSampler:
       `[n_draws, n_geos, n_rf_channels]` or `[n_draws, n_rf_channels]`
       containing the samples.
     """
-    mmm = self._meridian
+    ctx = self._model_context
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     sample_shape = [1, n_draws]
 
     rf_vars = {
@@ -211,11 +238,11 @@ class PriorDistributionSampler:
     }
     beta_grf_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
-        [mmm.n_geos, mmm.n_rf_channels],
+        [ctx.n_geos, ctx.n_rf_channels],
         name=constants.BETA_GRF_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
-    prior_type = mmm.model_spec.effective_rf_prior_type
+    prior_type = ctx.model_spec.effective_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       rf_vars[constants.BETA_RF] = prior.beta_rf.sample(
           sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -239,25 +266,25 @@ class PriorDistributionSampler:
       else:
         raise ValueError(f"Unsupported prior type: {prior_type}")
       incremental_outcome_rf = (
-          treatment_parameter_rf * mmm.rf_tensors.prior_denominator
+          treatment_parameter_rf * ctx.rf_tensors.prior_denominator
       )
-      rf_transformed = mmm.adstock_hill_rf(
-          reach=mmm.rf_tensors.reach_scaled,
-          frequency=mmm.rf_tensors.frequency,
+      rf_transformed = self._model_equations.adstock_hill_rf(
+          reach=ctx.rf_tensors.reach_scaled,
+          frequency=ctx.rf_tensors.frequency,
           alpha=rf_vars[constants.ALPHA_RF],
           ec=rf_vars[constants.EC_RF],
           slope=rf_vars[constants.SLOPE_RF],
-          decay_functions=mmm.adstock_decay_spec.rf,
+          decay_functions=ctx.adstock_decay_spec.rf,
       )
       linear_predictor_counterfactual_difference = (
-          mmm.linear_predictor_counterfactual_difference_rf(
+          self._model_equations.linear_predictor_counterfactual_difference_rf(
               rf_transformed=rf_transformed,
               alpha_rf=rf_vars[constants.ALPHA_RF],
               ec_rf=rf_vars[constants.EC_RF],
               slope_rf=rf_vars[constants.SLOPE_RF],
           )
       )
-      beta_rf_value = mmm.calculate_beta_x(
+      beta_rf_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_rf,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -275,7 +302,7 @@ class PriorDistributionSampler:
     )
     beta_grf_value = (
         beta_eta_combined
-        if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
     rf_vars[constants.BETA_GRF] = backend.tfd.Deterministic(
@@ -300,9 +327,9 @@ class PriorDistributionSampler:
       `[n_draws, n_geos, n_organic_media_channels]` or
       `[n_draws, n_organic_media_channels]` containing the samples.
     """
-    mmm = self._meridian
+    ctx = self._model_context
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     sample_shape = [1, n_draws]
 
     organic_media_vars = {
@@ -321,11 +348,11 @@ class PriorDistributionSampler:
     }
     beta_gom_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
-        [mmm.n_geos, mmm.n_organic_media_channels],
+        [ctx.n_geos, ctx.n_organic_media_channels],
         name=constants.BETA_GOM_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
-    prior_type = mmm.model_spec.organic_media_prior_type
+    prior_type = ctx.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_media_vars[constants.BETA_OM] = prior.beta_om.sample(
           sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -337,16 +364,16 @@ class PriorDistributionSampler:
           )
       )
       incremental_outcome_om = (
-          organic_media_vars[constants.CONTRIBUTION_OM] * mmm.total_outcome
+          organic_media_vars[constants.CONTRIBUTION_OM] * ctx.total_outcome
       )
-      organic_media_transformed = mmm.adstock_hill_media(
-          media=mmm.organic_media_tensors.organic_media_scaled,
+      organic_media_transformed = self._model_equations.adstock_hill_media(
+          media=ctx.organic_media_tensors.organic_media_scaled,
           alpha=organic_media_vars[constants.ALPHA_OM],
           ec=organic_media_vars[constants.EC_OM],
           slope=organic_media_vars[constants.SLOPE_OM],
-          decay_functions=mmm.adstock_decay_spec.organic_media,
+          decay_functions=ctx.adstock_decay_spec.organic_media,
       )
-      beta_om_value = mmm.calculate_beta_x(
+      beta_om_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_om,
           linear_predictor_counterfactual_difference=organic_media_transformed,
@@ -367,7 +394,7 @@ class PriorDistributionSampler:
     )
     beta_gom_value = (
         beta_eta_combined
-        if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
     organic_media_vars[constants.BETA_GOM] = backend.tfd.Deterministic(
@@ -392,9 +419,9 @@ class PriorDistributionSampler:
       `[n_draws, n_geos, n_organic_rf_channels]` or
       `[n_draws, n_organic_rf_channels]` containing the samples.
     """
-    mmm = self._meridian
+    ctx = self._model_context
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     sample_shape = [1, n_draws]
 
     organic_rf_vars = {
@@ -413,11 +440,11 @@ class PriorDistributionSampler:
     }
     beta_gorf_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
-        [mmm.n_geos, mmm.n_organic_rf_channels],
+        [ctx.n_geos, ctx.n_organic_rf_channels],
         name=constants.BETA_GORF_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
 
-    prior_type = mmm.model_spec.organic_media_prior_type
+    prior_type = ctx.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       organic_rf_vars[constants.BETA_ORF] = prior.beta_orf.sample(
           sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -429,17 +456,17 @@ class PriorDistributionSampler:
           )
       )
       incremental_outcome_orf = (
-          organic_rf_vars[constants.CONTRIBUTION_ORF] * mmm.total_outcome
+          organic_rf_vars[constants.CONTRIBUTION_ORF] * ctx.total_outcome
       )
-      organic_rf_transformed = mmm.adstock_hill_rf(
-          reach=mmm.organic_rf_tensors.organic_reach_scaled,
-          frequency=mmm.organic_rf_tensors.organic_frequency,
+      organic_rf_transformed = self._model_equations.adstock_hill_rf(
+          reach=ctx.organic_rf_tensors.organic_reach_scaled,
+          frequency=ctx.organic_rf_tensors.organic_frequency,
           alpha=organic_rf_vars[constants.ALPHA_ORF],
           ec=organic_rf_vars[constants.EC_ORF],
           slope=organic_rf_vars[constants.SLOPE_ORF],
-          decay_functions=mmm.adstock_decay_spec.organic_rf,
+          decay_functions=ctx.adstock_decay_spec.organic_rf,
       )
-      beta_orf_value = mmm.calculate_beta_x(
+      beta_orf_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_orf,
           linear_predictor_counterfactual_difference=organic_rf_transformed,
@@ -460,7 +487,7 @@ class PriorDistributionSampler:
     )
     beta_gorf_value = (
         beta_eta_combined
-        if mmm.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
     organic_rf_vars[constants.BETA_GORF] = backend.tfd.Deterministic(
@@ -485,9 +512,9 @@ class PriorDistributionSampler:
       `[n_draws, n_geos, n_non_media_channels]` or
       `[n_draws, n_non_media_channels]` containing the samples.
     """
-    mmm = self._meridian
+    ctx = self._model_context
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     sample_shape = [1, n_draws]
 
     non_media_treatments_vars = {
@@ -497,10 +524,10 @@ class PriorDistributionSampler:
     }
     gamma_gn_dev = backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
-        [mmm.n_geos, mmm.n_non_media_channels],
+        [ctx.n_geos, ctx.n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
-    prior_type = mmm.model_spec.non_media_treatments_prior_type
+    prior_type = ctx.model_spec.non_media_treatments_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       non_media_treatments_vars[constants.GAMMA_N] = prior.gamma_n.sample(
           sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -513,15 +540,15 @@ class PriorDistributionSampler:
       )
       incremental_outcome_n = (
           non_media_treatments_vars[constants.CONTRIBUTION_N]
-          * mmm.total_outcome
+          * ctx.total_outcome
       )
-      baseline_scaled = mmm.non_media_transformer.forward(  # pytype: disable=attribute-error
-          mmm.compute_non_media_treatments_baseline()
+      baseline_scaled = ctx.non_media_transformer.forward(  # pytype: disable=attribute-error
+          self._model_equations.compute_non_media_treatments_baseline()
       )
       linear_predictor_counterfactual_difference = (
-          mmm.non_media_treatments_normalized - baseline_scaled
+          ctx.non_media_treatments_normalized - baseline_scaled
       )
-      gamma_n_value = mmm.calculate_beta_x(
+      gamma_n_value = self._model_equations.calculate_beta_x(
           is_non_media=True,
           incremental_outcome_x=incremental_outcome_n,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -547,7 +574,7 @@ class PriorDistributionSampler:
       seed: int | None = None,
   ) -> Mapping[str, backend.Tensor]:
     """Returns a mapping of prior parameters to tensors of the samples."""
-    mmm = self._meridian
+    ctx = self._model_context
 
     # For stateful sampling, the random seed must be set to ensure that any
     # random numbers that are generated are deterministic.
@@ -556,7 +583,7 @@ class PriorDistributionSampler:
 
     rng_handler = backend.RNGHandler(seed)
 
-    prior = mmm.prior_broadcast
+    prior = ctx.prior_broadcast
     # `sample_shape` is prepended to the shape of each BatchBroadcast in `prior`
     # when it is sampled.
     sample_shape = [1, n_draws]
@@ -574,7 +601,7 @@ class PriorDistributionSampler:
         constants.TAU_G: (
             _get_tau_g(
                 tau_g_excl_baseline=tau_g_excl_baseline,
-                baseline_geo_idx=mmm.baseline_geo_idx,
+                baseline_geo_idx=ctx.baseline_geo_idx,
             ).sample(seed=rng_handler.get_next_seed())
         ),
     }
@@ -583,14 +610,14 @@ class PriorDistributionSampler:
         backend.einsum(
             "...k,kt->...t",
             base_vars[constants.KNOT_VALUES],
-            backend.to_tensor(mmm.knot_info.weights),
+            backend.to_tensor(ctx.knot_info.weights),
         ),
         name=constants.MU_T,
     ).sample(seed=rng_handler.get_next_seed())
 
     # Omit gamma_c, xi_c, and gamma_gc parameters from sampled distributions if
     # there are no control variables in the model.
-    if mmm.n_controls:
+    if ctx.n_controls:
       base_vars |= {
           constants.GAMMA_C: prior.gamma_c.sample(
               sample_shape=sample_shape, seed=rng_handler.get_next_seed()
@@ -602,7 +629,7 @@ class PriorDistributionSampler:
 
       gamma_gc_dev = backend.tfd.Sample(
           backend.tfd.Normal(0, 1),
-          [mmm.n_geos, mmm.n_controls],
+          [ctx.n_geos, ctx.n_controls],
           name=constants.GAMMA_GC_DEV,
       ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
       base_vars[constants.GAMMA_GC] = backend.tfd.Deterministic(
@@ -613,27 +640,27 @@ class PriorDistributionSampler:
 
     media_vars = (
         self._sample_media_priors(n_draws, rng_handler)
-        if mmm.media_tensors.media is not None
+        if ctx.media_tensors.media is not None
         else {}
     )
     rf_vars = (
         self._sample_rf_priors(n_draws, rng_handler)
-        if mmm.rf_tensors.reach is not None
+        if ctx.rf_tensors.reach is not None
         else {}
     )
     organic_media_vars = (
         self._sample_organic_media_priors(n_draws, rng_handler)
-        if mmm.organic_media_tensors.organic_media is not None
+        if ctx.organic_media_tensors.organic_media is not None
         else {}
     )
     organic_rf_vars = (
         self._sample_organic_rf_priors(n_draws, rng_handler)
-        if mmm.organic_rf_tensors.organic_reach is not None
+        if ctx.organic_rf_tensors.organic_reach is not None
         else {}
     )
     non_media_treatments_vars = (
         self._sample_non_media_treatments_priors(n_draws, rng_handler)
-        if mmm.non_media_treatments_normalized is not None
+        if ctx.non_media_treatments_normalized is not None
         else {}
     )
 
@@ -646,7 +673,11 @@ class PriorDistributionSampler:
         | non_media_treatments_vars
     )
 
-  def __call__(self, n_draws: int, seed: int | None = None) -> None:
+  # TODO: Remove this callable method and make `_sample_prior`
+  # public, instead.
+  def __call__(
+      self, n_draws: int, seed: int | None = None
+  ) -> Mapping[str, backend.Tensor]:
     """Draws samples from prior distributions.
 
     Args:
@@ -654,12 +685,8 @@ class PriorDistributionSampler:
       seed: Used to set the seed for reproducible results. For more information,
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of prior parameter names to tensors of the samples.
     """
-    prior_draws = self._sample_prior(n_draws=n_draws, seed=seed)
-    # Create Arviz InferenceData for prior draws.
-    prior_coords = self._meridian.create_inference_data_coords(1, n_draws)
-    prior_dims = self._meridian.create_inference_data_dims()
-    prior_inference_data = az.convert_to_inference_data(
-        prior_draws, coords=prior_coords, dims=prior_dims, group=constants.PRIOR
-    )
-    self._meridian.inference_data.extend(prior_inference_data, join="right")
+    return self._sample_prior(n_draws=n_draws, seed=seed)
