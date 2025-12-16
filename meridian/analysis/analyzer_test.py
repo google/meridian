@@ -2302,11 +2302,18 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         _SAMPLE_ALL_CHANNELS,
     )
 
-    for i, e in enumerate(list(adstock_decay_dataframe[constants.MEAN])):
-      self.assertGreaterEqual(
-          e, list(adstock_decay_dataframe[constants.CI_LO])[i]
-      )
-      self.assertLessEqual(e, list(adstock_decay_dataframe[constants.CI_HI])[i])
+    mean_col = adstock_decay_dataframe[constants.MEAN]
+    ci_lo_col = adstock_decay_dataframe[constants.CI_LO]
+    ci_hi_col = adstock_decay_dataframe[constants.CI_HI]
+
+    self.assertEmpty(
+        adstock_decay_dataframe[mean_col < ci_lo_col],
+        msg="Mean expected to be greater than or equal to CI_LO",
+    )
+    self.assertEmpty(
+        adstock_decay_dataframe[mean_col > ci_hi_col],
+        msg="Mean expected to be less than or equal to CI_HI",
+    )
 
   def test_adstock_decay_effect_values(self):
     adstock_decay_dataframe = self.analyzer.adstock_decay(
@@ -2324,24 +2331,39 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         first_channel_df[constants.DISTRIBUTION] == constants.POSTERIOR
     ]
 
-    mean_arr_prior = list(prior_df[constants.MEAN])
-    ci_lo_arr_prior = list(prior_df[constants.CI_LO])
-    ci_hi_arr_prior = list(prior_df[constants.CI_HI])
+    mean_arr_prior = np.array(prior_df[constants.MEAN])
+    ci_lo_arr_prior = np.array(prior_df[constants.CI_LO])
+    ci_hi_arr_prior = np.array(prior_df[constants.CI_HI])
 
-    mean_arr_posterior = list(posterior_df[constants.MEAN])
-    ci_lo_arr_posterior = list(posterior_df[constants.CI_LO])
-    ci_hi_arr_posterior = list(posterior_df[constants.CI_HI])
+    mean_arr_posterior = np.array(posterior_df[constants.MEAN])
+    ci_lo_arr_posterior = np.array(posterior_df[constants.CI_LO])
+    ci_hi_arr_posterior = np.array(posterior_df[constants.CI_HI])
 
-    # Make sure values are monotonically decreasing throughout DataFrame slice
-    # for one channel.
-    for i in range(len(mean_arr_prior) - 1):
-      self.assertLessEqual(mean_arr_prior[i + 1], mean_arr_prior[i])
-      self.assertLessEqual(ci_lo_arr_prior[i + 1], ci_lo_arr_prior[i])
-      self.assertLessEqual(ci_hi_arr_prior[i + 1], ci_hi_arr_prior[i])
+    self.assertTrue(
+        (np.diff(mean_arr_prior) <= 0).all(),
+        msg="Prior Means are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_lo_arr_prior) <= 0).all(),
+        msg="Prior CI_LOs are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_hi_arr_prior) <= 0).all(),
+        msg="Prior CI_HIs are not monotonically decreasing",
+    )
 
-      self.assertLessEqual(mean_arr_posterior[i + 1], mean_arr_posterior[i])
-      self.assertLessEqual(ci_lo_arr_posterior[i + 1], ci_lo_arr_posterior[i])
-      self.assertLessEqual(ci_hi_arr_posterior[i + 1], ci_hi_arr_posterior[i])
+    self.assertTrue(
+        (np.diff(mean_arr_posterior) <= 0).all(),
+        msg="Posterior Means are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_lo_arr_posterior) <= 0).all(),
+        msg="Posterior CI_LOs are not monotonically decreasing",
+    )
+    self.assertTrue(
+        (np.diff(ci_hi_arr_posterior) <= 0).all(),
+        msg="Posterior CI_HIs are not monotonically decreasing",
+    )
 
   def test_adstock_decay_math_correct(self):
     """Verifies values for Paid Media channels."""
@@ -2517,13 +2539,18 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     # Check CI properties for valid rows (where MEAN is present)
     curve_df = hill_table[hill_table[constants.MEAN].notna()]
-    ci_lo_col = list(curve_df[constants.CI_LO])
-    ci_hi_col = list(curve_df[constants.CI_HI])
-    mean_col = list(curve_df[constants.MEAN])
+    ci_lo_col = curve_df[constants.CI_LO]
+    ci_hi_col = curve_df[constants.CI_HI]
+    mean_col = curve_df[constants.MEAN]
 
-    for i, e in enumerate(mean_col):
-      self.assertGreaterEqual(e, ci_lo_col[i])
-      self.assertLessEqual(e, ci_hi_col[i])
+    self.assertEmpty(
+        curve_df[mean_col < ci_lo_col],
+        msg="Mean expected to be >= CI_LO",
+    )
+    self.assertEmpty(
+        curve_df[mean_col > ci_hi_col],
+        msg="Mean expected to be <= CI_HI",
+    )
 
   def test_hill_calculation_curve_data_correct(self):
     """Verifies Paid Media values."""
