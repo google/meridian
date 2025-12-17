@@ -543,15 +543,15 @@ class InputData:
           f" `{constants.REVENUE}` or `{constants.NON_REVENUE}`."
       )
 
-    if (self.kpi.values < 0).any():
-      raise ValueError("KPI values must be non-negative.")
-
     if (
         self.revenue_per_kpi is not None
-        and (self.revenue_per_kpi.values <= 0).all()
+        and (self.revenue_per_kpi.values == 0).all()
     ):
       raise ValueError(
-          "Revenue per KPI values must not be all zero or negative."
+          "All Revenue per KPI values are 0, which can break the ROI"
+          " computation. If this is not a data error, please consider setting"
+          " revenue_per_kpi to None or follow the instructions at"
+          " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-default#default-total-paid-media-contribution-prior."
       )
 
   def _validate_no_negative_values(self) -> None:
@@ -564,6 +564,8 @@ class InputData:
         constants.FREQUENCY: "Frequency",
         constants.ORGANIC_REACH: "Organic Reach",
         constants.ORGANIC_FREQUENCY: "Organic Frequency",
+        constants.REVENUE_PER_KPI: "Revenue per KPI",
+        constants.KPI: "KPI",
     }
 
     for field, loggable_field in fields_to_loggable_name.items():
