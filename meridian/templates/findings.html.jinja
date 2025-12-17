@@ -1,0 +1,33 @@
+{#
+Copyright 2025 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+#}
+
+{% macro render_findings(finding_type, findings, icon_alt, icon_url) %}
+  {% if findings %}
+    {% for finding in findings %}
+      <{{ finding_type }}s>
+        <{{ finding_type }}s-icon>
+          <img src="{{ icon_url }}"
+                alt="{{ icon_alt }}" />
+        </{{ finding_type }}s-icon>
+        <p class="{{ finding_type }}-text">{{ finding }}</p>
+      </{{ finding_type }}s>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{{ render_findings('error', errors, 'error icon', 'https://www.gstatic.com/images/icons/material/system/svg/error_outline_24px.svg') }}
+{{ render_findings('warning', warnings, 'warning icon', 'https://www.gstatic.com/images/icons/material/system/svg/warning_amber_24px.svg') }}
+{{ render_findings('info', infos, 'info icon', 'https://www.gstatic.com/images/icons/material/system/svg/info_outline_24px.svg') }}

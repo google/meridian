@@ -46,6 +46,9 @@ class ChartSpec:
   id: str
   chart_json: str
   description: str | None = None
+  errors: Sequence[str] | None = None
+  warnings: Sequence[str] | None = None
+  infos: Sequence[str] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -55,6 +58,9 @@ class TableSpec:
   column_headers: Sequence[str]
   row_values: Sequence[Sequence[str]]
   description: str | None = None
+  errors: Sequence[str] | None = None
+  warnings: Sequence[str] | None = None
+  infos: Sequence[str] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -220,19 +226,20 @@ def create_summary_html(
 def create_card_html(
     template_env: jinja2.Environment,
     card_spec: CardSpec,
-    insights: str,
+    insights: str | None = None,
     chart_specs: Sequence[ChartSpec | TableSpec] | None = None,
     stats_specs: Sequence[StatsSpec] | None = None,
 ) -> str:
   """Creates a card's HTML snippet that includes given card and chart specs."""
-  insights_html = template_env.get_template('insights.html.jinja').render(
-      text_html=insights
-  )
   card_params = dataclasses.asdict(card_spec)
   card_params[c.CARD_CHARTS] = (
       _create_charts_htmls(template_env, chart_specs) if chart_specs else None
   )
-  card_params[c.CARD_INSIGHTS] = insights_html
+  if insights:
+    insights_html = template_env.get_template('insights.html.jinja').render(
+        text_html=insights
+    )
+    card_params[c.CARD_INSIGHTS] = insights_html
   card_params[c.CARD_STATS] = (
       _create_stats_htmls(template_env, stats_specs) if stats_specs else None
   )
