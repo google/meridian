@@ -15,7 +15,10 @@
 """Constants specific to MeridianEDA."""
 from typing import Literal
 
+import numpy as np
+
 # EDA Engine constants
+DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 COST_PER_MEDIA_UNIT = 'cost_per_media_unit'
 RSQUARED_GEO = 'rsquared_geo'
 RSQUARED_TIME = 'rsquared_time'
@@ -23,6 +26,19 @@ VARIABLE_1 = 'var1'
 VARIABLE_2 = 'var2'
 CORRELATION = 'correlation'
 ABS_CORRELATION_COL_NAME = 'abs_correlation'
+CORRELATION_MATRIX_NAME = 'correlation_matrix'
+OVERALL_PAIRWISE_CORR_THRESHOLD = 0.999
+GEO_PAIRWISE_CORR_THRESHOLD = 0.999
+NATIONAL_PAIRWISE_CORR_THRESHOLD = 0.999
+Q1_THRESHOLD = 0.25
+Q3_THRESHOLD = 0.75
+IQR_MULTIPLIER = 1.5
+STD_WITH_OUTLIERS_VAR_NAME = 'std_with_outliers'
+STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
+STD_THRESHOLD = 1e-4
+OUTLIERS_COL_NAME = 'outliers'
+ABS_OUTLIERS_COL_NAME = 'abs_outliers'
+VIF_COL_NAME = 'VIF'
 
 # EDA Plotting properties
 VARIABLE = 'var'
