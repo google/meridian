@@ -1291,60 +1291,6 @@ class NonPaidModelTest(
     )
 
   # TODO: Move this integration test to a separate module.
-  def test_inference_data_non_paid_correct_dims(self):
-    data = self.input_data_non_media_and_organic
-    model_spec = spec.ModelSpec()
-    mmm = model.Meridian(
-        input_data=data,
-        model_spec=model_spec,
-    )
-    n_draws = 7
-    prior_draws = mmm.prior_sampler_callable._sample_prior(n_draws, seed=1)
-    # Create Arviz InferenceData for prior draws.
-    prior_coords = mmm.create_inference_data_coords(1, n_draws)
-    prior_dims = mmm.create_inference_data_dims()
-
-    for param, tensor in prior_draws.items():
-      self.assertIn(param, prior_dims)
-      dims = prior_dims[param]
-      self.assertEqual(
-          len(tensor.shape),
-          len(dims),
-          f"Parameter {param} has expected dimension {dims} but prior-drawn"
-          f" tensor for this parameter has shape {tensor.shape}",
-      )
-      for dim, shape_dim in zip(dims, tensor.shape):
-        self.assertIn(dim, prior_coords)
-        self.assertLen(prior_coords[dim], shape_dim)
-
-  # TODO: Move this integration test to a separate module.
-  def test_inference_data_with_unique_sigma_geo_correct_dims(self):
-    data = self.input_data_non_media_and_organic
-    model_spec = spec.ModelSpec(unique_sigma_for_each_geo=True)
-    mmm = model.Meridian(
-        input_data=data,
-        model_spec=model_spec,
-    )
-    n_draws = 7
-    prior_draws = mmm.prior_sampler_callable._sample_prior(n_draws, seed=1)
-    # Create Arviz InferenceData for prior draws.
-    prior_coords = mmm.create_inference_data_coords(1, n_draws)
-    prior_dims = mmm.create_inference_data_dims()
-
-    for param, tensor in prior_draws.items():
-      self.assertIn(param, prior_dims)
-      dims = prior_dims[param]
-      self.assertEqual(
-          len(tensor.shape),
-          len(dims),
-          f"Parameter {param} has expected dimension {dims} but prior-drawn"
-          f" tensor for this parameter has shape {tensor.shape}",
-      )
-      for dim, shape_dim in zip(dims, tensor.shape):
-        self.assertIn(dim, prior_coords)
-        self.assertLen(prior_coords[dim], shape_dim)
-
-  # TODO: Move this integration test to a separate module.
   def test_validate_injected_inference_data_correct_shapes(self):
     """Checks validation passes with correct shapes."""
     data = self.input_data_non_media_and_organic

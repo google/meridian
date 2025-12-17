@@ -1433,5 +1433,83 @@ class AdstockDecaySpecFromChannelMappingTest(
       _ = model_context.adstock_decay_spec
 
 
+class InferenceDataTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def test_inference_data_non_paid_correct_dims(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec()
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=model_spec,
+    )
+    n_chains = 1
+    n_draws = 7
+    coords = model_context.create_inference_data_coords(n_chains, n_draws)
+    dims = model_context.create_inference_data_dims()
+
+    expected_coords_len = {
+        constants.CHAIN: n_chains,
+        constants.DRAW: n_draws,
+        constants.GEO: model_context.n_geos,
+        constants.TIME: model_context.n_times,
+        constants.MEDIA_TIME: model_context.n_media_times,
+        constants.KNOTS: model_context.knot_info.n_knots,
+        constants.CONTROL_VARIABLE: model_context.n_controls,
+        constants.NON_MEDIA_CHANNEL: model_context.n_non_media_channels,
+        constants.MEDIA_CHANNEL: model_context.n_media_channels,
+        constants.RF_CHANNEL: model_context.n_rf_channels,
+        constants.ORGANIC_MEDIA_CHANNEL: model_context.n_organic_media_channels,
+        constants.ORGANIC_RF_CHANNEL: model_context.n_organic_rf_channels,
+    }
+    actual_coords_len = {k: len(v) for k, v in coords.items()}
+
+    with self.subTest("coords"):
+      self.assertDictEqual(actual_coords_len, expected_coords_len)
+    with self.subTest("dims"):
+      self.assertEqual(dims[constants.SIGMA], ["chain", "draw"])
+
+  def test_inference_data_with_unique_sigma_geo_correct_dims(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(unique_sigma_for_each_geo=True)
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=model_spec,
+    )
+    n_chains = 1
+    n_draws = 7
+    coords = model_context.create_inference_data_coords(n_chains, n_draws)
+    dims = model_context.create_inference_data_dims()
+
+    expected_coords_len = {
+        constants.CHAIN: n_chains,
+        constants.DRAW: n_draws,
+        constants.GEO: model_context.n_geos,
+        constants.TIME: model_context.n_times,
+        constants.MEDIA_TIME: model_context.n_media_times,
+        constants.KNOTS: model_context.knot_info.n_knots,
+        constants.CONTROL_VARIABLE: model_context.n_controls,
+        constants.NON_MEDIA_CHANNEL: model_context.n_non_media_channels,
+        constants.MEDIA_CHANNEL: model_context.n_media_channels,
+        constants.RF_CHANNEL: model_context.n_rf_channels,
+        constants.ORGANIC_MEDIA_CHANNEL: model_context.n_organic_media_channels,
+        constants.ORGANIC_RF_CHANNEL: model_context.n_organic_rf_channels,
+    }
+    actual_coords_len = {k: len(v) for k, v in coords.items()}
+
+    with self.subTest("coords"):
+      self.assertDictEqual(actual_coords_len, expected_coords_len)
+    with self.subTest("dims"):
+      self.assertEqual(dims[constants.SIGMA], ["chain", "draw", constants.GEO])
+
+
 if __name__ == "__main__":
   absltest.main()

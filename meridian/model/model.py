@@ -371,7 +371,9 @@ class Meridian:
       self,
   ) -> posterior_sampler.PosteriorMCMCSampler:
     """A `PosteriorMCMCSampler` callable bound to this model."""
-    return posterior_sampler.PosteriorMCMCSampler(self)
+    return posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.model_context,
+    )
 
   # TODO: Deprecate this method in favor of the one in
   # `equations.py`.
@@ -832,66 +834,18 @@ class Meridian:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
+  # TODO: Deprecate in favor of
+  # `ModelContext.create_inference_data_coords`.
   def create_inference_data_coords(
       self, n_chains: int, n_draws: int
   ) -> Mapping[str, np.ndarray | Sequence[str]]:
     """Creates data coordinates for inference data."""
-    media_channel_names = (
-        self.input_data.media_channel
-        if self.input_data.media_channel is not None
-        else np.array([])
-    )
-    rf_channel_names = (
-        self.input_data.rf_channel
-        if self.input_data.rf_channel is not None
-        else np.array([])
-    )
-    organic_media_channel_names = (
-        self.input_data.organic_media_channel
-        if self.input_data.organic_media_channel is not None
-        else np.array([])
-    )
-    organic_rf_channel_names = (
-        self.input_data.organic_rf_channel
-        if self.input_data.organic_rf_channel is not None
-        else np.array([])
-    )
-    non_media_channel_names = (
-        self.input_data.non_media_channel
-        if self.input_data.non_media_channel is not None
-        else np.array([])
-    )
-    control_variable_names = (
-        self.input_data.control_variable
-        if self.input_data.control_variable is not None
-        else np.array([])
-    )
-    return {
-        constants.CHAIN: np.arange(n_chains),
-        constants.DRAW: np.arange(n_draws),
-        constants.GEO: self.input_data.geo,
-        constants.TIME: self.input_data.time,
-        constants.MEDIA_TIME: self.input_data.media_time,
-        constants.KNOTS: np.arange(self.knot_info.n_knots),
-        constants.CONTROL_VARIABLE: control_variable_names,
-        constants.NON_MEDIA_CHANNEL: non_media_channel_names,
-        constants.MEDIA_CHANNEL: media_channel_names,
-        constants.RF_CHANNEL: rf_channel_names,
-        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,
-        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,
-    }
+    return self._model_context.create_inference_data_coords(n_chains, n_draws)
 
+  # TODO: Deprecate in favor of
+  # `ModelContext.create_inference_data_dims`.
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
-    inference_dims = dict(constants.INFERENCE_DIMS)
-    if self.unique_sigma_for_each_geo:
-      inference_dims[constants.SIGMA] = [constants.GEO]
-    else:
-      inference_dims[constants.SIGMA] = []
-
-    return {
-        param: [constants.CHAIN, constants.DRAW] + list(dims)
-        for param, dims in inference_dims.items()
-    }
+    return self._model_context.create_inference_data_dims()
 
   def sample_prior(self, n_draws: int, seed: int | None = None):
     """Draws samples from the prior distributions.
@@ -906,8 +860,8 @@ class Meridian:
     """
     prior_draws = self.prior_sampler_callable(n_draws=n_draws, seed=seed)
     # Create Arviz InferenceData for prior draws.
-    prior_coords = self.create_inference_data_coords(1, n_draws)
-    prior_dims = self.create_inference_data_dims()
+    prior_coords = self._model_context.create_inference_data_coords(1, n_draws)
+    prior_dims = self._model_context.create_inference_data_dims()
     prior_inference_data = az.convert_to_inference_data(
         prior_draws,
         coords=prior_coords,
@@ -1026,7 +980,7 @@ class Meridian:
     """
     self._run_model_fitting_guardrail()
 
-    self.posterior_sampler_callable(
+    posterior_inference_data = self.posterior_sampler_callable(
         n_chains=n_chains,
         n_adapt=n_adapt,
         n_burnin=n_burnin,
@@ -1041,6 +995,7 @@ class Meridian:
         seed=seed,
         **pins,
     )
+    self.inference_data.extend(posterior_inference_data, join="right")
 
 
 def save_mmm(mmm: Meridian, file_path: str):
