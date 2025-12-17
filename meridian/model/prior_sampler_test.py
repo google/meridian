@@ -19,6 +19,7 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_sampler
@@ -742,46 +743,30 @@ class PriorDistributionSamplerInitTest(
     sampler = prior_sampler.PriorDistributionSampler(self.meridian)
     self.assertIs(sampler._meridian, self.meridian)
     self.assertIs(sampler._model_context, self.meridian.model_context)
-    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+    self.assertIs(
+        sampler._model_equations._context, self.meridian.model_context
+    )
 
-  def test_init_with_model_context_and_model_equations(self):
+  def test_init_with_model_context(self):
     sampler = prior_sampler.PriorDistributionSampler(
         model_context=self.meridian.model_context,
-        model_equations=self.meridian.model_equations,
     )
     self.assertIsNone(sampler._meridian)
     self.assertIs(sampler._model_context, self.meridian.model_context)
-    self.assertIs(sampler._model_equations, self.meridian.model_equations)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+    self.assertIs(
+        sampler._model_equations._context, self.meridian.model_context
+    )
 
-  def test_init_raises_error_if_meridian_and_context_and_equations_are_none(
+  def test_init_raises_error_if_meridian_and_context_are_none(
       self,
   ):
     with self.assertRaisesRegex(
         ValueError,
-        "Either `meridian` or both `model_context` and `model_equations`"
-        " must be provided.",
+        "Either `meridian` or `model_context` must be provided.",
     ):
       prior_sampler.PriorDistributionSampler()
-
-  def test_init_raises_error_if_only_model_context_is_provided(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "Either `meridian` or both `model_context` and `model_equations`"
-        " must be provided.",
-    ):
-      prior_sampler.PriorDistributionSampler(
-          model_context=self.meridian.model_context
-      )
-
-  def test_init_raises_error_if_only_model_equations_is_provided(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        "Either `meridian` or both `model_context` and `model_equations`"
-        " must be provided.",
-    ):
-      prior_sampler.PriorDistributionSampler(
-          model_equations=self.meridian.model_equations
-      )
 
 
 if __name__ == "__main__":

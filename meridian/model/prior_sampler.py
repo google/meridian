@@ -15,6 +15,7 @@
 """Module for sampling prior distributions in a Meridian model."""
 
 from collections.abc import Mapping
+import functools
 from typing import Optional, TYPE_CHECKING
 import warnings
 
@@ -72,28 +73,28 @@ class PriorDistributionSampler:
       meridian: Optional["model.Meridian"] = None,
       *,
       model_context: context.ModelContext | None = None,
-      model_equations: equations.ModelEquations | None = None,
   ):
     if meridian is not None:
       warnings.warn(
           "Initializing PriorDistributionSampler with a Meridian object is"
           " deprecated and will be removed in a future version. Please use"
-          " `model_context` and `model_equations` instead.",
+          " `model_context` instead.",
           DeprecationWarning,
           stacklevel=2,
       )
       self._meridian = meridian
       self._model_context = meridian.model_context
-      self._model_equations = meridian.model_equations
-    elif model_context is not None and model_equations is not None:
+    elif model_context is not None:
       self._meridian = None
       self._model_context = model_context
-      self._model_equations = model_equations
     else:
       raise ValueError(
-          "Either `meridian` or both `model_context` and `model_equations` must"
-          " be provided."
+          "Either `meridian` or `model_context` must be provided."
       )
+
+  @functools.cached_property
+  def _model_equations(self) -> equations.ModelEquations:
+    return equations.ModelEquations(self._model_context)
 
   def _sample_media_priors(
       self,

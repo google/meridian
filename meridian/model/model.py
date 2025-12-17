@@ -364,7 +364,6 @@ class Meridian:
     """A `PriorDistributionSampler` callable bound to this model."""
     return prior_sampler.PriorDistributionSampler(
         model_context=self.model_context,
-        model_equations=self.model_equations,
     )
 
   @functools.cached_property
