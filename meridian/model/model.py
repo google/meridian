@@ -375,8 +375,6 @@ class Meridian:
         model_context=self.model_context,
     )
 
-  # TODO: Deprecate this method in favor of the one in
-  # `equations.py`.
   def compute_non_media_treatments_baseline(
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
@@ -399,6 +397,13 @@ class Meridian:
       A tensor of shape `(n_non_media_channels,)` containing the
       baseline values for each non-media treatment channel.
     """
+    warnings.warn(
+        "Meridian.compute_non_media_treatments_baseline() is deprecated and"
+        " will be removed in a future version. Use"
+        " `ModelEquations.compute_non_media_treatments_baseline()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self.model_equations.compute_non_media_treatments_baseline(
         non_media_baseline_values=non_media_baseline_values
     )
@@ -603,7 +608,6 @@ class Meridian:
           f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
 
-  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def linear_predictor_counterfactual_difference_media(
       self,
       media_transformed: backend.Tensor,
@@ -632,6 +636,14 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
+    warnings.warn(
+        "Meridian.linear_predictor_counterfactual_difference_media() is"
+        " deprecated and will be removed in a future version. Use "
+        "`ModelEquations.linear_predictor_counterfactual_difference_media()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return (
         self.model_equations.linear_predictor_counterfactual_difference_media(
             media_transformed=media_transformed,
@@ -641,8 +653,6 @@ class Meridian:
         )
     )
 
-  # TODO: Deprecate in favor of
-  # ModelEquations.linear_predictor_counterfactual_difference_rf.
   def linear_predictor_counterfactual_difference_rf(
       self,
       rf_transformed: backend.Tensor,
@@ -671,6 +681,13 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
+    warnings.warn(
+        "Meridian.linear_predictor_counterfactual_difference_rf() is deprecated"
+        " and will be removed in a future version. Use `ModelEquations."
+        "linear_predictor_counterfactual_difference_rf()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self.model_equations.linear_predictor_counterfactual_difference_rf(
         rf_transformed=rf_transformed,
         alpha_rf=alpha_rf,
@@ -678,7 +695,6 @@ class Meridian:
         slope_rf=slope_rf,
     )
 
-  # TODO: Deprecate in favor of ModelEquations.calculate_beta_x.
   def calculate_beta_x(
       self,
       is_non_media: bool,
@@ -724,6 +740,13 @@ class Meridian:
       The coefficient mean parameter of the treatment variable, which has
       dimension equal to the number of treatment channels..
     """
+    warnings.warn(
+        "Meridian.calculate_beta_x() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.calculate_beta_x()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self.model_equations.calculate_beta_x(
         is_non_media=is_non_media,
         incremental_outcome_x=incremental_outcome_x,
@@ -732,7 +755,6 @@ class Meridian:
         beta_gx_dev=beta_gx_dev,
     )
 
-  # TODO: Deprecate in favor of ModelEquations.adstock_hill_media.
   def adstock_hill_media(
       self,
       media: backend.Tensor,  # pylint: disable=redefined-outer-name
@@ -763,6 +785,13 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
+    warnings.warn(
+        "Meridian.adstock_hill_media() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.adstock_hill_media()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self.model_equations.adstock_hill_media(
         media=media,
         alpha=alpha,
@@ -772,7 +801,6 @@ class Meridian:
         n_times_output=n_times_output,
     )
 
-  # TODO: Deprecate in favor of ModelEquations.adstock_hill_rf.
   def adstock_hill_rf(
       self,
       reach: backend.Tensor,
@@ -804,6 +832,13 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
+    warnings.warn(
+        "Meridian.adstock_hill_rf() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.adstock_hill_rf()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self.model_equations.adstock_hill_rf(
         reach=reach,
         frequency=frequency,
@@ -834,17 +869,27 @@ class Meridian:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
-  # TODO: Deprecate in favor of
-  # `ModelContext.create_inference_data_coords`.
   def create_inference_data_coords(
       self, n_chains: int, n_draws: int
   ) -> Mapping[str, np.ndarray | Sequence[str]]:
     """Creates data coordinates for inference data."""
+    warnings.warn(
+        "Meridian.create_inference_data_coords() is deprecated and will be"
+        " removed in a future version. Use"
+        " `ModelContext.create_inference_data_coords()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self._model_context.create_inference_data_coords(n_chains, n_draws)
 
-  # TODO: Deprecate in favor of
-  # `ModelContext.create_inference_data_dims`.
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
+    warnings.warn(
+        "Meridian.create_inference_data_dims() is deprecated and will be"
+        " removed in a future version. Use"
+        " `ModelContext.create_inference_data_dims()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self._model_context.create_inference_data_dims()
 
   def sample_prior(self, n_draws: int, seed: int | None = None):
