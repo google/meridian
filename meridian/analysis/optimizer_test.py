@@ -139,6 +139,8 @@ def _create_budget_data(
     spend: np.ndarray,
     inc_outcome: np.ndarray,
     effectiveness: np.ndarray,
+    *,
+    explicit_roi: np.ndarray | None = None,
     explicit_mroi: np.ndarray | None = None,
     explicit_cpik: np.ndarray | None = None,
     channels: np.ndarray | None = None,
@@ -154,14 +156,19 @@ def _create_budget_data(
       c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
       c.INCREMENTAL_OUTCOME: ([c.CHANNEL, c.METRIC], inc_outcome),
       c.EFFECTIVENESS: ([c.CHANNEL, c.METRIC], effectiveness),
-      c.ROI: (
-          [c.CHANNEL, c.METRIC],
-          backend.transpose(
-              backend.divide_no_nan(backend.transpose(inc_outcome), spend)
-          ),
-      ),
   }
-
+  if explicit_roi is not None:
+    data_vars[c.ROI] = (
+        [c.CHANNEL, c.METRIC],
+        np.array(explicit_roi, dtype=np.float64),
+    )
+  else:
+    data_vars[c.ROI] = (
+        [c.CHANNEL, c.METRIC],
+        backend.transpose(
+            backend.divide(backend.transpose(inc_outcome), spend)
+        ),
+    )
   if explicit_mroi is not None:
     data_vars[c.MROI] = (
         [c.CHANNEL, c.METRIC],
@@ -171,7 +178,7 @@ def _create_budget_data(
     data_vars[c.MROI] = (
         [c.CHANNEL, c.METRIC],
         backend.transpose(
-            backend.divide_no_nan(backend.transpose(inc_outcome), spend * 0.01)
+            backend.divide(backend.transpose(inc_outcome), spend * 0.01)
         ),
     )
 
@@ -184,7 +191,7 @@ def _create_budget_data(
     data_vars[c.CPIK] = (
         [c.CHANNEL, c.METRIC],
         backend.transpose(
-            backend.divide_no_nan(spend, backend.transpose(inc_outcome))
+            backend.divide(spend, backend.transpose(inc_outcome))
         ),
     )
 
@@ -1253,10 +1260,26 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
         [[_AGGREGATED_IMPRESSIONS]], backend.float32
     )
+    expected_roi = np.array([
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [2.16654396, 2.16654396, 2.16654396, 2.16654396],
+        [1.54340279, 1.54340279, 1.54340279, 1.54340279],
+    ])
+    expected_mroi = np.array([
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [216.65440369, 216.65440369, 216.65440369, 216.65440369],
+        [154.34028625, 154.34028625, 154.34028625, 154.34028625],
+    ])
     expected_data = _create_budget_data(
         spend=_TARGET_MROI_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
+        explicit_roi=expected_roi,
+        explicit_mroi=expected_mroi,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_MROI: 1},
     )

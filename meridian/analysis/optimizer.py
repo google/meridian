@@ -2379,21 +2379,19 @@ class BudgetOptimizer:
     )
     effectiveness_with_mean_median_and_ci = (
         analyzer_module.get_central_tendency_and_ci(
-            data=backend.divide_no_nan(
-                incremental_outcome, aggregated_impressions
-            ),
+            data=backend.divide(incremental_outcome, aggregated_impressions),
             confidence_level=confidence_level,
             include_median=True,
         )
     )
 
     roi = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(incremental_outcome, spend_tensor),
+        data=backend.divide(incremental_outcome, spend_tensor),
         confidence_level=confidence_level,
         include_median=True,
     )
     marginal_roi = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(
+        data=backend.divide(
             mroi_numerator, spend_tensor * incremental_increase
         ),
         confidence_level=confidence_level,
@@ -2401,13 +2399,13 @@ class BudgetOptimizer:
     )
 
     cpik = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(spend_tensor, incremental_outcome),
+        data=backend.divide(spend_tensor, incremental_outcome),
         confidence_level=confidence_level,
         include_median=True,
     )
     total_inc_outcome = backend.reduce_sum(incremental_outcome, -1)
-    total_cpik = backend.reduce_mean(
-        backend.divide_no_nan(budget, total_inc_outcome),
+    total_cpik = backend.nanmean(
+        backend.divide(budget, total_inc_outcome),
         axis=(0, 1),
     )
 
@@ -3053,7 +3051,10 @@ def _raise_warning_if_target_constraints_not_met(
     # optimized_data[c.MROI] is an array of shape (n_channels, 4), where the
     # last dimension is [mean, median, ci_lo, ci_hi].
     optimized_mroi = optimized_data[c.MROI][:, 0]
-    if np.any(optimized_mroi < target_mroi):
+    # Replace NaN with -np.inf so it's treated as failing the constraint.
+    # +/-inf will be converted to large-magnitude finite numbers.
+    compare_mroi = np.nan_to_num(optimized_mroi, nan=-np.inf)
+    if np.any(compare_mroi < target_mroi):
       warnings.warn(
           'Target marginal ROI constraint was not met. The target marginal'
           f' ROI is {target_mroi}, but the actual channel marginal ROIs are'
