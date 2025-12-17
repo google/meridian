@@ -20,6 +20,9 @@ $insights_bg_grey: #eee;
 $text_grey: var(--Grey-800, #3c4043);
 $text_green: var(--Green-500, #34a853);
 $text_red: var(--Red-600, #d93025);
+$error_red: #f8d7da;
+$warning_yellow: #fff3cd;
+$info_blue: #dae8fc;
 
 $google_sans: 'Google Sans Display', 'Google Sans', sans-serif;
 $roboto: Roboto;
@@ -112,12 +115,38 @@ card {
   }
 
   > card-insights {
+    background: $insights_bg_grey;
+  }
+
+  errors,
+  warnings,
+  infos {
+    margin-top: -39px;
+    margin-left: -69px;
+    margin-right: -69px;
+  }
+
+  errors {
+    background: $error_red;
+  }
+
+  warnings {
+    background: $warning_yellow;
+  }
+
+  infos {
+    background: $info_blue;
+  }
+
+  > card-insights,
+  errors,
+  warnings,
+  infos {
     display: flex;
     flex-direction: row;
     padding: 22px 20px;
-    background: $insights_bg_grey;
 
-    p.insights-text {
+    p {
       margin: 0px 25px;
       color: $text_grey;
 
@@ -152,7 +181,6 @@ charts {
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
-
 
     > chart-description {
       color: $text_grey;
