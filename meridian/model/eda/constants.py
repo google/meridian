@@ -14,7 +14,7 @@
 
 """Constants specific to MeridianEDA."""
 from typing import Literal
-
+import altair as alt
 import numpy as np
 
 # EDA Engine constants
@@ -48,12 +48,20 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
+TOP_5_CHANNELS = 5
+PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
+    domain=[-1.0, 0.0, 1.0],
+    range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
+    type='linear',
+)
 
 # Report constants
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
+R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
+R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 
 
 # Finding messages
@@ -62,4 +70,20 @@ PAIRWISE_CORRELATION_CHECK_INFO = (
     ' high pairwise correlation may cause model identifiability'
     ' and convergence issues. Consider combining the variables if'
     ' high correlation exists.'
+)
+R_SQUARED_TIME_INFO = (
+    'This check regresses each variable against time as a'
+    ' categorical variable. In this case, high R-squared indicates'
+    ' low geo variation of a variable. This could lead to a weakly'
+    ' identifiable and non-converging model if a large number of'
+    ' knots are used. Consider dropping the variable with very high'
+    ' R-squared or reducing `knots` argument in `ModelSpec`.'
+)
+R_SQUARED_GEO_INFO = (
+    'This check regresses each variable against geo as a'
+    ' categorical variable. In this case, high R-squared indicates'
+    ' low time variation of a variable. This could lead to a weakly'
+    ' identifiable and non-converging model due to geo main'
+    ' effects. Consider dropping the variable with very high'
+    ' R-squared.'
 )
