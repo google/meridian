@@ -33,6 +33,11 @@ import numpy as np
 import xarray as xr
 
 
+# Data dimensions for sample input.
+_MEDIA_CHANNEL_NAMES = ("ch_0", "ch_1", "ch_2")
+_RF_CHANNEL_NAMES = ("rf_ch_0", "rf_ch_1", "rf_ch_2")
+
+
 class ContextTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -1431,6 +1436,59 @@ class AdstockDecaySpecFromChannelMappingTest(
         "one or more of {'media', 'rf', 'organic_media', 'organic_rf'}.",
     ):
       _ = model_context.adstock_decay_spec
+
+  def test_validate_media_spend_for_paid_media_channels_raises_error(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=len(_MEDIA_CHANNEL_NAMES),
+    )
+    spend = data_test_utils.random_media_spend_nd_da(
+        n_media_channels=len(_MEDIA_CHANNEL_NAMES),
+        explicit_media_channel_names=list(_MEDIA_CHANNEL_NAMES),
+    )
+
+    # Change spend values to zero for a single channel.
+    channel_to_zero = _MEDIA_CHANNEL_NAMES[0]
+    spend.loc[{constants.MEDIA_CHANNEL: channel_to_zero}] = 0
+    data.media_spend = spend
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        f"Zero total spend detected for paid channels: {channel_to_zero}."
+        " If data is correct and this is expected, please consider modeling"
+        " the data as organic media.",
+    ):
+      context.ModelContext(
+          input_data=data,
+          model_spec=spec.ModelSpec(
+              media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI
+          ),
+      )
+
+  def test_validate_rf_spend_for_paid_channels_raises_error(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_rf_channels=len(_RF_CHANNEL_NAMES),
+    )
+    spend = data_test_utils.random_rf_spend_nd_da(
+        n_rf_channels=len(_RF_CHANNEL_NAMES),
+    )
+
+    # Change spend values to zero for a single channel.
+    channel_to_zero = _RF_CHANNEL_NAMES[0]
+    spend.loc[{constants.RF_CHANNEL: channel_to_zero}] = 0
+    data.rf_spend = spend
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        f"Zero total spend detected for paid channels: {channel_to_zero}."
+        " If data is correct and this is expected, please consider modeling"
+        " the data as organic media.",
+    ):
+      context.ModelContext(
+          input_data=data,
+          model_spec=spec.ModelSpec(
+              media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          ),
+      )
 
 
 class InferenceDataTest(

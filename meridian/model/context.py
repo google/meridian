@@ -59,6 +59,8 @@ class ModelContext:
     self._check_media_prior_support()
     self._validate_geo_invariants()
     self._validate_time_invariants()
+    self._validate_media_spend_for_paid_channels()
+    self._validate_rf_spend_for_paid_channels()
 
   def _validate_data_dependent_model_spec(self):
     """Validates that the data dependent model specs have correct shapes."""
@@ -305,6 +307,41 @@ class ModelContext:
           self._input_data.organic_reach.coords[
               constants.ORGANIC_RF_CHANNEL
           ].values,
+      )
+
+  def _validate_media_spend_for_paid_channels(self) -> None:
+    self._validate_spend_for_paid_channels(
+        self.input_data.aggregate_media_spend(), constants.MEDIA_CHANNEL
+    )
+
+  def _validate_rf_spend_for_paid_channels(self) -> None:
+    self._validate_spend_for_paid_channels(
+        self.input_data.aggregate_rf_spend(), constants.RF_CHANNEL
+    )
+
+  def _validate_spend_for_paid_channels(
+      self,
+      spend: np.ndarray | None,
+      dim: str,
+  ) -> None:
+    """Validates non-zero media spend for paid media channels.
+
+    Args:
+      spend: The media spend data to validate.
+      dim: The dimension name of the spend data.
+
+    Raises:
+      ValueError if any paid media channel has zero total spend.
+    """
+    if spend is None:
+      return
+    zero_spend_channels = spend.coords[dim].where(spend == 0, drop=True).values
+
+    if zero_spend_channels.size > 0:
+      raise ValueError(
+          "Zero total spend detected for paid channels:"
+          f" {', '.join(zero_spend_channels)}. If data is correct and this is"
+          " expected, please consider modeling the data as organic media."
       )
 
   def _check_if_no_time_variation(
