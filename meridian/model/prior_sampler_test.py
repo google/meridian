@@ -91,7 +91,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_and_rf,
         )
@@ -161,7 +161,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only,
         )
@@ -223,7 +223,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only_no_controls,
         )
@@ -282,7 +282,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_rf_only,
         )
@@ -342,7 +342,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_and_rf,
         )
@@ -371,7 +371,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only,
         )
@@ -400,7 +400,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_rf_only,
         )
@@ -605,7 +605,7 @@ class PriorDistributionSamplerTest(
         input_data=input_data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(
+    prior_samples = meridian.prior_sampler_callable(
         self._N_DRAWS, seed=0
     )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)

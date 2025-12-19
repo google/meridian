@@ -569,12 +569,22 @@ class PriorDistributionSampler:
     ).sample(seed=rng_handler.get_next_seed())
     return non_media_treatments_vars
 
-  def _sample_prior(
+  def __call__(
       self,
       n_draws: int,
       seed: int | None = None,
   ) -> Mapping[str, backend.Tensor]:
-    """Returns a mapping of prior parameters to tensors of the samples."""
+    """Draws samples from prior distributions.
+
+    Args:
+      n_draws: Number of samples drawn from the prior distribution.
+      seed: Used to set the seed for reproducible results. For more information,
+        see [PRNGS and seeds]
+        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+
+    Returns:
+      A mapping of prior parameter names to tensors of the samples.
+    """
     ctx = self._model_context
 
     # For stateful sampling, the random seed must be set to ensure that any
@@ -673,21 +683,3 @@ class PriorDistributionSampler:
         | organic_rf_vars
         | non_media_treatments_vars
     )
-
-  # TODO: Remove this callable method and make `_sample_prior`
-  # public, instead.
-  def __call__(
-      self, n_draws: int, seed: int | None = None
-  ) -> Mapping[str, backend.Tensor]:
-    """Draws samples from prior distributions.
-
-    Args:
-      n_draws: Number of samples drawn from the prior distribution.
-      seed: Used to set the seed for reproducible results. For more information,
-        see [PRNGS and seeds]
-        (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
-
-    Returns:
-      A mapping of prior parameter names to tensors of the samples.
-    """
-    return self._sample_prior(n_draws=n_draws, seed=seed)

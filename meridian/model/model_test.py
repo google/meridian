@@ -1301,7 +1301,7 @@ class NonPaidModelTest(
     )
     n_chains = 1
     n_draws = 10
-    prior_samples = meridian.prior_sampler_callable._sample_prior(
+    prior_samples = meridian.prior_sampler_callable(
         n_draws, seed=1
     )
     prior_coords = meridian.create_inference_data_coords(n_chains, n_draws)
@@ -1410,7 +1410,7 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(
+    prior_samples = meridian.prior_sampler_callable(
         self._N_DRAWS, seed=1
     )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
@@ -1543,7 +1543,7 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(
+    prior_samples = meridian.prior_sampler_callable(
         self._N_DRAWS, seed=1
     )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
