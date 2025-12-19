@@ -50,7 +50,7 @@ class EDASeverity(enum.Enum):
   ERROR = enum.auto()
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class EDAFinding:
   """Encapsulates a single, specific finding from an EDA check.
 
@@ -198,7 +198,7 @@ class EDACheckType(enum.Enum):
   VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
 
 
-ArtifactType = typing.TypeVar("ArtifactType", bound="AnalysisArtifact")
+ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)
 
 
 @dataclasses.dataclass(frozen=True)

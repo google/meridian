@@ -3996,48 +3996,53 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(
-        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
-    )
-    self.assertLen(outcome.findings, 1)
-    self.assertLen(outcome.analysis_artifacts, 2)
+    with self.subTest("check_type"):
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+      )
 
-    (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
-    self.assertIn(
-        "perfect pairwise correlation across all times and geos",
-        finding.explanation,
-    )
-    self.assertIn(
-        "Pairs with perfect correlation: [('media_1', 'media_2')]",
-        finding.explanation,
-    )
+    with self.subTest("findings_and_artifacts_count"):
+      self.assertLen(outcome.findings, 1)
+      self.assertLen(outcome.analysis_artifacts, 2)
 
-    overall_artifact = next(
-        artifact
-        for artifact in outcome.analysis_artifacts
-        if artifact.level == eda_outcome.AnalysisLevel.OVERALL
-    )
-    self.assertEqual(
-        overall_artifact.extreme_corr_threshold,
-        eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
-    )
-    expected_overall_extreme_corr_df = pd.DataFrame(
-        data={
-            eda_constants.CORRELATION: [1.0],
-            eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
-        },
-        index=pd.MultiIndex.from_tuples(
-            [("media_1", "media_2")],
-            names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
-        ),
-    )
-    pd.testing.assert_frame_equal(
-        overall_artifact.extreme_corr_var_pairs,
-        expected_overall_extreme_corr_df,
-        check_dtype=False,
-        atol=1e-6,
-    )
+    with self.subTest("finding_details"):
+      (finding,) = outcome.findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+      self.assertIn(
+          "perfect pairwise correlation across all times and geos",
+          finding.explanation,
+      )
+      self.assertIn(
+          "Pairs with perfect correlation: [('media_1', 'media_2')]",
+          finding.explanation,
+      )
+
+    with self.subTest("overall_artifact_details"):
+      overall_artifact = next(
+          artifact
+          for artifact in outcome.analysis_artifacts
+          if artifact.level == eda_outcome.AnalysisLevel.OVERALL
+      )
+      self.assertEqual(
+          overall_artifact.extreme_corr_threshold,
+          eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
+      )
+      expected_overall_extreme_corr_df = pd.DataFrame(
+          data={
+              eda_constants.CORRELATION: [1.0],
+              eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
+          },
+          index=pd.MultiIndex.from_tuples(
+              [("media_1", "media_2")],
+              names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
+          ),
+      )
+      pd.testing.assert_frame_equal(
+          overall_artifact.extreme_corr_var_pairs,
+          expected_overall_extreme_corr_df,
+          check_dtype=False,
+          atol=1e-6,
+      )
 
   def test_check_geo_pairwise_corr_one_attention(self):
     # Create data where media_1 and media_2 are perfectly correlated per geo but
@@ -4053,29 +4058,38 @@ class EDAEngineTest(
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
     outcome = engine.check_geo_pairwise_corr()
 
-    self.assertEqual(
-        outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
-    )
-    self.assertLen(outcome.findings, 1)
-    self.assertLen(outcome.analysis_artifacts, 2)
+    with self.subTest("check_type"):
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.PAIRWISE_CORRELATION
+      )
 
-    (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
-    self.assertIn(
-        "perfect pairwise correlation in certain geo(s)",
-        finding.explanation,
-    )
-    geo_artifact = next(
-        artifact
-        for artifact in outcome.analysis_artifacts
-        if artifact.level == eda_outcome.AnalysisLevel.GEO
-    )
-    self.assertIn("media_1", geo_artifact.extreme_corr_var_pairs.to_string())
-    self.assertIn("media_2", geo_artifact.extreme_corr_var_pairs.to_string())
-    self.assertEqual(
-        geo_artifact.extreme_corr_threshold,
-        eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
-    )
+    with self.subTest("findings_and_artifacts_count"):
+      self.assertLen(outcome.findings, 1)
+      self.assertLen(outcome.analysis_artifacts, 2)
+
+    with self.subTest("finding_details"):
+      (finding,) = outcome.findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertIn(
+          "perfect pairwise correlation in certain geo(s)",
+          finding.explanation,
+      )
+
+    with self.subTest("geo_artifact_details"):
+      geo_artifact = next(
+          artifact
+          for artifact in outcome.analysis_artifacts
+          if artifact.level == eda_outcome.AnalysisLevel.GEO
+      )
+      all_vars = (
+          geo_artifact.extreme_corr_var_pairs.index.to_frame().stack().unique()
+      )
+      self.assertIn("media_1", all_vars)
+      self.assertIn("media_2", all_vars)
+      self.assertEqual(
+          geo_artifact.extreme_corr_threshold,
+          eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
+      )
 
   def test_check_geo_pairwise_corr_info_only(self):
     # No high correlations
