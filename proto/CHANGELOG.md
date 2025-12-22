@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.1.1] - 2025-12-22
+
 * Add field to record ArviZ version in meridian_model proto definition.
 
 ## [1.1.0] - 2025-12-08
@@ -37,4 +39,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 <!-- mdlint off(LINK_UNUSED_ID) -->
 [1.0.0]: https://github.com/google/meridian/releases/tag/proto-v1.0.0
 [1.1.0]: https://github.com/google/meridian/releases/tag/proto-v1.1.0
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.0...HEAD
+[1.1.1]: https://github.com/google/meridian/releases/tag/proto-v1.1.1
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.1...HEAD
