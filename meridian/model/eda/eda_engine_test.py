@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -4005,8 +4006,8 @@ class EDAEngineTest(
       self.assertLen(outcome.findings, 1)
       self.assertLen(outcome.analysis_artifacts, 2)
 
+    (finding,) = outcome.findings
     with self.subTest("finding_details"):
-      (finding,) = outcome.findings
       self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
       self.assertIn(
           "perfect pairwise correlation across all times and geos",
@@ -4017,25 +4018,25 @@ class EDAEngineTest(
           finding.explanation,
       )
 
+    overall_artifact = next(
+        artifact
+        for artifact in outcome.analysis_artifacts
+        if artifact.level == eda_outcome.AnalysisLevel.OVERALL
+    )
+    expected_overall_extreme_corr_df = pd.DataFrame(
+        data={
+            eda_constants.CORRELATION: [1.0],
+            eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [("media_1", "media_2")],
+            names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
+        ),
+    )
     with self.subTest("overall_artifact_details"):
-      overall_artifact = next(
-          artifact
-          for artifact in outcome.analysis_artifacts
-          if artifact.level == eda_outcome.AnalysisLevel.OVERALL
-      )
       self.assertEqual(
           overall_artifact.extreme_corr_threshold,
           eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
-      )
-      expected_overall_extreme_corr_df = pd.DataFrame(
-          data={
-              eda_constants.CORRELATION: [1.0],
-              eda_constants.ABS_CORRELATION_COL_NAME: [1.0],
-          },
-          index=pd.MultiIndex.from_tuples(
-              [("media_1", "media_2")],
-              names=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
-          ),
       )
       pd.testing.assert_frame_equal(
           overall_artifact.extreme_corr_var_pairs,
@@ -4067,20 +4068,20 @@ class EDAEngineTest(
       self.assertLen(outcome.findings, 1)
       self.assertLen(outcome.analysis_artifacts, 2)
 
+    (finding,) = outcome.findings
     with self.subTest("finding_details"):
-      (finding,) = outcome.findings
       self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
       self.assertIn(
           "perfect pairwise correlation in certain geo(s)",
           finding.explanation,
       )
 
+    geo_artifact = next(
+        artifact
+        for artifact in outcome.analysis_artifacts
+        if artifact.level == eda_outcome.AnalysisLevel.GEO
+    )
     with self.subTest("geo_artifact_details"):
-      geo_artifact = next(
-          artifact
-          for artifact in outcome.analysis_artifacts
-          if artifact.level == eda_outcome.AnalysisLevel.GEO
-      )
       all_vars = (
           geo_artifact.extreme_corr_var_pairs.index.to_frame().stack().unique()
       )
@@ -4089,6 +4090,89 @@ class EDAEngineTest(
       self.assertEqual(
           geo_artifact.extreme_corr_threshold,
           eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
+      )
+
+  def test_check_geo_pairwise_corr_returns_error_and_attention(self):
+    # data shape: (2, 3, 3) -> (n_geos, n_times, n_vars)
+    # media_1 and media_2 are perfectly correlated overall -> ERROR
+    # In geo0, media_1, media_2, and media_3 are identical, so all pairwise
+    # correlations are 1.0; in geo1, media_1 and media_2 are perfectly
+    # correlated, but the others are not. -> ATTENTION for geo-level.
+    data = np.array(
+        [
+            [[1, 1, 1], [2, 2, 2], [3, 3, 3]],  # geo0
+            [[4, 4, 3], [5, 5, 7], [6, 6, 5]],  # geo1
+        ],
+        dtype=float,
+    )
+    mock_ds = _create_dataset_with_var_dim(data)
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
+    outcome = engine.check_geo_pairwise_corr()
+
+    with self.subTest("two_findings"):
+      self.assertLen(outcome.findings, 2)
+
+    findings_by_severity = {
+        severity: list(group)
+        for severity, group in itertools.groupby(
+            outcome.findings, key=lambda f: f.severity
+        )
+    }
+
+    error_findings = findings_by_severity[eda_outcome.EDASeverity.ERROR]
+    with self.subTest("error_finding"):
+      self.assertLen(error_findings, 1)
+      (error_finding,) = error_findings
+      self.assertIn("('media_1', 'media_2')", error_finding.explanation)
+
+    attention_findings = findings_by_severity[eda_outcome.EDASeverity.ATTENTION]
+    with self.subTest("attention_finding"):
+      self.assertLen(attention_findings, 1)
+      (attention_finding,) = attention_findings
+      self.assertIn(
+          "perfect pairwise correlation in certain geo(s)",
+          attention_finding.explanation,
+      )
+
+    artifacts_by_level = {
+        level: list(group)
+        for level, group in itertools.groupby(
+            outcome.analysis_artifacts, key=lambda art: art.level
+        )
+    }
+    overall_artifacts = artifacts_by_level[eda_outcome.AnalysisLevel.OVERALL]
+    with self.subTest("overall_artifact"):
+      self.assertLen(overall_artifacts, 1)
+      (overall_artifact,) = overall_artifacts
+      self.assertCountEqual(
+          overall_artifact.extreme_corr_var_pairs.index.to_list(),
+          [("media_1", "media_2")],
+      )
+
+    geo_artifacts = artifacts_by_level[eda_outcome.AnalysisLevel.GEO]
+    with self.subTest("geo_artifact"):
+      self.assertLen(geo_artifacts, 1)
+      (geo_artifact,) = geo_artifacts
+      # In geo0, media_1, media_2, and media_3 are all identical, so all
+      # pairwise correlations are 1.0.
+      self.assertCountEqual(
+          [
+              ("media_1", "media_2"),
+              ("media_1", "media_3"),
+              ("media_2", "media_3"),
+          ],
+          geo_artifact.extreme_corr_var_pairs.loc["geo0"].index.to_list(),
+      )
+      # In geo1, media_1 and media_2 are perfectly correlated, but the others
+      # are not.
+      self.assertCountEqual(
+          [
+              ("media_1", "media_2"),
+          ],
+          geo_artifact.extreme_corr_var_pairs.loc["geo1"].index.to_list(),
       )
 
   def test_check_geo_pairwise_corr_info_only(self):
@@ -5389,6 +5473,88 @@ class EDAEngineTest(
     self.assertNotIn(
         "geo1", geo_artifact.outlier_df.index.get_level_values(constants.GEO)
     )
+
+  def test_check_geo_vif_returns_error_and_attention(self):
+    # var_1 and var_2 are perfectly collinear -> ERROR
+    # var_3 and var_4 are perfectly collinear in geo0 only -> ATTENTION
+    v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+    v2 = v1
+    v3 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
+    v4_geo0 = v3[0, :]
+    v4_geo1 = _RNG.random(_N_TIMES_VIF)
+    v4 = np.stack([v4_geo0, v4_geo1], axis=0)
+    data = np.stack([v1, v2, v3, v4], axis=-1)
+    mock_da = _create_data_array_with_var_dim(data, "VIF", "var").rename(
+        {"var_dim": eda_constants.VARIABLE}
+    )
+
+    meridian = model.Meridian(self.input_data_with_media_only)
+    spec = eda_spec.EDASpec(
+        vif_spec=eda_spec.VIFSpec(overall_threshold=10, geo_threshold=5)
+    )
+    engine = eda_engine.EDAEngine(meridian, spec=spec)
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", mock_da
+    )
+
+    outcome = engine.check_geo_vif()
+
+    with self.subTest("two_findings"):
+      self.assertLen(outcome.findings, 2)
+
+    findings_by_severity = {
+        severity: list(group)
+        for severity, group in itertools.groupby(
+            outcome.findings, key=lambda f: f.severity
+        )
+    }
+
+    error_findings = findings_by_severity[eda_outcome.EDASeverity.ERROR]
+    with self.subTest("error_finding"):
+      self.assertLen(error_findings, 1)
+      (error_finding,) = error_findings
+      self.assertIn("var_1", error_finding.explanation)
+      self.assertIn("var_2", error_finding.explanation)
+
+    attention_findings = findings_by_severity[eda_outcome.EDASeverity.ATTENTION]
+    with self.subTest("attention_finding"):
+      self.assertLen(attention_findings, 1)
+      (attention_finding,) = attention_findings
+      self.assertIn(
+          "Some variables have extreme multicollinearity (with VIF > 5) in"
+          " certain geo(s).",
+          attention_finding.explanation,
+      )
+
+    artifacts_by_level = {
+        level: list(group)
+        for level, group in itertools.groupby(
+            outcome.analysis_artifacts, key=lambda art: art.level
+        )
+    }
+    overall_artifacts = artifacts_by_level[eda_outcome.AnalysisLevel.OVERALL]
+    with self.subTest("overall_artifact"):
+      self.assertLen(overall_artifacts, 1)
+      (overall_artifact,) = overall_artifacts
+      self.assertCountEqual(
+          overall_artifact.outlier_df.index.to_list(), ["var_1", "var_2"]
+      )
+
+    geo_artifacts = artifacts_by_level[eda_outcome.AnalysisLevel.GEO]
+    with self.subTest("geo_artifact"):
+      self.assertLen(geo_artifacts, 1)
+      (geo_artifact,) = geo_artifacts
+      self.assertCountEqual(
+          geo_artifact.outlier_df.index.to_list(),
+          [
+              ("geo0", "var_1"),
+              ("geo0", "var_2"),
+              ("geo0", "var_3"),
+              ("geo0", "var_4"),
+              ("geo1", "var_1"),
+              ("geo1", "var_2"),
+          ],
+      )
 
   def test_check_geo_vif_has_correct_vif_value_when_vif_is_inf(self):
     meridian = model.Meridian(self.input_data_with_media_only)

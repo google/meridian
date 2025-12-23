@@ -1507,12 +1507,16 @@ class EDAEngine:
             extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
         )
     )
-    # Overall correlation and per-geo correlation findings are mutually
-    # exclusive, and overall correlation finding takes precedence.
-    if (
-        overall_extreme_corr_var_pairs_df.empty
-        and not geo_extreme_corr_var_pairs_df.empty
-    ):
+    # Pairs that cause overall level findings are very likely to cause geo
+    # level findings as well, so we exclude them when determining geo-level
+    # findings. This is to avoid over-reporting findings.
+    overall_pairs_index = overall_extreme_corr_var_pairs_df.index
+    is_in_overall = geo_extreme_corr_var_pairs_df.index.droplevel(
+        constants.GEO
+    ).isin(overall_pairs_index)
+    geo_df_for_attention = geo_extreme_corr_var_pairs_df[~is_in_overall]
+
+    if not geo_df_for_attention.empty:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ATTENTION,
@@ -1883,7 +1887,17 @@ class EDAEngine:
               ),
           )
       )
-    elif not extreme_geo_vif_df.empty:
+
+    # Variables that cause overall level findings are very likely to cause
+    # geo-level findings as well, so we exclude them when determining
+    # geo-level findings. This is to avoid over-reporting findings.
+    overall_vars_index = extreme_overall_vif_df.index
+    is_in_overall = extreme_geo_vif_df.index.get_level_values(
+        eda_constants.VARIABLE
+    ).isin(overall_vars_index)
+    geo_df_for_attention = extreme_geo_vif_df[~is_in_overall]
+
+    if not geo_df_for_attention.empty:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ATTENTION,
@@ -1895,7 +1909,8 @@ class EDAEngine:
               ),
           )
       )
-    else:
+
+    if not findings:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
