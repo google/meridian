@@ -1879,11 +1879,12 @@ class EDAEngine:
               severity=eda_outcome.EDASeverity.ERROR,
               explanation=(
                   'Some variables have extreme multicollinearity (VIF'
-                  f' >{overall_threshold}) across all times and geos. To'
-                  ' address multicollinearity, please drop any variable that'
-                  ' is a linear combination of other variables. Otherwise,'
-                  ' consider combining variables.\n'
-                  f'Variables with extreme VIF: {high_vif_vars}'
+                  f' >{overall_threshold}) across all times and geos. Note that'
+                  ' a common cause of multicollinearity is perfect pairwise'
+                  ' correlation. To address multicollinearity, please drop any'
+                  ' variable that is a linear combination of other variables.'
+                  ' Otherwise, consider combining variables.\nVariables with'
+                  f' extreme VIF: {high_vif_vars}'
               ),
           )
       )
@@ -1903,8 +1904,13 @@ class EDAEngine:
               severity=eda_outcome.EDASeverity.ATTENTION,
               explanation=(
                   'Some variables have extreme multicollinearity (with VIF >'
-                  f' {geo_threshold}) in certain geo(s). Consider checking your'
-                  ' data, and/or combining these variables if they also have'
+                  f' {geo_threshold}) in certain geo(s). Note that a common'
+                  ' cause of multicollinearity is perfect pairwise'
+                  " correlation. While this geo-level issue isn't necessarily"
+                  ' problematic due to hierarchical modeling in Meridian, it'
+                  ' may be a data issue that could lead to poor inference or'
+                  ' even poor convergence. Consider checking your data or'
+                  ' combining these variables, especially if they also have'
                   ' high VIF in other geos.'
               ),
           )
@@ -1956,11 +1962,12 @@ class EDAEngine:
               severity=eda_outcome.EDASeverity.ERROR,
               explanation=(
                   'Some variables have extreme multicollinearity (with VIF >'
-                  f' {national_threshold}) across all times. To address'
-                  ' multicollinearity, please drop any variable that is a'
-                  ' linear combination of other variables. Otherwise, consider'
-                  ' combining variables.\n'
-                  f'Variables with extreme VIF: {high_vif_vars}'
+                  f' {national_threshold}) across all times. Note that a common'
+                  ' cause of multicollinearity is perfect pairwise'
+                  ' correlation. To address multicollinearity, please drop any'
+                  ' variable that is a linear combination of other variables.'
+                  ' Otherwise, consider combining variables.\nVariables with'
+                  f' extreme VIF: {high_vif_vars}'
               ),
           )
       )
