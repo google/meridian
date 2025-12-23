@@ -193,6 +193,8 @@ class DistributionSerde(
         return meridian_pb.TfpParameterValue(scalar_value=value)
       case int():
         return meridian_pb.TfpParameterValue(int_value=value)
+      # TODO: b/470407198 - case bool() has to be before int() because bool is a
+      # subtype of int.
       case bool():
         return meridian_pb.TfpParameterValue(bool_value=value)
       case str():
@@ -215,10 +217,6 @@ class DistributionSerde(
         }
         return meridian_pb.TfpParameterValue(
             dict_value=meridian_pb.TfpParameterValue.Dict(value_map=dict_value)
-        )
-      case backend.Tensor():
-        return meridian_pb.TfpParameterValue(
-            tensor_value=backend.make_tensor_proto(value)
         )
       case backend.tfd.Distribution():
         return meridian_pb.TfpParameterValue(
@@ -257,9 +255,16 @@ class DistributionSerde(
             f" {type(dist).__name__}, but not found in registry. Please"
             " add custom functions to registry when saving models."
         )
-
-    # Handle unsupported types.
-    raise TypeError(f"Unsupported type: {type(value)}, {value}")
+      case _:
+        # Handle unsupported types by attempting to convert to a tensor proto.
+        # This allows for more flexibility in handling types that are not
+        # explicitly handled above, such as numpy arrays or backend tensors.
+        try:
+          return meridian_pb.TfpParameterValue(
+              tensor_value=backend.make_tensor_proto(value)
+          )
+        except TypeError as e:
+          raise TypeError(f"Unsupported type: {type(value)}, {value!r}") from e
 
   def _from_distribution_proto(
       self,
