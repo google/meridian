@@ -175,13 +175,18 @@ def _create_ndarray_with_std_below_threshold(
 def _create_eda_outcome(
     check_type: eda_outcome.EDACheckType,
     severity: eda_outcome.EDASeverity,
+    finding_cause: eda_outcome.FindingCause,
 ) -> eda_outcome.EDAOutcome:
   """Creates an EDAOutcome with a single finding."""
   explanation = f"{check_type.name}: {severity.name}"
   return eda_outcome.EDAOutcome(
       check_type=check_type,
       findings=[
-          eda_outcome.EDAFinding(severity=severity, explanation=explanation)
+          eda_outcome.EDAFinding(
+              severity=severity,
+              explanation=explanation,
+              finding_cause=finding_cause,
+          )
       ],
       analysis_artifacts=[],
   )
@@ -5843,6 +5848,7 @@ class EDAEngineTest(
     mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.STANDARD_DEVIATION,
         eda_outcome.EDASeverity.INFO,
+        eda_outcome.FindingCause.NONE,
     )
     mock_check = self.enter_context(
         mock.patch.object(
@@ -5875,6 +5881,7 @@ class EDAEngineTest(
     mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.MULTICOLLINEARITY,
         eda_outcome.EDASeverity.INFO,
+        eda_outcome.FindingCause.NONE,
     )
     mock_check = self.enter_context(
         mock.patch.object(
@@ -5909,6 +5916,7 @@ class EDAEngineTest(
     mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
         eda_outcome.EDASeverity.INFO,
+        eda_outcome.FindingCause.NONE,
     )
     mock_check = self.enter_context(
         mock.patch.object(
@@ -6306,6 +6314,7 @@ class EDAEngineTest(
     mock_outcome = _create_eda_outcome(
         eda_outcome.EDACheckType.COST_PER_MEDIA_UNIT,
         eda_outcome.EDASeverity.INFO,
+        eda_outcome.FindingCause.NONE,
     )
     mock_check = self.enter_context(
         mock.patch.object(
@@ -6430,14 +6439,17 @@ class EDAEngineTest(
         "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.INFO,
+            eda_outcome.FindingCause.NONE,
         ),
         "check_vif": _create_eda_outcome(
             eda_outcome.EDACheckType.MULTICOLLINEARITY,
             eda_outcome.EDASeverity.INFO,
+            eda_outcome.FindingCause.NONE,
         ),
         "check_pairwise_corr": _create_eda_outcome(
             eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
             eda_outcome.EDASeverity.INFO,
+            eda_outcome.FindingCause.NONE,
         ),
     }
     self._mock_critical_checks(mock_results)
@@ -6478,14 +6490,17 @@ class EDAEngineTest(
         "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.ERROR,
+            eda_outcome.FindingCause.VARIABILITY,
         ),
         "check_vif": _create_eda_outcome(
             eda_outcome.EDACheckType.MULTICOLLINEARITY,
             eda_outcome.EDASeverity.ATTENTION,
+            eda_outcome.FindingCause.MULTICOLLINEARITY,
         ),
         "check_pairwise_corr": _create_eda_outcome(
             eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
             eda_outcome.EDASeverity.INFO,
+            eda_outcome.FindingCause.NONE,
         ),
     }
     self._mock_critical_checks(mock_results)
@@ -6501,6 +6516,10 @@ class EDAEngineTest(
           finding.severity,
           eda_outcome.EDASeverity.ERROR,
       )
+      self.assertEqual(
+          finding.finding_cause,
+          eda_outcome.FindingCause.VARIABILITY,
+      )
 
     with self.subTest("multicollinearity"):
       self.assertLen(outcomes.multicollinearity.findings, 1)
@@ -6509,6 +6528,10 @@ class EDAEngineTest(
           finding.severity,
           eda_outcome.EDASeverity.ATTENTION,
       )
+      self.assertEqual(
+          finding.finding_cause,
+          eda_outcome.FindingCause.MULTICOLLINEARITY,
+      )
 
     with self.subTest("pairwise_correlation"):
       self.assertLen(outcomes.pairwise_correlation.findings, 1)
@@ -6516,6 +6539,10 @@ class EDAEngineTest(
       self.assertEqual(
           finding.severity,
           eda_outcome.EDASeverity.INFO,
+      )
+      self.assertEqual(
+          finding.finding_cause,
+          eda_outcome.FindingCause.NONE,
       )
 
   def test_run_all_critical_checks_with_exception(self):
@@ -6526,6 +6553,7 @@ class EDAEngineTest(
         "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
             eda_outcome.EDASeverity.INFO,
+            eda_outcome.FindingCause.NONE,
         ),
         "check_vif": ValueError("Test Error"),
         "check_pairwise_corr": TypeError("Another Error"),
@@ -6547,6 +6575,8 @@ class EDAEngineTest(
           finding.severity,
           eda_outcome.EDASeverity.INFO,
       )
+      self.assertEqual(finding.finding_cause, eda_outcome.FindingCause.NONE)
+      self.assertIsNone(finding.associated_artifact)
 
     with self.subTest("multicollinearity"):
       self.assertEqual(
@@ -6555,6 +6585,11 @@ class EDAEngineTest(
       )
       self.assertLen(outcomes.multicollinearity.findings, 1)
       (finding,) = outcomes.multicollinearity.findings
+      self.assertEqual(
+          finding.finding_cause,
+          eda_outcome.FindingCause.RUNTIME_ERROR,
+      )
+      self.assertIsNone(finding.associated_artifact)
       self.assertEqual(
           finding.severity,
           eda_outcome.EDASeverity.ERROR,
@@ -6576,6 +6611,10 @@ class EDAEngineTest(
           finding.severity,
           eda_outcome.EDASeverity.ERROR,
       )
+      self.assertEqual(
+          finding.finding_cause, eda_outcome.FindingCause.RUNTIME_ERROR
+      )
+      self.assertIsNone(finding.associated_artifact)
       self.assertIn(
           "An error occurred during running check_pairwise_corr:"
           " TypeError('Another Error')",
@@ -6736,6 +6775,244 @@ class EDAEngineTest(
           .item(),
           1.0,
       )
+
+  @parameterized.named_parameters(
+      (
+          "kpi_invariability",
+          "check_overall_kpi_invariability",
+          lambda: {
+              "kpi_scaled_da": _create_data_array_with_var_dim(
+                  np.ones((1, 10)),
+                  name=constants.KPI_SCALED,
+              )
+          },
+          eda_outcome.FindingCause.VARIABILITY,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "kpi_invariability_info",
+          "check_overall_kpi_invariability",
+          lambda: {
+              "kpi_scaled_da": _create_data_array_with_var_dim(
+                  np.arange(10).reshape(1, 10),
+                  name=constants.KPI_SCALED,
+              )
+          },
+          eda_outcome.FindingCause.NONE,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "cost_per_media_unit_outlier",
+          "check_cost_per_media_unit",
+          lambda: {
+              "all_spend_ds": (
+                  _create_dataset_with_var_dim(
+                      np.array([1.0] * 9 + [1000.0]).reshape(1, 10, 1),
+                      var_name="media",
+                  ).rename({
+                      "media_dim": constants.MEDIA_CHANNEL,
+                      "media": constants.MEDIA_SPEND,
+                  })
+              ),
+              "paid_raw_media_units_ds": (
+                  _create_dataset_with_var_dim(
+                      np.ones((1, 10, 1)), var_name="media"
+                  ).rename({"media_dim": constants.MEDIA_CHANNEL})
+              ),
+          },
+          eda_outcome.FindingCause.VARIABILITY,
+          1,
+          lambda outcome: outcome.get_geo_artifacts(),
+      ),
+      (
+          "cost_per_media_unit_inconsistent_data",
+          "check_cost_per_media_unit",
+          lambda: {
+              "all_spend_ds": (
+                  _create_dataset_with_var_dim(
+                      np.array([100.0]).reshape(1, 1, 1),
+                      var_name="media",
+                  ).rename({
+                      "media_dim": constants.MEDIA_CHANNEL,
+                      "media": constants.MEDIA_SPEND,
+                  })
+              ),
+              "paid_raw_media_units_ds": (
+                  _create_dataset_with_var_dim(
+                      np.array([0.0]).reshape(1, 1, 1), var_name="media"
+                  ).rename({"media_dim": constants.MEDIA_CHANNEL})
+              ),
+          },
+          eda_outcome.FindingCause.INCONSISTENT_DATA,
+          1,
+          lambda outcome: outcome.get_geo_artifacts(),
+      ),
+      (
+          "cost_per_media_unit_info",
+          "check_cost_per_media_unit",
+          lambda: {
+              "all_spend_ds": (
+                  _create_dataset_with_var_dim(
+                      np.full((1, 10, 1), 10.0),
+                      var_name="media",
+                  ).rename({
+                      "media_dim": constants.MEDIA_CHANNEL,
+                      "media": constants.MEDIA_SPEND,
+                  })
+              ),
+              "paid_raw_media_units_ds": (
+                  _create_dataset_with_var_dim(
+                      np.full((1, 10, 1), 10.0), var_name="media"
+                  ).rename({"media_dim": constants.MEDIA_CHANNEL})
+              ),
+          },
+          eda_outcome.FindingCause.NONE,
+          1,
+          lambda outcome: outcome.get_geo_artifacts(),
+      ),
+      (
+          "vif_multicollinearity",
+          "check_vif",
+          lambda: {
+              "_stacked_treatment_control_scaled_da": _get_overall_high_vif_da()
+          },
+          eda_outcome.FindingCause.MULTICOLLINEARITY,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "vif_info",
+          "check_vif",
+          lambda: {
+              "_stacked_treatment_control_scaled_da": _get_low_vif_da(),
+          },
+          eda_outcome.FindingCause.NONE,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "pairwise_corr_multicollinearity",
+          "check_pairwise_corr",
+          lambda: {
+              "_stacked_treatment_control_scaled_da": (
+                  _create_data_array_with_var_dim(
+                      np.repeat(
+                          np.linspace(0, 1, 100).reshape(1, 100, 1), 2, axis=-1
+                      ),
+                      name=constants.TREATMENT_CONTROL_SCALED,
+                      var_name=eda_constants.VARIABLE,
+                  ).rename({"var_dim": eda_constants.VARIABLE})
+              ),
+          },
+          eda_outcome.FindingCause.MULTICOLLINEARITY,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "pairwise_corr_info",
+          "check_pairwise_corr",
+          lambda: {
+              "_stacked_treatment_control_scaled_da": (
+                  _create_data_array_with_var_dim(
+                      np.array([
+                          [[1, 10], [2, 2], [3, 13]],
+                          [[4, 4], [5, 15], [6, 6]],
+                      ]),
+                      name=constants.TREATMENT_CONTROL_SCALED,
+                      var_name=eda_constants.VARIABLE,
+                  ).rename({"var_dim": eda_constants.VARIABLE})
+              ),
+          },
+          eda_outcome.FindingCause.NONE,
+          1,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+      (
+          "std_invariability",
+          "check_std",
+          lambda: {
+              "kpi_scaled_da": _create_data_array_with_var_dim(
+                  np.ones((1, 7)),
+                  name=constants.KPI_SCALED,
+              ),
+              "_stacked_treatment_control_scaled_da": (
+                  _create_data_array_with_var_dim(
+                      np.arange(7).reshape(1, 7, 1),
+                      name=constants.TREATMENT_CONTROL_SCALED,
+                      var_name=eda_constants.VARIABLE,
+                  )
+              ),
+              "all_reach_scaled_da": None,
+              "all_freq_da": None,
+          },
+          eda_outcome.FindingCause.VARIABILITY,
+          1,
+          lambda outcome: outcome.get_geo_artifacts(),
+      ),
+      (
+          "std_info",
+          "check_std",
+          lambda: {
+              "kpi_scaled_da": _create_data_array_with_var_dim(
+                  np.arange(7).reshape(1, 7),
+                  name=constants.KPI_SCALED,
+              ),
+              "_stacked_treatment_control_scaled_da": (
+                  _create_data_array_with_var_dim(
+                      np.arange(7).reshape(1, 7, 1),
+                      name=constants.TREATMENT_CONTROL_SCALED,
+                      var_name=eda_constants.VARIABLE,
+                  )
+              ),
+              "all_reach_scaled_da": None,
+              "all_freq_da": None,
+          },
+          eda_outcome.FindingCause.NONE,
+          1,
+          lambda outcome: outcome.get_geo_artifacts(),
+      ),
+      (
+          "variable_geo_time_collinearity_info",
+          "check_variable_geo_time_collinearity",
+          lambda: {},
+          eda_outcome.FindingCause.NONE,
+          2,
+          lambda outcome: outcome.get_overall_artifacts(),
+      ),
+  )
+  def test_finding_mapping(
+      self,
+      method_name,
+      mock_data_factory,
+      expected_type,
+      expected_findings_count,
+      artifact_accessor,
+  ):
+    meridian = model.Meridian(self.input_data_with_media_only)
+    engine = eda_engine.EDAEngine(meridian)
+
+    for attr, val in mock_data_factory().items():
+      self._mock_eda_engine_property(attr, val)
+    outcome = getattr(engine, method_name)()
+    artifacts = artifact_accessor(outcome)
+    target_findings = [
+        f for f in outcome.findings if f.finding_cause == expected_type
+    ]
+    self.assertLen(
+        target_findings,
+        expected_findings_count,
+        f"Expected {expected_findings_count} finding(s) of type"
+        f" {expected_type}, but got {len(target_findings)}.",
+    )
+
+    if expected_type == eda_outcome.FindingCause.NONE:
+      for finding in target_findings:
+        self.assertIsNone(finding.associated_artifact)
+    else:
+      for finding in target_findings:
+        self.assertIn(finding.associated_artifact, artifacts)
 
 
 if __name__ == "__main__":

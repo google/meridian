@@ -25,6 +25,7 @@ __all__ = [
     "EDAFinding",
     "AnalysisLevel",
     "AnalysisArtifact",
+    "FindingCause",
     "PairwiseCorrArtifact",
     "StandardDeviationArtifact",
     "VIFArtifact",
@@ -50,19 +51,28 @@ class EDASeverity(enum.Enum):
   ERROR = enum.auto()
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class EDAFinding:
-  """Encapsulates a single, specific finding from an EDA check.
+@enum.unique
+class FindingCause(enum.Enum):
+  """Enumeration for the type of finding, mapping to specific data tables.
 
   Attributes:
-      severity: The severity level of the finding.
-      explanation: A human-readable description about the EDA check and a
-        potential actionable guidance on how to address or interpret this
-        specific finding.
+    NONE: For informational findings that do not indicate a data issue.
+    MULTICOLLINEARITY: For findings related to multicollinearity between
+      variables (e.g. from VIF or pairwise correlation checks).
+    VARIABILITY: For findings related to variables with extreme variability
+      issues, such as no variation (e.g. KPI invariability check), or having
+      outliers (e.g. cost per media unit outlier check).
+    INCONSISTENT_DATA: For findings related to inconsistent data points (e.g.
+      zero cost with positive media units, from cost per media unit check).
+    RUNTIME_ERROR: For findings that indicate a runtime error during an EDA
+      check.
   """
 
-  severity: EDASeverity
-  explanation: str
+  NONE = enum.auto()
+  MULTICOLLINEARITY = enum.auto()
+  VARIABILITY = enum.auto()
+  INCONSISTENT_DATA = enum.auto()
+  RUNTIME_ERROR = enum.auto()
 
 
 @enum.unique
@@ -95,6 +105,27 @@ class AnalysisArtifact:
   """
 
   level: AnalysisLevel
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class EDAFinding:
+  """Encapsulates a single, specific finding from an EDA check.
+
+  Attributes:
+      severity: The severity level of the finding.
+      explanation: A human-readable description about the EDA check and a
+        potential actionable guidance on how to address or interpret this
+        specific finding.
+      finding_cause: The type of finding, mapping to specific data tables.
+      associated_artifact: The artifact associated with the finding, if any.
+  """
+
+  __hash__ = None
+
+  severity: EDASeverity
+  explanation: str
+  finding_cause: FindingCause
+  associated_artifact: AnalysisArtifact | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -218,28 +249,54 @@ class EDAOutcome(typing.Generic[ArtifactType]):
   findings: list[EDAFinding]
   analysis_artifacts: list[ArtifactType]
 
-  def _get_artifact_by_level(self, level: AnalysisLevel) -> ArtifactType:
-    """Helper method to retrieve artifact by level."""
-    for artifact in self.analysis_artifacts:
-      if artifact.level == level:
-        return artifact
+  def _get_artifacts_by_level(self, level: AnalysisLevel) -> list[ArtifactType]:
+    """Helper method to retrieve artifacts by level.
 
-    raise ValueError(
-        f"The EDAOutcome for {self.check_type.name} check does not have "
-        f"{level.name.lower()} artifact."
-    )
+    Args:
+      level: The AnalysisLevel to filter artifacts by.
 
-  def get_geo_artifact(self) -> ArtifactType:
-    """Returns the geo-level analysis artifact."""
-    return self._get_artifact_by_level(AnalysisLevel.GEO)
+    Returns:
+      A list of AnalysisArtifacts at the specified level.
 
-  def get_national_artifact(self) -> ArtifactType:
-    """Returns the national-level analysis artifact."""
-    return self._get_artifact_by_level(AnalysisLevel.NATIONAL)
+    Raises:
+      ValueError: If no artifacts of the specified level are found.
+    """
+    artifacts = [
+        artifact
+        for artifact in self.analysis_artifacts
+        if artifact.level == level
+    ]
 
-  def get_overall_artifact(self) -> ArtifactType:
-    """Returns the overall-level analysis artifact."""
-    return self._get_artifact_by_level(AnalysisLevel.OVERALL)
+    if not artifacts:
+      raise ValueError(
+          f"The EDAOutcome for {self.check_type.name} check does not have "
+          f"{level.name.lower()} artifacts."
+      )
+    return artifacts
+
+  def get_geo_artifacts(self) -> list[ArtifactType]:
+    """Returns the geo-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level (e.g. Standard Deviation check).
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.GEO)
+
+  def get_national_artifacts(self) -> list[ArtifactType]:
+    """Returns the national-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level.
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.NATIONAL)
+
+  def get_overall_artifacts(self) -> list[ArtifactType]:
+    """Returns the overall-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level.
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.OVERALL)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

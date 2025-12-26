@@ -500,14 +500,17 @@ class ModelTest(
     finding_corr_1 = eda_outcome.EDAFinding(
         severity=eda_outcome.EDASeverity.ERROR,
         explanation="Error explanation for PAIRWISE_CORR 1.",
+        finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
     finding_corr_2 = eda_outcome.EDAFinding(
         severity=eda_outcome.EDASeverity.ERROR,
         explanation="Error explanation for PAIRWISE_CORR 2.",
+        finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
     finding_vif_1 = eda_outcome.EDAFinding(
         severity=eda_outcome.EDASeverity.ERROR,
         explanation="Error explanation for MULTICOLLINEARITY 1.",
+        finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
 
     outcome_corr = eda_outcome.EDAOutcome(
