@@ -2595,7 +2595,7 @@ class EDAEngineTest(
     self.assertCountEqual(tc_scaled_ds.data_vars.keys(), expected_vars)
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(list(tc_scaled_ds[var].dims), dims)
+      self.assertSequenceEqual(tc_scaled_ds[var].dims, dims)
 
   # --- Test cases for national_treatment_control_scaled_ds ---
   @parameterized.named_parameters(
@@ -2754,9 +2754,219 @@ class EDAEngineTest(
     )
 
     for var in expected_vars:
-      self.assertCountEqual(
-          list(national_tc_scaled_ds[var].dims),
-          expected_dims[var],
+      self.assertSequenceEqual(
+          national_tc_scaled_ds[var].dims, expected_dims[var]
+      )
+
+  # --- Test cases for controls_and_non_media_scaled_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="controls_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[constants.CONTROLS_SCALED],
+          expected_dims={
+              constants.CONTROLS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="non_media_only",
+          input_data_fixture="input_data_non_media_only",
+          expected_vars=[constants.NON_MEDIA_TREATMENTS_SCALED],
+          expected_dims={
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="all_channels",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_vars=[
+              constants.CONTROLS_SCALED,
+              constants.NON_MEDIA_TREATMENTS_SCALED,
+          ],
+          expected_dims={
+              constants.CONTROLS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_controls_only",
+          input_data_fixture="national_input_data_media_only",
+          expected_vars=[constants.CONTROLS_SCALED],
+          expected_dims={
+              constants.CONTROLS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_non_media_only",
+          input_data_fixture="national_input_data_non_media_only",
+          expected_vars=[constants.NON_MEDIA_TREATMENTS_SCALED],
+          expected_dims={
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_all_channels",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_vars=[
+              constants.CONTROLS_SCALED,
+              constants.NON_MEDIA_TREATMENTS_SCALED,
+          ],
+          expected_dims={
+              constants.CONTROLS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+              constants.NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.GEO,
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_controls_and_non_media_scaled_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    controls_and_non_media_ds = engine.controls_and_non_media_scaled_ds
+    self.assertIsInstance(controls_and_non_media_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        controls_and_non_media_ds.data_vars.keys(), expected_vars
+    )
+
+    for var, dims in expected_dims.items():
+      self.assertSequenceEqual(controls_and_non_media_ds[var].dims, dims)
+
+  # --- Test cases for national_controls_and_non_media_scaled_ds ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          input_data_fixture="input_data_with_media_only",
+          expected_vars=[
+              constants.NATIONAL_CONTROLS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_CONTROLS_SCALED: [
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="non_media_only",
+          input_data_fixture="input_data_non_media_only",
+          expected_vars=[constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED],
+          expected_dims={
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="all_channels",
+          input_data_fixture="input_data_non_media_and_organic",
+          expected_vars=[
+              constants.NATIONAL_CONTROLS_SCALED,
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_CONTROLS_SCALED: [
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_controls_only",
+          input_data_fixture="national_input_data_media_only",
+          expected_vars=[constants.NATIONAL_CONTROLS_SCALED],
+          expected_dims={
+              constants.NATIONAL_CONTROLS_SCALED: [
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_non_media_only",
+          input_data_fixture="national_input_data_non_media_only",
+          expected_vars=[constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED],
+          expected_dims={
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+      dict(
+          testcase_name="national_all_channels",
+          input_data_fixture="national_input_data_non_media_and_organic",
+          expected_vars=[
+              constants.NATIONAL_CONTROLS_SCALED,
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
+          ],
+          expected_dims={
+              constants.NATIONAL_CONTROLS_SCALED: [
+                  constants.TIME,
+                  constants.CONTROL_VARIABLE,
+              ],
+              constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED: [
+                  constants.TIME,
+                  constants.NON_MEDIA_CHANNEL,
+              ],
+          },
+      ),
+  )
+  def test_national_controls_and_non_media_scaled_ds(
+      self, input_data_fixture, expected_vars, expected_dims
+  ):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    national_controls_and_non_media_ds = (
+        engine.national_controls_and_non_media_scaled_ds
+    )
+    self.assertIsInstance(national_controls_and_non_media_ds, xr.Dataset)
+
+    self.assertCountEqual(
+        national_controls_and_non_media_ds.data_vars.keys(),
+        expected_vars,
+    )
+
+    for var, dims in expected_dims.items():
+      self.assertSequenceEqual(
+          national_controls_and_non_media_ds[var].dims, dims
       )
 
   # --- Test cases for all_spend_ds ---
@@ -2859,7 +3069,7 @@ class EDAEngineTest(
     self.assertCountEqual(tc_scaled_ds.data_vars.keys(), expected_vars)
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(list(tc_scaled_ds[var].dims), dims)
+      self.assertSequenceEqual(tc_scaled_ds[var].dims, dims)
 
   # --- Test cases for national_all_spend_ds ---
   @parameterized.named_parameters(
@@ -2958,9 +3168,8 @@ class EDAEngineTest(
     )
 
     for var in expected_vars:
-      self.assertCountEqual(
-          list(national_all_spend_ds[var].dims),
-          expected_dims[var],
+      self.assertSequenceEqual(
+          national_all_spend_ds[var].dims, expected_dims[var]
       )
 
   # --- Test cases for treatments_without_non_media_scaled_ds ---
@@ -3093,7 +3302,7 @@ class EDAEngineTest(
     self.assertCountEqual(treatments_scaled_ds.data_vars.keys(), expected_vars)
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(list(treatments_scaled_ds[var].dims), dims)
+      self.assertSequenceEqual(treatments_scaled_ds[var].dims, dims)
 
   # --- Test cases for national_treatments_without_non_media_scaled_ds ---
   @parameterized.named_parameters(
@@ -3219,9 +3428,8 @@ class EDAEngineTest(
     )
 
     for var in expected_vars:
-      self.assertCountEqual(
-          list(national_treatments_scaled_ds[var].dims),
-          expected_dims[var],
+      self.assertSequenceEqual(
+          national_treatments_scaled_ds[var].dims, expected_dims[var]
       )
 
   # --- Test cases for paid_raw_media_units_ds ---
@@ -3304,7 +3512,7 @@ class EDAEngineTest(
     )
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(list(paid_raw_media_units_ds[var].dims), dims)
+      self.assertSequenceEqual(paid_raw_media_units_ds[var].dims, dims)
 
   # --- Test cases for national_paid_raw_media_units_ds ---
   @parameterized.named_parameters(
@@ -3381,9 +3589,7 @@ class EDAEngineTest(
     )
 
     for var, dims in expected_dims.items():
-      self.assertCountEqual(
-          list(national_paid_raw_media_units_ds[var].dims), dims
-      )
+      self.assertSequenceEqual(national_paid_raw_media_units_ds[var].dims, dims)
 
   # --- Test cases for all_reach_scaled_da ---
   @parameterized.named_parameters(
