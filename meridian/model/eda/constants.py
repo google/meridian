@@ -48,7 +48,6 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
-TOP_5_CHANNELS = 5
 PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     domain=[-1.0, 0.0, 1.0],
     range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
@@ -57,14 +56,25 @@ PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
 
 # Report constants
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
+SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
+SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
+RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
+DISPLAY_LIMIT = 5
 
 
 # Finding messages
+RELATIVE_SPEND_SHARE_INFO = (
+    "Please review the channel's share of spend. Channels with a very small"
+    ' share of spend might be difficult to estimate. You might want to combine'
+    ' them with other channels. Meanwhile, a channel with a huge spend share'
+    ' would increase the risk of producing a negative baseline if it also has a'
+    ' high ROI.'
+)
 PAIRWISE_CORRELATION_CHECK_INFO = (
     'Please review the computed pairwise correlations. Note that'
     ' high pairwise correlation may cause model identifiability'
