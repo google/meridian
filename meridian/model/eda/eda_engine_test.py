@@ -5724,25 +5724,28 @@ class EDAEngineTest(
     )
 
     outcome = engine.check_national_vif()
-    self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(
-        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
-    )
-    self.assertLen(outcome.analysis_artifacts, 1)
+    with self.subTest("outcome_type_and_check_type"):
+      self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+      )
+    with self.subTest("artifact_count"):
+      self.assertLen(outcome.analysis_artifacts, 1)
 
     (national_artifact,) = outcome.analysis_artifacts
-    self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
-    self.assertEqual(
-        national_artifact.level, eda_outcome.AnalysisLevel.NATIONAL
-    )
-    self.assertCountEqual(
-        national_artifact.vif_da.coords.keys(),
-        [eda_constants.VARIABLE],
-    )
-    self.assertEqual(national_artifact.vif_da.shape, (_N_VARS_VIF,))
-    self.assertEqual(
-        national_artifact.outlier_df.empty, expected_outlier_df_empty
-    )
+    with self.subTest("national_artifact"):
+      self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
+      self.assertEqual(
+          national_artifact.level, eda_outcome.AnalysisLevel.NATIONAL
+      )
+      self.assertCountEqual(
+          national_artifact.vif_da.coords.keys(),
+          [eda_constants.VARIABLE],
+      )
+      self.assertEqual(national_artifact.vif_da.shape, (_N_VARS_VIF,))
+      self.assertEqual(
+          national_artifact.outlier_df.empty, expected_outlier_df_empty
+      )
 
   def test_check_national_vif_has_correct_vif_value_when_vif_is_inf(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
@@ -5755,17 +5758,20 @@ class EDAEngineTest(
 
     outcome = engine.check_national_vif()
 
-    self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(
-        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
-    )
-    self.assertLen(outcome.analysis_artifacts, 1)
+    with self.subTest("outcome_type_and_check_type"):
+      self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+      )
 
-    (national_artifact,) = outcome.analysis_artifacts
-    self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
+    with self.subTest("artifact_count"):
+      self.assertLen(outcome.analysis_artifacts, 1)
 
-    # With perfect multicollinearity, VIF values should be inf.
-    self.assertTrue(np.isinf(national_artifact.vif_da.values).all())
+    with self.subTest("national_artifact"):
+      (national_artifact,) = outcome.analysis_artifacts
+      self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
+      # With perfect multicollinearity, VIF values should be inf.
+      self.assertTrue(np.isinf(national_artifact.vif_da.values).all())
 
   def test_check_national_vif_has_correct_vif_value(self):
     meridian = model.Meridian(self.national_input_data_media_and_rf)
@@ -5778,16 +5784,15 @@ class EDAEngineTest(
 
     outcome = engine.check_national_vif()
 
-    self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-    self.assertEqual(
-        outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
-    )
-    self.assertLen(outcome.analysis_artifacts, 1)
+    with self.subTest("outcome_type_and_check_type"):
+      self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+      )
+    with self.subTest("artifact_count"):
+      self.assertLen(outcome.analysis_artifacts, 1)
 
     (national_artifact,) = outcome.analysis_artifacts
-    self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
-
-    # Check national VIF
     national_data = data.values.reshape(-1, _N_VARS_VIF)
     national_data_with_const = sm.add_constant(national_data, prepend=True)
     expected_national_vif = [
@@ -5796,39 +5801,46 @@ class EDAEngineTest(
         )
         for i in range(1, _N_VARS_VIF + 1)
     ]
-    test_utils.assert_allclose(
-        national_artifact.vif_da.values, expected_national_vif
+    with self.subTest("national_artifact"):
+      self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
+
+      # Check national VIF
+      test_utils.assert_allclose(
+          national_artifact.vif_da.values, expected_national_vif
+      )
+
+  def test_check_vif_with_constant_variable(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    shape = (_N_TIMES_VIF,)
+    v1 = _RNG.random(shape)
+    v2 = np.ones(shape)
+    v3 = _RNG.random(shape)
+    data_np = np.stack([v1, v2, v3], axis=-1)
+    data = (
+        _create_data_array_with_var_dim(data_np, "VIF", "var")
+        .rename({"var_dim": eda_constants.VARIABLE})
+        .assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
+    )
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
     )
 
-  # TODO: Re-enable this test once the bug is fixed.
-  # def test_check_vif_with_constant_variable(self):
-  #   meridian = model.Meridian(self.national_input_data_media_and_rf)
-  #   engine = eda_engine.EDAEngine(meridian)
-  #   shape = (_N_TIMES_VIF,)
-  #   v1 = _RNG.random(shape)
-  #   v2 = np.ones(shape)
-  #   v3 = _RNG.random(shape)
-  #   data_np = np.stack([v1, v2, v3], axis=-1)
-  #   data = (
-  #       _create_data_array_with_var_dim(data_np, "VIF", "var")
-  #       .rename({"var_dim": eda_constants.VARIABLE})
-  #       .assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
-  #   )
-  #   self._mock_eda_engine_property(
-  #       "_stacked_national_treatment_control_scaled_da", data
-  #   )
+    outcome = engine.check_national_vif()
 
-  #   outcome = engine.check_national_vif()
+    with self.subTest("outcome_type_and_check_type"):
+      self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
+      )
 
-  #   self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
-  #   self.assertEqual(
-  #       outcome.check_type, eda_outcome.EDACheckType.MULTICOLLINEARITY
-  #   )
-  #   self.assertLen(outcome.analysis_artifacts, 1)
+    with self.subTest("artifact_count"):
+      self.assertLen(outcome.analysis_artifacts, 1)
 
-  #   national_artifact, = outcome.analysis_artifacts
-  #   self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
-  #   self.assertEqual(national_artifact.vif_da.sel(var="var_2"), 0)
+    with self.subTest("vif_artifact"):
+      (vif_artifact,) = outcome.analysis_artifacts
+      self.assertIsInstance(vif_artifact, eda_outcome.VIFArtifact)
+      self.assertTrue(np.isnan(vif_artifact.vif_da.sel(var="var_2").item()))
 
   @parameterized.named_parameters(
       dict(

@@ -344,22 +344,25 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
   """
   num_vars = input_da.sizes[var_dim]
   np_data = input_da.values.reshape(-1, num_vars)
-  np_data_with_const = sm.add_constant(
-      np_data, prepend=True, has_constant='add'
-  )
 
-  # Compute VIF for each variable, skipping the constant term at index 0.
-  vifs = [
-      outliers_influence.variance_inflation_factor(np_data_with_const, i)
-      for i in range(1, num_vars + 1)
-  ]
+  is_constant = np.std(np_data, axis=0) < eda_constants.STD_THRESHOLD
+  vif_values = np.full(num_vars, np.nan)
+  (non_constant_vars_indices,) = (~is_constant).nonzero()
 
-  vif_da = xr.DataArray(
-      vifs,
+  if non_constant_vars_indices.size > 0:
+    design_matrix = sm.add_constant(
+        np_data[:, ~is_constant], prepend=True, has_constant='add'
+    )
+    for i, var_index in enumerate(non_constant_vars_indices):
+      vif_values[var_index] = outliers_influence.variance_inflation_factor(
+          design_matrix, i + 1
+      )
+
+  return xr.DataArray(
+      vif_values,
       coords={var_dim: input_da[var_dim].values},
       dims=[var_dim],
   )
-  return vif_da
 
 
 def _check_cost_media_unit_inconsistency(
