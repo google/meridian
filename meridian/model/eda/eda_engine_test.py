@@ -5381,10 +5381,12 @@ class EDAEngineTest(
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF >10) across"
-              " all times and geos. To address multicollinearity, please drop"
-              " any variable that is a linear combination of other variables."
-              " Otherwise, consider combining variables.\nVariables with"
-              " extreme VIF: ['var_1', 'var_2', 'var_3']"
+              " all times and geos. Note that a common cause of"
+              " multicollinearity is perfect pairwise correlation. To address"
+              " multicollinearity, please drop any variable that is a linear"
+              " combination of other variables. Otherwise, consider combining"
+              " variables.\nVariables with extreme VIF:"
+              " ['var_1', 'var_2', 'var_3']"
           ),
       ),
   )
@@ -5666,10 +5668,12 @@ class EDAEngineTest(
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
               "Some variables have extreme multicollinearity (with VIF > 10)"
-              " across all times. To address multicollinearity, please drop any"
-              " variable that is a linear combination of other variables."
-              " Otherwise, consider combining variables.\nVariables with"
-              " extreme VIF: ['var_1', 'var_2', 'var_3']"
+              " across all times. Note that a common cause of"
+              " multicollinearity is perfect pairwise correlation. To address"
+              " multicollinearity, please drop any variable that is a linear"
+              " combination of other variables. Otherwise, consider combining"
+              " variables.\nVariables with extreme VIF:"
+              " ['var_1', 'var_2', 'var_3']"
           ),
       ),
   )
