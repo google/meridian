@@ -16,10 +16,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Sequence
 import dataclasses
 import functools
 import typing
-from typing import Optional, Protocol, Sequence
+from typing import Optional, Protocol
 
 from meridian import backend
 from meridian import constants
@@ -128,6 +129,15 @@ class ReachFrequencyData:
   national_rf_impressions_scaled_da: xr.DataArray
   rf_impressions_raw_da: xr.DataArray
   national_rf_impressions_raw_da: xr.DataArray
+
+
+def _get_vars_from_dataset(
+    base_ds: xr.Dataset,
+    variables_to_include: Collection[str],
+) -> xr.Dataset | None:
+  """Helper to get a subset of variables from a Dataset."""
+  variables = [v for v in base_ds.data_vars if v in variables_to_include]
+  return base_ds[variables].copy() if variables else None
 
 
 def _data_array_like(
@@ -1066,6 +1076,25 @@ class EDAEngine:
     return self.national_treatment_control_scaled_ds.drop_dims(
         [constants.NON_MEDIA_CHANNEL, constants.CONTROL_VARIABLE],
         errors='ignore',
+    )
+
+  @functools.cached_property
+  def controls_and_non_media_scaled_ds(self) -> xr.Dataset | None:
+    """Returns a Dataset of scaled controls and non-media treatments."""
+    return _get_vars_from_dataset(
+        self.treatment_control_scaled_ds,
+        [constants.CONTROLS_SCALED, constants.NON_MEDIA_TREATMENTS_SCALED],
+    )
+
+  @functools.cached_property
+  def national_controls_and_non_media_scaled_ds(self) -> xr.Dataset | None:
+    """Returns a Dataset of national scaled controls and non-media treatments."""
+    return _get_vars_from_dataset(
+        self.national_treatment_control_scaled_ds,
+        [
+            constants.NATIONAL_CONTROLS_SCALED,
+            constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED,
+        ],
     )
 
   @functools.cached_property
