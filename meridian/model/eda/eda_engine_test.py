@@ -5371,7 +5371,7 @@ class EDAEngineTest(
           data=_get_geo_high_vif_da(),
           expected_severity=eda_outcome.EDASeverity.ATTENTION,
           expected_explanation=(
-              "Some variables have extreme multicollinearity (with VIF > 5) in"
+              "Some variables have extreme multicollinearity (VIF > 5) in"
               " certain geo(s)."
           ),
       ),
@@ -5380,7 +5380,7 @@ class EDAEngineTest(
           data=_get_overall_high_vif_da(),
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
-              "Some variables have extreme multicollinearity (VIF >10) across"
+              "Some variables have extreme multicollinearity (VIF > 10) across"
               " all times and geos. Note that a common cause of"
               " multicollinearity is perfect pairwise correlation. To address"
               " multicollinearity, please drop any variable that is a linear"
@@ -5528,7 +5528,7 @@ class EDAEngineTest(
       self.assertLen(attention_findings, 1)
       (attention_finding,) = attention_findings
       self.assertIn(
-          "Some variables have extreme multicollinearity (with VIF > 5) in"
+          "Some variables have extreme multicollinearity (VIF > 5) in"
           " certain geo(s).",
           attention_finding.explanation,
       )
@@ -5667,7 +5667,7 @@ class EDAEngineTest(
           data=_get_overall_high_vif_da(geo_level=False),
           expected_severity=eda_outcome.EDASeverity.ERROR,
           expected_explanation=(
-              "Some variables have extreme multicollinearity (with VIF > 10)"
+              "Some variables have extreme multicollinearity (VIF > 10)"
               " across all times. Note that a common cause of"
               " multicollinearity is perfect pairwise correlation. To address"
               " multicollinearity, please drop any variable that is a linear"

@@ -14,6 +14,7 @@
 
 """Meridian EDA Outcome."""
 
+from collections.abc import Sequence
 import dataclasses
 import enum
 import typing
@@ -297,6 +298,17 @@ class EDAOutcome(typing.Generic[ArtifactType]):
     at the same level.
     """
     return self._get_artifacts_by_level(AnalysisLevel.OVERALL)
+
+  def get_findings_by_cause_and_severity(
+      self, finding_cause: FindingCause, severity: EDASeverity
+  ) -> Sequence[EDAFinding]:
+    """Helper method to retrieve findings by cause and severity."""
+    return [
+        finding
+        for finding in self.findings
+        if finding.finding_cause == finding_cause
+        and finding.severity == severity
+    ]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

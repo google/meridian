@@ -74,13 +74,36 @@ class EdaOutcomeTest(parameterized.TestCase):
   )
   _GEO_OUTCOME = eda_outcome.EDAOutcome(
       check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
-      findings=[],
+      findings=[
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation='explanation for geo',
+              finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+              associated_artifact=_GEO_ARTIFACT,
+          )
+      ],
       analysis_artifacts=[_OVERALL_ARTIFACT, _GEO_ARTIFACT],
   )
   _NATIONAL_OUTCOME = eda_outcome.EDAOutcome(
       check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
       findings=[],
       analysis_artifacts=[_NATIONAL_ARTIFACT],
+  )
+  _RSQUARED_OUTCOME = eda_outcome.EDAOutcome(
+      check_type=eda_outcome.EDACheckType.VARIABLE_GEO_TIME_COLLINEARITY,
+      findings=[
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation='explanation for rsquared 1',
+              finding_cause=eda_outcome.FindingCause.NONE,
+          ),
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation='explanation for rsquared 2',
+              finding_cause=eda_outcome.FindingCause.NONE,
+          ),
+      ],
+      analysis_artifacts=[],
   )
 
   def test_get_national_artifacts_success(self):
@@ -110,6 +133,37 @@ class EdaOutcomeTest(parameterized.TestCase):
   def test_get_overall_artifacts_raises_error(self):
     with self.assertRaisesRegex(ValueError, 'does not have overall artifacts'):
       self._NATIONAL_OUTCOME.get_overall_artifacts()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='single_finding',
+          outcome=_GEO_OUTCOME,
+          cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+          severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings=_GEO_OUTCOME.findings,
+      ),
+      dict(
+          testcase_name='multiple_findings',
+          outcome=_RSQUARED_OUTCOME,
+          cause=eda_outcome.FindingCause.NONE,
+          severity=eda_outcome.EDASeverity.INFO,
+          expected_findings=_RSQUARED_OUTCOME.findings,
+      ),
+      dict(
+          testcase_name='no_findings',
+          outcome=_NATIONAL_OUTCOME,
+          cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+          severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings=[],
+      ),
+  )
+  def test_get_findings_by_cause_and_severity_success(
+      self, outcome, cause, severity, expected_findings
+  ):
+    self.assertEqual(
+        outcome.get_findings_by_cause_and_severity(cause, severity),
+        expected_findings,
+    )
 
 
 if __name__ == '__main__':

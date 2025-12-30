@@ -1891,18 +1891,17 @@ class EDAEngine:
 
     findings = []
     if not extreme_overall_vif_df.empty:
-      high_vif_vars = extreme_overall_vif_df.index.to_list()
+      high_vif_vars_message = (
+          '\nVariables with extreme VIF:'
+          f' {extreme_overall_vif_df.index.to_list()}'
+      )
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
-              explanation=(
-                  'Some variables have extreme multicollinearity (VIF'
-                  f' >{overall_threshold}) across all times and geos. Note that'
-                  ' a common cause of multicollinearity is perfect pairwise'
-                  ' correlation. To address multicollinearity, please drop any'
-                  ' variable that is a linear combination of other variables.'
-                  ' Otherwise, consider combining variables.\nVariables with'
-                  f' extreme VIF: {high_vif_vars}'
+              explanation=eda_constants.MULTICOLLINEARITY_ERROR.format(
+                  threshold=overall_threshold,
+                  aggregation='times and geos',
+                  additional_info=high_vif_vars_message,
               ),
               finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
               associated_artifact=overall_vif_artifact,
@@ -1923,15 +1922,9 @@ class EDAEngine:
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ATTENTION,
               explanation=(
-                  'Some variables have extreme multicollinearity (with VIF >'
-                  f' {geo_threshold}) in certain geo(s). Note that a common'
-                  ' cause of multicollinearity is perfect pairwise'
-                  " correlation. While this geo-level issue isn't necessarily"
-                  ' problematic due to hierarchical modeling in Meridian, it'
-                  ' may be a data issue that could lead to poor inference or'
-                  ' even poor convergence. Consider checking your data or'
-                  ' combining these variables, especially if they also have'
-                  ' high VIF in other geos.'
+                  eda_constants.MULTICOLLINEARITY_ATTENTION.format(
+                      threshold=geo_threshold, additional_info=''
+                  )
               ),
               finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
               associated_artifact=geo_vif_artifact,
@@ -1979,18 +1972,17 @@ class EDAEngine:
 
     findings = []
     if not extreme_national_vif_df.empty:
-      high_vif_vars = extreme_national_vif_df.index.to_list()
+      high_vif_vars_message = (
+          '\nVariables with extreme VIF:'
+          f' {extreme_national_vif_df.index.to_list()}'
+      )
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.ERROR,
-              explanation=(
-                  'Some variables have extreme multicollinearity (with VIF >'
-                  f' {national_threshold}) across all times. Note that a common'
-                  ' cause of multicollinearity is perfect pairwise'
-                  ' correlation. To address multicollinearity, please drop any'
-                  ' variable that is a linear combination of other variables.'
-                  ' Otherwise, consider combining variables.\nVariables with'
-                  f' extreme VIF: {high_vif_vars}'
+              explanation=eda_constants.MULTICOLLINEARITY_ERROR.format(
+                  threshold=national_threshold,
+                  aggregation='times',
+                  additional_info=high_vif_vars_message,
               ),
               finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
               associated_artifact=national_vif_artifact,

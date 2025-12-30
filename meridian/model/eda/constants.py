@@ -39,6 +39,7 @@ STD_THRESHOLD = 1e-4
 OUTLIERS_COL_NAME = 'outliers'
 ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 VIF_COL_NAME = 'VIF'
+EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
 
 # EDA Plotting properties
 VARIABLE = 'var'
@@ -62,6 +63,8 @@ RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
 RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
+EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
+EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 DISPLAY_LIMIT = 5
@@ -80,6 +83,25 @@ PAIRWISE_CORRELATION_CHECK_INFO = (
     ' high pairwise correlation may cause model identifiability'
     ' and convergence issues. Consider combining the variables if'
     ' high correlation exists.'
+)
+MULTICOLLINEARITY_ERROR = (
+    'Some variables have extreme multicollinearity (VIF'
+    ' > {threshold}) across all {aggregation}. Note that'
+    ' a common cause of multicollinearity is perfect pairwise'
+    ' correlation. To address multicollinearity, please drop any'
+    ' variable that is a linear combination of other variables.'
+    ' Otherwise, consider combining variables.{additional_info}'
+)
+MULTICOLLINEARITY_ATTENTION = (
+    'Some variables have extreme multicollinearity (VIF >'
+    ' {threshold}) in certain geo(s). Note that a common'
+    ' cause of multicollinearity is perfect pairwise'
+    " correlation. While this geo-level issue isn't necessarily"
+    ' problematic due to hierarchical modeling in Meridian, it'
+    ' may be a data issue that could lead to poor inference or'
+    ' even poor convergence. Consider checking your data or'
+    ' combining these variables, especially if they also have'
+    ' high VIF in other geos.{additional_info}'
 )
 R_SQUARED_TIME_INFO = (
     'This check regresses each variable against time as a'
