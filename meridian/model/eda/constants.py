@@ -53,13 +53,17 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
+DEFAULT_CHART_COLOR = '#4C78A8'
 PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     domain=[-1.0, 0.0, 1.0],
     range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
     type='linear',
 )
 CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
+    constants.MEDIA_UNITS: '#4285F4',
     constants.MEDIA_CHANNEL: '#4285F4',
+    constants.COST: '#FBBC04',
+    COST_PER_MEDIA_UNIT: '#A142F4',
     constants.ORGANIC_MEDIA_CHANNEL: '#F29900',
     constants.RF_CHANNEL: '#EA4335',
     constants.ORGANIC_RF_CHANNEL: '#FBBC04',
@@ -75,10 +79,14 @@ DISPLAY_LIMIT_MESSAGE = (
     ' cases. Please use {function} to review {to_review}.)'
 )
 DISPLAY_LIMIT = 5
+TIME_SERIES_LIMIT = 2
 # category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
 RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
+SPEND_PER_MEDIA_UNIT_CHART_ID = 'spend-per-media-unit-chart'
+INCONSISTENT_DATA_TABLE_ID = 'inconsistent-data-table'
+COST_PER_MEDIA_UNIT_OUTLIER_TABLE_ID = 'cost-per-media-unit-outlier-table'
 # category 2
 RESPONSE_VARIABLES_CARD_ID = 'response-variables'
 RESPONSE_VARIABLES_CARD_TITLE = 'Individual Explanatory/Response Variables'
@@ -98,6 +106,11 @@ R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 
 
 ##### Finding messages #####
+SPEND_PER_MEDIA_UNIT_INFO = (
+    'Please review the patterns for spend, impressions, and'
+    ' spend-per-impression. Any erratic or unexpected patterns warrant a data'
+    ' review.'
+)
 VARIABILITY_PLOT_INFO = (
     'Please review the variability of the explanatory and response variables'
     ' illustrated by the boxplots. Note that variables with very low'
