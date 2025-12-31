@@ -25,86 +25,12 @@ from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
+from meridian.model.eda import test_utils as eda_test_utils
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from statsmodels.stats import outliers_influence
 import xarray as xr
-
-
-def _construct_coords(
-    dims: list[str],
-    n_geos: int,
-    n_times: int,
-    n_vars: int,
-    var_name: str,
-) -> dict[str, list[str]]:
-  coords = {}
-  for dim in dims:
-    if dim == constants.TIME:
-      coords[dim] = pd.date_range(start="2023-01-01", periods=n_times, freq="W")
-    elif dim == constants.GEO:
-      coords[dim] = [f"{constants.GEO}{i}" for i in range(n_geos)]
-    else:
-      coords[dim] = [f"{var_name}_{i+1}" for i in range(n_vars)]
-  return coords
-
-
-def _construct_dims_and_shapes(
-    data_shape: tuple[int, ...], var_name: str | None = None
-):
-  """Helper to construct the dimensions of a DataArray."""
-  ndim = len(data_shape)
-  if var_name is None:
-    n_vars = 0
-    if ndim == 2:
-      dims = [constants.GEO, constants.TIME]
-      n_geos, n_times = data_shape
-    elif ndim == 1:
-      dims = [constants.TIME]
-      n_geos, n_times = 0, data_shape[0]
-    else:
-      raise ValueError(f"Unsupported data shape: {data_shape}")
-  else:
-    var_dim_name = f"{var_name}_dim"
-    if ndim == 3:
-      dims = [constants.GEO, constants.TIME, var_dim_name]
-      n_geos, n_times, n_vars = data_shape
-    elif ndim == 2:
-      dims = [constants.TIME, var_dim_name]
-      n_times, n_vars = data_shape
-      n_geos = 0
-    else:
-      raise ValueError(f"Unsupported data shape: {data_shape}")
-
-  return dims, n_geos, n_times, n_vars
-
-
-def _create_dataset_with_var_dim(
-    data: np.ndarray, var_name: str = "media"
-) -> xr.Dataset:
-  """Helper to create a dataset with a single variable dimension."""
-  dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
-      data.shape, var_name
-  )
-  coords = _construct_coords(dims, n_geos, n_times, n_vars, var_name)
-  xarray_data_vars = {var_name: (dims, data)}
-
-  return xr.Dataset(data_vars=xarray_data_vars, coords=coords)
-
-
-def _create_data_array_with_var_dim(
-    data: np.ndarray, name: str, var_name: str | None = None
-) -> xr.DataArray:
-  """Helper to create a data array with a single variable dimension."""
-  dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
-      data.shape, var_name
-  )
-  if var_name is None:
-    var_name = name
-  coords = _construct_coords(dims, n_geos, n_times, n_vars, var_name)
-
-  return xr.DataArray(data, name=name, dims=dims, coords=coords)
 
 
 _N_GEOS_VIF = 2
@@ -119,7 +45,7 @@ def _get_low_vif_da(geo_level: bool = True):
     shape = (_N_GEOS_VIF,) + shape
 
   data = _RNG.random(shape)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  da = eda_test_utils.create_data_array_with_var_dim(data, "VIF", "var")
   return da.rename({"var_dim": eda_constants.VARIABLE})
 
 
@@ -130,7 +56,7 @@ def _get_geo_high_vif_da():
   v3_geo1 = _RNG.random(_N_TIMES_VIF)
   v3 = np.stack([v3_geo0, v3_geo1], axis=0)
   data = np.stack([v1, v2, v3], axis=-1)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  da = eda_test_utils.create_data_array_with_var_dim(data, "VIF", "var")
   return da.rename({"var_dim": eda_constants.VARIABLE})
 
 
@@ -141,7 +67,7 @@ def _get_overall_high_vif_da(geo_level: bool = True):
   # v3 is a linear combination of v1 and v2, which results in an inf VIF value.
   v3 = v1 * 2 + v2 * 0.5
   data = np.stack([v1, v2, v3], axis=-1)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
+  da = eda_test_utils.create_data_array_with_var_dim(data, "VIF", "var")
   return da.rename({"var_dim": eda_constants.VARIABLE})
 
 
@@ -4201,7 +4127,7 @@ class EDAEngineTest(
         [[1, 1], [2, 2], [3, 3]],
         [[4, 4], [5, 5], [6, 6]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4263,7 +4189,7 @@ class EDAEngineTest(
         [[1, 1], [2, 2], [3, 3]],
         [[4, 7], [5, 8], [6, 9]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4316,7 +4242,7 @@ class EDAEngineTest(
         ],
         dtype=float,
     )
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4392,7 +4318,7 @@ class EDAEngineTest(
         [[1, 10], [2, 2], [3, 13]],
         [[4, 4], [5, 15], [6, 6]],
     ])  # Shape (2, 3, 2)
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4439,8 +4365,12 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [10], [12]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = eda_test_utils.create_dataset_with_var_dim(
+        media_data, "media"
+    )
+    mock_control_ds = eda_test_utils.create_dataset_with_var_dim(
+        control_data, "control"
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4487,8 +4417,12 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [11], [14]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = eda_test_utils.create_dataset_with_var_dim(
+        media_data, "media"
+    )
+    mock_control_ds = eda_test_utils.create_dataset_with_var_dim(
+        control_data, "control"
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4553,8 +4487,12 @@ class EDAEngineTest(
         [[1], [2], [3]],
         [[6], [5], [4]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = eda_test_utils.create_dataset_with_var_dim(
+        media_data, "media"
+    )
+    mock_control_ds = eda_test_utils.create_dataset_with_var_dim(
+        control_data, "control"
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4654,7 +4592,9 @@ class EDAEngineTest(
         [3, 4, -2],
     ]).astype(float)
     national_da = (
-        _create_data_array_with_var_dim(data, name="data", var_name="variable")
+        eda_test_utils.create_data_array_with_var_dim(
+            data, name="data", var_name="variable"
+        )
         .rename({"variable_dim": eda_constants.VARIABLE})
         .assign_coords(
             {
@@ -4706,7 +4646,9 @@ class EDAEngineTest(
     n_geos = 2
     data = np.stack([data_1geo] * n_geos, axis=0)
     geo_da = (
-        _create_data_array_with_var_dim(data, name="data", var_name="variable")
+        eda_test_utils.create_data_array_with_var_dim(
+            data, name="data", var_name="variable"
+        )
         .rename({"variable_dim": eda_constants.VARIABLE})
         .assign_coords(
             {
@@ -4778,7 +4720,7 @@ class EDAEngineTest(
         [2, 2],
         [3, 3],
     ])  # Shape (3, 2)
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4834,7 +4776,7 @@ class EDAEngineTest(
         [2, 2],
         [3, 13],
     ])  # Shape (3, 2)
-    mock_ds = _create_dataset_with_var_dim(data)
+    mock_ds = eda_test_utils.create_dataset_with_var_dim(data)
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
 
@@ -4889,8 +4831,12 @@ class EDAEngineTest(
         [2],
         [4],
     ])  # Shape (3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = eda_test_utils.create_dataset_with_var_dim(
+        media_data, "media"
+    )
+    mock_control_ds = eda_test_utils.create_dataset_with_var_dim(
+        control_data, "control"
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
@@ -4965,7 +4911,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([[1, 2, 3, 4, 5, 100]], dtype=float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -5011,7 +4957,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([[10, 11, 12, 11, 10, 11, outlier_value]], dtype=float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -5049,13 +4995,13 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.arange(7).reshape(1, 7).astype(float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
 
     tc_data = np.tile(np.arange(7), (1, 1, 1)).astype(float)
-    mock_tc_ds = _create_dataset_with_var_dim(tc_data)
+    mock_tc_ds = eda_test_utils.create_dataset_with_var_dim(tc_data)
 
     self._mock_eda_engine_property("kpi_scaled_da", mock_kpi_da)
     self._mock_eda_engine_property("treatment_control_scaled_ds", mock_tc_ds)
@@ -5143,14 +5089,14 @@ class EDAEngineTest(
 
     self._mock_eda_engine_property(
         "kpi_scaled_da",
-        _create_data_array_with_var_dim(
+        eda_test_utils.create_data_array_with_var_dim(
             mock_kpi_ndarray,
             name=constants.KPI_SCALED,
         ),
     )
     self._mock_eda_engine_property(
         "treatment_control_scaled_ds",
-        _create_dataset_with_var_dim(
+        eda_test_utils.create_dataset_with_var_dim(
             mock_tc_ndarray,
             var_name=constants.TREATMENT_CONTROL_SCALED,
         ),
@@ -5160,7 +5106,7 @@ class EDAEngineTest(
     if mock_reach_ndarray is not None:
       self._mock_eda_engine_property(
           "all_reach_scaled_da",
-          _create_data_array_with_var_dim(
+          eda_test_utils.create_data_array_with_var_dim(
               mock_reach_ndarray,
               name=constants.ALL_REACH_SCALED,
               var_name=constants.RF_CHANNEL,
@@ -5172,7 +5118,7 @@ class EDAEngineTest(
     if mock_freq_ndarray is not None:
       self._mock_eda_engine_property(
           "all_freq_da",
-          _create_data_array_with_var_dim(
+          eda_test_utils.create_data_array_with_var_dim(
               mock_freq_ndarray,
               name=constants.ALL_FREQUENCY,
               var_name=constants.RF_CHANNEL,
@@ -5197,12 +5143,12 @@ class EDAEngineTest(
     meridian.is_national = False
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         np.arange(7).reshape(1, 7).astype(float),
         name=constants.KPI_SCALED,
     )
 
-    mock_tc_ds = _create_dataset_with_var_dim(
+    mock_tc_ds = eda_test_utils.create_dataset_with_var_dim(
         np.tile(np.arange(7), (1, 1, 1)).astype(float),
         var_name=constants.TREATMENT_CONTROL_SCALED,
     )
@@ -5258,7 +5204,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([1, 2, 3, 4, 5, 100], dtype=float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
@@ -5304,7 +5250,7 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.array([10, 11, 12, 11, 10, 11, outlier_value], dtype=float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
@@ -5343,13 +5289,13 @@ class EDAEngineTest(
     engine = eda_engine.EDAEngine(meridian)
 
     kpi_data = np.arange(7).astype(float)
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.NATIONAL_KPI_SCALED,
     )
 
     tc_data = np.arange(7).reshape(7, 1).astype(float)
-    mock_tc_ds = _create_dataset_with_var_dim(tc_data)
+    mock_tc_ds = eda_test_utils.create_dataset_with_var_dim(tc_data)
 
     self._mock_eda_engine_property("national_kpi_scaled_da", mock_kpi_da)
     self._mock_eda_engine_property(
@@ -5376,12 +5322,12 @@ class EDAEngineTest(
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         np.ones(7, dtype=float),
         name=constants.NATIONAL_KPI_SCALED,
     )
 
-    mock_tc_ds = _create_dataset_with_var_dim(
+    mock_tc_ds = eda_test_utils.create_dataset_with_var_dim(
         np.arange(7).reshape(7, 1).astype(float),
         var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
     )
@@ -5472,14 +5418,14 @@ class EDAEngineTest(
 
     self._mock_eda_engine_property(
         "national_kpi_scaled_da",
-        _create_data_array_with_var_dim(
+        eda_test_utils.create_data_array_with_var_dim(
             mock_kpi_ndarray,
             name=constants.NATIONAL_KPI_SCALED,
         ),
     )
     self._mock_eda_engine_property(
         "national_treatment_control_scaled_ds",
-        _create_dataset_with_var_dim(
+        eda_test_utils.create_dataset_with_var_dim(
             mock_tc_ndarray,
             var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
         ),
@@ -5489,7 +5435,7 @@ class EDAEngineTest(
     if mock_reach_ndarray is not None:
       self._mock_eda_engine_property(
           "national_all_reach_scaled_da",
-          _create_data_array_with_var_dim(
+          eda_test_utils.create_data_array_with_var_dim(
               mock_reach_ndarray,
               name=constants.NATIONAL_ALL_REACH_SCALED,
               var_name=constants.RF_CHANNEL,
@@ -5501,7 +5447,7 @@ class EDAEngineTest(
     if mock_freq_ndarray is not None:
       self._mock_eda_engine_property(
           "national_all_freq_da",
-          _create_data_array_with_var_dim(
+          eda_test_utils.create_data_array_with_var_dim(
               mock_freq_ndarray,
               name=constants.NATIONAL_ALL_FREQUENCY,
               var_name=constants.RF_CHANNEL,
@@ -5526,12 +5472,12 @@ class EDAEngineTest(
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_da = _create_data_array_with_var_dim(
+    mock_kpi_da = eda_test_utils.create_data_array_with_var_dim(
         np.arange(7).astype(float),
         name=constants.NATIONAL_KPI_SCALED,
     )
 
-    mock_tc_ds = _create_dataset_with_var_dim(
+    mock_tc_ds = eda_test_utils.create_dataset_with_var_dim(
         np.arange(7).reshape(7, 1).astype(float),
         var_name=constants.NATIONAL_TREATMENT_CONTROL_SCALED,
     )
@@ -5697,9 +5643,9 @@ class EDAEngineTest(
     v4_geo1 = _RNG.random(_N_TIMES_VIF)
     v4 = np.stack([v4_geo0, v4_geo1], axis=0)
     data = np.stack([v1, v2, v3, v4], axis=-1)
-    mock_da = _create_data_array_with_var_dim(data, "VIF", "var").rename(
-        {"var_dim": eda_constants.VARIABLE}
-    )
+    mock_da = eda_test_utils.create_data_array_with_var_dim(
+        data, "VIF", "var"
+    ).rename({"var_dim": eda_constants.VARIABLE})
 
     meridian = model.Meridian(self.input_data_with_media_only)
     spec = eda_spec.EDASpec(
@@ -6024,7 +5970,7 @@ class EDAEngineTest(
     v3 = _RNG.random(shape)
     data_np = np.stack([v1, v2, v3], axis=-1)
     data = (
-        _create_data_array_with_var_dim(data_np, "VIF", "var")
+        eda_test_utils.create_data_array_with_var_dim(data_np, "VIF", "var")
         .rename({"var_dim": eda_constants.VARIABLE})
         .assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
     )
@@ -6205,7 +6151,7 @@ class EDAEngineTest(
     meridian.input_data.kpi = self.input_data_with_media_only.kpi
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_scaled_da = _create_data_array_with_var_dim(
+    mock_kpi_scaled_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -6257,7 +6203,7 @@ class EDAEngineTest(
     meridian.input_data.kpi = self.input_data_with_media_only.kpi
     engine = eda_engine.EDAEngine(meridian)
 
-    mock_kpi_scaled_da = _create_data_array_with_var_dim(
+    mock_kpi_scaled_da = eda_test_utils.create_data_array_with_var_dim(
         kpi_data,
         name=constants.KPI_SCALED,
     )
@@ -6363,12 +6309,12 @@ class EDAEngineTest(
     )
     meridian.is_national = False
     engine = eda_engine.EDAEngine(meridian)
-    spend_ds = _create_dataset_with_var_dim(
+    spend_ds = eda_test_utils.create_dataset_with_var_dim(
         spend_data, var_name="media"
     ).rename(
         {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_SPEND}
     )
-    media_unit_ds = _create_dataset_with_var_dim(
+    media_unit_ds = eda_test_utils.create_dataset_with_var_dim(
         media_unit_data, var_name="media"
     ).rename({"media_dim": constants.MEDIA_CHANNEL})
     self._mock_eda_engine_property("all_spend_ds", spend_ds)
@@ -6471,12 +6417,12 @@ class EDAEngineTest(
     )
     meridian.is_national = True
     engine = eda_engine.EDAEngine(meridian)
-    spend_ds = _create_dataset_with_var_dim(
+    spend_ds = eda_test_utils.create_dataset_with_var_dim(
         spend_data, var_name="media"
     ).rename(
         {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_SPEND}
     )
-    media_unit_ds = _create_dataset_with_var_dim(
+    media_unit_ds = eda_test_utils.create_dataset_with_var_dim(
         media_unit_data, var_name="media"
     ).rename({"media_dim": constants.MEDIA_CHANNEL})
     self._mock_eda_engine_property("national_all_spend_ds", spend_ds)
@@ -6574,10 +6520,10 @@ class EDAEngineTest(
 
     spend_data = spend_arr.reshape(shape)
     media_unit_data = media_unit_arr.reshape(shape)
-    spend_ds = _create_dataset_with_var_dim(
+    spend_ds = eda_test_utils.create_dataset_with_var_dim(
         spend_data, var_name="media"
     ).rename({"media_dim": constants.MEDIA_CHANNEL, "media": constants.SPEND})
-    media_unit_ds = _create_dataset_with_var_dim(
+    media_unit_ds = eda_test_utils.create_dataset_with_var_dim(
         media_unit_data, var_name="media"
     ).rename(
         {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_UNITS}
@@ -6851,10 +6797,12 @@ class EDAEngineTest(
     rf_data = np.array(
         [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]], dtype="float32"
     )
-    media_ds = _create_dataset_with_var_dim(
+    media_ds = eda_test_utils.create_dataset_with_var_dim(
         media_data, var_name="national_media_spend"
     )
-    rf_ds = _create_dataset_with_var_dim(rf_data, var_name="national_rf_spend")
+    rf_ds = eda_test_utils.create_dataset_with_var_dim(
+        rf_data, var_name="national_rf_spend"
+    )
     ds = xr.merge([media_ds, rf_ds])
     xr.testing.assert_equal(
         eda_engine.stack_variables(ds),
@@ -6940,7 +6888,7 @@ class EDAEngineTest(
         [geo_dependent_data, time_dependent_data], axis=-1
     )
 
-    mock_da = _create_data_array_with_var_dim(
+    mock_da = eda_test_utils.create_data_array_with_var_dim(
         mock_data,
         name=constants.TREATMENT_CONTROL_SCALED,
         var_name="var",
@@ -7003,7 +6951,7 @@ class EDAEngineTest(
           "kpi_invariability",
           "check_overall_kpi_invariability",
           lambda: {
-              "kpi_scaled_da": _create_data_array_with_var_dim(
+              "kpi_scaled_da": eda_test_utils.create_data_array_with_var_dim(
                   np.ones((1, 10)),
                   name=constants.KPI_SCALED,
               )
@@ -7016,7 +6964,7 @@ class EDAEngineTest(
           "kpi_invariability_info",
           "check_overall_kpi_invariability",
           lambda: {
-              "kpi_scaled_da": _create_data_array_with_var_dim(
+              "kpi_scaled_da": eda_test_utils.create_data_array_with_var_dim(
                   np.arange(10).reshape(1, 10),
                   name=constants.KPI_SCALED,
               )
@@ -7030,7 +6978,7 @@ class EDAEngineTest(
           "check_cost_per_media_unit",
           lambda: {
               "all_spend_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.array([1.0] * 9 + [1000.0]).reshape(1, 10, 1),
                       var_name="media",
                   ).rename({
@@ -7039,7 +6987,7 @@ class EDAEngineTest(
                   })
               ),
               "paid_raw_media_units_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.ones((1, 10, 1)), var_name="media"
                   ).rename({"media_dim": constants.MEDIA_CHANNEL})
               ),
@@ -7053,7 +7001,7 @@ class EDAEngineTest(
           "check_cost_per_media_unit",
           lambda: {
               "all_spend_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.array([100.0]).reshape(1, 1, 1),
                       var_name="media",
                   ).rename({
@@ -7062,7 +7010,7 @@ class EDAEngineTest(
                   })
               ),
               "paid_raw_media_units_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.array([0.0]).reshape(1, 1, 1), var_name="media"
                   ).rename({"media_dim": constants.MEDIA_CHANNEL})
               ),
@@ -7076,7 +7024,7 @@ class EDAEngineTest(
           "check_cost_per_media_unit",
           lambda: {
               "all_spend_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.full((1, 10, 1), 10.0),
                       var_name="media",
                   ).rename({
@@ -7085,7 +7033,7 @@ class EDAEngineTest(
                   })
               ),
               "paid_raw_media_units_ds": (
-                  _create_dataset_with_var_dim(
+                  eda_test_utils.create_dataset_with_var_dim(
                       np.full((1, 10, 1), 10.0), var_name="media"
                   ).rename({"media_dim": constants.MEDIA_CHANNEL})
               ),
@@ -7119,7 +7067,7 @@ class EDAEngineTest(
           "check_pairwise_corr",
           lambda: {
               "_stacked_treatment_control_scaled_da": (
-                  _create_data_array_with_var_dim(
+                  eda_test_utils.create_data_array_with_var_dim(
                       np.repeat(
                           np.linspace(0, 1, 100).reshape(1, 100, 1), 2, axis=-1
                       ),
@@ -7137,7 +7085,7 @@ class EDAEngineTest(
           "check_pairwise_corr",
           lambda: {
               "_stacked_treatment_control_scaled_da": (
-                  _create_data_array_with_var_dim(
+                  eda_test_utils.create_data_array_with_var_dim(
                       np.array([
                           [[1, 10], [2, 2], [3, 13]],
                           [[4, 4], [5, 15], [6, 6]],
@@ -7155,12 +7103,12 @@ class EDAEngineTest(
           "std_invariability",
           "check_std",
           lambda: {
-              "kpi_scaled_da": _create_data_array_with_var_dim(
+              "kpi_scaled_da": eda_test_utils.create_data_array_with_var_dim(
                   np.ones((1, 7)),
                   name=constants.KPI_SCALED,
               ),
               "_stacked_treatment_control_scaled_da": (
-                  _create_data_array_with_var_dim(
+                  eda_test_utils.create_data_array_with_var_dim(
                       np.arange(7).reshape(1, 7, 1),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
@@ -7177,12 +7125,12 @@ class EDAEngineTest(
           "std_info",
           "check_std",
           lambda: {
-              "kpi_scaled_da": _create_data_array_with_var_dim(
+              "kpi_scaled_da": eda_test_utils.create_data_array_with_var_dim(
                   np.arange(7).reshape(1, 7),
                   name=constants.KPI_SCALED,
               ),
               "_stacked_treatment_control_scaled_da": (
-                  _create_data_array_with_var_dim(
+                  eda_test_utils.create_data_array_with_var_dim(
                       np.arange(7).reshape(1, 7, 1),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
