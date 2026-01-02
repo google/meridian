@@ -315,7 +315,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   def test_validate_wrong_geos_media_spend(self):
@@ -328,7 +328,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA_SPEND],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   def test_validate_wrong_times_media(self):
@@ -342,7 +342,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.MEDIA],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
           allow_modified_times=False,
       )
 
@@ -356,7 +356,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.FREQUENCY],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   def test_validate_wrong_channels_reach(self):
@@ -369,7 +369,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.REACH],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   @parameterized.parameters([
@@ -395,7 +395,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=list(new_data_dict.keys()) + [missing_param],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   def test_validate_new_params_diff_time_dims(self):
@@ -419,7 +419,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
               constants.FREQUENCY,
               constants.REVENUE_PER_KPI,
           ],
-          meridian=self.meridian_media_and_rf,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   @parameterized.parameters([constants.MEDIA, constants.REVENUE_PER_KPI])
@@ -439,7 +439,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=required_names,
-          meridian=self.meridian_media_only,
+          model_context=self.meridian_media_only.model_context,
       )
 
   def test_validate_media_only_invalid_new_data(self):
@@ -453,7 +453,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=[constants.REACH],
-          meridian=self.meridian_media_only,
+          model_context=self.meridian_media_only.model_context,
       )
 
   @parameterized.parameters([
@@ -477,7 +477,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         f" variables are missing: `['{missing_param}']`.",
     ):
       new_data.validate_and_fill_missing_data(
-          required_tensors_names=required_names, meridian=self.meridian_rf_only
+          required_tensors_names=required_names,
+          model_context=self.meridian_rf_only.model_context,
       )
 
   @parameterized.product(
@@ -553,7 +554,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
       required_tensors_names.append(constants.REVENUE_PER_KPI)
 
     filled_tensors = new_data.validate_and_fill_missing_data(
-        required_tensors_names, self.meridian_organic_media
+        required_tensors_names=required_tensors_names,
+        model_context=self.meridian_organic_media.model_context,
     )
     for tensor_name in required_tensors_names:
       expected_source = (
@@ -601,7 +603,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     ):
       new_data.validate_and_fill_missing_data(
           required_tensors_names=required_names,
-          meridian=self.meridian_organic_media,
+          model_context=self.meridian_organic_media.model_context,
       )
 
   def test_validate_organic_media_new_param_not_matching_times(self):
@@ -641,7 +643,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
               constants.NON_MEDIA_TREATMENTS,
               constants.REVENUE_PER_KPI,
           ],
-          meridian=self.meridian_organic_media,
+          model_context=self.meridian_organic_media.model_context,
       )
 
   @parameterized.named_parameters(
@@ -671,7 +673,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
     with self.assertWarnsRegex(UserWarning, warning_msg):
       new_data.validate_and_fill_missing_data(
-          required_tensors_names=required, meridian=self.meridian_media_and_rf
+          required_tensors_names=required,
+          model_context=self.meridian_media_and_rf.model_context,
       )
 
   def test_validate_non_media_missing_new_param_flexible_times(self) -> None:
@@ -691,7 +694,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         ValueError, "If the time dimension .* missing: .*"
     ):
       new_data.validate_and_fill_missing_data(
-          required_tensors_names=required, meridian=self.meridian_non_media
+          required_tensors_names=required,
+          model_context=self.meridian_non_media.model_context,
       )
 
 
@@ -721,7 +725,6 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
     cls.meridian_national = model.Meridian(
         input_data=cls.input_data_national, model_spec=model_spec
     )
-    cls.analyzer_national = analyzer.Analyzer(cls.meridian_national)
 
     cls.inference_data_national = _build_inference_data(
         _TEST_SAMPLE_PRIOR_NATIONAL_PATH,
@@ -733,6 +736,9 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
             "inference_data",
             new=property(lambda unused_self: cls.inference_data_national),
         )
+    )
+    cls.analyzer_national = analyzer.Analyzer(
+        cls.meridian_national, inference_data=cls.inference_data_national
     )
 
   def test_rhat_summary_national_correct(self):
@@ -812,7 +818,6 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
     cls.meridian_media_only = model.Meridian(
         input_data=cls.input_data_media_only, model_spec=model_spec
     )
-    cls.analyzer_media_only = analyzer.Analyzer(cls.meridian_media_only)
 
     cls.inference_data_media_only = _build_inference_data(
         _TEST_SAMPLE_PRIOR_MEDIA_ONLY_PATH,
@@ -825,6 +830,9 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
             "inference_data",
             new=property(lambda unused_self: cls.inference_data_media_only),
         )
+    )
+    cls.analyzer_media_only = analyzer.Analyzer(
+        cls.meridian_media_only, inference_data=cls.inference_data_media_only
     )
 
   def test_filter_and_aggregate_geos_and_times_incorrect_n_dim(self):
@@ -1116,8 +1124,6 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
         input_data=cls.input_data_rf_only, model_spec=model_spec
     )
 
-    cls.analyzer_rf_only = analyzer.Analyzer(cls.meridian_rf_only)
-
     cls.inference_data_rf_only = _build_inference_data(
         _TEST_SAMPLE_PRIOR_RF_ONLY_PATH,
         _TEST_SAMPLE_POSTERIOR_RF_ONLY_PATH,
@@ -1129,6 +1135,9 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
             "inference_data",
             new=property(lambda unused_self: cls.inference_data_rf_only),
         )
+    )
+    cls.analyzer_rf_only = analyzer.Analyzer(
+        cls.meridian_rf_only, inference_data=cls.inference_data_rf_only
     )
 
   # The purpose of this test is to prevent accidental logic change.
@@ -1295,7 +1304,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     cls.meridian = model.Meridian(
         input_data=cls.input_data, model_spec=model_spec
     )
-    cls.analyzer = analyzer.Analyzer(cls.meridian)
 
     cls.inference_data = _build_inference_data(
         _TEST_SAMPLE_PRIOR_NON_PAID_PATH,
@@ -1307,6 +1315,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             "inference_data",
             new=property(lambda unused_self: cls.inference_data),
         )
+    )
+    cls.analyzer = analyzer.Analyzer(
+        cls.meridian, inference_data=cls.inference_data
     )
 
   def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
@@ -2219,9 +2230,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       include_non_paid_channels: bool,
   ):
     channels = (
-        self.analyzer._meridian.input_data.get_all_channels()
+        self.meridian.input_data.get_all_channels()
         if include_non_paid_channels
-        else self.analyzer._meridian.input_data.get_all_paid_channels()
+        else self.meridian.input_data.get_all_paid_channels()
     )
 
     media_summary = self.analyzer.summary_metrics(
@@ -2680,7 +2691,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertIn(constants.CHANNEL, response_curve_data.coords)
     self.assertLen(
         response_curve_data.coords[constants.CHANNEL],
-        len(self.analyzer._meridian.input_data.get_all_paid_channels()),
+        len(self.meridian.input_data.get_all_paid_channels()),
     )
 
   def test_summary_metrics_with_non_media_baseline_values(self):
