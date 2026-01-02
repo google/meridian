@@ -6921,39 +6921,46 @@ class EDAEngineTest(
       self.assertIn(eda_constants.RSQUARED_GEO, artifact.rsquared_ds.data_vars)
       self.assertIn(eda_constants.RSQUARED_TIME, artifact.rsquared_ds.data_vars)
 
-  def test_check_variable_geo_time_collinearity_geo_model_r2_values_correct(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_dependent_var",
+          data=np.tile(np.arange(3), (5, 1)).T.reshape(3, 5, 1),
+          variable_name="var_geo_dependent",
+          expected_r2_geo=1.0,
+          expected_r2_time=-0.4,
+      ),
+      dict(
+          testcase_name="time_dependent_var",
+          data=np.tile(np.arange(5), (3, 1)).reshape(3, 5, 1),
+          variable_name="var_time_dependent",
+          expected_r2_geo=-1 / 6,
+          expected_r2_time=1.0,
+      ),
+      dict(
+          testcase_name="constant_var",
+          data=np.ones((3, 5, 1)),
+          variable_name="var_constant",
+          expected_r2_geo=float("nan"),
+          expected_r2_time=float("nan"),
+      ),
+  )
+  def test_check_variable_geo_time_collinearity_r2_values_correct(
       self,
+      data,
+      variable_name,
+      expected_r2_geo,
+      expected_r2_time,
   ):
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
 
-    n_geos = 3
-    n_times = 5
-    geo_dependent_data = np.tile(np.arange(n_geos), (n_times, 1)).T.reshape(
-        n_geos, n_times, 1
-    )
-    time_dependent_data = np.tile(np.arange(n_times), (n_geos, 1)).reshape(
-        n_geos, n_times, 1
-    )
-
-    mock_data = np.concatenate(
-        [geo_dependent_data, time_dependent_data], axis=-1
-    )
-
     mock_da = _create_data_array_with_var_dim(
-        mock_data,
+        data,
         name=constants.TREATMENT_CONTROL_SCALED,
         var_name="var",
     )
     mock_da = mock_da.rename({"var_dim": eda_constants.VARIABLE})
-    mock_da = mock_da.assign_coords(
-        {
-            eda_constants.VARIABLE: [
-                "var_geo_dependent",
-                "var_time_dependent",
-            ]
-        }
-    )
+    mock_da = mock_da.assign_coords({eda_constants.VARIABLE: [variable_name]})
 
     self._mock_eda_engine_property(
         "_stacked_treatment_control_scaled_da", mock_da
@@ -6963,39 +6970,25 @@ class EDAEngineTest(
 
     self.assertLen(outcome.analysis_artifacts, 1)
     (artifact,) = outcome.analysis_artifacts
-    self.assertIsInstance(
-        artifact, eda_outcome.VariableGeoTimeCollinearityArtifact
-    )
     rsquared_ds = artifact.rsquared_ds
+    r2_geo_val = (
+        rsquared_ds[eda_constants.RSQUARED_GEO]
+        .sel({eda_constants.VARIABLE: variable_name})
+        .item()
+    )
+    r2_time_val = (
+        rsquared_ds[eda_constants.RSQUARED_TIME]
+        .sel({eda_constants.VARIABLE: variable_name})
+        .item()
+    )
 
-    with self.subTest("geo_dependent_variable"):
-      # Check var_geo_dependent: r2_geo should be ~1, r2_time should be low
-      self.assertAlmostEqual(
-          rsquared_ds[eda_constants.RSQUARED_GEO]
-          .sel({eda_constants.VARIABLE: "var_geo_dependent"})
-          .item(),
-          1.0,
+    with self.subTest("r2_geo_value"):
+      np.testing.assert_allclose(
+          r2_geo_val, expected_r2_geo, equal_nan=True, atol=1e-6
       )
-      self.assertLessEqual(
-          rsquared_ds[eda_constants.RSQUARED_TIME]
-          .sel({eda_constants.VARIABLE: "var_geo_dependent"})
-          .item(),
-          0.0,
-      )
-
-    with self.subTest("time_dependent_variable"):
-      # Check var_time_dependent: r2_geo should be low, r2_time should be ~1
-      self.assertLessEqual(
-          rsquared_ds[eda_constants.RSQUARED_GEO]
-          .sel({eda_constants.VARIABLE: "var_time_dependent"})
-          .item(),
-          0.0,
-      )
-      self.assertAlmostEqual(
-          rsquared_ds[eda_constants.RSQUARED_TIME]
-          .sel({eda_constants.VARIABLE: "var_time_dependent"})
-          .item(),
-          1.0,
+    with self.subTest("r2_time_value"):
+      np.testing.assert_allclose(
+          r2_time_val, expected_r2_time, equal_nan=True, atol=1e-6
       )
 
   @parameterized.named_parameters(
