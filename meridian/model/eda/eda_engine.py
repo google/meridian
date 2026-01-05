@@ -344,6 +344,9 @@ def _calculate_outliers(
 def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
   """Helper function to compute variance inflation factor.
 
+  The VIF calculation only focuses on multicollinearity among non-constant
+  variables. Any variable with constant values will result in a NaN VIF value.
+
   Args:
     input_da: A DataArray for which to calculate the VIF over sample dimensions
       (e.g. time and geo if applicable).
@@ -352,6 +355,7 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
   Returns:
     A DataArray containing the VIF for each variable in the variable dimension.
   """
+
   num_vars = input_da.sizes[var_dim]
   np_data = input_da.values.reshape(-1, num_vars)
 
@@ -493,7 +497,20 @@ def _check_cost_per_media_unit(
 
 
 def _calc_adj_r2(da: xr.DataArray, regressor: str) -> xr.DataArray:
-  """Calculates adjusted R-squared for a DataArray against a regressor."""
+  """Calculates adjusted R-squared for a DataArray against a regressor.
+
+  If the input DataArray `da` is constant, it returns NaN.
+
+  Args:
+    da: The input DataArray.
+    regressor: The regressor to use in the formula.
+
+  Returns:
+    An xr.DataArray containing the adjusted R-squared value or NaN if `da` is
+    constant.
+  """
+  if da.std(ddof=1) < eda_constants.STD_THRESHOLD:
+    return xr.DataArray(np.nan)
   tmp_name = 'dep_var'
   df = da.to_dataframe(name=tmp_name).reset_index()
   formula = f'{tmp_name} ~ C({regressor})'
@@ -1878,7 +1895,15 @@ class EDAEngine:
     return self.check_geo_std()
 
   def check_geo_vif(self) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
-    """Computes geo-level variance inflation factor among treatments and controls."""
+    """Checks geo variance inflation factor among treatments and controls.
+
+    The VIF calculation only focuses on multicollinearity among non-constant
+    variables. Any variable with constant values will result in a NaN VIF value.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+
     if self._is_national_data:
       raise ValueError(
           'Geo-level VIF checks are not applicable for national models.'
@@ -1983,7 +2008,14 @@ class EDAEngine:
   def check_national_vif(
       self,
   ) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
-    """Computes national-level variance inflation factor among treatments and controls."""
+    """Checks national variance inflation factor among treatments and controls.
+
+    The VIF calculation only focuses on multicollinearity among non-constant
+    variables. Any variable with constant values will result in a NaN VIF value.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
     national_tc_da = self._stacked_national_treatment_control_scaled_da
     national_threshold = self._spec.vif_spec.national_threshold
     national_vif_da = _calculate_vif(national_tc_da, eda_constants.VARIABLE)
@@ -2038,6 +2070,9 @@ class EDAEngine:
 
   def check_vif(self) -> eda_outcome.EDAOutcome[eda_outcome.VIFArtifact]:
     """Computes variance inflation factor among treatments and controls.
+
+    The VIF calculation only focuses on multicollinearity among non-constant
+    variables. Any variable with constant values will result in a NaN VIF value.
 
     Returns:
       An EDAOutcome object with findings and result values.
@@ -2188,7 +2223,9 @@ class EDAEngine:
       An EDAOutcome object containing a VariableGeoTimeCollinearityArtifact.
       The artifact includes a Dataset with 'rsquared_geo' and 'rsquared_time',
       showing the adjusted R-squared values for each treatment/control variable
-      when regressed against 'geo' and 'time', respectively.
+      when regressed against 'geo' and 'time', respectively. If a variable is
+      constant across geos or times, the corresponding 'rsquared_geo' or
+      'rsquared_time' value will be NaN.
     """
     if self._is_national_data:
       raise ValueError(
