@@ -41,7 +41,7 @@ MeridianPriorDistributions = (
 _FUNCTION_REGISTRY_NAME = "function_registry"
 
 
-# TODO: b/436637084 - Delete enumerated schema.
+# TODO: Delete enumerated schema.
 class DistributionSerde(
     serde.Serde[MeridianPriorDistributions, pd.PriorDistribution]
 ):
@@ -193,7 +193,7 @@ class DistributionSerde(
         return meridian_pb.TfpParameterValue(scalar_value=value)
       case int():
         return meridian_pb.TfpParameterValue(int_value=value)
-      # TODO: b/470407198 - case bool() has to be before int() because bool is a
+      # TODO: case bool() has to be before int() because bool is a
       # subtype of int.
       case bool():
         return meridian_pb.TfpParameterValue(bool_value=value)

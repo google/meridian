@@ -210,47 +210,47 @@ class Meridian:
   def eda_outcomes(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     return self.eda_engine.run_all_critical_checks()
 
-  @functools.cached_property
+  @property
   def media_tensors(self) -> media.MediaTensors:
     return self._model_context.media_tensors
 
-  @functools.cached_property
+  @property
   def rf_tensors(self) -> media.RfTensors:
     return self._model_context.rf_tensors
 
-  @functools.cached_property
+  @property
   def organic_media_tensors(self) -> media.OrganicMediaTensors:
     return self._model_context.organic_media_tensors
 
-  @functools.cached_property
+  @property
   def organic_rf_tensors(self) -> media.OrganicRfTensors:
     return self._model_context.organic_rf_tensors
 
-  @functools.cached_property
+  @property
   def kpi(self) -> backend.Tensor:
     return self._model_context.kpi
 
-  @functools.cached_property
+  @property
   def revenue_per_kpi(self) -> backend.Tensor | None:
     return self._model_context.revenue_per_kpi
 
-  @functools.cached_property
+  @property
   def controls(self) -> backend.Tensor | None:
     return self._model_context.controls
 
-  @functools.cached_property
+  @property
   def non_media_treatments(self) -> backend.Tensor | None:
     return self._model_context.non_media_treatments
 
-  @functools.cached_property
+  @property
   def population(self) -> backend.Tensor:
     return self._model_context.population
 
-  @functools.cached_property
+  @property
   def total_spend(self) -> backend.Tensor:
     return self._model_context.total_spend
 
-  @functools.cached_property
+  @property
   def total_outcome(self) -> backend.Tensor:
     return self._model_context.total_outcome
 
@@ -294,31 +294,31 @@ class Meridian:
   def is_national(self) -> bool:
     return self._model_context.is_national
 
-  @functools.cached_property
+  @property
   def knot_info(self) -> knots.KnotInfo:
     return self._model_context.knot_info
 
-  @functools.cached_property
+  @property
   def controls_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
     return self._model_context.controls_transformer
 
-  @functools.cached_property
+  @property
   def non_media_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
     return self._model_context.non_media_transformer
 
-  @functools.cached_property
+  @property
   def kpi_transformer(self) -> transformers.KpiTransformer:
     return self._model_context.kpi_transformer
 
-  @functools.cached_property
+  @property
   def controls_scaled(self) -> backend.Tensor | None:
     return self._model_context.controls_scaled
 
-  @functools.cached_property
+  @property
   def non_media_treatments_normalized(self) -> backend.Tensor | None:
     """Normalized non-media treatments.
 
@@ -328,33 +328,33 @@ class Meridian:
     """
     return self._model_context.non_media_treatments_normalized
 
-  @functools.cached_property
+  @property
   def kpi_scaled(self) -> backend.Tensor:
     return self._model_context.kpi_scaled
 
-  @functools.cached_property
+  @property
   def media_effects_dist(self) -> str:
     return self._model_context.media_effects_dist
 
-  @functools.cached_property
+  @property
   def unique_sigma_for_each_geo(self) -> bool:
     return self._model_context.unique_sigma_for_each_geo
 
-  @functools.cached_property
+  @property
   def baseline_geo_idx(self) -> int:
     """Returns the index of the baseline geo."""
     return self._model_context.baseline_geo_idx
 
-  @functools.cached_property
+  @property
   def holdout_id(self) -> backend.Tensor | None:
     return self._model_context.holdout_id
 
-  @functools.cached_property
+  @property
   def adstock_decay_spec(self) -> adstock_hill.AdstockDecaySpec:
     """Returns `AdstockDecaySpec` object with correctly mapped channels."""
     return self._model_context.adstock_decay_spec
 
-  @functools.cached_property
+  @property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
     """Returns broadcasted `PriorDistribution` object."""
     return self._model_context.prior_broadcast
@@ -435,12 +435,9 @@ class Meridian:
       ValueError if `start_date` or `end_date` is not in the input data time
       dimensions.
     """
-    expanded = self.input_data.time_coordinates.expand_selected_time_dims(
+    return self._model_context.expand_selected_time_dims(
         start_date=start_date, end_date=end_date
     )
-    if expanded is None:
-      return None
-    return [date.strftime(constants.DATE_FORMAT) for date in expanded]
 
   def _validate_injected_inference_data(self):
     """Validates that the injected inference data has correct shapes.

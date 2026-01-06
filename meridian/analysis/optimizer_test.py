@@ -44,6 +44,7 @@ from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.model import context
 from meridian.model import model
 from meridian.model import prior_distribution
 from meridian.model import spec
@@ -402,9 +403,18 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         self.meridian_all_channels
     )
 
+    # TODO: Remove the mock once `meridian` attribute is removed
+    # from `BudgetOptimizer` and `Analyzer`.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
+            'inference_data',
+            new=property(lambda unused_self: self.inference_data_media_and_rf),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
             'inference_data',
             new=property(lambda unused_self: self.inference_data_media_and_rf),
         )
@@ -446,6 +456,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
     not_fitted_mmm.inference_data = az.InferenceData()
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'inference_data',
+            new=property(lambda unused_self: az.InferenceData()),
+        )
+    )
     budget_optimizer = optimizer.BudgetOptimizer(not_fitted_mmm)
     with self.assertRaisesRegex(
         model.NotFittedModelError,
@@ -2340,7 +2357,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           gtol=0.1,
       )
       mock_expand_selected_times.assert_called_with(
-          meridian=mock.ANY,
+          model_context=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2392,7 +2409,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           gtol=0.1,
       )
       mock_expand_selected_times.assert_called_with(
-          meridian=mock.ANY,
+          model_context=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2974,7 +2991,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   def test_optimize_with_non_paid_channels_returns_correct_shape(self):
     self.enter_context(
         mock.patch.object(
-            model.Meridian,
+            analyzer.Analyzer,
             'inference_data',
             new=property(lambda unused_self: self.inference_data_all_channels),
         )
@@ -3167,14 +3184,24 @@ class OptimizerPlotsTest(absltest.TestCase):
     meridian = mock.create_autospec(
         model.Meridian, instance=True, input_data=mock_data
     )
+    meridian.model_context = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data
+    )
     n_times = 149
     n_geos = 10
     self.revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=1.0
     )
+    # TODO: Remove mocking `Meridian` class.
     meridian.input_data.kpi_type = c.REVENUE
     meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
     meridian.rf_tensors.rf_impressions = mock.create_autospec(
+        backend.Tensor, instance=True, shape=(n_geos, n_times, _N_RF_CHANNELS)
+    )
+
+    meridian.model_context.input_data.kpi_type = c.REVENUE
+    meridian.model_context.input_data.revenue_per_kpi = self.revenue_per_kpi
+    meridian.model_context.rf_tensors.rf_impressions = mock.create_autospec(
         backend.Tensor, instance=True, shape=(n_geos, n_times, _N_RF_CHANNELS)
     )
 
@@ -3505,7 +3532,9 @@ class OptimizerPlotsTest(absltest.TestCase):
         ],
     )
 
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
+    _, mock_kwargs = (
+        self.meridian.model_context.expand_selected_time_dims.call_args
+    )
     self.assertEqual(
         mock_kwargs,
         {
@@ -3590,7 +3619,9 @@ class OptimizerPlotsTest(absltest.TestCase):
   def test_plot_response_curves_correct_selected_times(self):
     self.optimization_results.plot_response_curves()
     self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
+    _, mock_kwargs = (
+        self.meridian.model_context.expand_selected_time_dims.call_args
+    )
     self.assertEqual(
         mock_kwargs,
         {
@@ -4568,9 +4599,20 @@ class OptimizerKPITest(parameterized.TestCase):
     self.budget_optimizer_non_revenue_revenue_per_kpi = (
         optimizer.BudgetOptimizer(self.meridian_non_revenue_revenue_per_kpi)
     )
+    # TODO: Remove this patch once `meridian` is removed from
+    # `Analyzer` and `BudgetOptimizer`.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
+            'inference_data',
+            new=property(
+                lambda unused_self: self.inference_data_media_and_rf_kpi
+            ),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
             'inference_data',
             new=property(
                 lambda unused_self: self.inference_data_media_and_rf_kpi

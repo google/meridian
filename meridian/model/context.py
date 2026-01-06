@@ -21,6 +21,7 @@ import warnings
 from meridian import backend
 from meridian import constants
 from meridian.data import input_data as data
+from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
 from meridian.model import knots
 from meridian.model import media
@@ -1022,3 +1023,37 @@ class ModelContext:
     ]
     for attr in cached_properties:
       _ = getattr(self, attr)
+
+  def expand_selected_time_dims(
+      self,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
+  ) -> list[str] | None:
+    """Validates and returns time dimension values based on the selected times.
+
+    If both `start_date` and `end_date` are None, returns None. If specified,
+    both `start_date` and `end_date` are inclusive, and must be present in the
+    time coordinates of the input data.
+
+    Args:
+      start_date: Start date of the selected time period. If None, implies the
+        earliest time dimension value in the input data.
+      end_date: End date of the selected time period. If None, implies the
+        latest time dimension value in the input data.
+
+    Returns:
+      A list of time dimension values (as Meridian-formatted strings) in the
+      input data within the selected time period, or do nothing and pass through
+      None if both arguments are Nones, or if `start_date` and `end_date`
+      correspond to the entire time range in the input data.
+
+    Raises:
+      ValueError if `start_date` or `end_date` is not in the input data time
+      dimensions.
+    """
+    expanded = self.input_data.time_coordinates.expand_selected_time_dims(
+        start_date=start_date, end_date=end_date
+    )
+    if expanded is None:
+      return None
+    return [date.strftime(constants.DATE_FORMAT) for date in expanded]
