@@ -929,13 +929,11 @@ class Analyzer:
       model_equations: equations.ModelEquations | None = None,
       inference_data: az.InferenceData | None = None,
   ):
-    self._meridian = meridian
     # Make the meridian object ready for methods in this analyzer that create
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
-    # TODO: Remove once `meridian` is removed.
-    meridian.populate_cached_properties()
     self.model_context = model_context or meridian.model_context
+    self.model_context.populate_cached_properties()
     self._model_equations = model_equations or meridian.model_equations
     self._inference_data = inference_data or meridian.inference_data
 
