@@ -307,7 +307,7 @@ class InputData:
       if isinstance(array, xr.DataArray) and constants.GEO in array.dims:
         array.coords[constants.GEO] = array.coords[constants.GEO].astype(str)
 
-  # TODO: Combine with Analyzer._impute_and_aggregate_spend
+  # TODO: b/416775065 - Combine with Analyzer._impute_and_aggregate_spend
   @functools.cached_property
   def allocated_media_spend(self) -> xr.DataArray | None:
     """Returns the allocated media spend for each geo and time."""

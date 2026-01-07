@@ -933,7 +933,6 @@ class Analyzer:
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
     self.model_context = model_context or meridian.model_context
-    self.model_context.populate_cached_properties()
     self._model_equations = model_equations or meridian.model_equations
     self._inference_data = inference_data or meridian.inference_data
 
@@ -1967,7 +1966,7 @@ class Analyzer:
         has_media_dim=True,
     )
 
-  # TODO: Add support for `new_data.time`.
+  # TODO: b/407847021 - Add support for `new_data.time`.
   def incremental_outcome(
       self,
       use_posterior: bool = True,
@@ -2246,7 +2245,7 @@ class Analyzer:
         new_data=incremented_data0,
         include_non_paid_channels=include_non_paid_channels,
     )
-    # TODO: Verify the computation of outcome of non-media
+    # TODO: b/415198977 - Verify the computation of outcome of non-media
     # treatments with `media_selected_times` and scale factors.
 
     data_tensors0 = DataTensors(
@@ -3370,7 +3369,7 @@ class Analyzer:
       spend_list.append(new_spend_tensors.media_spend)
     if self.model_context.n_rf_channels > 0:
       spend_list.append(new_spend_tensors.rf_spend)
-    # TODO(b/309655751) Add support for 1-dimensional spend.
+    # TODO Add support for 1-dimensional spend.
     aggregated_spend = self.filter_and_aggregate_geos_and_times(
         tensor=backend.concatenate(spend_list, axis=-1),
         flexible_time_dim=True,
@@ -4361,7 +4360,7 @@ class Analyzer:
     }
     if new_data is None:
       new_data = DataTensors()
-    # TODO: Support flexible time without providing exact dates.
+    # TODO: b/442920356 - Support flexible time without providing exact dates.
     required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors_names,
@@ -4388,7 +4387,7 @@ class Analyzer:
           new_n_media_times=new_n_media_times,
           new_time=new_time,
       )
-      # TODO: Switch to Sequence[str] once it is supported.
+      # TODO: b/407847021 - Switch to Sequence[str] once it is supported.
       if selected_times is not None:
         selected_times = [x in selected_times for x in new_time]
         dim_kwargs["selected_times"] = selected_times
