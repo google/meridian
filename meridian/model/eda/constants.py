@@ -17,7 +17,7 @@ from typing import Literal
 import altair as alt
 import numpy as np
 
-# EDA Engine constants
+##### EDA Engine constants #####
 DEFAULT_DA_VAR_AGG_FUNCTION = np.sum
 COST_PER_MEDIA_UNIT = 'cost_per_media_unit'
 RSQUARED_GEO = 'rsquared_geo'
@@ -39,9 +39,11 @@ STD_THRESHOLD = 1e-4
 OUTLIERS_COL_NAME = 'outliers'
 ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 VIF_COL_NAME = 'VIF'
-EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
+EXTREME_CORRELATION_WITH = 'ExtremeCorrelationWith'
+TIME_AND_GEO_AGGREGATION = 'times and geos'
+TIME_AGGREGATION = 'times'
 
-# EDA Plotting properties
+##### EDA Plotting properties #####
 VARIABLE = 'var'
 VALUE = 'value'
 NATIONALIZE: Literal['nationalize'] = 'nationalize'
@@ -55,10 +57,17 @@ PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     type='linear',
 )
 
-# Report constants
+##### Report constants #####
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
+DISPLAY_LIMIT_MESSAGE = (
+    '<br/>(Due to space constraints, this table only displays the 5 most severe'
+    ' cases. Please use {function} to review {to_review}.)'
+)
+DISPLAY_LIMIT = 5
+# category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
+# category 4
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
 RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
@@ -67,10 +76,9 @@ EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
 EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
-DISPLAY_LIMIT = 5
 
 
-# Finding messages
+##### Finding messages #####
 RELATIVE_SPEND_SHARE_INFO = (
     "Please review the channel's share of spend. Channels with a very small"
     ' share of spend might be difficult to estimate. You might want to combine'
