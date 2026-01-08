@@ -25,7 +25,6 @@ from meridian import constants
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import equations
-from meridian.model import knots as knots_module
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
@@ -73,70 +72,6 @@ class ModelTest(
             seed=0,
         )
     )
-
-  def test_custom_priors_not_passed_in_ok(self):
-    data = self.input_data_non_revenue_no_revenue_per_kpi
-    meridian = model.Meridian(
-        input_data=data,
-        model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
-        ),
-    )
-    # Compare input data.
-    self.assertEqual(meridian.input_data, data)
-
-    # Create sample model spec for comparison
-    sample_spec = spec.ModelSpec(
-        media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
-    )
-
-    # Compare model spec.
-    self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
-
-  def test_custom_priors_okay_with_array_params(self):
-    prior = prior_distribution.PriorDistribution(
-        roi_m=backend.tfd.LogNormal([1, 1], [1, 1])
-    )
-    data = self.input_data_non_revenue_no_revenue_per_kpi
-    meridian = model.Meridian(
-        input_data=data,
-        model_spec=spec.ModelSpec(prior=prior),
-    )
-    # Compare input data.
-    self.assertEqual(meridian.input_data, data)
-
-    # Create sample model spec for comparison
-    sample_spec = spec.ModelSpec(prior=prior)
-
-    # Compare model spec.
-    self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
-
-  def test_get_knot_info_fails(self):
-    error_msg = "Knots must be all non-negative."
-    with mock.patch.object(
-        knots_module,
-        "get_knot_info",
-        autospec=True,
-        side_effect=ValueError(error_msg),
-    ):
-      with self.assertRaisesWithLiteralMatch(ValueError, error_msg):
-        _ = model.Meridian(
-            input_data=self.input_data_with_media_only,
-            model_spec=spec.ModelSpec(knots=4),
-        ).knot_info
-
-  def test_init_with_default_parameters_works(self):
-    data = self.input_data_with_media_only
-    meridian = model.Meridian(input_data=data)
-
-    # Compare input data.
-    self.assertEqual(meridian.input_data, data)
-
-    # Create sample model spec for comparison
-    sample_spec = spec.ModelSpec()
-
-    # Compare model spec.
-    self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
 
   @parameterized.named_parameters(
       dict(
@@ -446,56 +381,6 @@ class ModelTest(
     )
     self.assertIsNotNone(meridian)
 
-  def test_broadcast_prior_distribution_compute_property(self):
-    meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
-    # Validate `tau_g_excl_baseline` distribution.
-    self.assertEqual(
-        meridian.prior_broadcast.tau_g_excl_baseline.batch_shape,
-        (meridian.n_geos - 1,),
-    )
-
-    # Validate `n_knots` shape distributions.
-    self.assertEqual(
-        meridian.prior_broadcast.knot_values.batch_shape,
-        (meridian.knot_info.n_knots,),
-    )
-
-    # Validate `n_media_channels` shape distributions.
-    n_media_channels_distributions_list = [
-        meridian.prior_broadcast.beta_m,
-        meridian.prior_broadcast.eta_m,
-        meridian.prior_broadcast.alpha_m,
-        meridian.prior_broadcast.ec_m,
-        meridian.prior_broadcast.slope_m,
-        meridian.prior_broadcast.roi_m,
-    ]
-    for broad in n_media_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_media_channels,))
-
-    # Validate `n_rf_channels` shape distributions.
-    n_rf_channels_distributions_list = [
-        meridian.prior_broadcast.beta_rf,
-        meridian.prior_broadcast.eta_rf,
-        meridian.prior_broadcast.alpha_rf,
-        meridian.prior_broadcast.ec_rf,
-        meridian.prior_broadcast.slope_rf,
-        meridian.prior_broadcast.roi_rf,
-    ]
-    for broad in n_rf_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_rf_channels,))
-
-    # Validate `n_controls` shape distributions.
-    n_controls_distributions_list = [
-        meridian.prior_broadcast.gamma_c,
-        meridian.prior_broadcast.xi_c,
-    ]
-    for broad in n_controls_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_controls,))
-
-    # Validate sigma -- unique_sigma_for_each_geo is False by default, so sigma
-    # should be a scalar batch.
-    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
-
   def test_run_model_fitting_guardrail_error_message(self):
     finding_corr_1 = eda_outcome.EDAFinding(
         severity=eda_outcome.EDASeverity.ERROR,
@@ -612,338 +497,6 @@ class ModelPersistenceTest(
       model.save_mmm(mmm, str(self.file_path))
     with self.assertWarns(DeprecationWarning):
       model.load_mmm(self.file_path)
-
-
-class NonPaidModelTest(
-    test_utils.MeridianTestCase,
-    model_test_data.WithInputDataSamples,
-):
-
-  input_data_samples = model_test_data.WithInputDataSamples
-
-  @classmethod
-  def setUpClass(cls):
-    super().setUpClass()
-    model_test_data.WithInputDataSamples.setup()
-
-  def test_base_geo_properties(self):
-    data = self.input_data_non_media_and_organic
-    meridian = model.Meridian(input_data=data)
-    self.assertEqual(meridian.n_geos, self._N_GEOS)
-    self.assertEqual(meridian.n_controls, self._N_CONTROLS)
-    self.assertEqual(meridian.n_non_media_channels, self._N_NON_MEDIA_CHANNELS)
-    self.assertEqual(meridian.n_times, self._N_TIMES)
-    self.assertEqual(meridian.n_media_times, self._N_MEDIA_TIMES)
-    self.assertFalse(meridian.is_national)
-    self.assertIsNotNone(meridian.prior_broadcast)
-    self.assertIsNotNone(meridian.inference_data)
-    self.assertIsNotNone(meridian.eda_engine)
-    self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
-    self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
-
-  def test_base_national_properties(self):
-    data = self.national_input_data_non_media_and_organic
-    meridian = model.Meridian(input_data=data)
-    self.assertEqual(meridian.n_geos, self._N_GEOS_NATIONAL)
-    self.assertEqual(meridian.n_controls, self._N_CONTROLS)
-    self.assertEqual(meridian.n_non_media_channels, self._N_NON_MEDIA_CHANNELS)
-    self.assertEqual(meridian.n_times, self._N_TIMES)
-    self.assertEqual(meridian.n_media_times, self._N_MEDIA_TIMES)
-    self.assertTrue(meridian.is_national)
-    self.assertIsNotNone(meridian.prior_broadcast)
-    self.assertIsNotNone(meridian.inference_data)
-    self.assertIsNotNone(meridian.eda_engine)
-    self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
-    self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name="media_non_media_and_organic",
-          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-              n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
-              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
-              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
-          ),
-      ),
-      dict(
-          testcase_name="rf_non_media_and_organic",
-          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-              n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
-              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
-              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
-          ),
-      ),
-      dict(
-          testcase_name="media_rf_non_media_and_organic",
-          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-              n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
-              n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
-              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
-              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
-          ),
-      ),
-  )
-  def test_input_data_tensor_properties(self, data):
-    meridian = model.Meridian(input_data=data)
-    test_utils.assert_allequal(
-        backend.to_tensor(data.kpi, dtype=backend.float32),
-        meridian.kpi,
-    )
-    test_utils.assert_allequal(
-        backend.to_tensor(data.revenue_per_kpi, dtype=backend.float32),
-        meridian.revenue_per_kpi,
-    )
-    test_utils.assert_allequal(
-        backend.to_tensor(data.controls, dtype=backend.float32),
-        meridian.controls,
-    )
-    test_utils.assert_allequal(
-        backend.to_tensor(data.non_media_treatments, dtype=backend.float32),
-        meridian.non_media_treatments,
-    )
-    test_utils.assert_allequal(
-        backend.to_tensor(data.population, dtype=backend.float32),
-        meridian.population,
-    )
-    if data.media is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.media, dtype=backend.float32),
-          meridian.media_tensors.media,
-      )
-    if data.media_spend is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.media_spend, dtype=backend.float32),
-          meridian.media_tensors.media_spend,
-      )
-    if data.reach is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.reach, dtype=backend.float32),
-          meridian.rf_tensors.reach,
-      )
-    if data.frequency is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.frequency, dtype=backend.float32),
-          meridian.rf_tensors.frequency,
-      )
-    if data.rf_spend is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.rf_spend, dtype=backend.float32),
-          meridian.rf_tensors.rf_spend,
-      )
-    if data.organic_media is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.organic_media, dtype=backend.float32),
-          meridian.organic_media_tensors.organic_media,
-      )
-    if data.organic_reach is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.organic_reach, dtype=backend.float32),
-          meridian.organic_rf_tensors.organic_reach,
-      )
-    if data.organic_frequency is not None:
-      test_utils.assert_allequal(
-          backend.to_tensor(data.organic_frequency, dtype=backend.float32),
-          meridian.organic_rf_tensors.organic_frequency,
-      )
-    if data.media_spend is not None and data.rf_spend is not None:
-      test_utils.assert_allclose(
-          backend.concatenate(
-              [
-                  backend.to_tensor(data.media_spend, dtype=backend.float32),
-                  backend.to_tensor(data.rf_spend, dtype=backend.float32),
-              ],
-              axis=-1,
-          ),
-          meridian.total_spend,
-      )
-    elif data.media_spend is not None:
-      test_utils.assert_allclose(
-          backend.to_tensor(data.media_spend, dtype=backend.float32),
-          meridian.total_spend,
-      )
-    else:
-      test_utils.assert_allclose(
-          backend.to_tensor(data.rf_spend, dtype=backend.float32),
-          meridian.total_spend,
-      )
-
-  def test_broadcast_prior_distribution_is_called_in_meridian_init(self):
-    data = self.input_data_non_media_and_organic
-    meridian = model.Meridian(input_data=data)
-    # Validate `tau_g_excl_baseline` distribution.
-    self.assertEqual(
-        meridian.prior_broadcast.tau_g_excl_baseline.batch_shape,
-        (meridian.n_geos - 1,),
-    )
-
-    # Validate `n_knots` shape distributions.
-    self.assertEqual(
-        meridian.prior_broadcast.knot_values.batch_shape,
-        (meridian.knot_info.n_knots,),
-    )
-
-    # Validate `n_media_channels` shape distributions.
-    n_media_channels_distributions_list = [
-        meridian.prior_broadcast.beta_m,
-        meridian.prior_broadcast.eta_m,
-        meridian.prior_broadcast.alpha_m,
-        meridian.prior_broadcast.ec_m,
-        meridian.prior_broadcast.slope_m,
-        meridian.prior_broadcast.roi_m,
-    ]
-    for broad in n_media_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_media_channels,))
-
-    # Validate `n_rf_channels` shape distributions.
-    n_rf_channels_distributions_list = [
-        meridian.prior_broadcast.beta_rf,
-        meridian.prior_broadcast.eta_rf,
-        meridian.prior_broadcast.alpha_rf,
-        meridian.prior_broadcast.ec_rf,
-        meridian.prior_broadcast.slope_rf,
-        meridian.prior_broadcast.roi_rf,
-    ]
-    for broad in n_rf_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_rf_channels,))
-
-    # Validate `n_organic_media_channels` shape distributions.
-    n_organic_media_channels_distributions_list = [
-        meridian.prior_broadcast.beta_om,
-        meridian.prior_broadcast.eta_om,
-        meridian.prior_broadcast.alpha_om,
-        meridian.prior_broadcast.ec_om,
-        meridian.prior_broadcast.slope_om,
-    ]
-    for broad in n_organic_media_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_organic_media_channels,))
-
-    # Validate `n_organic_rf_channels` shape distributions.
-    n_organic_rf_channels_distributions_list = [
-        meridian.prior_broadcast.beta_orf,
-        meridian.prior_broadcast.eta_orf,
-        meridian.prior_broadcast.alpha_orf,
-        meridian.prior_broadcast.ec_orf,
-        meridian.prior_broadcast.slope_orf,
-    ]
-    for broad in n_organic_rf_channels_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_organic_rf_channels,))
-
-    # Validate `n_controls` shape distributions.
-    n_controls_distributions_list = [
-        meridian.prior_broadcast.gamma_c,
-        meridian.prior_broadcast.xi_c,
-    ]
-    for broad in n_controls_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_controls,))
-
-    # Validate `n_non_media_channels` shape distributions.
-    n_non_media_distributions_list = [
-        meridian.prior_broadcast.gamma_n,
-        meridian.prior_broadcast.xi_n,
-    ]
-    for broad in n_non_media_distributions_list:
-      self.assertEqual(broad.batch_shape, (meridian.n_non_media_channels,))
-
-    # Validate sigma -- unique_sigma_for_each_geo is False by default, so sigma
-    # should be a scalar batch.
-    self.assertEqual(meridian.prior_broadcast.sigma.batch_shape, ())
-
-  def test_scaled_data_shape(self):
-    data = self.input_data_non_media_and_organic
-    controls = data.controls
-    meridian = model.Meridian(input_data=data)
-    self.assertIsNotNone(meridian.controls_scaled)
-    self.assertIsNotNone(controls)
-    test_utils.assert_allequal(
-        meridian.controls_scaled.shape,  # pytype: disable=attribute-error
-        controls.shape,
-        err_msg=(
-            "Shape of `_controls_scaled` does not match the shape of `controls`"
-            " from the input data."
-        ),
-    )
-    self.assertIsNotNone(meridian.non_media_treatments_normalized)
-    self.assertIsNotNone(data.non_media_treatments)
-    # pytype: disable=attribute-error
-    test_utils.assert_allequal(
-        meridian.non_media_treatments_normalized.shape,
-        data.non_media_treatments.shape,
-        err_msg=(
-            "Shape of `_non_media_treatments_scaled` does not match the shape"
-            " of `non_media_treatments` from the input data."
-        ),
-    )
-    # pytype: enable=attribute-error
-    test_utils.assert_allequal(
-        meridian.kpi_scaled.shape,
-        data.kpi.shape,
-        err_msg=(
-            "Shape of `_kpi_scaled` does not match the shape of"
-            " `kpi` from the input data."
-        ),
-    )
-
-  def test_population_scaled_non_media_transformer_set(self):
-    data = self.input_data_non_media_and_organic
-    model_spec = spec.ModelSpec(
-        non_media_population_scaling_id=backend.to_tensor(
-            [True for _ in data.non_media_channel]
-        )
-    )
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    self.assertIsNotNone(meridian.non_media_transformer)
-    # pytype: disable=attribute-error
-    self.assertIsNotNone(
-        meridian.non_media_transformer._population_scaling_factors,
-        msg=(
-            "`_population_scaling_factors` not set for the non-media"
-            " transformer."
-        ),
-    )
-    test_utils.assert_allequal(
-        meridian.non_media_transformer._population_scaling_factors.shape,
-        [
-            len(data.geo),
-            len(data.non_media_channel),
-        ],
-        err_msg=(
-            "Shape of"
-            " `non_media_transformer._population_scaling_factors` does"
-            " not match (`n_geos`, `n_non_media_channels`)."
-        ),
-    )
-    # pytype: enable=attribute-error
-
-  def test_scaled_data_inverse_is_identity(self):
-    data = self.input_data_non_media_and_organic
-    meridian = model.Meridian(input_data=data)
-
-    # With the default tolerance of eps * 10 the test fails due to rounding
-    # errors.
-    atol = np.finfo(np.float32).eps * 100
-    test_utils.assert_allclose(
-        meridian.controls_transformer.inverse(meridian.controls_scaled),  # pytype: disable=attribute-error
-        data.controls,
-        atol=atol,
-    )
-    self.assertIsNotNone(meridian.non_media_transformer)
-    # pytype: disable=attribute-error
-    test_utils.assert_allclose(
-        meridian.non_media_transformer.inverse(
-            meridian.non_media_treatments_normalized
-        ),
-        data.non_media_treatments,
-        atol=atol,
-    )
-    # pytype: enable=attribute-error
-    test_utils.assert_allclose(
-        meridian.kpi_transformer.inverse(meridian.kpi_scaled),
-        data.kpi,
-        atol=atol,
-    )
 
   # TODO: Move this integration test to a separate module.
   def test_get_joint_dist_constants(self):
@@ -1304,9 +857,7 @@ class NonPaidModelTest(
     )
     n_chains = 1
     n_draws = 10
-    prior_samples = meridian.prior_sampler_callable(
-        n_draws, seed=1
-    )
+    prior_samples = meridian.prior_sampler_callable(n_draws, seed=1)
     prior_coords = meridian.create_inference_data_coords(n_chains, n_draws)
     prior_dims = meridian.create_inference_data_dims()
     inference_data = az.convert_to_inference_data(
@@ -1413,9 +964,7 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable(
-        self._N_DRAWS, seed=1
-    )
+    prior_samples = meridian.prior_sampler_callable(self._N_DRAWS, seed=1)
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 
@@ -1546,9 +1095,7 @@ class NonPaidModelTest(
         input_data=data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable(
-        self._N_DRAWS, seed=1
-    )
+    prior_samples = meridian.prior_sampler_callable(self._N_DRAWS, seed=1)
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
     prior_dims = meridian.create_inference_data_dims()
 

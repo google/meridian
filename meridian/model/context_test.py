@@ -299,6 +299,34 @@ class ContextTest(
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
           ),
       ),
+      dict(
+          testcase_name="media_non_media_and_organic",
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="rf_non_media_and_organic",
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_rf_channels=input_data_samples._N_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="media_rf_non_media_and_organic",
+          data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
+              n_rf_channels=input_data_samples._N_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
+              n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
+              n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+          ),
+      ),
   )
   def test_input_data_tensor_properties(self, data):
     model_context = context.ModelContext(
@@ -312,10 +340,16 @@ class ContextTest(
         backend.to_tensor(data.revenue_per_kpi, dtype=backend.float32),
         model_context.revenue_per_kpi,
     )
-    test_utils.assert_allequal(
-        backend.to_tensor(data.controls, dtype=backend.float32),
-        model_context.controls,
-    )
+    if data.controls is not None:
+      test_utils.assert_allequal(
+          backend.to_tensor(data.controls, dtype=backend.float32),
+          model_context.controls,
+      )
+    if data.non_media_treatments is not None:
+      test_utils.assert_allequal(
+          backend.to_tensor(data.non_media_treatments, dtype=backend.float32),
+          model_context.non_media_treatments,
+      )
     test_utils.assert_allequal(
         backend.to_tensor(data.population, dtype=backend.float32),
         model_context.population,
@@ -345,6 +379,21 @@ class ContextTest(
           backend.to_tensor(data.rf_spend, dtype=backend.float32),
           model_context.rf_tensors.rf_spend,
       )
+    if data.organic_media is not None:
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_media, dtype=backend.float32),
+          model_context.organic_media_tensors.organic_media,
+      )
+    if data.organic_reach is not None:
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_reach, dtype=backend.float32),
+          model_context.organic_rf_tensors.organic_reach,
+      )
+    if data.organic_frequency is not None:
+      test_utils.assert_allequal(
+          backend.to_tensor(data.organic_frequency, dtype=backend.float32),
+          model_context.organic_rf_tensors.organic_frequency,
+      )
     if data.media_spend is not None and data.rf_spend is not None:
       test_utils.assert_allclose(
           backend.concatenate(
@@ -361,7 +410,7 @@ class ContextTest(
           backend.to_tensor(data.media_spend, dtype=backend.float32),
           model_context.total_spend,
       )
-    else:
+    elif data.rf_spend is not None:
       test_utils.assert_allclose(
           backend.to_tensor(data.rf_spend, dtype=backend.float32),
           model_context.total_spend,
@@ -451,12 +500,170 @@ class ContextTest(
         expected_unique_sigma_for_each_geo,
     )
 
-  def test_scaled_data_shape(self):
-    controls = self.input_data_with_media_and_rf.controls
-    data = self.input_data_with_media_and_rf
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="tau_g_excl_baseline",
+          dist_name="tau_g_excl_baseline",
+          expected_shape_func=lambda mc: (mc.n_geos - 1,),
+      ),
+      dict(
+          testcase_name="knot_values",
+          dist_name="knot_values",
+          expected_shape_func=lambda mc: (mc.knot_info.n_knots,),
+      ),
+      dict(
+          testcase_name="beta_m",
+          dist_name="beta_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="eta_m",
+          dist_name="eta_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="alpha_m",
+          dist_name="alpha_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="ec_m",
+          dist_name="ec_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="slope_m",
+          dist_name="slope_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="roi_m",
+          dist_name="roi_m",
+          expected_shape_func=lambda mc: (mc.n_media_channels,),
+      ),
+      dict(
+          testcase_name="beta_rf",
+          dist_name="beta_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="eta_rf",
+          dist_name="eta_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="alpha_rf",
+          dist_name="alpha_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="ec_rf",
+          dist_name="ec_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="slope_rf",
+          dist_name="slope_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="roi_rf",
+          dist_name="roi_rf",
+          expected_shape_func=lambda mc: (mc.n_rf_channels,),
+      ),
+      dict(
+          testcase_name="beta_om",
+          dist_name="beta_om",
+          expected_shape_func=lambda mc: (mc.n_organic_media_channels,),
+      ),
+      dict(
+          testcase_name="eta_om",
+          dist_name="eta_om",
+          expected_shape_func=lambda mc: (mc.n_organic_media_channels,),
+      ),
+      dict(
+          testcase_name="alpha_om",
+          dist_name="alpha_om",
+          expected_shape_func=lambda mc: (mc.n_organic_media_channels,),
+      ),
+      dict(
+          testcase_name="ec_om",
+          dist_name="ec_om",
+          expected_shape_func=lambda mc: (mc.n_organic_media_channels,),
+      ),
+      dict(
+          testcase_name="slope_om",
+          dist_name="slope_om",
+          expected_shape_func=lambda mc: (mc.n_organic_media_channels,),
+      ),
+      dict(
+          testcase_name="beta_orf",
+          dist_name="beta_orf",
+          expected_shape_func=lambda mc: (mc.n_organic_rf_channels,),
+      ),
+      dict(
+          testcase_name="eta_orf",
+          dist_name="eta_orf",
+          expected_shape_func=lambda mc: (mc.n_organic_rf_channels,),
+      ),
+      dict(
+          testcase_name="alpha_orf",
+          dist_name="alpha_orf",
+          expected_shape_func=lambda mc: (mc.n_organic_rf_channels,),
+      ),
+      dict(
+          testcase_name="ec_orf",
+          dist_name="ec_orf",
+          expected_shape_func=lambda mc: (mc.n_organic_rf_channels,),
+      ),
+      dict(
+          testcase_name="slope_orf",
+          dist_name="slope_orf",
+          expected_shape_func=lambda mc: (mc.n_organic_rf_channels,),
+      ),
+      dict(
+          testcase_name="gamma_c",
+          dist_name="gamma_c",
+          expected_shape_func=lambda mc: (mc.n_controls,),
+      ),
+      dict(
+          testcase_name="xi_c",
+          dist_name="xi_c",
+          expected_shape_func=lambda mc: (mc.n_controls,),
+      ),
+      dict(
+          testcase_name="gamma_n",
+          dist_name="gamma_n",
+          expected_shape_func=lambda mc: (mc.n_non_media_channels,),
+      ),
+      dict(
+          testcase_name="xi_n",
+          dist_name="xi_n",
+          expected_shape_func=lambda mc: (mc.n_non_media_channels,),
+      ),
+      dict(
+          testcase_name="sigma",
+          dist_name="sigma",
+          expected_shape_func=lambda mc: (),
+      ),
+  )
+  def test_broadcast_prior_distribution_shapes(
+      self, dist_name, expected_shape_func
+  ):
+    data = self.input_data_non_media_and_organic
     model_context = context.ModelContext(
         input_data=data, model_spec=spec.ModelSpec()
     )
+    dist = getattr(model_context.prior_broadcast, dist_name)
+    self.assertEqual(dist.batch_shape, expected_shape_func(model_context))
+
+  def test_scaled_data_shape(self):
+    data = self.input_data_non_media_and_organic
+    controls = data.controls
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+    self.assertIsNotNone(model_context.controls_scaled)
     self.assertIsNotNone(controls)
     test_utils.assert_allequal(
         model_context.controls_scaled.shape,  # pytype: disable=attribute-error
@@ -466,6 +673,18 @@ class ContextTest(
             " from the input data."
         ),
     )
+    self.assertIsNotNone(model_context.non_media_treatments_normalized)
+    self.assertIsNotNone(data.non_media_treatments)
+    # pytype: disable=attribute-error
+    test_utils.assert_allequal(
+        model_context.non_media_treatments_normalized.shape,
+        data.non_media_treatments.shape,
+        err_msg=(
+            "Shape of `_non_media_treatments_scaled` does not match the shape"
+            " of `non_media_treatments` from the input data."
+        ),
+    )
+    # pytype: enable=attribute-error
     test_utils.assert_allequal(
         model_context.kpi_scaled.shape,
         data.kpi.shape,
@@ -494,7 +713,7 @@ class ContextTest(
         ),
     )
 
-  def test_population_scaled_conrols_transformer_set(self):
+  def test_population_scaled_controls_transformer_set(self):
     data = self.input_data_with_media_and_rf
     model_spec = spec.ModelSpec(
         control_population_scaling_id=backend.to_tensor(
@@ -519,8 +738,39 @@ class ContextTest(
         ),
     )
 
+  def test_population_scaled_non_media_transformer_set(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(
+        non_media_population_scaling_id=backend.to_tensor(
+            [True for _ in data.non_media_channel]
+        )
+    )
+    model_context = context.ModelContext(input_data=data, model_spec=model_spec)
+    self.assertIsNotNone(model_context.non_media_transformer)
+    # pytype: disable=attribute-error
+    self.assertIsNotNone(
+        model_context.non_media_transformer._population_scaling_factors,
+        msg=(
+            "`_population_scaling_factors` not set for the non-media"
+            " transformer."
+        ),
+    )
+    test_utils.assert_allequal(
+        model_context.non_media_transformer._population_scaling_factors.shape,
+        [
+            len(data.geo),
+            len(data.non_media_channel),
+        ],
+        err_msg=(
+            "Shape of"
+            " `non_media_transformer._population_scaling_factors` does"
+            " not match (`n_geos`, `n_non_media_channels`)."
+        ),
+    )
+    # pytype: enable=attribute-error
+
   def test_scaled_data_inverse_is_identity(self):
-    data = self.input_data_with_media_and_rf
+    data = self.input_data_non_media_and_organic
     model_context = context.ModelContext(
         input_data=data, model_spec=spec.ModelSpec()
     )
@@ -533,6 +783,16 @@ class ContextTest(
         data.controls,
         atol=atol,
     )
+    self.assertIsNotNone(model_context.non_media_transformer)
+    # pytype: disable=attribute-error
+    test_utils.assert_allclose(
+        model_context.non_media_transformer.inverse(
+            model_context.non_media_treatments_normalized
+        ),
+        data.non_media_treatments,
+        atol=atol,
+    )
+    # pytype: enable=attribute-error
     test_utils.assert_allclose(
         model_context.kpi_transformer.inverse(model_context.kpi_scaled),
         data.kpi,
