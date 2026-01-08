@@ -56,6 +56,7 @@ def _validate_non_media_baseline_values_numbers(
       )
 
 
+# TODO: Remove this method.
 def _get_model_context(
     meridian: model.Meridian | None,
     model_context: context.ModelContext | None,
@@ -922,8 +923,8 @@ class Analyzer:
 
   def __init__(
       self,
-      # TODO: Deprecate and remove this argument.
-      meridian: model.Meridian,
+      # TODO: Remove this argument.
+      meridian: model.Meridian | None = None,
       *,
       model_context: context.ModelContext | None = None,
       model_equations: equations.ModelEquations | None = None,
@@ -932,9 +933,23 @@ class Analyzer:
     # Make the meridian object ready for methods in this analyzer that create
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
-    self.model_context = model_context or meridian.model_context
-    self._model_equations = model_equations or meridian.model_equations
-    self._inference_data = inference_data or meridian.inference_data
+    self.model_context = _get_model_context(meridian, model_context)
+
+    if meridian is not None:
+      self._model_equations = model_equations or meridian.model_equations
+      self._inference_data = inference_data or meridian.inference_data
+    elif (
+        model_context is None
+        or model_equations is None
+        or inference_data is None
+    ):
+      raise ValueError(
+          "If `meridian` is not provided, then `model_context`, "
+          "`model_equations`, and `inference_data` must be provided."
+      )
+    else:
+      self._model_equations = model_equations
+      self._inference_data = inference_data
 
     self.model_context.populate_cached_properties()
 
@@ -1966,7 +1981,7 @@ class Analyzer:
         has_media_dim=True,
     )
 
-  # TODO: b/407847021 - Add support for `new_data.time`.
+  # TODO: Add support for `new_data.time`.
   def incremental_outcome(
       self,
       use_posterior: bool = True,
@@ -2245,7 +2260,7 @@ class Analyzer:
         new_data=incremented_data0,
         include_non_paid_channels=include_non_paid_channels,
     )
-    # TODO: b/415198977 - Verify the computation of outcome of non-media
+    # TODO: Verify the computation of outcome of non-media
     # treatments with `media_selected_times` and scale factors.
 
     data_tensors0 = DataTensors(
@@ -2760,10 +2775,7 @@ class Analyzer:
 
   def _can_split_by_holdout_id(self, split_by_holdout_id: bool) -> bool:
     """Returns whether the data can be split by holdout_id."""
-    if (
-        split_by_holdout_id
-        and self.model_context.model_spec.holdout_id is None
-    ):
+    if split_by_holdout_id and self.model_context.model_spec.holdout_id is None:
       warnings.warn(
           "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
           " not be split."
@@ -4050,9 +4062,7 @@ class Analyzer:
     if use_kpi:
       input_tensor = self.model_context.kpi
     else:
-      input_tensor = (
-          self.model_context.kpi * self.model_context.revenue_per_kpi
-      )
+      input_tensor = self.model_context.kpi * self.model_context.revenue_per_kpi
     actual = np.asarray(
         self.filter_and_aggregate_geos_and_times(
             tensor=input_tensor,
@@ -4154,9 +4164,7 @@ class Analyzer:
     """Filters the holdout_id array for selected times and geos."""
 
     if selected_geos is not None and not self.model_context.is_national:
-      geo_mask = [
-          x in selected_geos for x in self.model_context.input_data.geo
-      ]
+      geo_mask = [x in selected_geos for x in self.model_context.input_data.geo]
       holdout_id = holdout_id[geo_mask]
 
     if selected_times is not None:
@@ -4251,9 +4259,7 @@ class Analyzer:
       )
 
       # Skip if parameter is deterministic according to the prior.
-      if self.model_context.prior_broadcast.has_deterministic_param(
-          param_name
-      ):
+      if self.model_context.prior_broadcast.has_deterministic_param(param_name):
         continue
 
       if rhat[param].ndim == 2:
@@ -4360,7 +4366,7 @@ class Analyzer:
     }
     if new_data is None:
       new_data = DataTensors()
-    # TODO: b/442920356 - Support flexible time without providing exact dates.
+    # TODO: Support flexible time without providing exact dates.
     required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors_names,
@@ -4387,7 +4393,7 @@ class Analyzer:
           new_n_media_times=new_n_media_times,
           new_time=new_time,
       )
-      # TODO: b/407847021 - Switch to Sequence[str] once it is supported.
+      # TODO: Switch to Sequence[str] once it is supported.
       if selected_times is not None:
         selected_times = [x in selected_times for x in new_time]
         dim_kwargs["selected_times"] = selected_times
@@ -5119,6 +5125,7 @@ class Analyzer:
         include_median=True,
     )
 
+  # TODO: Remove this method.
   def get_historical_spend(
       self,
       selected_times: Sequence[str] | None = None,
