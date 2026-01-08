@@ -5040,6 +5040,22 @@ class EDAEngineTest(
         kpi_artifact.outlier_df[eda_constants.OUTLIERS_COL_NAME].iloc[0],
         outlier_value,
     )
+    kpi_findings = [
+        finding
+        for finding in outcome.findings
+        if isinstance(
+            finding.associated_artifact, eda_outcome.StandardDeviationArtifact
+        )
+        and finding.associated_artifact.variable == constants.KPI_SCALED
+    ]
+    self.assertLen(kpi_findings, 1)
+    kpi_finding = kpi_findings[0]
+    self.assertEqual(
+        kpi_finding.finding_cause, eda_outcome.FindingCause.OUTLIER
+    )
+    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertIn("There are outliers", kpi_finding.explanation)
+    self.assertEqual(kpi_finding.associated_artifact, kpi_artifact)
 
   def test_check_geo_std_returns_info_finding_when_no_issues(self):
     meridian = mock.create_autospec(
@@ -5069,26 +5085,32 @@ class EDAEngineTest(
     (finding,) = outcome.findings
     self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
-        "Please review any identified outliers",
+        "Please review the computed standard deviation",
         finding.explanation,
     )
 
   @parameterized.named_parameters(
       dict(
-          testcase_name="zero_std_kpi",
+          testcase_name="zero_std_kpi_without_outlier",
           mock_kpi_ndarray=np.ones((1, 7), dtype=float),
           mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr="KPI has zero standard deviation",
+          expected_std_message_substr="KPI has zero standard deviation",
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
-          testcase_name="zero_std_kpi_without_outliers",
+          testcase_name="zero_std_kpi_with_outliers",
           mock_kpi_ndarray=np.array([[1, 1, 1, 1, 1, 1, 100]], dtype=float),
           mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr="KPI has zero standard deviation",
+          expected_std_message_substr="KPI has zero standard deviation",
+          expected_outlier_message_substr=(
+              "There are outliers in the scaled KPI"
+          ),
+          expected_num_findings=2,
       ),
       dict(
           testcase_name="zero_std_treatment_control",
@@ -5096,9 +5118,11 @@ class EDAEngineTest(
           mock_tc_ndarray=np.ones((1, 7, 1), dtype=float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr=(
+          expected_std_message_substr=(
               "Some treatment or control variables have zero standard deviation"
           ),
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="zero_std_reach",
@@ -5106,7 +5130,9 @@ class EDAEngineTest(
           mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
           mock_reach_ndarray=np.ones((1, 7, 1), dtype=float),
           mock_freq_ndarray=None,
-          expected_message_substr="zero variation of reach across time",
+          expected_std_message_substr="zero variation of reach across time",
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="zero_std_freq",
@@ -5114,7 +5140,23 @@ class EDAEngineTest(
           mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=np.ones((1, 7, 1), dtype=float),
-          expected_message_substr="zero variation of frequency across time",
+          expected_std_message_substr="zero variation of frequency across time",
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
+      ),
+      dict(
+          testcase_name="freq_outliers_with_variability",
+          mock_kpi_ndarray=np.arange(7).reshape(1, 7).astype(float),
+          mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=np.array(
+              [[[1], [2], [3], [4], [5], [6], [100]]], dtype=float
+          ),
+          expected_std_message_substr=None,
+          expected_outlier_message_substr=(
+              "There are outliers in the scaled frequency"
+          ),
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="std_below_threshold_kpi",
@@ -5124,7 +5166,11 @@ class EDAEngineTest(
           mock_tc_ndarray=np.tile(np.arange(7), (1, 1, 1)).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr="KPI has zero standard deviation",
+          expected_std_message_substr="KPI has zero standard deviation",
+          expected_outlier_message_substr=(
+              "There are outliers in the scaled KPI"
+          ),
+          expected_num_findings=2,
       ),
   )
   def test_check_geo_std_attention_cases(
@@ -5133,7 +5179,9 @@ class EDAEngineTest(
       mock_tc_ndarray,
       mock_reach_ndarray,
       mock_freq_ndarray,
-      expected_message_substr,
+      expected_std_message_substr,
+      expected_outlier_message_substr,
+      expected_num_findings,
   ):
     meridian = mock.create_autospec(
         model.Meridian, instance=True, spec_set=False
@@ -5185,10 +5233,29 @@ class EDAEngineTest(
     self.assertEqual(
         outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
     )
-    self.assertLen(outcome.findings, 1)
-    (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
-    self.assertIn(expected_message_substr, finding.explanation)
+    self.assertLen(outcome.findings, expected_num_findings)
+
+    if expected_std_message_substr:
+      variability_findings = [
+          f
+          for f in outcome.findings
+          if f.finding_cause == eda_outcome.FindingCause.VARIABILITY
+      ]
+      self.assertLen(variability_findings, 1)
+      (finding,) = variability_findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertIn(expected_std_message_substr, finding.explanation)
+
+    if expected_outlier_message_substr:
+      outlier_findings = [
+          f
+          for f in outcome.findings
+          if f.finding_cause == eda_outcome.FindingCause.OUTLIER
+      ]
+      self.assertLen(outlier_findings, 1)
+      (finding,) = outlier_findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertIn(expected_outlier_message_substr, finding.explanation)
 
   def test_check_geo_std_handles_missing_rf_data(self):
     meridian = mock.create_autospec(
@@ -5334,6 +5401,23 @@ class EDAEngineTest(
         kpi_artifact.outlier_df[eda_constants.OUTLIERS_COL_NAME].iloc[0],
         outlier_value,
     )
+    kpi_findings = [
+        finding
+        for finding in outcome.findings
+        if isinstance(
+            finding.associated_artifact, eda_outcome.StandardDeviationArtifact
+        )
+        and finding.associated_artifact.variable
+        == constants.NATIONAL_KPI_SCALED
+    ]
+    self.assertLen(kpi_findings, 1)
+    kpi_finding = kpi_findings[0]
+    self.assertEqual(
+        kpi_finding.finding_cause, eda_outcome.FindingCause.OUTLIER
+    )
+    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertIn("There are outliers", kpi_finding.explanation)
+    self.assertEqual(kpi_finding.associated_artifact, kpi_artifact)
 
   def test_check_national_std_returns_info_finding_when_no_issues(self):
     meridian = mock.create_autospec(
@@ -5365,7 +5449,7 @@ class EDAEngineTest(
     (finding,) = outcome.findings
     self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
     self.assertIn(
-        "Please review any identified outliers",
+        "Please review the computed standard deviation",
         finding.explanation,
     )
 
@@ -5412,9 +5496,11 @@ class EDAEngineTest(
           mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr=(
+          expected_std_message_substr=(
               "The standard deviation of the scaled KPI drops"
           ),
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="zero_std_treatment_control",
@@ -5422,10 +5508,12 @@ class EDAEngineTest(
           mock_tc_ndarray=np.ones((7, 1), dtype=float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr=(
+          expected_std_message_substr=(
               "The standard deviation of these scaled treatment or control"
               " variables drops from positive to zero"
           ),
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="zero_std_reach",
@@ -5433,7 +5521,9 @@ class EDAEngineTest(
           mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
           mock_reach_ndarray=np.ones((7, 1), dtype=float),
           mock_freq_ndarray=None,
-          expected_message_substr="zero variation of reach across time",
+          expected_std_message_substr="zero variation of reach across time",
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="zero_std_freq",
@@ -5441,7 +5531,23 @@ class EDAEngineTest(
           mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=np.ones((7, 1), dtype=float),
-          expected_message_substr="zero variation of frequency across time",
+          expected_std_message_substr="zero variation of frequency across time",
+          expected_outlier_message_substr=None,
+          expected_num_findings=1,
+      ),
+      dict(
+          testcase_name="freq_outliers_with_variability",
+          mock_kpi_ndarray=np.arange(7).astype(float),
+          mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
+          mock_reach_ndarray=None,
+          mock_freq_ndarray=np.array(
+              [[1], [2], [3], [4], [5], [6], [100]], dtype=float
+          ),
+          expected_std_message_substr=None,
+          expected_outlier_message_substr=(
+              "There are outliers in the scaled frequency"
+          ),
+          expected_num_findings=1,
       ),
       dict(
           testcase_name="std_below_threshold_kpi",
@@ -5451,9 +5557,13 @@ class EDAEngineTest(
           mock_tc_ndarray=np.arange(7).reshape(7, 1).astype(float),
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
-          expected_message_substr=(
+          expected_std_message_substr=(
               "The standard deviation of the scaled KPI drops"
           ),
+          expected_outlier_message_substr=(
+              "There are outliers in the scaled KPI"
+          ),
+          expected_num_findings=2,
       ),
   )
   def test_check_national_std_attention_cases(
@@ -5462,7 +5572,9 @@ class EDAEngineTest(
       mock_tc_ndarray,
       mock_reach_ndarray,
       mock_freq_ndarray,
-      expected_message_substr,
+      expected_std_message_substr,
+      expected_outlier_message_substr,
+      expected_num_findings,
   ):
     meridian = mock.create_autospec(
         model.Meridian, instance=True, spec_set=False
@@ -5514,10 +5626,29 @@ class EDAEngineTest(
     self.assertEqual(
         outcome.check_type, eda_outcome.EDACheckType.STANDARD_DEVIATION
     )
-    self.assertLen(outcome.findings, 1)
-    (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
-    self.assertIn(expected_message_substr, finding.explanation)
+    self.assertLen(outcome.findings, expected_num_findings)
+
+    if expected_std_message_substr:
+      variability_findings = [
+          f
+          for f in outcome.findings
+          if f.finding_cause == eda_outcome.FindingCause.VARIABILITY
+      ]
+      self.assertLen(variability_findings, 1)
+      (finding,) = variability_findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertIn(expected_std_message_substr, finding.explanation)
+
+    if expected_outlier_message_substr:
+      outlier_findings = [
+          f
+          for f in outcome.findings
+          if f.finding_cause == eda_outcome.FindingCause.OUTLIER
+      ]
+      self.assertLen(outlier_findings, 1)
+      (finding,) = outlier_findings
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertIn(expected_outlier_message_substr, finding.explanation)
 
   def test_check_national_std_handles_missing_rf_data(self):
     meridian = mock.create_autospec(
@@ -7037,7 +7168,7 @@ class EDAEngineTest(
                   ).rename({"media_dim": constants.MEDIA_CHANNEL})
               ),
           },
-          eda_outcome.FindingCause.VARIABILITY,
+          eda_outcome.FindingCause.OUTLIER,
           1,
           lambda outcome: outcome.get_geo_artifacts(),
       ),

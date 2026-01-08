@@ -61,12 +61,14 @@ class FindingCause(enum.Enum):
     MULTICOLLINEARITY: For findings related to multicollinearity between
       variables (e.g. from VIF or pairwise correlation checks).
     VARIABILITY: For findings related to variables with extreme variability
-      issues, such as no variation (e.g. KPI invariability check), or having
-      outliers (e.g. cost per media unit outlier check).
+      issues, such as no variation (e.g. KPI invariability check or standard
+      deviation checks).
     INCONSISTENT_DATA: For findings related to inconsistent data points (e.g.
       zero cost with positive media units, from cost per media unit check).
     RUNTIME_ERROR: For findings that indicate a runtime error during an EDA
       check.
+    OUTLIER: For findings related to outliers in data (e.g. cost per media unit
+      outlier check).
   """
 
   NONE = enum.auto()
@@ -74,6 +76,7 @@ class FindingCause(enum.Enum):
   VARIABILITY = enum.auto()
   INCONSISTENT_DATA = enum.auto()
   RUNTIME_ERROR = enum.auto()
+  OUTLIER = enum.auto()
 
 
 @enum.unique
@@ -172,6 +175,7 @@ class VIFArtifact(AnalysisArtifact):
   """
 
   vif_da: xr.DataArray
+  # TODO: change this naming
   outlier_df: pd.DataFrame
 
 

@@ -474,7 +474,7 @@ def _check_cost_per_media_unit(
                 'There are outliers in cost per media unit across time.'
                 ' Please review the outcome artifact for more details.'
             ),
-            finding_cause=eda_outcome.FindingCause.VARIABILITY,
+            finding_cause=eda_outcome.FindingCause.OUTLIER,
             associated_artifact=artifact,
         )
     )
@@ -1690,8 +1690,9 @@ class EDAEngine:
       data: xr.DataArray,
       level: eda_outcome.AnalysisLevel,
       zero_std_message: str,
+      outlier_message: str,
   ) -> tuple[
-      eda_outcome.EDAFinding | None, eda_outcome.StandardDeviationArtifact
+      list[eda_outcome.EDAFinding], eda_outcome.StandardDeviationArtifact
   ]:
     """Helper to check standard deviation."""
     std_ds = _calculate_std(data)
@@ -1704,19 +1705,31 @@ class EDAEngine:
         outlier_df=outlier_df,
     )
 
-    finding = None
+    findings = []
     if (
         std_ds[eda_constants.STD_WITHOUT_OUTLIERS_VAR_NAME]
         < eda_constants.STD_THRESHOLD
     ).any():
-      finding = eda_outcome.EDAFinding(
-          severity=eda_outcome.EDASeverity.ATTENTION,
-          explanation=zero_std_message,
-          finding_cause=eda_outcome.FindingCause.VARIABILITY,
-          associated_artifact=artifact,
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=zero_std_message,
+              finding_cause=eda_outcome.FindingCause.VARIABILITY,
+              associated_artifact=artifact,
+          )
       )
 
-    return finding, artifact
+    if not outlier_df.empty:
+      findings.append(
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation=outlier_message,
+              finding_cause=eda_outcome.FindingCause.OUTLIER,
+              associated_artifact=artifact,
+          )
+      )
+
+    return findings, artifact
 
   def check_geo_std(
       self,
@@ -1737,6 +1750,10 @@ class EDAEngine:
                 ' variable for these geos.  Please review the input data,'
                 ' and/or consider grouping these geos together.'
             ),
+            (
+                'There are outliers in the scaled KPI in certain geos.'
+                ' Please check for any possible data errors.'
+            ),
         ),
         (
             self._stacked_treatment_control_scaled_da,
@@ -1746,6 +1763,11 @@ class EDAEngine:
                 ' review the input data. If these variables are sparse,'
                 ' consider combining them to mitigate potential model'
                 ' identifiability and convergence issues.'
+            ),
+            (
+                'There are outliers in the scaled treatment or control'
+                ' variables in certain geos. Please check for any possible data'
+                ' errors.'
             ),
         ),
         (
@@ -1757,6 +1779,11 @@ class EDAEngine:
                 ' geos, consider modeling them as impression-based channels'
                 ' instead by taking reach * frequency.'
             ),
+            (
+                'There are outliers in the scaled reach values of the RF or'
+                ' Organic RF channels in certain geos. Please check for any'
+                ' possible data errors.'
+            ),
         ),
         (
             self.all_freq_da,
@@ -1767,30 +1794,33 @@ class EDAEngine:
                 ' geos, consider modeling them as impression-based channels'
                 ' instead by taking reach * frequency.'
             ),
+            (
+                'There are outliers in the scaled frequency values of the RF or'
+                ' Organic RF channels in certain geos. Please check for any'
+                ' possible data errors.'
+            ),
         ),
     ]
 
-    for data_da, message in checks:
+    for data_da, std_message, outlier_message in checks:
       if data_da is None:
         continue
-      finding, artifact = self._check_std(
+      current_findings, artifact = self._check_std(
           level=eda_outcome.AnalysisLevel.GEO,
           data=data_da,
-          zero_std_message=message,
+          zero_std_message=std_message,
+          outlier_message=outlier_message,
       )
       artifacts.append(artifact)
-      if finding:
-        findings.append(finding)
+      if current_findings:
+        findings.extend(current_findings)
 
     # Add an INFO finding if no findings were added.
     if not findings:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
-              explanation=(
-                  'Please review any identified outliers and the standard'
-                  ' deviation.'
-              ),
+              explanation='Please review the computed standard deviations.',
               finding_cause=eda_outcome.FindingCause.NONE,
           )
       )
@@ -1818,6 +1848,10 @@ class EDAEngine:
                 ' the input data, and/or reconsider the feasibility of model'
                 ' fitting with this dataset.'
             ),
+            (
+                'There are outliers in the scaled KPI.'
+                ' Please check for any possible data errors.'
+            ),
         ),
         (
             self._stacked_national_treatment_control_scaled_da,
@@ -1829,6 +1863,10 @@ class EDAEngine:
                 ' Please review the input data, and/or consider combining these'
                 ' variables to mitigate sparsity.'
             ),
+            (
+                'There are outliers in the scaled treatment or control'
+                ' variables. Please check for any possible data errors.'
+            ),
         ),
         (
             self.national_all_reach_scaled_da,
@@ -1837,6 +1875,11 @@ class EDAEngine:
                 ' across time at the national level after outliers are removed.'
                 ' Consider modeling these RF channels as impression-based'
                 ' channels instead.'
+            ),
+            (
+                'There are outliers in the scaled reach values of the RF or'
+                ' Organic RF channels. Please check for any possible data'
+                ' errors.'
             ),
         ),
         (
@@ -1847,30 +1890,33 @@ class EDAEngine:
                 ' Consider modeling these RF channels as impression-based'
                 ' channels instead.'
             ),
+            (
+                'There are outliers in the scaled frequency values of the RF or'
+                ' Organic RF channels. Please check for any possible data'
+                ' errors.'
+            ),
         ),
     ]
 
-    for data_da, message in checks:
+    for data_da, std_message, outlier_message in checks:
       if data_da is None:
         continue
-      finding, artifact = self._check_std(
+      current_findings, artifact = self._check_std(
           data=data_da,
           level=eda_outcome.AnalysisLevel.NATIONAL,
-          zero_std_message=message,
+          zero_std_message=std_message,
+          outlier_message=outlier_message,
       )
       artifacts.append(artifact)
-      if finding:
-        findings.append(finding)
+      if current_findings:
+        findings.extend(current_findings)
 
     # Add an INFO finding if no findings were added.
     if not findings:
       findings.append(
           eda_outcome.EDAFinding(
               severity=eda_outcome.EDASeverity.INFO,
-              explanation=(
-                  'Please review any identified outliers and the standard'
-                  ' deviation.'
-              ),
+              explanation='Please review the computed standard deviations.',
               finding_cause=eda_outcome.FindingCause.NONE,
           )
       )
