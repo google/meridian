@@ -15,6 +15,8 @@
 """Constants specific to MeridianEDA."""
 from typing import Literal
 import altair as alt
+import immutabledict
+from meridian import constants
 import numpy as np
 
 ##### EDA Engine constants #####
@@ -56,6 +58,15 @@ PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
     type='linear',
 )
+CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
+    constants.MEDIA_CHANNEL: '#4285F4',
+    constants.ORGANIC_MEDIA_CHANNEL: '#F29900',
+    constants.RF_CHANNEL: '#EA4335',
+    constants.ORGANIC_RF_CHANNEL: '#FBBC04',
+    constants.CONTROL_VARIABLE: '#34A853',
+    constants.NON_MEDIA_CHANNEL: '#12939A',
+})
+
 
 ##### Report constants #####
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
@@ -67,10 +78,15 @@ DISPLAY_LIMIT = 5
 # category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
+RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
+# category 2
+RESPONSE_VARIABLES_CARD_ID = 'response-variables'
+RESPONSE_VARIABLES_CARD_TITLE = 'Individual Explanatory/Response Variables'
+TREATMENTS_CHART_ID = 'treatments-chart'
+CONTROLS_AND_NON_MEDIA_CHART_ID = 'controls-and-non-media-chart'
 # category 4
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
-RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
 EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
 EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
@@ -79,6 +95,15 @@ R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 
 
 ##### Finding messages #####
+VARIABILITY_PLOT_INFO = (
+    'Please review the variability of the explanatory and response variables'
+    ' illustrated by the boxplots. Note that variables with very low'
+    ' variability could be difficult to estimate and could hurt model'
+    ' convergence. Consider merging or replacing them with other variables,'
+    ' dropping them if they are negligibly small, or using a custom prior if'
+    ' you have relevant information. If outliers exist, check your data input'
+    ' to determine if they are genuine or erroneous.'
+)
 RELATIVE_SPEND_SHARE_INFO = (
     "Please review the channel's share of spend. Channels with a very small"
     ' share of spend might be difficult to estimate. You might want to combine'
