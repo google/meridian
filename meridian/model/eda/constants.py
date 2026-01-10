@@ -155,3 +155,11 @@ R_SQUARED_GEO_INFO = (
     ' effects. Consider dropping the variable with very high'
     ' R-squared.'
 )
+POPULATION_CORRELATION_INFO = (
+    'Spearman correlation between population and treatments/controls has been'
+    ' computed. Consider population-scaling any control variables or non-media'
+    ' treatments that are highly correlated with population. For other media'
+    ' channels (that are automatically population-scaled by Meridian), high'
+    ' correlation may indicate that they may have been population-scaled twice'
+    ' accidentally. See artifact for details.'
+)
