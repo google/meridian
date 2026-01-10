@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Sequence
 import itertools
 from unittest import mock
 from absl.testing import absltest
@@ -32,6 +33,8 @@ from statsmodels.stats import outliers_influence
 import xarray as xr
 
 
+CONTROL_VAR = "control"
+
 def _construct_coords(
     dims: list[str],
     n_geos: int,
@@ -51,11 +54,31 @@ def _construct_coords(
 
 
 def _construct_dims_and_shapes(
-    data_shape: tuple[int, ...], var_name: str | None = None
-):
-  """Helper to construct the dimensions of a DataArray."""
+    data_shape: Sequence[int],
+    *,
+    var_name: str | None = None,
+    var_dim_name: str | None = None,
+) -> tuple[list[str], int, int, int]:
+  """Helper to construct the dimensions of a DataArray.
+
+  Args:
+    data_shape: The shape of the data.
+    var_name: The name of the variable. If provided, `var_dim_name` must also be
+      specified.
+    var_dim_name: The name of the variable dimension. If `var_name` is None,
+      this must also be None.
+
+  Returns:
+    A tuple containing the dimensions, number of geos, number of times, and
+    number of variables.
+
+  Raises:
+    ValueError: If `var_name` and `var_dim_name` are not consistently provided.
+  """
   ndim = len(data_shape)
   if var_name is None:
+    if var_dim_name is not None:
+      raise ValueError("var_dim_name must be None if var_name is None.")
     n_vars = 0
     if ndim == 2:
       dims = [constants.GEO, constants.TIME]
@@ -66,12 +89,12 @@ def _construct_dims_and_shapes(
     else:
       raise ValueError(f"Unsupported data shape: {data_shape}")
   else:
-    var_dim_name = f"{var_name}_dim"
+    final_var_dim_name = var_dim_name or var_name + "_dim"
     if ndim == 3:
-      dims = [constants.GEO, constants.TIME, var_dim_name]
+      dims = [constants.GEO, constants.TIME, final_var_dim_name]
       n_geos, n_times, n_vars = data_shape
     elif ndim == 2:
-      dims = [constants.TIME, var_dim_name]
+      dims = [constants.TIME, final_var_dim_name]
       n_times, n_vars = data_shape
       n_geos = 0
     else:
@@ -81,11 +104,15 @@ def _construct_dims_and_shapes(
 
 
 def _create_dataset_with_var_dim(
-    data: np.ndarray, var_name: str = "media"
+    data: np.ndarray,
+    var_name: str = "media",
+    var_dim_name: str | None = None,
 ) -> xr.Dataset:
   """Helper to create a dataset with a single variable dimension."""
   dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
-      data.shape, var_name
+      data_shape=data.shape,
+      var_name=var_name,
+      var_dim_name=var_dim_name,
   )
   coords = _construct_coords(dims, n_geos, n_times, n_vars, var_name)
   xarray_data_vars = {var_name: (dims, data)}
@@ -94,11 +121,16 @@ def _create_dataset_with_var_dim(
 
 
 def _create_data_array_with_var_dim(
-    data: np.ndarray, name: str, var_name: str | None = None
+    data: np.ndarray,
+    name: str,
+    var_name: str | None = None,
+    var_dim_name: str | None = None,
 ) -> xr.DataArray:
   """Helper to create a data array with a single variable dimension."""
   dims, n_geos, n_times, n_vars = _construct_dims_and_shapes(
-      data.shape, var_name
+      data_shape=data.shape,
+      var_name=var_name,
+      var_dim_name=var_dim_name,
   )
   if var_name is None:
     var_name = name
@@ -119,8 +151,9 @@ def _get_low_vif_da(geo_level: bool = True):
     shape = (_N_GEOS_VIF,) + shape
 
   data = _RNG.random(shape)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
-  return da.rename({"var_dim": eda_constants.VARIABLE})
+  return _create_data_array_with_var_dim(
+      data, "VIF", eda_constants.VARIABLE, eda_constants.VARIABLE
+  )
 
 
 def _get_geo_high_vif_da():
@@ -130,8 +163,9 @@ def _get_geo_high_vif_da():
   v3_geo1 = _RNG.random(_N_TIMES_VIF)
   v3 = np.stack([v3_geo0, v3_geo1], axis=0)
   data = np.stack([v1, v2, v3], axis=-1)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
-  return da.rename({"var_dim": eda_constants.VARIABLE})
+  return _create_data_array_with_var_dim(
+      data, "VIF", eda_constants.VARIABLE, eda_constants.VARIABLE
+  )
 
 
 def _get_overall_high_vif_da(geo_level: bool = True):
@@ -141,8 +175,9 @@ def _get_overall_high_vif_da(geo_level: bool = True):
   # v3 is a linear combination of v1 and v2, which results in an inf VIF value.
   v3 = v1 * 2 + v2 * 0.5
   data = np.stack([v1, v2, v3], axis=-1)
-  da = _create_data_array_with_var_dim(data, "VIF", "var")
-  return da.rename({"var_dim": eda_constants.VARIABLE})
+  return _create_data_array_with_var_dim(
+      data, "VIF", eda_constants.VARIABLE, eda_constants.VARIABLE
+  )
 
 
 def _create_ndarray_with_std_below_threshold(
@@ -4439,8 +4474,14 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [10], [12]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(
+        data=media_data,
+        var_name=constants.MEDIA,
+    )
+    mock_control_ds = _create_dataset_with_var_dim(
+        data=control_data,
+        var_name=CONTROL_VAR,
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4487,8 +4528,14 @@ class EDAEngineTest(
         [[2], [4], [6]],
         [[8], [11], [14]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(
+        data=media_data,
+        var_name=constants.MEDIA,
+    )
+    mock_control_ds = _create_dataset_with_var_dim(
+        data=control_data,
+        var_name=CONTROL_VAR,
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4553,8 +4600,14 @@ class EDAEngineTest(
         [[1], [2], [3]],
         [[6], [5], [4]],
     ])  # Shape (2, 3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(
+        data=media_data,
+        var_name=constants.MEDIA,
+    )
+    mock_control_ds = _create_dataset_with_var_dim(
+        data=control_data,
+        var_name=CONTROL_VAR,
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.input_data_with_media_only)
     engine = eda_engine.EDAEngine(meridian)
@@ -4653,18 +4706,19 @@ class EDAEngineTest(
         [2, 2, -2],
         [3, 4, -2],
     ]).astype(float)
-    national_da = (
-        _create_data_array_with_var_dim(data, name="data", var_name="variable")
-        .rename({"variable_dim": eda_constants.VARIABLE})
-        .assign_coords(
-            {
-                eda_constants.VARIABLE: [
-                    "media_0",
-                    "control_0",
-                    "control_1",
-                ]
-            }
-        )
+    national_da = _create_data_array_with_var_dim(
+        data,
+        name="data",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords(
+        {
+            eda_constants.VARIABLE: [
+                "media_0",
+                "control_0",
+                "control_1",
+            ]
+        }
     )
     self._mock_eda_engine_property(
         "_stacked_national_treatment_control_scaled_da", national_da
@@ -4705,18 +4759,19 @@ class EDAEngineTest(
     # Use 2 geos for test
     n_geos = 2
     data = np.stack([data_1geo] * n_geos, axis=0)
-    geo_da = (
-        _create_data_array_with_var_dim(data, name="data", var_name="variable")
-        .rename({"variable_dim": eda_constants.VARIABLE})
-        .assign_coords(
-            {
-                eda_constants.VARIABLE: [
-                    "media_0",
-                    "control_0",
-                    "control_1",
-                ]
-            }
-        )
+    geo_da = _create_data_array_with_var_dim(
+        data,
+        name="data",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords(
+        {
+            eda_constants.VARIABLE: [
+                "media_0",
+                "control_0",
+                "control_1",
+            ]
+        }
     )
     self._mock_eda_engine_property(
         "_stacked_treatment_control_scaled_da", geo_da
@@ -4889,8 +4944,14 @@ class EDAEngineTest(
         [2],
         [4],
     ])  # Shape (3, 1)
-    mock_media_ds = _create_dataset_with_var_dim(media_data, "media")
-    mock_control_ds = _create_dataset_with_var_dim(control_data, "control")
+    mock_media_ds = _create_dataset_with_var_dim(
+        data=media_data,
+        var_name=constants.MEDIA,
+    )
+    mock_control_ds = _create_dataset_with_var_dim(
+        data=control_data,
+        var_name=CONTROL_VAR,
+    )
     mock_ds = xr.merge([mock_media_ds, mock_control_ds])
     meridian = model.Meridian(self.national_input_data_media_and_rf)
     engine = eda_engine.EDAEngine(meridian)
@@ -5828,8 +5889,11 @@ class EDAEngineTest(
     v4_geo1 = _RNG.random(_N_TIMES_VIF)
     v4 = np.stack([v4_geo0, v4_geo1], axis=0)
     data = np.stack([v1, v2, v3, v4], axis=-1)
-    mock_da = _create_data_array_with_var_dim(data, "VIF", "var").rename(
-        {"var_dim": eda_constants.VARIABLE}
+    mock_da = _create_data_array_with_var_dim(
+        data=data,
+        name="VIF",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
     )
 
     meridian = model.Meridian(self.input_data_with_media_only)
@@ -6154,11 +6218,12 @@ class EDAEngineTest(
     v2 = np.ones(shape)
     v3 = _RNG.random(shape)
     data_np = np.stack([v1, v2, v3], axis=-1)
-    data = (
-        _create_data_array_with_var_dim(data_np, "VIF", "var")
-        .rename({"var_dim": eda_constants.VARIABLE})
-        .assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
-    )
+    data = _create_data_array_with_var_dim(
+        data=data_np,
+        name="VIF",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
     self._mock_eda_engine_property(
         "_stacked_national_treatment_control_scaled_da", data
     )
@@ -6983,9 +7048,13 @@ class EDAEngineTest(
         [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]], dtype="float32"
     )
     media_ds = _create_dataset_with_var_dim(
-        media_data, var_name="national_media_spend"
+        media_data,
+        var_name=constants.NATIONAL_MEDIA_SPEND,
     )
-    rf_ds = _create_dataset_with_var_dim(rf_data, var_name="national_rf_spend")
+    rf_ds = _create_dataset_with_var_dim(
+        rf_data,
+        var_name=constants.NATIONAL_RF_SPEND,
+    )
     ds = xr.merge([media_ds, rf_ds])
     xr.testing.assert_equal(
         eda_engine.stack_variables(ds),
@@ -7088,9 +7157,9 @@ class EDAEngineTest(
     mock_da = _create_data_array_with_var_dim(
         data,
         name=constants.TREATMENT_CONTROL_SCALED,
-        var_name="var",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
     )
-    mock_da = mock_da.rename({"var_dim": eda_constants.VARIABLE})
     mock_da = mock_da.assign_coords({eda_constants.VARIABLE: [variable_name]})
 
     self._mock_eda_engine_property(
@@ -7249,7 +7318,8 @@ class EDAEngineTest(
                       ),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
-                  ).rename({"var_dim": eda_constants.VARIABLE})
+                      var_dim_name=eda_constants.VARIABLE,
+                  )
               ),
           },
           eda_outcome.FindingCause.MULTICOLLINEARITY,
@@ -7268,7 +7338,8 @@ class EDAEngineTest(
                       ]),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
-                  ).rename({"var_dim": eda_constants.VARIABLE})
+                      var_dim_name=eda_constants.VARIABLE,
+                  )
               ),
           },
           eda_outcome.FindingCause.NONE,
@@ -7288,6 +7359,7 @@ class EDAEngineTest(
                       np.arange(7).reshape(1, 7, 1),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
+                      var_dim_name=eda_constants.VARIABLE,
                   )
               ),
               "all_reach_scaled_da": None,
@@ -7310,6 +7382,7 @@ class EDAEngineTest(
                       np.arange(7).reshape(1, 7, 1),
                       name=constants.TREATMENT_CONTROL_SCALED,
                       var_name=eda_constants.VARIABLE,
+                      var_dim_name=eda_constants.VARIABLE,
                   )
               ),
               "all_reach_scaled_da": None,
@@ -7359,6 +7432,87 @@ class EDAEngineTest(
     else:
       for finding in target_findings:
         self.assertIn(finding.associated_artifact, artifacts)
+
+  def test_check_population_corr_raises_error_for_national_model(self):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_population_corr()
+
+  def test_check_population_corr_raises_error_for_missing_population(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._mock_eda_engine_property("geo_population_da", None)
+    with self.assertRaisesRegex(
+        ValueError,
+        "geo_population_da is None, cannot run check_population_corr",
+    ):
+      engine.check_population_corr()
+
+  def _setup_population_corr_mocks(self):
+    """Mocks data for population correlation checks."""
+    n_geos = 3
+    n_times = 4
+    population = np.linspace(100, 200, n_geos)
+    mock_pop_da = _create_data_array_with_var_dim(
+        population.reshape(-1, 1),
+        name=constants.POPULATION,
+    ).squeeze(constants.TIME, drop=True)
+    self._mock_eda_engine_property("geo_population_da", mock_pop_da)
+
+    # channel 0 correlates positively with population, channel 1 negatively.
+    c0_data = np.tile(np.arange(n_geos) + 1, (n_times, 1)).T
+    c1_data = np.tile(np.arange(n_geos, 0, -1), (n_times, 1)).T
+    data = np.stack([c0_data, c1_data], axis=-1)
+    mock_ds = _create_dataset_with_var_dim(
+        data,
+        var_name=constants.CONTROLS_SCALED,
+        var_dim_name=constants.CONTROL_VARIABLE,
+    )
+    self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
+
+  def test_check_population_corr_artifact_has_correct_values(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._setup_population_corr_mocks()
+
+    outcome = engine.check_population_corr()
+
+    with self.subTest("artifact_count_and_type"):
+      self.assertLen(outcome.analysis_artifacts, 1)
+      (artifact,) = outcome.analysis_artifacts
+      self.assertIsInstance(artifact, eda_outcome.PopulationCorrelationArtifact)
+      self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+
+    with self.subTest("correlation_values"):
+      corr_da = artifact.correlation_ds[constants.CONTROLS_SCALED]
+      self.assertAlmostEqual(
+          corr_da.isel({constants.CONTROL_VARIABLE: 0}).item(), 1.0, places=5
+      )
+      self.assertAlmostEqual(
+          corr_da.isel({constants.CONTROL_VARIABLE: 1}).item(), -1.0, places=5
+      )
+
+  def test_check_population_corr_returns_info_finding(self):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._setup_population_corr_mocks()
+
+    outcome = engine.check_population_corr()
+
+    with self.subTest("check_type"):
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.POPULATION_CORRELATION
+      )
+    with self.subTest("finding_count"):
+      self.assertLen(outcome.findings, 1)
+    (finding,) = outcome.findings
+    with self.subTest("finding_severity"):
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
+    with self.subTest("finding_cause"):
+      self.assertEqual(finding.finding_cause, eda_outcome.FindingCause.NONE)
+    with self.subTest("finding_associated_artifact"):
+      self.assertIs(finding.associated_artifact, outcome.analysis_artifacts[0])
 
 
 if __name__ == "__main__":

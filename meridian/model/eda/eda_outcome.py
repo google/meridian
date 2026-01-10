@@ -33,6 +33,7 @@ __all__ = [
     "KpiInvariabilityArtifact",
     "CostPerMediaUnitArtifact",
     "VariableGeoTimeCollinearityArtifact",
+    "PopulationCorrelationArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
@@ -222,6 +223,20 @@ class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
   rsquared_ds: xr.Dataset
 
 
+@dataclasses.dataclass(frozen=True)
+class PopulationCorrelationArtifact(AnalysisArtifact):
+  """Encapsulates artifacts from population correlation analysis.
+
+  Attributes:
+    correlation_ds: Dataset with Spearman correlation coefficients between
+      population and time-averaged treatments/controls. Each data variable in
+      the dataset corresponds to a variable in treatment_control_scaled_ds, and
+      its dimensions reflect the non-geo, non-time dimensions (e.g., 'channel').
+  """
+
+  correlation_ds: xr.Dataset
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -232,6 +247,7 @@ class EDACheckType(enum.Enum):
   KPI_INVARIABILITY = enum.auto()
   COST_PER_MEDIA_UNIT = enum.auto()
   VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
+  POPULATION_CORRELATION = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)
