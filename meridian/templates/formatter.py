@@ -204,6 +204,20 @@ def format_monetary_num(num: float, currency: str) -> str:
   return compact_number(num, precision=precision, currency=currency)
 
 
+def format_col_names(headers: Sequence[str]) -> Sequence[str]:
+  """Turns underscores to spaces and capitalizes words.
+
+  Ex. ['col_name', ...] to ['Col Name', ...])
+
+  Args:
+    headers: The list of column names to format.
+
+  Returns:
+    Human readable list of column names.
+  """
+  return [header.replace('_', ' ').title() for header in headers]
+
+
 def create_template_env() -> jinja2.Environment:
   """Creates a Jinja2 template environment."""
   return jinja2.Environment(

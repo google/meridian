@@ -41,7 +41,7 @@ STD_THRESHOLD = 1e-4
 OUTLIERS_COL_NAME = 'outliers'
 ABS_OUTLIERS_COL_NAME = 'abs_outliers'
 VIF_COL_NAME = 'VIF'
-EXTREME_CORRELATION_WITH = 'ExtremeCorrelationWith'
+EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
 TIME_AND_GEO_AGGREGATION = 'times and geos'
 TIME_AGGREGATION = 'times'
 
@@ -84,6 +84,9 @@ RESPONSE_VARIABLES_CARD_ID = 'response-variables'
 RESPONSE_VARIABLES_CARD_TITLE = 'Individual Explanatory/Response Variables'
 TREATMENTS_CHART_ID = 'treatments-chart'
 CONTROLS_AND_NON_MEDIA_CHART_ID = 'controls-and-non-media-chart'
+KPI_CHART_ID = 'kpi-chart'
+TREATMENT_CONTROL_VARIABILITY_TABLE_ID = 'treatment-control-variability-table'
+TREATMENT_CONTROL_OUTLIER_TABLE_ID = 'treatment-control-outlier-table'
 # category 4
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'

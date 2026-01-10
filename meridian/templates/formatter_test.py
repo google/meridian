@@ -92,6 +92,36 @@ class FormatterTest(parameterized.TestCase):
     formatted_number = formatter.compact_number(num, precision, currency)
     self.assertEqual(formatted_number, expected)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='basic_snake_case',
+          input_headers=['finding_cause'],
+          expected=['Finding Cause'],
+      ),
+      dict(
+          testcase_name='multiple_columns',
+          input_headers=['geo', 'time_index', 'channel_name'],
+          expected=['Geo', 'Time Index', 'Channel Name'],
+      ),
+      dict(
+          testcase_name='corrects_weird_casing',
+          input_headers=['pair_WISE_correlation', 'tOtAl_SPEND'],
+          expected=['Pair Wise Correlation', 'Total Spend'],
+      ),
+      dict(
+          testcase_name='handles_tuples_input',
+          input_headers=('row_id', 'value'),
+          expected=['Row Id', 'Value'],
+      ),
+      dict(
+          testcase_name='empty_input',
+          input_headers=[],
+          expected=[],
+      ),
+  )
+  def test_format_col_names(self, input_headers, expected):
+    self.assertEqual(formatter.format_col_names(input_headers), expected)
+
   def test_create_summary_html(self):
     template_env = formatter.create_template_env()
     title = 'Integration Test Report'
