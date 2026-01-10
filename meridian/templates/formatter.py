@@ -288,3 +288,12 @@ def _create_charts_htmls(
     else:
       htmls.append(table_template.render(dataclasses.asdict(spec)))
   return htmls
+
+
+def create_finding_html(
+    template_env: jinja2.Environment, text: str, finding_type: str
+) -> str:
+  """Generates an HTML tag for the table finding."""
+  return template_env.get_template('finding.html.jinja').render(
+      finding_class=finding_type, text=text
+  )
