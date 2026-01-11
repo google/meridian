@@ -21,6 +21,7 @@ $text_grey: var(--Grey-800, #3c4043);
 $text_green: var(--Green-500, #34a853);
 $text_red: var(--Red-600, #d93025);
 $error_red: #f8d7da;
+$text_yellow: #664d03;
 $warning_yellow: #fff3cd;
 $info_blue: #dae8fc;
 
@@ -261,6 +262,38 @@ charts {
       font-weight: 400;
       line-height: 16px;
       max-width: 450px;
+    }
+
+    finding {
+      display: flex;
+      width: fit-content;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+
+      padding: 4px 12px;
+      border-radius: 16px;
+      margin: 2px 4px 2px 0;
+
+      font-family: $google_sans;
+      font-weight: 500;
+      font-size: 13px;
+      line-height: 20px;
+
+      &.error {
+        background-color: $error_red;
+        color: $text_red;
+      }
+
+      &.attention {
+        background-color: $warning_yellow;
+        color: $text_yellow;
+      }
+
+      &.info {
+        background-color: $info_blue;
+        color: $chip_blue;
+      }
     }
   }
 }

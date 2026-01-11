@@ -44,6 +44,8 @@ VIF_COL_NAME = 'VIF'
 EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
 TIME_AND_GEO_AGGREGATION = 'times and geos'
 TIME_AGGREGATION = 'times'
+ATTENTIONS = 'attentions'
+ERRORS = 'errors'
 
 ##### EDA Plotting properties #####
 VARIABLE = 'var'
@@ -53,13 +55,17 @@ MEDIA_IMPRESSIONS_SCALED = 'media_impressions_scaled'
 IMPRESSION_SHARE_SCALED = 'impression_share_scaled'
 SPEND_SHARE = 'spend_share'
 LABEL = 'label'
+DEFAULT_CHART_COLOR = '#4C78A8'
 PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     domain=[-1.0, 0.0, 1.0],
     range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
     type='linear',
 )
 CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
+    constants.MEDIA_UNITS: '#4285F4',
     constants.MEDIA_CHANNEL: '#4285F4',
+    constants.COST: '#FBBC04',
+    COST_PER_MEDIA_UNIT: '#A142F4',
     constants.ORGANIC_MEDIA_CHANNEL: '#F29900',
     constants.RF_CHANNEL: '#EA4335',
     constants.ORGANIC_RF_CHANNEL: '#FBBC04',
@@ -75,10 +81,14 @@ DISPLAY_LIMIT_MESSAGE = (
     ' cases. Please use {function} to review {to_review}.)'
 )
 DISPLAY_LIMIT = 5
+TIME_SERIES_LIMIT = 2
 # category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
 RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
+SPEND_PER_MEDIA_UNIT_CHART_ID = 'spend-per-media-unit-chart'
+INCONSISTENT_DATA_TABLE_ID = 'inconsistent-data-table'
+COST_PER_MEDIA_UNIT_OUTLIER_TABLE_ID = 'cost-per-media-unit-outlier-table'
 # category 2
 RESPONSE_VARIABLES_CARD_ID = 'response-variables'
 RESPONSE_VARIABLES_CARD_TITLE = 'Individual Explanatory/Response Variables'
@@ -95,9 +105,60 @@ EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
 EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
+# summary
+SUMMARY_CARD_ID = 'summary'
+SUMMARY_CARD_TITLE = 'Summary'
+SUMMARY_TABLE_ID = 'summary-table'
+CATEGORY = 'Category'
+FINDING = 'Finding'
+RECOMMENDED_NEXT_STEP = 'Recommended Next Step'
 
 
 ##### Finding messages #####
+SUMMARY_TABLE_SUMMARY_INFO = (
+    'Review the full report to investigate the health of your dataset and'
+    ' confirm findings align with your expectations.'
+)
+SUMMARY_TABLE_SUMMARY_FINDING = (
+    'Review the health of your dataset below. Resolve all FAILS and investigate'
+    ' REVIEW flags in the detailed sections to ensure your data is ready for'
+    ' modeling.'
+)
+SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{SPEND_AND_MEDIA_UNIT_CARD_ID}">Spend and Media Units</a> for'
+    ' more details.'
+)
+SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_FINDING = (
+    f'See <a href="#{SPEND_AND_MEDIA_UNIT_CARD_ID}">Spend and Media Units</a>.'
+    ' Verify spend and execution units align across channels and address any'
+    ' missing data.'
+)
+SUMMARY_TABLE_RESPONSE_VARIABLES_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{RESPONSE_VARIABLES_CARD_ID}">Individual Explanatory/Response'
+    ' Variables</a> for more details.'
+)
+SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING = (
+    f'See <a href="#{RESPONSE_VARIABLES_CARD_ID}">Individual'
+    ' Explanatory/Response Variables</a>. Ensure that data is accurate and'
+    ' free from anomalies or outliers that could skew results.'
+)
+SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID}">Relationship Among the'
+    ' Variables</a> for more details.'
+)
+SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING = (
+    f'See <a href="#{RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID}">Relationship'
+    ' Among the Variables</a>. Check for high multicollinearity among the'
+    ' variables that could lead to model convergence issues.'
+)
+SPEND_PER_MEDIA_UNIT_INFO = (
+    'Please review the patterns for spend, impressions, and'
+    ' spend-per-impression. Any erratic or unexpected patterns warrant a data'
+    ' review.'
+)
 VARIABILITY_PLOT_INFO = (
     'Please review the variability of the explanatory and response variables'
     ' illustrated by the boxplots. Note that variables with very low'
@@ -155,3 +216,21 @@ R_SQUARED_GEO_INFO = (
     ' effects. Consider dropping the variable with very high'
     ' R-squared.'
 )
+CATEGORY_TO_FINDING = immutabledict.immutabledict({
+    SUMMARY_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_SUMMARY_INFO,
+        True: SUMMARY_TABLE_SUMMARY_FINDING,
+    }),
+    SPEND_AND_MEDIA_UNIT_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_INFO,
+        True: SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_FINDING,
+    }),
+    RESPONSE_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_RESPONSE_VARIABLES_INFO,
+        True: SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING,
+    }),
+    RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO,
+        True: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING,
+    }),
+})
