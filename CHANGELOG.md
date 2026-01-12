@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Remove dependency on the unmaintained `patsy` library.
+* Add interactive zooming to prior-posterior distribution plots.
+* Fix plots exceeding the width of the HTML 2-pagers.
 * Raise exception when paid media channels have zero total spend.
 * Include ArviZ version in model serialization.
 * Add more non-negative checks for model input data.
