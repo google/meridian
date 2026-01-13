@@ -21,7 +21,7 @@ import typing
 import pandas as pd
 import xarray as xr
 
-__all__ = [
+__all__ = (
     "EDASeverity",
     "EDAFinding",
     "AnalysisLevel",
@@ -33,11 +33,12 @@ __all__ = [
     "KpiInvariabilityArtifact",
     "CostPerMediaUnitArtifact",
     "VariableGeoTimeCollinearityArtifact",
+    "PopulationCorrelationArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
     "CriticalCheckEDAOutcomes",
-]
+)
 
 
 @enum.unique
@@ -113,7 +114,7 @@ class AnalysisArtifact:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class EDAFinding:
-  """Encapsulates a single, specific finding from an EDA check.
+  """A single, specific finding from an EDA check.
 
   Attributes:
       severity: The severity level of the finding.
@@ -134,7 +135,7 @@ class EDAFinding:
 
 @dataclasses.dataclass(frozen=True)
 class PairwiseCorrArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a single pairwise correlation analysis.
+  """Artifacts from a single pairwise correlation analysis.
 
   Attributes:
     corr_matrix: Pairwise correlation matrix.
@@ -152,7 +153,7 @@ class PairwiseCorrArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class StandardDeviationArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a standard deviation analysis.
+  """Artifacts from a standard deviation analysis.
 
   Attributes:
     variable: The variable for which standard deviation is calculated.
@@ -167,7 +168,7 @@ class StandardDeviationArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class VIFArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a single VIF analysis.
+  """Artifacts from a single VIF analysis.
 
   Attributes:
     vif_da: DataArray with VIF values.
@@ -181,7 +182,7 @@ class VIFArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class KpiInvariabilityArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a KPI invariability analysis.
+  """Artifacts from a KPI invariability analysis.
 
   Attributes:
     kpi_da: DataArray of the KPI that is examined for variability.
@@ -195,7 +196,7 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class CostPerMediaUnitArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a Cost per Media Unit analysis.
+  """Artifacts from a Cost per Media Unit analysis.
 
   Attributes:
     cost_per_media_unit_da: DataArray of cost per media unit.
@@ -212,7 +213,7 @@ class CostPerMediaUnitArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a Geo/Time Collinearity analysis for Treatment/Control variables.
+  """Artifacts from a Geo/Time Collinearity analysis for Treatment/Control variables.
 
   Attributes:
     rsquared_ds: Dataset containing adjusted R-squared values for treatments and
@@ -220,6 +221,20 @@ class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
   """
 
   rsquared_ds: xr.Dataset
+
+
+@dataclasses.dataclass(frozen=True)
+class PopulationCorrelationArtifact(AnalysisArtifact):
+  """Artifacts from population correlation analysis.
+
+  Attributes:
+    correlation_ds: Dataset with Spearman correlation coefficients between
+      population and time-averaged treatments/controls. Each data variable in
+      the dataset corresponds to a variable in treatment_control_scaled_ds, and
+      its dimensions reflect the non-geo, non-time dimensions (e.g., 'channel').
+  """
+
+  correlation_ds: xr.Dataset
 
 
 @enum.unique
@@ -232,6 +247,7 @@ class EDACheckType(enum.Enum):
   KPI_INVARIABILITY = enum.auto()
   COST_PER_MEDIA_UNIT = enum.auto()
   VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
+  POPULATION_CORRELATION = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)
@@ -317,7 +333,7 @@ class EDAOutcome(typing.Generic[ArtifactType]):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class CriticalCheckEDAOutcomes:
-  """Encapsulates the outcomes of all critical EDA checks.
+  """Outcomes of all critical EDA checks.
 
   Attributes:
     kpi_invariability: Outcome of the KPI invariability check.

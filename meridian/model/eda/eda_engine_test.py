@@ -7360,6 +7360,90 @@ class EDAEngineTest(
       for finding in target_findings:
         self.assertIn(finding.associated_artifact, artifacts)
 
+  def test_check_population_corr_scaled_treatment_control_error_for_national(
+      self,
+  ):
+    meridian = model.Meridian(self.national_input_data_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_population_corr_scaled_treatment_control()
+
+  def test_check_population_corr_scaled_treatment_control_missing_population(
+      self,
+  ):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._mock_eda_engine_property("geo_population_da", None)
+    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
+      engine.check_population_corr_scaled_treatment_control()
+
+  def _setup_population_corr_mocks(self) -> None:
+    """Mocks data for population correlation checks."""
+    n_geos = 3
+    n_times = 4
+    population = np.linspace(100, 200, n_geos)
+    mock_pop_da = _create_data_array_with_var_dim(
+        population.reshape(-1, 1),
+        name=constants.POPULATION,
+    ).squeeze(constants.TIME, drop=True)
+    self._mock_eda_engine_property("geo_population_da", mock_pop_da)
+
+    # channel 0 correlates positively with population, channel 1 negatively.
+    c0_data = np.tile(np.arange(n_geos) + 1, (n_times, 1)).T
+    c1_data = np.tile(np.arange(n_geos, 0, -1), (n_times, 1)).T
+    data = np.stack([c0_data, c1_data], axis=-1)
+    mock_ds = _create_dataset_with_var_dim(
+        data, var_name=constants.CONTROLS_SCALED
+    ).rename({f"{constants.CONTROLS_SCALED}_dim": constants.CONTROL_VARIABLE})
+    self._mock_eda_engine_property("treatment_control_scaled_ds", mock_ds)
+
+  def test_check_population_corr_scaled_treatment_control_has_correct_artifact(
+      self,
+  ):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._setup_population_corr_mocks()
+
+    outcome = engine.check_population_corr_scaled_treatment_control()
+
+    with self.subTest("artifact_count_and_type"):
+      self.assertLen(outcome.analysis_artifacts, 1)
+      (artifact,) = outcome.analysis_artifacts
+      self.assertIsInstance(artifact, eda_outcome.PopulationCorrelationArtifact)
+      self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
+
+    with self.subTest("correlation_values"):
+      corr_da = artifact.correlation_ds["controls_scaled"]
+      self.assertAlmostEqual(
+          corr_da.isel({constants.CONTROL_VARIABLE: 0}).item(), 1.0, places=5
+      )
+      self.assertAlmostEqual(
+          corr_da.isel({constants.CONTROL_VARIABLE: 1}).item(), -1.0, places=5
+      )
+
+  def test_check_population_corr_scaled_treatment_control_returns_info_finding(
+      self,
+  ):
+    meridian = model.Meridian(self.input_data_with_media_and_rf)
+    engine = eda_engine.EDAEngine(meridian)
+    self._setup_population_corr_mocks()
+
+    outcome = engine.check_population_corr_scaled_treatment_control()
+
+    with self.subTest("check_type"):
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.POPULATION_CORRELATION
+      )
+    with self.subTest("finding_count"):
+      self.assertLen(outcome.findings, 1)
+    (finding,) = outcome.findings
+    with self.subTest("finding_severity"):
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
+    with self.subTest("finding_cause"):
+      self.assertEqual(finding.finding_cause, eda_outcome.FindingCause.NONE)
+    with self.subTest("finding_associated_artifact"):
+      self.assertIs(finding.associated_artifact, outcome.analysis_artifacts[0])
+
 
 if __name__ == "__main__":
   absltest.main()

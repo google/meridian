@@ -30,6 +30,7 @@ from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 import numpy as np
 import pandas as pd
+from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats import outliers_influence
 import xarray as xr
@@ -516,6 +517,12 @@ def _calc_adj_r2(da: xr.DataArray, regressor: str) -> xr.DataArray:
   formula = f'{tmp_name} ~ C({regressor})'
   ols = sm.OLS.from_formula(formula, df).fit()
   return xr.DataArray(ols.rsquared_adj)
+
+
+def _spearman_coeff(x, y):
+  """Computes spearman correlation coefficient between two ArrayLike objects."""
+
+  return stats.spearmanr(x, y, nan_policy='omit').statistic
 
 
 class EDAEngine:
@@ -2310,5 +2317,60 @@ class EDAEngine:
     return eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.VARIABLE_GEO_TIME_COLLINEARITY,
         findings=findings,
+        analysis_artifacts=[artifact],
+    )
+
+  def check_population_corr_scaled_treatment_control(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PopulationCorrelationArtifact]:
+    """Checks Spearman correlation between population and treatments/controls.
+
+    Calculates correlation between population and time-averaged
+    treatments and controls. High correlation for controls or non-media
+    channels may indicate a need for population-scaling. High
+    correlation for other media channels may indicate double-scaling.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the model is national or geo
+      population data is missing.
+    """
+
+    # self.geo_population_da can never be None if the model is geo-level. Adding
+    # this check to make pytype happy.
+    if self._is_national_data or self.geo_population_da is None:
+      raise GeoLevelCheckOnNationalModelError(
+          'check_population_corr_scaled_treatment_control is not supported for'
+          ' national models.'
+      )
+
+    data_ds = self.treatment_control_scaled_ds.mean(dim=constants.TIME)
+
+    corr_ds: xr.Dataset = xr.apply_ufunc(
+        _spearman_coeff,
+        data_ds,
+        self.geo_population_da,
+        input_core_dims=[[constants.GEO], [constants.GEO]],
+        vectorize=True,
+        output_dtypes=[float],
+    )
+
+    artifact = eda_outcome.PopulationCorrelationArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        correlation_ds=corr_ds,
+    )
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.POPULATION_CORRELATION,
+        findings=[
+            eda_outcome.EDAFinding(
+                severity=eda_outcome.EDASeverity.INFO,
+                explanation=eda_constants.POPULATION_CORRELATION_INFO,
+                finding_cause=eda_outcome.FindingCause.NONE,
+                associated_artifact=artifact,
+            )
+        ],
         analysis_artifacts=[artifact],
     )

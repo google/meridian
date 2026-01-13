@@ -155,3 +155,15 @@ R_SQUARED_GEO_INFO = (
     ' effects. Consider dropping the variable with very high'
     ' R-squared.'
 )
+POPULATION_CORRELATION_INFO = (
+    'Please review the Spearman correlation between population and scaled'
+    ' treatment units or scaled controls.\n\nFor controls and non-media'
+    " channels: Meridian doesn't population-scale these variables by default."
+    ' High correlation indicates that users should population-scale these'
+    ' variables using the `control_population_scaling_id` or'
+    ' `non_media_population_scaling_id` argument in `ModelSpec`.\n\nFor paid'
+    ' and organic media channels: Meridian automatically population-scales'
+    ' these media channels by default. High correlation indicates that the'
+    ' variable may have been population-scaled before being passed to Meridian.'
+    ' Please check your data input.'
+)
