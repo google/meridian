@@ -375,6 +375,7 @@ class Meridian:
         model_context=self.model_context,
     )
 
+  # TODO: Remove this method.
   def compute_non_media_treatments_baseline(
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
@@ -408,6 +409,7 @@ class Meridian:
         non_media_baseline_values=non_media_baseline_values
     )
 
+  # TODO: Remove this method.
   def expand_selected_time_dims(
       self,
       start_date: tc.Date = None,
@@ -435,6 +437,13 @@ class Meridian:
       ValueError if `start_date` or `end_date` is not in the input data time
       dimensions.
     """
+    warnings.warn(
+        "Meridian.expand_selected_time_dims() is deprecated and will be removed"
+        " in a future version. Use `ModelContext.expand_selected_time_dims()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return self._model_context.expand_selected_time_dims(
         start_date=start_date, end_date=end_date
     )
@@ -605,6 +614,7 @@ class Meridian:
           f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
 
+  # TODO: Remove this method.
   def linear_predictor_counterfactual_difference_media(
       self,
       media_transformed: backend.Tensor,
@@ -650,6 +660,7 @@ class Meridian:
         )
     )
 
+  # TODO: Remove this method.
   def linear_predictor_counterfactual_difference_rf(
       self,
       rf_transformed: backend.Tensor,
@@ -692,6 +703,7 @@ class Meridian:
         slope_rf=slope_rf,
     )
 
+  # TODO: Remove this method.
   def calculate_beta_x(
       self,
       is_non_media: bool,
@@ -752,6 +764,7 @@ class Meridian:
         beta_gx_dev=beta_gx_dev,
     )
 
+  # TODO: Remove this method.
   def adstock_hill_media(
       self,
       media: backend.Tensor,  # pylint: disable=redefined-outer-name
@@ -798,6 +811,7 @@ class Meridian:
         n_times_output=n_times_output,
     )
 
+  # TODO: Remove this method.
   def adstock_hill_rf(
       self,
       reach: backend.Tensor,
@@ -866,6 +880,7 @@ class Meridian:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
+  # TODO: Remove this method.
   def create_inference_data_coords(
       self, n_chains: int, n_draws: int
   ) -> Mapping[str, np.ndarray | Sequence[str]]:
@@ -879,6 +894,7 @@ class Meridian:
     )
     return self._model_context.create_inference_data_coords(n_chains, n_draws)
 
+  # TODO: Remove this method.
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
     warnings.warn(
         "Meridian.create_inference_data_dims() is deprecated and will be"

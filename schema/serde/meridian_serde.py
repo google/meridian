@@ -192,7 +192,11 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       # NotFittedModelError can be raised below. If raised,
       # return None. Otherwise, set convergence status based on
       # MCMCSamplingError (caught in the except block).
-      rhats = analyzer.Analyzer(mmm).get_rhat()
+      rhats = analyzer.Analyzer(
+          model_context=mmm.model_context,
+          model_equations=mmm.model_equations,
+          inference_data=mmm.inference_data,
+      ).get_rhat()
       rhat_proto = meridian_pb.RHatDiagnostic()
       for name, tensor in rhats.items():
         rhat_proto.parameter_r_hats.add(
