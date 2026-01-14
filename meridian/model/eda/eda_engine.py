@@ -445,6 +445,24 @@ def _check_cost_per_media_unit(
   cost_per_media_unit_da.name = eda_constants.COST_PER_MEDIA_UNIT
   outlier_df = _calculate_outliers(cost_per_media_unit_da)
 
+  if not outlier_df.empty:
+    outlier_df = outlier_df.rename(
+        columns={
+            eda_constants.OUTLIERS_COL_NAME: eda_constants.COST_PER_MEDIA_UNIT,
+            eda_constants.ABS_OUTLIERS_COL_NAME: (
+                eda_constants.ABS_COST_PER_MEDIA_UNIT
+            ),
+        }
+    ).assign(**{
+        constants.SPEND: cost_da.to_series(),
+        constants.MEDIA_UNITS: media_units_da.to_series(),
+    })[[
+        constants.SPEND,
+        constants.MEDIA_UNITS,
+        eda_constants.COST_PER_MEDIA_UNIT,
+        eda_constants.ABS_COST_PER_MEDIA_UNIT,
+    ]]
+
   artifact = eda_outcome.CostPerMediaUnitArtifact(
       level=level,
       cost_per_media_unit_da=cost_per_media_unit_da,
@@ -457,10 +475,10 @@ def _check_cost_per_media_unit(
         eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.ATTENTION,
             explanation=(
-                'There are instances of inconsistent cost and media units.'
-                ' This occurs when cost is zero but media units are positive,'
-                ' or when cost is positive but media units are zero. Please'
-                ' review the outcome artifact for more details.'
+                'There are instances of inconsistent spend and media units.'
+                ' This occurs when spend is zero but media units are positive,'
+                ' or when spend is positive but media units are zero. Please'
+                ' review the data input for media units and spend.'
             ),
             finding_cause=eda_outcome.FindingCause.INCONSISTENT_DATA,
             associated_artifact=artifact,
@@ -473,7 +491,7 @@ def _check_cost_per_media_unit(
             severity=eda_outcome.EDASeverity.ATTENTION,
             explanation=(
                 'There are outliers in cost per media unit across time.'
-                ' Please review the outcome artifact for more details.'
+                ' Please check for any possible data input error.'
             ),
             finding_cause=eda_outcome.FindingCause.OUTLIER,
             associated_artifact=artifact,

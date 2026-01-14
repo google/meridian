@@ -203,7 +203,8 @@ class CostPerMediaUnitArtifact(AnalysisArtifact):
     cost_media_unit_inconsistency_df: DataFrame of time periods where cost and
       media units are inconsistent (e.g., zero cost with positive media units,
       or positive cost with zero media units).
-    outlier_df: DataFrame with outliers of cost per media unit.
+    outlier_df: DataFrame with outliers of cost per media unit, along with the
+      spend, and media units.
   """
 
   cost_per_media_unit_da: xr.DataArray

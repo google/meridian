@@ -6793,7 +6793,27 @@ class EDAEngineTest(
     mock_check.assert_called_once()
     self.assertEqual(result, mock_outcome)
 
-  def _test_cost_per_media_unit_artifact_values(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          is_national=False,
+          shape=(1, 10, 1),
+          level=eda_outcome.AnalysisLevel.GEO,
+          spend_ds_prop="all_spend_ds",
+          media_unit_ds_prop="paid_raw_media_units_ds",
+          check_method_name="check_geo_cost_per_media_unit",
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+          shape=(10, 1),
+          level=eda_outcome.AnalysisLevel.NATIONAL,
+          spend_ds_prop="national_all_spend_ds",
+          media_unit_ds_prop="national_paid_raw_media_units_ds",
+          check_method_name="check_national_cost_per_media_unit",
+      ),
+  )
+  def test_cost_per_media_unit_artifact_values(
       self,
       is_national,
       shape,
@@ -6877,27 +6897,11 @@ class EDAEngineTest(
           outlier_df.index.get_level_values(constants.TIME)[0],
           pd.Timestamp("2023-03-05"),
       )
-      self.assertAlmostEqual(outlier_df.iloc[0]["outliers"], 100.0)
-
-  def test_check_geo_cost_per_media_unit_artifact_values(self):
-    self._test_cost_per_media_unit_artifact_values(
-        is_national=False,
-        shape=(1, 10, 1),
-        level=eda_outcome.AnalysisLevel.GEO,
-        spend_ds_prop="all_spend_ds",
-        media_unit_ds_prop="paid_raw_media_units_ds",
-        check_method_name="check_geo_cost_per_media_unit",
-    )
-
-  def test_check_national_cost_per_media_unit_artifact_values(self):
-    self._test_cost_per_media_unit_artifact_values(
-        is_national=True,
-        shape=(10, 1),
-        level=eda_outcome.AnalysisLevel.NATIONAL,
-        spend_ds_prop="national_all_spend_ds",
-        media_unit_ds_prop="national_paid_raw_media_units_ds",
-        check_method_name="check_national_cost_per_media_unit",
-    )
+      self.assertAlmostEqual(
+          outlier_df.iloc[0][eda_constants.COST_PER_MEDIA_UNIT], 100.0
+      )
+      self.assertAlmostEqual(outlier_df.iloc[0][constants.SPEND], 1000.0)
+      self.assertAlmostEqual(outlier_df.iloc[0][constants.MEDIA_UNITS], 10.0)
 
   def test_run_all_critical_checks_all_pass(self):
     meridian = model.Meridian(self.input_data_with_media_and_rf)
