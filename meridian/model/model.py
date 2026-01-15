@@ -200,7 +200,9 @@ class Meridian:
 
   @functools.cached_property
   def eda_engine(self) -> eda_engine.EDAEngine:
-    return eda_engine.EDAEngine(self, spec=self._eda_spec)
+    return eda_engine.EDAEngine(
+        spec=self._eda_spec, model_context=self.model_context
+    )
 
   @property
   def eda_spec(self) -> eda_spec_module.EDASpec:
