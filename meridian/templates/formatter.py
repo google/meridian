@@ -18,6 +18,7 @@ from collections.abc import Sequence
 import dataclasses
 import math
 import os
+import re
 
 import altair as alt
 import immutabledict
@@ -215,7 +216,12 @@ def format_col_names(headers: Sequence[str]) -> Sequence[str]:
   Returns:
     Human readable list of column names.
   """
-  return [header.replace('_', ' ').title() for header in headers]
+  # \b matches the start of a word
+  # [a-z] matches only if the first letter is lowercase
+  return [
+      re.sub(r'\b[a-z]', lambda m: m.group().upper(), header.replace('_', ' '))
+      for header in headers
+  ]
 
 
 def create_template_env() -> jinja2.Environment:
@@ -288,3 +294,12 @@ def _create_charts_htmls(
     else:
       htmls.append(table_template.render(dataclasses.asdict(spec)))
   return htmls
+
+
+def create_finding_html(
+    template_env: jinja2.Environment, text: str, finding_type: str
+) -> str:
+  """Generates an HTML tag for the table finding."""
+  return template_env.get_template('finding.html.jinja').render(
+      finding_class=finding_type, text=text
+  )

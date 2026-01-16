@@ -104,9 +104,9 @@ class FormatterTest(parameterized.TestCase):
           expected=['Geo', 'Time Index', 'Channel Name'],
       ),
       dict(
-          testcase_name='corrects_weird_casing',
-          input_headers=['pair_WISE_correlation', 'tOtAl_SPEND'],
-          expected=['Pair Wise Correlation', 'Total Spend'],
+          testcase_name='preserves_acronyms',
+          input_headers=['VIF_score', 'national_KPI'],
+          expected=['VIF Score', 'National KPI'],
       ),
       dict(
           testcase_name='handles_tuples_input',

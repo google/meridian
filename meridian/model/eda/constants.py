@@ -104,9 +104,55 @@ EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
 EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
+# summary
+SUMMARY_CARD_ID = 'summary'
+SUMMARY_CARD_TITLE = 'Summary'
+SUMMARY_TABLE_ID = 'summary-table'
+CATEGORY = 'Category'
+FINDING = 'Finding'
+RECOMMENDED_NEXT_STEP = 'Recommended Next Step'
 
 
 ##### Finding messages #####
+SUMMARY_TABLE_SUMMARY_INFO = (
+    'Review the full report to investigate the health of your dataset and'
+    ' confirm findings align with your expectations.'
+)
+SUMMARY_TABLE_SUMMARY_FINDING = (
+    'Review the health of your dataset below. Resolve all FAILS and investigate'
+    ' REVIEW flags in the detailed sections to ensure your data is ready for'
+    ' modeling.'
+)
+SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{SPEND_AND_MEDIA_UNIT_CARD_ID}">Spend and Media Units</a> for'
+    ' more details.'
+)
+SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_FINDING = (
+    f'See <a href="#{SPEND_AND_MEDIA_UNIT_CARD_ID}">Spend and Media Units</a>.'
+    ' Where applicable, verify that spend and media units align across'
+    ' channels, and review outliers in cost per media unit.'
+)
+SUMMARY_TABLE_RESPONSE_VARIABLES_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{RESPONSE_VARIABLES_CARD_ID}">Individual Explanatory/Response'
+    ' Variables</a> for more details.'
+)
+SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING = (
+    f'See <a href="#{RESPONSE_VARIABLES_CARD_ID}">Individual'
+    ' Explanatory/Response Variables</a>. Where applicable, review any'
+    ' variables with low signal or with outliers.'
+)
+SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID}">Relationship Among the'
+    ' Variables</a> for more details.'
+)
+SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING = (
+    f'See <a href="#{RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID}">Relationship'
+    ' Among the Variables</a>. Check for high multicollinearity among the'
+    ' variables that could lead to model convergence issues.'
+)
 SPEND_PER_MEDIA_UNIT_INFO = (
     'Please review the patterns for spend, media units, and'
     ' cost-per-media unit. Any erratic or unexpected patterns warrant a data'
@@ -181,3 +227,26 @@ POPULATION_CORRELATION_INFO = (
     ' variable may have been population-scaled before being passed to Meridian.'
     ' Please check your data input.'
 )
+# The boolean keys indicate whether findings were detected (True) or
+# not (False), and the values are the corresponding message that should be
+# displayed. Example, if there were errors or reviews in the spend and media
+# unit card (True), then we want to display the finding message,
+# otherwise (False) we display the info message.
+CATEGORY_TO_MESSAGE_BY_STATUS = immutabledict.immutabledict({
+    SUMMARY_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_SUMMARY_INFO,
+        True: SUMMARY_TABLE_SUMMARY_FINDING,
+    }),
+    SPEND_AND_MEDIA_UNIT_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_INFO,
+        True: SUMMARY_TABLE_SPEND_AND_MEDIA_UNIT_FINDING,
+    }),
+    RESPONSE_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_RESPONSE_VARIABLES_INFO,
+        True: SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING,
+    }),
+    RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO,
+        True: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING,
+    }),
+})
