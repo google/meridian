@@ -215,7 +215,7 @@ R_SQUARED_GEO_INFO = (
     ' effects. Consider dropping the variable with very high'
     ' R-squared.'
 )
-POPULATION_CORRELATION_INFO = (
+POPULATION_CORRELATION_SCALED_TREATMENT_CONTROL_INFO = (
     'Please review the Spearman correlation between population and scaled'
     ' treatment units or scaled controls.\n\nFor controls and non-media'
     " channels: Meridian doesn't population-scale these variables by default."
@@ -226,6 +226,12 @@ POPULATION_CORRELATION_INFO = (
     ' these media channels by default. High correlation indicates that the'
     ' variable may have been population-scaled before being passed to Meridian.'
     ' Please check your data input.'
+)
+POPULATION_CORRELATION_RAW_MEDIA_INFO = (
+    'Please review the Spearman correlation between population and raw paid and'
+    ' organic media units. These raw media variables are expected to have'
+    ' positive correlation with population. If there is low or negative'
+    ' correlation, please check your data input.'
 )
 # The boolean keys indicate whether findings were detected (True) or
 # not (False), and the values are the corresponding message that should be

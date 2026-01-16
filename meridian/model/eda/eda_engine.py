@@ -846,7 +846,7 @@ class EDAEngine:
     """The raw reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_raw_da
+    return self._rf_data.reach_raw_da  # pytype: disable=attribute-error
 
   @property
   def reach_scaled_da(self) -> xr.DataArray | None:
@@ -926,7 +926,7 @@ class EDAEngine:
     """The raw organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_raw_da
+    return self._organic_rf_data.reach_raw_da  # pytype: disable=attribute-error
 
   @property
   def organic_reach_scaled_da(self) -> xr.DataArray | None:
@@ -2363,6 +2363,63 @@ class EDAEngine:
         analysis_artifacts=[artifact],
     )
 
+  def _calculate_population_corr(
+      self, ds: xr.Dataset, *, explanation: str, check_name: str
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PopulationCorrelationArtifact]:
+    """Calculates Spearman correlation between population and data variables.
+
+    Args:
+      ds: An xr.Dataset containing the data variables for which to calculate the
+        correlation with population. The Dataset is expected to have a 'geo'
+        dimension.
+      explanation: A string providing an explanation for the EDA finding.
+      check_name: A string representing the name of the calling check function,
+        used in error messages.
+
+    Returns:
+      An EDAOutcome object containing a PopulationCorrelationArtifact. The
+      artifact includes a Dataset with the Spearman correlation coefficients
+      between each variable in `ds` and the geo population.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the model is national or if
+        `self.geo_population_da` is None.
+    """
+
+    # self.geo_population_da can never be None if the model is geo-level. Adding
+    # this check to make pytype happy.
+    if self._is_national_data or self.geo_population_da is None:
+      raise GeoLevelCheckOnNationalModelError(
+          f'{check_name} is not supported for national models.'
+      )
+
+    corr_ds: xr.Dataset = xr.apply_ufunc(
+        _spearman_coeff,
+        ds.mean(dim=constants.TIME),
+        self.geo_population_da,
+        input_core_dims=[[constants.GEO], [constants.GEO]],
+        vectorize=True,
+        output_dtypes=[float],
+    )
+
+    artifact = eda_outcome.PopulationCorrelationArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        correlation_ds=corr_ds,
+    )
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.POPULATION_CORRELATION,
+        findings=[
+            eda_outcome.EDAFinding(
+                severity=eda_outcome.EDASeverity.INFO,
+                explanation=explanation,
+                finding_cause=eda_outcome.FindingCause.NONE,
+                associated_artifact=artifact,
+            )
+        ],
+        analysis_artifacts=[artifact],
+    )
+
   def check_population_corr_scaled_treatment_control(
       self,
   ) -> eda_outcome.EDAOutcome[eda_outcome.PopulationCorrelationArtifact]:
@@ -2380,40 +2437,42 @@ class EDAEngine:
       GeoLevelCheckOnNationalModelError: If the model is national or geo
       population data is missing.
     """
-
-    # self.geo_population_da can never be None if the model is geo-level. Adding
-    # this check to make pytype happy.
-    if self._is_national_data or self.geo_population_da is None:
-      raise GeoLevelCheckOnNationalModelError(
-          'check_population_corr_scaled_treatment_control is not supported for'
-          ' national models.'
-      )
-
-    data_ds = self.treatment_control_scaled_ds.mean(dim=constants.TIME)
-
-    corr_ds: xr.Dataset = xr.apply_ufunc(
-        _spearman_coeff,
-        data_ds,
-        self.geo_population_da,
-        input_core_dims=[[constants.GEO], [constants.GEO]],
-        vectorize=True,
-        output_dtypes=[float],
+    return self._calculate_population_corr(
+        ds=self.treatment_control_scaled_ds,
+        explanation=eda_constants.POPULATION_CORRELATION_SCALED_TREATMENT_CONTROL_INFO,
+        check_name='check_population_corr_scaled_treatment_control',
     )
 
-    artifact = eda_outcome.PopulationCorrelationArtifact(
-        level=eda_outcome.AnalysisLevel.OVERALL,
-        correlation_ds=corr_ds,
-    )
+  def check_population_corr_raw_media(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PopulationCorrelationArtifact]:
+    """Checks Spearman correlation between population and raw media executions.
 
-    return eda_outcome.EDAOutcome(
-        check_type=eda_outcome.EDACheckType.POPULATION_CORRELATION,
-        findings=[
-            eda_outcome.EDAFinding(
-                severity=eda_outcome.EDASeverity.INFO,
-                explanation=eda_constants.POPULATION_CORRELATION_INFO,
-                finding_cause=eda_outcome.FindingCause.NONE,
-                associated_artifact=artifact,
-            )
-        ],
-        analysis_artifacts=[artifact],
+    Calculates correlation between population and time-averaged raw
+    media executions (paid/organic impressions/reach). These are
+    expected to have reasonably high correlation with population.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+
+    Raises:
+      GeoLevelCheckOnNationalModelError: If the model is national or geo
+      population data is missing.
+    """
+    to_merge = (
+        da
+        for da in [
+            self.media_raw_da,
+            self.organic_media_raw_da,
+            self.reach_raw_da,
+            self.organic_reach_raw_da,
+        ]
+        if da is not None
+    )
+    # Handle the case where there are no media channels.
+
+    return self._calculate_population_corr(
+        ds=xr.merge(to_merge, join='inner'),
+        explanation=eda_constants.POPULATION_CORRELATION_RAW_MEDIA_INFO,
+        check_name='check_population_corr_raw_media',
     )
