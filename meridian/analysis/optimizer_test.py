@@ -967,7 +967,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     hist_spend = backend.to_tensor(
         [350, 400, 200, 50, 500], dtype=backend.float32
     )
-    (new_media, new_reach, new_frequency) = (
+    new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend, spend
         )
@@ -995,7 +995,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [350, 400, 200, 50, 500], dtype=backend.float32
     )
     optimal_frequency = backend.to_tensor([2, 2], dtype=backend.float32)
-    (new_media, new_reach, new_frequency) = (
+    new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend=hist_spend,
             spend=spend,
@@ -1537,7 +1537,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.budget_optimizer_media_and_rf.optimize(budget=-10_000)
 
   def test_get_optimization_bounds_correct(self):
-    (lower_bound, upper_bound) = optimizer.get_optimization_bounds(
+    lower_bound, upper_bound = optimizer.get_optimization_bounds(
         n_channels=5,
         spend=np.array([10642.5, 22222.0, 33333.0, 44444.0, 55555.0]),
         round_factor=-2,
@@ -2134,7 +2134,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             ),
         ),
     )
-    (updated_spend, updated_incremental_outcome) = grid.trim_grids(
+    updated_spend, updated_incremental_outcome = grid.trim_grids(
         spend_bound_lower=np.array([100, 100, 400, 0, 200]),
         spend_bound_upper=np.array([400, 300, 400, 100, 300]),
     )
@@ -2848,7 +2848,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
-    idata = self.budget_optimizer_media_and_rf._meridian.input_data
+    idata = (
+        self.budget_optimizer_media_and_rf._analyzer.model_context.input_data
+    )
     paid_channels = list(idata.get_all_paid_channels())
     pct_of_spend = idata.get_paid_channels_argument_builder()(**{
         paid_channels[0]: 0.1,
@@ -2888,7 +2890,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
-    idata = self.budget_optimizer_media_and_rf._meridian.input_data
+    idata = (
+        self.budget_optimizer_media_and_rf._analyzer.model_context.input_data
+    )
     paid_channels = list(idata.get_all_paid_channels())
     pct_of_spend = idata.get_paid_channels_argument_builder()(**{
         paid_channels[0]: 0.1,
@@ -3072,22 +3076,22 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
 
   def test_get_response_curves_new_times_data_correct(self):
-    meridian = self.budget_optimizer_media_and_rf._meridian
-    max_lag = meridian.model_spec.max_lag
+    ctx = self.budget_optimizer_media_and_rf._analyzer.model_context
+    max_lag = ctx.model_spec.max_lag
     n_new_times = 15
     total_times = max_lag + n_new_times
-    new_data_end_date = meridian.input_data.time.values[-1]
-    selected_times_start_date = meridian.input_data.time.values[-n_new_times]
-    selected_times = meridian.input_data.time.values[-n_new_times:].tolist()
+    new_data_end_date = ctx.input_data.time.values[-1]
+    selected_times_start_date = ctx.input_data.time.values[-n_new_times]
+    selected_times = ctx.input_data.time.values[-n_new_times:].tolist()
 
-    new_data_times = meridian.input_data.time.values[-total_times:].tolist()
+    new_data_times = ctx.input_data.time.values[-total_times:].tolist()
     new_data = analyzer.DataTensors(
-        media=meridian.media_tensors.media[..., -total_times:, :],
-        media_spend=meridian.media_tensors.media_spend[..., -total_times:, :],
-        reach=meridian.rf_tensors.reach[..., -total_times:, :],
-        frequency=meridian.rf_tensors.frequency[..., -total_times:, :],
-        rf_spend=meridian.rf_tensors.rf_spend[..., -total_times:, :],
-        revenue_per_kpi=meridian.revenue_per_kpi[..., -total_times:],
+        media=ctx.media_tensors.media[..., -total_times:, :],
+        media_spend=ctx.media_tensors.media_spend[..., -total_times:, :],
+        reach=ctx.rf_tensors.reach[..., -total_times:, :],
+        frequency=ctx.rf_tensors.frequency[..., -total_times:, :],
+        rf_spend=ctx.rf_tensors.rf_spend[..., -total_times:, :],
+        revenue_per_kpi=ctx.revenue_per_kpi[..., -total_times:],
         time=new_data_times,
     )
 
@@ -3131,7 +3135,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertEqual(kwargs['selected_times'], selected_times)
 
   def test_create_budget_dataset_selected_geos_correct(self):
-    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+    selected_geos = self.budget_optimizer_media_and_rf._analyzer.model_context.input_data.geo.values.tolist()[
         :2
     ]
     with mock.patch.object(
@@ -3153,7 +3157,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
 
   def test_get_response_curves_selected_geos_correct(self):
-    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+    selected_geos = self.budget_optimizer_media_and_rf._analyzer.model_context.input_data.geo.values.tolist()[
         :2
     ]
     with mock.patch.object(
@@ -3783,27 +3787,40 @@ class OptimizerOutputTest(parameterized.TestCase):
     mock_data_kpi_output = mock.create_autospec(
         input_data.InputData, instance=True
     )
-    meridian = mock.create_autospec(
-        model.Meridian, instance=True, input_data=mock_data
+    model_context = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data
     )
-    meridian_kpi_output = mock.create_autospec(
-        model.Meridian, instance=True, input_data=mock_data_kpi_output
+    model_context_kpi_output = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data_kpi_output
     )
     n_times = 149
     n_geos = 10
     self.revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=1.0
     )
-    meridian.input_data.kpi_type = c.REVENUE
-    meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
-    meridian.input_data.time_coordinates.interval_days = 7
-    meridian_kpi_output.input_data.kpi_type = c.NON_REVENUE
-    meridian_kpi_output.input_data.revenue_per_kpi = None
-    meridian_kpi_output.input_data.time_coordinates.interval_days = 7
+    model_context.input_data.kpi_type = c.REVENUE
+    model_context.input_data.revenue_per_kpi = self.revenue_per_kpi
+    model_context.input_data.time_coordinates.interval_days = 7
+    model_context_kpi_output.input_data.kpi_type = c.NON_REVENUE
+    model_context_kpi_output.input_data.revenue_per_kpi = None
+    model_context_kpi_output.input_data.time_coordinates.interval_days = 7
 
-    self.budget_optimizer = optimizer.BudgetOptimizer(meridian)
+    meridian_mock = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        input_data=mock_data,
+        model_context=model_context,
+    )
+    meridian_kpi_output_mock = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        input_data=mock_data_kpi_output,
+        model_context=model_context_kpi_output,
+
+    )
+    self.budget_optimizer = optimizer.BudgetOptimizer(meridian_mock)
     self.budget_optimizer_kpi_output = optimizer.BudgetOptimizer(
-        meridian_kpi_output
+        meridian_kpi_output_mock
     )
     self.optimization_grid = optimizer.OptimizationGrid(
         _grid_dataset=mock.MagicMock(),
@@ -4192,7 +4209,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     stats_section = analysis_test_utils.get_child_element(card, 'stats-section')
     stats = stats_section.findall('stats')
     self.assertLen(stats, 6)
-    (non_optimized_budget, optimized_budget, _, _, _, _) = stats
+    non_optimized_budget, optimized_budget, _, _, _, _ = stats
 
     with self.subTest('non_optimized_budget'):
       stat = analysis_test_utils.get_child_element(
@@ -4227,7 +4244,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
     stats_kpi = stats_section_kpi.findall('stats')
     self.assertLen(stats_kpi, 6)
-    (_, _, non_optimized_cpik, optimized_cpik, _, _) = stats_kpi
+    _, _, non_optimized_cpik, optimized_cpik, _, _ = stats_kpi
 
     with self.subTest('non_optimized_cpik'):
       stat = analysis_test_utils.get_child_element(

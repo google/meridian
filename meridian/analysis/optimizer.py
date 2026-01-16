@@ -235,7 +235,7 @@ class OptimizationGrid:
       spend_constraint_lower = spend_constraint_default
     if spend_constraint_upper is None:
       spend_constraint_upper = spend_constraint_default
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=len(self.channels),
             spend=spend,
@@ -253,7 +253,7 @@ class OptimizationGrid:
           ' It is only a problem when you use a much smaller budget, '
           ' for which the intended step size is smaller. '
       )
-    (spend_grid, incremental_outcome_grid) = self.trim_grids(
+    spend_grid, incremental_outcome_grid = self.trim_grids(
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
     )
@@ -925,7 +925,7 @@ class OptimizationResults:
     """
     channels = self.optimized_data.channel.values
     selected_times = _expand_selected_times(
-        model_context=self.meridian.model_context,
+        model_context=self.analyzer.model_context,
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
         new_data=self.new_data,
@@ -1065,7 +1065,9 @@ class OptimizationResults:
     self.template_env.globals[c.START_DATE] = start_date.strftime(
         f'%b {start_date.day}, %Y'
     )
-    interval_days = self.meridian.input_data.time_coordinates.interval_days
+    interval_days = (
+        self.analyzer.model_context.input_data.time_coordinates.interval_days
+    )
     end_date = tc.normalize_date(self.optimized_data.end_date)
     end_date_adjusted = end_date + pd.Timedelta(days=interval_days)
     self.template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
@@ -1324,9 +1326,16 @@ class BudgetOptimizer:
   results can be viewed as plots and as an HTML summary output page.
   """
 
-  def __init__(self, meridian: model.Meridian):
+  def __init__(
+      self,
+      meridian: model.Meridian,
+  ):
     self._meridian = meridian
-    self._analyzer = analyzer_module.Analyzer(self._meridian)
+    self._analyzer = analyzer_module.Analyzer(
+        model_context=meridian.model_context,
+        model_equations=meridian.model_equations,
+        inference_data=meridian.inference_data,
+    )
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""
@@ -1929,7 +1938,7 @@ class BudgetOptimizer:
         pct_of_spend=pct_of_spend,
     )
     spend = budget * valid_pct_of_spend
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=n_channels,
             spend=spend,
@@ -2108,7 +2117,7 @@ class BudgetOptimizer:
     )
     spend = budget * valid_pct_of_spend
     round_factor = get_round_factor(budget, gtol)
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=n_paid_channels,
             spend=spend,
@@ -2138,7 +2147,7 @@ class BudgetOptimizer:
       optimal_frequency = None
 
     step_size = 10 ** (-round_factor)
-    (spend_grid, incremental_outcome_grid) = self._create_grids(
+    spend_grid, incremental_outcome_grid = self._create_grids(
         spend=hist_spend,
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
@@ -2324,13 +2333,11 @@ class BudgetOptimizer:
     )
     spend_tensor = backend.to_tensor(spend, dtype=backend.float32)
     hist_spend = backend.to_tensor(hist_spend, dtype=backend.float32)
-    (new_media, new_reach, new_frequency) = (
-        self._get_incremental_outcome_tensors(
-            hist_spend,
-            spend_tensor,
-            new_data=filled_data.filter_fields(c.PAID_CHANNELS),
-            optimal_frequency=optimal_frequency,
-        )
+    new_media, new_reach, new_frequency = self._get_incremental_outcome_tensors(
+        hist_spend,
+        spend_tensor,
+        new_data=filled_data.filter_fields(c.PAID_CHANNELS),
+        optimal_frequency=optimal_frequency,
     )
     budget = np.sum(spend_tensor)
     inc_outcome_data = analyzer_module.DataTensors(
@@ -2961,7 +2968,7 @@ def _get_spend_bounds(
     spend_bounds: tuple of np.ndarray of size `n_total_channels` containing
       the untreated lower and upper bound spend for each media and RF channel.
   """
-  (spend_const_lower, spend_const_upper) = _validate_spend_constraints(
+  spend_const_lower, spend_const_upper = _validate_spend_constraints(
       n_channels,
       spend_constraint_lower,
       spend_constraint_upper,
