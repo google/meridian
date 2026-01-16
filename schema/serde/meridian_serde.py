@@ -194,7 +194,6 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       # MCMCSamplingError (caught in the except block).
       rhats = analyzer.Analyzer(
           model_context=mmm.model_context,
-          model_equations=mmm.model_equations,
           inference_data=mmm.inference_data,
       ).get_rhat()
       rhat_proto = meridian_pb.RHatDiagnostic()
