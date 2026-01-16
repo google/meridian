@@ -60,10 +60,16 @@ RESPONSE_CURVES_CARD_SPEC = formatter.CardSpec(
 class Summarizer:
   """Generates HTML summary visualizations from the model fitting."""
 
+  # TODO: Switch to model_context, model_equations, and
+  # inference_data.
   def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     """Initialize the visualizer classes that are not time-dependent."""
     self._meridian = meridian
-    self._use_kpi = analyzer.Analyzer(meridian)._use_kpi(use_kpi)
+    self._use_kpi = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        model_equations=meridian.model_equations,
+        inference_data=meridian.inference_data,
+    )._use_kpi(use_kpi)
 
   @functools.cached_property
   def _model_fit(self):
