@@ -279,10 +279,6 @@ def _adstock(
     media = backend.concatenate([backend.zeros(pad_shape), media], axis=-2)
 
   # Adstock calculation.
-  window_list = [None] * window_size
-  for i in range(window_size):
-    window_list[i] = media[..., i : i + n_times_output, :]
-  windowed = backend.stack(window_list)
   l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float32)
   weights = compute_decay_weights(
       alpha=alpha,
@@ -291,7 +287,9 @@ def _adstock(
       decay_functions=decay_functions,
       normalize=True,
   )
-  return backend.einsum('...mw,w...gtm->...gtm', weights, windowed)
+  return backend.adstock_process(
+      media=media, weights=weights, n_times_output=n_times_output
+  )
 
 
 def _map_alpha_for_binomial_decay(x: backend.Tensor):

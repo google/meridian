@@ -1252,6 +1252,52 @@ class BackendTest(parameterized.TestCase):
     self.assertFalse(np.all(result == outcome_grid))
     test_utils.assert_allclose(result, expected, atol=1e-6)
 
+  _adstock_process_test_cases = (
+      immutabledict.immutabledict(
+          testcase_name="simple_dimensions",
+          media_shape=(2, 10, 2),  # geos, time, channels
+          weights_shape=(2, 3),  # channels, window_size
+          n_times_output=8,
+      ),
+      immutabledict.immutabledict(
+          testcase_name="with_batch_dims",
+          media_shape=(2, 2, 10, 2),  # batch, geos, time, channels
+          weights_shape=(2, 2, 3),  # batch, channels, window_size
+          n_times_output=8,
+      ),
+      immutabledict.immutabledict(
+          testcase_name="broadcast_batch_dims",
+          media_shape=(1, 2, 10, 2),  # batch=1 broadcast to match weights
+          weights_shape=(5, 2, 3),  # batch=5
+          n_times_output=8,
+      ),
+  )
+
+  @parameterized.product(
+      backend_name=_ALL_BACKENDS,
+      test_case=_adstock_process_test_cases,
+  )
+  def test_adstock_process(self, backend_name, test_case):
+    self._set_backend_for_test(backend_name)
+    rng = np.random.default_rng(seed=123)
+    media = backend.to_tensor(rng.standard_normal(test_case["media_shape"]))
+    weights = backend.to_tensor(rng.random(test_case["weights_shape"]))
+    n_times_output = test_case["n_times_output"]
+
+    media_np = np.array(media)
+    weights_np = np.array(weights)
+    window_size = weights_np.shape[-1]
+    window_list = [
+        media_np[..., i : i + n_times_output, :] for i in range(window_size)
+    ]
+    windowed = np.stack(window_list, axis=0)
+    expected = np.einsum("...cw,w...gtc->...gtc", weights_np, windowed)
+
+    result = backend.adstock_process(media, weights, n_times_output)
+
+    self.assertIsInstance(result, backend.Tensor)
+    test_utils.assert_allclose(result, expected, atol=1e-5, rtol=1e-5)
+
   @parameterized.product(
       [
           dict(

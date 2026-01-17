@@ -909,6 +909,77 @@ if _BACKEND == config.Backend.JAX:
 
   xla_windowed_adaptive_nuts = _jax_xla_windowed_adaptive_nuts
 
+  def _jax_adstock_process(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """JAX implementation for adstock_process using convolution.
+
+    This function applies an adstock process to media spend data using a
+    convolutional approach. The weights represent the adstock decay over time.
+
+    Args:
+      media: A JAX array of media spend. Expected shape is
+        `(batch_dims, n_geos, n_times_in, n_channels)`.
+      weights: A JAX array of adstock weights. Expected shape is
+        `(batch_dims, n_channels, window_size)`, where `batch_dims` must be
+        broadcastable to the batch dimensions of `media`.
+      n_times_output: The number of time periods in the output. This corresponds
+        to `n_times_in - window_size + 1`.
+
+    Returns:
+      A JAX array representing the adstocked media, with shape
+      `(batch_dims, n_geos, n_times_output, n_channels)`.
+    """
+
+    batch_dims = weights.shape[:-2]
+    if media.shape[:-3] != batch_dims:
+      media = jax_ops.broadcast_to(media, batch_dims + media.shape[-3:])
+
+    n_geos = media.shape[-3]
+    n_times_in = media.shape[-2]
+    n_channels = media.shape[-1]
+    window_size = weights.shape[-1]
+
+    perm = list(range(media.ndim))
+    perm[-2], perm[-1] = perm[-1], perm[-2]
+    media_transposed = jax_ops.transpose(media, perm)
+    media_reshaped = jax_ops.reshape(media_transposed, (1, -1, n_times_in))
+
+    total_channels = media_reshaped.shape[1]
+    weights_expanded = jax_ops.expand_dims(weights, -3)
+    weights_tiled = jax_ops.broadcast_to(
+        weights_expanded, batch_dims + (n_geos, n_channels, window_size)
+    )
+    kernel_reshaped = jax_ops.reshape(
+        weights_tiled, (total_channels, 1, window_size)
+    )
+
+    dn = jax.lax.conv_dimension_numbers(
+        media_reshaped.shape, kernel_reshaped.shape, ("NCH", "OIH", "NCH")
+    )
+
+    out = jax.lax.conv_general_dilated(
+        lhs=media_reshaped,
+        rhs=kernel_reshaped,
+        window_strides=(1,),
+        padding="VALID",
+        lhs_dilation=(1,),
+        rhs_dilation=(1,),
+        dimension_numbers=dn,
+        feature_group_count=total_channels,
+        precision=jax.lax.Precision.HIGHEST,
+    )
+
+    t_out = out.shape[-1]
+    out_reshaped = jax_ops.reshape(
+        out, batch_dims + (n_geos, n_channels, t_out)
+    )
+    perm_back = list(range(out_reshaped.ndim))
+    perm_back[-2], perm_back[-1] = perm_back[-1], perm_back[-2]
+    out_final = jax_ops.transpose(out_reshaped, perm_back)
+
+    return out_final[..., :n_times_output, :]
+
   _ops = jax_ops
   errors = _JaxErrors()
   Tensor = jax.Array
@@ -920,6 +991,7 @@ if _BACKEND == config.Backend.JAX:
 
   # Standardized Public API
   absolute = _ops.abs
+  adstock_process = _jax_adstock_process
   allclose = _ops.allclose
   arange = _jax_arange
   argmax = _jax_argmax
@@ -1059,6 +1131,39 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   xla_windowed_adaptive_nuts = _tf_xla_windowed_adaptive_nuts
 
+  def _tf_adstock_process(
+      media: "_tf.Tensor", weights: "_tf.Tensor", n_times_output: int
+  ) -> "_tf.Tensor":
+    """TensorFlow implementation for adstock_process using loop/einsum.
+
+    This function applies an adstock process to media spend data. It achieves
+    this by creating a windowed view of the `media` tensor and then using
+    `tf.einsum` to efficiently compute the weighted sum based on the provided
+    `weights`. The `weights` tensor defines the decay effect over a specific
+    `window_size`. The output is truncated to `n_times_output` periods.
+
+    Args:
+      media: Input media tensor. Expected shape is `(..., num_geos,
+        num_times_in, num_channels)`. The `...` represents optional batch
+        dimensions.
+      weights: Adstock weights tensor. Expected shape is `(..., num_channels,
+        window_size)`. The batch dimensions must be broadcast-compatible with
+        those in `media`.
+      n_times_output: The number of time periods to output. This should be less
+        than or equal to `num_times_in - window_size + 1`.
+
+    Returns:
+      A tensor of shape `(..., num_geos, n_times_output, num_channels)`
+      representing the adstocked media.
+    """
+
+    window_size = weights.shape[-1]
+    window_list = [
+        media[..., i : i + n_times_output, :] for i in range(window_size)
+    ]
+    windowed = tf_backend.stack(window_list)
+    return tf_backend.einsum("...cw,w...gtc->...gtc", weights, windowed)
+
   tfd = tfp.distributions
   bijectors = tfp.bijectors
   experimental = tfp.experimental
@@ -1067,6 +1172,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   # Standardized Public API
   absolute = _ops.math.abs
+  adstock_process = _tf_adstock_process
   allclose = _ops.experimental.numpy.allclose
   arange = _tf_arange
   argmax = _tf_argmax
