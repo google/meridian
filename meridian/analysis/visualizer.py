@@ -1999,6 +1999,7 @@ class MediaSummary:
         x=alt.X(
             'prev_sum:Q',
             title=x_axis_label,
+            scale=alt.Scale(domain=[0, 1]),
             axis=alt.Axis(
                 ticks=False,
                 tickCount=5,
