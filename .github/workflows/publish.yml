@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/build
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
@@ -43,7 +43,7 @@ jobs:
     outputs:
       new_version: ${{ steps.version_check.outputs.new_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/install-meridian
         with:
@@ -73,7 +73,7 @@ jobs:
     permissions:
       contents: write # Allow to create tags
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/create-version-tag
         with:
           new_version: v${{ needs.check-version.outputs.new_version }}
@@ -101,7 +101,7 @@ jobs:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: dist/
@@ -129,7 +129,7 @@ jobs:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: dist/
