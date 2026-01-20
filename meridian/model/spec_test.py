@@ -414,6 +414,21 @@ class ModelSpecTest(parameterized.TestCase):
     with self.assertWarnsRegex(UserWarning, warning_message):
       spec.ModelSpec(paid_media_prior_type="roi")
 
+  def test_spec_inits_knots_with_ndarray_converts_to_list(self):
+    """Tests that passing a numpy array for knots converts it to a list."""
+    knots_array = np.array([2, 5, 8], dtype=int)
+    model_spec = spec.ModelSpec(knots=knots_array)
+
+    self.assertIsInstance(model_spec.knots, list)
+    self.assertEqual(model_spec.knots, [2, 5, 8])
+
+  def test_spec_inits_knots_with_unsupported_type_fails(self):
+    """Tests that passing an unsupported type (e.g. dict) raises ValueError."""
+    with self.assertRaisesRegex(
+        ValueError, "Unsupported type for `knots` parameter"
+    ):
+      spec.ModelSpec(knots={"invalid": "type"})
+
 
 if __name__ == "__main__":
   absltest.main()

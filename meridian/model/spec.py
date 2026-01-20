@@ -322,6 +322,12 @@ class ModelSpec:
     )
 
     # Validate knots.
+    # if the user tries to pass in the knots from knots.get_knot_info()
+    # directly, then convert to a list.
+    if isinstance(self.knots, np.ndarray) and np.issubdtype(
+        self.knots.dtype, np.integer
+    ):
+      self.knots = self.knots.tolist()
     if isinstance(self.knots, list) and not self.knots:
       raise ValueError("The `knots` parameter cannot be an empty list.")
     if isinstance(self.knots, int) and self.knots == 0:
@@ -329,6 +335,10 @@ class ModelSpec:
     if self.knots is not None and self.enable_aks:
       raise ValueError(
           "The `knots` parameter cannot be set when `enable_aks` is True."
+      )
+    if not (self.knots is None or isinstance(self.knots, (int, list))):
+      raise ValueError(
+          f"Unsupported type for `knots` parameter: {type(self.knots)}."
       )
 
   @property
