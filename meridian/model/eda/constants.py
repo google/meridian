@@ -47,6 +47,10 @@ TIME_AND_GEO_AGGREGATION = 'times and geos'
 TIME_AGGREGATION = 'times'
 
 ##### EDA Plotting properties #####
+CORRELATION_RED = '#d73027'
+CORRELATION_WHITE = '#f7f7f7'
+CORRELATION_BLUE = '#4575b4'
+CORRELATION_LEGEND_TITLE = 'correlation (blue=OK, red=bad)'
 VARIABLE = 'var'
 VALUE = 'value'
 NATIONALIZE: Literal['nationalize'] = 'nationalize'
@@ -56,10 +60,64 @@ SPEND_SHARE = 'spend_share'
 LABEL = 'label'
 DEFAULT_CHART_COLOR = '#4C78A8'
 PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
-    domain=[-1.0, 0.0, 1.0],
-    range=['#1f78b4', '#f7f7f7', '#e34a33'],  # Blue-light grey-Orange
+    domain=[-1.0, -0.5, 0.0, 0.5, 1.0],
+    range=[
+        CORRELATION_RED,
+        CORRELATION_WHITE,
+        CORRELATION_BLUE,
+        CORRELATION_WHITE,
+        CORRELATION_RED,
+    ],
     type='linear',
 )
+POPULATION_CORRELATION_LEGEND_CONFIGS = immutabledict.immutabledict({
+    'title': CORRELATION_LEGEND_TITLE,
+    'orient': 'bottom',
+})
+POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
+    'x': alt.X(
+        f'{VARIABLE}:N',
+        sort=None,
+        title=constants.CHANNEL,
+        axis=alt.Axis(labelAngle=-45),
+    ),
+    'y': alt.Y(
+        f'{VALUE}:Q', title=CORRELATION, scale=alt.Scale(domain=[-1, 1])
+    ),
+    'color': alt.Color(
+        f'{VALUE}:Q',
+        scale=alt.Scale(
+            domain=[-1, 0, 1],
+            range=[CORRELATION_RED, CORRELATION_WHITE, CORRELATION_BLUE],
+        ),
+        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),
+    ),
+})
+POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
+    'x': alt.X(
+        f'{VARIABLE}:N',
+        sort=None,
+        title=constants.CHANNEL,
+        axis=alt.Axis(labelAngle=-45),
+    ),
+    'y': alt.Y(
+        f'{VALUE}:Q', title=CORRELATION, scale=alt.Scale(domain=[-1, 1])
+    ),
+    'color': alt.Color(
+        f'{VALUE}:Q',
+        scale=alt.Scale(
+            domain=[-1, -0.5, 0, 0.5, 1],
+            range=[
+                CORRELATION_RED,
+                CORRELATION_WHITE,
+                CORRELATION_BLUE,
+                CORRELATION_WHITE,
+                CORRELATION_RED,
+            ],
+        ),
+        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),
+    ),
+})
 CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
     constants.MEDIA_UNITS: '#4285F4',
     constants.MEDIA_CHANNEL: '#4285F4',
@@ -81,6 +139,7 @@ DISPLAY_LIMIT_MESSAGE = (
 )
 DISPLAY_LIMIT = 5
 TIME_SERIES_LIMIT = 2
+POPULATION_CORRELATION_BARCHART_LIMIT = 15
 # category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
@@ -96,6 +155,11 @@ CONTROLS_AND_NON_MEDIA_CHART_ID = 'controls-and-non-media-chart'
 KPI_CHART_ID = 'kpi-chart'
 TREATMENT_CONTROL_VARIABILITY_TABLE_ID = 'treatment-control-variability-table'
 TREATMENT_CONTROL_OUTLIER_TABLE_ID = 'treatment-control-outlier-table'
+# category 3
+POPULATION_SCALING_CARD_ID = 'population-scaling'
+POPULATION_SCALING_CARD_TITLE = 'Population Scaling of Explanatory Variables'
+POPULATION_RAW_MEDIA_CHART_ID = 'population-raw-media-chart'
+POPULATION_TREATMENT_CHART_ID = 'population-treatment-chart'
 # category 4
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
@@ -142,6 +206,11 @@ SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING = (
     f'See <a href="#{RESPONSE_VARIABLES_CARD_ID}">Individual'
     ' Explanatory/Response Variables</a>. Where applicable, review any'
     ' variables with low signal or with outliers.'
+)
+SUMMARY_TABLE_POPULATION_SCALING_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{POPULATION_SCALING_CARD_ID}">Population Scaling</a> for more'
+    ' details.'
 )
 SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO = (
     'No automated issues detected. See <a'
@@ -217,19 +286,19 @@ R_SQUARED_GEO_INFO = (
 )
 POPULATION_CORRELATION_SCALED_TREATMENT_CONTROL_INFO = (
     'Please review the Spearman correlation between population and scaled'
-    ' treatment units or scaled controls.\n\nFor controls and non-media'
+    ' treatment units or scaled controls.<br/><br/>For controls and non-media'
     " channels: Meridian doesn't population-scale these variables by default."
     ' High correlation indicates that users should population-scale these'
     ' variables using the `control_population_scaling_id` or'
-    ' `non_media_population_scaling_id` argument in `ModelSpec`.\n\nFor paid'
-    ' and organic media channels: Meridian automatically population-scales'
+    ' `non_media_population_scaling_id` argument in `ModelSpec`.<br/><br/>For'
+    ' paid and organic media channels: Meridian automatically population-scales'
     ' these media channels by default. High correlation indicates that the'
     ' variable may have been population-scaled before being passed to Meridian.'
     ' Please check your data input.'
 )
 POPULATION_CORRELATION_RAW_MEDIA_INFO = (
     'Please review the Spearman correlation between population and raw paid and'
-    ' organic media units. These raw media variables are expected to have'
+    ' organic media variables. These raw media variables are expected to have'
     ' positive correlation with population. If there is low or negative'
     ' correlation, please check your data input.'
 )
@@ -250,6 +319,10 @@ CATEGORY_TO_MESSAGE_BY_STATUS = immutabledict.immutabledict({
     RESPONSE_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
         False: SUMMARY_TABLE_RESPONSE_VARIABLES_INFO,
         True: SUMMARY_TABLE_RESPONSE_VARIABLES_FINDING,
+    }),
+    POPULATION_SCALING_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_POPULATION_SCALING_INFO,
+        True: '',  # currently there are no findings for this card
     }),
     RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
         False: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO,
