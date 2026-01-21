@@ -34,6 +34,7 @@ __all__ = (
     "CostPerMediaUnitArtifact",
     "VariableGeoTimeCollinearityArtifact",
     "PopulationCorrelationArtifact",
+    "PriorProbabilityArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
@@ -238,6 +239,21 @@ class PopulationCorrelationArtifact(AnalysisArtifact):
   correlation_ds: xr.Dataset
 
 
+@dataclasses.dataclass(frozen=True)
+class PriorProbabilityArtifact(AnalysisArtifact):
+  """Artifact for prior probability check.
+
+  Attributes:
+    prior_negative_baseline_prob: A float value for prior probability of
+      negative baseline.
+    mean_prior_contribution_da: The array containing the prior mean of each
+      treatment's contribution.
+  """
+
+  prior_negative_baseline_prob: float
+  mean_prior_contribution_da: xr.DataArray
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -249,6 +265,7 @@ class EDACheckType(enum.Enum):
   COST_PER_MEDIA_UNIT = enum.auto()
   VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
   POPULATION_CORRELATION = enum.auto()
+  PRIOR_PROBABILITY = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)

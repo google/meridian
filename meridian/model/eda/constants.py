@@ -45,6 +45,7 @@ VIF_COL_NAME = 'VIF'
 EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
 TIME_AND_GEO_AGGREGATION = 'times and geos'
 TIME_AGGREGATION = 'times'
+PRIOR_CONTRIBUTION = 'prior_contribution'
 
 ##### EDA Plotting properties #####
 CORRELATION_RED = '#d73027'
@@ -118,6 +119,15 @@ POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
         legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),
     ),
 })
+PRIOR_MEAN_ENCODINGS = immutabledict.immutabledict({
+    'x': alt.X(
+        f'{VARIABLE}:N',
+        sort=None,
+        title=constants.CHANNEL,
+        axis=alt.Axis(labelAngle=-45),
+    ),
+    'y': alt.Y(f'{VALUE}:Q', title=PRIOR_CONTRIBUTION),
+})
 CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
     constants.MEDIA_UNITS: '#4285F4',
     constants.MEDIA_CHANNEL: '#4285F4',
@@ -139,7 +149,7 @@ DISPLAY_LIMIT_MESSAGE = (
 )
 DISPLAY_LIMIT = 5
 TIME_SERIES_LIMIT = 2
-POPULATION_CORRELATION_BARCHART_LIMIT = 15
+POPULATION_CORRELATION_BARCHART_LIMIT = PRIOR_MEAN_BARCHART_LIMIT = 15
 # category 1
 SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
@@ -168,6 +178,10 @@ EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
 EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
+# category 5
+PRIOR_SPECIFICATIONS_CARD_ID = 'prior-specifications'
+PRIOR_SPECIFICATIONS_CARD_TITLE = 'Prior Specifications'
+PRIOR_CHART_ID = 'prior-chart'
 # summary
 SUMMARY_CARD_ID = 'summary'
 SUMMARY_CARD_TITLE = 'Summary'
@@ -221,6 +235,11 @@ SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING = (
     f'See <a href="#{RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID}">Relationship'
     ' Among the Variables</a>. Check for high multicollinearity among the'
     ' variables that could lead to model convergence issues.'
+)
+SUMMARY_TABLE_PRIOR_SPECIFICATIONS_INFO = (
+    'No automated issues detected. See <a'
+    f' href="#{PRIOR_SPECIFICATIONS_CARD_ID}">Prior Specifications</a> for more'
+    ' details. Assess the likelihood of a negative baseline occurring.'
 )
 SPEND_PER_MEDIA_UNIT_INFO = (
     'Please review the patterns for spend, media units, and'
@@ -302,6 +321,14 @@ POPULATION_CORRELATION_RAW_MEDIA_INFO = (
     ' positive correlation with population. If there is low or negative'
     ' correlation, please check your data input.'
 )
+PRIOR_PROBABILITY_REPORT_INFO = (
+    'Negative baseline is equivalent to the treatment effects getting too much'
+    ' credit. Please review the prior probability of negative baseline together'
+    ' with the bar chart for channel-level prior mean of contribution. If the'
+    ' prior probability of negative baseline is high, consider custom treatment'
+    ' priors. In particular, a custom `contribution prior` type may be'
+    ' appropriate.<br/><br/>'
+)
 # The boolean keys indicate whether findings were detected (True) or
 # not (False), and the values are the corresponding message that should be
 # displayed. Example, if there were errors or reviews in the spend and media
@@ -327,5 +354,9 @@ CATEGORY_TO_MESSAGE_BY_STATUS = immutabledict.immutabledict({
     RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE: immutabledict.immutabledict({
         False: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_INFO,
         True: SUMMARY_TABLE_RELATIONSHIP_BETWEEN_VARIABLES_FINDING,
+    }),
+    PRIOR_SPECIFICATIONS_CARD_TITLE: immutabledict.immutabledict({
+        False: SUMMARY_TABLE_PRIOR_SPECIFICATIONS_INFO,
+        True: '',  # currently there are no findings for this card
     }),
 })
