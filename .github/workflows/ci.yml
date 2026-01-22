@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build meridian core distribution
         uses: ./.github/actions/build
         with:
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Check meridian version
       - uses: ./.github/actions/install-meridian
@@ -85,7 +85,7 @@ jobs:
       cancel-in-progress: true
     name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
       - uses: ./.github/actions/install-meridian
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
@@ -103,9 +103,9 @@ jobs:
     timeout-minutes: 20
     name: pytest-schema
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         with:
           python-version: ${{ matrix.python-version }}
