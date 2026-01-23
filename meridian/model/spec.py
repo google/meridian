@@ -14,11 +14,10 @@
 
 """Defines model specification parameters for Meridian."""
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 import dataclasses
 from typing import Sequence
 import warnings
-
 from meridian import constants
 from meridian.model import prior_distribution
 import numpy as np
@@ -166,17 +165,17 @@ class ModelSpec:
       given non_media treatments channel). If `None`, the minimum value is used
       as baseline for each non-media treatments channel. This attribute is used
       as the default value for the corresponding argument to `Analyzer` methods.
-    knots: An optional integer or list of integers indicating the knots used to
-      estimate time effects. When `knots` is a list of integers, the knot
-      locations are provided by that list. Zero corresponds to a knot at the
-      first time period, one corresponds to a knot at the second time period,
-      ..., and `(n_times - 1)` corresponds to a knot at the last time period).
-      Typically, we recommend including knots at `0` and `(n_times - 1)`, but
-      this is not required. When `knots` is an integer, then there are knots
-      with locations equally spaced across the time periods, (including knots at
-      zero and `(n_times - 1)`. When `knots` is` 1`, there is a single common
-      regression coefficient used for all time periods. If `knots` is set to
-      `None`, then the numbers of knots used is equal to the number of time
+    knots: An optional integer or collection of integers indicating the knots
+      used to estimate time effects. When `knots` is a collection of integers,
+      the knot locations are provided by that list. Zero corresponds to a knot
+      at the first time period, one corresponds to a knot at the second time
+      period, ..., and `(n_times - 1)` corresponds to a knot at the last time
+      period). Typically, we recommend including knots at `0` and `(n_times -
+      1)`, but this is not required. When `knots` is an integer, then there are
+      knots with locations equally spaced across the time periods, (including
+      knots at zero and `(n_times - 1)`. When `knots` is` 1`, there is a single
+      common regression coefficient used for all time periods. If `knots` is set
+      to `None`, then the numbers of knots used is equal to the number of time
       periods in the case of a geo model. This is equivalent to each time period
       having its own regression coefficient. If `knots` is set to `None` in the
       case of a national model, then the number of knots used is `1`. Default:
@@ -235,7 +234,7 @@ class ModelSpec:
       constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
   )
   non_media_baseline_values: Sequence[float | str] | None = None
-  knots: int | list[int] | None = None
+  knots: int | Collection[int] | None = None
   baseline_geo: int | str | None = None
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
@@ -321,6 +320,12 @@ class ModelSpec:
         prior_type_name="rf_prior_type",
     )
 
+    if isinstance(self.knots, Collection):
+      knots_list = list(self.knots)
+      if not all(isinstance(x, (int, np.integer)) for x in knots_list):
+        raise ValueError("`knots` must be a sequence of integers.")
+      object.__setattr__(self, "knots", [int(x) for x in knots_list])
+
     # Validate knots.
     if isinstance(self.knots, list) and not self.knots:
       raise ValueError("The `knots` parameter cannot be an empty list.")
@@ -329,6 +334,10 @@ class ModelSpec:
     if self.knots is not None and self.enable_aks:
       raise ValueError(
           "The `knots` parameter cannot be set when `enable_aks` is True."
+      )
+    if not (self.knots is None or isinstance(self.knots, (int, list))):
+      raise ValueError(
+          f"Unsupported type for `knots` parameter: {type(self.knots)}."
       )
 
   @property
