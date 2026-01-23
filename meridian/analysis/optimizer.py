@@ -1333,7 +1333,6 @@ class BudgetOptimizer:
     self._meridian = meridian
     self._analyzer = analyzer_module.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
 

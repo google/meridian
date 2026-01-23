@@ -73,7 +73,10 @@ class TrainedModel(abc.ABC):
   @functools.cached_property
   def internal_analyzer(self) -> analyzer.Analyzer:
     """Returns an internal `Analyzer`  bound to this trained model."""
-    return analyzer.Analyzer(self.mmm)
+    return analyzer.Analyzer(
+        model_context=self.mmm.model_context,
+        inference_data=self.mmm.inference_data,
+    )
 
   @functools.cached_property
   def internal_optimizer(self) -> optimizer.BudgetOptimizer:

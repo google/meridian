@@ -50,7 +50,6 @@ class ModelDiagnostics:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
@@ -397,7 +396,6 @@ class ModelFit:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
@@ -671,7 +669,6 @@ class ReachAndFrequency:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
     self._selected_times = selected_times
@@ -875,7 +872,6 @@ class MediaEffects:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
     self._by_reach = by_reach
@@ -1453,7 +1449,6 @@ class MediaSummary:
     self._meridian = meridian
     self._analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )
     self._confidence_level = confidence_level

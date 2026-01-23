@@ -75,7 +75,10 @@ class ModelReviewer:
   ):
     self._meridian = meridian
     self._results: list[results.CheckResult] = []
-    self._analyzer = analyzer_module.Analyzer(meridian)
+    self._analyzer = analyzer_module.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._post_convergence_checks = post_convergence_checks
 
   def _run_and_handle(self, check_class, config):

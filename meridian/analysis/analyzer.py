@@ -16,6 +16,7 @@
 
 from collections.abc import Mapping, Sequence
 import dataclasses
+import functools
 import itertools
 import numbers
 from typing import Any, Optional
@@ -927,7 +928,6 @@ class Analyzer:
       meridian: model.Meridian | None = None,
       *,
       model_context: context.ModelContext | None = None,
-      model_equations: equations.ModelEquations | None = None,
       inference_data: az.InferenceData | None = None,
   ):
     # Make the meridian object ready for methods in this analyzer that create
@@ -936,22 +936,20 @@ class Analyzer:
     self.model_context = _get_model_context(meridian, model_context)
 
     if meridian is not None:
-      self._model_equations = model_equations or meridian.model_equations
       self._inference_data = inference_data or meridian.inference_data
-    elif (
-        model_context is None
-        or model_equations is None
-        or inference_data is None
-    ):
+    elif model_context is None or inference_data is None:
       raise ValueError(
-          "If `meridian` is not provided, then `model_context`, "
-          "`model_equations`, and `inference_data` must be provided."
+          "If `meridian` is not provided, then `model_context` and"
+          " `inference_data` must be provided."
       )
     else:
-      self._model_equations = model_equations
       self._inference_data = inference_data
 
     self.model_context.populate_cached_properties()
+
+  @functools.cached_property
+  def _model_equations(self) -> equations.ModelEquations:
+    return equations.ModelEquations(self.model_context)
 
   @property
   def inference_data(self) -> az.InferenceData:

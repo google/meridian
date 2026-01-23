@@ -67,7 +67,6 @@ class Summarizer:
     self._meridian = meridian
     self._use_kpi = analyzer.Analyzer(
         model_context=meridian.model_context,
-        model_equations=meridian.model_equations,
         inference_data=meridian.inference_data,
     )._use_kpi(use_kpi)
 

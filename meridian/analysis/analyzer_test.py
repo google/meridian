@@ -738,7 +738,8 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
         )
     )
     cls.analyzer_national = analyzer.Analyzer(
-        cls.meridian_national, inference_data=cls.inference_data_national
+        model_context=cls.meridian_national.model_context,
+        inference_data=cls.inference_data_national,
     )
 
   def test_rhat_summary_national_correct(self):
@@ -832,7 +833,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         )
     )
     cls.analyzer_media_only = analyzer.Analyzer(
-        cls.meridian_media_only, inference_data=cls.inference_data_media_only
+        model_context=cls.meridian_media_only.model_context,
+        inference_data=cls.inference_data_media_only,
     )
 
   def test_filter_and_aggregate_geos_and_times_incorrect_n_dim(self):
@@ -1137,7 +1139,8 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
         )
     )
     cls.analyzer_rf_only = analyzer.Analyzer(
-        cls.meridian_rf_only, inference_data=cls.inference_data_rf_only
+        model_context=cls.meridian_rf_only.model_context,
+        inference_data=cls.inference_data_rf_only,
     )
 
   # The purpose of this test is to prevent accidental logic change.
@@ -1317,7 +1320,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
     cls.analyzer = analyzer.Analyzer(
-        cls.meridian, inference_data=cls.inference_data
+        model_context=cls.meridian.model_context,
+        inference_data=cls.inference_data,
     )
 
   def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
@@ -1346,7 +1350,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         seed=0,
     )
     mmm_revenue = model.Meridian(input_data=input_data_revenue)
-    analyzer_revenue = analyzer.Analyzer(mmm_revenue)
+    analyzer_revenue = analyzer.Analyzer(
+        model_context=mmm_revenue.model_context,
+        inference_data=mmm_revenue.inference_data,
+    )
 
     with self.assertWarnsRegex(
         UserWarning,
@@ -1377,7 +1384,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     mmm_non_revenue = model.Meridian(
         input_data=input_data_non_revenue_no_revenue_per_kpi
     )
-    analyzer_non_revenue = analyzer.Analyzer(mmm_non_revenue)
+    analyzer_non_revenue = analyzer.Analyzer(
+        model_context=mmm_non_revenue.model_context,
+        inference_data=mmm_non_revenue.inference_data,
+    )
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
@@ -1418,7 +1428,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     type(mmm).inference_data = mock.PropertyMock(
         return_value=self.inference_data
     )
-    analyzer_no_rev = analyzer.Analyzer(mmm)
+    analyzer_no_rev = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=mmm.inference_data
+    )
 
     method = getattr(analyzer_no_rev, method_name)
 
@@ -1453,7 +1465,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     type(mmm).inference_data = mock.PropertyMock(
         return_value=self.inference_data
     )
-    analyzer_rev = analyzer.Analyzer(mmm)
+    analyzer_rev = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=mmm.inference_data
+    )
 
     with self.assertWarnsRegex(
         UserWarning,
@@ -2840,12 +2854,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_get_aggregated_spend_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
             "inference_data",
-            new=property(lambda unused_self: None),
+            new=property(lambda unused_self: self.inference_data),
         )
     )
 
@@ -2881,8 +2894,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     # All times are selected.
     actual_hist_spend = meridian_analyzer.get_aggregated_spend()
@@ -2892,12 +2910,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_get_aggregated_spend_new_data_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
             "inference_data",
-            new=property(lambda unused_self: None),
+            new=property(lambda unused_self: self.inference_data),
         )
     )
 
@@ -2933,8 +2950,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     model_spec = spec.ModelSpec()
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     # All times are selected.
     new_media_spend = backend.to_tensor([[[1, 2], [2, 3], [3, 4]]])
@@ -2947,12 +2969,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_get_aggregated_spend_selected_times_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
             "inference_data",
-            new=property(lambda unused_self: None),
+            new=property(lambda unused_self: self.inference_data),
         )
     )
 
@@ -2988,8 +3009,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     # The first two times are selected.
     selected_times = ["2021-01-25", "2021-02-01"]
@@ -3003,12 +3029,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
   def test_get_aggregated_spend_selected_geos_correct_values(self):
-    # Set it to None to avoid the dimension checks on inference data.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
             "inference_data",
-            new=property(lambda unused_self: None),
+            new=property(lambda unused_self: self.inference_data),
         )
     )
 
@@ -3044,8 +3069,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     model_spec = spec.ModelSpec(max_lag=15)
-    meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     # Select only first geo.
     selected_geos = ["geo_0"]
@@ -3086,7 +3116,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     # Patch validation to avoid errors due to mismatched inference data
     with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
       meridian = model.Meridian(input_data=data, model_spec=model_spec)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     n_sub_times = 4
     n_sub_geos = 3
@@ -4307,7 +4340,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
     model_spec = spec.ModelSpec(holdout_id=holdout_id)
     meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
-    analyzer_holdout_id = analyzer.Analyzer(meridian)
+    analyzer_holdout_id = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     predictive_accuracy_dataset = analyzer_holdout_id.predictive_accuracy()
     df = (
         predictive_accuracy_dataset[constants.VALUE]
@@ -4345,7 +4381,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
     model_spec = spec.ModelSpec(holdout_id=holdout_id)  # Set holdout_id
     meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
-    analyzer_holdout_id = analyzer.Analyzer(meridian)
+    analyzer_holdout_id = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     predictive_accuracy_dims_kwargs = {
         "selected_geos": selected_geos,
@@ -4523,7 +4562,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     model_spec = spec.ModelSpec(holdout_id=holdout_id)
     meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
-    meridian_analyzer = analyzer.Analyzer(meridian)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
     ds = meridian_analyzer.expected_vs_actual_data(
         aggregate_geos=aggregate_geos,
@@ -4939,7 +4981,10 @@ class AnalyzerNotFittedTest(absltest.TestCase):
     type(not_fitted_mmm).inference_data = mock.PropertyMock(
         return_value=az.InferenceData()
     )
-    not_fitted_analyzer = analyzer.Analyzer(not_fitted_mmm)
+    not_fitted_analyzer = analyzer.Analyzer(
+        model_context=not_fitted_mmm.model_context,
+        inference_data=not_fitted_mmm.inference_data,
+    )
     with self.assertRaisesWithLiteralMatch(
         model.NotFittedModelError,
         "sample_posterior() must be called prior to calling this method.",
@@ -4998,7 +5043,9 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
   total_outcome = np.sum(
       mmm.input_data.kpi.values * mmm.input_data.revenue_per_kpi.values
   )
-  mmm_analyzer = analyzer.Analyzer(mmm)
+  mmm_analyzer = analyzer.Analyzer(
+      model_context=mmm.model_context, inference_data=mmm.inference_data
+  )
   n_m, n_rf, n_om, n_orf = (
       mmm.n_media_channels,
       mmm.n_rf_channels,
@@ -5193,7 +5240,9 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
         n_draws, seed=self.get_next_rng_seed_or_key()
     )
 
-    mmm_analyzer = analyzer.Analyzer(mmm)
+    mmm_analyzer = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=mmm.inference_data
+    )
     hill_df = mmm_analyzer.hill_curves()
 
     max_units_low = hill_df[
@@ -5276,7 +5325,9 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
         n_draws, seed=self.get_next_rng_seed_or_key()
     )
 
-    mmm_analyzer = analyzer.Analyzer(mmm)
+    mmm_analyzer = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=mmm.inference_data
+    )
     hill_df = mmm_analyzer.hill_curves()
 
     output_channels = (
