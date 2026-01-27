@@ -627,7 +627,7 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
               results.PriorPosteriorShiftChannelCases.SHIFT,
               results.PriorPosteriorShiftChannelCases.SHIFT,
           ],
-          expected_details={},
+          expected_details={"channels_str": ""},
       ),
       dict(
           testcase_name="one_not_shifted_media",
@@ -751,7 +751,7 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
     self.assertEqual(
         result.case, results.PriorPosteriorShiftAggregateCases.PASS
     )
-    self.assertEqual(result.details, {})
+    self.assertEqual(result.details, {"channels_str": ""})
     self.assertLen(result.channel_results, 1)
     self.assertEqual(
         result.channel_results[0].case,
