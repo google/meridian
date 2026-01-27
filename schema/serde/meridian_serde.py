@@ -68,10 +68,6 @@ _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
 
-_file_exists = os.path.exists
-_make_dirs = os.makedirs
-_file_open = open
-
 
 class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
   """Serializes and deserializes a Meridian model into an `MmmKernel` proto."""
@@ -354,10 +350,12 @@ def save_meridian(
     eda_function_registry: A lookup table that maps string keys to custom
       functions to be used in `EDASpec`.
   """
-  if not _file_exists(os.path.dirname(file_path)):
-    _make_dirs(os.path.dirname(file_path))
+  if not os.path.exists(os.path.dirname(file_path)):
+    os.makedirs(os.path.dirname(file_path))
 
-  with _file_open(file_path, 'wb') as f:
+  mode = 'wb' if file_path.endswith('.binpb') else 'w'
+
+  with open(file_path, mode) as f:
     # Creates an MmmKernel.
     serialized_kernel = MeridianSerde().serialize(
         mmm,
@@ -402,7 +400,9 @@ def load_meridian(
   Returns:
     Model object loaded from the file path.
   """
-  with _file_open(file_path, 'rb') as f:
+  mode = 'rb' if file_path.endswith('.binpb') else 'r'
+
+  with open(file_path, mode) as f:
     if file_path.endswith('.binpb'):
       serialized_model = kernel_pb.MmmKernel.FromString(f.read())
     elif file_path.endswith('.textproto') or file_path.endswith('.txtpb'):
