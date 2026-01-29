@@ -14,13 +14,14 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian.backend import test_utils
 from meridian.model.eda import eda_outcome
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 
-class EdaOutcomeTest(parameterized.TestCase):
+class EdaOutcomeTest(test_utils.MeridianTestCase):
   _GEO_ARTIFACT = eda_outcome.PairwiseCorrArtifact(
       level=eda_outcome.AnalysisLevel.GEO,
       corr_matrix=xr.DataArray(
