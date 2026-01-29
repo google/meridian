@@ -186,7 +186,7 @@ def _set_metrics_from_gof_dataframe(
     metrics: MutableMapping[str, float],
     gof_df: pd.DataFrame,
     geo_granularity: str,
-    suffix: str | None = None,
+    suffix: str,
 ) -> None:
   """Sets the `metrics` variable of the GoodnessOfFitCheckResult.
 
@@ -200,8 +200,7 @@ def _set_metrics_from_gof_dataframe(
       holdout set is not used) of filtered to a single evaluation set ("all",
       "train", or "test").
     geo_granularity: The geo granularity of the data ("geo" or "national").
-    suffix: A suffix to add to the metric names (e.g., "all", "train", "test").
-      If None, the metrics are added without a suffix.
+    suffix: A suffix to add to the metric names (e.g., "_train", "_test").
   """
   gof_metrics_pivoted = gof_df.pivot(
       index=constants.GEO_GRANULARITY,
@@ -209,22 +208,15 @@ def _set_metrics_from_gof_dataframe(
       values=constants.VALUE,
   )
   gof_metrics_series = gof_metrics_pivoted.loc[geo_granularity]
-  if suffix is not None:
-    metrics[f"{review_constants.R_SQUARED}_{suffix}"] = gof_metrics_series[
-        constants.R_SQUARED
-    ]
-    metrics[f"{review_constants.MAPE}_{suffix}"] = gof_metrics_series[
-        constants.MAPE
-    ]
-    metrics[f"{review_constants.WMAPE}_{suffix}"] = gof_metrics_series[
-        constants.WMAPE
-    ]
-  else:
-    metrics[review_constants.R_SQUARED] = gof_metrics_series[
-        constants.R_SQUARED
-    ]
-    metrics[review_constants.MAPE] = gof_metrics_series[constants.MAPE]
-    metrics[review_constants.WMAPE] = gof_metrics_series[constants.WMAPE]
+  metrics[f"{review_constants.R_SQUARED}{suffix}"] = gof_metrics_series[
+      constants.R_SQUARED
+  ]
+  metrics[f"{review_constants.MAPE}{suffix}"] = gof_metrics_series[
+      constants.MAPE
+  ]
+  metrics[f"{review_constants.WMAPE}{suffix}"] = gof_metrics_series[
+      constants.WMAPE
+  ]
 
 
 class GoodnessOfFitCheck(
@@ -243,7 +235,7 @@ class GoodnessOfFitCheck(
     gof_metrics = gof_df[gof_df[constants.GEO_GRANULARITY] == geo_granularity]
     is_holdout = constants.EVALUATION_SET_VAR in gof_df.columns
 
-    metrics = {}
+    metrics_dict = {}
     case = results.GoodnessOfFitCases.PASS
 
     if is_holdout:
@@ -256,28 +248,70 @@ class GoodnessOfFitCheck(
             gof_metrics[constants.EVALUATION_SET_VAR] == evaluation_set
         ]
         _set_metrics_from_gof_dataframe(
-            metrics=metrics,
+            metrics=metrics_dict,
             gof_df=set_metrics,
             geo_granularity=geo_granularity,
             suffix=suffix,
         )
-        if metrics[f"{review_constants.R_SQUARED}_{suffix}"] <= 0:
+        if metrics_dict[f"{review_constants.R_SQUARED}{suffix}"] <= 0:
           case = results.GoodnessOfFitCases.REVIEW
+      return results.GoodnessOfFitCheckResult(
+          case=case,
+          metrics=results.GoodnessOfFitMetrics(
+              r_squared=metrics_dict[
+                  f"{review_constants.R_SQUARED}{review_constants.ALL_SUFFIX}"
+              ],
+              mape=metrics_dict[
+                  f"{review_constants.MAPE}{review_constants.ALL_SUFFIX}"
+              ],
+              wmape=metrics_dict[
+                  f"{review_constants.WMAPE}{review_constants.ALL_SUFFIX}"
+              ],
+              r_squared_train=metrics_dict[
+                  f"{review_constants.R_SQUARED}{review_constants.TRAIN_SUFFIX}"
+              ],
+              mape_train=metrics_dict[
+                  f"{review_constants.MAPE}{review_constants.TRAIN_SUFFIX}"
+              ],
+              wmape_train=metrics_dict[
+                  f"{review_constants.WMAPE}{review_constants.TRAIN_SUFFIX}"
+              ],
+              r_squared_test=metrics_dict[
+                  f"{review_constants.R_SQUARED}{review_constants.TEST_SUFFIX}"
+              ],
+              mape_test=metrics_dict[
+                  f"{review_constants.MAPE}{review_constants.TEST_SUFFIX}"
+              ],
+              wmape_test=metrics_dict[
+                  f"{review_constants.WMAPE}{review_constants.TEST_SUFFIX}"
+              ],
+          ),
+          is_holdout=is_holdout,
+      )
     else:
       _set_metrics_from_gof_dataframe(
-          metrics=metrics,
+          metrics=metrics_dict,
           gof_df=gof_metrics,
           geo_granularity=geo_granularity,
-          suffix=None,
+          suffix=review_constants.ALL_SUFFIX,
       )
-      if metrics[review_constants.R_SQUARED] <= 0:
+      if metrics_dict[review_constants.R_SQUARED] <= 0:
         case = results.GoodnessOfFitCases.REVIEW
-
-    return results.GoodnessOfFitCheckResult(
-        case=case,
-        metrics=metrics,
-        is_holdout=is_holdout,
-    )
+      return results.GoodnessOfFitCheckResult(
+          case=case,
+          metrics=results.GoodnessOfFitMetrics(
+              r_squared=metrics_dict[
+                  f"{review_constants.R_SQUARED}{review_constants.ALL_SUFFIX}"
+              ],
+              mape=metrics_dict[
+                  f"{review_constants.MAPE}{review_constants.ALL_SUFFIX}"
+              ],
+              wmape=metrics_dict[
+                  f"{review_constants.WMAPE}{review_constants.ALL_SUFFIX}"
+              ],
+          ),
+          is_holdout=is_holdout,
+      )
 
 
 # ==============================================================================

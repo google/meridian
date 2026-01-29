@@ -194,38 +194,52 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name="no_r_squared",
-          metrics={
-              review_constants.MAPE: 0.1,
-              review_constants.WMAPE: 0.1,
-          },
-          details_str="{'mape': 0.1, 'wmape': 0.1}",
+          testcase_name="no_r_squared_train",
+          metrics=results.GoodnessOfFitMetrics(
+              r_squared=0.1,
+              mape=0.1,
+              wmape=0.1,
+              mape_train=0.1,
+              wmape_train=0.1,
+              r_squared_test=0.1,
+              mape_test=0.1,
+              wmape_test=0.1,
+          ),
+          details_str=(
+              "r_squared=0.1, mape=0.1, wmape=0.1, r_squared_train=None,"
+              " mape_train=0.1, wmape_train=0.1, r_squared_test=0.1,"
+              " mape_test=0.1, wmape_test=0.1"
+          ),
       ),
       dict(
-          testcase_name="no_mape",
-          metrics={
-              review_constants.R_SQUARED: 0.1,
-              review_constants.WMAPE: 0.1,
-          },
-          details_str="{'r_squared': 0.1, 'wmape': 0.1}",
-      ),
-      dict(
-          testcase_name="no_wmape",
-          metrics={
-              review_constants.R_SQUARED: 0.1,
-              review_constants.MAPE: 0.1,
-          },
-          details_str="{'r_squared': 0.1, 'mape': 0.1}",
+          testcase_name="no_mape_test",
+          metrics=results.GoodnessOfFitMetrics(
+              r_squared=0.1,
+              mape=0.1,
+              wmape=0.1,
+              r_squared_train=0.1,
+              mape_train=0.1,
+              wmape_train=0.1,
+              r_squared_test=0.1,
+              wmape_test=0.1,
+          ),
+          details_str=(
+              "r_squared=0.1, mape=0.1, wmape=0.1, r_squared_train=0.1,"
+              " mape_train=0.1, wmape_train=0.1, r_squared_test=0.1,"
+              " mape_test=None, wmape_test=0.1"
+          ),
       ),
   )
   def test_goodness_of_fit_check_result_raises_error(
       self,
-      metrics: dict[str, Any],
+      metrics: results.GoodnessOfFitMetrics,
       details_str: str,
   ):
     expected_error_message = (
-        "The message template is missing required formatting arguments:"
-        f" r_squared, mape, wmape. Metrics: {details_str}."
+        "The message template is missing required formatting arguments for"
+        " holdout case. Required keys: r_squared_train, mape_train,"
+        " wmape_train, r_squared_test, mape_test, wmape_test. Metrics:"
+        f" GoodnessOfFitMetrics({details_str})."
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -234,16 +248,17 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
       _ = results.GoodnessOfFitCheckResult(
           case=results.GoodnessOfFitCases.PASS,
           metrics=metrics,
+          is_holdout=True,
       )
 
   def test_goodness_of_fit_check_result_pass(self):
     result = results.GoodnessOfFitCheckResult(
         case=results.GoodnessOfFitCases.PASS,
-        metrics={
-            review_constants.R_SQUARED: 0.5,
-            review_constants.MAPE: 0.1,
-            review_constants.WMAPE: 0.2,
-        },
+        metrics=results.GoodnessOfFitMetrics(
+            r_squared=0.5,
+            mape=0.1,
+            wmape=0.2,
+        ),
     )
     self.assertEqual(
         result.recommendation,
@@ -254,17 +269,17 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
   def test_goodness_of_fit_check_result_pass_holdout(self):
     result = results.GoodnessOfFitCheckResult(
         case=results.GoodnessOfFitCases.PASS,
-        metrics={
-            f"{review_constants.R_SQUARED}_all": 0.5,
-            f"{review_constants.MAPE}_all": 0.1,
-            f"{review_constants.WMAPE}_all": 0.2,
-            f"{review_constants.R_SQUARED}_train": 0.6,
-            f"{review_constants.MAPE}_train": 0.09,
-            f"{review_constants.WMAPE}_train": 0.19,
-            f"{review_constants.R_SQUARED}_test": 0.4,
-            f"{review_constants.MAPE}_test": 0.11,
-            f"{review_constants.WMAPE}_test": 0.21,
-        },
+        metrics=results.GoodnessOfFitMetrics(
+            r_squared=0.5,
+            mape=0.1,
+            wmape=0.2,
+            r_squared_train=0.6,
+            mape_train=0.09,
+            wmape_train=0.19,
+            r_squared_test=0.4,
+            mape_test=0.11,
+            wmape_test=0.21,
+        ),
         is_holdout=True,
     )
     self.assertEqual(
@@ -278,11 +293,11 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
   def test_goodness_of_fit_check_result_review(self):
     result = results.GoodnessOfFitCheckResult(
         case=results.GoodnessOfFitCases.REVIEW,
-        metrics={
-            review_constants.R_SQUARED: -0.5,
-            review_constants.MAPE: 0.1,
-            review_constants.WMAPE: 0.2,
-        },
+        metrics=results.GoodnessOfFitMetrics(
+            r_squared=-0.5,
+            mape=0.1,
+            wmape=0.2,
+        ),
     )
     self.assertEqual(
         result.recommendation,
@@ -293,17 +308,17 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
   def test_goodness_of_fit_check_result_review_holdout(self):
     result = results.GoodnessOfFitCheckResult(
         case=results.GoodnessOfFitCases.REVIEW,
-        metrics={
-            f"{review_constants.R_SQUARED}_all": -0.5,
-            f"{review_constants.MAPE}_all": 0.1,
-            f"{review_constants.WMAPE}_all": 0.2,
-            f"{review_constants.R_SQUARED}_train": 0.6,
-            f"{review_constants.MAPE}_train": 0.09,
-            f"{review_constants.WMAPE}_train": 0.19,
-            f"{review_constants.R_SQUARED}_test": 0.4,
-            f"{review_constants.MAPE}_test": 0.11,
-            f"{review_constants.WMAPE}_test": 0.21,
-        },
+        metrics=results.GoodnessOfFitMetrics(
+            r_squared=-0.5,
+            mape=0.1,
+            wmape=0.2,
+            r_squared_train=0.6,
+            mape_train=0.09,
+            wmape_train=0.19,
+            r_squared_test=0.4,
+            mape_test=0.11,
+            wmape_test=0.21,
+        ),
         is_holdout=True,
     )
     self.assertEqual(
