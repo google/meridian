@@ -550,6 +550,7 @@ class EDAEngine:
 
   def __init__(
       self,
+      # TODO: b/476230365 - Remove meridian arg.
       meridian: model.Meridian | None = None,
       spec: eda_spec.EDASpec = eda_spec.EDASpec(),
       *,
