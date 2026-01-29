@@ -15,7 +15,7 @@
 """Implementation of the Model Quality Checks."""
 
 import abc
-from collections.abc import Sequence
+from collections.abc import MutableMapping, Sequence
 import dataclasses
 from typing import Generic, TypeVar
 import warnings
@@ -77,31 +77,16 @@ class ConvergenceCheck(
     if not valid_rhat_items:
       return results.ConvergenceCheckResult(
           case=results.ConvergenceCases.CONVERGED,
-          details={
-              review_constants.RHAT: np.nan,
-              review_constants.PARAMETER: np.nan,
-              review_constants.CONVERGENCE_THRESHOLD: (
-                  self._config.convergence_threshold
-              ),
-          },
+          config=self._config,
+          max_rhat=np.nan,
+          max_parameter=np.nan,
       )
 
     max_parameter, max_rhat = max(max_rhats.items(), key=lambda item: item[1])
 
-    details = {
-        review_constants.RHAT: max_rhat,
-        review_constants.PARAMETER: max_parameter,
-        review_constants.CONVERGENCE_THRESHOLD: (
-            self._config.convergence_threshold
-        ),
-    }
-
     # Case 1: Converged.
     if max_rhat < self._config.convergence_threshold:
-      return results.ConvergenceCheckResult(
-          case=results.ConvergenceCases.CONVERGED,
-          details=details,
-      )
+      case = results.ConvergenceCases.CONVERGED
 
     # Case 2: Not fully converged, but potentially acceptable.
     elif (
@@ -109,17 +94,18 @@ class ConvergenceCheck(
         <= max_rhat
         < self._config.not_fully_convergence_threshold
     ):
-      return results.ConvergenceCheckResult(
-          case=results.ConvergenceCases.NOT_FULLY_CONVERGED,
-          details=details,
-      )
+      case = results.ConvergenceCases.NOT_FULLY_CONVERGED
 
     # Case 3: Not converged and unacceptable.
     else:  # max_rhat >= divergence_threshold
-      return results.ConvergenceCheckResult(
-          case=results.ConvergenceCases.NOT_CONVERGED,
-          details=details,
-      )
+      case = results.ConvergenceCases.NOT_CONVERGED
+
+    return results.ConvergenceCheckResult(
+        case=case,
+        config=self._config,
+        max_rhat=max_rhat,
+        max_parameter=max_parameter,
+    )
 
 
 # ==============================================================================
@@ -131,33 +117,25 @@ class BaselineCheck(
   """Checks for negative baseline probability."""
 
   def run(self) -> results.BaselineCheckResult:
-    prob = self._analyzer.negative_baseline_probability()
-    details = {
-        review_constants.NEGATIVE_BASELINE_PROB: prob,
-        review_constants.NEGATIVE_BASELINE_PROB_FAIL_THRESHOLD: (
-            self._config.negative_baseline_prob_fail_threshold
-        ),
-        review_constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD: (
-            self._config.negative_baseline_prob_review_threshold
-        ),
-    }
+    prob = float(self._analyzer.negative_baseline_probability())
+
     # Case 1: FAIL
     if prob > self._config.negative_baseline_prob_fail_threshold:
-      return results.BaselineCheckResult(
-          case=results.BaselineCases.FAIL,
-          details=details,
-      )
+      case = results.BaselineCases.FAIL
+
     # Case 2: REVIEW
     elif prob >= self._config.negative_baseline_prob_review_threshold:
-      return results.BaselineCheckResult(
-          case=results.BaselineCases.REVIEW,
-          details=details,
-      )
+      case = results.BaselineCases.REVIEW
+
     # Case 3: PASS
     else:
-      return results.BaselineCheckResult(
-          case=results.BaselineCases.PASS, details=details
-      )
+      case = results.BaselineCases.PASS
+
+    return results.BaselineCheckResult(
+        case=case,
+        config=self._config,
+        negative_baseline_prob=prob,
+    )
 
 
 # ==============================================================================
@@ -189,39 +167,35 @@ class BayesianPPPCheck(
         >= np.abs(total_outcome_actual - total_outcome_expected_mean)
     )
 
-    details = {
-        review_constants.BAYESIAN_PPP: bayesian_ppp,
-    }
-
     if bayesian_ppp >= self._config.ppp_threshold:
-      return results.BayesianPPPCheckResult(
-          case=results.BayesianPPPCases.PASS,
-          details=details,
-      )
+      case = results.BayesianPPPCases.PASS
     else:
-      return results.BayesianPPPCheckResult(
-          case=results.BayesianPPPCases.FAIL,
-          details=details,
-      )
+      case = results.BayesianPPPCases.FAIL
+
+    return results.BayesianPPPCheckResult(
+        case=case,
+        config=self._config,
+        bayesian_ppp=bayesian_ppp,
+    )
 
 
 # ==============================================================================
 # Check: Goodness of Fit
 # ==============================================================================
-def _set_details_from_gof_dataframe(
-    details: dict[str, float],
+def _set_metrics_from_gof_dataframe(
+    metrics: MutableMapping[str, float],
     gof_df: pd.DataFrame,
     geo_granularity: str,
     suffix: str | None = None,
 ) -> None:
-  """Sets the `details` variable of the GoodnessOfFitCheckResult.
+  """Sets the `metrics` variable of the GoodnessOfFitCheckResult.
 
   This method takes a DataFrame containing goodness of fit metrics and pivots it
-  to a Series, which is then added to the `details` variable of the
+  to a Series, which is then added to the `metrics` variable of the
   `GoodnessOfFitCheckResult`.
 
   Args:
-    details: A dictionary to store the goodness of fit metrics in.
+    metrics: A dictionary to store the goodness of fit metrics in.
     gof_df: A DataFrame containing predictive accuracy of the whole data (if
       holdout set is not used) of filtered to a single evaluation set ("all",
       "train", or "test").
@@ -236,21 +210,21 @@ def _set_details_from_gof_dataframe(
   )
   gof_metrics_series = gof_metrics_pivoted.loc[geo_granularity]
   if suffix is not None:
-    details[f"{review_constants.R_SQUARED}_{suffix}"] = gof_metrics_series[
+    metrics[f"{review_constants.R_SQUARED}_{suffix}"] = gof_metrics_series[
         constants.R_SQUARED
     ]
-    details[f"{review_constants.MAPE}_{suffix}"] = gof_metrics_series[
+    metrics[f"{review_constants.MAPE}_{suffix}"] = gof_metrics_series[
         constants.MAPE
     ]
-    details[f"{review_constants.WMAPE}_{suffix}"] = gof_metrics_series[
+    metrics[f"{review_constants.WMAPE}_{suffix}"] = gof_metrics_series[
         constants.WMAPE
     ]
   else:
-    details[review_constants.R_SQUARED] = gof_metrics_series[
+    metrics[review_constants.R_SQUARED] = gof_metrics_series[
         constants.R_SQUARED
     ]
-    details[review_constants.MAPE] = gof_metrics_series[constants.MAPE]
-    details[review_constants.WMAPE] = gof_metrics_series[constants.WMAPE]
+    metrics[review_constants.MAPE] = gof_metrics_series[constants.MAPE]
+    metrics[review_constants.WMAPE] = gof_metrics_series[constants.WMAPE]
 
 
 class GoodnessOfFitCheck(
@@ -269,7 +243,7 @@ class GoodnessOfFitCheck(
     gof_metrics = gof_df[gof_df[constants.GEO_GRANULARITY] == geo_granularity]
     is_holdout = constants.EVALUATION_SET_VAR in gof_df.columns
 
-    details = {}
+    metrics = {}
     case = results.GoodnessOfFitCases.PASS
 
     if is_holdout:
@@ -281,27 +255,27 @@ class GoodnessOfFitCheck(
         set_metrics = gof_metrics[
             gof_metrics[constants.EVALUATION_SET_VAR] == evaluation_set
         ]
-        _set_details_from_gof_dataframe(
-            details=details,
+        _set_metrics_from_gof_dataframe(
+            metrics=metrics,
             gof_df=set_metrics,
             geo_granularity=geo_granularity,
             suffix=suffix,
         )
-        if details[f"{review_constants.R_SQUARED}_{suffix}"] <= 0:
+        if metrics[f"{review_constants.R_SQUARED}_{suffix}"] <= 0:
           case = results.GoodnessOfFitCases.REVIEW
     else:
-      _set_details_from_gof_dataframe(
-          details=details,
+      _set_metrics_from_gof_dataframe(
+          metrics=metrics,
           gof_df=gof_metrics,
           geo_granularity=geo_granularity,
           suffix=None,
       )
-      if details[review_constants.R_SQUARED] <= 0:
+      if metrics[review_constants.R_SQUARED] <= 0:
         case = results.GoodnessOfFitCases.REVIEW
 
     return results.GoodnessOfFitCheckResult(
         case=case,
-        details=details,
+        metrics=metrics,
         is_holdout=is_holdout,
     )
 
@@ -475,8 +449,10 @@ def _compute_channel_results(
     channel_results.append(
         results.ROIConsistencyChannelResult(
             case=case,
-            details={},
             channel_name=channel,
+            prior_roi_lo=np.nan,
+            prior_roi_hi=np.nan,
+            posterior_roi_mean=np.nan,
         )
     )
   for i, channel in enumerate(channel_data.all_channels):
@@ -491,14 +467,10 @@ def _compute_channel_results(
     channel_results.append(
         results.ROIConsistencyChannelResult(
             case=case,
-            details={
-                review_constants.PRIOR_ROI_LO: channel_data.prior_roi_los[i],
-                review_constants.PRIOR_ROI_HI: channel_data.prior_roi_his[i],
-                review_constants.POSTERIOR_ROI_MEAN: (
-                    channel_data.posterior_means[i]
-                ),
-            },
             channel_name=channel,
+            prior_roi_lo=channel_data.prior_roi_los[i],
+            prior_roi_hi=channel_data.prior_roi_his[i],
+            posterior_roi_mean=channel_data.posterior_means[i],
         )
     )
   return channel_results
@@ -558,7 +530,7 @@ def _compute_aggregate_result(
 
   return results.ROIConsistencyCheckResult(
       case=aggregate_case,
-      details=aggregate_details,
+      aggregate_details=aggregate_details,
       channel_results=channel_results,
   )
 
@@ -734,7 +706,7 @@ class PriorPosteriorShiftCheck(
         no_shift_channels.append(channel_name)
       channel_results.append(
           results.PriorPosteriorShiftChannelResult(
-              case=case, details={}, channel_name=channel_name
+              case=case, channel_name=channel_name
           )
       )
     return channel_results, no_shift_channels
@@ -752,17 +724,13 @@ class PriorPosteriorShiftCheck(
 
     if no_shift_channels:
       agg_case = results.PriorPosteriorShiftAggregateCases.REVIEW
-      final_details = {
-          "channels_str": ", ".join(
-              f"`{channel}`" for channel in no_shift_channels
-          )
-      }
     else:
       agg_case = results.PriorPosteriorShiftAggregateCases.PASS
-      final_details = {}
 
     return results.PriorPosteriorShiftCheckResult(
-        case=agg_case, details=final_details, channel_results=channel_results
+        case=agg_case,
+        channel_results=channel_results,
+        no_shift_channels=no_shift_channels,
     )
 
   def run(self) -> results.PriorPosteriorShiftCheckResult:

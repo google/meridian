@@ -14,9 +14,13 @@
 
 """Data structures for the Model Quality Checks results."""
 
+import abc
+from collections.abc import Mapping
 import dataclasses
 import enum
 from typing import Any
+
+from meridian.analysis.review import configs
 from meridian.analysis.review import constants
 
 
@@ -58,11 +62,16 @@ class ModelCheckCase(BaseCase):
 
 
 @dataclasses.dataclass(frozen=True)
-class BaseResultData:
+class BaseResultData(abc.ABC):
   """Base class for check result data."""
 
   case: BaseCase
-  details: dict[str, Any]
+
+  @property
+  @abc.abstractmethod
+  def details(self) -> Mapping[str, Any]:
+    """Returns the details for message formatting."""
+    raise NotImplementedError
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,17 +154,18 @@ class ConvergenceCheckResult(CheckResult):
   """The immutable result of the Convergence Check."""
 
   case: ConvergenceCases
+  config: configs.ConvergenceConfig
+  max_rhat: float
+  max_parameter: str
 
-  def __post_init__(self):
-    if self.case == ConvergenceCases.CONVERGED and (
-        constants.CONVERGENCE_THRESHOLD not in self.details
-    ):
-      raise ValueError(
-          "The message template 'The model has likely converged, as all"
-          " parameters have R-hat values < {convergence_threshold}'. is"
-          " missing required formatting arguments: convergence_threshold."
-          f" Details: {self.details}."
-      )
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        constants.RHAT: self.max_rhat,
+        constants.PARAMETER: self.max_parameter,
+        constants.CONVERGENCE_THRESHOLD: self.config.convergence_threshold,
+    }
 
 
 # ==============================================================================
@@ -223,24 +233,21 @@ class BaselineCheckResult(CheckResult):
   """The immutable result of the Baseline Check."""
 
   case: BaselineCases
+  config: configs.BaselineConfig
+  negative_baseline_prob: float
 
-  def __post_init__(self):
-    if self.case is BaselineCases.PASS:
-      return
-    if any(
-        key not in self.details
-        for key in (
-            constants.NEGATIVE_BASELINE_PROB,
-            constants.NEGATIVE_BASELINE_PROB_FAIL_THRESHOLD,
-            constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD,
-        )
-    ):
-      raise ValueError(
-          "The message template is missing required formatting arguments:"
-          " negative_baseline_prob, negative_baseline_prob_fail_threshold,"
-          " negative_baseline_prob_review_threshold. Details:"
-          f" {self.details}."
-      )
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        constants.NEGATIVE_BASELINE_PROB: self.negative_baseline_prob,
+        constants.NEGATIVE_BASELINE_PROB_FAIL_THRESHOLD: (
+            self.config.negative_baseline_prob_fail_threshold
+        ),
+        constants.NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD: (
+            self.config.negative_baseline_prob_review_threshold
+        ),
+    }
 
 
 # ==============================================================================
@@ -287,14 +294,15 @@ class BayesianPPPCheckResult(CheckResult):
   """The immutable result of the Bayesian Posterior Predictive P-value Check."""
 
   case: BayesianPPPCases
+  config: configs.BayesianPPPConfig
+  bayesian_ppp: float
 
-  def __post_init__(self):
-    if constants.BAYESIAN_PPP not in self.details:
-      raise ValueError(
-          "The message template is missing required formatting arguments:"
-          " bayesian_ppp. Details:"
-          f" {self.details}."
-      )
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        constants.BAYESIAN_PPP: self.bayesian_ppp,
+    }
 
 
 # ==============================================================================
@@ -342,6 +350,7 @@ class GoodnessOfFitCheckResult(CheckResult):
   """The immutable result of the Goodness of Fit Check."""
 
   case: GoodnessOfFitCases
+  metrics: Mapping[str, float]
   is_holdout: bool = False
 
   def __post_init__(self):
@@ -357,14 +366,14 @@ class GoodnessOfFitCheckResult(CheckResult):
             f"{constants.MAPE}_{suffix}",
             f"{constants.WMAPE}_{suffix}",
         ])
-      if any(key not in self.details for key in required_keys):
+      if any(key not in self.metrics for key in required_keys):
         raise ValueError(
             "The message template is missing required formatting arguments for"
-            f" holdout case. Required keys: {required_keys}. Details:"
-            f" {self.details}."
+            f" holdout case. Required keys: {required_keys}. Metrics:"
+            f" {self.metrics}."
         )
     elif any(
-        key not in self.details
+        key not in self.metrics
         for key in (
             constants.R_SQUARED,
             constants.MAPE,
@@ -373,13 +382,114 @@ class GoodnessOfFitCheckResult(CheckResult):
     ):
       raise ValueError(
           "The message template is missing required formatting arguments:"
-          " r_squared, mape, wmape. Details:"
-          f" {self.details}."
+          " r_squared, mape, wmape. Metrics:"
+          f" {self.metrics}."
       )
 
   @property
+  def r_squared(self) -> float | None:
+    """The R-squared metric."""
+    return self.metrics[constants.R_SQUARED] if not self.is_holdout else None
+
+  @property
+  def mape(self) -> float | None:
+    """The MAPE metric."""
+    return self.metrics[constants.MAPE] if not self.is_holdout else None
+
+  @property
+  def wmape(self) -> float | None:
+    """The wMAPE metric."""
+    return self.metrics[constants.WMAPE] if not self.is_holdout else None
+
+  @property
+  def r_squared_all(self) -> float | None:
+    """The R-squared metric for all data."""
+    return (
+        self.metrics[f"{constants.R_SQUARED}_{constants.ALL_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def mape_all(self) -> float | None:
+    """The MAPE metric for all data."""
+    return (
+        self.metrics[f"{constants.MAPE}_{constants.ALL_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def wmape_all(self) -> float | None:
+    """The wMAPE metric for all data."""
+    return (
+        self.metrics[f"{constants.WMAPE}_{constants.ALL_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def r_squared_train(self) -> float | None:
+    """The R-squared metric for train data."""
+    return (
+        self.metrics[f"{constants.R_SQUARED}_{constants.TRAIN_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def mape_train(self) -> float | None:
+    """The MAPE metric for train data."""
+    return (
+        self.metrics[f"{constants.MAPE}_{constants.TRAIN_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def wmape_train(self) -> float | None:
+    """The wMAPE metric for train data."""
+    return (
+        self.metrics[f"{constants.WMAPE}_{constants.TRAIN_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def r_squared_test(self) -> float | None:
+    """The R-squared metric for test data."""
+    return (
+        self.metrics[f"{constants.R_SQUARED}_{constants.TEST_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def mape_test(self) -> float | None:
+    """The MAPE metric for test data."""
+    return (
+        self.metrics[f"{constants.MAPE}_{constants.TEST_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def wmape_test(self) -> float | None:
+    """The wMAPE metric for test data."""
+    return (
+        self.metrics[f"{constants.WMAPE}_{constants.TEST_SUFFIX}"]
+        if self.is_holdout
+        else None
+    )
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return self.metrics
+
+  @property
   def recommendation(self) -> str:
-    """Returns the check result message."""
+    """The check result message."""
     if self.is_holdout:
       report_str = (
           "R-squared = {r_squared_all:.4f} (All),"
@@ -450,6 +560,18 @@ class ROIConsistencyChannelResult(ChannelResult):
   """The immutable result of ROI Consistency Check for a single channel."""
 
   case: ROIConsistencyChannelCases
+  prior_roi_lo: float
+  prior_roi_hi: float
+  posterior_roi_mean: float
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """Returns the check result details."""
+    return {
+        constants.PRIOR_ROI_LO: self.prior_roi_lo,
+        constants.PRIOR_ROI_HI: self.prior_roi_hi,
+        constants.POSTERIOR_ROI_MEAN: self.posterior_roi_mean,
+    }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -458,6 +580,12 @@ class ROIConsistencyCheckResult(CheckResult):
 
   case: ROIConsistencyAggregateCases
   channel_results: list[ROIConsistencyChannelResult]
+  aggregate_details: Mapping[str, Any]
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """Returns the check result details."""
+    return self.aggregate_details
 
 
 # ==============================================================================
@@ -517,6 +645,11 @@ class PriorPosteriorShiftChannelResult(ChannelResult):
 
   case: PriorPosteriorShiftChannelCases
 
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """Returns the check result details."""
+    return {}
+
 
 @dataclasses.dataclass(frozen=True)
 class PriorPosteriorShiftCheckResult(CheckResult):
@@ -524,6 +657,16 @@ class PriorPosteriorShiftCheckResult(CheckResult):
 
   case: PriorPosteriorShiftAggregateCases
   channel_results: list[PriorPosteriorShiftChannelResult]
+  no_shift_channels: list[str]
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """Returns the check result details."""
+    return {
+        "channels_str": ", ".join(
+            f"`{channel}`" for channel in self.no_shift_channels
+        )
+    }
 
 
 # ==============================================================================
@@ -567,7 +710,7 @@ class ReviewSummary:
     return "\n".join(report)
 
   @property
-  def checks_status(self) -> dict[str, str]:
+  def checks_status(self) -> Mapping[str, str]:
     """Returns a dictionary of check names and statuses."""
     return {
         result.__class__.__name__: result.case.status.name
