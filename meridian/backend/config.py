@@ -25,6 +25,16 @@ class Backend(enum.Enum):
   JAX = "jax"
 
 
+class ComputationBackend(enum.IntEnum):
+  """Enum representing the computational backend.
+
+  This mirrors the `ComputationBackend` enum in
+  `proto/mmm/v1/model/meridian/meridian_model.proto`.
+  """
+  COMPUTATION_BACKEND_UNSPECIFIED = 0
+  TENSORFLOW = 1
+  JAX = 2
+
 _DEFAULT_BACKEND = Backend.TENSORFLOW
 
 
@@ -116,3 +126,16 @@ def set_backend(backend: Union[Backend, str]) -> None:
 def get_backend() -> Backend:
   """Returns the current backend for Meridian."""
   return _BACKEND
+
+
+def get_computation_backend() -> ComputationBackend:
+  """Returns the current backend as a ComputationBackend enum.
+
+  This helper maps the active runtime backend to the persistent Proto enum
+  used for serialization and safety checks.
+  """
+  if _BACKEND == Backend.TENSORFLOW:
+    return ComputationBackend.TENSORFLOW
+  if _BACKEND == Backend.JAX:
+    return ComputationBackend.JAX
+  return ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED
