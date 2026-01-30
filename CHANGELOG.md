@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix serialization for binary and text files.
+
 ## [1.5.0] - 2026-01-26
 
 * Remove dependency on the unmaintained `patsy` library.
