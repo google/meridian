@@ -1433,6 +1433,25 @@ class BackendTest(parameterized.TestCase):
     else:
       self.assertEqual(result_arr.dtype, arr.dtype)
 
+  @parameterized.named_parameters(
+      ("tensorflow", _TF, config.ComputationBackend.TENSORFLOW),
+      ("jax", _JAX, config.ComputationBackend.JAX),
+  )
+  def test_computation_backend(self, backend_name, expected_enum):
+    """Tests that computation_backend() correctly introspects the active backend."""
+    self._set_backend_for_test(backend_name)
+
+    self.assertEqual(backend.computation_backend(), expected_enum)
+
+    tensor_module = backend.Tensor.__module__
+
+    if expected_enum == config.ComputationBackend.JAX:
+      # JAX arrays typically reside in 'jaxlib.xla_extension' or 'jax'
+      self.assertIn("jax", tensor_module)
+    elif expected_enum == config.ComputationBackend.TENSORFLOW:
+      # TF tensors typically reside in 'tensorflow.python.framework.ops'
+      self.assertIn("tensorflow", tensor_module)
+
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
 
