@@ -934,6 +934,7 @@ class Analyzer:
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
     self.model_context = _get_model_context(meridian, model_context)
+    self.model_context.populate_cached_properties()
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data
