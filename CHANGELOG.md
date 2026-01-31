@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-02-02
+
 * Fix serialization for binary and text files.
 
 ## [1.5.0] - 2026-01-26
@@ -442,4 +444,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.3.2]: https://github.com/google/meridian/releases/tag/v1.3.2
 [1.4.0]: https://github.com/google/meridian/releases/tag/v1.4.0
 [1.5.0]: https://github.com/google/meridian/releases/tag/v1.5.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.5.0...HEAD
+[1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.5.1...HEAD
