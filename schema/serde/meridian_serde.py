@@ -369,7 +369,7 @@ def save_meridian(
     if file_path.endswith('.binpb'):
       f.write(serialized_kernel.SerializeToString())
     elif file_path.endswith('.textproto') or file_path.endswith('.txtpb'):
-      f.write(text_format.MessageToString(serialized_kernel))
+      f.write(text_format.MessageToString(serialized_kernel).encode('utf-8'))
     else:
       raise ValueError(f'Unsupported file type: {file_path}')
 
