@@ -346,156 +346,76 @@ class GoodnessOfFitCases(ModelCheckCase, enum.Enum):
 
 
 @dataclasses.dataclass(frozen=True)
+class GoodnessOfFitMetrics:
+  """The metrics for the Goodness of Fit Check."""
+
+  r_squared: float
+  mape: float
+  wmape: float
+  r_squared_train: float | None = None
+  mape_train: float | None = None
+  wmape_train: float | None = None
+  r_squared_test: float | None = None
+  mape_test: float | None = None
+  wmape_test: float | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class GoodnessOfFitCheckResult(CheckResult):
   """The immutable result of the Goodness of Fit Check."""
 
   case: GoodnessOfFitCases
-  metrics: Mapping[str, float]
+  metrics: GoodnessOfFitMetrics
   is_holdout: bool = False
 
   def __post_init__(self):
     if self.is_holdout:
-      required_keys = []
-      for suffix in [
-          constants.ALL_SUFFIX,
-          constants.TRAIN_SUFFIX,
-          constants.TEST_SUFFIX,
-      ]:
-        required_keys.extend([
-            f"{constants.R_SQUARED}_{suffix}",
-            f"{constants.MAPE}_{suffix}",
-            f"{constants.WMAPE}_{suffix}",
-        ])
-      if any(key not in self.metrics for key in required_keys):
+      if any(
+          metric is None
+          for metric in (
+              self.metrics.r_squared_train,
+              self.metrics.mape_train,
+              self.metrics.wmape_train,
+              self.metrics.r_squared_test,
+              self.metrics.mape_test,
+              self.metrics.wmape_test,
+          )
+      ):
         raise ValueError(
             "The message template is missing required formatting arguments for"
-            f" holdout case. Required keys: {required_keys}. Metrics:"
+            " holdout case. Required keys: r_squared_train, mape_train,"
+            " wmape_train, r_squared_test, mape_test, wmape_test. Metrics:"
             f" {self.metrics}."
         )
-    elif any(
-        key not in self.metrics
-        for key in (
-            constants.R_SQUARED,
-            constants.MAPE,
-            constants.WMAPE,
-        )
-    ):
-      raise ValueError(
-          "The message template is missing required formatting arguments:"
-          " r_squared, mape, wmape. Metrics:"
-          f" {self.metrics}."
-      )
-
-  @property
-  def r_squared(self) -> float | None:
-    """The R-squared metric."""
-    return self.metrics[constants.R_SQUARED] if not self.is_holdout else None
-
-  @property
-  def mape(self) -> float | None:
-    """The MAPE metric."""
-    return self.metrics[constants.MAPE] if not self.is_holdout else None
-
-  @property
-  def wmape(self) -> float | None:
-    """The wMAPE metric."""
-    return self.metrics[constants.WMAPE] if not self.is_holdout else None
-
-  @property
-  def r_squared_all(self) -> float | None:
-    """The R-squared metric for all data."""
-    return (
-        self.metrics[f"{constants.R_SQUARED}_{constants.ALL_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def mape_all(self) -> float | None:
-    """The MAPE metric for all data."""
-    return (
-        self.metrics[f"{constants.MAPE}_{constants.ALL_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def wmape_all(self) -> float | None:
-    """The wMAPE metric for all data."""
-    return (
-        self.metrics[f"{constants.WMAPE}_{constants.ALL_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def r_squared_train(self) -> float | None:
-    """The R-squared metric for train data."""
-    return (
-        self.metrics[f"{constants.R_SQUARED}_{constants.TRAIN_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def mape_train(self) -> float | None:
-    """The MAPE metric for train data."""
-    return (
-        self.metrics[f"{constants.MAPE}_{constants.TRAIN_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def wmape_train(self) -> float | None:
-    """The wMAPE metric for train data."""
-    return (
-        self.metrics[f"{constants.WMAPE}_{constants.TRAIN_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def r_squared_test(self) -> float | None:
-    """The R-squared metric for test data."""
-    return (
-        self.metrics[f"{constants.R_SQUARED}_{constants.TEST_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def mape_test(self) -> float | None:
-    """The MAPE metric for test data."""
-    return (
-        self.metrics[f"{constants.MAPE}_{constants.TEST_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
-
-  @property
-  def wmape_test(self) -> float | None:
-    """The wMAPE metric for test data."""
-    return (
-        self.metrics[f"{constants.WMAPE}_{constants.TEST_SUFFIX}"]
-        if self.is_holdout
-        else None
-    )
 
   @property
   def details(self) -> Mapping[str, Any]:
     """The check result details."""
-    return self.metrics
+    return {
+        f"{constants.R_SQUARED}{constants.ALL_SUFFIX}": self.metrics.r_squared,
+        f"{constants.MAPE}{constants.ALL_SUFFIX}": self.metrics.mape,
+        f"{constants.WMAPE}{constants.ALL_SUFFIX}": self.metrics.wmape,
+        f"{constants.R_SQUARED}{constants.TRAIN_SUFFIX}": (
+            self.metrics.r_squared_train
+        ),
+        f"{constants.MAPE}{constants.TRAIN_SUFFIX}": self.metrics.mape_train,
+        f"{constants.WMAPE}{constants.TRAIN_SUFFIX}": self.metrics.wmape_train,
+        f"{constants.R_SQUARED}{constants.TEST_SUFFIX}": (
+            self.metrics.r_squared_test
+        ),
+        f"{constants.MAPE}{constants.TEST_SUFFIX}": self.metrics.mape_test,
+        f"{constants.WMAPE}{constants.TEST_SUFFIX}": self.metrics.wmape_test,
+    }
 
   @property
   def recommendation(self) -> str:
     """The check result message."""
     if self.is_holdout:
       report_str = (
-          "R-squared = {r_squared_all:.4f} (All),"
+          "R-squared = {r_squared:.4f} (All),"
           " {r_squared_train:.4f} (Train), {r_squared_test:.4f} (Test); MAPE"
-          " = {mape_all:.4f} (All), {mape_train:.4f} (Train),"
-          " {mape_test:.4f} (Test); wMAPE = {wmape_all:.4f} (All),"
+          " = {mape:.4f} (All), {mape_train:.4f} (Train),"
+          " {mape_test:.4f} (Test); wMAPE = {wmape:.4f} (All),"
           " {wmape_train:.4f} (Train), {wmape_test:.4f} (Test)".format(
               **self.details
           )
