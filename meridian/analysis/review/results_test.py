@@ -370,5 +370,35 @@ class PriorPosteriorShiftCheckResultTest(parameterized.TestCase):
     self.assertEqual(result.recommendation, expected_recommendation)
 
 
+class ReviewSummaryTest(parameterized.TestCase):
+
+  def test_review_summary_repr(self):
+    mock_result = results.ConvergenceCheckResult(
+        case=results.ConvergenceCases.CONVERGED,
+        config=configs.ConvergenceConfig(),
+        max_rhat=1.0,
+        max_parameter="mock_var",
+    )
+    summary = results.ReviewSummary(
+        overall_status=results.Status.PASS,
+        summary_message="summary",
+        results=[mock_result],
+        health_score=95.2,
+    )
+    expected_repr = """========================================
+Model Quality Checks
+========================================
+Overall Status: PASS
+Summary: summary
+Health Score: 95.2
+
+Check Results:
+----------------------------------------
+Convergence Check:
+  Status: PASS
+  Recommendation: The model has likely converged, as all parameters have R-hat values < 1.2."""
+    self.assertMultiLineEqual(str(summary), expected_repr)
+
+
 if __name__ == "__main__":
   absltest.main()
