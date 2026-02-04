@@ -319,6 +319,13 @@ enum NonPaidTreatmentsPriorType {
   NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION = 2;
 }
 
+// The computational backend used to train the model.
+enum ComputationBackend {
+  COMPUTATION_BACKEND_UNSPECIFIED = 0;
+  TENSORFLOW = 1;
+  JAX = 2;
+}
+
 // Specifies the adstock decay function for each channel.
 message AdstockDecayByChannel {
   // A map where keys are channel names and values are the adstock decay
@@ -597,6 +604,8 @@ message MeridianModel {
 
   // User-configurable EDA check specs.
   eda.EDASpec eda_spec = 19;
+
+  ComputationBackend computation_backend = 21;
 }
 
 // Represents TensorFlow statistical distribution spec that are used in user
