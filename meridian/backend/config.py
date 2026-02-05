@@ -25,6 +25,18 @@ class Backend(enum.Enum):
   JAX = "jax"
 
 
+class ComputationBackend(enum.IntEnum):
+  """A computational backend for a Meridian model.
+
+  This mirrors the `ComputationBackend` enum in
+  `proto/mmm/v1/model/meridian/meridian_model.proto`.
+  """
+
+  COMPUTATION_BACKEND_UNSPECIFIED = 0
+  TENSORFLOW = 1
+  JAX = 2
+
+
 _DEFAULT_BACKEND = Backend.TENSORFLOW
 
 

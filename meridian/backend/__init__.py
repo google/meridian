@@ -1466,3 +1466,26 @@ def to_tensor(data: Any, dtype: Optional[Any] = None) -> Tensor:  # type: ignore
   """
 
   return _convert_to_tensor(data, dtype=dtype)
+
+
+def computation_backend() -> config.ComputationBackend:
+  """Returns the active computation backend determined by inspecting the Tensor class.
+
+  This ensures that the reported backend matches the actual tensor
+  implementation
+  being used, regardless of the global configuration state which might have
+  changed
+  after import.
+
+  Returns:
+    The ComputationBackend enum corresponding to the active Tensor class.
+  """
+  tensor_module = Tensor.__module__
+
+  if "jax" in tensor_module:
+    return config.ComputationBackend.JAX
+
+  if "tensorflow" in tensor_module:
+    return config.ComputationBackend.TENSORFLOW
+
+  return config.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED

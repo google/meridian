@@ -166,7 +166,7 @@ class Meridian:
         model_spec=model_spec if model_spec else spec.ModelSpec(),
     )
     self._model_equations = equations.ModelEquations(self._model_context)
-
+    self._computation_backend = backend.computation_backend().name
     self._eda_spec = eda_spec
 
     self._validate_injected_inference_data()
@@ -350,6 +350,11 @@ class Meridian:
   @property
   def holdout_id(self) -> backend.Tensor | None:
     return self._model_context.holdout_id
+
+  @property
+  def computation_backend(self) -> str:
+    """The name of the computational backend used to initialize this model."""
+    return self._computation_backend
 
   @property
   def adstock_decay_spec(self) -> adstock_hill.AdstockDecaySpec:

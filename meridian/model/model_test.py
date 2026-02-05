@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.backend import config as backend_config
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import equations
@@ -120,6 +121,21 @@ class ModelTest(
     self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
+
+  @parameterized.named_parameters(
+      (
+          "tensorflow",
+          backend_config.ComputationBackend.TENSORFLOW,
+          "TENSORFLOW",
+      ),
+      ("jax", backend_config.ComputationBackend.JAX, "JAX"),
+  )
+  def test_computation_backend_property(self, backend_enum, expected_name):
+    with mock.patch.object(
+        backend, "computation_backend", return_value=backend_enum
+    ):
+      meridian = model.Meridian(input_data=self.input_data_with_media_only)
+      self.assertEqual(meridian.computation_backend, expected_name)
 
   @parameterized.named_parameters(
       dict(

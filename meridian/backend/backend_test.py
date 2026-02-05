@@ -1433,6 +1433,34 @@ class BackendTest(parameterized.TestCase):
     else:
       self.assertEqual(result_arr.dtype, arr.dtype)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="tensorflow",
+          backend_name=_TF,
+          expected_enum=config.ComputationBackend.TENSORFLOW,
+          expected_module_substring="tensorflow",
+      ),
+      dict(
+          testcase_name="jax",
+          backend_name=_JAX,
+          expected_enum=config.ComputationBackend.JAX,
+          expected_module_substring="jax",
+      ),
+  )
+  def test_computation_backend(
+      self,
+      backend_name: str,
+      expected_enum: config.ComputationBackend,
+      expected_module_substring: str,
+  ) -> None:
+    """Tests that computation_backend() correctly introspects the active backend."""
+    self._set_backend_for_test(backend_name)
+
+    self.assertEqual(backend.computation_backend(), expected_enum)
+
+    tensor_module = backend.Tensor.__module__
+    self.assertIn(expected_module_substring, tensor_module)
+
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
 
