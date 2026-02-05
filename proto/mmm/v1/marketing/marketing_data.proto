@@ -26,7 +26,14 @@ message GeoInfo {
   string geo_id = 1;
 
   // The population of the geo location. Required.
-  int64 population = 2;
+  // DEPRECATED: Use population_value instead.
+  // NOTE: This field may be rounded. Prefer `population_value` if precision
+  // is required and the field is available.
+  int64 population = 2 [deprecated = true];
+
+  // Population with double precision. This field should be used instead of
+  // `population` when available.
+  double population_value = 3;
 }
 
 // A KPI (key performance indicator) can either be revenue directly, or some
