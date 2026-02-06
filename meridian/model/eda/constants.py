@@ -47,6 +47,9 @@ TIME_AND_GEO_AGGREGATION = 'times and geos'
 TIME_AGGREGATION = 'times'
 PRIOR_CONTRIBUTION = 'prior_contribution'
 
+DEFAULT_PRIOR_N_DRAW = 500
+DEFAULT_PRIOR_SEED = 0
+
 ##### EDA Plotting properties #####
 CORRELATION_RED = '#d73027'
 CORRELATION_WHITE = '#f7f7f7'
