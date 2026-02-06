@@ -459,7 +459,7 @@ class AKS:
 
     xx = xmat.T.dot(xmat)
     xy = xmat.T.dot(y)
-    xx_rot = np.concat(
+    xx_rot = np.concatenate(
         [
             self._mat2rot(xx + (1e-20 * np.identity(ncol))),
             np.zeros(ncol)[:, np.newaxis],
@@ -491,7 +491,7 @@ class AKS:
         bs_model = linear_model.OLS(y, x_sel[index_penalty]).fit()
         model[index_penalty] = bs_model
         coefs = np.zeros(ncol, dtype=np.float32)
-        idx = np.concat([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
+        idx = np.concatenate([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
         coefs[idx] = bs_model.params
         par_ls[index_penalty] = coefs
 
@@ -544,7 +544,7 @@ class AKS:
     rot_mat[:, 0] = np.diag(band_mat)
     if l > 0:
       for j in range(l):
-        rot_mat[:, j + 1] = np.concat([
+        rot_mat[:, j + 1] = np.concatenate([
             np.diag(band_mat[range(p - j - 1), :][:, range(j + 1, p)]),
             np.zeros(j + 1),
         ])
