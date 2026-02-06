@@ -1072,6 +1072,7 @@ if _BACKEND == config.Backend.JAX:
   roll = _jax_roll
   split = _jax_split
   stack = _ops.stack
+  squeeze = _ops.squeeze
   tile = _jax_tile
   transpose = _jax_transpose
   unique_with_counts = _jax_unique_with_counts
@@ -1254,6 +1255,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   set_random_seed = tf_backend.keras.utils.set_random_seed
   split = _ops.split
   stack = _ops.stack
+  squeeze = _ops.squeeze
   tile = _ops.tile
   transpose = _ops.transpose
   unique_with_counts = _tf_unique_with_counts
@@ -1379,7 +1381,10 @@ class _JaxRNGHandler(_BaseRNGHandler):
     self._key: Optional["_jax.Array"] = None
 
     if seed is None:
-      return
+      # Automatically generate a seed if none is provided, allowing JAX
+      # to function similarly to other backends where None is acceptable.
+      seed = np.random.randint(_MAX_INT32)
+      self._int_seed = seed
 
     if (
         isinstance(seed, jax.Array)  # pylint: disable=undefined-variable

@@ -143,6 +143,87 @@ class PosteriorMCMCSamplerTest(
     with self.assertRaises(AttributeError):
       _ = sample.gamma_gc
 
+  def test_get_joint_dist_sampling_structure(self):
+    """Verifies that the sampling graph excludes deterministic variables."""
+    model_spec = spec.ModelSpec(
+        # Use ROI priors to ensure beta_m is deterministic (calculated)
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+    )
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    # Get the sampling-optimized distribution (unpinned for inspection)
+    sampling_dist = (
+        meridian.posterior_sampler_callable._get_joint_dist_sampling_unpinned()
+    )
+
+    sample = sampling_dist.sample(seed=self.get_next_rng_seed_or_key())
+    sample_dict = sample._asdict()
+
+    # Latent variables MUST be present
+    self.assertIn(constants.ALPHA_M, sample_dict)
+    self.assertIn(constants.SIGMA, sample_dict)
+    self.assertIn(constants.KNOT_VALUES, sample_dict)
+    self.assertIn(constants.ROI_M, sample_dict)  # ROI is latent
+    self.assertIn(constants.BETA_GM_DEV, sample_dict)
+
+    # Deterministic variables MUST be absent (they are computed in full graph)
+    self.assertNotIn(constants.BETA_M, sample_dict)  # Calculated from ROI
+    self.assertNotIn(constants.BETA_GM, sample_dict)
+    self.assertNotIn(constants.TAU_G, sample_dict)
+    self.assertNotIn(constants.MU_T, sample_dict)
+    self.assertNotIn(constants.GAMMA_GC, sample_dict)
+
+    self.assertIn("y", sample_dict)
+
+  def test_sampling_log_prob_matches_full_distribution(self):
+    """Verifies that sampling and full graphs produce the same log probability."""
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+    )
+    input_data = self.short_input_data_with_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    sampler = meridian.posterior_sampler_callable
+
+    # 1. Get a valid state by sampling from the FULL unpinned distribution.
+    # We need a valid state (including deterministics) to query the full dist.
+    full_unpinned = sampler._get_joint_dist_unpinned()
+    full_sample = full_unpinned.sample(seed=self.get_next_rng_seed_or_key())
+    full_state = full_sample._asdict()
+
+    # 2. Extract only the latent variables (and y) for the sampling distribution.
+    sampling_unpinned = sampler._get_joint_dist_sampling_unpinned()
+    sampling_keys = sampling_unpinned.dtype._fields
+    sampling_state = {k: full_state[k] for k in sampling_keys}
+
+    # 3. Pin 'y' in both states for the final log_prob calculation
+    # (Since the pinned distributions already have 'y' fixed to data, we typically
+    # pass parameters *excluding* 'y' to log_prob, or the pinned dist ignores 'y'
+    # in the input if it's already pinned. However, Meridian's _pin_dist
+    # uses experimental_pin(y=...), so we should remove 'y' from input args.)
+    del full_state["y"]
+    del sampling_state["y"]
+
+    # 4. Calculate log probabilities
+    # Full distribution (pinned)
+    full_dist = sampler._get_joint_dist()
+    log_prob_full = full_dist.log_prob(full_state)
+
+    # Sampling distribution (pinned)
+    sampling_dist = sampler._get_joint_dist_sampling()
+    log_prob_sampling = sampling_dist.log_prob(sampling_state)
+
+    # 5. Assert equality
+    # They should be mathematically identical.
+    test_utils.assert_allclose(log_prob_full, log_prob_sampling, atol=1e-5)
+
   @parameterized.product(
       paid_media_prior_type=[
           constants.TREATMENT_PRIOR_TYPE_ROI,
@@ -622,6 +703,83 @@ class PosteriorMCMCSamplerTest(
     test_utils.assert_allclose(
         posterior_unnormalized_logprob,
         meridian.posterior_sampler_callable._get_joint_dist().log_prob(par)[0],
+    )
+
+  def test_sample_posterior_reconstructs_deterministics_from_latents(self):
+    """Checks that deterministics are correctly reconstructed from NUTS latents."""
+    # We create a mock state containing ONLY latent variables to simulate
+    # the output of the NUTS sampler without deterministics.
+
+    # Filter the standard test states to remove deterministics
+    full_states = self.test_posterior_states_media_and_rf
+    # Known deterministics in the test data (assuming ROI prior which is
+    # default/common in tests)
+    deterministics_to_remove = [
+        constants.TAU_G,
+        constants.MU_T,
+        constants.BETA_M,
+        constants.BETA_RF,
+        constants.BETA_GM,
+        constants.BETA_GRF,
+        constants.GAMMA_GC,
+    ]
+    latents_only_states = {
+        # pytype: disable=attribute-error
+        k: v
+        for k, v in full_states._asdict().items()
+        # pytype: enable=attribute-error
+        if k not in deterministics_to_remove
+    }
+    self.assertNotIn(constants.BETA_GM, latents_only_states)
+
+    # Convert the dictionary back to a NamedTuple to match TFP's typical output
+    # structure
+    latents_tuple_class = collections.namedtuple(
+        "LatentsTuple", latents_only_states.keys()
+    )
+    latents_only_tuple = latents_tuple_class(**latents_only_states)
+
+    self.enter_context(
+        mock.patch.object(
+            backend,
+            "xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=latents_only_tuple,
+                trace=self.test_trace,
+            ),
+        )
+    )
+
+    model_spec = spec.ModelSpec(
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+    )
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=self._N_CHAINS,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+
+    # Verify that InferenceData DOES contain the deterministics
+    posterior = meridian.inference_data.posterior
+
+    self.assertTrue(hasattr(posterior, constants.BETA_GM))
+    self.assertTrue(hasattr(posterior, constants.TAU_G))
+    self.assertTrue(hasattr(posterior, constants.MU_T))
+    self.assertEqual(
+        posterior[constants.BETA_GM].shape,
+        (self._N_CHAINS, self._N_KEEP, self._N_GEOS, self._N_MEDIA_CHANNELS),
     )
 
   def test_sample_posterior_media_and_rf_returns_correct_shape(self):
@@ -1581,6 +1739,16 @@ class PosteriorMCMCSamplerTest(
     )
 
     expected_seed = backend.RNGHandler(seed).get_kernel_seed()
+    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
+
+    if (
+        seed is None
+        and backend.config.get_backend() == backend.config.Backend.JAX
+    ):
+      self.assertIsInstance(actual_seed, int)
+    else:
+      self._assert_seeds_equal(actual_seed, expected_seed)
+
     mock_sample_posterior.assert_called_with(
         n_draws=self._N_BURNIN + self._N_KEEP,
         joint_dist=mock.ANY,
@@ -1595,8 +1763,6 @@ class PosteriorMCMCSamplerTest(
         parallel_iterations=10,
         seed=mock.ANY,
     )
-    actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
-    self._assert_seeds_equal(actual_seed, expected_seed)
 
   @parameterized.named_parameters(
       dict(testcase_name="seed_is_invalid_sequence", seed=[1, 2, 3]),
@@ -1656,8 +1822,14 @@ class PosteriorMCMCSamplerTest(
       calls = mock_nuts.call_args_list
       self.assertLen(calls, len(n_chains_list))
 
-      self.assertIsNone(calls[0].kwargs["seed"])
-      self.assertIsNone(calls[1].kwargs["seed"])
+      if backend.config.get_backend() == backend.config.Backend.JAX:
+        # JAX backend via RNGHandler ensures a valid integer seed is generated.
+        self.assertIsInstance(calls[0].kwargs["seed"], int)
+        self.assertIsInstance(calls[1].kwargs["seed"], int)
+      else:
+        # TF backend propagates None (relying on global state or TF internal handling).
+        self.assertIsNone(calls[0].kwargs["seed"])
+        self.assertIsNone(calls[1].kwargs["seed"])
 
   @parameterized.named_parameters(
       dict(testcase_name="seed_is_int", initial_seed=123),
@@ -1731,14 +1903,33 @@ class PosteriorMCMCSamplerTest(
             ),
         )
     )
+    mock_dist = mock.MagicMock()
+    mock_dist.sample.return_value = self.test_posterior_states_media_and_rf
+    mock_dist.experimental_pin.return_value = mock_dist
+
+    self.enter_context(
+        mock.patch.object(
+            az,
+            "convert_to_inference_data",
+            autospec=True,
+            return_value=az.InferenceData(),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            az,
+            "concat",
+            autospec=True,
+            return_value=az.InferenceData(),
+        )
+    )
+
     mock_get_joint_dist_unpinned = self.enter_context(
         mock.patch.object(
             posterior_sampler.PosteriorMCMCSampler,
             "_get_joint_dist_unpinned",
             autospec=True,
-            return_value=mock.MagicMock(
-                experimental_pin=lambda y: y,
-            ),
+            return_value=mock_dist,
         )
     )
     model_spec = spec.ModelSpec()
