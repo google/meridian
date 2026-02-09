@@ -324,6 +324,14 @@ POPULATION_CORRELATION_RAW_MEDIA_INFO = (
     ' positive correlation with population. If there is low or negative'
     ' correlation, please check your data input.'
 )
+PRIOR_PROBABILITY_INFO = (
+    'Negative baseline is equivalent to the treatment effects getting too much'
+    ' credit. Please review the prior probability of negative baseline together'
+    ' with the channel-level prior mean of contribution. If the prior'
+    ' probability of negative baseline is high, consider custom treatment'
+    ' priors. In particular, a custom `contribution prior` type may be'
+    ' appropriate.'
+)
 PRIOR_PROBABILITY_REPORT_INFO = (
     'Negative baseline is equivalent to the treatment effects getting too much'
     ' credit. Please review the prior probability of negative baseline together'
