@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import dataclasses
 import importlib
 import os
 import sys
+from unittest import mock
 import warnings
 
 from absl.testing import absltest
@@ -1252,7 +1253,7 @@ class BackendTest(parameterized.TestCase):
     self.assertFalse(np.all(result == outcome_grid))
     test_utils.assert_allclose(result, expected, atol=1e-6)
 
-  _adstock_process_test_cases = (
+  _adstock_process_data_shapes = [
       immutabledict.immutabledict(
           testcase_name="simple_dimensions",
           media_shape=(2, 10, 2),  # geos, time, channels
@@ -1271,18 +1272,29 @@ class BackendTest(parameterized.TestCase):
           weights_shape=(5, 2, 3),  # batch=5
           n_times_output=8,
       ),
-  )
+  ]
+
+  _adstock_process_backend_configs = [
+      dict(backend_name=_TF, impl_mode="auto"),
+      dict(backend_name=_JAX, impl_mode="auto"),
+      dict(backend_name=_JAX, impl_mode="cpu"),
+      dict(backend_name=_JAX, impl_mode="conv"),
+  ]
 
   @parameterized.product(
-      backend_name=_ALL_BACKENDS,
-      test_case=_adstock_process_test_cases,
+      shape_config=_adstock_process_data_shapes,
+      run_config=_adstock_process_backend_configs,
   )
-  def test_adstock_process(self, backend_name, test_case):
+  def test_adstock_process(self, shape_config, run_config):
+    backend_name = run_config["backend_name"]
+    impl_mode = run_config["impl_mode"]
+
     self._set_backend_for_test(backend_name)
+
     rng = np.random.default_rng(seed=123)
-    media = backend.to_tensor(rng.standard_normal(test_case["media_shape"]))
-    weights = backend.to_tensor(rng.random(test_case["weights_shape"]))
-    n_times_output = test_case["n_times_output"]
+    media = backend.to_tensor(rng.standard_normal(shape_config["media_shape"]))
+    weights = backend.to_tensor(rng.random(shape_config["weights_shape"]))
+    n_times_output = shape_config["n_times_output"]
 
     media_np = np.array(media)
     weights_np = np.array(weights)
@@ -1293,7 +1305,14 @@ class BackendTest(parameterized.TestCase):
     windowed = np.stack(window_list, axis=0)
     expected = np.einsum("...cw,w...gtc->...gtc", weights_np, windowed)
 
-    result = backend.adstock_process(media, weights, n_times_output)
+    mock_contexts = {
+        "cpu": mock.patch("jax.default_backend", return_value="cpu"),
+        "conv": mock.patch("jax.default_backend", return_value="gpu"),
+    }
+    test_context = mock_contexts.get(impl_mode, contextlib.nullcontext())
+
+    with test_context:
+      result = backend.adstock_process(media, weights, n_times_output)
 
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected, atol=1e-5, rtol=1e-5)

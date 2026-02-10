@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -909,20 +909,20 @@ if _BACKEND == config.Backend.JAX:
 
   xla_windowed_adaptive_nuts = _jax_xla_windowed_adaptive_nuts
 
-  def _jax_adstock_process(
+  def _jax_adstock_process_conv(
       media: "_jax.Array", weights: "_jax.Array", n_times_output: int
   ) -> "_jax.Array":
-    """JAX implementation for adstock_process using convolution.
+    """JAX implementation for adstock_process using convolution (GPU optimized).
 
     This function applies an adstock process to media spend data using a
     convolutional approach. The weights represent the adstock decay over time.
 
     Args:
-      media: A JAX array of media spend. Expected shape is
-        `(batch_dims, n_geos, n_times_in, n_channels)`.
-      weights: A JAX array of adstock weights. Expected shape is
-        `(batch_dims, n_channels, window_size)`, where `batch_dims` must be
-        broadcastable to the batch dimensions of `media`.
+      media: A JAX array of media spend. Expected shape is `(batch_dims, n_geos,
+        n_times_in, n_channels)`.
+      weights: A JAX array of adstock weights. Expected shape is `(batch_dims,
+        n_channels, window_size)`, where `batch_dims` must be broadcastable to
+        the batch dimensions of `media`.
       n_times_output: The number of time periods in the output. This corresponds
         to `n_times_in - window_size + 1`.
 
@@ -979,6 +979,41 @@ if _BACKEND == config.Backend.JAX:
     out_final = jax_ops.transpose(out_reshaped, perm_back)
 
     return out_final[..., :n_times_output, :]
+
+  def _jax_adstock_process_cpu(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """JAX implementation for adstock_process using stack/einsum (CPU optimized).
+
+    This mirrors the TensorFlow implementation logic to avoid the memory
+    overhead of lowering convolution to matrix multiplication on CPU.
+
+    Args:
+      media: A JAX array of media spend.
+      weights: A JAX array of adstock weights.
+      n_times_output: The number of time periods in the output.
+
+    Returns:
+      A JAX array representing the adstocked media.
+    """
+    window_size = weights.shape[-1]
+    window_list = [
+        media[..., i : i + n_times_output, :] for i in range(window_size)
+    ]
+    windowed = jax_ops.stack(window_list)
+    # The weights shape is (..., channels, window_size).
+    # The windowed shape is (window_size, ..., geos, time_out, channels).
+    # We contract over window_size.
+    return jax_ops.einsum("...cw,w...gtc->...gtc", weights, windowed)
+
+  def _jax_adstock_process(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """Dispatches adstock_process to the appropriate implementation."""
+    if jax.default_backend() == "cpu":
+      return _jax_adstock_process_cpu(media, weights, n_times_output)
+    else:
+      return _jax_adstock_process_conv(media, weights, n_times_output)
 
   _ops = jax_ops
   errors = _JaxErrors()
