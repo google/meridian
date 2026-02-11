@@ -35,7 +35,7 @@ dependencies = [
   "scipy >= 1.13.1, < 2",
   "statsmodels >= 0.14.5",
   "tensorflow >= 2.18, < 2.21",
-  "tensorflow-probability >= 0.25, < 0.26",
+  "tensorflow-probability >= 0.25",
   "tf-keras >= 2.18, < 2.21",
   "xarray",
 ]
@@ -67,6 +67,7 @@ colab = [
 # Installed through `pip install -e .[and-cuda]`
 and-cuda = [
   "tensorflow[and-cuda] >= 2.18, < 2.21",
+  "jax[cuda12]>=0.4.35",
 ]
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
@@ -74,9 +75,8 @@ mlflow = ["mlflow"]
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
-    "jax==0.5.3",
-    "jaxlib==0.5.3",
-    "tensorflow-probability[substrates-jax]==0.25.0",
+    "jax>=0.4.35",
+    "tensorflow-probability[substrates-jax]>=0.25.0",
 ]
 # MMM proto schema.
 schema = [
