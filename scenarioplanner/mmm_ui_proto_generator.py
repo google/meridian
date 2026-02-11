@@ -31,13 +31,13 @@ from meridian.data import time_coordinates as tc
 from meridian.model import model
 from mmm.v1 import mmm_pb2 as mmm_pb
 from scenarioplanner.converters.dataframe import constants as converter_constants
-from schema import mmm_proto_generator
-from schema.processors import budget_optimization_processor as bop
-from schema.processors import marketing_processor
-from schema.processors import model_fit_processor
-from schema.processors import model_processor
-from schema.processors import reach_frequency_optimization_processor as rfop
-from schema.utils import date_range_bucketing
+from meridian.schema import mmm_proto_generator
+from meridian.schema.processors import budget_optimization_processor as bop
+from meridian.schema.processors import marketing_processor
+from meridian.schema.processors import model_fit_processor
+from meridian.schema.processors import model_processor
+from meridian.schema.processors import reach_frequency_optimization_processor as rfop
+from meridian.schema.utils import date_range_bucketing
 
 
 __all__ = [
