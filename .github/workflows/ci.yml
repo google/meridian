@@ -94,30 +94,6 @@ jobs:
       # Run tests (in parallel)
       - name: Run core tests
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        run: pytest -vv --ignore=schema
+        run: pytest -vv
         env:
           MERIDIAN_BACKEND: ${{ matrix.meridian-backend }}
-
-  pytest-schema:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    name: pytest-schema
-    steps:
-      - uses: actions/checkout@v4
-        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-      - uses: actions/setup-python@v5
-        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: '**/pyproject.toml'
-      - name: Install proto dependencies and test tools
-        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        run: |
-          pip install semver
-          pip install -e proto --config-settings editable_mode=strict
-          pip install -e . --config-settings editable_mode=strict
-          pip install pytest pytest-xdist
-      - name: Run schema tests
-        if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        run: pytest -vv -n auto schema

@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Move `schema` package as `meridian.schema`.
+  * Introduce a temporary shim `schema.py` module for backwards compatibility.
+    This shim will be removed in the next cut release.
+
 ## [1.5.1] - 2026-02-04
 
 * Fix serialization for binary and text files.

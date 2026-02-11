@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meridian API."""
+"""A temporary shim for backwards compatibility."""
+# TODO: Remove this file in a future release cut.
 
-from meridian import analysis
-from meridian import backend
-from meridian import data
-from meridian import model
-from meridian.version import __version__  # pylint: disable=g-importing-member
+import warnings
 
-try:
-  from meridian import mlflow  # pylint: disable=g-import-not-at-top
-except ImportError:
-  pass
+warnings.warn(
+    "This top-level 'schema' import is deprecated and will be removed in a"
+    " future version. Please update your imports to use 'from meridian.schema"
+    " import ...'.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-try:
-  from meridian import schema
-except ImportError:
-  pass
+# Import and re-export the contents from the new location
+# pylint: disable=g-import-not-at-top,wildcard-import
+from meridian.schema import *
