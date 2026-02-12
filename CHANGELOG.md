@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-02-10
+
 * Move `schema` package as `meridian.schema`.
   * Introduce a temporary shim `schema.py` module for backwards compatibility.
     This shim will be removed in the next cut release.
@@ -449,4 +451,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.4.0]: https://github.com/google/meridian/releases/tag/v1.4.0
 [1.5.0]: https://github.com/google/meridian/releases/tag/v1.5.0
 [1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.5.1...HEAD
+[1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
+[Unreleased]: https://github.com/google/meridian/compare/v1.5.2...HEAD
