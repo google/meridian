@@ -153,11 +153,7 @@ class MmmUiProtoGenerator:
 
     sub_specs = []
     for spec in copy_specs:
-      to_create_subspecs = self._time_breakdown_generators and any(
-          isinstance(spec, t) for t in _SPEC_TYPES_CREATE_SUBSPECS
-      )
-
-      if to_create_subspecs:
+      if any(isinstance(spec, t) for t in _SPEC_TYPES_CREATE_SUBSPECS):
         dates = self._enumerate_dates_open_end(spec)
         sub_specs.extend(
             _create_subspecs(spec, dates, self._time_breakdown_generators)
