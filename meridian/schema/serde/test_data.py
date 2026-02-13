@@ -283,6 +283,7 @@ MOCK_PROTO_NATIONAL_MEDIA_RF_NON_REVENUE = text_format.Parse(
       geo_info {
         geo_id: "national_geo"
         population: 1
+        population_value: 1.0
       }
       date_interval {
         start_date {
@@ -342,6 +343,7 @@ MOCK_PROTO_NATIONAL_MEDIA_RF_NON_REVENUE = text_format.Parse(
       geo_info {
         geo_id: "national_geo"
         population: 1
+        population_value: 1.0
       }
       date_interval {
         start_date {
@@ -554,6 +556,7 @@ MOCK_PROTO_NATIONAL_MEDIA_RF_NON_REVENUE_NO_CONTROLS = text_format.Parse(
       geo_info {
         geo_id: "national_geo"
         population: 1
+        population_value: 1.0
       }
       date_interval {
         start_date {
@@ -605,6 +608,7 @@ MOCK_PROTO_NATIONAL_MEDIA_RF_NON_REVENUE_NO_CONTROLS = text_format.Parse(
       geo_info {
         geo_id: "national_geo"
         population: 1
+        population_value: 1.0
       }
       date_interval {
         start_date {
@@ -791,6 +795,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -823,6 +828,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -869,6 +875,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -915,6 +922,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -947,6 +955,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -993,6 +1002,7 @@ MOCK_PROTO_MEDIA_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -1164,6 +1174,7 @@ MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED_STRING = """
   geo_info {
     geo_id: "geo_0"
     population: 11
+    population_value: 11.1
   }
   date_interval {
     start_date {
@@ -1212,6 +1223,7 @@ marketing_data_points {
   geo_info {
     geo_id: "geo_0"
     population: 11
+    population_value: 11.1
   }
   date_interval {
     start_date {
@@ -1260,6 +1272,7 @@ marketing_data_points {
   geo_info {
     geo_id: "geo_1"
     population: 12
+    population_value: 12.2
   }
   date_interval {
     start_date {
@@ -1308,6 +1321,7 @@ marketing_data_points {
   geo_info {
     geo_id: "geo_1"
     population: 12
+    population_value: 12.2
   }
   date_interval {
     start_date {
@@ -1464,6 +1478,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -1510,6 +1525,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -1570,6 +1586,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -1630,6 +1647,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -1676,6 +1694,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -1736,6 +1755,7 @@ MOCK_PROTO_MEDIA_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -1935,6 +1955,7 @@ MOCK_PROTO_MEDIA_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -1997,6 +2018,7 @@ MOCK_PROTO_MEDIA_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -2059,6 +2081,7 @@ MOCK_PROTO_MEDIA_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -2121,6 +2144,7 @@ MOCK_PROTO_MEDIA_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -2304,6 +2328,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -2332,6 +2357,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -2374,6 +2400,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -2416,6 +2443,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -2444,6 +2472,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -2486,6 +2515,7 @@ MOCK_PROTO_RF_PAID_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -2669,6 +2699,7 @@ MOCK_PROTO_RF_PAID_GRANULAR_NOT_LAGGED = text_format.Parse(
     geo_info {
       geo_id: "geo_0"
       population: 11
+      population_value: 11.1
     }
     date_interval {
       start_date {
@@ -2713,6 +2744,7 @@ MOCK_PROTO_RF_PAID_GRANULAR_NOT_LAGGED = text_format.Parse(
     geo_info {
       geo_id: "geo_0"
       population: 11
+      population_value: 11.1
     }
     date_interval {
       start_date {
@@ -2757,6 +2789,7 @@ MOCK_PROTO_RF_PAID_GRANULAR_NOT_LAGGED = text_format.Parse(
     geo_info {
       geo_id: "geo_1"
       population: 12
+      population_value: 12.2
     }
     date_interval {
       start_date {
@@ -2801,6 +2834,7 @@ MOCK_PROTO_RF_PAID_GRANULAR_NOT_LAGGED = text_format.Parse(
     geo_info {
       geo_id: "geo_1"
       population: 12
+      population_value: 12.2
     }
     date_interval {
       start_date {
@@ -2977,6 +3011,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3015,6 +3050,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3067,6 +3103,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3119,6 +3156,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3157,6 +3195,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3209,6 +3248,7 @@ MOCK_PROTO_RF_ORGANIC_EXPANDED_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3430,6 +3470,7 @@ MOCK_PROTO_RF_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3484,6 +3525,7 @@ MOCK_PROTO_RF_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3538,6 +3580,7 @@ MOCK_PROTO_RF_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3592,6 +3635,7 @@ MOCK_PROTO_RF_ORGANIC_GRANULAR_NOT_LAGGED = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3767,6 +3811,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3799,6 +3844,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3853,6 +3899,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_0"
         population: 11
+        population_value: 11.1
       }
       date_interval {
         start_date {
@@ -3907,6 +3954,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3939,6 +3987,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -3993,6 +4042,7 @@ MOCK_PROTO_NON_MEDIA_TREATMENTS = text_format.Parse(
       geo_info {
         geo_id: "geo_1"
         population: 12
+        population_value: 12.2
       }
       date_interval {
         start_date {
@@ -4119,7 +4169,7 @@ MOCK_INPUT_DATA_NO_REVENUE_PER_KPI = mock.MagicMock(
     media_time=xr.DataArray(np.array(_TIME_STRS)),
     population=xr.DataArray(
         coords={c.GEO: _GEO_IDS},
-        data=np.array([1000.0, 1200.0]),
+        data=np.array([1000.567, 1200.123]),
         name=c.POPULATION,
     ),
     kpi=xr.DataArray(
@@ -4164,6 +4214,160 @@ MOCK_INPUT_DATA_NO_REVENUE_PER_KPI = mock.MagicMock(
 
 # Expected Protobuf (Textproto format)
 MOCK_PROTO_NO_REVENUE_PER_KPI = text_format.Parse(
+    """
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_0"
+        population: 1001
+        population_value: 1000.567
+      }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 31.0 }
+      control_variables { name: "control_1" value: 32.0 }
+       media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 39.0
+        }
+       }
+        media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 40.0
+        }
+       }
+      kpi { name: "non_revenue" non_revenue { value: 50.0 } }
+    }
+    marketing_data_points {
+      geo_info { geo_id: "geo_0" population: 1001 population_value: 1000.567 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      control_variables { name: "control_0" value: 33.0 }
+      control_variables { name: "control_1" value: 34.0 }
+     media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 41.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 42.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 60.0 } }
+    }
+    marketing_data_points {
+      geo_info { geo_id: "geo_1" population: 1200 population_value: 1200.123 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 35.0 }
+      control_variables { name: "control_1" value: 36.0 }
+            media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 43.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 44.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 70.0 } }
+    }
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_1"
+        population: 1200
+        population_value: 1200.123
+      }
+      date_interval {
+        start_date {
+          year: 2021
+          month: 2
+          day: 8
+        }
+        end_date {
+          year: 2021
+          month: 2
+          day: 15
+        }
+      }
+      control_variables {
+        name: "control_0"
+        value: 37.0
+      }
+      control_variables {
+        name: "control_1"
+        value: 38.0
+      }
+          media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 45.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 46.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 80.0 } }
+    }
+    marketing_data_points {
+        date_interval {
+        start_date {
+          year: 2021
+          month: 2
+          day: 1
+        }
+        end_date {
+          year: 2021
+          month: 2
+          day: 15
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_0"
+        media_spend: 492.0
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        media_spend: 496.0
+      }
+    }
+    metadata {
+      time_dimensions { name: "time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8} }
+      time_dimensions { name: "media_time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8 } }
+      channel_dimensions { name: "media" channels: "ch_paid_0" channels: "ch_paid_1" }
+      control_names: "control_0"
+      control_names: "control_1"
+      kpi_type: "non_revenue"
+    }
+    """,
+    marketing_pb.MarketingData(),
+)
+
+MOCK_PROTO_POPULATION_ONLY = text_format.Parse(
     """
     marketing_data_points {
       geo_info { geo_id: "geo_0" population: 1000 }
@@ -4238,30 +4442,13 @@ MOCK_PROTO_NO_REVENUE_PER_KPI = text_format.Parse(
       kpi { name: "non_revenue" non_revenue { value: 70.0 } }
     }
     marketing_data_points {
-      geo_info {
-        geo_id: "geo_1"
-        population: 1200
-      }
+      geo_info { geo_id: "geo_1" population: 1200 }
       date_interval {
-        start_date {
-          year: 2021
-          month: 2
-          day: 8
-        }
-        end_date {
-          year: 2021
-          month: 2
-          day: 15
-        }
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
       }
-      control_variables {
-        name: "control_0"
-        value: 37.0
-      }
-      control_variables {
-        name: "control_1"
-        value: 38.0
-      }
+      control_variables { name: "control_0" value: 37.0 }
+      control_variables { name: "control_1" value: 38.0 }
           media_variables {
         channel_name: "ch_paid_0"
         scalar_metric {
@@ -4280,16 +4467,272 @@ MOCK_PROTO_NO_REVENUE_PER_KPI = text_format.Parse(
     }
     marketing_data_points {
         date_interval {
-        start_date {
-          year: 2021
-          month: 2
-          day: 1
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      media_variables {
+        channel_name: "ch_paid_0"
+        media_spend: 492.0
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        media_spend: 496.0
+      }
+    }
+    metadata {
+      time_dimensions { name: "time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8} }
+      time_dimensions { name: "media_time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8 } }
+      channel_dimensions { name: "media" channels: "ch_paid_0" channels: "ch_paid_1" }
+      control_names: "control_0"
+      control_names: "control_1"
+      kpi_type: "non_revenue"
+    }
+    """,
+    marketing_pb.MarketingData(),
+)
+
+MOCK_PROTO_POPULATION_VALUE_ONLY = text_format.Parse(
+    """
+    marketing_data_points {
+      geo_info { geo_id: "geo_0" population_value: 1000.567 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 31.0 }
+      control_variables { name: "control_1" value: 32.0 }
+       media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 39.0
         }
-        end_date {
-          year: 2021
-          month: 2
-          day: 15
+       }
+        media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 40.0
         }
+       }
+      kpi { name: "non_revenue" non_revenue { value: 50.0 } }
+    }
+    marketing_data_points {
+      geo_info { geo_id: "geo_0" population_value: 1000.567 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      control_variables { name: "control_0" value: 33.0 }
+      control_variables { name: "control_1" value: 34.0 }
+     media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 41.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 42.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 60.0 } }
+    }
+    marketing_data_points {
+      geo_info { geo_id: "geo_1" population_value: 1200.123 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 35.0 }
+      control_variables { name: "control_1" value: 36.0 }
+            media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 43.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 44.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 70.0 } }
+    }
+    marketing_data_points {
+      geo_info { geo_id: "geo_1" population_value: 1200.123 }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      control_variables { name: "control_0" value: 37.0 }
+      control_variables { name: "control_1" value: 38.0 }
+          media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 45.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 46.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 80.0 } }
+    }
+    marketing_data_points {
+        date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      media_variables {
+        channel_name: "ch_paid_0"
+        media_spend: 492.0
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        media_spend: 496.0
+      }
+    }
+    metadata {
+      time_dimensions { name: "time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8} }
+      time_dimensions { name: "media_time" dates { year: 2021 month: 2 day: 1 } dates { year: 2021 month: 2 day: 8 } }
+      channel_dimensions { name: "media" channels: "ch_paid_0" channels: "ch_paid_1" }
+      control_names: "control_0"
+      control_names: "control_1"
+      kpi_type: "non_revenue"
+    }
+    """,
+    marketing_pb.MarketingData(),
+)
+
+MOCK_PROTO_POPULATION_BOTH = text_format.Parse(
+    """
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_0"
+        population: 1000
+        population_value: 1000.567
+      }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 31.0 }
+      control_variables { name: "control_1" value: 32.0 }
+       media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 39.0
+        }
+       }
+        media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 40.0
+        }
+       }
+      kpi { name: "non_revenue" non_revenue { value: 50.0 } }
+    }
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_0"
+        population: 1000
+        population_value: 1000.567
+      }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      control_variables { name: "control_0" value: 33.0 }
+      control_variables { name: "control_1" value: 34.0 }
+     media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 41.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 42.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 60.0 } }
+    }
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_1"
+        population: 1200
+        population_value: 1200.123
+      }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 8 }
+      }
+      control_variables { name: "control_0" value: 35.0 }
+      control_variables { name: "control_1" value: 36.0 }
+            media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 43.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 44.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 70.0 } }
+    }
+    marketing_data_points {
+      geo_info {
+        geo_id: "geo_1"
+        population: 1200
+        population_value: 1200.123
+      }
+      date_interval {
+        start_date { year: 2021 month: 2 day: 8 }
+        end_date { year: 2021 month: 2 day: 15 }
+      }
+      control_variables { name: "control_0" value: 37.0 }
+      control_variables { name: "control_1" value: 38.0 }
+          media_variables {
+        channel_name: "ch_paid_0"
+        scalar_metric {
+          name: "impressions"
+          value: 45.0
+        }
+      }
+      media_variables {
+        channel_name: "ch_paid_1"
+        scalar_metric {
+          name: "impressions"
+          value: 46.0
+        }
+      }
+      kpi { name: "non_revenue" non_revenue { value: 80.0 } }
+    }
+    marketing_data_points {
+        date_interval {
+        start_date { year: 2021 month: 2 day: 1 }
+        end_date { year: 2021 month: 2 day: 15 }
       }
       media_variables {
         channel_name: "ch_paid_0"

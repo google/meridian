@@ -177,6 +177,32 @@ class MarketingDataTest(parameterized.TestCase):
     ):
       self.serde.serialize(input_data)
 
+  def test_serialize_population(self):
+    geo_index = 0
+    expected_population_value = 1000.567
+    input_data = test_data.MOCK_INPUT_DATA_NO_REVENUE_PER_KPI
+    # Modify population to have float values
+    input_data.population = input_data.population.astype(np.float64)
+    input_data.population.values[geo_index] = expected_population_value
+
+    serialized_proto = self.serde.serialize(input_data)
+
+    # Check that only population_value is written with precision
+    points_by_geo = {
+        point.geo_info.geo_id: point
+        for point in serialized_proto.marketing_data_points
+    }
+    geo_id = f'geo_{geo_index}'
+    point_geo = points_by_geo[geo_id]
+    self.assertTrue(point_geo.geo_info.HasField(c.POPULATION))
+    self.assertEqual(
+        point_geo.geo_info.population,
+        round(point_geo.geo_info.population_value),
+    )
+    self.assertAlmostEqual(
+        point_geo.geo_info.population_value, expected_population_value, places=6
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name='national_media_and_rf_non_revenue_no_controls',
@@ -1087,6 +1113,31 @@ class MarketingDataTest(parameterized.TestCase):
         'media_spend should have dimensions (geo=1, time=1, media_channel=1)'
         ' when treated as granular',
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='only_population_value',
+          marketing_data_proto=test_data.MOCK_PROTO_POPULATION_VALUE_ONLY,
+          expected_population=np.array([1000.567, 1200.123], dtype=np.float64),
+      ),
+      dict(
+          testcase_name='only_population',
+          marketing_data_proto=test_data.MOCK_PROTO_POPULATION_ONLY,
+          expected_population=np.array([1000.0, 1200.0], dtype=np.float64),
+      ),
+      dict(
+          testcase_name='both_population_and_value',
+          marketing_data_proto=test_data.MOCK_PROTO_POPULATION_BOTH,
+          expected_population=np.array([1000.567, 1200.123], dtype=np.float64),
+      ),
+  )
+  def test_deserialize_population(
+      self, marketing_data_proto, expected_population
+  ):
+    deserialized_data = self.serde.deserialize(marketing_data_proto)
+    actual = deserialized_data.population.values
+    np.testing.assert_allclose(actual, expected_population)
+    self.assertEqual(actual.dtype, expected_population.dtype)
 
 
 if __name__ == '__main__':

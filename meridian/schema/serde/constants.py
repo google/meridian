@@ -30,6 +30,7 @@ DEFAULT_DECAY = 'geometric'
 GEO_INFO = 'geo_info'
 METADATA = 'metadata'
 REACH_FREQUENCY = 'reach_frequency'
+POPULATION_VALUE = 'population_value'
 
 # Constants for distribution protobuf structure
 DISTRIBUTION_TYPE = 'distribution_type'

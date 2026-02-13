@@ -63,11 +63,11 @@ ALL_DATE_INTERVAL = date_interval_pb.DateInterval(
 GEO_INFOS = [
     marketing_data_pb.GeoInfo(
         geo_id="geo-1",
-        population=100,
+        population_value=100.0,
     ),
     marketing_data_pb.GeoInfo(
         geo_id="geo-2",
-        population=200,
+        population_value=200.0,
     ),
 ]
 

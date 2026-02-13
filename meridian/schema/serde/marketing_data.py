@@ -489,10 +489,13 @@ class _InputDataSerializer:
       times_to_date_intervals: Mapping[str, date_interval_pb2.DateInterval],
   ) -> marketing_pb.MarketingDataPoint:
     """Serializes a MarketingDataPoint proto for a given geo and time."""
+    population_value = self._input_data.population.sel(geo=geo).item()
     data_point = marketing_pb.MarketingDataPoint(
         geo_info=marketing_pb.GeoInfo(
             geo_id=geo,
-            population=round(self._input_data.population.sel(geo=geo).item()),
+            # TODO: b/483475229 - not populating population when users are ready
+            population=round(population_value),
+            population_value=population_value,
         ),
         date_interval=times_to_date_intervals.get(time),
     )
@@ -742,7 +745,10 @@ class _InputDataDeserializer:
       if not geo_id:
         continue
 
-      geo_populations[geo_id] = data_point.geo_info.population
+      if data_point.geo_info.HasField(sc.POPULATION_VALUE):
+        geo_populations[geo_id] = data_point.geo_info.population_value
+      else:
+        geo_populations[geo_id] = float(data_point.geo_info.population)
 
     return xr.DataArray(
         coords={c.GEO: list(geo_populations.keys())},
