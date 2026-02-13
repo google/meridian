@@ -703,16 +703,16 @@ class ModelFitTest(absltest.TestCase):
 
     self.assertIsInstance(plot, alt.LayerChart)
     self.assertEqual(
-        plot.layer[1].encoding.color["scale"]["domain"], [c.EXPECTED]
+        plot.layer[3].encoding.color["scale"]["domain"], [c.EXPECTED]
     )
-    self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.CI_HI}:Q")
-    self.assertEqual(plot.layer[1].encoding.y2.shorthand, f"{c.CI_LO}:Q")
+    self.assertEqual(plot.layer[3].encoding.y.shorthand, f"{c.CI_HI}:Q")
+    self.assertEqual(plot.layer[3].encoding.y2.shorthand, f"{c.CI_LO}:Q")
 
   def test_model_fit_plots_no_ci(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_ci=False)
-    self.assertIsInstance(plot, alt.Chart)
-    self.assertEqual(plot.encoding.x.shorthand, f"{c.TIME}:T")
-    self.assertEqual(plot.encoding.y.shorthand, f"{c.MEAN}:Q")
+    self.assertIsInstance(plot, alt.LayerChart)
+    self.assertEqual(plot.layer[0].encoding.x.shorthand, f"{c.TIME}:T")
+    self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.MEAN}:Q")
 
   def test_model_fit_axis_encoding(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
@@ -736,6 +736,35 @@ class ModelFitTest(absltest.TestCase):
         }
         | formatter.Y_AXIS_TITLE_CONFIG,
     )
+
+  def test_model_fit_tooltip_encoding(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit()
+    tooltip_layer = plot.layer[1]
+    self.assertEqual(tooltip_layer.mark.type, "rule")
+    self.assertEqual(tooltip_layer.encoding.x.shorthand, f"{c.TIME}:T")
+    expected_tooltip = [
+        alt.Tooltip(f"{c.TIME}:T", title="Time period"),
+        alt.Tooltip(f"{c.EXPECTED}:Q", title="Expected", format=",.0f"),
+        alt.Tooltip(f"{c.ACTUAL}:Q", title="Actual", format=",.0f"),
+        alt.Tooltip(f"{c.BASELINE}:Q", title="Baseline", format=",.0f"),
+    ]
+    self.assertEqual(tooltip_layer.encoding.tooltip, expected_tooltip)
+
+  def test_model_fit_points_encoding(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit()
+    points_layer = plot.layer[2]
+
+    with self.subTest("test_mark_properties"):
+      self.assertEqual(points_layer.mark.type, "circle")
+      self.assertFalse(points_layer.mark.filled)
+      self.assertEqual(points_layer.mark.size, c.MARK_CIRCLE_SIZE)
+
+    with self.subTest("test_encoding_shorthands"):
+      self.assertEqual(points_layer.encoding.x.shorthand, f"{c.TIME}:T")
+      self.assertEqual(points_layer.encoding.y.shorthand, f"{c.MEAN}:Q")
+
+    with self.subTest("test_color_legend"):
+      self.assertIsNone(points_layer.encoding.color["legend"])
 
   def test_model_fit_correct_config(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
