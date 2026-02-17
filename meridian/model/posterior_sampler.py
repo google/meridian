@@ -14,9 +14,9 @@
 
 """Module for MCMC sampling of posterior distributions in a Meridian model."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 import functools
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 import warnings
 
 import arviz as az
@@ -45,27 +45,27 @@ class MCMCOOMError(Exception):
   """The Markov Chain Monte Carlo (MCMC) sampling exceeds memory limits."""
 
 
-def _get_tau_g(
+def _compute_tau_g(
     tau_g_excl_baseline: backend.Tensor, baseline_geo_idx: int
-) -> backend.tfd.Distribution:
+) -> backend.Tensor:
   """Computes `tau_g` from `tau_g_excl_baseline`.
 
-  This function computes `tau_g` by inserting a column of zeros at the
-  `baseline_geo` position in `tau_g_excl_baseline`.
+  This function computes `tau_g` by inserting zeros at the `baseline_geo_idx`
+  position along the last dimension of `tau_g_excl_baseline`.
 
   Args:
-    tau_g_excl_baseline: A tensor of shape `[..., n_geos - 1]` for the
-      user-defined dimensions of the `tau_g` parameter distribution.
+    tau_g_excl_baseline: A tensor of shape `[..., n_geos - 1]` representing the
+      `tau_g` parameters excluding the baseline geo.
     baseline_geo_idx: The index of the baseline geo to be set to zero.
 
   Returns:
-    A tensor of shape `[..., n_geos]` with the final distribution of the `tau_g`
-    parameter with zero at position `baseline_geo_idx` and matching
-    `tau_g_excl_baseline` elsewhere.
+    A tensor of shape `[..., n_geos]` containing the `tau_g` values, with
+    zero at `baseline_geo_idx` and values from `tau_g_excl_baseline`
+    elsewhere.
   """
   rank = len(tau_g_excl_baseline.shape)
-  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else 1
-  tau_g = backend.concatenate(
+  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else [1]
+  return backend.concatenate(
       [
           tau_g_excl_baseline[..., :baseline_geo_idx],
           backend.zeros(shape, dtype=tau_g_excl_baseline.dtype),
@@ -73,15 +73,58 @@ def _get_tau_g(
       ],
       axis=rank - 1,
   )
+
+
+def _get_tau_g(
+    tau_g_excl_baseline: backend.Tensor, baseline_geo_idx: int
+) -> backend.tfd.Distribution:
+  """Creates a deterministic distribution for `tau_g`.
+
+  This wraps the computation of `tau_g` (inserting zeros for the baseline geo)
+  in a `tfd.Deterministic` distribution, allowing it to be tracked as a
+  named node in the probabilistic model graph.
+
+  Args:
+    tau_g_excl_baseline: A tensor of shape `[..., n_geos - 1]` representing the
+      `tau_g` parameters excluding the baseline geo.
+    baseline_geo_idx: The index of the baseline geo to be set to zero.
+
+  Returns:
+    A `tfd.Deterministic` distribution yielding the full `tau_g` tensor
+    of shape `[..., n_geos]`.
+  """
+  tau_g = _compute_tau_g(tau_g_excl_baseline, baseline_geo_idx)
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
-def _joint_dist_unpinned(
+def _joint_dist_base_logic(
     model_context: context.ModelContext,
     model_equations: equations.ModelEquations,
-):
-  """Returns unpinned joint distribution."""
+    yield_deterministics: bool,
+) -> Generator[backend.Tensor | backend.tfd.Distribution, Any, None]:
+  """Shared logic for joint distribution definition.
 
+  This generator defines the probabilistic model. It conditionally yields
+  Deterministic nodes based on `yield_deterministics`. When False, intermediate
+  values are computed as raw tensors (Sampling Graph) to minimize Autograd tape
+  overhead. When True, they are yielded as distributions (Full Graph) to allow
+  state reconstruction.
+
+  Args:
+    model_context: An instance of `context.ModelContext` containing model data
+      and settings.
+    model_equations: An instance of `equations.ModelEquations` providing the
+      model's mathematical equations.
+    yield_deterministics: If True, yields `backend.tfd.Deterministic`
+      distributions for deterministic variables. If False, yields raw
+      `backend.Tensor` values.
+
+  Yields:
+    A `backend.Tensor` when `yield_deterministics` is False, representing
+    intermediate values in the sampling graph.
+    A `backend.tfd.Distribution` when `yield_deterministics` is True,
+    representing nodes in the full probabilistic model graph.
+  """
   # This lists all the derived properties and states of this Meridian object
   # that are referenced by the joint distribution coroutine.
   # That is, these are the list of captured parameters.
@@ -89,7 +132,6 @@ def _joint_dist_unpinned(
   baseline_geo_idx = model_context.baseline_geo_idx
   knot_info = model_context.knot_info
   n_geos = model_context.n_geos
-  n_times = model_context.n_times
   n_media_channels = model_context.n_media_channels
   n_rf_channels = model_context.n_rf_channels
   n_organic_media_channels = model_context.n_organic_media_channels
@@ -118,24 +160,31 @@ def _joint_dist_unpinned(
       prior_broadcast.tau_g_excl_baseline,
       name=constants.TAU_G_EXCL_BASELINE,
   )
-  tau_g = yield _get_tau_g(
-      tau_g_excl_baseline=tau_g_excl_baseline,
-      baseline_geo_idx=baseline_geo_idx,
-  )
-  mu_t = yield backend.tfd.Deterministic(
-      backend.einsum(
-          "k,kt->t",
-          knot_values,
-          backend.to_tensor(knot_info.weights),
-      ),
-      name=constants.MU_T,
-  )
 
-  tau_gt = tau_g[:, backend.newaxis] + mu_t
-  combined_media_transformed = backend.zeros(
-      shape=(n_geos, n_times, 0), dtype=backend.float32
+  # Deterministic: tau_g
+  tau_g = _compute_tau_g(tau_g_excl_baseline, baseline_geo_idx)
+  if yield_deterministics:
+    yield backend.tfd.Deterministic(tau_g, name="tau_g")
+
+  # Deterministic: mu_t
+  mu_t = backend.einsum(
+      "k,kt->t",
+      knot_values,
+      backend.to_tensor(knot_info.weights),
   )
-  combined_beta = backend.zeros(shape=(n_geos, 0), dtype=backend.float32)
+  if yield_deterministics:
+    yield backend.tfd.Deterministic(mu_t, name=constants.MU_T)
+
+  # Robust broadcasting:
+  # tau_g (..., G) -> (..., G, 1)
+  # mu_t  (..., T) -> (..., 1, T)
+  # result (..., G, T)
+  tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)
+
+  # Accumulate media tensors in lists to avoid empty tensor shape/rank issues
+  media_transformed_list = []
+  beta_list = []
+
   if media_tensors.media is not None:
     alpha_m = yield prior_broadcast.alpha_m
     ec_m = yield prior_broadcast.ec_m
@@ -176,30 +225,27 @@ def _joint_dist_unpinned(
               slope_m=slope_m,
           )
       )
-      beta_m_value = model_equations.calculate_beta_x(
+      beta_m = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_m,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=eta_m,
           beta_gx_dev=beta_gm_dev,
       )
-      beta_m = yield backend.tfd.Deterministic(
-          beta_m_value, name=constants.BETA_M
-      )
+      if yield_deterministics:
+        yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
 
     beta_eta_combined = beta_m + eta_m * beta_gm_dev
-    beta_gm_value = (
+    beta_gm = (
         beta_eta_combined
         if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
-    beta_gm = yield backend.tfd.Deterministic(
-        beta_gm_value, name=constants.BETA_GM
-    )
-    combined_media_transformed = backend.concatenate(
-        [combined_media_transformed, media_transformed], axis=-1
-    )
-    combined_beta = backend.concatenate([combined_beta, beta_gm], axis=-1)
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(beta_gm, name=constants.BETA_GM)
+
+    media_transformed_list.append(media_transformed)
+    beta_list.append(beta_gm)
 
   if rf_tensors.reach is not None:
     alpha_rf = yield prior_broadcast.alpha_rf
@@ -243,30 +289,27 @@ def _joint_dist_unpinned(
               slope_rf=slope_rf,
           )
       )
-      beta_rf_value = model_equations.calculate_beta_x(
+      beta_rf = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_rf,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=eta_rf,
           beta_gx_dev=beta_grf_dev,
       )
-      beta_rf = yield backend.tfd.Deterministic(
-          beta_rf_value, name=constants.BETA_RF
-      )
+      if yield_deterministics:
+        yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
 
     beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-    beta_grf_value = (
+    beta_grf = (
         beta_eta_combined
         if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
-    beta_grf = yield backend.tfd.Deterministic(
-        beta_grf_value, name=constants.BETA_GRF
-    )
-    combined_media_transformed = backend.concatenate(
-        [combined_media_transformed, rf_transformed], axis=-1
-    )
-    combined_beta = backend.concatenate([combined_beta, beta_grf], axis=-1)
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(beta_grf, name=constants.BETA_GRF)
+
+    media_transformed_list.append(rf_transformed)
+    beta_list.append(beta_grf)
 
   if organic_media_tensors.organic_media is not None:
     alpha_om = yield prior_broadcast.alpha_om
@@ -291,32 +334,29 @@ def _joint_dist_unpinned(
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_om = yield prior_broadcast.contribution_om
       incremental_outcome_om = contribution_om * total_outcome
-      beta_om_value = model_equations.calculate_beta_x(
+      beta_om = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_om,
           linear_predictor_counterfactual_difference=organic_media_transformed,
           eta_x=eta_om,
           beta_gx_dev=beta_gom_dev,
       )
-      beta_om = yield backend.tfd.Deterministic(
-          beta_om_value, name=constants.BETA_OM
-      )
+      if yield_deterministics:
+        yield backend.tfd.Deterministic(beta_om, name=constants.BETA_OM)
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = beta_om + eta_om * beta_gom_dev
-    beta_gom_value = (
+    beta_gom = (
         beta_eta_combined
         if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
-    beta_gom = yield backend.tfd.Deterministic(
-        beta_gom_value, name=constants.BETA_GOM
-    )
-    combined_media_transformed = backend.concatenate(
-        [combined_media_transformed, organic_media_transformed], axis=-1
-    )
-    combined_beta = backend.concatenate([combined_beta, beta_gom], axis=-1)
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(beta_gom, name=constants.BETA_GOM)
+
+    media_transformed_list.append(organic_media_transformed)
+    beta_list.append(beta_gom)
 
   if organic_rf_tensors.organic_reach is not None:
     alpha_orf = yield prior_broadcast.alpha_orf
@@ -343,37 +383,44 @@ def _joint_dist_unpinned(
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_orf = yield prior_broadcast.contribution_orf
       incremental_outcome_orf = contribution_orf * total_outcome
-      beta_orf_value = model_equations.calculate_beta_x(
+      beta_orf = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_orf,
           linear_predictor_counterfactual_difference=organic_rf_transformed,
           eta_x=eta_orf,
           beta_gx_dev=beta_gorf_dev,
       )
-      beta_orf = yield backend.tfd.Deterministic(
-          beta_orf_value, name=constants.BETA_ORF
-      )
+      if yield_deterministics:
+        yield backend.tfd.Deterministic(beta_orf, name=constants.BETA_ORF)
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
-    beta_gorf_value = (
+    beta_gorf = (
         beta_eta_combined
         if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
         else backend.exp(beta_eta_combined)
     )
-    beta_gorf = yield backend.tfd.Deterministic(
-        beta_gorf_value, name=constants.BETA_GORF
-    )
-    combined_media_transformed = backend.concatenate(
-        [combined_media_transformed, organic_rf_transformed], axis=-1
-    )
-    combined_beta = backend.concatenate([combined_beta, beta_gorf], axis=-1)
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(beta_gorf, name=constants.BETA_GORF)
 
-  sigma_gt = backend.transpose(backend.broadcast_to(sigma, [n_times, n_geos]))
-  y_pred_combined_media = tau_gt + backend.einsum(
-      "gtm,gm->gt", combined_media_transformed, combined_beta
-  )
+    media_transformed_list.append(organic_rf_transformed)
+    beta_list.append(beta_gorf)
+
+  # Calculate y_pred_combined_media
+  if media_transformed_list:
+    combined_media_transformed = backend.concatenate(
+        media_transformed_list, axis=-1
+    )
+    combined_beta = backend.concatenate(beta_list, axis=-1)
+
+    # Use ellipses in einsum for robust broadcasting across batch dims
+    y_pred_combined_media = tau_gt + backend.einsum(
+        "...gtm,...gm->...gt", combined_media_transformed, combined_beta
+    )
+  else:
+    y_pred_combined_media = tau_gt
+
   # Omit gamma_c, xi_c, and gamma_gc from joint distribution output if
   # there are no control variables in the model.
   if n_controls:
@@ -384,11 +431,12 @@ def _joint_dist_unpinned(
         [n_geos, n_controls],
         name=constants.GAMMA_GC_DEV,
     )
-    gamma_gc = yield backend.tfd.Deterministic(
-        gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
-    )
+    gamma_gc = gamma_c + xi_c * gamma_gc_dev
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(gamma_gc, name=constants.GAMMA_GC)
+
     y_pred_combined_media += backend.einsum(
-        "gtc,gc->gt", controls_scaled, gamma_gc
+        "...gtc,...gc->...gt", controls_scaled, gamma_gc
     )
 
   if model_context.non_media_treatments is not None:
@@ -410,26 +458,36 @@ def _joint_dist_unpinned(
       linear_predictor_counterfactual_difference = (
           non_media_treatments_normalized - baseline_scaled
       )
-      gamma_n_value = model_equations.calculate_beta_x(
+      gamma_n = model_equations.calculate_beta_x(
           is_non_media=True,
           incremental_outcome_x=incremental_outcome_n,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=xi_n,
           beta_gx_dev=gamma_gn_dev,
       )
-      gamma_n = yield backend.tfd.Deterministic(
-          gamma_n_value, name=constants.GAMMA_N
-      )
+      if yield_deterministics:
+        yield backend.tfd.Deterministic(gamma_n, name=constants.GAMMA_N)
     else:
       raise ValueError(f"Unsupported prior type: {prior_type}")
-    gamma_gn = yield backend.tfd.Deterministic(
-        gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
-    )
+
+    gamma_gn = gamma_n + xi_n * gamma_gn_dev
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(gamma_gn, name=constants.GAMMA_GN)
+
     y_pred = y_pred_combined_media + backend.einsum(
-        "gtn,gn->gt", non_media_treatments_normalized, gamma_gn
+        "...gtn,...gn->...gt", non_media_treatments_normalized, gamma_gn
     )
   else:
     y_pred = y_pred_combined_media
+
+  # Sigma broadcasting.
+  if model_context.unique_sigma_for_each_geo:
+    # sigma (..., G) -> (..., G, 1)
+    sigma_gt = backend.expand_dims(sigma, -1)
+  else:
+    # sigma (...) -> (..., 1, 1)
+    # Use multiple expand_dims to be backend-safe if list axis not supported
+    sigma_gt = backend.expand_dims(backend.expand_dims(sigma, -1), -1)
 
   # If there are any holdout observations, the holdout KPI values will
   # be replaced with zeros using `experimental_pin`. For these
@@ -443,6 +501,26 @@ def _joint_dist_unpinned(
     yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
   else:
     yield backend.tfd.Normal(y_pred, sigma_gt, name="y")
+
+
+def _joint_dist_unpinned(
+    model_context: context.ModelContext,
+    model_equations: equations.ModelEquations,
+):
+  """Returns unpinned joint distribution."""
+  return _joint_dist_base_logic(
+      model_context, model_equations, yield_deterministics=True
+  )
+
+
+def _joint_dist_sampling(
+    model_context: context.ModelContext,
+    model_equations: equations.ModelEquations,
+):
+  """Returns sampling-optimized unpinned joint distribution."""
+  return _joint_dist_base_logic(
+      model_context, model_equations, yield_deterministics=False
+  )
 
 
 class PosteriorMCMCSampler:
@@ -469,10 +547,9 @@ class PosteriorMCMCSampler:
       self._meridian = None
       self._model_context = model_context
     else:
-      raise ValueError(
-          "Either `meridian` or `model_context` must be provided."
-      )
+      raise ValueError("Either `meridian` or `model_context` must be provided.")
     self._joint_dist = None
+    self._joint_dist_sampling = None
 
   @functools.cached_property
   def _model_equations(self) -> equations.ModelEquations:
@@ -483,11 +560,14 @@ class PosteriorMCMCSampler:
     # Exclude unpickleable objects.
     if "_joint_dist" in state:
       del state["_joint_dist"]
+    if "_joint_dist_sampling" in state:
+      del state["_joint_dist_sampling"]
     return state
 
   def __setstate__(self, state):
     self.__dict__.update(state)
     self._joint_dist = None
+    self._joint_dist_sampling = None
 
   # TODO: Remove this property in favor of using `model_context`
   # and `model_equations` directly.
@@ -498,6 +578,9 @@ class PosteriorMCMCSampler:
   def _joint_dist_unpinned_fn(self):
     return _joint_dist_unpinned(self._model_context, self._model_equations)
 
+  def _joint_dist_sampling_fn(self) -> Generator[Any, Any, None]:
+    return _joint_dist_sampling(self._model_context, self._model_equations)
+
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
     """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     self._model_context.populate_cached_properties()
@@ -505,19 +588,94 @@ class PosteriorMCMCSampler:
         self._joint_dist_unpinned_fn
     )
 
+  def _get_joint_dist_sampling_unpinned(self) -> backend.tfd.Distribution:
+    """Builds a sampling-optimized `JointDistributionCoroutineAutoBatched`."""
+    self._model_context.populate_cached_properties()
+    return backend.tfd.JointDistributionCoroutineAutoBatched(
+        self._joint_dist_sampling_fn
+    )
+
+  def _pin_dist(
+      self, dist: backend.tfd.Distribution
+  ) -> backend.tfd.Distribution:
+    if self._model_context.holdout_id is not None:
+      y = backend.where(
+          self._model_context.holdout_id,
+          0.0,
+          self._model_context.kpi_scaled,
+      )
+    else:
+      y = self._model_context.kpi_scaled
+    return dist.experimental_pin(y=y)
+
   def _get_joint_dist(self) -> backend.tfd.Distribution:
     """Returns a joint distribution for MCMC sampling."""
     if self._joint_dist is None:
-      if self._model_context.holdout_id is not None:
-        y = backend.where(
-            self._model_context.holdout_id,
-            0.0,
-            self._model_context.kpi_scaled,
-        )
-      else:
-        y = self._model_context.kpi_scaled
-      self._joint_dist = self._get_joint_dist_unpinned().experimental_pin(y=y)
+      self._joint_dist = self._pin_dist(self._get_joint_dist_unpinned())
     return self._joint_dist
+
+  def _get_joint_dist_sampling(self) -> backend.tfd.Distribution:
+    """Returns a sampling-optimized joint distribution."""
+    if self._joint_dist_sampling is None:
+      self._joint_dist_sampling = self._pin_dist(
+          self._get_joint_dist_sampling_unpinned()
+      )
+    return self._joint_dist_sampling
+
+  def _reconstruct_posteriors(
+      self,
+      latents: Mapping[str, backend.Tensor],
+      rng_handler: backend.RNGHandler,
+  ) -> Mapping[str, backend.Tensor]:
+    """Reconstructs deterministic state variables from latent samples.
+
+    This runs the full model logic forward using the sampled latents to compute
+    all deterministic variables (e.g. ROI, budgets) required for the final
+    InferenceData.
+
+    Args:
+      latents: A dictionary mapping latent variable names to sampled tensors.
+      rng_handler: Random number generator handler.
+
+    Returns:
+      A dictionary containing the full state (latents + deterministics).
+    """
+    # Create a mutable copy to avoid modifying the input
+    latents_for_reconstruction = dict(latents)
+
+    # TFP's AutoBatched distributions expects scalars to have rank 0 in the
+    # batch dimension context. MCMC sampling might return shape (Chain, Draw, 1)
+    # for scalars like Sigma. We squeeze this to (Chain, Draw) to match the
+    # distribution's event shape expectations.
+    if (
+        constants.SIGMA in latents_for_reconstruction
+        and not self._model_context.unique_sigma_for_each_geo
+    ):
+      sigma_val = latents_for_reconstruction[constants.SIGMA]
+      if sigma_val.ndim == 3 and sigma_val.shape[-1] == 1:
+        latents_for_reconstruction[constants.SIGMA] = backend.squeeze(
+            sigma_val, -1
+        )
+
+    full_dist_unpinned = self._get_joint_dist_unpinned()
+
+    # JointDistributionCoroutineAutoBatched typically yields a StructTuple.
+    # To pass values to `sample(value=...)`, we must construct a matching
+    # structure (tuple) corresponding to the distribution's yielded order.
+    # We inspect the distribution's dtype fields to determine this order.
+    if hasattr(full_dist_unpinned.dtype, "_fields"):
+      fields = full_dist_unpinned.dtype._fields
+      # Map known latents to the positional order; use None for deterministics
+      # that need to be computed.
+      ordered_state = [latents_for_reconstruction.get(f, None) for f in fields]
+      values = tuple(ordered_state)
+    else:
+      # Fallback for distributions that support dictionary-based inputs.
+      values = latents_for_reconstruction
+
+    return full_dist_unpinned.sample(
+        value=values, seed=rng_handler.get_next_seed()
+    )._asdict()
 
   def __call__(
       self,
@@ -598,12 +756,16 @@ class PosteriorMCMCSampler:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
+    # Initialize the backend-agnostic RNG handler. This handles differences
+    # between JAX (explicit PRNG keys) and TF (stateless/stateful seeds)
+    # internally, including auto-generating a seed if `None` is provided.
     rng_handler = backend.RNGHandler(seed)
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
 
-    # Clear joint distribution cache prior to sampling.
+    # Clear joint distribution cache prior to sampling to ensure fresh state.
     self._joint_dist = None
+    self._joint_dist_sampling = None
 
     states = []
     traces = []
@@ -611,9 +773,10 @@ class PosteriorMCMCSampler:
       kernel_seed = rng_handler.get_kernel_seed()
 
       try:
+        # Use sampling-optimized joint distribution (latents only) for NUTS.
         mcmc = backend.xla_windowed_adaptive_nuts(
             n_draws=n_burnin + n_keep,
-            joint_dist=self._get_joint_dist(),
+            joint_dist=self._get_joint_dist_sampling(),
             n_chains=n_chains_batch,
             num_adaptation_steps=n_adapt,
             current_state=current_state,
@@ -636,7 +799,8 @@ class PosteriorMCMCSampler:
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
 
-    mcmc_states = {
+    # Combine latent samples from all chain batches.
+    mcmc_states_latents = {
         k: backend.einsum(
             "ij...->ji...",
             backend.concatenate([state[k] for state in states], axis=1)[
@@ -646,6 +810,19 @@ class PosteriorMCMCSampler:
         for k in states[0].keys()
         if k not in constants.UNSAVED_PARAMETERS
     }
+
+    # Reconstruct full state (including deterministics) using the Full Graph.
+    mcmc_states = dict(
+        self._reconstruct_posteriors(mcmc_states_latents, rng_handler)
+    )
+
+    # Restore the original shapes of the latent variables.
+    # This ensures that parameters like 'sigma' retain dimensions consistent
+    # with the MCMC sampler output (e.g., preserving a singleton dimension
+    # if that was the original format), satisfying downstream expectations
+    # such as ArviZ InferenceData validation.
+    mcmc_states.update(mcmc_states_latents)
+
     # Create Arviz InferenceData for posterior draws.
     posterior_coords = self._model_context.create_inference_data_coords(
         total_chains, n_keep
