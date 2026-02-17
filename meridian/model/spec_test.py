@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -413,6 +413,42 @@ class ModelSpecTest(parameterized.TestCase):
     )
     with self.assertWarnsRegex(UserWarning, warning_message):
       spec.ModelSpec(paid_media_prior_type="roi")
+
+  @parameterized.named_parameters(
+      ("ndarray", np.array([2, 5, 8], dtype=int), [2, 5, 8]),
+      ("tuple", (2, 5, 8), [2, 5, 8]),
+      ("set", {2, 5, 8}, [2, 5, 8]),
+      ("list", [2, 5, 8], [2, 5, 8]),
+      ("dict_keys", {2: "a", 5: "b", 8: "c"}, [2, 5, 8]),
+  )
+  def test_spec_inits_knots_with_collection_converts_to_list(
+      self, knots_input, expected
+  ):
+    """Tests that passing any collection for knots converts it to a list[int]."""
+    model_spec = spec.ModelSpec(knots=knots_input)
+
+    self.assertIsInstance(model_spec.knots, list)
+    self.assertCountEqual(model_spec.knots, expected)
+
+  @parameterized.named_parameters(
+      ("strings_list", ["a", "b"]),
+      ("strings_tuple", ("a", "b")),
+      ("floats_list", [1.1, 2.2]),
+      ("mixed_tuple", (1, "a")),
+  )
+  def test_spec_inits_knots_with_non_integers_fails(self, knots_input):
+    """Tests that collections containing non-integers raise ValueError."""
+    with self.assertRaisesRegex(
+        ValueError, "`knots` must be a sequence of integers"
+    ):
+      spec.ModelSpec(knots=knots_input)
+
+  def test_spec_inits_knots_with_unsupported_type_fails(self):
+    """Tests that passing an unsupported type (e.g. dict) raises ValueError."""
+    with self.assertRaisesRegex(
+        ValueError, "Unsupported type for `knots` parameter"
+    ):
+      spec.ModelSpec(knots=3.5)  # pytype: disable=wrong-arg-types
 
 
 if __name__ == "__main__":

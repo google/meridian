@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +14,14 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian.backend import test_utils
 from meridian.model.eda import eda_outcome
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 
-class EdaOutcomeTest(parameterized.TestCase):
+class EdaOutcomeTest(test_utils.MeridianTestCase):
   _GEO_ARTIFACT = eda_outcome.PairwiseCorrArtifact(
       level=eda_outcome.AnalysisLevel.GEO,
       corr_matrix=xr.DataArray(
@@ -74,7 +75,14 @@ class EdaOutcomeTest(parameterized.TestCase):
   )
   _GEO_OUTCOME = eda_outcome.EDAOutcome(
       check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
-      findings=[],
+      findings=[
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.ATTENTION,
+              explanation='explanation for geo',
+              finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+              associated_artifact=_GEO_ARTIFACT,
+          )
+      ],
       analysis_artifacts=[_OVERALL_ARTIFACT, _GEO_ARTIFACT],
   )
   _NATIONAL_OUTCOME = eda_outcome.EDAOutcome(
@@ -82,16 +90,81 @@ class EdaOutcomeTest(parameterized.TestCase):
       findings=[],
       analysis_artifacts=[_NATIONAL_ARTIFACT],
   )
+  _RSQUARED_OUTCOME = eda_outcome.EDAOutcome(
+      check_type=eda_outcome.EDACheckType.VARIABLE_GEO_TIME_COLLINEARITY,
+      findings=[
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation='explanation for rsquared 1',
+              finding_cause=eda_outcome.FindingCause.NONE,
+          ),
+          eda_outcome.EDAFinding(
+              severity=eda_outcome.EDASeverity.INFO,
+              explanation='explanation for rsquared 2',
+              finding_cause=eda_outcome.FindingCause.NONE,
+          ),
+      ],
+      analysis_artifacts=[],
+  )
 
-  def test_get_national_artifact(self):
+  def test_get_national_artifacts_success(self):
     self.assertEqual(
-        self._NATIONAL_OUTCOME.get_national_artifact, self._NATIONAL_ARTIFACT
+        self._NATIONAL_OUTCOME.get_national_artifacts(),
+        [self._NATIONAL_ARTIFACT],
     )
-    self.assertIsNone(self._GEO_OUTCOME.get_national_artifact)
 
-  def test_get_geo_artifact(self):
-    self.assertEqual(self._GEO_OUTCOME.get_geo_artifact, self._GEO_ARTIFACT)
-    self.assertIsNone(self._NATIONAL_OUTCOME.get_geo_artifact)
+  def test_get_national_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have national artifacts'):
+      self._GEO_OUTCOME.get_national_artifacts()
+
+  def test_get_geo_artifacts_success(self):
+    self.assertEqual(
+        self._GEO_OUTCOME.get_geo_artifacts(), [self._GEO_ARTIFACT]
+    )
+
+  def test_get_geo_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have geo artifacts'):
+      self._NATIONAL_OUTCOME.get_geo_artifacts()
+
+  def test_get_overall_artifacts_success(self):
+    self.assertEqual(
+        self._GEO_OUTCOME.get_overall_artifacts(), [self._OVERALL_ARTIFACT]
+    )
+
+  def test_get_overall_artifacts_raises_error(self):
+    with self.assertRaisesRegex(ValueError, 'does not have overall artifacts'):
+      self._NATIONAL_OUTCOME.get_overall_artifacts()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='single_finding',
+          outcome=_GEO_OUTCOME,
+          cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+          severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings=_GEO_OUTCOME.findings,
+      ),
+      dict(
+          testcase_name='multiple_findings',
+          outcome=_RSQUARED_OUTCOME,
+          cause=eda_outcome.FindingCause.NONE,
+          severity=eda_outcome.EDASeverity.INFO,
+          expected_findings=_RSQUARED_OUTCOME.findings,
+      ),
+      dict(
+          testcase_name='no_findings',
+          outcome=_NATIONAL_OUTCOME,
+          cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
+          severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_findings=[],
+      ),
+  )
+  def test_get_findings_by_cause_and_severity_success(
+      self, outcome, cause, severity, expected_findings
+  ):
+    self.assertEqual(
+        outcome.get_findings_by_cause_and_severity(cause, severity),
+        expected_findings,
+    )
 
 
 if __name__ == '__main__':

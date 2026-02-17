@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -161,6 +161,10 @@ class SummarizerTest(parameterized.TestCase):
     self.media_metrics = test_utils.generate_paid_summary_metrics()
     self.media_summary.get_paid_summary_metrics = mock.MagicMock(
         return_value=self.media_metrics
+    )
+    self.all_metrics = test_utils.generate_all_summary_metrics()
+    self.media_summary.get_all_summary_metrics = mock.MagicMock(
+        return_value=self.all_metrics
     )
 
     frequency_data = test_utils.generate_optimal_frequency_data(
@@ -974,12 +978,12 @@ class SummarizerTest(parameterized.TestCase):
     )
 
   def test_channel_contrib_card_insights(self):
-    self.media_metrics[c.INCREMENTAL_OUTCOME].loc[{
+    self.all_metrics[c.INCREMENTAL_OUTCOME].loc[{
         c.CHANNEL: 'rf_ch_1',
         c.DISTRIBUTION: c.POSTERIOR,
         c.METRIC: c.MEAN,
     }] = 999999  # largest outcome
-    self.media_metrics[c.INCREMENTAL_OUTCOME].loc[{
+    self.all_metrics[c.INCREMENTAL_OUTCOME].loc[{
         c.CHANNEL: 'ch_0',
         c.DISTRIBUTION: c.POSTERIOR,
         c.METRIC: c.MEAN,

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,11 +15,15 @@
 """Module for MCMC sampling of posterior distributions in a Meridian model."""
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING
+import functools
+from typing import Optional, TYPE_CHECKING
+import warnings
 
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import context
+from meridian.model import equations
 import numpy as np
 
 if TYPE_CHECKING:
@@ -72,34 +76,39 @@ def _get_tau_g(
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
-def _joint_dist_unpinned(mmm: "model.Meridian"):
+def _joint_dist_unpinned(
+    model_context: context.ModelContext,
+    model_equations: equations.ModelEquations,
+):
   """Returns unpinned joint distribution."""
 
   # This lists all the derived properties and states of this Meridian object
   # that are referenced by the joint distribution coroutine.
   # That is, these are the list of captured parameters.
-  prior_broadcast = mmm.prior_broadcast
-  baseline_geo_idx = mmm.baseline_geo_idx
-  knot_info = mmm.knot_info
-  n_geos = mmm.n_geos
-  n_times = mmm.n_times
-  n_media_channels = mmm.n_media_channels
-  n_rf_channels = mmm.n_rf_channels
-  n_organic_media_channels = mmm.n_organic_media_channels
-  n_organic_rf_channels = mmm.n_organic_rf_channels
-  n_controls = mmm.n_controls
-  n_non_media_channels = mmm.n_non_media_channels
-  holdout_id = mmm.holdout_id
-  media_tensors = mmm.media_tensors
-  rf_tensors = mmm.rf_tensors
-  organic_media_tensors = mmm.organic_media_tensors
-  organic_rf_tensors = mmm.organic_rf_tensors
-  controls_scaled = mmm.controls_scaled
-  non_media_treatments_normalized = mmm.non_media_treatments_normalized
-  media_effects_dist = mmm.media_effects_dist
-  adstock_hill_media_fn = mmm.adstock_hill_media
-  adstock_hill_rf_fn = mmm.adstock_hill_rf
-  total_outcome = mmm.total_outcome
+  prior_broadcast = model_context.prior_broadcast
+  baseline_geo_idx = model_context.baseline_geo_idx
+  knot_info = model_context.knot_info
+  n_geos = model_context.n_geos
+  n_times = model_context.n_times
+  n_media_channels = model_context.n_media_channels
+  n_rf_channels = model_context.n_rf_channels
+  n_organic_media_channels = model_context.n_organic_media_channels
+  n_organic_rf_channels = model_context.n_organic_rf_channels
+  n_controls = model_context.n_controls
+  n_non_media_channels = model_context.n_non_media_channels
+  holdout_id = model_context.holdout_id
+  media_tensors = model_context.media_tensors
+  rf_tensors = model_context.rf_tensors
+  organic_media_tensors = model_context.organic_media_tensors
+  organic_rf_tensors = model_context.organic_rf_tensors
+  controls_scaled = model_context.controls_scaled
+  non_media_treatments_normalized = (
+      model_context.non_media_treatments_normalized
+  )
+  media_effects_dist = model_context.media_effects_dist
+  adstock_hill_media_fn = model_equations.adstock_hill_media
+  adstock_hill_rf_fn = model_equations.adstock_hill_rf
+  total_outcome = model_context.total_outcome
 
   # Sample directly from prior.
   knot_values = yield prior_broadcast.knot_values
@@ -142,9 +151,9 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
         alpha=alpha_m,
         ec=ec_m,
         slope=slope_m,
-        decay_functions=mmm.adstock_decay_spec.media,
+        decay_functions=model_context.adstock_decay_spec.media,
     )
-    prior_type = mmm.model_spec.effective_media_prior_type
+    prior_type = model_context.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       beta_m = yield prior_broadcast.beta_m
     else:
@@ -160,14 +169,14 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
           treatment_parameter_m * media_tensors.prior_denominator
       )
       linear_predictor_counterfactual_difference = (
-          mmm.linear_predictor_counterfactual_difference_media(
+          model_equations.linear_predictor_counterfactual_difference_media(
               media_transformed=media_transformed,
               alpha_m=alpha_m,
               ec_m=ec_m,
               slope_m=slope_m,
           )
       )
-      beta_m_value = mmm.calculate_beta_x(
+      beta_m_value = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_m,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -208,10 +217,10 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
         alpha=alpha_rf,
         ec=ec_rf,
         slope=slope_rf,
-        decay_functions=mmm.adstock_decay_spec.rf,
+        decay_functions=model_context.adstock_decay_spec.rf,
     )
 
-    prior_type = mmm.model_spec.effective_rf_prior_type
+    prior_type = model_context.model_spec.effective_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       beta_rf = yield prior_broadcast.beta_rf
     else:
@@ -227,14 +236,14 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
           treatment_parameter_rf * rf_tensors.prior_denominator
       )
       linear_predictor_counterfactual_difference = (
-          mmm.linear_predictor_counterfactual_difference_rf(
+          model_equations.linear_predictor_counterfactual_difference_rf(
               rf_transformed=rf_transformed,
               alpha_rf=alpha_rf,
               ec_rf=ec_rf,
               slope_rf=slope_rf,
           )
       )
-      beta_rf_value = mmm.calculate_beta_x(
+      beta_rf_value = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_rf,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -274,15 +283,15 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
         alpha=alpha_om,
         ec=ec_om,
         slope=slope_om,
-        decay_functions=mmm.adstock_decay_spec.organic_media,
+        decay_functions=model_context.adstock_decay_spec.organic_media,
     )
-    prior_type = mmm.model_spec.organic_media_prior_type
+    prior_type = model_context.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       beta_om = yield prior_broadcast.beta_om
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_om = yield prior_broadcast.contribution_om
       incremental_outcome_om = contribution_om * total_outcome
-      beta_om_value = mmm.calculate_beta_x(
+      beta_om_value = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_om,
           linear_predictor_counterfactual_difference=organic_media_transformed,
@@ -325,16 +334,16 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
         alpha=alpha_orf,
         ec=ec_orf,
         slope=slope_orf,
-        decay_functions=mmm.adstock_decay_spec.organic_rf,
+        decay_functions=model_context.adstock_decay_spec.organic_rf,
     )
 
-    prior_type = mmm.model_spec.organic_rf_prior_type
+    prior_type = model_context.model_spec.organic_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       beta_orf = yield prior_broadcast.beta_orf
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_orf = yield prior_broadcast.contribution_orf
       incremental_outcome_orf = contribution_orf * total_outcome
-      beta_orf_value = mmm.calculate_beta_x(
+      beta_orf_value = model_equations.calculate_beta_x(
           is_non_media=False,
           incremental_outcome_x=incremental_outcome_orf,
           linear_predictor_counterfactual_difference=organic_rf_transformed,
@@ -382,26 +391,26 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
         "gtc,gc->gt", controls_scaled, gamma_gc
     )
 
-  if mmm.non_media_treatments is not None:
+  if model_context.non_media_treatments is not None:
     xi_n = yield prior_broadcast.xi_n
     gamma_gn_dev = yield backend.tfd.Sample(
         backend.tfd.Normal(0, 1),
         [n_geos, n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     )
-    prior_type = mmm.model_spec.non_media_treatments_prior_type
+    prior_type = model_context.model_spec.non_media_treatments_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       gamma_n = yield prior_broadcast.gamma_n
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_n = yield prior_broadcast.contribution_n
       incremental_outcome_n = contribution_n * total_outcome
-      baseline_scaled = mmm.non_media_transformer.forward(  # pytype: disable=attribute-error
-          mmm.compute_non_media_treatments_baseline()
+      baseline_scaled = model_context.non_media_transformer.forward(  # pytype: disable=attribute-error
+          model_equations.compute_non_media_treatments_baseline()
       )
       linear_predictor_counterfactual_difference = (
           non_media_treatments_normalized - baseline_scaled
       )
-      gamma_n_value = mmm.calculate_beta_x(
+      gamma_n_value = model_equations.calculate_beta_x(
           is_non_media=True,
           incremental_outcome_x=incremental_outcome_n,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
@@ -439,9 +448,35 @@ def _joint_dist_unpinned(mmm: "model.Meridian"):
 class PosteriorMCMCSampler:
   """A callable that samples from posterior distributions using MCMC."""
 
-  def __init__(self, meridian: "model.Meridian"):
-    self._meridian = meridian
+  # TODO: Deprecate direct injection of `model.Meridian`.
+  def __init__(
+      self,
+      meridian: Optional["model.Meridian"] = None,
+      *,
+      model_context: context.ModelContext | None = None,
+  ):
+    if meridian is not None:
+      warnings.warn(
+          "Initializing PosteriorMCMCSampler with a Meridian object is"
+          " deprecated and will be removed in a future version. Please use"
+          " `model_context` instead.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      self._meridian = meridian
+      self._model_context = meridian.model_context
+    elif model_context is not None:
+      self._meridian = None
+      self._model_context = model_context
+    else:
+      raise ValueError(
+          "Either `meridian` or `model_context` must be provided."
+      )
     self._joint_dist = None
+
+  @functools.cached_property
+  def _model_equations(self) -> equations.ModelEquations:
+    return equations.ModelEquations(self._model_context)
 
   def __getstate__(self):
     state = self.__dict__.copy()
@@ -454,29 +489,33 @@ class PosteriorMCMCSampler:
     self.__dict__.update(state)
     self._joint_dist = None
 
+  # TODO: Remove this property in favor of using `model_context`
+  # and `model_equations` directly.
   @property
-  def model(self) -> "model.Meridian":
+  def model(self) -> Optional["model.Meridian"]:
     return self._meridian
 
   def _joint_dist_unpinned_fn(self):
-    return _joint_dist_unpinned(self.model)
+    return _joint_dist_unpinned(self._model_context, self._model_equations)
 
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
     """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
-    mmm = self.model
-    mmm.populate_cached_properties()
+    self._model_context.populate_cached_properties()
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_unpinned_fn
     )
 
   def _get_joint_dist(self) -> backend.tfd.Distribution:
+    """Returns a joint distribution for MCMC sampling."""
     if self._joint_dist is None:
-      mmm = self.model
-      y = (
-          backend.where(mmm.holdout_id, 0.0, mmm.kpi_scaled)
-          if mmm.holdout_id is not None
-          else mmm.kpi_scaled
-      )
+      if self._model_context.holdout_id is not None:
+        y = backend.where(
+            self._model_context.holdout_id,
+            0.0,
+            self._model_context.kpi_scaled,
+        )
+      else:
+        y = self._model_context.kpi_scaled
       self._joint_dist = self._get_joint_dist_unpinned().experimental_pin(y=y)
     return self._joint_dist
 
@@ -495,7 +534,7 @@ class PosteriorMCMCSampler:
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
       **pins,
-  ) -> None:
+  ) -> az.InferenceData:
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
 
     For more information about the arguments, see [`windowed_adaptive_nuts`]
@@ -547,6 +586,10 @@ class PosteriorMCMCSampler:
         (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
+
+    Returns:
+      An `arviz.InferenceData` object containing the posterior samples, trace
+      metrics, and sampling statistics.
 
     Throws:
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
@@ -604,10 +647,10 @@ class PosteriorMCMCSampler:
         if k not in constants.UNSAVED_PARAMETERS
     }
     # Create Arviz InferenceData for posterior draws.
-    posterior_coords = self.model.create_inference_data_coords(
+    posterior_coords = self._model_context.create_inference_data_coords(
         total_chains, n_keep
     )
-    posterior_dims = self.model.create_inference_data_dims()
+    posterior_dims = self._model_context.create_inference_data_dims()
     infdata_posterior = az.convert_to_inference_data(
         mcmc_states, coords=posterior_coords, dims=posterior_dims
     )
@@ -669,7 +712,5 @@ class PosteriorMCMCSampler:
         dims=sample_stats_dims,
         group="sample_stats",
     )
-    posterior_inference_data = az.concat(
-        infdata_posterior, infdata_trace, infdata_sample_stats
-    )
-    self.model.inference_data.extend(posterior_inference_data, join="right")
+
+    return az.concat(infdata_posterior, infdata_trace, infdata_sample_stats)

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,19 @@
 # limitations under the License.
 
 """Meridian API."""
+
 from meridian import analysis
 from meridian import backend
 from meridian import data
 from meridian import model
-from meridian.version import __version__
+from meridian.version import __version__  # pylint: disable=g-importing-member
 
 try:
   from meridian import mlflow  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pass
+
+try:
+  from meridian import schema
 except ImportError:
   pass

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 import collections
 from collections.abc import Mapping, Sequence
+import dataclasses
 import functools
-import numbers
 import os
 import warnings
 
@@ -28,6 +28,8 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
+from meridian.model import context
+from meridian.model import equations
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import posterior_sampler
@@ -76,27 +78,15 @@ def _warn_setting_national_args(**kwargs):
       )
 
 
-def _check_for_negative_effect(
-    dist: backend.tfd.Distribution, media_effects_dist: str
-):
-  """Checks for negative effect in the model."""
-  if (
-      media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
-      and np.any(dist.cdf(0)) > 0
-  ):
-    raise ValueError(
-        "Media priors must have non-negative support when"
-        f' `media_effects_dist`="{media_effects_dist}". Found negative effect'
-        f" in {dist.name}."
-    )
-
-
 class Meridian:
   """Contains the main functionality for fitting the Meridian MMM model.
 
   Attributes:
     input_data: An `InputData` object containing the input data for the model.
     model_spec: A `ModelSpec` object containing the model specification.
+    model_context: A `ModelContext` object containing the model context.
+    model_equations: A `ModelEquations` object containing stateless mathematical
+      functions and utilities for Meridian MMM.
     inference_data: A _mutable_ `arviz.InferenceData` object containing the
       resulting data from fitting the model.
     eda_engine: An `EDAEngine` object containing the EDA engine.
@@ -168,15 +158,17 @@ class Meridian:
       ) = None,  # for deserializer use only
       eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
   ):
-    self._input_data = input_data
-    self._model_spec = model_spec if model_spec else spec.ModelSpec()
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
     )
-
+    self._model_context = context.ModelContext(
+        input_data=input_data,
+        model_spec=model_spec if model_spec else spec.ModelSpec(),
+    )
+    self._model_equations = equations.ModelEquations(self._model_context)
+    self._computation_backend = backend.computation_backend().name
     self._eda_spec = eda_spec
 
-    self._validate_data_dependent_model_spec()
     self._validate_injected_inference_data()
 
     if self.is_national:
@@ -184,22 +176,23 @@ class Meridian:
           media_effects_dist=self.model_spec.media_effects_dist,
           unique_sigma_for_each_geo=self.model_spec.unique_sigma_for_each_geo,
       )
-    self._warn_setting_ignored_priors()
-    self._set_total_media_contribution_prior = False
-    self._validate_mroi_priors_non_revenue()
-    self._validate_roi_priors_non_revenue()
-    self._check_for_negative_effects()
-    self._validate_geo_invariants()
-    self._validate_time_invariants()
-    self._validate_kpi_transformer()
+    self._validate_kpi_variability()
 
   @property
   def input_data(self) -> data.InputData:
-    return self._input_data
+    return self._model_context.input_data
 
   @property
   def model_spec(self) -> spec.ModelSpec:
-    return self._model_spec
+    return self._model_context.model_spec
+
+  @property
+  def model_context(self) -> context.ModelContext:
+    return self._model_context
+
+  @property
+  def model_equations(self) -> equations.ModelEquations:
+    return self._model_equations
 
   @property
   def inference_data(self) -> az.InferenceData:
@@ -207,190 +200,127 @@ class Meridian:
 
   @functools.cached_property
   def eda_engine(self) -> eda_engine.EDAEngine:
-    return eda_engine.EDAEngine(self, spec=self._eda_spec)
+    return eda_engine.EDAEngine(
+        spec=self._eda_spec, model_context=self.model_context
+    )
 
   @property
   def eda_spec(self) -> eda_spec_module.EDASpec:
     return self._eda_spec
 
   @property
-  def eda_outcomes(self) -> Sequence[eda_outcome.EDAOutcome]:
+  def eda_outcomes(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     return self.eda_engine.run_all_critical_checks()
 
-  @functools.cached_property
+  @property
   def media_tensors(self) -> media.MediaTensors:
-    return media.build_media_tensors(self.input_data, self.model_spec)
+    return self._model_context.media_tensors
 
-  @functools.cached_property
+  @property
   def rf_tensors(self) -> media.RfTensors:
-    return media.build_rf_tensors(self.input_data, self.model_spec)
+    return self._model_context.rf_tensors
 
-  @functools.cached_property
+  @property
   def organic_media_tensors(self) -> media.OrganicMediaTensors:
-    return media.build_organic_media_tensors(self.input_data)
+    return self._model_context.organic_media_tensors
 
-  @functools.cached_property
+  @property
   def organic_rf_tensors(self) -> media.OrganicRfTensors:
-    return media.build_organic_rf_tensors(self.input_data)
+    return self._model_context.organic_rf_tensors
 
-  @functools.cached_property
+  @property
   def kpi(self) -> backend.Tensor:
-    return backend.to_tensor(self.input_data.kpi, dtype=backend.float32)
+    return self._model_context.kpi
 
-  @functools.cached_property
+  @property
   def revenue_per_kpi(self) -> backend.Tensor | None:
-    if self.input_data.revenue_per_kpi is None:
-      return None
-    return backend.to_tensor(
-        self.input_data.revenue_per_kpi, dtype=backend.float32
-    )
+    return self._model_context.revenue_per_kpi
 
-  @functools.cached_property
+  @property
   def controls(self) -> backend.Tensor | None:
-    if self.input_data.controls is None:
-      return None
-    return backend.to_tensor(self.input_data.controls, dtype=backend.float32)
+    return self._model_context.controls
 
-  @functools.cached_property
+  @property
   def non_media_treatments(self) -> backend.Tensor | None:
-    if self.input_data.non_media_treatments is None:
-      return None
-    return backend.to_tensor(
-        self.input_data.non_media_treatments, dtype=backend.float32
-    )
+    return self._model_context.non_media_treatments
 
-  @functools.cached_property
+  @property
   def population(self) -> backend.Tensor:
-    return backend.to_tensor(self.input_data.population, dtype=backend.float32)
+    return self._model_context.population
 
-  @functools.cached_property
+  @property
   def total_spend(self) -> backend.Tensor:
-    return backend.to_tensor(
-        self.input_data.get_total_spend(), dtype=backend.float32
-    )
+    return self._model_context.total_spend
 
-  @functools.cached_property
+  @property
   def total_outcome(self) -> backend.Tensor:
-    return backend.to_tensor(
-        self.input_data.get_total_outcome(), dtype=backend.float32
-    )
+    return self._model_context.total_outcome
 
   @property
   def n_geos(self) -> int:
-    return len(self.input_data.geo)
+    return self._model_context.n_geos
 
   @property
   def n_media_channels(self) -> int:
-    if self.input_data.media_channel is None:
-      return 0
-    return len(self.input_data.media_channel)
+    return self._model_context.n_media_channels
 
   @property
   def n_rf_channels(self) -> int:
-    if self.input_data.rf_channel is None:
-      return 0
-    return len(self.input_data.rf_channel)
+    return self._model_context.n_rf_channels
 
   @property
   def n_organic_media_channels(self) -> int:
-    if self.input_data.organic_media_channel is None:
-      return 0
-    return len(self.input_data.organic_media_channel)
+    return self._model_context.n_organic_media_channels
 
   @property
   def n_organic_rf_channels(self) -> int:
-    if self.input_data.organic_rf_channel is None:
-      return 0
-    return len(self.input_data.organic_rf_channel)
+    return self._model_context.n_organic_rf_channels
 
   @property
   def n_controls(self) -> int:
-    if self.input_data.control_variable is None:
-      return 0
-    return len(self.input_data.control_variable)
+    return self._model_context.n_controls
 
   @property
   def n_non_media_channels(self) -> int:
-    if self.input_data.non_media_channel is None:
-      return 0
-    return len(self.input_data.non_media_channel)
+    return self._model_context.n_non_media_channels
 
   @property
   def n_times(self) -> int:
-    return len(self.input_data.time)
+    return self._model_context.n_times
 
   @property
   def n_media_times(self) -> int:
-    return len(self.input_data.media_time)
+    return self._model_context.n_media_times
 
   @property
   def is_national(self) -> bool:
-    return self.n_geos == 1
+    return self._model_context.is_national
 
-  @functools.cached_property
+  @property
   def knot_info(self) -> knots.KnotInfo:
-    return knots.get_knot_info(
-        n_times=self.n_times,
-        knots=self.model_spec.knots,
-        enable_aks=self.model_spec.enable_aks,
-        data=self.input_data,
-        is_national=self.is_national,
-    )
+    return self._model_context.knot_info
 
-  @functools.cached_property
+  @property
   def controls_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
-    """Returns a `CenteringAndScalingTransformer` for controls, if it exists."""
-    if self.controls is None:
-      return None
+    return self._model_context.controls_transformer
 
-    if self.model_spec.control_population_scaling_id is not None:
-      controls_population_scaling_id = backend.to_tensor(
-          self.model_spec.control_population_scaling_id, dtype=backend.bool_
-      )
-    else:
-      controls_population_scaling_id = None
-
-    return transformers.CenteringAndScalingTransformer(
-        tensor=self.controls,
-        population=self.population,
-        population_scaling_id=controls_population_scaling_id,
-    )
-
-  @functools.cached_property
+  @property
   def non_media_transformer(
       self,
   ) -> transformers.CenteringAndScalingTransformer | None:
-    """Returns a `CenteringAndScalingTransformer` for non-media treatments."""
-    if self.non_media_treatments is None:
-      return None
-    if self.model_spec.non_media_population_scaling_id is not None:
-      non_media_population_scaling_id = backend.to_tensor(
-          self.model_spec.non_media_population_scaling_id, dtype=backend.bool_
-      )
-    else:
-      non_media_population_scaling_id = None
+    return self._model_context.non_media_transformer
 
-    return transformers.CenteringAndScalingTransformer(
-        tensor=self.non_media_treatments,
-        population=self.population,
-        population_scaling_id=non_media_population_scaling_id,
-    )
-
-  @functools.cached_property
+  @property
   def kpi_transformer(self) -> transformers.KpiTransformer:
-    return transformers.KpiTransformer(self.kpi, self.population)
+    return self._model_context.kpi_transformer
 
-  @functools.cached_property
+  @property
   def controls_scaled(self) -> backend.Tensor | None:
-    if self.controls is not None:
-      # If `controls` is defined, then `controls_transformer` is also defined.
-      return self.controls_transformer.forward(self.controls)  # pytype: disable=attribute-error
-    else:
-      return None
+    return self._model_context.controls_scaled
 
-  @functools.cached_property
+  @property
   def non_media_treatments_normalized(self) -> backend.Tensor | None:
     """Normalized non-media treatments.
 
@@ -398,130 +328,61 @@ class Meridian:
     `non_media_population_scaling_id` is `True`) and normalized by centering and
     scaling with means and standard deviations.
     """
-    if self.non_media_transformer is not None:
-      return self.non_media_transformer.forward(
-          self.non_media_treatments
-      )  # pytype: disable=attribute-error
-    else:
-      return None
+    return self._model_context.non_media_treatments_normalized
 
-  @functools.cached_property
+  @property
   def kpi_scaled(self) -> backend.Tensor:
-    return self.kpi_transformer.forward(self.kpi)
+    return self._model_context.kpi_scaled
 
-  @functools.cached_property
+  @property
   def media_effects_dist(self) -> str:
-    if self.is_national:
-      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]
-    else:
-      return self.model_spec.media_effects_dist
+    return self._model_context.media_effects_dist
 
-  @functools.cached_property
+  @property
   def unique_sigma_for_each_geo(self) -> bool:
-    if self.is_national:
-      # Should evaluate to False.
-      return constants.NATIONAL_MODEL_SPEC_ARGS[
-          constants.UNIQUE_SIGMA_FOR_EACH_GEO
-      ]
-    else:
-      return self.model_spec.unique_sigma_for_each_geo
+    return self._model_context.unique_sigma_for_each_geo
 
-  @functools.cached_property
+  @property
   def baseline_geo_idx(self) -> int:
     """Returns the index of the baseline geo."""
-    if isinstance(self.model_spec.baseline_geo, int):
-      if (
-          self.model_spec.baseline_geo < 0
-          or self.model_spec.baseline_geo >= self.n_geos
-      ):
-        raise ValueError(
-            f"Baseline geo index {self.model_spec.baseline_geo} out of range"
-            f" [0, {self.n_geos - 1}]."
-        )
-      return self.model_spec.baseline_geo
-    elif isinstance(self.model_spec.baseline_geo, str):
-      # np.where returns a 1-D tuple, its first element is an array of found
-      # elements.
-      index = np.where(self.input_data.geo == self.model_spec.baseline_geo)[0]
-      if index.size == 0:
-        raise ValueError(
-            f"Baseline geo '{self.model_spec.baseline_geo}' not found."
-        )
-      # Geos are unique, so index is a 1-element array.
-      return index[0]
-    else:
-      return backend.argmax(self.population)
+    return self._model_context.baseline_geo_idx
 
-  @functools.cached_property
+  @property
   def holdout_id(self) -> backend.Tensor | None:
-    if self.model_spec.holdout_id is None:
-      return None
-    tensor = backend.to_tensor(self.model_spec.holdout_id, dtype=backend.bool_)
-    return tensor[backend.newaxis, ...] if self.is_national else tensor
+    return self._model_context.holdout_id
 
-  @functools.cached_property
+  @property
+  def computation_backend(self) -> str:
+    """The name of the computational backend used to initialize this model."""
+    return self._computation_backend
+
+  @property
   def adstock_decay_spec(self) -> adstock_hill.AdstockDecaySpec:
     """Returns `AdstockDecaySpec` object with correctly mapped channels."""
-    if isinstance(self.model_spec.adstock_decay_spec, str):
-      return adstock_hill.AdstockDecaySpec.from_consistent_type(
-          self.model_spec.adstock_decay_spec
-      )
+    return self._model_context.adstock_decay_spec
 
-    try:
-      return self._create_adstock_decay_functions_from_channel_map(
-          self.model_spec.adstock_decay_spec
-      )
-    except KeyError as e:
-      raise ValueError(
-          "Unrecognized channel names found in `adstock_decay_spec` keys"
-          f" {tuple(self.model_spec.adstock_decay_spec.keys())}. Keys should"
-          " either contain only channel_names"
-          f" {tuple(self.input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media',"
-          " 'organic_rf'}."
-      ) from e
-
-  @functools.cached_property
+  @property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
     """Returns broadcasted `PriorDistribution` object."""
-    total_spend = self.input_data.get_total_spend()
-    # Total spend can have 1, 2 or 3 dimensions. Aggregate by channel.
-    if len(total_spend.shape) == 1:
-      # Already aggregated by channel.
-      agg_total_spend = total_spend
-    elif len(total_spend.shape) == 2:
-      agg_total_spend = np.sum(total_spend, axis=(0,))
-    else:
-      agg_total_spend = np.sum(total_spend, axis=(0, 1))
-
-    return self.model_spec.prior.broadcast(
-        n_geos=self.n_geos,
-        n_media_channels=self.n_media_channels,
-        n_rf_channels=self.n_rf_channels,
-        n_organic_media_channels=self.n_organic_media_channels,
-        n_organic_rf_channels=self.n_organic_rf_channels,
-        n_controls=self.n_controls,
-        n_non_media_channels=self.n_non_media_channels,
-        unique_sigma_for_each_geo=self.unique_sigma_for_each_geo,
-        n_knots=self.knot_info.n_knots,
-        is_national=self.is_national,
-        set_total_media_contribution_prior=self._set_total_media_contribution_prior,
-        kpi=np.sum(self.input_data.kpi.values),
-        total_spend=agg_total_spend,
-    )
+    return self._model_context.prior_broadcast
 
   @functools.cached_property
   def prior_sampler_callable(self) -> prior_sampler.PriorDistributionSampler:
     """A `PriorDistributionSampler` callable bound to this model."""
-    return prior_sampler.PriorDistributionSampler(self)
+    return prior_sampler.PriorDistributionSampler(
+        model_context=self.model_context,
+    )
 
   @functools.cached_property
   def posterior_sampler_callable(
       self,
   ) -> posterior_sampler.PosteriorMCMCSampler:
     """A `PosteriorMCMCSampler` callable bound to this model."""
-    return posterior_sampler.PosteriorMCMCSampler(self)
+    return posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.model_context,
+    )
 
+  # TODO: Remove this method.
   def compute_non_media_treatments_baseline(
       self,
       non_media_baseline_values: Sequence[str | float] | None = None,
@@ -544,70 +405,18 @@ class Meridian:
       A tensor of shape `(n_non_media_channels,)` containing the
       baseline values for each non-media treatment channel.
     """
-    if non_media_baseline_values is None:
-      non_media_baseline_values = self.model_spec.non_media_baseline_values
-
-    no_op_scaling_factor = backend.ones_like(self.population)[
-        :, backend.newaxis, backend.newaxis
-    ]
-    if self.model_spec.non_media_population_scaling_id is not None:
-      scaling_factors = backend.where(
-          self.model_spec.non_media_population_scaling_id,
-          self.population[:, backend.newaxis, backend.newaxis],
-          no_op_scaling_factor,
-      )
-    else:
-      scaling_factors = no_op_scaling_factor
-
-    non_media_treatments_population_scaled = backend.divide_no_nan(
-        self.non_media_treatments, scaling_factors
+    warnings.warn(
+        "Meridian.compute_non_media_treatments_baseline() is deprecated and"
+        " will be removed in a future version. Use"
+        " `ModelEquations.compute_non_media_treatments_baseline()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.model_equations.compute_non_media_treatments_baseline(
+        non_media_baseline_values=non_media_baseline_values
     )
 
-    if non_media_baseline_values is None:
-      # If non_media_baseline_values is not provided, use the minimum
-      # value for each non_media treatment channel as the baseline.
-      non_media_baseline_values_filled = [
-          constants.NON_MEDIA_BASELINE_MIN
-      ] * non_media_treatments_population_scaled.shape[-1]
-    else:
-      non_media_baseline_values_filled = non_media_baseline_values
-
-    if non_media_treatments_population_scaled.shape[-1] != len(
-        non_media_baseline_values_filled
-    ):
-      raise ValueError(
-          "The number of non-media channels"
-          f" ({non_media_treatments_population_scaled.shape[-1]}) does not"
-          " match the number of baseline values"
-          f" ({len(non_media_baseline_values_filled)})."
-      )
-
-    baseline_list = []
-    for channel in range(non_media_treatments_population_scaled.shape[-1]):
-      baseline_value = non_media_baseline_values_filled[channel]
-
-      if baseline_value == constants.NON_MEDIA_BASELINE_MIN:
-        baseline_for_channel = backend.reduce_min(
-            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
-        )
-      elif baseline_value == constants.NON_MEDIA_BASELINE_MAX:
-        baseline_for_channel = backend.reduce_max(
-            non_media_treatments_population_scaled[..., channel], axis=[0, 1]
-        )
-      elif isinstance(baseline_value, numbers.Number):
-        baseline_for_channel = backend.to_tensor(
-            baseline_value, dtype=backend.float32
-        )
-      else:
-        raise ValueError(
-            f"Invalid non_media_baseline_values value: '{baseline_value}'. Only"
-            " float numbers and strings 'min' and 'max' are supported."
-        )
-
-      baseline_list.append(baseline_for_channel)
-
-    return backend.stack(baseline_list, axis=-1)
-
+  # TODO: Remove this method.
   def expand_selected_time_dims(
       self,
       start_date: tc.Date = None,
@@ -635,12 +444,16 @@ class Meridian:
       ValueError if `start_date` or `end_date` is not in the input data time
       dimensions.
     """
-    expanded = self.input_data.time_coordinates.expand_selected_time_dims(
+    warnings.warn(
+        "Meridian.expand_selected_time_dims() is deprecated and will be removed"
+        " in a future version. Use `ModelContext.expand_selected_time_dims()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self._model_context.expand_selected_time_dims(
         start_date=start_date, end_date=end_date
     )
-    if expanded is None:
-      return None
-    return [date.strftime(constants.DATE_FORMAT) for date in expanded]
 
   def _validate_injected_inference_data(self):
     """Validates that the injected inference data has correct shapes.
@@ -752,427 +565,8 @@ class Meridian:
         self.n_non_media_channels,
     )
 
-  def _validate_data_dependent_model_spec(self):
-    """Validates that the data dependent model specs have correct shapes."""
-
-    if (
-        self.model_spec.roi_calibration_period is not None
-        and self.model_spec.roi_calibration_period.shape
-        != (
-            self.n_media_times,
-            self.n_media_channels,
-        )
-    ):
-      raise ValueError(
-          "The shape of `roi_calibration_period`"
-          f" {self.model_spec.roi_calibration_period.shape} is different from"
-          f" `(n_media_times, n_media_channels) = ({self.n_media_times},"
-          f" {self.n_media_channels})`."
-      )
-
-    if (
-        self.model_spec.rf_roi_calibration_period is not None
-        and self.model_spec.rf_roi_calibration_period.shape
-        != (
-            self.n_media_times,
-            self.n_rf_channels,
-        )
-    ):
-      raise ValueError(
-          "The shape of `rf_roi_calibration_period`"
-          f" {self.model_spec.rf_roi_calibration_period.shape} is different"
-          f" from `(n_media_times, n_rf_channels) = ({self.n_media_times},"
-          f" {self.n_rf_channels})`."
-      )
-
-    if self.model_spec.holdout_id is not None:
-      if self.is_national and (
-          self.model_spec.holdout_id.shape != (self.n_times,)
-      ):
-        raise ValueError(
-            f"The shape of `holdout_id` {self.model_spec.holdout_id.shape} is"
-            f" different from `(n_times,) = ({self.n_times},)`."
-        )
-      elif not self.is_national and (
-          self.model_spec.holdout_id.shape
-          != (
-              self.n_geos,
-              self.n_times,
-          )
-      ):
-        raise ValueError(
-            f"The shape of `holdout_id` {self.model_spec.holdout_id.shape} is"
-            f" different from `(n_geos, n_times) = ({self.n_geos},"
-            f" {self.n_times})`."
-        )
-
-    if self.model_spec.control_population_scaling_id is not None and (
-        self.model_spec.control_population_scaling_id.shape
-        != (self.n_controls,)
-    ):
-      raise ValueError(
-          "The shape of `control_population_scaling_id`"
-          f" {self.model_spec.control_population_scaling_id.shape} is different"
-          f" from `(n_controls,) = ({self.n_controls},)`."
-      )
-
-    if self.model_spec.non_media_population_scaling_id is not None and (
-        self.model_spec.non_media_population_scaling_id.shape
-        != (self.n_non_media_channels,)
-    ):
-      raise ValueError(
-          "The shape of `non_media_population_scaling_id`"
-          f" {self.model_spec.non_media_population_scaling_id.shape} is"
-          " different from `(n_non_media_channels,) ="
-          f" ({self.n_non_media_channels},)`."
-      )
-
-  def _create_adstock_decay_functions_from_channel_map(
-      self, channel_function_map: Mapping[str, str]
-  ) -> adstock_hill.AdstockDecaySpec:
-    """Create `AdstockDecaySpec` from mapping from channels to decay functions."""
-
-    for channel in channel_function_map:
-      if channel not in self.input_data.get_all_adstock_hill_channels():
-        raise KeyError(f"Channel {channel} not found in data.")
-
-    if self.input_data.media_channel is not None:
-      media_channel_builder = self.input_data.get_paid_media_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      media_adstock_function = media_channel_builder(**channel_function_map)
-    else:
-      media_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.rf_channel is not None:
-      rf_channel_builder = self.input_data.get_paid_rf_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      rf_adstock_function = rf_channel_builder(**channel_function_map)
-    else:
-      rf_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.organic_media_channel is not None:
-      organic_media_channel_builder = self.input_data.get_organic_media_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      organic_media_adstock_function = organic_media_channel_builder(
-          **channel_function_map
-      )
-    else:
-      organic_media_adstock_function = constants.GEOMETRIC_DECAY
-
-    if self.input_data.organic_rf_channel is not None:
-      organic_rf_channel_builder = self.input_data.get_organic_rf_channels_argument_builder().with_default_value(
-          constants.GEOMETRIC_DECAY
-      )
-      organic_rf_adstock_function = organic_rf_channel_builder(
-          **channel_function_map
-      )
-    else:
-      organic_rf_adstock_function = constants.GEOMETRIC_DECAY
-
-    return adstock_hill.AdstockDecaySpec(
-        media=media_adstock_function,
-        rf=rf_adstock_function,
-        organic_media=organic_media_adstock_function,
-        organic_rf=organic_rf_adstock_function,
-    )
-
-  def _warn_setting_ignored_priors(self):
-    """Raises a warning if ignored priors are set."""
-    default_distribution = prior_distribution.PriorDistribution()
-    for ignored_priors_dict, prior_type, prior_type_name in (
-        (
-            constants.IGNORED_PRIORS_MEDIA,
-            self.model_spec.effective_media_prior_type,
-            "media_prior_type",
-        ),
-        (
-            constants.IGNORED_PRIORS_RF,
-            self.model_spec.effective_rf_prior_type,
-            "rf_prior_type",
-        ),
-    ):
-      ignored_custom_priors = []
-      for prior in ignored_priors_dict.get(prior_type, []):
-        self_prior = getattr(self.model_spec.prior, prior)
-        default_prior = getattr(default_distribution, prior)
-        if not prior_distribution.distributions_are_equal(
-            self_prior, default_prior
-        ):
-          ignored_custom_priors.append(prior)
-      if ignored_custom_priors:
-        ignored_priors_str = ", ".join(ignored_custom_priors)
-        warnings.warn(
-            f"Custom prior(s) `{ignored_priors_str}` are ignored when"
-            f' `{prior_type_name}` is set to "{prior_type}".'
-        )
-
-  def _validate_mroi_priors_non_revenue(self):
-    """Validates mroi priors in the non-revenue outcome case."""
-    if (
-        self.input_data.kpi_type == constants.NON_REVENUE
-        and self.input_data.revenue_per_kpi is None
-    ):
-      default_distribution = prior_distribution.PriorDistribution()
-      if (
-          self.n_media_channels > 0
-          and (
-              self.model_spec.effective_media_prior_type
-              == constants.TREATMENT_PRIOR_TYPE_MROI
-          )
-          and prior_distribution.distributions_are_equal(
-              self.model_spec.prior.mroi_m, default_distribution.mroi_m
-          )
-      ):
-        raise ValueError(
-            f"Custom priors should be set on `{constants.MROI_M}` when"
-            ' `media_prior_type` is "mroi", KPI is non-revenue and revenue per'
-            " kpi data is missing."
-        )
-      if (
-          self.n_rf_channels > 0
-          and (
-              self.model_spec.effective_rf_prior_type
-              == constants.TREATMENT_PRIOR_TYPE_MROI
-          )
-          and prior_distribution.distributions_are_equal(
-              self.model_spec.prior.mroi_rf, default_distribution.mroi_rf
-          )
-      ):
-        raise ValueError(
-            f"Custom priors should be set on `{constants.MROI_RF}` when"
-            ' `rf_prior_type` is "mroi", KPI is non-revenue and revenue per kpi'
-            " data is missing."
-        )
-
-  def _validate_roi_priors_non_revenue(self):
-    """Validates roi priors in the non-revenue outcome case."""
-    if (
-        self.input_data.kpi_type == constants.NON_REVENUE
-        and self.input_data.revenue_per_kpi is None
-    ):
-      default_distribution = prior_distribution.PriorDistribution()
-      default_roi_m_used = (
-          self.model_spec.effective_media_prior_type
-          == constants.TREATMENT_PRIOR_TYPE_ROI
-          and prior_distribution.distributions_are_equal(
-              self.model_spec.prior.roi_m, default_distribution.roi_m
-          )
-      )
-      default_roi_rf_used = (
-          self.model_spec.effective_rf_prior_type
-          == constants.TREATMENT_PRIOR_TYPE_ROI
-          and prior_distribution.distributions_are_equal(
-              self.model_spec.prior.roi_rf, default_distribution.roi_rf
-          )
-      )
-      # If ROI priors are used with the default prior distribution for all paid
-      # channels (media and RF), then use the "total paid media contribution
-      # prior" procedure.
-      if (
-          (default_roi_m_used and default_roi_rf_used)
-          or (self.n_media_channels == 0 and default_roi_rf_used)
-          or (self.n_rf_channels == 0 and default_roi_m_used)
-      ):
-        self._set_total_media_contribution_prior = True
-        warnings.warn(
-            "Consider setting custom ROI priors, as kpi_type was specified as"
-            " `non_revenue` with no `revenue_per_kpi` being set. Otherwise, the"
-            " total media contribution prior will be used with"
-            f" `p_mean={constants.P_MEAN}` and `p_sd={constants.P_SD}`. Further"
-            " documentation available at "
-            " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior",
-        )
-      elif self.n_media_channels > 0 and default_roi_m_used:
-        raise ValueError(
-            f"Custom priors should be set on `{constants.ROI_M}` when"
-            ' `media_prior_type` is "roi", custom priors are assigned on'
-            ' `{constants.ROI_RF}` or `rf_prior_type` is not "roi", KPI is'
-            " non-revenue and revenue per kpi data is missing."
-        )
-      elif self.n_rf_channels > 0 and default_roi_rf_used:
-        raise ValueError(
-            f"Custom priors should be set on `{constants.ROI_RF}` when"
-            ' `rf_prior_type` is "roi", custom priors are assigned on'
-            ' `{constants.ROI_M}` or `media_prior_type` is not "roi", KPI is'
-            " non-revenue and revenue per kpi data is missing."
-        )
-
-  def _check_for_negative_effects(self):
-    prior = self.model_spec.prior
-    if self.n_media_channels > 0:
-      _check_for_negative_effect(prior.roi_m, self.media_effects_dist)
-      _check_for_negative_effect(prior.mroi_m, self.media_effects_dist)
-    if self.n_rf_channels > 0:
-      _check_for_negative_effect(prior.roi_rf, self.media_effects_dist)
-      _check_for_negative_effect(prior.mroi_rf, self.media_effects_dist)
-
-  def _validate_geo_invariants(self):
-    """Validates non-national model invariants."""
-    if self.is_national:
-      return
-
-    if self.input_data.controls is not None:
-      self._check_if_no_geo_variation(
-          self.controls_scaled,
-          constants.CONTROLS,
-          self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
-      )
-    if self.input_data.non_media_treatments is not None:
-      self._check_if_no_geo_variation(
-          self.non_media_treatments_normalized,
-          constants.NON_MEDIA_TREATMENTS,
-          self.input_data.non_media_treatments.coords[
-              constants.NON_MEDIA_CHANNEL
-          ].values,
-      )
-    if self.input_data.media is not None:
-      self._check_if_no_geo_variation(
-          self.media_tensors.media_scaled,
-          constants.MEDIA,
-          self.input_data.media.coords[constants.MEDIA_CHANNEL].values,
-      )
-    if self.input_data.reach is not None:
-      self._check_if_no_geo_variation(
-          self.rf_tensors.reach_scaled,
-          constants.REACH,
-          self.input_data.reach.coords[constants.RF_CHANNEL].values,
-      )
-    if self.input_data.organic_media is not None:
-      self._check_if_no_geo_variation(
-          self.organic_media_tensors.organic_media_scaled,
-          "organic_media",
-          self.input_data.organic_media.coords[
-              constants.ORGANIC_MEDIA_CHANNEL
-          ].values,
-      )
-    if self.input_data.organic_reach is not None:
-      self._check_if_no_geo_variation(
-          self.organic_rf_tensors.organic_reach_scaled,
-          "organic_reach",
-          self.input_data.organic_reach.coords[
-              constants.ORGANIC_RF_CHANNEL
-          ].values,
-      )
-
-  def _check_if_no_geo_variation(
-      self,
-      scaled_data: backend.Tensor,
-      data_name: str,
-      data_dims: Sequence[str],
-      epsilon=1e-4,
-  ):
-    """Raise an error if `n_knots == n_time` and data lacks geo variation."""
-
-    # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = backend.get_indices_where(
-        backend.reduce_std(scaled_data, axis=0) < epsilon
-    )[:, 1]
-    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
-    # We use the shape of scaled_data (instead of `n_time`) because the data may
-    # be padded to account for lagged effects.
-    data_n_time = scaled_data.shape[1]
-    mask = backend.equal(counts, data_n_time)
-    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
-    dims_bad = backend.gather(data_dims, col_idx_bad)
-
-    if col_idx_bad.shape[0] and self.knot_info.n_knots == self.n_times:
-      raise ValueError(
-          f"The following {data_name} variables do not vary across geos, making"
-          f" a model with n_knots=n_time unidentifiable: {dims_bad}. This can"
-          " lead to poor model convergence. Since these variables only vary"
-          " across time and not across geo, they are collinear with time and"
-          " redundant in a model with a parameter for each time period.  To"
-          " address this, you can either: (1) decrease the number of knots"
-          " (n_knots < n_time), or (2) drop the listed variables that do not"
-          " vary across geos."
-      )
-
-  def _validate_time_invariants(self):
-    """Validates model time invariants."""
-    if self.input_data.controls is not None:
-      self._check_if_no_time_variation(
-          self.controls_scaled,
-          constants.CONTROLS,
-          self.input_data.controls.coords[constants.CONTROL_VARIABLE].values,
-      )
-    if self.input_data.non_media_treatments is not None:
-      self._check_if_no_time_variation(
-          self.non_media_treatments_normalized,
-          constants.NON_MEDIA_TREATMENTS,
-          self.input_data.non_media_treatments.coords[
-              constants.NON_MEDIA_CHANNEL
-          ].values,
-      )
-    if self.input_data.media is not None:
-      self._check_if_no_time_variation(
-          self.media_tensors.media_scaled,
-          constants.MEDIA,
-          self.input_data.media.coords[constants.MEDIA_CHANNEL].values,
-      )
-    if self.input_data.reach is not None:
-      self._check_if_no_time_variation(
-          self.rf_tensors.reach_scaled,
-          constants.REACH,
-          self.input_data.reach.coords[constants.RF_CHANNEL].values,
-      )
-    if self.input_data.organic_media is not None:
-      self._check_if_no_time_variation(
-          self.organic_media_tensors.organic_media_scaled,
-          constants.ORGANIC_MEDIA,
-          self.input_data.organic_media.coords[
-              constants.ORGANIC_MEDIA_CHANNEL
-          ].values,
-      )
-    if self.input_data.organic_reach is not None:
-      self._check_if_no_time_variation(
-          self.organic_rf_tensors.organic_reach_scaled,
-          constants.ORGANIC_REACH,
-          self.input_data.organic_reach.coords[
-              constants.ORGANIC_RF_CHANNEL
-          ].values,
-      )
-
-  def _check_if_no_time_variation(
-      self,
-      scaled_data: backend.Tensor,
-      data_name: str,
-      data_dims: Sequence[str],
-      epsilon=1e-4,
-  ):
-    """Raise an error if data lacks time variation."""
-
-    # Result shape: [n, d], where d is the number of axes of condition.
-    col_idx_full = backend.get_indices_where(
-        backend.reduce_std(scaled_data, axis=1) < epsilon
-    )[:, 1]
-    col_idx_unique, _, counts = backend.unique_with_counts(col_idx_full)
-    mask = backend.equal(counts, self.n_geos)
-    col_idx_bad = backend.boolean_mask(col_idx_unique, mask)
-    dims_bad = backend.gather(data_dims, col_idx_bad)
-    if col_idx_bad.shape[0]:
-      if self.is_national:
-        raise ValueError(
-            f"The following {data_name} variables do not vary across time,"
-            " which is equivalent to no signal at all in a national model:"
-            f" {dims_bad}.  This can lead to poor model convergence. To address"
-            " this, drop the listed variables that do not vary across time."
-        )
-      else:
-        raise ValueError(
-            f"The following {data_name} variables do not vary across time,"
-            f" making a model with geo main effects unidentifiable: {dims_bad}."
-            " This can lead to poor model convergence. Since these variables"
-            " only vary across geo and not across time, they are collinear"
-            " with geo and redundant in a model with geo main effects. To"
-            " address this, drop the listed variables that do not vary across"
-            " time."
-        )
-
-  def _validate_kpi_transformer(self):
-    """Validates the KPI transformer."""
+  def _validate_kpi_variability(self):
+    """Validates the KPI variability."""
     if self.eda_engine.kpi_has_variability:
       return
     kpi = self.eda_engine.kpi_scaled_da.name
@@ -1227,6 +621,7 @@ class Meridian:
           f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
 
+  # TODO: Remove this method.
   def linear_predictor_counterfactual_difference_media(
       self,
       media_transformed: backend.Tensor,
@@ -1255,21 +650,24 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    if self.media_tensors.prior_media_scaled_counterfactual is None:
-      return media_transformed
-    media_transformed_counterfactual = self.adstock_hill_media(
-        self.media_tensors.prior_media_scaled_counterfactual,
-        alpha_m,
-        ec_m,
-        slope_m,
-        decay_functions=self.adstock_decay_spec.media,
+    warnings.warn(
+        "Meridian.linear_predictor_counterfactual_difference_media() is"
+        " deprecated and will be removed in a future version. Use "
+        "`ModelEquations.linear_predictor_counterfactual_difference_media()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    # Absolute values is needed because the difference is negative for mROI
-    # priors and positive for ROI and contribution priors.
-    return backend.absolute(
-        media_transformed - media_transformed_counterfactual
+    return (
+        self.model_equations.linear_predictor_counterfactual_difference_media(
+            media_transformed=media_transformed,
+            alpha_m=alpha_m,
+            ec_m=ec_m,
+            slope_m=slope_m,
+        )
     )
 
+  # TODO: Remove this method.
   def linear_predictor_counterfactual_difference_rf(
       self,
       rf_transformed: backend.Tensor,
@@ -1298,20 +696,21 @@ class Meridian:
       The linear predictor difference between the treatment variable and its
       counterfactual.
     """
-    if self.rf_tensors.prior_reach_scaled_counterfactual is None:
-      return rf_transformed
-    rf_transformed_counterfactual = self.adstock_hill_rf(
-        reach=self.rf_tensors.prior_reach_scaled_counterfactual,
-        frequency=self.rf_tensors.frequency,
-        alpha=alpha_rf,
-        ec=ec_rf,
-        slope=slope_rf,
-        decay_functions=self.adstock_decay_spec.rf,
+    warnings.warn(
+        "Meridian.linear_predictor_counterfactual_difference_rf() is deprecated"
+        " and will be removed in a future version. Use `ModelEquations."
+        "linear_predictor_counterfactual_difference_rf()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    # Absolute values is needed because the difference is negative for mROI
-    # priors and positive for ROI and contribution priors.
-    return backend.absolute(rf_transformed - rf_transformed_counterfactual)
+    return self.model_equations.linear_predictor_counterfactual_difference_rf(
+        rf_transformed=rf_transformed,
+        alpha_rf=alpha_rf,
+        ec_rf=ec_rf,
+        slope_rf=slope_rf,
+    )
 
+  # TODO: Remove this method.
   def calculate_beta_x(
       self,
       is_non_media: bool,
@@ -1357,45 +756,22 @@ class Meridian:
       The coefficient mean parameter of the treatment variable, which has
       dimension equal to the number of treatment channels..
     """
-    if is_non_media:
-      random_effects_normal = True
-    else:
-      random_effects_normal = (
-          self.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-      )
-    if self.revenue_per_kpi is None:
-      revenue_per_kpi = backend.ones(
-          [self.n_geos, self.n_times], dtype=backend.float32
-      )
-    else:
-      revenue_per_kpi = self.revenue_per_kpi
-    incremental_outcome_gx_over_beta_gx = backend.einsum(
-        "...gtx,gt,g,->...gx",
-        linear_predictor_counterfactual_difference,
-        revenue_per_kpi,
-        self.population,
-        self.kpi_transformer.population_scaled_stdev,
+    warnings.warn(
+        "Meridian.calculate_beta_x() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.calculate_beta_x()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    if random_effects_normal:
-      numerator_term_x = backend.einsum(
-          "...gx,...gx,...x->...x",
-          incremental_outcome_gx_over_beta_gx,
-          beta_gx_dev,
-          eta_x,
-      )
-      denominator_term_x = backend.einsum(
-          "...gx->...x", incremental_outcome_gx_over_beta_gx
-      )
-      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
-    # For log-normal random effects, beta_x and eta_x are not mean & std.
-    # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
-    denominator_term_x = backend.einsum(
-        "...gx,...gx->...x",
-        incremental_outcome_gx_over_beta_gx,
-        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
+    return self.model_equations.calculate_beta_x(
+        is_non_media=is_non_media,
+        incremental_outcome_x=incremental_outcome_x,
+        linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
     )
-    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
 
+  # TODO: Remove this method.
   def adstock_hill_media(
       self,
       media: backend.Tensor,  # pylint: disable=redefined-outer-name
@@ -1426,34 +802,23 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
-    if n_times_output is None and (media.shape[1] == self.n_media_times):
-      n_times_output = self.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`media` has a number of time periods equal to `self.n_media_times`."
-      )
-    adstock_transformer = adstock_hill.AdstockTransformer(
-        alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
-        decay_functions=decay_functions,
+    warnings.warn(
+        "Meridian.adstock_hill_media() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.adstock_hill_media()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    hill_transformer = adstock_hill.HillTransformer(
+    return self.model_equations.adstock_hill_media(
+        media=media,
+        alpha=alpha,
         ec=ec,
         slope=slope,
-    )
-    transformers_list = (
-        [hill_transformer, adstock_transformer]
-        if self.model_spec.hill_before_adstock
-        else [adstock_transformer, hill_transformer]
+        decay_functions=decay_functions,
+        n_times_output=n_times_output,
     )
 
-    media_out = media
-    for transformer in transformers_list:
-      media_out = transformer.forward(media_out)
-    return media_out
-
+  # TODO: Remove this method.
   def adstock_hill_rf(
       self,
       reach: backend.Tensor,
@@ -1485,27 +850,22 @@ class Meridian:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
-    if n_times_output is None and (reach.shape[1] == self.n_media_times):
-      n_times_output = self.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`reach` has a number of time periods equal to `self.n_media_times`."
-      )
-    hill_transformer = adstock_hill.HillTransformer(
+    warnings.warn(
+        "Meridian.adstock_hill_rf() is deprecated and will be removed in a"
+        " future version. Use `ModelEquations.adstock_hill_rf()`"
+        " instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.model_equations.adstock_hill_rf(
+        reach=reach,
+        frequency=frequency,
+        alpha=alpha,
         ec=ec,
         slope=slope,
-    )
-    adstock_transformer = adstock_hill.AdstockTransformer(
-        alpha=alpha,
-        max_lag=self.model_spec.max_lag,
-        n_times_output=n_times_output,
         decay_functions=decay_functions,
+        n_times_output=n_times_output,
     )
-    adj_frequency = hill_transformer.forward(frequency)
-    rf_out = adstock_transformer.forward(reach * adj_frequency)
-
-    return rf_out
 
   def populate_cached_properties(self):
     """Eagerly activates all cached properties.
@@ -1515,6 +875,7 @@ class Meridian:
     internal state mutations are problematic, and so this method freezes the
     object's states before the computation graph is created.
     """
+    self._model_context.populate_cached_properties()
     cls = self.__class__
     # "Freeze" all @cached_property attributes by simply accessing them (with
     # `getattr()`).
@@ -1526,66 +887,30 @@ class Meridian:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
+  # TODO: Remove this method.
   def create_inference_data_coords(
       self, n_chains: int, n_draws: int
   ) -> Mapping[str, np.ndarray | Sequence[str]]:
     """Creates data coordinates for inference data."""
-    media_channel_names = (
-        self.input_data.media_channel
-        if self.input_data.media_channel is not None
-        else np.array([])
+    warnings.warn(
+        "Meridian.create_inference_data_coords() is deprecated and will be"
+        " removed in a future version. Use"
+        " `ModelContext.create_inference_data_coords()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    rf_channel_names = (
-        self.input_data.rf_channel
-        if self.input_data.rf_channel is not None
-        else np.array([])
-    )
-    organic_media_channel_names = (
-        self.input_data.organic_media_channel
-        if self.input_data.organic_media_channel is not None
-        else np.array([])
-    )
-    organic_rf_channel_names = (
-        self.input_data.organic_rf_channel
-        if self.input_data.organic_rf_channel is not None
-        else np.array([])
-    )
-    non_media_channel_names = (
-        self.input_data.non_media_channel
-        if self.input_data.non_media_channel is not None
-        else np.array([])
-    )
-    control_variable_names = (
-        self.input_data.control_variable
-        if self.input_data.control_variable is not None
-        else np.array([])
-    )
-    return {
-        constants.CHAIN: np.arange(n_chains),
-        constants.DRAW: np.arange(n_draws),
-        constants.GEO: self.input_data.geo,
-        constants.TIME: self.input_data.time,
-        constants.MEDIA_TIME: self.input_data.media_time,
-        constants.KNOTS: np.arange(self.knot_info.n_knots),
-        constants.CONTROL_VARIABLE: control_variable_names,
-        constants.NON_MEDIA_CHANNEL: non_media_channel_names,
-        constants.MEDIA_CHANNEL: media_channel_names,
-        constants.RF_CHANNEL: rf_channel_names,
-        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,
-        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,
-    }
+    return self._model_context.create_inference_data_coords(n_chains, n_draws)
 
+  # TODO: Remove this method.
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
-    inference_dims = dict(constants.INFERENCE_DIMS)
-    if self.unique_sigma_for_each_geo:
-      inference_dims[constants.SIGMA] = [constants.GEO]
-    else:
-      inference_dims[constants.SIGMA] = []
-
-    return {
-        param: [constants.CHAIN, constants.DRAW] + list(dims)
-        for param, dims in inference_dims.items()
-    }
+    warnings.warn(
+        "Meridian.create_inference_data_dims() is deprecated and will be"
+        " removed in a future version. Use"
+        " `ModelContext.create_inference_data_dims()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self._model_context.create_inference_data_dims()
 
   def sample_prior(self, n_draws: int, seed: int | None = None):
     """Draws samples from the prior distributions.
@@ -1598,14 +923,25 @@ class Meridian:
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
     """
-    self.prior_sampler_callable(n_draws=n_draws, seed=seed)
+    prior_draws = self.prior_sampler_callable(n_draws=n_draws, seed=seed)
+    # Create Arviz InferenceData for prior draws.
+    prior_coords = self._model_context.create_inference_data_coords(1, n_draws)
+    prior_dims = self._model_context.create_inference_data_dims()
+    prior_inference_data = az.convert_to_inference_data(
+        prior_draws,
+        coords=prior_coords,
+        dims=prior_dims,
+        group=constants.PRIOR,
+    )
+    self.inference_data.extend(prior_inference_data, join="right")
 
   def _run_model_fitting_guardrail(self):
     """Raises an error if the model has critical EDA issues."""
     error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
         collections.defaultdict(list)
     )
-    for outcome in self.eda_outcomes:
+    for field in dataclasses.fields(self.eda_outcomes):
+      outcome = getattr(self.eda_outcomes, field.name)
       error_findings = [
           finding
           for finding in outcome.findings
@@ -1709,7 +1045,7 @@ class Meridian:
     """
     self._run_model_fitting_guardrail()
 
-    self.posterior_sampler_callable(
+    posterior_inference_data = self.posterior_sampler_callable(
         n_chains=n_chains,
         n_adapt=n_adapt,
         n_burnin=n_burnin,
@@ -1724,6 +1060,7 @@ class Meridian:
         seed=seed,
         **pins,
     )
+    self.inference_data.extend(posterior_inference_data, join="right")
 
 
 def save_mmm(mmm: Meridian, file_path: str):
@@ -1737,6 +1074,15 @@ def save_mmm(mmm: Meridian, file_path: str):
     mmm: Model object to save.
     file_path: File path to save a pickled model object.
   """
+  warnings.warn(
+      "save_mmm is deprecated and will be removed in a future release. Please"
+      " use `schema.serde.meridian_serde.save_meridian` instead. See"
+      " https://developers.google.com/meridian/docs/user-guide/saving-model-object"
+      " for details.",
+      DeprecationWarning,
+      stacklevel=2,
+  )
+
   if not os.path.exists(os.path.dirname(file_path)):
     os.makedirs(os.path.dirname(file_path))
 
@@ -1760,6 +1106,15 @@ def load_mmm(file_path: str) -> Meridian:
   Raises:
       FileNotFoundError: If `file_path` does not exist.
   """
+  warnings.warn(
+      "load_mmm is deprecated and will be removed in a future release. Please"
+      " use `meridian.schema.serde.meridian_serde.load_meridian` instead. See"
+      " https://developers.google.com/meridian/docs/user-guide/saving-model-object"
+      " for details.",
+      DeprecationWarning,
+      stacklevel=2,
+  )
+
   try:
     with open(file_path, "rb") as f:
       mmm = joblib.load(f)

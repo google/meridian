@@ -26,17 +26,17 @@ keywords = [
 dependencies = [
   "arviz",
   "altair >= 5",
+  "bidict",
   "immutabledict",
   "joblib",
   "natsort >= 7.1.1, < 8",
-  "numpy >= 2.0.2, < 3",
+  "numpy >= 2.0.2, < 2.4.0",
   "pandas >= 2.2.2, < 3",
-  "patsy >= 0.5.3, < 1",
   "scipy >= 1.13.1, < 2",
   "statsmodels >= 0.14.5",
-  "tensorflow >= 2.18, < 2.19",
+  "tensorflow >= 2.18, < 2.21",
   "tensorflow-probability >= 0.25, < 0.26",
-  "tf-keras >= 2.18, < 2.19",
+  "tf-keras >= 2.18, < 2.21",
   "xarray",
 ]
 # `version` is automatically set by flit to use `meridian.__version__`
@@ -66,7 +66,7 @@ colab = [
 # GPU deps
 # Installed through `pip install -e .[and-cuda]`
 and-cuda = [
-  "tensorflow[and-cuda] >= 2.18, < 2.19",
+  "tensorflow[and-cuda] >= 2.18, < 2.21",
 ]
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
@@ -74,13 +74,21 @@ mlflow = ["mlflow"]
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
-    "jax==0.4.26",
-    "jaxlib==0.4.26",
+    "jax==0.5.3",
+    "jaxlib==0.5.3",
     "tensorflow-probability[substrates-jax]==0.25.0",
 ]
 # MMM proto schema.
 schema = [
-  "mmm-proto-schema",
+  "mmm-proto-schema >= 1.1.1",
+  "semver",
+]
+
+# Meridian Scenario Planner.
+scenarioplanner = [
+  "google-api-python-client",
+  "google-auth",
+  "mmm-proto-schema >= 1.1.1",
   "semver",
 ]
 
@@ -102,9 +110,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 include-package-data = true
+py-modules = ["schema"]  # TODO: Remove this shim.
 
 [tool.setuptools.packages.find]
-include = ["meridian*", "schema*"]
+include = ["meridian*", "scenarioplanner*"]
 exclude = ["*test"]
 
 [tool.setuptools.dynamic]

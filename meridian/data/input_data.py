@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@ The `InputData` class is used to store all the input data to the model.
 from collections import abc
 from collections.abc import Sequence
 import dataclasses
-import datetime as dt
 import functools
 import warnings
 
 from meridian import constants
 from meridian.data import arg_builder
 from meridian.data import time_coordinates as tc
+from meridian.data import validator
 import numpy as np
 import xarray as xr
 
@@ -298,6 +298,7 @@ class InputData:
     self._validate_time_formats()
     self._validate_times()
     self._validate_geos()
+    self._validate_no_negative_values()
 
   def _convert_geos_to_strings(self):
     """Converts geo coordinates to strings in all relevant DataArrays."""
@@ -542,16 +543,35 @@ class InputData:
           f" `{constants.REVENUE}` or `{constants.NON_REVENUE}`."
       )
 
-    if (self.kpi.values < 0).any():
-      raise ValueError("KPI values must be non-negative.")
-
     if (
         self.revenue_per_kpi is not None
-        and (self.revenue_per_kpi.values <= 0).all()
+        and (self.revenue_per_kpi.values == 0).all()
     ):
       raise ValueError(
-          "Revenue per KPI values must not be all zero or negative."
+          "All Revenue per KPI values are 0, which can break the ROI"
+          " computation. If this is not a data error, please consider setting"
+          " revenue_per_kpi to None or follow the instructions at"
+          " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-default#default-total-paid-media-contribution-prior."
       )
+
+  def _validate_no_negative_values(self) -> None:
+    """Validates no negative values for applicable fields."""
+
+    fields_to_loggable_name = {
+        constants.MEDIA_SPEND: "Media Spend",
+        constants.RF_SPEND: "RF Spend",
+        constants.REACH: "Reach",
+        constants.FREQUENCY: "Frequency",
+        constants.ORGANIC_REACH: "Organic Reach",
+        constants.ORGANIC_FREQUENCY: "Organic Frequency",
+        constants.REVENUE_PER_KPI: "Revenue per KPI",
+        constants.KPI: "KPI",
+    }
+
+    for field, loggable_field in fields_to_loggable_name.items():
+      da = getattr(self, field)
+      if da is not None and (da.values < 0).any():
+        raise ValueError(f"{loggable_field} values must be non-negative.")
 
   def _validate_names(self):
     """Verifies that the names of the data arrays are correct."""
@@ -762,52 +782,10 @@ class InputData:
 
   def _validate_time_formats(self):
     """Validates the time coordinate format for all variables."""
-    self._validate_time_coord_format(self.kpi)
-    self._validate_time_coord_format(self.revenue_per_kpi)
-    self._validate_time_coord_format(self.controls)
-    self._validate_time_coord_format(self.media)
-    self._validate_time_coord_format(self.media_spend)
-    self._validate_time_coord_format(self.reach)
-    self._validate_time_coord_format(self.frequency)
-    self._validate_time_coord_format(self.rf_spend)
-    self._validate_time_coord_format(self.organic_media)
-    self._validate_time_coord_format(self.organic_reach)
-    self._validate_time_coord_format(self.organic_frequency)
-    self._validate_time_coord_format(self.non_media_treatments)
-
-  def _validate_time_coord_format(self, array: xr.DataArray | None):
-    """Validates the `time` dimensions format of the selected DataArray.
-
-    The `time` dimension of the selected array must have labels that are
-    formatted in the Meridian conventional `"yyyy-mm-dd"` format.
-
-    Args:
-      array: An optional DataArray to validate.
-    """
-    if array is None:
-      return
-
-    time_values = array.coords.get(constants.TIME, None)
-    if time_values is not None:
-      for time in time_values:
-        try:
-          _ = dt.datetime.strptime(time.item(), constants.DATE_FORMAT)
-        except (TypeError, ValueError) as exc:
-          raise ValueError(
-              f"Invalid time label: {time.item()}. Expected format:"
-              f" {constants.DATE_FORMAT}"
-          ) from exc
-
-    media_time_values = array.coords.get(constants.MEDIA_TIME, None)
-    if media_time_values is not None:
-      for time in media_time_values:
-        try:
-          _ = dt.datetime.strptime(time.item(), constants.DATE_FORMAT)
-        except (TypeError, ValueError) as exc:
-          raise ValueError(
-              f"Invalid media_time label: {time.item()}. Expected format:"
-              f" {constants.DATE_FORMAT}"
-          ) from exc
+    for field in dataclasses.fields(self):
+      attr = getattr(self, field.name)
+      if field.name != constants.POPULATION and isinstance(attr, xr.DataArray):
+        validator.validate_time_coord_format(attr)
 
   def _check_unique_names(self, dim: str, array: xr.DataArray | None):
     """Checks if a DataArray contains unique names on the specified dimension."""

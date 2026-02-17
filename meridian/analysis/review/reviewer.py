@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ CheckType = typing.Type[checks.BaseCheck]
 ConfigInstance = configs.BaseConfig
 ChecksBattery = immutabledict.immutabledict[CheckType, ConfigInstance]
 
-_DEFAULT_POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
+_POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
     checks.BaselineCheck: configs.BaselineConfig(),
     checks.BayesianPPPCheck: configs.BayesianPPPConfig(),
     checks.GoodnessOfFitCheck: configs.GoodnessOfFitConfig(),
@@ -39,44 +39,29 @@ _DEFAULT_POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
 
 
 class ModelReviewer:
-  """Executes a series of quality checks on a Meridian model.
+  """A tool for executing a series of quality checks on a Meridian model.
 
   The reviewer first runs a convergence check. If the model has converged, it
   proceeds to run a battery of post-convergence checks.
 
-  The default battery of post-convergence checks includes:
+  The battery of post-convergence checks includes:
     - BaselineCheck
     - BayesianPPPCheck
     - GoodnessOfFitCheck
     - PriorPosteriorShiftCheck
     - ROIConsistencyCheck
-  Each with its default configuration.
-
-  This battery of checks can be customized by passing a dictionary to the
-  `post_convergence_checks` argument of the constructor, mapping check
-  classes to their configuration instances. For example, to run only the
-  BaselineCheck with a non-default configuration:
-
-  ```python
-    my_checks = {
-        checks.BaselineCheck: configs.BaselineConfig(
-            negative_baseline_prob_review_threshold=0.1,
-            negative_baseline_prob_fail_threshold=0.5,
-        )
-    }
-    reviewer = ModelReviewer(meridian_model, post_convergence_checks=my_checks)
-  ```
   """
 
   def __init__(
       self,
       meridian,
-      post_convergence_checks: ChecksBattery = _DEFAULT_POST_CONVERGENCE_CHECKS,
   ):
     self._meridian = meridian
     self._results: list[results.CheckResult] = []
-    self._analyzer = analyzer_module.Analyzer(meridian)
-    self._post_convergence_checks = post_convergence_checks
+    self._analyzer = analyzer_module.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
   def _run_and_handle(self, check_class, config):
     instance = check_class(self._meridian, self._analyzer, config)  # pytype: disable=not-instantiable
@@ -136,7 +121,7 @@ class ModelReviewer:
       )
 
     # Run all other checks in sequence.
-    for check_class, config in self._post_convergence_checks.items():
+    for check_class, config in _POST_CONVERGENCE_CHECKS.items():
       if (
           check_class == checks.PriorPosteriorShiftCheck
           and not self._uses_roi_priors()

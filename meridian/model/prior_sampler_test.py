@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_sampler
@@ -90,7 +91,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_and_rf,
         )
@@ -160,7 +161,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only,
         )
@@ -222,7 +223,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only_no_controls,
         )
@@ -281,7 +282,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_rf_only,
         )
@@ -341,7 +342,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_and_rf,
         )
@@ -370,7 +371,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_media_only,
         )
@@ -399,7 +400,7 @@ class PriorDistributionSamplerTest(
     self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
-            "_sample_prior",
+            "__call__",
             autospec=True,
             return_value=self.test_dist_rf_only,
         )
@@ -604,7 +605,7 @@ class PriorDistributionSamplerTest(
         input_data=input_data,
         model_spec=model_spec,
     )
-    prior_samples = meridian.prior_sampler_callable._sample_prior(
+    prior_samples = meridian.prior_sampler_callable(
         self._N_DRAWS, seed=0
     )
     prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
@@ -718,6 +719,54 @@ class PriorDistributionSamplerTest(
     for var in unexpected_vars:
       with self.assertRaises(AttributeError):
         getattr(prior, var)
+
+
+class PriorDistributionSamplerInitTest(
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+
+  def test_init_with_meridian(self):
+    sampler = prior_sampler.PriorDistributionSampler(self.meridian)
+    self.assertIs(sampler._meridian, self.meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+    self.assertIs(
+        sampler._model_equations._context, self.meridian.model_context
+    )
+
+  def test_init_with_model_context(self):
+    sampler = prior_sampler.PriorDistributionSampler(
+        model_context=self.meridian.model_context,
+    )
+    self.assertIsNone(sampler._meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+    self.assertIs(
+        sampler._model_equations._context, self.meridian.model_context
+    )
+
+  def test_init_raises_error_if_meridian_and_context_are_none(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or `model_context` must be provided.",
+    ):
+      prior_sampler.PriorDistributionSampler()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -392,6 +392,7 @@ ALL_NATIONAL_DETERMINISTIC_PARAMETER_NAMES = (
     ETA_RF,
     ETA_OM,
     ETA_ORF,
+    TAU_G,
 )
 
 MEDIA_PARAMETERS = (
@@ -662,6 +663,7 @@ CURRENT_SPEND = 'current_spend'
 
 # Media summary metrics.
 SPEND = 'spend'
+COST = 'cost'
 IMPRESSIONS = 'impressions'
 ROI = 'roi'
 OPTIMIZED_ROI = 'optimized_roi'
@@ -754,6 +756,7 @@ STROKE_DASH = (4, 2)
 POINT_SIZE = 80
 INDEPENDENT = 'independent'
 RESPONSE_CURVE_STEP_SIZE = 0.01
+OUTLIER_CLIP_FACTOR = 1.2
 
 
 # Font names.

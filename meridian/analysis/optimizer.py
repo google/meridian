@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,10 +27,11 @@ import jinja2
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer as analyzer_module
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.data import time_coordinates as tc
+from meridian.model import context
 from meridian.model import model
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -234,7 +235,7 @@ class OptimizationGrid:
       spend_constraint_lower = spend_constraint_default
     if spend_constraint_upper is None:
       spend_constraint_upper = spend_constraint_default
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=len(self.channels),
             spend=spend,
@@ -252,7 +253,7 @@ class OptimizationGrid:
           ' It is only a problem when you use a much smaller budget, '
           ' for which the intended step size is smaller. '
       )
-    (spend_grid, incremental_outcome_grid) = self.trim_grids(
+    spend_grid, incremental_outcome_grid = self.trim_grids(
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
     )
@@ -924,7 +925,7 @@ class OptimizationResults:
     """
     channels = self.optimized_data.channel.values
     selected_times = _expand_selected_times(
-        meridian=self.meridian,
+        model_context=self.analyzer.model_context,
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
         new_data=self.new_data,
@@ -1064,7 +1065,9 @@ class OptimizationResults:
     self.template_env.globals[c.START_DATE] = start_date.strftime(
         f'%b {start_date.day}, %Y'
     )
-    interval_days = self.meridian.input_data.time_coordinates.interval_days
+    interval_days = (
+        self.analyzer.model_context.input_data.time_coordinates.interval_days
+    )
     end_date = tc.normalize_date(self.optimized_data.end_date)
     end_date_adjusted = end_date + pd.Timedelta(days=interval_days)
     self.template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
@@ -1174,10 +1177,12 @@ class OptimizationResults:
       diff = self.optimized_data.total_cpik - self.nonoptimized_data.total_cpik
       non_optimized_performance_title = summary_text.NON_OPTIMIZED_CPIK_LABEL
       non_optimized_performance_stat = (
-          f'${self.nonoptimized_data.total_cpik:.2f}'
+          f'{currency}{self.nonoptimized_data.total_cpik:.2f}'
       )
       optimized_performance_title = summary_text.OPTIMIZED_CPIK_LABEL
-      optimized_performance_stat = f'${self.optimized_data.total_cpik:.2f}'
+      optimized_performance_stat = (
+          f'{currency}{self.optimized_data.total_cpik:.2f}'
+      )
       optimized_performance_diff = formatter.compact_number(diff, 2, currency)
     non_optimized_performance = formatter.StatsSpec(
         title=non_optimized_performance_title,
@@ -1321,14 +1326,20 @@ class BudgetOptimizer:
   results can be viewed as plots and as an HTML summary output page.
   """
 
-  def __init__(self, meridian: model.Meridian):
+  def __init__(
+      self,
+      meridian: model.Meridian,
+  ):
     self._meridian = meridian
-    self._analyzer = analyzer_module.Analyzer(self._meridian)
+    self._analyzer = analyzer_module.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""
     dist_type = c.POSTERIOR if use_posterior else c.PRIOR
-    if dist_type not in self._meridian.inference_data.groups():
+    if dist_type not in self._analyzer.inference_data.groups():
       raise model.NotFittedModelError(
           'Running budget optimization scenarios requires fitting the model.'
       )
@@ -1652,7 +1663,9 @@ class BudgetOptimizer:
         out=np.zeros_like(optimization_grid.historical_spend, dtype=float),
         where=optimization_grid.historical_spend != 0,
     )
-    n_paid_channels = len(self._meridian.input_data.get_all_paid_channels())
+    n_paid_channels = len(
+        self._analyzer.model_context.input_data.get_all_paid_channels()
+    )
     spend_bounds = _get_spend_bounds(
         n_channels=n_paid_channels,
         spend_constraint_lower=spend_constraint_lower,
@@ -1751,7 +1764,7 @@ class BudgetOptimizer:
       `frequency`, `media_spend`, `rf_spend`, `revenue_per_kpi`, and `time`.
     """
     n_times = time.shape[0] if isinstance(time, backend.Tensor) else len(time)
-    n_geos = self._meridian.n_geos
+    n_geos = self._analyzer.model_context.n_geos
     self._validate_optimization_tensors(
         expected_n_geos=n_geos,
         expected_n_times=n_times,
@@ -1878,9 +1891,12 @@ class BudgetOptimizer:
       new_data = analyzer_module.DataTensors()
     required_tensors = c.PERFORMANCE_DATA + (c.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
-        required_tensors_names=required_tensors, meridian=self._meridian
+        required_tensors_names=required_tensors,
+        model_context=self._analyzer.model_context,
     )
-    paid_channels = self._meridian.input_data.get_all_paid_channels()
+    paid_channels = (
+        self._analyzer.model_context.input_data.get_all_paid_channels()
+    )
     if not np.array_equal(paid_channels, optimization_grid.channels):
       warnings.warn(
           'Given optimization grid was created with `channels` ='
@@ -1903,7 +1919,7 @@ class BudgetOptimizer:
 
     n_channels = len(optimization_grid.channels)
     selected_times = _expand_selected_times(
-        meridian=self._meridian,
+        model_context=self._analyzer.model_context,
         start_date=start_date,
         end_date=end_date,
         new_data=new_data,
@@ -1911,8 +1927,8 @@ class BudgetOptimizer:
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
         selected_times=selected_times,
-        include_media=self._meridian.n_media_channels > 0,
-        include_rf=self._meridian.n_rf_channels > 0,
+        include_media=self._analyzer.model_context.n_media_channels > 0,
+        include_rf=self._analyzer.model_context.n_rf_channels > 0,
     ).data
     budget = budget or np.sum(hist_spend)
     valid_pct_of_spend = _validate_pct_of_spend(
@@ -1921,7 +1937,7 @@ class BudgetOptimizer:
         pct_of_spend=pct_of_spend,
     )
     spend = budget * valid_pct_of_spend
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=n_channels,
             spend=spend,
@@ -2073,11 +2089,13 @@ class BudgetOptimizer:
       end_date = end_date or deprecated_end_date
 
     required_tensors = c.PERFORMANCE_DATA + (c.TIME,)
+    model_context = self._analyzer.model_context
     filled_data = new_data.validate_and_fill_missing_data(
-        required_tensors_names=required_tensors, meridian=self._meridian
+        required_tensors_names=required_tensors,
+        model_context=model_context,
     )
     selected_times = _expand_selected_times(
-        meridian=self._meridian,
+        model_context=model_context,
         start_date=start_date,
         end_date=end_date,
         new_data=filled_data,
@@ -2086,10 +2104,10 @@ class BudgetOptimizer:
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
         selected_geos=selected_geos,
         selected_times=selected_times,
-        include_media=self._meridian.n_media_channels > 0,
-        include_rf=self._meridian.n_rf_channels > 0,
+        include_media=model_context.n_media_channels > 0,
+        include_rf=model_context.n_rf_channels > 0,
     ).data
-    n_paid_channels = len(self._meridian.input_data.get_all_paid_channels())
+    n_paid_channels = len(model_context.input_data.get_all_paid_channels())
     budget = budget or np.sum(hist_spend)
     valid_pct_of_spend = _validate_pct_of_spend(
         n_channels=n_paid_channels,
@@ -2098,7 +2116,7 @@ class BudgetOptimizer:
     )
     spend = budget * valid_pct_of_spend
     round_factor = get_round_factor(budget, gtol)
-    (optimization_lower_bound, optimization_upper_bound) = (
+    optimization_lower_bound, optimization_upper_bound = (
         get_optimization_bounds(
             n_channels=n_paid_channels,
             spend=spend,
@@ -2107,7 +2125,7 @@ class BudgetOptimizer:
             spend_constraint_upper=spend_constraint_upper,
         )
     )
-    if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
+    if model_context.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = analyzer_module.DataTensors(
           rf_impressions=filled_data.reach * filled_data.frequency,
           rf_spend=filled_data.rf_spend,
@@ -2128,7 +2146,7 @@ class BudgetOptimizer:
       optimal_frequency = None
 
     step_size = 10 ** (-round_factor)
-    (spend_grid, incremental_outcome_grid) = self._create_grids(
+    spend_grid, incremental_outcome_grid = self._create_grids(
         spend=hist_spend,
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
@@ -2198,7 +2216,9 @@ class BudgetOptimizer:
         data_vars=data_vars,
         coords={
             c.GRID_SPEND_INDEX: np.arange(0, len(spend_grid)),
-            c.CHANNEL: self._meridian.input_data.get_all_paid_channels(),
+            c.CHANNEL: (
+                self._analyzer.model_context.input_data.get_all_paid_channels()
+            ),
         },
         attrs={c.SPEND_STEP_SIZE: spend_step_size},
     )
@@ -2244,26 +2264,27 @@ class BudgetOptimizer:
       Tuple of backend.tensors (new_media, new_reach, new_frequency).
     """
     new_data = new_data or analyzer_module.DataTensors()
+    model_context = self._analyzer.model_context
     filled_data = new_data.validate_and_fill_missing_data(
-        c.PAID_CHANNELS,
-        self._meridian,
+        required_tensors_names=c.PAID_CHANNELS,
+        model_context=model_context,
     )
-    if self._meridian.n_media_channels > 0:
+    if model_context.n_media_channels > 0:
       new_media = (
           backend.divide_no_nan(
-              spend[: self._meridian.n_media_channels],
-              hist_spend[: self._meridian.n_media_channels],
+              spend[: model_context.n_media_channels],
+              hist_spend[: model_context.n_media_channels],
           )
           * filled_data.media
       )
     else:
       new_media = None
-    if self._meridian.n_rf_channels > 0:
+    if model_context.n_rf_channels > 0:
       rf_impressions = filled_data.reach * filled_data.frequency
       new_rf_impressions = (
           backend.divide_no_nan(
-              spend[-self._meridian.n_rf_channels :],
-              hist_spend[-self._meridian.n_rf_channels :],
+              spend[-model_context.n_rf_channels :],
+              hist_spend[-model_context.n_rf_channels :],
           )
           * rf_impressions
       )
@@ -2297,26 +2318,25 @@ class BudgetOptimizer:
       use_historical_budget: bool = True,
   ) -> xr.Dataset:
     """Creates the budget dataset."""
+    model_context = self._analyzer.model_context
     new_data = new_data or analyzer_module.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
-        c.PAID_DATA + (c.TIME,),
-        self._meridian,
+        required_tensors_names=c.PAID_DATA + (c.TIME,),
+        model_context=model_context,
     )
     selected_times = _expand_selected_times(
-        meridian=self._meridian,
+        model_context=self._analyzer.model_context,
         start_date=start_date,
         end_date=end_date,
         new_data=new_data,
     )
     spend_tensor = backend.to_tensor(spend, dtype=backend.float32)
     hist_spend = backend.to_tensor(hist_spend, dtype=backend.float32)
-    (new_media, new_reach, new_frequency) = (
-        self._get_incremental_outcome_tensors(
-            hist_spend,
-            spend_tensor,
-            new_data=filled_data.filter_fields(c.PAID_CHANNELS),
-            optimal_frequency=optimal_frequency,
-        )
+    new_media, new_reach, new_frequency = self._get_incremental_outcome_tensors(
+        hist_spend,
+        spend_tensor,
+        new_data=filled_data.filter_fields(c.PAID_CHANNELS),
+        optimal_frequency=optimal_frequency,
     )
     budget = np.sum(spend_tensor)
     inc_outcome_data = analyzer_module.DataTensors(
@@ -2377,21 +2397,19 @@ class BudgetOptimizer:
     )
     effectiveness_with_mean_median_and_ci = (
         analyzer_module.get_central_tendency_and_ci(
-            data=backend.divide_no_nan(
-                incremental_outcome, aggregated_impressions
-            ),
+            data=backend.divide(incremental_outcome, aggregated_impressions),
             confidence_level=confidence_level,
             include_median=True,
         )
     )
 
     roi = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(incremental_outcome, spend_tensor),
+        data=backend.divide(incremental_outcome, spend_tensor),
         confidence_level=confidence_level,
         include_median=True,
     )
     marginal_roi = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(
+        data=backend.divide(
             mroi_numerator, spend_tensor * incremental_increase
         ),
         confidence_level=confidence_level,
@@ -2399,13 +2417,13 @@ class BudgetOptimizer:
     )
 
     cpik = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide_no_nan(spend_tensor, incremental_outcome),
+        data=backend.divide(spend_tensor, incremental_outcome),
         confidence_level=confidence_level,
         include_median=True,
     )
     total_inc_outcome = backend.reduce_sum(incremental_outcome, -1)
-    total_cpik = backend.reduce_mean(
-        backend.divide_no_nan(budget, total_inc_outcome),
+    total_cpik = backend.nanmean(
+        backend.divide(budget, total_inc_outcome),
         axis=(0, 1),
     )
 
@@ -2446,7 +2464,7 @@ class BudgetOptimizer:
         c.TOTAL_ROI: total_incremental_outcome / budget,
         c.TOTAL_CPIK: total_cpik,
         c.IS_REVENUE_KPI: (
-            self._meridian.input_data.kpi_type == c.REVENUE or not use_kpi
+            model_context.input_data.kpi_type == c.REVENUE or not use_kpi
         ),
         c.CONFIDENCE_LEVEL: confidence_level,
         c.USE_HISTORICAL_BUDGET: use_historical_budget,
@@ -2455,7 +2473,7 @@ class BudgetOptimizer:
     return xr.Dataset(
         data_vars=data_vars,
         coords={
-            c.CHANNEL: self._meridian.input_data.get_all_paid_channels(),
+            c.CHANNEL: model_context.input_data.get_all_paid_channels(),
             c.METRIC: [c.MEAN, c.MEDIAN, c.CI_LO, c.CI_HI],
         },
         attrs=attributes | (attrs or {}),
@@ -2512,19 +2530,21 @@ class BudgetOptimizer:
         reducing `batch_size`. The calculation will generally be faster with
         larger `batch_size` values.
     """
+    model_context = self._analyzer.model_context
     new_data = new_data or analyzer_module.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
-        c.PAID_DATA, self._meridian
+        required_tensors_names=c.PAID_DATA,
+        model_context=model_context,
     )
-    if self._meridian.n_media_channels > 0:
+    if model_context.n_media_channels > 0:
       new_media = (
-          multipliers_grid[i, : self._meridian.n_media_channels]
+          multipliers_grid[i, : model_context.n_media_channels]
           * filled_data.media
       )
     else:
       new_media = None
 
-    if self._meridian.n_rf_channels == 0:
+    if model_context.n_rf_channels == 0:
       new_frequency = None
       new_reach = None
     elif optimal_frequency is not None:
@@ -2532,7 +2552,7 @@ class BudgetOptimizer:
           backend.ones_like(filled_data.frequency) * optimal_frequency
       )
       new_reach = backend.divide_no_nan(
-          multipliers_grid[i, -self._meridian.n_rf_channels :]
+          multipliers_grid[i, -model_context.n_rf_channels :]
           * filled_data.reach
           * filled_data.frequency,
           new_frequency,
@@ -2540,7 +2560,7 @@ class BudgetOptimizer:
     else:
       new_frequency = filled_data.frequency
       new_reach = (
-          multipliers_grid[i, -self._meridian.n_rf_channels :]
+          multipliers_grid[i, -model_context.n_rf_channels :]
           * filled_data.reach
       )
 
@@ -2632,11 +2652,12 @@ class BudgetOptimizer:
         number of columns is equal to the number of total channels, containing
         incremental outcome by channel.
     """
+    model_context = self._analyzer.model_context
     n_grid_rows = int(
         (np.max(np.subtract(spend_bound_upper, spend_bound_lower)) // step_size)
         + 1
     )
-    n_grid_columns = len(self._meridian.input_data.get_all_paid_channels())
+    n_grid_columns = len(model_context.input_data.get_all_paid_channels())
     spend_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
     for i in range(n_grid_columns):
       spend_grid_m = np.arange(
@@ -2672,9 +2693,9 @@ class BudgetOptimizer:
     # np.unravel_index(np.nanargmax(iROAS_grid), iROAS_grid.shape). Therefore
     # we use the following code to fix it, and ensure incremental_outcome/spend
     # is always same for RF channels.
-    if self._meridian.n_rf_channels > 0:
+    if model_context.n_rf_channels > 0:
       incremental_outcome_grid = backend.stabilize_rf_roi_grid(
-          spend_grid, incremental_outcome_grid, self._meridian.n_rf_channels
+          spend_grid, incremental_outcome_grid, model_context.n_rf_channels
       )
     return (spend_grid, incremental_outcome_grid)
 
@@ -2792,7 +2813,7 @@ class BudgetOptimizer:
           f'{tensor.ndim} dimensions.'
       )
 
-    population = self._meridian.population
+    population = self._analyzer.model_context.input_data.population
     normalized_population = population / backend.reduce_sum(population)
     if tensor.ndim == 1:
       reshaped_population = normalized_population[:, backend.newaxis]
@@ -2946,7 +2967,7 @@ def _get_spend_bounds(
     spend_bounds: tuple of np.ndarray of size `n_total_channels` containing
       the untreated lower and upper bound spend for each media and RF channel.
   """
-  (spend_const_lower, spend_const_upper) = _validate_spend_constraints(
+  spend_const_lower, spend_const_upper = _validate_spend_constraints(
       n_channels,
       spend_constraint_lower,
       spend_constraint_upper,
@@ -3051,7 +3072,10 @@ def _raise_warning_if_target_constraints_not_met(
     # optimized_data[c.MROI] is an array of shape (n_channels, 4), where the
     # last dimension is [mean, median, ci_lo, ci_hi].
     optimized_mroi = optimized_data[c.MROI][:, 0]
-    if np.any(optimized_mroi < target_mroi):
+    # Replace NaN with -np.inf so it's treated as failing the constraint.
+    # +/-inf will be converted to large-magnitude finite numbers.
+    compare_mroi = np.nan_to_num(optimized_mroi, nan=-np.inf)
+    if np.any(compare_mroi < target_mroi):
       warnings.warn(
           'Target marginal ROI constraint was not met. The target marginal'
           f' ROI is {target_mroi}, but the actual channel marginal ROIs are'
@@ -3086,7 +3110,7 @@ def _expand_tensor(tensor: backend.Tensor, required_shape: tuple[int, ...]):
 
 
 def _expand_selected_times(
-    meridian: model.Meridian,
+    model_context: context.ModelContext,
     start_date: tc.Date,
     end_date: tc.Date,
     new_data: analyzer_module.DataTensors | None,
@@ -3102,7 +3126,7 @@ def _expand_selected_times(
   and the function returns a list of booleans.
 
   Args:
-    meridian: The `Meridian` object with original data.
+    model_context: The `ModelContext` object with original data.
     start_date: Start date of the selected time period.
     end_date: End date of the selected time period.
     new_data: The optional `DataTensors` object. If times are modified in
@@ -3121,8 +3145,8 @@ def _expand_selected_times(
     return None
 
   new_data = new_data or analyzer_module.DataTensors()
-  if new_data.get_modified_times(meridian) is None:
-    return meridian.expand_selected_time_dims(
+  if new_data.get_modified_times(model_context=model_context) is None:
+    return model_context.expand_selected_time_dims(
         start_date=start_date,
         end_date=end_date,
     )

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
+from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import posterior_sampler
@@ -1755,6 +1756,48 @@ class PosteriorMCMCSamplerTest(
         seed=123,
     )
     mock_get_joint_dist_unpinned.assert_called_once()
+
+
+class PosteriorMCMCSamplerInitTest(
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+
+  def test_init_with_meridian(self):
+    sampler = posterior_sampler.PosteriorMCMCSampler(self.meridian)
+    self.assertIs(sampler._meridian, self.meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+
+  def test_init_with_model_context(self):
+    sampler = posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.meridian.model_context,
+    )
+    self.assertIsNone(sampler._meridian)
+    self.assertIs(sampler._model_context, self.meridian.model_context)
+    self.assertIsInstance(sampler._model_equations, equations.ModelEquations)
+
+  def test_init_raises_error_if_meridian_and_context_are_none(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Either `meridian` or `model_context` must be provided.",
+    ):
+      posterior_sampler.PosteriorMCMCSampler()
 
 
 if __name__ == "__main__":

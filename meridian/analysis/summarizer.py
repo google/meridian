@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import os
 import jinja2
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
 from meridian.data import time_coordinates as tc
 from meridian.model import model
+from meridian.templates import formatter
 import pandas as pd
 import xarray as xr
 
@@ -60,10 +60,15 @@ RESPONSE_CURVES_CARD_SPEC = formatter.CardSpec(
 class Summarizer:
   """Generates HTML summary visualizations from the model fitting."""
 
+  # TODO: Switch to model_context, model_equations, and
+  # inference_data.
   def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     """Initialize the visualizer classes that are not time-dependent."""
     self._meridian = meridian
-    self._use_kpi = analyzer.Analyzer(meridian)._use_kpi(use_kpi)
+    self._use_kpi = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )._use_kpi(use_kpi)
 
   @functools.cached_property
   def _model_fit(self):
@@ -318,7 +323,7 @@ class Summarizer:
         chart_json=media_summary.plot_contribution_waterfall_chart().to_json(),
     )
     lead_channels = self._get_sorted_posterior_mean_metrics_df(
-        media_summary, [c.INCREMENTAL_OUTCOME]
+        media_summary, [c.INCREMENTAL_OUTCOME], include_non_paid_channels=True
     )[c.CHANNEL][:2]
     formatted_channels = [channel.title() for channel in lead_channels]
 
@@ -358,9 +363,14 @@ class Summarizer:
       media_summary: visualizer.MediaSummary,
       metrics: Sequence[str],
       ascending: bool = False,
+      include_non_paid_channels: bool = False,
   ) -> pd.DataFrame:
+    if include_non_paid_channels:
+      summary_metrics = media_summary.get_all_summary_metrics()
+    else:
+      summary_metrics = media_summary.get_paid_summary_metrics()
     return (
-        media_summary.get_paid_summary_metrics()[metrics]
+        summary_metrics[metrics]
         .sel(distribution=c.POSTERIOR, metric=c.MEAN)
         .drop_sel(channel=c.ALL_CHANNELS)
         .to_dataframe()

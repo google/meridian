@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -158,7 +158,7 @@ class InputDataTest(parameterized.TestCase):
 
   def test_construct_media_only_invalid_media_time_values(self):
     with self.assertRaisesRegex(
-        ValueError, expected_regex="Invalid media_time label: week-04"
+        ValueError, expected_regex="Invalid media_time label: 'week-04'"
     ):
       input_data.InputData(
           controls=self.not_lagged_controls,
@@ -239,36 +239,65 @@ class InputDataTest(parameterized.TestCase):
           media_spend=self.media_spend,
       )
 
-  def test_validate_kpi_negative_values(self):
-    with self.assertRaisesRegex(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_spend",
+          field=constants.MEDIA_SPEND,
+          name="Media Spend",
+          kpi_type=constants.REVENUE,
+      ),
+      dict(
+          testcase_name="rf_spend",
+          field=constants.RF_SPEND,
+          name="RF Spend",
+          kpi_type=constants.REVENUE,
+      ),
+      dict(
+          testcase_name="reach",
+          field=constants.REACH,
+          name="Reach",
+          kpi_type=constants.REVENUE,
+      ),
+      dict(
+          testcase_name="frequency",
+          field=constants.FREQUENCY,
+          name="Frequency",
+          kpi_type=constants.REVENUE,
+      ),
+      dict(
+          testcase_name="kpi",
+          field=constants.KPI,
+          name="KPI",
+          kpi_type=constants.REVENUE,
+      ),
+      dict(
+          testcase_name="revenue_per_kpi",
+          field=constants.REVENUE_PER_KPI,
+          name="Revenue per KPI",
+          kpi_type=constants.NON_REVENUE,
+      ),
+  )
+  def test_validate_no_negative_values(
+      self, field: str, name: str, kpi_type: str
+  ):
+    maybe_flip = lambda da, key: (da * -1) if key == field else (da * 1)
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
-        expected_regex="KPI values must be non-negative.",
+        expected_exception_message=f"{name} values must be non-negative.",
     ):
       input_data.InputData(
-          controls=self.not_lagged_controls,
-          kpi=self.not_lagged_kpi * -1,
-          kpi_type=constants.REVENUE,
+          controls=self.lagged_controls,
+          kpi=maybe_flip(self.lagged_kpi, constants.KPI),
+          kpi_type=kpi_type,
           population=self.population,
-          revenue_per_kpi=self.revenue_per_kpi,
-          media=self.not_lagged_media,
-          media_spend=self.media_spend,
-      )
-
-  def test_validate_revenue_per_kpi_negative_values(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        expected_regex=(
-            "Revenue per KPI values must not be all zero or negative."
-        ),
-    ):
-      input_data.InputData(
-          controls=self.not_lagged_controls,
-          kpi=self.not_lagged_kpi,
-          kpi_type=constants.REVENUE,
-          population=self.population,
-          revenue_per_kpi=self.revenue_per_kpi * 0,
-          media=self.not_lagged_media,
-          media_spend=self.media_spend,
+          revenue_per_kpi=maybe_flip(
+              self.revenue_per_kpi, constants.REVENUE_PER_KPI
+          ),
+          media_spend=maybe_flip(self.media_spend, constants.MEDIA_SPEND),
+          rf_spend=maybe_flip(self.rf_spend, constants.RF_SPEND),
+          media=self.lagged_media,
+          reach=maybe_flip(self.lagged_reach, constants.REACH),
+          frequency=maybe_flip(self.lagged_frequency, constants.FREQUENCY),
       )
 
   def test_validate_media_channels_duplicate_names(self):
@@ -492,7 +521,7 @@ class InputDataTest(parameterized.TestCase):
 
   def test_construct_media_only_invalid_controls_time_values(self):
     with self.assertRaisesRegex(
-        ValueError, expected_regex="Invalid time label: week-04"
+        ValueError, expected_regex="Invalid time label: 'week-04'"
     ):
       input_data.InputData(
           controls=self.not_lagged_controls_invalid_time_values,
@@ -2024,6 +2053,87 @@ class NonpaidInputDataTest(parameterized.TestCase):
       else:
         # Non-DataArray fields should always be the same instance
         self.assertIs(original_value, copied_value)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_spend",
+          field=constants.MEDIA_SPEND,
+          name="Media Spend",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="rf_spend",
+          field=constants.RF_SPEND,
+          name="RF Spend",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="reach",
+          field=constants.REACH,
+          name="Reach",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="frequency",
+          field=constants.FREQUENCY,
+          name="Frequency",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="organic_reach",
+          field=constants.ORGANIC_REACH,
+          name="Organic Reach",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="organic_frequency",
+          field=constants.ORGANIC_FREQUENCY,
+          name="Organic Frequency",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="kpi",
+          field=constants.KPI,
+          name="KPI",
+          kpi_type=constants.NON_REVENUE,
+      ),
+      dict(
+          testcase_name="revenue_per_kpi",
+          field=constants.REVENUE_PER_KPI,
+          name="Revenue per KPI",
+          kpi_type=constants.NON_REVENUE,
+      ),
+  )
+  def test_validate_no_negative_values(
+      self, field: str, name: str, kpi_type: str
+  ):
+    maybe_flip = lambda da, key: (da * -1) if key == field else (da * 1)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        expected_exception_message=f"{name} values must be non-negative.",
+    ):
+      input_data.InputData(
+          controls=self.controls,
+          kpi=maybe_flip(self.kpi, constants.KPI),
+          kpi_type=kpi_type,
+          revenue_per_kpi=maybe_flip(
+              self.revenue_per_kpi, constants.REVENUE_PER_KPI
+          ),
+          non_media_treatments=self.non_media_treatments,
+          population=self.population,
+          media=self.lagged_media,
+          media_spend=maybe_flip(self.media_spend, constants.MEDIA_SPEND),
+          reach=maybe_flip(self.lagged_reach, constants.REACH),
+          frequency=maybe_flip(self.lagged_frequency, constants.FREQUENCY),
+          rf_spend=maybe_flip(self.rf_spend, constants.RF_SPEND),
+          organic_media=self.lagged_organic_media,
+          organic_reach=maybe_flip(
+              self.lagged_organic_reach, constants.ORGANIC_REACH
+          ),
+          organic_frequency=maybe_flip(
+              self.lagged_organic_frequency, constants.ORGANIC_FREQUENCY
+          ),
+      )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -395,7 +395,7 @@ class InputDataLoaderTest(parameterized.TestCase):
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Invalid time label: '2023-W4'. Expected format:"
+        "Invalid media_time label: '2023-W4'. Expected format:"
         f" '{constants.DATE_FORMAT}'",
     ):
       _ = load.XrDatasetDataLoader(

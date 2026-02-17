@@ -25,6 +25,43 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * ``build_design_matrix()`` now detects the temporal dimension name and
   supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
+## [1.5.2] - 2026-02-10
+
+* Move `schema` package as `meridian.schema`.
+  * Introduce a temporary shim `schema.py` module for backwards compatibility.
+    This shim will be removed in the next cut release.
+
+## [1.5.1] - 2026-02-04
+
+* Fix serialization for binary and text files.
+
+## [1.5.0] - 2026-01-27
+
+* Remove dependency on the unmaintained `patsy` library.
+* Add interactive zooming to prior-posterior distribution plots.
+* Fix plots exceeding the width of the HTML 2-pagers.
+* Raise exception when paid media channels have zero total spend.
+* Include ArviZ version in model serialization.
+* Add more non-negative checks for model input data.
+* Add EDA check for treatment/control geo and time collinearity.
+* Refactored `model.Meridian` with stateful `ModelContext` and stateless
+  `ModelEquations` helper classes.
+* Refactored samplers classes for direct injection of `ModelContext` and
+  `ModelEquations` classes.
+
+## [1.4.0] - 2025-12-08
+
+* Introduce modules needed for Meridian Scenario Planner and add
+`scenarioplanner` extra.
+
+## [1.3.2] - 2025-11-26
+
+* Fixed an out-of-bounds bug in EDA's VIF check.
+* Added cost per media unit checks to EDA.
+* Add support for holdout set in `GoodnessOfFitCheck`.
+* Add more helpful error message for AKS min/max knot selection
+* Add support for python 3.13 and tensorflow 2.20.
+
 ## [1.3.1] - 2025-11-12
 
 * Fix `schema` dependency issues.
@@ -412,4 +449,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.2.1]: https://github.com/google/meridian/releases/tag/v1.2.1
 [1.3.0]: https://github.com/google/meridian/releases/tag/v1.3.0
 [1.3.1]: https://github.com/google/meridian/releases/tag/v1.3.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.3.1...HEAD
+[1.3.2]: https://github.com/google/meridian/releases/tag/v1.3.2
+[1.4.0]: https://github.com/google/meridian/releases/tag/v1.4.0
+[1.5.0]: https://github.com/google/meridian/releases/tag/v1.5.0
+[1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
+[1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
+[Unreleased]: https://github.com/google/meridian/compare/v1.5.2...HEAD

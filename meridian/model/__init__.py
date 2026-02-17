@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@
 """The Meridian API module that models the data."""
 
 from meridian.model import adstock_hill
+from meridian.model import context
 from meridian.model import eda
+from meridian.model import equations
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import model

@@ -1,4 +1,4 @@
-// Copyright 2025 The Meridian Authors.
+// Copyright 2026 The Meridian Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -319,6 +319,13 @@ enum NonPaidTreatmentsPriorType {
   NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION = 2;
 }
 
+// The computational backend used to train the model.
+enum ComputationBackend {
+  COMPUTATION_BACKEND_UNSPECIFIED = 0;
+  TENSORFLOW = 1;
+  JAX = 2;
+}
+
 // Specifies the adstock decay function for each channel.
 message AdstockDecayByChannel {
   // A map where keys are channel names and values are the adstock decay
@@ -582,6 +589,9 @@ message MeridianModel {
   // The semantic version of the Meridian library used to generate this model.
   string model_version = 2 [features.field_presence = EXPLICIT];
 
+  // The ArviZ version used to serialize inference data.
+  string arviz_version = 20 [features.field_presence = EXPLICIT];
+
   Hyperparameters hyperparameters = 3;
   PriorDistributions prior_distributions = 11 [deprecated = true];
   PriorTfpDistributions prior_tfp_distributions = 18;
@@ -594,6 +604,8 @@ message MeridianModel {
 
   // User-configurable EDA check specs.
   eda.EDASpec eda_spec = 19;
+
+  ComputationBackend computation_backend = 21;
 }
 
 // Represents TensorFlow statistical distribution spec that are used in user

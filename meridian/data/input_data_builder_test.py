@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1552,16 +1552,19 @@ class InputDataBuilderTest(parameterized.TestCase):
           testcase_name='kpi',
           da=WRONG_FORMAT_KPI_DA,
           setter=lambda builder, da: setattr(builder, 'kpi', da),
+          time='time',
       ),
       dict(
           testcase_name='controls',
           da=WRONG_FORMAT_CONTROLS_DA,
           setter=lambda builder, da: setattr(builder, 'controls', da),
+          time='time',
       ),
       dict(
           testcase_name='revenue_per_kpi',
           da=WRONG_FORMAT_REVENUE_PER_KPI_DA,
           setter=lambda builder, da: setattr(builder, 'revenue_per_kpi', da),
+          time='time',
       ),
       dict(
           testcase_name='non_media_treatments',
@@ -1569,46 +1572,55 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter=lambda builder, da: setattr(
               builder, 'non_media_treatments', da
           ),
+          time='time',
       ),
       dict(
           testcase_name='organic_media',
           da=WRONG_FORMAT_ORGANIC_MEDIA_DA,
           setter=lambda builder, da: setattr(builder, 'organic_media', da),
+          time='media_time',
       ),
       dict(
           testcase_name='organic_reach',
           da=WRONG_FORMAT_ORGANIC_REACH_DA,
           setter=lambda builder, da: setattr(builder, 'organic_reach', da),
+          time='media_time',
       ),
       dict(
           testcase_name='organic_frequency',
           da=WRONG_FORMAT_ORGANIC_FREQUENCY_DA,
           setter=lambda builder, da: setattr(builder, 'organic_frequency', da),
+          time='media_time',
       ),
       dict(
           testcase_name='media',
           da=WRONG_FORMAT_MEDIA_DA,
           setter=lambda builder, da: setattr(builder, 'media', da),
+          time='media_time',
       ),
       dict(
           testcase_name='media_spend',
           da=WRONG_FORMAT_MEDIA_SPEND_DA,
           setter=lambda builder, da: setattr(builder, 'media_spend', da),
+          time='time',
       ),
       dict(
           testcase_name='reach',
           da=WRONG_FORMAT_REACH_DA,
           setter=lambda builder, da: setattr(builder, 'reach', da),
+          time='media_time',
       ),
       dict(
           testcase_name='frequency',
           da=WRONG_FORMAT_FREQUENCY_DA,
           setter=lambda builder, da: setattr(builder, 'frequency', da),
+          time='media_time',
       ),
       dict(
           testcase_name='rf_spend',
           da=WRONG_FORMAT_RF_SPEND_DA,
           setter=lambda builder, da: setattr(builder, 'rf_spend', da),
+          time='time',
       ),
   )
   def test_setter_with_incorrect_time_format_raises_error(
@@ -1617,13 +1629,14 @@ class InputDataBuilderTest(parameterized.TestCase):
       setter: Callable[
           [input_data_builder.InputDataBuilder, xr.DataArray], None
       ],
+      time: str,
   ):
     builder = input_data_builder.InputDataBuilder(
         kpi_type=constants.NON_REVENUE
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Invalid time label: '2024-01-01T00:00:00'. Expected format:"
+        f"Invalid {time} label: '2024-01-01T00:00:00'. Expected format:"
         " '%Y-%m-%d'",
     ):
       setter(builder, da)
@@ -2418,8 +2431,8 @@ class InputDataBuilderTest(parameterized.TestCase):
     builder.geos = ['A', 'B', 'C']
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "geos already set to ['A', 'B', 'C']. "
-        "Cannot reassign to ['A', 'B', 'D'].",
+        "geos already set to ['A', 'B', 'C']. Cannot reassign to ['A', 'B',"
+        " 'D'].",
     ):
       builder.geos = ['A', 'B', 'D']
 

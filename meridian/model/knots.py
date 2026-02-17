@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,17 +14,17 @@
 
 """Auxiliary functions for knots calculations."""
 
-import bisect
 from collections.abc import Collection, Sequence
 import copy
 import dataclasses
 import math
+import pprint
 from typing import Any
+
 from meridian import constants
 from meridian.data import input_data
 import numpy as np
-# TODO: b/437393442 - migrate patsy
-from patsy import highlevel
+from scipy import interpolate
 from statsmodels.regression import linear_model
 
 
@@ -35,40 +35,35 @@ __all__ = [
 ]
 
 
-# TODO: Reimplement with a more readable method.
-def _find_neighboring_knots_indices(
+def _find_left_knot_indices(
+    *,
     times: np.ndarray,
     knot_locations: np.ndarray,
-) -> Sequence[Sequence[int] | None]:
-  """Return indices of neighboring knot locations.
-
-  Returns indices in `knot_locations` that correspond to the neighboring knot
-  locations for each time period. If a time point is at or before the first
-  knot, the first knot is the only neighboring knot. If a time point is after
-  the last knot, the last knot is the only neighboring knot.
+) -> Sequence[int]:
+  """Return the index of the left neighboring knot for each time point.
 
   Args:
     times: Times `0, 1, 2,..., (n_times-1)`.
     knot_locations: The location of knots within `0, 1, 2,..., (n_times-1)`.
 
   Returns:
-    List of length `n_times`. Each element is the indices of the neighboring
-    knot locations for the respective time period. If a time point is at or
-    before the first knot, the first knot is the only neighboring knot. If a
-    time point is after the last knot, the last knot is the only neighboring
-    knot.
+    A list of indices of the left neighboring knot for each time point. The
+    length of the list is equal to the length of `times`.
+    - If a time point is at or before the first knot, the index is 0.
+    - If a time point is at or after the last knot, the index is `n_knots - 1`.
+    - Otherwise, it's the index of the knot just to the left.
   """
-  neighboring_knots_indices = [None] * len(times)
-  for t in times:
-    # knot_locations assumed to be sorted.
-    if t <= knot_locations[0]:
-      neighboring_knots_indices[t] = [0]
-    elif t >= knot_locations[-1]:
-      neighboring_knots_indices[t] = [len(knot_locations) - 1]
-    else:
-      bisect_index = bisect.bisect_left(knot_locations, t)
-      neighboring_knots_indices[t] = [bisect_index - 1, bisect_index]
-  return neighboring_knots_indices
+  n_knots = len(knot_locations)
+  # Find indices such that knot_locations[i-1] < times <= knot_locations[i]
+  insert_indices = np.searchsorted(knot_locations, times, side='right')
+  left_knot_indices = insert_indices - 1
+
+  # Handle edge cases for times before the first knot
+  left_knot_indices[times < knot_locations[0]] = 0
+  # Handle edge cases for times at or after the last knot
+  left_knot_indices[times >= knot_locations[-1]] = n_knots - 1
+
+  return left_knot_indices
 
 
 def l1_distance_weights(
@@ -114,16 +109,31 @@ def l1_distance_weights(
   time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])
 
   w = np.zeros(time_minus_knot.shape, dtype=np.float32)
-  neighboring_knots_indices = _find_neighboring_knots_indices(
-      times, knot_locations
+  left_knot_indices = _find_left_knot_indices(
+      times=times, knot_locations=knot_locations
   )
+
   for t in times:
-    idx = neighboring_knots_indices[t]
-    if len(idx) == 1:
-      w[idx, t] = 1
+    left_idx = left_knot_indices[t]
+    current_time = times[t]
+
+    if current_time in knot_locations:
+      # If time is exactly at a knot, give all weight to that knot.
+      knot_idx = np.where(knot_locations == current_time)[0][0]
+      w[knot_idx, t] = 1.0
+    elif current_time < knot_locations[0] or current_time > knot_locations[-1]:
+      # Outside the knot range, assign full weight to the closest endpoint knot.
+      w[left_idx, t] = 1.0
     else:
-      # Weight is in proportion to how close the two neighboring knots are.
-      w[idx, t] = 1 - (time_minus_knot[idx, t] / time_minus_knot[idx, t].sum())
+      # Time is between left_idx and left_idx + 1.
+      left_dist = time_minus_knot[left_idx, t]
+      right_dist = time_minus_knot[left_idx + 1, t]
+      total_dist = left_dist + right_dist
+
+      # Assign weight inversely proportional to distance.
+      # The closer knot gets more weight.
+      w[left_idx, t] = right_dist / total_dist
+      w[left_idx + 1, t] = left_dist / total_dist
 
   return w
 
@@ -289,6 +299,22 @@ class AKS:
     penalty = geo_scaling_factor * base_penalty
 
     aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
+    # Ensure defined knot range covers at least one of the available knot sets.
+    available_knots_lengths = np.unique(
+        np.fromiter(
+            (len(x) for x in aspline[constants.KNOTS_SELECTED]), dtype=int
+        )
+    ).tolist()
+    if not any(
+        min_internal_knots <= k <= max_internal_knots
+        for k in available_knots_lengths
+    ):
+      raise ValueError(
+          f'The range [{min_internal_knots}, {max_internal_knots}] does not'
+          ' contain any of the available knot lengths:'
+          f' {pprint.pformat(available_knots_lengths)}'
+      )
+
     n_knots = np.array([len(x) for x in aspline[constants.KNOTS_SELECTED]])
     feasible_idx = np.where(
         (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)
@@ -301,6 +327,17 @@ class AKS:
     )
 
     return AKSResult(knots_sel[opt_idx], model[opt_idx])
+
+  def _get_bspline_matrix(self, x, knots):
+    """Replaces patsy.highlevel.dmatrix('bs(...)', ...)"""
+    # Pad knots at boundaries to match patsy's 'bs()' behavior
+    t = np.concatenate((
+        [x.min()] * (self._DEGREE + 1),
+        np.sort(knots),
+        [x.max()] * (self._DEGREE + 1),
+    ))
+    # Create design matrix (standard numpy array)
+    return interpolate.BSpline.design_matrix(x, t, self._DEGREE).toarray()
 
   def _calculate_initial_knots(
       self,
@@ -416,20 +453,13 @@ class AKS:
           'Provided x and y args for aspline must both be 1 dimensional!'
       )
 
-    bs_cmd = (
-        'bs(x,knots=['
-        + ','.join(map(str, knots))
-        + '],degree='
-        + str(self._DEGREE)
-        + ',include_intercept=True)-1'
-    )
-    xmat = highlevel.dmatrix(bs_cmd, {'x': x})
+    xmat = self._get_bspline_matrix(x, knots)
     nrow = xmat.shape[0]
     ncol = xmat.shape[1]
 
     xx = xmat.T.dot(xmat)
     xy = xmat.T.dot(y)
-    xx_rot = np.concat(
+    xx_rot = np.concatenate(
         [
             self._mat2rot(xx + (1e-20 * np.identity(ncol))),
             np.zeros(ncol)[:, np.newaxis],
@@ -455,15 +485,13 @@ class AKS:
       if converge:
         sel_ls[index_penalty] = sel
         knots_sel[index_penalty] = knots[sel > 0.99]
-        bs_cmd_iter = (
-            f"bs(x,knots=[{','.join(map(str, knots_sel[index_penalty]))}],degree={self._DEGREE},include_intercept=True)-1"
-        )
-        design_mat = highlevel.dmatrix(bs_cmd_iter, {'x': x})
+
+        design_mat = self._get_bspline_matrix(x, knots_sel[index_penalty])
         x_sel[index_penalty] = design_mat
         bs_model = linear_model.OLS(y, x_sel[index_penalty]).fit()
         model[index_penalty] = bs_model
         coefs = np.zeros(ncol, dtype=np.float32)
-        idx = np.concat([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
+        idx = np.concatenate([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
         coefs[idx] = bs_model.params
         par_ls[index_penalty] = coefs
 
@@ -516,7 +544,7 @@ class AKS:
     rot_mat[:, 0] = np.diag(band_mat)
     if l > 0:
       for j in range(l):
-        rot_mat[:, j + 1] = np.concat([
+        rot_mat[:, j + 1] = np.concatenate([
             np.diag(band_mat[range(p - j - 1), :][:, range(j + 1, p)]),
             np.zeros(j + 1),
         ])

@@ -1,0 +1,56 @@
+<!--
+Copyright 2025 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://www.gstatic.com/external_hosted/vega/vega.js"></script>
+    <script src="https://www.gstatic.com/external_hosted/vega_lite/vega-lite.js"></script>
+    <script src="https://www.gstatic.com/external_hosted/vega_embed/vega-embed.js"></script>
+    <title>
+      {{ title }}
+    </title>
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&amp;subset=cyrillic,cyrillic-ext,latin-ext"
+          rel="stylesheet" />
+    <style>
+      {% include "style.css" ignore missing %}
+    </style>
+  </head>
+
+  <body>
+    <div class="header">
+      <div class="logo">
+        {% include "logo.html" ignore missing %}
+      </div>
+      <div class="title">
+        {{ title }}
+      </div>
+    </div>
+
+    {% if start_date is defined and start_date %}
+      {% include "chips.html.jinja" %}
+    {% endif %}
+
+    <cards>
+      {# Each card is laid out in a grid. See; .card display layout. #}
+      {% for card in cards %} {# each `card` is a pre-rendered HTML #}
+        {{ card }}
+      {% endfor %}
+    </cards>
+  </body>
+</html>

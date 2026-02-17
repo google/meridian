@@ -44,10 +44,24 @@ jobs:
       new_version: ${{ steps.version_check.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/install-meridian
+        with:
+          python_version: ${{ inputs.python_version }}
+          extras: ''
+
+      - id: get_version
+        shell: bash
+        run: |
+          VERSION=$(python -c "import meridian; print(meridian.__version__)")
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+
       - id: version_check
         uses: ./.github/actions/version-check
         with:
           python_version: ${{ env.USE_PYTHON_VERSION }}
+          semver_prefix: v
+          current_version: ${{ steps.get_version.outputs.value }}
 
   create-tag:
     needs: check-version
@@ -76,7 +90,8 @@ jobs:
         (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/'))
         || (github.event_name == 'workflow_dispatch'
             && github.event.inputs.publish_to_pypi == 'true')
-        || needs.check-version.outputs.new_version != ''
+        || (github.event_name == 'push' && github.ref == 'refs/heads/main'
+            && needs.check-version.outputs.new_version != '')
       )
     runs-on: ubuntu-latest
     environment:

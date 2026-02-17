@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,16 +38,17 @@ import arviz as az
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import optimizer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.model import context
 from meridian.model import model
 from meridian.model import prior_distribution
 from meridian.model import spec
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -139,6 +140,8 @@ def _create_budget_data(
     spend: np.ndarray,
     inc_outcome: np.ndarray,
     effectiveness: np.ndarray,
+    *,
+    explicit_roi: np.ndarray | None = None,
     explicit_mroi: np.ndarray | None = None,
     explicit_cpik: np.ndarray | None = None,
     channels: np.ndarray | None = None,
@@ -154,14 +157,19 @@ def _create_budget_data(
       c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
       c.INCREMENTAL_OUTCOME: ([c.CHANNEL, c.METRIC], inc_outcome),
       c.EFFECTIVENESS: ([c.CHANNEL, c.METRIC], effectiveness),
-      c.ROI: (
-          [c.CHANNEL, c.METRIC],
-          backend.transpose(
-              backend.divide_no_nan(backend.transpose(inc_outcome), spend)
-          ),
-      ),
   }
-
+  if explicit_roi is not None:
+    data_vars[c.ROI] = (
+        [c.CHANNEL, c.METRIC],
+        np.array(explicit_roi, dtype=np.float64),
+    )
+  else:
+    data_vars[c.ROI] = (
+        [c.CHANNEL, c.METRIC],
+        backend.transpose(
+            backend.divide(backend.transpose(inc_outcome), spend)
+        ),
+    )
   if explicit_mroi is not None:
     data_vars[c.MROI] = (
         [c.CHANNEL, c.METRIC],
@@ -171,7 +179,7 @@ def _create_budget_data(
     data_vars[c.MROI] = (
         [c.CHANNEL, c.METRIC],
         backend.transpose(
-            backend.divide_no_nan(backend.transpose(inc_outcome), spend * 0.01)
+            backend.divide(backend.transpose(inc_outcome), spend * 0.01)
         ),
     )
 
@@ -184,7 +192,7 @@ def _create_budget_data(
     data_vars[c.CPIK] = (
         [c.CHANNEL, c.METRIC],
         backend.transpose(
-            backend.divide_no_nan(spend, backend.transpose(inc_outcome))
+            backend.divide(spend, backend.transpose(inc_outcome))
         ),
     )
 
@@ -395,9 +403,18 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         self.meridian_all_channels
     )
 
+    # TODO: Remove the mock once `meridian` attribute is removed
+    # from `BudgetOptimizer` and `Analyzer`.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
+            'inference_data',
+            new=property(lambda unused_self: self.inference_data_media_and_rf),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
             'inference_data',
             new=property(lambda unused_self: self.inference_data_media_and_rf),
         )
@@ -439,6 +456,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
     not_fitted_mmm.inference_data = az.InferenceData()
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'inference_data',
+            new=property(lambda unused_self: az.InferenceData()),
+        )
+    )
     budget_optimizer = optimizer.BudgetOptimizer(not_fitted_mmm)
     with self.assertRaisesRegex(
         model.NotFittedModelError,
@@ -943,7 +967,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     hist_spend = backend.to_tensor(
         [350, 400, 200, 50, 500], dtype=backend.float32
     )
-    (new_media, new_reach, new_frequency) = (
+    new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend, spend
         )
@@ -971,7 +995,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [350, 400, 200, 50, 500], dtype=backend.float32
     )
     optimal_frequency = backend.to_tensor([2, 2], dtype=backend.float32)
-    (new_media, new_reach, new_frequency) = (
+    new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend=hist_spend,
             spend=spend,
@@ -1253,10 +1277,26 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
         [[_AGGREGATED_IMPRESSIONS]], backend.float32
     )
+    expected_roi = np.array([
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [2.16654396, 2.16654396, 2.16654396, 2.16654396],
+        [1.54340279, 1.54340279, 1.54340279, 1.54340279],
+    ])
+    expected_mroi = np.array([
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [np.inf, np.inf, np.nan, np.nan],
+        [216.65440369, 216.65440369, 216.65440369, 216.65440369],
+        [154.34028625, 154.34028625, 154.34028625, 154.34028625],
+    ])
     expected_data = _create_budget_data(
         spend=_TARGET_MROI_SPEND,
         inc_outcome=_OPTIMIZED_INCREMENTAL_OUTCOME_WITH_CI,
         effectiveness=_OPTIMIZED_EFFECTIVENESS_WITH_CI,
+        explicit_roi=expected_roi,
+        explicit_mroi=expected_mroi,
         channels=self.input_data_media_and_rf.get_all_channels(),
         attrs={c.FIXED_BUDGET: False, c.TARGET_MROI: 1},
     )
@@ -1497,7 +1537,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.budget_optimizer_media_and_rf.optimize(budget=-10_000)
 
   def test_get_optimization_bounds_correct(self):
-    (lower_bound, upper_bound) = optimizer.get_optimization_bounds(
+    lower_bound, upper_bound = optimizer.get_optimization_bounds(
         n_channels=5,
         spend=np.array([10642.5, 22222.0, 33333.0, 44444.0, 55555.0]),
         round_factor=-2,
@@ -2094,7 +2134,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             ),
         ),
     )
-    (updated_spend, updated_incremental_outcome) = grid.trim_grids(
+    updated_spend, updated_incremental_outcome = grid.trim_grids(
         spend_bound_lower=np.array([100, 100, 400, 0, 200]),
         spend_bound_upper=np.array([400, 300, 400, 100, 300]),
     )
@@ -2317,7 +2357,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           gtol=0.1,
       )
       mock_expand_selected_times.assert_called_with(
-          meridian=mock.ANY,
+          model_context=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2369,7 +2409,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           gtol=0.1,
       )
       mock_expand_selected_times.assert_called_with(
-          meridian=mock.ANY,
+          model_context=mock.ANY,
           start_date=expected_start_date,
           end_date=expected_end_date,
           new_data=mock.ANY,
@@ -2808,7 +2848,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
-    idata = self.budget_optimizer_media_and_rf._meridian.input_data
+    idata = (
+        self.budget_optimizer_media_and_rf._analyzer.model_context.input_data
+    )
     paid_channels = list(idata.get_all_paid_channels())
     pct_of_spend = idata.get_paid_channels_argument_builder()(**{
         paid_channels[0]: 0.1,
@@ -2848,7 +2890,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
-    idata = self.budget_optimizer_media_and_rf._meridian.input_data
+    idata = (
+        self.budget_optimizer_media_and_rf._analyzer.model_context.input_data
+    )
     paid_channels = list(idata.get_all_paid_channels())
     pct_of_spend = idata.get_paid_channels_argument_builder()(**{
         paid_channels[0]: 0.1,
@@ -2951,7 +2995,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   def test_optimize_with_non_paid_channels_returns_correct_shape(self):
     self.enter_context(
         mock.patch.object(
-            model.Meridian,
+            analyzer.Analyzer,
             'inference_data',
             new=property(lambda unused_self: self.inference_data_all_channels),
         )
@@ -2962,6 +3006,40 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   def test_optimize_when_target_roi_not_met_raises_warning(self):
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'incremental_outcome',
+            autospec=True,
+            return_value=backend.to_tensor(
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+            ),
+        )
+    )
+    # Mock the grid to return historical spend. This ensures a finite, low ROI
+    # that triggers the warning.
+    mock_grid = mock.create_autospec(optimizer.OptimizationGrid, instance=True)
+    mock_grid.historical_spend = _NONOPTIMIZED_SPEND
+    mock_grid.optimal_frequency = None
+
+    channels = self.input_data_media_and_rf.get_all_channels()
+    spend_ds = xr.Dataset(
+        coords={c.CHANNEL: channels},
+        data_vars={
+            c.OPTIMIZED: ([c.CHANNEL], _NONOPTIMIZED_SPEND),
+            c.NON_OPTIMIZED: ([c.CHANNEL], _NONOPTIMIZED_SPEND),
+        },
+    )
+    mock_grid.optimize.return_value = spend_ds
+
+    self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf,
+            'create_optimization_grid',
+            return_value=mock_grid,
+        )
+    )
+
     with self.assertWarnsRegex(
         UserWarning, 'Target ROI constraint was not met.'
     ):
@@ -2998,22 +3076,22 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
 
   def test_get_response_curves_new_times_data_correct(self):
-    meridian = self.budget_optimizer_media_and_rf._meridian
-    max_lag = meridian.model_spec.max_lag
+    ctx = self.budget_optimizer_media_and_rf._analyzer.model_context
+    max_lag = ctx.model_spec.max_lag
     n_new_times = 15
     total_times = max_lag + n_new_times
-    new_data_end_date = meridian.input_data.time.values[-1]
-    selected_times_start_date = meridian.input_data.time.values[-n_new_times]
-    selected_times = meridian.input_data.time.values[-n_new_times:].tolist()
+    new_data_end_date = ctx.input_data.time.values[-1]
+    selected_times_start_date = ctx.input_data.time.values[-n_new_times]
+    selected_times = ctx.input_data.time.values[-n_new_times:].tolist()
 
-    new_data_times = meridian.input_data.time.values[-total_times:].tolist()
+    new_data_times = ctx.input_data.time.values[-total_times:].tolist()
     new_data = analyzer.DataTensors(
-        media=meridian.media_tensors.media[..., -total_times:, :],
-        media_spend=meridian.media_tensors.media_spend[..., -total_times:, :],
-        reach=meridian.rf_tensors.reach[..., -total_times:, :],
-        frequency=meridian.rf_tensors.frequency[..., -total_times:, :],
-        rf_spend=meridian.rf_tensors.rf_spend[..., -total_times:, :],
-        revenue_per_kpi=meridian.revenue_per_kpi[..., -total_times:],
+        media=ctx.media_tensors.media[..., -total_times:, :],
+        media_spend=ctx.media_tensors.media_spend[..., -total_times:, :],
+        reach=ctx.rf_tensors.reach[..., -total_times:, :],
+        frequency=ctx.rf_tensors.frequency[..., -total_times:, :],
+        rf_spend=ctx.rf_tensors.rf_spend[..., -total_times:, :],
+        revenue_per_kpi=ctx.revenue_per_kpi[..., -total_times:],
         time=new_data_times,
     )
 
@@ -3057,7 +3135,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertEqual(kwargs['selected_times'], selected_times)
 
   def test_create_budget_dataset_selected_geos_correct(self):
-    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+    selected_geos = self.budget_optimizer_media_and_rf._analyzer.model_context.input_data.geo.values.tolist()[
         :2
     ]
     with mock.patch.object(
@@ -3079,7 +3157,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
 
   def test_get_response_curves_selected_geos_correct(self):
-    selected_geos = self.budget_optimizer_media_and_rf._meridian.input_data.geo.values.tolist()[
+    selected_geos = self.budget_optimizer_media_and_rf._analyzer.model_context.input_data.geo.values.tolist()[
         :2
     ]
     with mock.patch.object(
@@ -3110,14 +3188,24 @@ class OptimizerPlotsTest(absltest.TestCase):
     meridian = mock.create_autospec(
         model.Meridian, instance=True, input_data=mock_data
     )
+    meridian.model_context = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data
+    )
     n_times = 149
     n_geos = 10
     self.revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=1.0
     )
+    # TODO: Remove mocking `Meridian` class.
     meridian.input_data.kpi_type = c.REVENUE
     meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
     meridian.rf_tensors.rf_impressions = mock.create_autospec(
+        backend.Tensor, instance=True, shape=(n_geos, n_times, _N_RF_CHANNELS)
+    )
+
+    meridian.model_context.input_data.kpi_type = c.REVENUE
+    meridian.model_context.input_data.revenue_per_kpi = self.revenue_per_kpi
+    meridian.model_context.rf_tensors.rf_impressions = mock.create_autospec(
         backend.Tensor, instance=True, shape=(n_geos, n_times, _N_RF_CHANNELS)
     )
 
@@ -3448,7 +3536,9 @@ class OptimizerPlotsTest(absltest.TestCase):
         ],
     )
 
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
+    _, mock_kwargs = (
+        self.meridian.model_context.expand_selected_time_dims.call_args
+    )
     self.assertEqual(
         mock_kwargs,
         {
@@ -3533,7 +3623,9 @@ class OptimizerPlotsTest(absltest.TestCase):
   def test_plot_response_curves_correct_selected_times(self):
     self.optimization_results.plot_response_curves()
     self.mock_response_curves.assert_called_once()
-    _, mock_kwargs = self.meridian.expand_selected_time_dims.call_args
+    _, mock_kwargs = (
+        self.meridian.model_context.expand_selected_time_dims.call_args
+    )
     self.assertEqual(
         mock_kwargs,
         {
@@ -3695,27 +3787,40 @@ class OptimizerOutputTest(parameterized.TestCase):
     mock_data_kpi_output = mock.create_autospec(
         input_data.InputData, instance=True
     )
-    meridian = mock.create_autospec(
-        model.Meridian, instance=True, input_data=mock_data
+    model_context = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data
     )
-    meridian_kpi_output = mock.create_autospec(
-        model.Meridian, instance=True, input_data=mock_data_kpi_output
+    model_context_kpi_output = mock.create_autospec(
+        context.ModelContext, instance=True, input_data=mock_data_kpi_output
     )
     n_times = 149
     n_geos = 10
     self.revenue_per_kpi = data_test_utils.constant_revenue_per_kpi(
         n_geos=n_geos, n_times=n_times, value=1.0
     )
-    meridian.input_data.kpi_type = c.REVENUE
-    meridian.input_data.revenue_per_kpi = self.revenue_per_kpi
-    meridian.input_data.time_coordinates.interval_days = 7
-    meridian_kpi_output.input_data.kpi_type = c.NON_REVENUE
-    meridian_kpi_output.input_data.revenue_per_kpi = None
-    meridian_kpi_output.input_data.time_coordinates.interval_days = 7
+    model_context.input_data.kpi_type = c.REVENUE
+    model_context.input_data.revenue_per_kpi = self.revenue_per_kpi
+    model_context.input_data.time_coordinates.interval_days = 7
+    model_context_kpi_output.input_data.kpi_type = c.NON_REVENUE
+    model_context_kpi_output.input_data.revenue_per_kpi = None
+    model_context_kpi_output.input_data.time_coordinates.interval_days = 7
 
-    self.budget_optimizer = optimizer.BudgetOptimizer(meridian)
+    meridian_mock = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        input_data=mock_data,
+        model_context=model_context,
+    )
+    meridian_kpi_output_mock = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        input_data=mock_data_kpi_output,
+        model_context=model_context_kpi_output,
+
+    )
+    self.budget_optimizer = optimizer.BudgetOptimizer(meridian_mock)
     self.budget_optimizer_kpi_output = optimizer.BudgetOptimizer(
-        meridian_kpi_output
+        meridian_kpi_output_mock
     )
     self.optimization_grid = optimizer.OptimizationGrid(
         _grid_dataset=mock.MagicMock(),
@@ -3796,7 +3901,9 @@ class OptimizerOutputTest(parameterized.TestCase):
     return alt.Chart(pd.DataFrame()).mark_point()
 
   def _get_output_summary_html_dom(
-      self, optimization_results: optimizer.OptimizationResults
+      self,
+      optimization_results: optimizer.OptimizationResults,
+      currency: str = c.DEFAULT_CURRENCY,
   ) -> ET.Element:
     outfile_path = tempfile.mkdtemp() + '/optimization'
     outfile_name = 'optimization.html'
@@ -3804,7 +3911,7 @@ class OptimizerOutputTest(parameterized.TestCase):
 
     try:
       optimization_results.output_optimization_summary(
-          outfile_name, outfile_path
+          outfile_name, outfile_path, currency=currency
       )
       with open(fpath, 'r') as f:
         written_html_dom = ET.parse(f)
@@ -4089,6 +4196,67 @@ class OptimizerOutputTest(parameterized.TestCase):
       delta = analysis_test_utils.get_child_element(stats[index], 'delta').text
       self.assertIsNotNone(delta)
       self.assertEqual(delta.strip(), expected_delta)
+
+  def test_output_scenario_plan_card_stats_text_with_euro_currency(self):
+    summary_html_dom = self._get_output_summary_html_dom(
+        self.optimization_results, currency='€'
+    )
+    card = analysis_test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.SCENARIO_PLAN_CARD_ID},
+    )
+    stats_section = analysis_test_utils.get_child_element(card, 'stats-section')
+    stats = stats_section.findall('stats')
+    self.assertLen(stats, 6)
+    non_optimized_budget, optimized_budget, _, _, _, _ = stats
+
+    with self.subTest('non_optimized_budget'):
+      stat = analysis_test_utils.get_child_element(
+          non_optimized_budget, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€600')
+
+    with self.subTest('optimized_budget'):
+      stat = analysis_test_utils.get_child_element(
+          optimized_budget, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€600')
+      delta = analysis_test_utils.get_child_element(
+          optimized_budget, 'delta'
+      ).text
+      self.assertIsNotNone(delta)
+      self.assertEqual(delta.strip(), '€0')
+
+    # Check CPIK with kpi output
+    summary_html_dom_kpi = self._get_output_summary_html_dom(
+        self.optimization_results_kpi_output, currency='€'
+    )
+    card_kpi = analysis_test_utils.get_child_element(
+        summary_html_dom_kpi,
+        'body/cards/card',
+        attribs={'id': summary_text.SCENARIO_PLAN_CARD_ID},
+    )
+    stats_section_kpi = analysis_test_utils.get_child_element(
+        card_kpi, 'stats-section'
+    )
+    stats_kpi = stats_section_kpi.findall('stats')
+    self.assertLen(stats_kpi, 6)
+    _, _, non_optimized_cpik, optimized_cpik, _, _ = stats_kpi
+
+    with self.subTest('non_optimized_cpik'):
+      stat = analysis_test_utils.get_child_element(
+          non_optimized_cpik, 'stat'
+      ).text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€0.79')
+
+    with self.subTest('optimized_cpik'):
+      stat = analysis_test_utils.get_child_element(optimized_cpik, 'stat').text
+      self.assertIsNotNone(stat)
+      self.assertEqual(stat.strip(), '€0.72')
 
   def test_output_budget_allocation_card_text(self):
     summary_html_dom = self._get_output_summary_html_dom(
@@ -4448,9 +4616,20 @@ class OptimizerKPITest(parameterized.TestCase):
     self.budget_optimizer_non_revenue_revenue_per_kpi = (
         optimizer.BudgetOptimizer(self.meridian_non_revenue_revenue_per_kpi)
     )
+    # TODO: Remove this patch once `meridian` is removed from
+    # `Analyzer` and `BudgetOptimizer`.
     self.enter_context(
         mock.patch.object(
             model.Meridian,
+            'inference_data',
+            new=property(
+                lambda unused_self: self.inference_data_media_and_rf_kpi
+            ),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
             'inference_data',
             new=property(
                 lambda unused_self: self.inference_data_media_and_rf_kpi

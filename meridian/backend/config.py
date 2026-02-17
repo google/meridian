@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,18 @@ import warnings
 class Backend(enum.Enum):
   TENSORFLOW = "tensorflow"
   JAX = "jax"
+
+
+class ComputationBackend(enum.IntEnum):
+  """A computational backend for a Meridian model.
+
+  This mirrors the `ComputationBackend` enum in
+  `proto/mmm/v1/model/meridian/meridian_model.proto`.
+  """
+
+  COMPUTATION_BACKEND_UNSPECIFIED = 0
+  TENSORFLOW = 1
+  JAX = 2
 
 
 _DEFAULT_BACKEND = Backend.TENSORFLOW

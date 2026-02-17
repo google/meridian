@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,8 @@
 """Meridian analysis API for trained models."""
 
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import optimizer
 from meridian.analysis import review
 from meridian.analysis import summarizer
 from meridian.analysis import visualizer
-
+from meridian.templates import formatter

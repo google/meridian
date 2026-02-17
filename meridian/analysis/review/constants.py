@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,10 @@ NEGATIVE_BASELINE_PROB_REVIEW_THRESHOLD = (
 R_SQUARED = "r_squared"
 MAPE = "mape"
 WMAPE = "wmape"
+ALL_SUFFIX = ""
+TRAIN_SUFFIX = "_train"
+TEST_SUFFIX = "_test"
+EVALUATION_SET_SUFFIXES = (ALL_SUFFIX, TRAIN_SUFFIX, TEST_SUFFIX)
 MEAN = "mean"
 VARIANCE = "variance"
 MEDIAN = "median"

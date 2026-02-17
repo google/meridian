@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -140,13 +140,21 @@ class ReviewerTest(absltest.TestCase):
     self._mock_pps_result.__class__ = results.PriorPosteriorShiftCheckResult
     self._mock_pps_check.run.return_value = self._mock_pps_result
 
-    self._default_post_convergence_checks = immutabledict.immutabledict({
-        self._mock_baseline_check_cls: configs.BaselineConfig(),
-        self._mock_bayesian_ppp_check_cls: configs.BayesianPPPConfig(),
-        self._mock_gof_check_cls: configs.GoodnessOfFitConfig(),
-        self._mock_pps_check_cls: configs.PriorPosteriorShiftConfig(),
-        self._mock_roi_consistency_check_cls: configs.ROIConsistencyConfig(),
-    })
+    patcher = mock.patch.object(
+        reviewer,
+        '_POST_CONVERGENCE_CHECKS',
+        new=immutabledict.immutabledict({
+            self._mock_baseline_check_cls: configs.BaselineConfig(),
+            self._mock_bayesian_ppp_check_cls: configs.BayesianPPPConfig(),
+            self._mock_gof_check_cls: configs.GoodnessOfFitConfig(),
+            self._mock_pps_check_cls: configs.PriorPosteriorShiftConfig(),
+            self._mock_roi_consistency_check_cls: (
+                configs.ROIConsistencyConfig()
+            ),
+        }),
+    )
+    patcher.start()
+    self.addCleanup(patcher.stop)
 
   def test_run_all_pass(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
@@ -160,7 +168,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -195,7 +202,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -229,7 +235,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -265,7 +270,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -292,7 +296,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -324,7 +327,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -364,7 +366,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -391,6 +392,38 @@ class ReviewerTest(absltest.TestCase):
     self._mock_gof_check_cls.assert_called_once()
     self._mock_pps_check_cls.assert_called_once()
 
+  def test_run_converged_with_fail_and_review(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.FAIL
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.REVIEW
+    )
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+
+    review = reviewer.ModelReviewer(
+        meridian=self._meridian,
+    )
+    summary = review.run()
+
+    self.assertEqual(summary.overall_status, results.Status.FAIL)
+    self.assertEqual(
+        summary.summary_message,
+        (
+            'Failed: Quality issues were detected in your model. Follow'
+            ' recommendations to address any failed checks and review'
+            ' results to determine if further action is needed.'
+        ),
+    )
+    self.assertLen(summary.results, 6)
+    self._mock_convergence_check_cls.assert_called_once()
+    self._mock_baseline_check_cls.assert_called_once()
+    self._mock_bayesian_ppp_check_cls.assert_called_once()
+    self._mock_roi_consistency_check_cls.assert_called_once()
+    self._mock_gof_check_cls.assert_called_once()
+    self._mock_pps_check_cls.assert_called_once()
+
   def test_run_fail_baseline(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.FAIL
@@ -403,7 +436,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -441,7 +473,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -475,7 +506,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -504,7 +534,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 
@@ -533,7 +562,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     review.run()
 
@@ -567,10 +595,12 @@ class ReviewerTest(absltest.TestCase):
             prior_upper_quantile=0.95,
         ),
     })
-    review = reviewer.ModelReviewer(
-        meridian=self._meridian, post_convergence_checks=custom_checks
-    )
-    summary = review.run()
+
+    with mock.patch.object(
+        reviewer, '_POST_CONVERGENCE_CHECKS', new=custom_checks
+    ):
+      review = reviewer.ModelReviewer(meridian=self._meridian)
+      summary = review.run()
 
     self._mock_convergence_check_cls.assert_called_once_with(
         mock.ANY, mock.ANY, configs.ConvergenceConfig()
@@ -611,7 +641,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary1 = review.run()
     summary2 = review.run()
@@ -635,7 +664,6 @@ class ReviewerTest(absltest.TestCase):
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
-        post_convergence_checks=self._default_post_convergence_checks,
     )
     summary = review.run()
 

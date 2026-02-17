@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,7 @@ import dataclasses
 import inspect
 import json
 from typing import Any, Callable
+import warnings
 
 import arviz as az
 from meridian import backend
@@ -180,16 +181,25 @@ def autolog(
           f"sample_posterior.{param}", kwargs.get(param, "default")
       )
 
-    original(self, *args, **kwargs)
+    result = original(self, *args, **kwargs)
     if log_metrics:
-      model_diagnostics = visualizer.ModelDiagnostics(self.model)
-      df_diag = model_diagnostics.predictive_accuracy_table()
+      # TODO: Direct injection of `model.Meridian` object into
+      # `PosteriorMCMCSampler` is deprecated. Revisit patching method here.
+      if self.model is not None:
+        model_diagnostics = visualizer.ModelDiagnostics(self.model)
+        df_diag = model_diagnostics.predictive_accuracy_table()
 
-      get_metric = lambda n: df_diag[df_diag.metric == n].value.to_list()[0]
+        get_metric = lambda n: df_diag[df_diag.metric == n].value.to_list()[0]
 
-      mlflow.log_metric("R_Squared", get_metric("R_Squared"))
-      mlflow.log_metric("MAPE", get_metric("MAPE"))
-      mlflow.log_metric("wMAPE", get_metric("wMAPE"))
+        mlflow.log_metric("R_Squared", get_metric("R_Squared"))
+        mlflow.log_metric("MAPE", get_metric("MAPE"))
+        mlflow.log_metric("wMAPE", get_metric("wMAPE"))
+      else:
+        warnings.warn(
+            "log_metrics=True is not supported when PosteriorMCMCSampler is"
+            " initialized with model_context."
+        )
+    return result
 
   safe_patch(FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init)
   safe_patch(

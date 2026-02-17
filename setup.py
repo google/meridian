@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from setuptools.command.build import build
 
 
 class ScssCompileCommand(Command):
-  _templates_path = 'meridian/analysis/templates'
+  _templates_path = 'meridian/templates'
   _scss_output_mapping = {
       'style.scss': 'style.css',
   }

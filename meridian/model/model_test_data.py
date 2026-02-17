@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -159,6 +159,8 @@ class WithInputDataSamples:
   _input_data_non_media_and_organic_same_time_dims: input_data.InputData
   _input_data_organic_only: input_data.InputData
   _national_input_data_organic_only: input_data.InputData
+  _input_data_non_media_only: input_data.InputData
+  _national_input_data_non_media_only: input_data.InputData
 
   # The following NamedTuples and their attributes are immutable, so they can
   # be accessed directly.
@@ -537,6 +539,34 @@ class WithInputDataSamples:
             seed=0,
         )
     )
+    cls._input_data_non_media_only = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=cls._N_GEOS,
+            n_times=cls._N_TIMES,
+            n_media_times=cls._N_MEDIA_TIMES,
+            n_controls=0,
+            n_non_media_channels=cls._N_NON_MEDIA_CHANNELS,
+            n_media_channels=cls._N_MEDIA_CHANNELS,
+            n_rf_channels=0,
+            n_organic_media_channels=0,
+            n_organic_rf_channels=0,
+            seed=0,
+        )
+    )
+    cls._national_input_data_non_media_only = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=cls._N_GEOS_NATIONAL,
+            n_times=cls._N_TIMES,
+            n_media_times=cls._N_MEDIA_TIMES,
+            n_controls=0,
+            n_non_media_channels=cls._N_NON_MEDIA_CHANNELS,
+            n_media_channels=cls._N_MEDIA_CHANNELS,
+            n_rf_channels=0,
+            n_organic_media_channels=0,
+            n_organic_rf_channels=0,
+            seed=0,
+        )
+    )
 
   @property
   def input_data_non_revenue_no_revenue_per_kpi(self) -> input_data.InputData:
@@ -659,3 +689,11 @@ class WithInputDataSamples:
   @property
   def national_input_data_organic_only(self) -> input_data.InputData:
     return self._national_input_data_organic_only.copy(deep=True)
+
+  @property
+  def input_data_non_media_only(self) -> input_data.InputData:
+    return self._input_data_non_media_only.copy(deep=True)
+
+  @property
+  def national_input_data_non_media_only(self) -> input_data.InputData:
+    return self._national_input_data_non_media_only.copy(deep=True)

@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -609,7 +609,37 @@ def _tf_get_seed_data(seed: Any) -> Optional[np.ndarray]:
 
 
 def _jax_convert_to_tensor(data, dtype=None):
-  """Converts data to a JAX array, handling strings as NumPy arrays."""
+  """Converts data to a JAX array, handling strings as NumPy arrays.
+
+  This function explicitly unwraps objects with a `.values` attribute (e.g.,
+  pandas.DataFrame, xarray.DataArray) to access the underlying NumPy array,
+  provided that `.values` is not a method. This takes precedence over the
+  `__array__` protocol.
+
+  It also handles precision mismatches: if `data` is float64 and `dtype` is
+  not specified, and JAX x64 mode is disabled (default), it issues a warning
+  and explicitly casts to float32 to match the backend default and prevent
+  silent precision loss or type errors in downstream operations.
+
+  Args:
+    data: The data to convert.
+    dtype: The desired data type.
+
+  Returns:
+    A JAX array, or a NumPy array if the dtype is a string type.
+  """
+  # Unwrap xarray.DataArray, pandas.Series, and pandas.DataFrame objects.
+  # These objects wrap the underlying NumPy array in a .values attribute.
+  if hasattr(data, "values") and not callable(data.values):
+    data = data.values
+
+  # Convert to numpy array upfront to simplify dtype inspection below.
+  # A standard Python float is 64-bit, and this conversion allows the
+  # subsequent logic to correctly detect and handle potential float64
+  # downcasting for scalar inputs.
+  if isinstance(data, (list, tuple, float)):
+    data = np.array(data)
+
   # JAX does not natively support string tensors in the same way TF does.
   # If a string dtype is requested, or if the data is inherently strings,
   # we fall back to a standard NumPy array.
@@ -623,12 +653,30 @@ def _jax_convert_to_tensor(data, dtype=None):
       # let jax.asarray handle it.
       pass
 
-  is_string_data = isinstance(data, (list, np.ndarray)) and np.array(
-      data
-  ).dtype.kind in ("S", "U")
+  is_string_data = isinstance(data, np.ndarray) and data.dtype.kind in (
+      "S",
+      "U",
+  )
 
-  if is_string_target or (dtype is None and is_string_data):
+  if is_string_target:
     return np.array(data, dtype=dtype)
+
+  if dtype is None and is_string_data:
+    return data
+
+  # If the user provides float64 data but does not request a specific dtype,
+  # and JAX 64-bit mode is disabled (default), JAX would implicitly truncate.
+  # We cast to float32 and warn the user to prevent silent mismatches.
+  if dtype is None:
+    is_float64_input = hasattr(data, "dtype") and data.dtype == np.float64
+    if is_float64_input:
+      if not jax.config.jax_enable_x64:
+        warnings.warn(
+            "Input data is float64. Casting to float32 to match backend "
+            "default precision.",
+            UserWarning,
+        )
+        dtype = jax_ops.float32
 
   return jax_ops.asarray(data, dtype=dtype)
 
@@ -861,6 +909,112 @@ if _BACKEND == config.Backend.JAX:
 
   xla_windowed_adaptive_nuts = _jax_xla_windowed_adaptive_nuts
 
+  def _jax_adstock_process_conv(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """JAX implementation for adstock_process using convolution (GPU optimized).
+
+    This function applies an adstock process to media spend data using a
+    convolutional approach. The weights represent the adstock decay over time.
+
+    Args:
+      media: A JAX array of media spend. Expected shape is `(batch_dims, n_geos,
+        n_times_in, n_channels)`.
+      weights: A JAX array of adstock weights. Expected shape is `(batch_dims,
+        n_channels, window_size)`, where `batch_dims` must be broadcastable to
+        the batch dimensions of `media`.
+      n_times_output: The number of time periods in the output. This corresponds
+        to `n_times_in - window_size + 1`.
+
+    Returns:
+      A JAX array representing the adstocked media, with shape
+      `(batch_dims, n_geos, n_times_output, n_channels)`.
+    """
+
+    batch_dims = weights.shape[:-2]
+    if media.shape[:-3] != batch_dims:
+      media = jax_ops.broadcast_to(media, batch_dims + media.shape[-3:])
+
+    n_geos = media.shape[-3]
+    n_times_in = media.shape[-2]
+    n_channels = media.shape[-1]
+    window_size = weights.shape[-1]
+
+    perm = list(range(media.ndim))
+    perm[-2], perm[-1] = perm[-1], perm[-2]
+    media_transposed = jax_ops.transpose(media, perm)
+    media_reshaped = jax_ops.reshape(media_transposed, (1, -1, n_times_in))
+
+    total_channels = media_reshaped.shape[1]
+    weights_expanded = jax_ops.expand_dims(weights, -3)
+    weights_tiled = jax_ops.broadcast_to(
+        weights_expanded, batch_dims + (n_geos, n_channels, window_size)
+    )
+    kernel_reshaped = jax_ops.reshape(
+        weights_tiled, (total_channels, 1, window_size)
+    )
+
+    dn = jax.lax.conv_dimension_numbers(
+        media_reshaped.shape, kernel_reshaped.shape, ("NCH", "OIH", "NCH")
+    )
+
+    out = jax.lax.conv_general_dilated(
+        lhs=media_reshaped,
+        rhs=kernel_reshaped,
+        window_strides=(1,),
+        padding="VALID",
+        lhs_dilation=(1,),
+        rhs_dilation=(1,),
+        dimension_numbers=dn,
+        feature_group_count=total_channels,
+        precision=jax.lax.Precision.HIGHEST,
+    )
+
+    t_out = out.shape[-1]
+    out_reshaped = jax_ops.reshape(
+        out, batch_dims + (n_geos, n_channels, t_out)
+    )
+    perm_back = list(range(out_reshaped.ndim))
+    perm_back[-2], perm_back[-1] = perm_back[-1], perm_back[-2]
+    out_final = jax_ops.transpose(out_reshaped, perm_back)
+
+    return out_final[..., :n_times_output, :]
+
+  def _jax_adstock_process_cpu(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """JAX implementation for adstock_process using stack/einsum (CPU optimized).
+
+    This mirrors the TensorFlow implementation logic to avoid the memory
+    overhead of lowering convolution to matrix multiplication on CPU.
+
+    Args:
+      media: A JAX array of media spend.
+      weights: A JAX array of adstock weights.
+      n_times_output: The number of time periods in the output.
+
+    Returns:
+      A JAX array representing the adstocked media.
+    """
+    window_size = weights.shape[-1]
+    window_list = [
+        media[..., i : i + n_times_output, :] for i in range(window_size)
+    ]
+    windowed = jax_ops.stack(window_list)
+    # The weights shape is (..., channels, window_size).
+    # The windowed shape is (window_size, ..., geos, time_out, channels).
+    # We contract over window_size.
+    return jax_ops.einsum("...cw,w...gtc->...gtc", weights, windowed)
+
+  def _jax_adstock_process(
+      media: "_jax.Array", weights: "_jax.Array", n_times_output: int
+  ) -> "_jax.Array":
+    """Dispatches adstock_process to the appropriate implementation."""
+    if jax.default_backend() == "cpu":
+      return _jax_adstock_process_cpu(media, weights, n_times_output)
+    else:
+      return _jax_adstock_process_conv(media, weights, n_times_output)
+
   _ops = jax_ops
   errors = _JaxErrors()
   Tensor = jax.Array
@@ -872,6 +1026,7 @@ if _BACKEND == config.Backend.JAX:
 
   # Standardized Public API
   absolute = _ops.abs
+  adstock_process = _jax_adstock_process
   allclose = _ops.allclose
   arange = _jax_arange
   argmax = _jax_argmax
@@ -1011,6 +1166,39 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   xla_windowed_adaptive_nuts = _tf_xla_windowed_adaptive_nuts
 
+  def _tf_adstock_process(
+      media: "_tf.Tensor", weights: "_tf.Tensor", n_times_output: int
+  ) -> "_tf.Tensor":
+    """TensorFlow implementation for adstock_process using loop/einsum.
+
+    This function applies an adstock process to media spend data. It achieves
+    this by creating a windowed view of the `media` tensor and then using
+    `tf.einsum` to efficiently compute the weighted sum based on the provided
+    `weights`. The `weights` tensor defines the decay effect over a specific
+    `window_size`. The output is truncated to `n_times_output` periods.
+
+    Args:
+      media: Input media tensor. Expected shape is `(..., num_geos,
+        num_times_in, num_channels)`. The `...` represents optional batch
+        dimensions.
+      weights: Adstock weights tensor. Expected shape is `(..., num_channels,
+        window_size)`. The batch dimensions must be broadcast-compatible with
+        those in `media`.
+      n_times_output: The number of time periods to output. This should be less
+        than or equal to `num_times_in - window_size + 1`.
+
+    Returns:
+      A tensor of shape `(..., num_geos, n_times_output, num_channels)`
+      representing the adstocked media.
+    """
+
+    window_size = weights.shape[-1]
+    window_list = [
+        media[..., i : i + n_times_output, :] for i in range(window_size)
+    ]
+    windowed = tf_backend.stack(window_list)
+    return tf_backend.einsum("...cw,w...gtc->...gtc", weights, windowed)
+
   tfd = tfp.distributions
   bijectors = tfp.bijectors
   experimental = tfp.experimental
@@ -1019,6 +1207,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   # Standardized Public API
   absolute = _ops.math.abs
+  adstock_process = _tf_adstock_process
   allclose = _ops.experimental.numpy.allclose
   arange = _tf_arange
   argmax = _tf_argmax
@@ -1312,3 +1501,26 @@ def to_tensor(data: Any, dtype: Optional[Any] = None) -> Tensor:  # type: ignore
   """
 
   return _convert_to_tensor(data, dtype=dtype)
+
+
+def computation_backend() -> config.ComputationBackend:
+  """Returns the active computation backend determined by inspecting the Tensor class.
+
+  This ensures that the reported backend matches the actual tensor
+  implementation
+  being used, regardless of the global configuration state which might have
+  changed
+  after import.
+
+  Returns:
+    The ComputationBackend enum corresponding to the active Tensor class.
+  """
+  tensor_module = Tensor.__module__
+
+  if "jax" in tensor_module:
+    return config.ComputationBackend.JAX
+
+  if "tensorflow" in tensor_module:
+    return config.ComputationBackend.TENSORFLOW
+
+  return config.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED

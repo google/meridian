@@ -100,9 +100,10 @@ started quickly with using Meridian:
 | [Pre-modeling][5]           | Prepare and analyze your data before modeling. |
 | [Modeling][6]               | Modeling guidance for model refinement and edge cases. |
 | [Post-modeling][7]          | Post-modeling guidance for model fit, visualizations, optimizations, refreshing the model, and debugging. |
-| [Migrate from LMMM][8]      | Learn about the differences between Meridian and LightweightMMM as you consider migrating. |
-| [API Reference][9]          | API reference documentation for the Meridian package. |
-| [Reference list][10]        | White papers and other referenced material.    |
+| [Scenario planning][8]      | Plan budget allocation with Meridian on Colab & Looker Studio interactively. |
+| [Migrate from LMMM][9]      | Learn about the differences between Meridian and LightweightMMM as you consider migrating. |
+| [API Reference][10]         | API reference documentation for the Meridian package. |
+| [Reference list][11]        | White papers and other referenced material.    |
 
 [1]: https://developers.google.com/meridian
 [2]: https://developers.google.com/meridian/docs/basics/meridian-introduction
@@ -111,9 +112,10 @@ started quickly with using Meridian:
 [5]: https://developers.google.com/meridian/docs/pre-modeling/collect-data
 [6]: https://developers.google.com/meridian/docs/advanced-modeling/control-variables
 [7]: https://developers.google.com/meridian/docs/post-modeling/model-fit
-[8]: https://developers.google.com/meridian/docs/migrate
-[9]: https://developers.google.com/meridian/reference/api/meridian
-[10]: https://developers.google.com/meridian/docs/reference-list
+[8]: https://developers.google.com/meridian/docs/scenario-planning/meridian-scenario-planner
+[9]: https://developers.google.com/meridian/docs/migrate
+[10]: https://developers.google.com/meridian/reference/api/meridian
+[11]: https://developers.google.com/meridian/docs/reference-list
 
 ## Support
 
@@ -151,7 +153,7 @@ To cite this repository:
   author = {Google Meridian Marketing Mix Modeling Team},
   title = {Meridian: Marketing Mix Modeling},
   url = {https://github.com/google/meridian},
-  version = {1.3.1},
+  version = {1.5.2},
   year = {2025},
 }
 ```

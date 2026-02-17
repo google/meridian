@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import altair as alt
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
-from meridian.analysis import formatter
 from meridian.analysis import summary_text
 from meridian.model import model
+from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -48,7 +48,10 @@ class ModelDiagnostics:
 
   def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
   @functools.lru_cache(maxsize=128)
@@ -243,6 +246,12 @@ class ModelDiagnostics:
 
     groupby = posterior_df.columns.tolist()
     groupby.remove(parameter)
+
+    parameter_99_max = prior_posterior_df[parameter].quantile(0.99)
+    # Remove outliers that make the chart hard to read.
+    prior_posterior_df[parameter] = prior_posterior_df[parameter].clip(
+        upper=parameter_99_max * c.OUTLIER_CLIP_FACTOR
+    )
     plot = (
         alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_density(
@@ -265,11 +274,15 @@ class ModelDiagnostics:
           x=c.INDEPENDENT
       )
 
-    return plot.properties(
-        title=formatter.custom_title_params(
-            summary_text.PRIOR_POSTERIOR_DIST_CHART_TITLE
+    return (
+        plot.properties(
+            title=formatter.custom_title_params(
+                summary_text.PRIOR_POSTERIOR_DIST_CHART_TITLE
+            )
         )
-    ).configure_axis(**formatter.TEXT_CONFIG)
+        .configure_axis(**formatter.TEXT_CONFIG)
+        .interactive()
+    )
 
   def plot_rhat_boxplot(self) -> alt.Chart:
     """Plots the R-hat box plot.
@@ -381,7 +394,10 @@ class ModelFit:
         represented as a value between zero and one. Default is `0.9`.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
     self._model_fit_data = self._analyzer.expected_vs_actual_data(
         use_kpi=self._use_kpi, confidence_level=confidence_level
@@ -651,7 +667,10 @@ class ReachAndFrequency:
       use_kpi: If `True`, KPI is used instead of revenue.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._selected_times = selected_times
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
     self._optimal_frequency_data = self._analyzer.optimal_freq(
@@ -851,7 +870,10 @@ class MediaEffects:
         the incremental revenue using the revenue per KPI (if available).
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._by_reach = by_reach
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
@@ -1425,7 +1447,10 @@ class MediaSummary:
       use_kpi: If `True`, use KPI instead of revenue.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(meridian)
+    self._analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
     self._confidence_level = confidence_level
     self._selected_times = selected_times
     self._marginal_roi_by_reach = marginal_roi_by_reach
@@ -1450,17 +1475,15 @@ class MediaSummary:
 
     Args:
       aggregate_times: If `True`, aggregates the metrics across all time
-        periods.  If `False`, returns time-varying metrics.
+        periods. If `False`, returns time-varying metrics.
 
     Returns:
       An `xarray.Dataset` containing the following:
         - **Coordinates:** `channel`, `metric` (`mean`, `median`, `ci_lo`,
-        `ci_hi`),
-          `distribution` (`prior`, `posterior`)
+          `ci_hi`), `distribution` (`prior`, `posterior`)
         - **Data variables:** `impressions`, `pct_of_impressions`, `spend`,
           `pct_of_spend`, `CPM`, `incremental_outcome`, `pct_of_contribution`,
-          `roi`,
-          `effectiveness`, `mroi`.
+          `roi`, `effectiveness`, `mroi`.
     """
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,

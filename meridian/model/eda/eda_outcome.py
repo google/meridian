@@ -1,4 +1,4 @@
-# Copyright 2025 The Meridian Authors.
+# Copyright 2026 The Meridian Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,25 +14,32 @@
 
 """Meridian EDA Outcome."""
 
+from collections.abc import Sequence
 import dataclasses
 import enum
 import typing
 import pandas as pd
 import xarray as xr
 
-__all__ = [
+__all__ = (
     "EDASeverity",
     "EDAFinding",
     "AnalysisLevel",
     "AnalysisArtifact",
+    "FindingCause",
     "PairwiseCorrArtifact",
     "StandardDeviationArtifact",
     "VIFArtifact",
     "KpiInvariabilityArtifact",
+    "CostPerMediaUnitArtifact",
+    "VariableGeoTimeCollinearityArtifact",
+    "PopulationCorrelationArtifact",
+    "PriorProbabilityArtifact",
     "EDACheckType",
     "ArtifactType",
     "EDAOutcome",
-]
+    "CriticalCheckEDAOutcomes",
+)
 
 
 @enum.unique
@@ -47,19 +54,31 @@ class EDASeverity(enum.Enum):
   ERROR = enum.auto()
 
 
-@dataclasses.dataclass(frozen=True)
-class EDAFinding:
-  """Encapsulates a single, specific finding from an EDA check.
+@enum.unique
+class FindingCause(enum.Enum):
+  """Enumeration for the type of finding, mapping to specific data tables.
 
   Attributes:
-      severity: The severity level of the finding.
-      explanation: A human-readable description about the EDA check and a
-        potential actionable guidance on how to address or interpret this
-        specific finding.
+    NONE: For informational findings that do not indicate a data issue.
+    MULTICOLLINEARITY: For findings related to multicollinearity between
+      variables (e.g. from VIF or pairwise correlation checks).
+    VARIABILITY: For findings related to variables with extreme variability
+      issues, such as no variation (e.g. KPI invariability check or standard
+      deviation checks).
+    INCONSISTENT_DATA: For findings related to inconsistent data points (e.g.
+      zero cost with positive media units, from cost per media unit check).
+    RUNTIME_ERROR: For findings that indicate a runtime error during an EDA
+      check.
+    OUTLIER: For findings related to outliers in data (e.g. cost per media unit
+      outlier check).
   """
 
-  severity: EDASeverity
-  explanation: str
+  NONE = enum.auto()
+  MULTICOLLINEARITY = enum.auto()
+  VARIABILITY = enum.auto()
+  INCONSISTENT_DATA = enum.auto()
+  RUNTIME_ERROR = enum.auto()
+  OUTLIER = enum.auto()
 
 
 @enum.unique
@@ -94,14 +113,36 @@ class AnalysisArtifact:
   level: AnalysisLevel
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class EDAFinding:
+  """A single, specific finding from an EDA check.
+
+  Attributes:
+      severity: The severity level of the finding.
+      explanation: A human-readable description about the EDA check and a
+        potential actionable guidance on how to address or interpret this
+        specific finding.
+      finding_cause: The type of finding, mapping to specific data tables.
+      associated_artifact: The artifact associated with the finding, if any.
+  """
+
+  __hash__ = None
+
+  severity: EDASeverity
+  explanation: str
+  finding_cause: FindingCause
+  associated_artifact: AnalysisArtifact | None = None
+
+
 @dataclasses.dataclass(frozen=True)
 class PairwiseCorrArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a single pairwise correlation analysis.
+  """Artifacts from a single pairwise correlation analysis.
 
   Attributes:
     corr_matrix: Pairwise correlation matrix.
     extreme_corr_var_pairs: DataFrame of variable pairs exceeding the
-      correlation threshold.
+      correlation threshold. Includes 'correlation' and 'abs_correlation'
+      columns, and is sorted by 'abs_correlation' in descending order.
     extreme_corr_threshold: The threshold used to identify extreme correlation
       pairs.
   """
@@ -113,7 +154,7 @@ class PairwiseCorrArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class StandardDeviationArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a standard deviation analysis.
+  """Artifacts from a standard deviation analysis.
 
   Attributes:
     variable: The variable for which standard deviation is calculated.
@@ -128,7 +169,7 @@ class StandardDeviationArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class VIFArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a single VIF analysis.
+  """Artifacts from a single VIF analysis.
 
   Attributes:
     vif_da: DataArray with VIF values.
@@ -136,12 +177,13 @@ class VIFArtifact(AnalysisArtifact):
   """
 
   vif_da: xr.DataArray
+  # TODO: change this naming
   outlier_df: pd.DataFrame
 
 
 @dataclasses.dataclass(frozen=True)
 class KpiInvariabilityArtifact(AnalysisArtifact):
-  """Encapsulates artifacts from a KPI invariability analysis.
+  """Artifacts from a KPI invariability analysis.
 
   Attributes:
     kpi_da: DataArray of the KPI that is examined for variability.
@@ -153,6 +195,65 @@ class KpiInvariabilityArtifact(AnalysisArtifact):
   kpi_stdev: xr.DataArray
 
 
+@dataclasses.dataclass(frozen=True)
+class CostPerMediaUnitArtifact(AnalysisArtifact):
+  """Artifacts from a Cost per Media Unit analysis.
+
+  Attributes:
+    cost_per_media_unit_da: DataArray of cost per media unit.
+    cost_media_unit_inconsistency_df: DataFrame of time periods where cost and
+      media units are inconsistent (e.g., zero cost with positive media units,
+      or positive cost with zero media units).
+    outlier_df: DataFrame with outliers of cost per media unit, along with the
+      spend, and media units.
+  """
+
+  cost_per_media_unit_da: xr.DataArray
+  cost_media_unit_inconsistency_df: pd.DataFrame
+  outlier_df: pd.DataFrame
+
+
+@dataclasses.dataclass(frozen=True)
+class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
+  """Artifacts from a Geo/Time Collinearity analysis for Treatment/Control variables.
+
+  Attributes:
+    rsquared_ds: Dataset containing adjusted R-squared values for treatments and
+      controls regressed against 'geo' and 'time'.
+  """
+
+  rsquared_ds: xr.Dataset
+
+
+@dataclasses.dataclass(frozen=True)
+class PopulationCorrelationArtifact(AnalysisArtifact):
+  """Artifacts from population correlation analysis.
+
+  Attributes:
+    correlation_ds: Dataset with Spearman correlation coefficients between
+      population and time-averaged treatments/controls. Each data variable in
+      the dataset corresponds to a variable in treatment_control_scaled_ds, and
+      its dimensions reflect the non-geo, non-time dimensions (e.g., 'channel').
+  """
+
+  correlation_ds: xr.Dataset
+
+
+@dataclasses.dataclass(frozen=True)
+class PriorProbabilityArtifact(AnalysisArtifact):
+  """Artifact for prior probability check.
+
+  Attributes:
+    prior_negative_baseline_prob: A float value for prior probability of
+      negative baseline.
+    mean_prior_contribution_da: The array containing the prior mean of each
+      treatment's contribution.
+  """
+
+  prior_negative_baseline_prob: float
+  mean_prior_contribution_da: xr.DataArray
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -161,9 +262,13 @@ class EDACheckType(enum.Enum):
   STANDARD_DEVIATION = enum.auto()
   MULTICOLLINEARITY = enum.auto()
   KPI_INVARIABILITY = enum.auto()
+  COST_PER_MEDIA_UNIT = enum.auto()
+  VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
+  POPULATION_CORRELATION = enum.auto()
+  PRIOR_PROBABILITY = enum.auto()
 
 
-ArtifactType = typing.TypeVar("ArtifactType", bound="AnalysisArtifact")
+ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -183,18 +288,77 @@ class EDAOutcome(typing.Generic[ArtifactType]):
   findings: list[EDAFinding]
   analysis_artifacts: list[ArtifactType]
 
-  @property
-  def get_geo_artifact(self) -> ArtifactType | None:
-    """Returns the geo-level analysis artifact."""
-    for artifact in self.analysis_artifacts:
-      if artifact.level == AnalysisLevel.GEO:
-        return artifact
-    return None
+  def _get_artifacts_by_level(self, level: AnalysisLevel) -> list[ArtifactType]:
+    """Helper method to retrieve artifacts by level.
 
-  @property
-  def get_national_artifact(self) -> ArtifactType | None:
-    """Returns the national-level analysis artifact."""
-    for artifact in self.analysis_artifacts:
-      if artifact.level == AnalysisLevel.NATIONAL:
-        return artifact
-    return None
+    Args:
+      level: The AnalysisLevel to filter artifacts by.
+
+    Returns:
+      A list of AnalysisArtifacts at the specified level.
+
+    Raises:
+      ValueError: If no artifacts of the specified level are found.
+    """
+    artifacts = [
+        artifact
+        for artifact in self.analysis_artifacts
+        if artifact.level == level
+    ]
+
+    if not artifacts:
+      raise ValueError(
+          f"The EDAOutcome for {self.check_type.name} check does not have "
+          f"{level.name.lower()} artifacts."
+      )
+    return artifacts
+
+  def get_geo_artifacts(self) -> list[ArtifactType]:
+    """Returns the geo-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level (e.g. Standard Deviation check).
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.GEO)
+
+  def get_national_artifacts(self) -> list[ArtifactType]:
+    """Returns the national-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level.
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.NATIONAL)
+
+  def get_overall_artifacts(self) -> list[ArtifactType]:
+    """Returns the overall-level analysis artifacts.
+
+    Returns a list to account for checks that produce multiple artifacts
+    at the same level.
+    """
+    return self._get_artifacts_by_level(AnalysisLevel.OVERALL)
+
+  def get_findings_by_cause_and_severity(
+      self, finding_cause: FindingCause, severity: EDASeverity
+  ) -> Sequence[EDAFinding]:
+    """Helper method to retrieve findings by cause and severity."""
+    return [
+        finding
+        for finding in self.findings
+        if finding.finding_cause == finding_cause
+        and finding.severity == severity
+    ]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CriticalCheckEDAOutcomes:
+  """Outcomes of all critical EDA checks.
+
+  Attributes:
+    kpi_invariability: Outcome of the KPI invariability check.
+    multicollinearity: Outcome of the multicollinearity (VIF) check.
+    pairwise_correlation: Outcome of the pairwise correlation check.
+  """
+
+  kpi_invariability: EDAOutcome[KpiInvariabilityArtifact]
+  multicollinearity: EDAOutcome[VIFArtifact]
+  pairwise_correlation: EDAOutcome[PairwiseCorrArtifact]
