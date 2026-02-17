@@ -600,11 +600,13 @@ class ReviewSummary:
     overall_status: The overall status of all checks.
     summary_message: A summary message of all checks.
     results: A list of all check results.
+    health_score: The health score of the model.
   """
 
   overall_status: Status
   summary_message: str
   results: list[CheckResult]
+  health_score: float
 
   def __repr__(self) -> str:
     report = []
@@ -613,6 +615,7 @@ class ReviewSummary:
     report.append("=" * 40)
     report.append(f"Overall Status: {self.overall_status.name}")
     report.append(f"Summary: {self.summary_message}")
+    report.append(f"Health Score: {self.health_score:.1f}")
     report.append("\nCheck Results:")
 
     for result in self.results:

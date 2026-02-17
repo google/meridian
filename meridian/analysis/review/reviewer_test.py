@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 from unittest import mock
-
 from absl.testing import absltest
+from absl.testing import parameterized
 import immutabledict
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
@@ -23,7 +24,7 @@ from meridian.analysis.review import results
 from meridian.analysis.review import reviewer
 
 
-class ReviewerTest(absltest.TestCase):
+class ReviewerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -59,13 +60,16 @@ class ReviewerTest(absltest.TestCase):
         convergence_check_cls_patcher
     )
     self._mock_convergence_check = self._mock_convergence_check_cls.return_value
-    self._mock_convergence_result = mock.Mock(
-        spec=results.ConvergenceCheckResult, case=mock.PropertyMock()
+    self._mock_convergence_result = mock.create_autospec(
+        spec=results.ConvergenceCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_convergence_result.__class__ = results.ConvergenceCheckResult
+    self._mock_convergence_result.config = configs.ConvergenceConfig()
     self._mock_convergence_check.run.return_value = (
         self._mock_convergence_result
     )
+    self._mock_convergence_check_cls.__name__ = 'ConvergenceCheck'
 
     roi_consistency_check_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.ROIConsistencyCheck'
@@ -76,15 +80,24 @@ class ReviewerTest(absltest.TestCase):
     self._mock_roi_consistency_check = (
         self._mock_roi_consistency_check_cls.return_value
     )
-    self._mock_roi_consistency_result = mock.Mock(
-        spec=results.ROIConsistencyCheckResult, case=mock.PropertyMock()
+    self._mock_roi_consistency_result = mock.create_autospec(
+        spec=results.ROIConsistencyCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_roi_consistency_result.__class__ = (
-        results.ROIConsistencyCheckResult
-    )
+    self._mock_roi_consistency_result.config = configs.ROIConsistencyConfig()
+    self._mock_roi_consistency_result.channel_results = [
+        mock.create_autospec(
+            spec=results.ROIConsistencyChannelResult,
+            instance=True,
+            spec_set=False,
+            case=results.ROIConsistencyChannelCases.ROI_PASS,
+        )
+    ]
     self._mock_roi_consistency_check.run.return_value = (
         self._mock_roi_consistency_result
     )
+    self._mock_roi_consistency_check_cls.__name__ = 'ROIConsistencyCheck'
 
     baseline_check_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.BaselineCheck'
@@ -93,11 +106,15 @@ class ReviewerTest(absltest.TestCase):
         baseline_check_cls_patcher
     )
     self._mock_baseline_check = self._mock_baseline_check_cls.return_value
-    self._mock_baseline_result = mock.Mock(
-        spec=results.BaselineCheckResult, case=mock.PropertyMock()
+    self._mock_baseline_result = mock.create_autospec(
+        spec=results.BaselineCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_baseline_result.__class__ = results.BaselineCheckResult
+    self._mock_baseline_result.config = configs.BaselineConfig()
+    self._mock_baseline_result.negative_baseline_prob = 0.05
     self._mock_baseline_check.run.return_value = self._mock_baseline_result
+    self._mock_baseline_check_cls.__name__ = 'BaselineCheck'
 
     bayesian_ppp_check_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.BayesianPPPCheck'
@@ -108,24 +125,34 @@ class ReviewerTest(absltest.TestCase):
     self._mock_bayesian_ppp_check = (
         self._mock_bayesian_ppp_check_cls.return_value
     )
-    self._mock_bayesian_ppp_result = mock.Mock(
-        spec=results.BayesianPPPCheckResult, case=mock.PropertyMock()
+    self._mock_bayesian_ppp_result = mock.create_autospec(
+        spec=results.BayesianPPPCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_bayesian_ppp_result.__class__ = results.BayesianPPPCheckResult
+    self._mock_bayesian_ppp_result.config = configs.BayesianPPPConfig()
+    self._mock_bayesian_ppp_result.bayesian_ppp = 0.1
     self._mock_bayesian_ppp_check.run.return_value = (
         self._mock_bayesian_ppp_result
     )
+    self._mock_bayesian_ppp_check_cls.__name__ = 'BayesianPPPCheck'
 
     gof_check_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.GoodnessOfFitCheck'
     )
     self._mock_gof_check_cls = self.enter_context(gof_check_cls_patcher)
     self._mock_gof_check = self._mock_gof_check_cls.return_value
-    self._mock_gof_result = mock.Mock(
-        spec=results.GoodnessOfFitCheckResult, case=mock.PropertyMock()
+    self._mock_gof_result = mock.create_autospec(
+        spec=results.GoodnessOfFitCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_gof_result.__class__ = results.GoodnessOfFitCheckResult
+    self._mock_gof_result.config = configs.GoodnessOfFitConfig()
+    self._mock_gof_result.metrics = results.GoodnessOfFitMetrics(
+        r_squared=1.0, mape=0.1, wmape=0.2
+    )
     self._mock_gof_check.run.return_value = self._mock_gof_result
+    self._mock_gof_check_cls.__name__ = 'GoodnessOfFitCheck'
 
     prior_posterior_shift_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.PriorPosteriorShiftCheck'
@@ -134,11 +161,27 @@ class ReviewerTest(absltest.TestCase):
         prior_posterior_shift_cls_patcher
     )
     self._mock_pps_check = self._mock_pps_check_cls.return_value
-    self._mock_pps_result = mock.Mock(
-        spec=results.PriorPosteriorShiftCheckResult, case=mock.PropertyMock()
+    self._mock_pps_result = mock.create_autospec(
+        spec=results.PriorPosteriorShiftCheckResult,
+        instance=True,
+        spec_set=False,
     )
-    self._mock_pps_result.__class__ = results.PriorPosteriorShiftCheckResult
+    self._mock_pps_result.config = configs.PriorPosteriorShiftConfig()
+    self._mock_pps_result.no_shift_channels = []
+    self._mock_pps_result.channel_results = [
+        mock.create_autospec(
+            spec=results.PriorPosteriorShiftChannelResult,
+            instance=True,
+            spec_set=False,
+        ),
+        mock.create_autospec(
+            spec=results.PriorPosteriorShiftChannelResult,
+            instance=True,
+            spec_set=False,
+        ),
+    ]
     self._mock_pps_check.run.return_value = self._mock_pps_result
+    self._mock_pps_check_cls.__name__ = 'PriorPosteriorShiftCheck'
 
     patcher = mock.patch.object(
         reviewer,
@@ -156,39 +199,147 @@ class ReviewerTest(absltest.TestCase):
     patcher.start()
     self.addCleanup(patcher.stop)
 
-  def test_run_all_pass(self):
+    mock_map_by_name = {
+        'BaselineCheck': self._mock_baseline_check_cls,
+        'BayesianPPPCheck': self._mock_bayesian_ppp_check_cls,
+        'GoodnessOfFitCheck': self._mock_gof_check_cls,
+        'PriorPosteriorShiftCheck': self._mock_pps_check_cls,
+        'ROIConsistencyCheck': self._mock_roi_consistency_check_cls,
+    }
+
+    new_components = []
+    for comp in reviewer._HEALTH_SCORE_COMPONENTS:
+      if comp.check_type.__name__ in mock_map_by_name:
+        new_components.append(
+            dataclasses.replace(
+                comp, check_type=mock_map_by_name[comp.check_type.__name__]
+            )
+        )
+      else:
+        new_components.append(comp)
+
+    patcher_health = mock.patch.object(
+        reviewer, '_HEALTH_SCORE_COMPONENTS', tuple(new_components)
+    )
+    patcher_health.start()
+    self.addCleanup(patcher_health.stop)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='perfect_score',
+          baseline_prob=0.05,
+          bayesian_ppp=0.1,
+          gof_r2=1.0,
+          pps_no_shift=0,
+          pps_total=2,
+          roi_review=0,
+          roi_total=1,
+          expected_score=100.0,
+      ),
+      dict(
+          testcase_name='worst_score',
+          baseline_prob=0.9,
+          bayesian_ppp=0.01,
+          gof_r2=0.0,
+          pps_no_shift=2,
+          pps_total=2,
+          roi_review=1,
+          roi_total=1,
+          expected_score=0.0,
+      ),
+      dict(
+          testcase_name='mixed_score',
+          baseline_prob=0.5,
+          bayesian_ppp=0.1,
+          gof_r2=0.5,
+          pps_no_shift=1,
+          pps_total=2,
+          roi_review=1,
+          roi_total=2,
+          expected_score=74.4,
+      ),
+      dict(
+          testcase_name='edge_cases',
+          baseline_prob=0.2,
+          bayesian_ppp=0.05,
+          gof_r2=0.6,
+          pps_no_shift=0,
+          pps_total=1,
+          roi_review=1,
+          roi_total=1,
+          expected_score=53.2,
+      ),
+  )
+  def test_health_score_value_correct(
+      self,
+      baseline_prob,
+      bayesian_ppp,
+      gof_r2,
+      pps_no_shift,
+      pps_total,
+      roi_review,
+      roi_total,
+      expected_score,
+  ):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_baseline_result.negative_baseline_prob = baseline_prob
     self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_bayesian_ppp_result.bayesian_ppp = bayesian_ppp
     self._mock_roi_consistency_result.case = (
         results.ROIConsistencyAggregateCases.PASS
     )
+
+    self._mock_roi_consistency_result.channel_results = []
+    for _ in range(roi_review):
+      self._mock_roi_consistency_result.channel_results.append(
+          mock.create_autospec(
+              spec=results.ROIConsistencyChannelResult,
+              instance=True,
+              spec_set=False,
+              case=mock.create_autospec(
+                  spec=results.ROIConsistencyChannelCases,
+                  instance=True,
+                  spec_set=False,
+                  status=results.Status.REVIEW,
+              ),
+          )
+      )
+    for _ in range(roi_total - roi_review):
+      self._mock_roi_consistency_result.channel_results.append(
+          mock.create_autospec(
+              spec=results.ROIConsistencyChannelResult,
+              instance=True,
+              spec_set=False,
+              case=mock.create_autospec(
+                  spec=results.ROIConsistencyChannelCases,
+                  instance=True,
+                  spec_set=False,
+                  status=results.Status.PASS,
+              ),
+          )
+      )
+
     self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_gof_result.metrics = results.GoodnessOfFitMetrics(
+        r_squared=gof_r2, mape=0.1, wmape=0.1
+    )
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+    self._mock_pps_result.no_shift_channels = ['ch'] * pps_no_shift
+    self._mock_pps_result.channel_results = [
+        mock.create_autospec(
+            spec=results.PriorPosteriorShiftChannelResult,
+            instance=True,
+            spec_set=False,
+        )
+    ] * pps_total
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
     )
     summary = review.run()
 
-    self.assertEqual(summary.overall_status, results.Status.PASS)
-    self.assertEqual(
-        summary.summary_message,
-        'Passed: No major quality issues were identified.',
-    )
-    self.assertLen(summary.results, 6)
-    self.assertEqual(summary.results[0], self._mock_convergence_result)
-    self.assertEqual(summary.results[1], self._mock_baseline_result)
-    self.assertEqual(summary.results[2], self._mock_bayesian_ppp_result)
-    self.assertEqual(summary.results[3], self._mock_gof_result)
-    self.assertEqual(summary.results[4], self._mock_pps_result)
-    self.assertEqual(summary.results[5], self._mock_roi_consistency_result)
-    self._mock_convergence_check_cls.assert_called_once()
-    self._mock_baseline_check_cls.assert_called_once()
-    self._mock_bayesian_ppp_check_cls.assert_called_once()
-    self._mock_roi_consistency_check_cls.assert_called_once()
-    self._mock_gof_check_cls.assert_called_once()
-    self._mock_pps_check_cls.assert_called_once()
+    self.assertAlmostEqual(summary.health_score, expected_score, places=1)
 
   def test_run_pass_with_roi_consistency_review(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
@@ -304,6 +455,7 @@ class ReviewerTest(absltest.TestCase):
         summary.summary_message,
         'Failed: Model did not converge. Other checks were skipped.',
     )
+    self.assertEqual(summary.health_score, 0.0)
     self.assertLen(summary.results, 1)
     self.assertEqual(summary.results[0], self._mock_convergence_result)
     self._mock_convergence_check_cls.assert_called_once()
@@ -553,12 +705,38 @@ class ReviewerTest(absltest.TestCase):
   def test_run_with_default_configs(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_baseline_result.negative_baseline_prob = 0.05
     self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_bayesian_ppp_result.bayesian_ppp = 0.1
     self._mock_roi_consistency_result.case = (
         results.ROIConsistencyAggregateCases.PASS
     )
+    self._mock_roi_consistency_result.channel_results = [
+        mock.create_autospec(
+            spec=results.ROIConsistencyChannelResult,
+            instance=True,
+            spec_set=False,
+            case=results.ROIConsistencyChannelCases.ROI_PASS,
+        )
+    ]
     self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_gof_result.metrics = results.GoodnessOfFitMetrics(
+        r_squared=0.7, mape=0.1, wmape=0.1
+    )
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+    self._mock_pps_result.no_shift_channels = []
+    self._mock_pps_result.channel_results = [
+        mock.create_autospec(
+            spec=results.PriorPosteriorShiftChannelResult,
+            instance=True,
+            spec_set=False,
+        ),
+        mock.create_autospec(
+            spec=results.PriorPosteriorShiftChannelResult,
+            instance=True,
+            spec_set=False,
+        ),
+    ]
 
     review = reviewer.ModelReviewer(
         meridian=self._meridian,
@@ -584,7 +762,21 @@ class ReviewerTest(absltest.TestCase):
         mock.ANY, mock.ANY, configs.PriorPosteriorShiftConfig()
     )
 
-  def test_run_with_custom_configs(self):
+  def test_run_missing_required_check_raises_error(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_baseline_result.negative_baseline_prob = 0.05
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.PASS
+    )
+    self._mock_roi_consistency_result.channel_results = [
+        mock.create_autospec(
+            spec=results.ROIConsistencyChannelResult,
+            instance=True,
+            spec_set=False,
+            case=results.ROIConsistencyChannelCases.ROI_PASS,
+        )
+    ]
     custom_checks = immutabledict.immutabledict({
         checks.BaselineCheck: configs.BaselineConfig(
             negative_baseline_prob_review_threshold=0.5,
@@ -600,34 +792,12 @@ class ReviewerTest(absltest.TestCase):
         reviewer, '_POST_CONVERGENCE_CHECKS', new=custom_checks
     ):
       review = reviewer.ModelReviewer(meridian=self._meridian)
-      summary = review.run()
-
-    self._mock_convergence_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.ConvergenceConfig()
-    )
-    self._mock_baseline_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.BaselineConfig(
-            negative_baseline_prob_review_threshold=0.5,
-            negative_baseline_prob_fail_threshold=0.9,
-        ),
-    )
-    self._mock_roi_consistency_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.ROIConsistencyConfig(
-            prior_lower_quantile=0.05,
-            prior_upper_quantile=0.95,
-        ),
-    )
-    self._mock_gof_check_cls.assert_not_called()
-    self._mock_bayesian_ppp_check_cls.assert_not_called()
-    self._mock_pps_check_cls.assert_not_called()
-    self.assertLen(summary.results, 3)
-    self.assertEqual(summary.results[0], self._mock_convergence_result)
-    self.assertEqual(summary.results[1], self._mock_baseline_result)
-    self.assertEqual(summary.results[2], self._mock_roi_consistency_result)
+      with self.assertRaisesRegex(
+          ValueError,
+          r'The following required checks results are missing: '
+          r"\['BayesianPPPCheck', 'GoodnessOfFitCheck'\].",
+      ):
+        review.run()
 
   def test_run_twice_clears_results(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
