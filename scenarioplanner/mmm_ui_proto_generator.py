@@ -125,7 +125,7 @@ class MmmUiProtoGenerator:
 
     copy_specs = []
     for spec in self._input_specs:
-      if not any(isinstance(spec, t) for t in _ALLOWED_SPEC_TYPES_FOR_UI):
+      if not isinstance(spec, tuple(_ALLOWED_SPEC_TYPES_FOR_UI)):
         raise ValueError(f"Unsupported spec type: {spec.__class__.__name__}")
 
       if isinstance(spec, bop.BudgetOptimizationSpec):
@@ -153,11 +153,7 @@ class MmmUiProtoGenerator:
 
     sub_specs = []
     for spec in copy_specs:
-      to_create_subspecs = self._time_breakdown_generators and any(
-          isinstance(spec, t) for t in _SPEC_TYPES_CREATE_SUBSPECS
-      )
-
-      if to_create_subspecs:
+      if isinstance(spec, tuple(_SPEC_TYPES_CREATE_SUBSPECS)):
         dates = self._enumerate_dates_open_end(spec)
         sub_specs.extend(
             _create_subspecs(spec, dates, self._time_breakdown_generators)
