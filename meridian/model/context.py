@@ -584,7 +584,7 @@ class ModelContext:
   @functools.cached_property
   def media_effects_dist(self) -> str:
     if self.is_national:
-      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]
+      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]  # pytype: disable=bad-return-type
     else:
       return self._model_spec.media_effects_dist
 
@@ -592,7 +592,7 @@ class ModelContext:
   def unique_sigma_for_each_geo(self) -> bool:
     if self.is_national:
       # Should evaluate to False.
-      return constants.NATIONAL_MODEL_SPEC_ARGS[
+      return constants.NATIONAL_MODEL_SPEC_ARGS[  # pytype: disable=bad-return-type
           constants.UNIQUE_SIGMA_FOR_EACH_GEO
       ]
     else:
