@@ -1324,6 +1324,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         inference_data=cls.inference_data,
     )
 
+  def test_init_populates_cached_properties(self):
+    with mock.patch.object(
+        context.ModelContext, "populate_cached_properties"
+    ) as mock_populate:
+      analyzer.Analyzer(
+          model_context=self.meridian.model_context,
+          inference_data=self.inference_data,
+      )
+      mock_populate.assert_called_once()
+
   def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
     # `use_kpi` is respected
     with warnings.catch_warnings(record=True) as w:
