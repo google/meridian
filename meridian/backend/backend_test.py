@@ -1615,15 +1615,29 @@ class RNGHandlerTest(BackendTest):
       self.assertIs(backend.RNGHandler, backend._TFRNGHandler)
     # pylint: enable=protected-access
 
-  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
-  def test_initialization_with_none_seed_is_noop(self, backend_name):
-    """Verifies that a None seed creates a handler that returns None."""
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="tensorflow",
+          backend_name=_TF,
+          assert_fn_name="assertIsNone",
+      ),
+      dict(
+          testcase_name="jax",
+          backend_name=_JAX,
+          assert_fn_name="assertIsNotNone",
+      ),
+  )
+  def test_initialization_with_none_seed_is_noop(
+      self, backend_name, assert_fn_name
+  ):
+    """Verifies behavior when initialized with None."""
     self._set_backend_for_test(backend_name)
     handler = backend.RNGHandler(None)
+    assertion = getattr(self, assert_fn_name)
 
     self.assertIsNone(handler._seed_input)
-    self.assertIsNone(handler.get_next_seed())
-    self.assertIsNone(handler.get_kernel_seed())
+    assertion(handler.get_next_seed())
+    assertion(handler.get_kernel_seed())
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_initialization_with_integer_seed(self, backend_name):
@@ -1770,17 +1784,29 @@ class RNGHandlerTest(BackendTest):
       else:
         test_utils.assert_allequal(s1, s2)
 
-  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
-  def test_advance_handler_with_none_seed(self, backend_name):
-    """Tests that advancing a no-op handler produces another no-op handler."""
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="tensorflow",
+          backend_name=_TF,
+          assert_fn_name="assertIsNone",
+      ),
+      dict(
+          testcase_name="jax",
+          backend_name=_JAX,
+          assert_fn_name="assertIsNotNone",
+      ),
+  )
+  def test_advance_handler_with_none_seed(self, backend_name, assert_fn_name):
+    """Tests advancing a handler initialized with None."""
     self._set_backend_for_test(backend_name)
     handler = backend.RNGHandler(None)
     new_handler = handler.advance_handler()
+    assertion = getattr(self, assert_fn_name)
 
     self.assertIsNot(handler, new_handler)
-    self.assertIsNone(new_handler._seed_input)
-    self.assertIsNone(handler.get_next_seed())
-    self.assertIsNone(new_handler.get_kernel_seed())
+    assertion(new_handler._seed_input)
+    assertion(handler.get_next_seed())
+    assertion(new_handler.get_kernel_seed())
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_advance_handler_provides_independent_handlers(self, backend_name):
@@ -1958,9 +1984,9 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
     tfd = backend.tfd
     loc = backend.zeros(dims, dtype=backend.float32)
     scale_diag = backend.ones(dims, dtype=backend.float32)
-    return tfd.JointDistributionNamed(
-        {"x": tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)}
-    )
+    return tfd.JointDistributionNamed({
+        "x": lambda: tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)
+    })
 
   def _run_sampling(
       self,
