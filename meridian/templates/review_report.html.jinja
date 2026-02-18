@@ -1,0 +1,105 @@
+<!--
+Copyright 2025 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&amp;subset=cyrillic,cyrillic-ext,latin-ext"
+          rel="stylesheet" />
+    <style>
+      {% include "style.css" ignore missing %}
+
+      .status-banner {
+        margin: 20px 32px 0px 30px;
+        padding: 20px;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .status-banner.pass {
+        background-color: #e6f4ea;
+        color: #137333;
+      }
+
+      .status-banner.review {
+        background-color: #fef7e0;
+        color: #b06000;
+      }
+
+      .status-banner.fail {
+        background-color: #fce8e6;
+        color: #c5221f;
+      }
+
+      .status-title {
+        font-family: 'Google Sans', sans-serif;
+        font-size: 20px;
+        font-weight: 500;
+      }
+
+      .status-message {
+        font-family: Roboto, sans-serif;
+        font-size: 16px;
+      }
+
+      .health-score {
+        margin-left: 30px;
+        margin-top: 20px;
+        font-family: 'Google Sans', sans-serif;
+        font-size: 18px;
+        color: #202124;
+      }
+
+      chip.pass {
+        background-color: #e6f4ea;
+        color: #137333;
+      }
+
+      chip.review {
+        background-color: #fef7e0;
+        color: #b06000;
+      }
+
+      chip.fail {
+        background-color: #fce8e6;
+        color: #c5221f;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <div class="header">
+      <div class="logo">
+        {% include "logo.html" ignore missing %}
+      </div>
+      <div class="title">
+        {{ title }}
+      </div>
+    </div>
+
+    <cards>
+      {% for card in cards %}
+        {{ card }}
+      {% endfor %}
+    </cards>
+  </body>
+</html>
