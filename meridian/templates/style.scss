@@ -348,3 +348,200 @@ stats-section {
     }
   }
 }
+
+/* Model Health Summary Card Styles */
+.model-health-card {
+  padding: 0; /* Reset default card padding if any */
+
+  .card-header {
+    border-bottom: 1px solid #dadce0;
+  }
+}
+
+.health-score-section {
+  display: flex;
+  padding: 32px;
+  gap: 40px;
+  align-items: flex-start;
+}
+
+.score-chart-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.health-score-chart {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: conic-gradient($chip_blue calc(var(--score) * 1%), #e8eaed 0);
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  &::before {
+    content: '';
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    background: #fff;
+    border-radius: 50%;
+  }
+
+  .score-value {
+    position: relative;
+    font-size: 36px;
+    font-weight: 400;
+    color: $title_dark_grey;
+    font-family: $google_sans;
+  }
+}
+
+.score-label {
+  font-family: $roboto;
+  font-size: 14px;
+  color: $text_grey;
+}
+
+.score-explanation {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .explanation-title {
+    font-family: $google_sans;
+    font-size: 16px;
+    font-weight: 500;
+    color: $title_dark_grey;
+  }
+
+  p {
+    margin: 0;
+    font-family: $roboto;
+    font-size: 14px;
+    line-height: 20px;
+    color: $text_grey;
+  }
+}
+
+.status-banner-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  font-family: $roboto;
+  font-size: 14px;
+  color: $text_grey;
+  margin: 0;
+
+  &.fail,
+  &.review {
+    background-color: #fce8e6;
+    color: #c5221f;
+    .material-icons-outlined {
+      color: #d93025;
+    }
+  }
+
+  /* Optional: differentiate review vs fail if needed, but requirements imply red alert for issues */
+}
+
+.metrics-section {
+  padding: 32px;
+
+  .section-title {
+    font-family: $google_sans;
+    font-size: 18px;
+    font-weight: 500;
+    color: $title_dark_grey;
+    margin-bottom: 24px;
+  }
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: $roboto;
+  font-size: 14px;
+
+  th {
+    text-align: left;
+    color: $text_grey;
+    font-weight: 500;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #dadce0;
+  }
+
+  td {
+    padding: 16px 0;
+    border-bottom: 1px solid #f1f3f4;
+    color: $text_grey;
+    vertical-align: top;
+
+    &:first-child {
+      width: 200px;
+      font-weight: 500; /* Metric names often slightly bolder */
+    }
+
+    &:nth-child(2) {
+      width: 150px;
+    }
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.advanced-section {
+  padding: 0 32px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.advanced-check-row {
+  display: flex;
+  padding: 24px 0;
+  border-top: 1px solid #dadce0;
+  gap: 24px;
+
+  .check-info {
+    width: 350px; /* Fixed width for alignment */
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .check-name {
+    font-family: $roboto;
+    font-size: 14px;
+    font-weight: 500;
+    color: $text_grey;
+  }
+
+  .check-stats {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .stats-text {
+      font-family: $roboto;
+      font-size: 12px;
+      color: $text_grey;
+    }
+  }
+
+  .check-recommendation {
+    font-family: $roboto;
+    font-size: 14px;
+    line-height: 20px;
+    color: $text_grey;
+    flex: 1;
+  }
+}

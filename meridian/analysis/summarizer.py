@@ -14,15 +14,18 @@
 
 """Summarization module that creates a 2-page HTML report."""
 
+from collections.abc import Mapping
 from collections.abc import Sequence
 import functools
 import os
+from typing import Any
 
 import jinja2
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
+from meridian.analysis.review import results as review_results
 from meridian.data import time_coordinates as tc
 from meridian.model import model
 from meridian.templates import formatter
@@ -31,11 +34,12 @@ import xarray as xr
 
 
 __all__ = [
-    'Summarizer',
-    'MODEL_FIT_CARD_SPEC',
-    'CHANNEL_CONTRIB_CARD_SPEC',
-    'PERFORMANCE_BREAKDOWN_CARD_SPEC',
-    'RESPONSE_CURVES_CARD_SPEC',
+    "Summarizer",
+    "MODEL_FIT_CARD_SPEC",
+    "CHANNEL_CONTRIB_CARD_SPEC",
+    "PERFORMANCE_BREAKDOWN_CARD_SPEC",
+    "RESPONSE_CURVES_CARD_SPEC",
+    "ReviewSummarizer",
 ]
 
 
@@ -95,7 +99,7 @@ class Summarizer:
       end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
     """
     os.makedirs(filepath, exist_ok=True)
-    with open(os.path.join(filepath, filename), 'w') as f:
+    with open(os.path.join(filepath, filename), "w") as f:
       f.write(self._gen_model_results_summary(start_date, end_date))
 
   def _gen_model_results_summary(
@@ -116,15 +120,15 @@ class Summarizer:
 
     if start_date not in all_dates:
       raise ValueError(
-          f'start_date ({start_date}) must be in the time coordinates!'
+          f"start_date ({start_date}) must be in the time coordinates!"
       )
     if end_date not in all_dates:
       raise ValueError(
-          f'end_date ({end_date}) must be in the time coordinates!'
+          f"end_date ({end_date}) must be in the time coordinates!"
       )
     if start_date > end_date:
       raise ValueError(
-          f'start_date ({start_date}) must be before end_date ({end_date})!'
+          f"start_date ({start_date}) must be before end_date ({end_date})!"
       )
 
     selected_times = self._meridian.expand_selected_time_dims(
@@ -133,17 +137,17 @@ class Summarizer:
 
     template_env = formatter.create_template_env()
     template_env.globals[c.START_DATE] = start_date.strftime(
-        f'%b {start_date.day}, %Y'
+        f"%b {start_date.day}, %Y"
     )
 
     interval_days = self._meridian.input_data.time_coordinates.interval_days
     end_date_adjusted = end_date + pd.Timedelta(days=interval_days)
 
     template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
-        f'%b {end_date_adjusted.day}, %Y'
+        f"%b {end_date_adjusted.day}, %Y"
     )
 
-    html_template = template_env.get_template('summary.html.jinja')
+    html_template = template_env.get_template("summary.html.jinja")
     cards_htmls = self._create_cards_htmls(
         template_env,
         selected_times=selected_times,
@@ -243,7 +247,7 @@ class Summarizer:
             national_table[c.EVALUATION_SET_VAR] == eval_set
         ]
         row_values = [
-            '{:.2f}'.format(sliced_table_by_eval_set[c.R_SQUARED].item()),
+            "{:.2f}".format(sliced_table_by_eval_set[c.R_SQUARED].item()),
             formatter.format_percent(sliced_table_by_eval_set[c.MAPE].item()),
             formatter.format_percent(sliced_table_by_eval_set[c.WMAPE].item()),
         ]
@@ -261,9 +265,9 @@ class Summarizer:
     else:  # No holdout_id present, so metrics are taken from 'All Data'.
       row_values = [[
           summary_text.ALL_DATA_LABEL,
-          '{:.2f}'.format(national_table[c.R_SQUARED].item()),
-          '{:.0%}'.format(national_table[c.MAPE].item()),
-          '{:.0%}'.format(national_table[c.WMAPE].item()),
+          "{:.2f}".format(national_table[c.R_SQUARED].item()),
+          "{:.0%}".format(national_table[c.MAPE].item()),
+          "{:.0%}".format(national_table[c.WMAPE].item()),
       ]]
 
     return formatter.TableSpec(
@@ -343,7 +347,7 @@ class Summarizer:
     )
     insights = summary_text.CHANNEL_CONTRIB_INSIGHTS_FORMAT.format(
         outcome=outcome,
-        lead_channels=' and '.join(formatted_channels),
+        lead_channels=" and ".join(formatted_channels),
     )
     return formatter.create_card_html(
         template_env,
@@ -487,9 +491,9 @@ class Summarizer:
       assert self._meridian.n_rf_channels > 0
       optimal_rf = self._select_optimal_rf_data(media_summary, reach_frequency)
       channel_name = optimal_rf[c.RF_CHANNEL].values.item()
-      opt_freq = '{:.1f}'.format(optimal_rf.values.item())
+      opt_freq = "{:.1f}".format(optimal_rf.values.item())
       description = summary_text.OPTIMAL_FREQ_CHART_DESCRIPTION
-      insights = ' '.join([
+      insights = " ".join([
           insights,
           summary_text.OPTIMAL_FREQUENCY_INSIGHTS_FORMAT.format(
               rf_channel=channel_name,
@@ -542,3 +546,123 @@ class Summarizer:
 
   def _kpi_or_revenue(self) -> str:
     return c.KPI.upper() if self._use_kpi else c.REVENUE
+
+
+class ReviewSummarizer:
+  """Generates HTML summary report from the Model Review results."""
+
+  def __init__(self, review_summary: review_results.ReviewSummary):
+    """Initializes the ReviewSummarizer with a ReviewSummary object."""
+    self._review_summary = review_summary
+    self._template_env = formatter.create_template_env()
+
+  def output_report(self, filename: str, filepath: str):
+    """Generates and saves the HTML report output.
+
+    Args:
+      filename: The filename for the generated HTML output.
+      filepath: The path to the directory where the file will be saved.
+    """
+    os.makedirs(filepath, exist_ok=True)
+    with open(os.path.join(filepath, filename), "w") as f:
+      f.write(self.generate_report())
+
+  def generate_report(self) -> str:
+    """Generates HTML report output (as sanitized content str)."""
+    cards_htmls = self._create_cards_htmls()
+    html_template = self._template_env.get_template("review_report.html.jinja")
+
+    return html_template.render(
+        title="Model Quality Checks",
+        overall_status=self._review_summary.overall_status.name,
+        summary_message=self._review_summary.summary_message,
+        health_score=self._review_summary.health_score,
+        cards=cards_htmls,
+    )
+
+  def _create_cards_htmls(self) -> Sequence[str]:
+    """Creates the HTML snippets for cards in the summary page."""
+    return [self._create_model_health_summary_card()]
+
+  def _create_model_health_summary_card(self) -> str:
+    """Creates the HTML snippet for the Model Health Summary Card."""
+    metrics_checks = []
+    advanced_checks = []
+
+    for result in self._review_summary.results:
+      if isinstance(
+          result,
+          (
+              review_results.PriorPosteriorShiftCheckResult,
+              review_results.ROIConsistencyCheckResult,
+          ),
+      ):
+        advanced_checks.append(self._get_advanced_check_data(result))
+      else:
+        metrics_checks.append(self._get_metric_check_data(result))
+
+    template = self._template_env.get_template(
+        "model_health_summary_card.html.jinja"
+    )
+    return template.render(
+        health_score=self._review_summary.health_score,
+        overall_status=self._review_summary.overall_status.name,
+        metrics_checks=metrics_checks,
+        advanced_checks=advanced_checks,
+    )
+
+  def _get_metric_check_data(
+      self, result: review_results.CheckResult
+  ) -> Mapping[str, Any]:
+    """Returns data for a metric check."""
+    return {
+        "name": self._get_check_name(result),
+        "status": result.case.status.name,
+        "recommendation": result.recommendation,
+    }
+
+  def _get_advanced_check_data(
+      self, result: review_results.CheckResult
+  ) -> Mapping[str, Any]:
+    """Returns data for an advanced check (PPS or ROI)."""
+    total_channels = 0
+    passed_channels = 0
+
+    if isinstance(result, review_results.PriorPosteriorShiftCheckResult):
+      total_channels = len(result.channel_results)
+      passed_channels = sum(
+          1
+          for r in result.channel_results
+          if r.case.status == review_results.Status.PASS
+      )
+    elif isinstance(result, review_results.ROIConsistencyCheckResult):
+      total_channels = len(result.channel_results)
+      passed_channels = sum(
+          1
+          for r in result.channel_results
+          if r.case.status == review_results.Status.PASS
+      )
+
+    return {
+        "name": self._get_check_name(result),
+        "status": result.case.status.name,
+        "recommendation": result.recommendation,
+        "total_channels": total_channels,
+        "passed_channels": passed_channels,
+    }
+
+  def _get_check_name(self, result: review_results.CheckResult) -> str:
+    """Returns a readable name for the check."""
+    name = result.__class__.__name__
+    if name.endswith("CheckResult"):
+      name = name[:-11]  # Remove 'CheckResult'
+
+    # Add spacing for CamelCase names if needed, or map specific names
+    # For now, just simplistic separation or specific mapping
+    name_map = {
+        "GoodnessOfFit": "Goodness of Fit",
+        "BayesianPPP": "Bayesian p-value",
+        "PriorPosteriorShift": "Prior-Posterior Shift",
+        "ROIConsistency": "ROI consistency",
+    }
+    return name_map.get(name, name)

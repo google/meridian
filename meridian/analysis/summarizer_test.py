@@ -26,6 +26,8 @@ from meridian.analysis import analyzer
 from meridian.analysis import summarizer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils
+from meridian.analysis.review import configs as review_configs
+from meridian.analysis.review import results as review_results
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.data import time_coordinates as tc
@@ -1287,5 +1289,97 @@ class SummarizerTest(parameterized.TestCase):
     )
 
 
+class ReviewSummarizerTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._mock_convergence_result = mock.create_autospec(
+        spec=review_results.ConvergenceCheckResult,
+        instance=True,
+        spec_set=False,
+        case=review_results.ConvergenceCases.CONVERGED,
+        config=review_configs.ConvergenceConfig(),
+        max_rhat=1.01,
+        max_parameter='beta_geo',
+        recommendation='No recommendation needed.',
+    )
+    self._mock_baseline_result = mock.create_autospec(
+        spec=review_results.BaselineCheckResult,
+        instance=True,
+        spec_set=False,
+        case=review_results.BaselineCases.PASS,
+        config=review_configs.BaselineConfig(),
+        negative_baseline_prob=0.01,
+        recommendation='Check passed.',
+    )
+    # Mock details property for all results
+    type(self._mock_convergence_result).details = mock.PropertyMock(
+        return_value={'max_rhat': 1.01, 'max_parameter': 'beta_geo'}
+    )
+    type(self._mock_baseline_result).details = mock.PropertyMock(
+        return_value={'negative_baseline_prob': 0.01}
+    )
+
+
+  def test_generate_report_runs_without_error(self):
+    review_summary = review_results.ReviewSummary(
+        overall_status=review_results.Status.PASS,
+        summary_message='Model passed all checks.',
+        results=[self._mock_convergence_result, self._mock_baseline_result],
+        health_score=100.0,
+    )
+
+    review_summarizer = summarizer.ReviewSummarizer(review_summary)
+    html_output = review_summarizer.generate_report()
+
+    self.assertIn('Model Quality Checks', html_output)
+    self.assertIn('Model health summary card', html_output)
+    self.assertIn('100%', html_output)
+    self.assertIn('Convergence', html_output)
+    self.assertIn('Baseline', html_output)
+    # These should NOT be present anymore
+    self.assertNotIn('Overall Status: PASS', html_output)
+    self.assertNotIn('Model passed all checks.', html_output)
+    self.assertNotIn('Health Score: 100.0 / 100.0', html_output)
+
+  def test_model_health_summary_card_structure(self):
+    review_summary = review_results.ReviewSummary(
+        overall_status=review_results.Status.FAIL,
+        summary_message='Model failed checks.',
+        results=[self._mock_convergence_result],
+        health_score=45.5,
+    )
+    review_summarizer = summarizer.ReviewSummarizer(review_summary)
+    html_output = review_summarizer.generate_report()
+
+    self.assertIn('Model health summary card', html_output)
+    self.assertIn('46%', html_output)
+    self.assertIn('Quality issues were detected', html_output)
+    self.assertIn('Metrics check', html_output)
+    self.assertIn('Convergence', html_output)
+    # Check for the css custom property
+    self.assertIn('style="--score: 45.5"', html_output)
+
+  def test_output_report_saves_file(self):
+    review_summary = review_results.ReviewSummary(
+        overall_status=review_results.Status.PASS,
+        summary_message='Model passed.',
+        results=[],
+        health_score=100.0,
+    )
+    review_summarizer = summarizer.ReviewSummarizer(review_summary)
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+      filename = 'report.html'
+      review_summarizer.output_report(filename, tmpdirname)
+
+      self.assertTrue(os.path.exists(os.path.join(tmpdirname, filename)))
+      with open(os.path.join(tmpdirname, filename), 'r') as f:
+        content = f.read()
+        self.assertIn('Model Quality Checks', content)
+
+
+
 if __name__ == '__main__':
+  # Force rebuild
   absltest.main()
