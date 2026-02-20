@@ -154,6 +154,16 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     Returns:
       A MeridianModel proto.
     """
+
+    backend_name = getattr(
+        mmm, 'computation_backend', 'COMPUTATION_BACKEND_UNSPECIFIED'
+    )
+    computation_backend_enum = getattr(
+        meridian_pb.ComputationBackend,
+        backend_name,
+        meridian_pb.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED,
+    )
+
     model_proto = meridian_pb.MeridianModel(
         model_id=model_id,
         model_version=str(meridian_version),
@@ -167,6 +177,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
             mmm.inference_data
         ),
         arviz_version=az.__version__,
+        computation_backend=computation_backend_enum,
     )
     # For backwards compatibility, only serialize EDA spec if it exists.
     if hasattr(mmm, 'eda_spec'):
@@ -263,6 +274,23 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       raise ValueError('`serialized.model` is not a `MeridianModel`.')
     serialized.model.Unpack(ser_meridian)
     serialized_version = semver.VersionInfo.parse(ser_meridian.model_version)
+
+    stored_backend = ser_meridian.computation_backend
+    current_backend = backend.computation_backend()
+    if (
+        stored_backend
+        != meridian_pb.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED
+        and stored_backend != current_backend
+    ):
+      warnings.warn(
+          (
+              'The model was trained using'
+              f' {meridian_pb.ComputationBackend.Name(stored_backend)}, but the'
+              f' current backend is {current_backend.name}. This may lead to'
+              ' numerical discrepancies or compatibility issues.'
+          ),
+          UserWarning,
+      )
 
     deserialized_hyperparameters = (
         hyperparameters.HyperparametersSerde().deserialize(

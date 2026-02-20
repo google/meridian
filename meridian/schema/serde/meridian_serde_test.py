@@ -15,6 +15,7 @@
 import os
 from typing import Callable
 from unittest import mock
+import warnings
 
 from absl import flags
 from absl.testing import absltest
@@ -24,6 +25,7 @@ from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.backend import config as backend_config
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import input_data as meridian_input_data
 from meridian.data import test_utils
@@ -185,6 +187,82 @@ class MeridianSerdeTest(parameterized.TestCase):
     )
     serialized_model.model.Unpack(unpacked_model)
     self.assertEqual(unpacked_model.model_version, str(meridian_version))
+
+  def test_serialize_sets_computation_backend(self):
+    meridian_model = model.Meridian(
+        input_data=_INPUT_DATA, model_spec=test_data.get_default_model_spec()
+    )
+    with mock.patch.object(
+        model.Meridian,
+        'computation_backend',
+        new_callable=mock.PropertyMock,
+    ) as mock_backend:
+      mock_backend.return_value = 'JAX'
+      serialized_model = self.serde.serialize(meridian_model)
+
+    unpacked_model = meridian_pb.MeridianModel()
+    serialized_model.model.Unpack(unpacked_model)
+    self.assertEqual(
+        unpacked_model.computation_backend, meridian_pb.ComputationBackend.JAX
+    )
+
+  def test_deserialize_warns_on_backend_mismatch(self):
+    # Create a proto indicating it was trained with JAX.
+    meridian_model = meridian_pb.MeridianModel(
+        model_version='1.2.3',
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        computation_backend=meridian_pb.ComputationBackend.JAX,
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        model=any_model,
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+    )
+
+    # Force the current environment to be TENSORFLOW.
+    with mock.patch.object(
+        backend,
+        'computation_backend',
+        return_value=backend_config.ComputationBackend.TENSORFLOW,
+    ):
+      with self.assertWarnsRegex(
+          UserWarning,
+          'The model was trained using JAX, but the current backend is'
+          ' TENSORFLOW',
+      ):
+        self.serde.deserialize(mmm_kernel)
+
+  def test_deserialize_no_warning_on_backend_match(self):
+    # Create a proto indicating it was trained with TENSORFLOW.
+    meridian_model = meridian_pb.MeridianModel(
+        model_version='1.2.3',
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        computation_backend=meridian_pb.ComputationBackend.TENSORFLOW,
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        model=any_model,
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+    )
+
+    # Force the current environment to be TENSORFLOW.
+    with mock.patch.object(
+        backend,
+        'computation_backend',
+        return_value=backend_config.ComputationBackend.TENSORFLOW,
+    ):
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter('always')
+        self.serde.deserialize(mmm_kernel)
+        # Ensure no backend-related warnings were raised.
+        backend_warnings = [x for x in w if 'backend' in str(x.message).lower()]
+        self.assertEmpty(backend_warnings)
 
   def test_serialize_no_controls(self):
     meridian_model = model.Meridian(
