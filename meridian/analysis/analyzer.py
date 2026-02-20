@@ -4289,6 +4289,90 @@ class Analyzer:
       )
     return pd.DataFrame(rhat_summary)
 
+  def channel_contribution(
+      self,
+      use_posterior: bool = True,
+      non_media_baseline_values: Sequence[float | str] | None = None,
+      include_non_paid_channels: bool = True,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> xr.Dataset:
+    """Method to generate a channel contribution by time xarray.Dataset.
+
+    Args:
+      use_posterior: Boolean. If `True`, then the incremental outcome posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      non_media_baseline_values: Optional list of shape (n_non_media_channels,).
+        Each element is either a float (which means that the fixed value will be
+        used as baseline for the given channel) or one of the strings "min" or
+        "max" (which mean that the global minimum or maximum value will be used
+        as baseline for the scaled values of the given non_media treatments
+        channel). If not provided, the minimum value is used as the baseline for
+        each non_media treatments channel.
+      include_non_paid_channels: Boolean. If `True`, then non-media treatments
+        and organic effects are included in the calculation. If `False`, then
+        only the paid media and RF effects are included.
+      batch_size: Integer representing the maximum draws per chain in each
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
+
+    Returns:
+      An `xarray.Dataset` containing the data needed to visualize channel
+      contribution by time.
+    """
+
+    aggregate_kwargs = {
+        "aggregate_geos": True,
+        "aggregate_times": False,
+    }
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
+
+    incremental_outcome = self.incremental_outcome(
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        non_media_baseline_values=non_media_baseline_values,
+        include_non_paid_channels=include_non_paid_channels,
+        batch_size=batch_size,
+        **aggregate_kwargs,
+    )
+
+    baseline = self._calculate_baseline_expected_outcome(
+        use_kpi=use_kpi,
+        non_media_baseline_values=non_media_baseline_values,
+        **aggregate_kwargs,
+    )
+    baseline_contributions = tf.reduce_mean(baseline, axis=[0, 1])
+    baseline_contributions_expanded = baseline_contributions[..., None]
+
+    channel_contributions = tf.reduce_mean(incremental_outcome, axis=[0, 1])
+    all_contributions = tf.concat(
+        [channel_contributions, baseline_contributions_expanded], axis=-1
+    )
+
+    channels = (
+        self._meridian.input_data.get_all_channels()
+        if include_non_paid_channels
+        else self._meridian.input_data.get_all_paid_channels()
+    )
+    channel_dims = np.append(channels, constants.BASELINE)
+    time_dims = self._meridian.input_data.time.data
+
+    xr_coords = {
+        constants.TIME: ([constants.TIME], time_dims),
+        constants.CHANNEL: ([constants.CHANNEL], channel_dims),
+    }
+    xr_data = {
+        constants.INCREMENTAL_OUTCOME: (
+            (constants.TIME, constants.CHANNEL),
+            all_contributions,
+        )
+    }
+    return xr.Dataset(
+        data_vars=xr_data,
+        coords=xr_coords,
+    )
+
   def response_curves(
       self,
       new_data: DataTensors | None = None,
