@@ -474,6 +474,7 @@ UNSAVED_PARAMETERS = (
     GAMMA_GC_DEV,
     GAMMA_GN_DEV,
     TAU_G_EXCL_BASELINE,  # Used to derive TAU_G.
+    'y',
 )
 IGNORED_PRIORS_MEDIA = immutabledict.immutabledict({
     TREATMENT_PRIOR_TYPE_ROI: (
