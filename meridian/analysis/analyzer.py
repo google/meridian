@@ -273,6 +273,18 @@ class DataTensors(backend.ExtensionType):
       new_tensor = getattr(self, field.name)
       if field.name == constants.RF_IMPRESSIONS:
         old_tensor = getattr(model_context.rf_tensors, field.name)
+      elif field.name == constants.TIME:
+        old_tensor = backend.to_tensor(
+            model_context.input_data.time.values.tolist(), dtype=backend.string
+        )
+        if new_tensor is not None and old_tensor is not None:
+          if hasattr(new_tensor, 'shape') and len(new_tensor.shape) == 1:
+            if new_tensor.shape[0] != old_tensor.shape[0]:
+              return new_tensor.shape[0]
+          elif hasattr(new_tensor, '__len__') and hasattr(old_tensor, '__len__'):
+            if len(new_tensor) != len(old_tensor):
+              return len(new_tensor)
+        continue
       else:
         old_tensor = getattr(model_context.input_data, field.name)
       # The time dimension is always the second dimension, except for when spend
@@ -393,7 +405,7 @@ class DataTensors(backend.ExtensionType):
       tensor = getattr(self, field.name)
       if tensor is None:
         continue
-      if field.name not in required_variables:
+      if field.name not in required_variables and field.name != constants.TIME:
         warnings.warn(
             f"A `{field.name}` value was passed in the `new_data` argument. "
             "This is not supported and will be ignored."
@@ -554,7 +566,7 @@ class DataTensors(backend.ExtensionType):
     output = {}
     for field in dataclasses.fields(self):
       var_name = field.name
-      if var_name not in required_fields:
+      if var_name not in required_fields and var_name != constants.TIME:
         continue
 
       if hasattr(model_context.media_tensors, var_name):
@@ -1983,7 +1995,6 @@ class Analyzer:
         has_media_dim=True,
     )
 
-  # TODO: Add support for `new_data.time`.
   def incremental_outcome(
       self,
       use_posterior: bool = True,
@@ -2190,18 +2201,21 @@ class Analyzer:
         model_context=self.model_context
     )
 
+    new_time = data_tensors.time if data_tensors.time is not None else m_context.input_data.time
+    new_media_time = data_tensors.time if data_tensors.time is not None else m_context.input_data.media_time
+
     if new_n_media_times is None:
       new_n_media_times = m_context.n_media_times
       _validate_selected_times(
           selected_times=selected_times,
-          input_times=m_context.input_data.time,
+          input_times=new_time,
           n_times=m_context.n_times,
           arg_name="selected_times",
           comparison_arg_name="the input data",
       )
       _validate_selected_times(
           selected_times=media_selected_times,
-          input_times=m_context.input_data.media_time,
+          input_times=new_media_time,
           n_times=m_context.n_media_times,
           arg_name="media_selected_times",
           comparison_arg_name="the media tensors",
@@ -2217,7 +2231,7 @@ class Analyzer:
     else:
       if all(isinstance(time, str) for time in media_selected_times):
         media_selected_times = [
-            x in media_selected_times for x in m_context.input_data.media_time
+            x in media_selected_times for x in new_media_time
         ]
 
     # Set counterfactual tensors based on the scaling factors and the media
