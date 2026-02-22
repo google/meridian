@@ -1,5 +1,5 @@
-# Check if the current `meridian.__version__` semver has been incremented. If so, set a
-# `new_version` output.
+name: Version Check
+description: Check if meridian.__version__ was incremented vs the latest v*-tag (fork/shallow friendly).
 
 inputs:
   python_version:
@@ -20,12 +20,14 @@ outputs:
 runs:
   using: composite
   steps:
+    # Ensure we have the repo and history. (Keeping checkout here so the action is self-contained.)
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Important: fetch all tags for comparison
         fetch-tags: true
     - shell: bash
       run: pip install semver
+
     - id: version_check
       name: Check Version
       shell: bash
@@ -46,10 +48,10 @@ runs:
           exit 0
         fi
 
-        # Validate CURRENT_VERSION using semver check
+        # Validate CURRENT_VERSION using semver (PEP 440-compatible versions like 1.2.3, 1.2.3rc1)
         if ! python3 -m semver check "$CURRENT_VERSION"; then
           echo "Error: Invalid semantic version: $CURRENT_VERSION"
-          exit 1 # Fail fast
+          exit 1
         fi
 
         if [[ $(python3 -m semver compare "$CURRENT_VERSION" "$PREVIOUS_VERSION") -eq 1 ]]; then

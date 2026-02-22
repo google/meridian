@@ -22,6 +22,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 -->
 
 ## [Unreleased]
+* ``build_design_matrix()`` now detects the temporal dimension name and
+  supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
 ## [1.5.2] - 2026-02-10
 
