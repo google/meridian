@@ -1953,13 +1953,12 @@ def sample_input_data_for_aks_with_expected_knot_info() -> (
       ),
       'non_revenue',
   )
+  expected_knots = np.array(
+      [0, 11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90, 116]
+  )
   expected_knot_info = knots.KnotInfo(
-      n_knots=13,
-      knot_locations=np.array(
-          [11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90]
-      ),
-      weights=knots.l1_distance_weights(
-          117, np.array([11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90])
-      ),
+      n_knots=15,
+      knot_locations=expected_knots,
+      weights=knots.l1_distance_weights(117, expected_knots),
   )
   return data, expected_knot_info
