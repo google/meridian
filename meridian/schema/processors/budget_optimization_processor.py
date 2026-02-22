@@ -715,13 +715,15 @@ def _to_channel_response_curve_protos(
       for channel in channels
   }
 
-  for _, row in df.iterrows():
-    channel = row[c.CHANNEL]
-    response_point = response_curve_pb.ResponsePoint(
-        input_value=row[c.SPEND],
-        incremental_kpi=row[c.MEAN],
-    )
-    channel_response_curves[channel].response_points.append(response_point)
+  for channel, group in df.groupby(c.CHANNEL):
+    response_points = [
+        response_curve_pb.ResponsePoint(
+            input_value=row.SPEND,
+            incremental_kpi=row.MEAN,
+        )
+        for row in group.itertuples(index=False)
+    ]
+    channel_response_curves[channel].response_points.extend(response_points)
 
   return channel_response_curves
 
