@@ -1253,6 +1253,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   reshape = _ops.reshape
   roll = _tf_roll
   set_random_seed = tf_backend.keras.utils.set_random_seed
+  softplus = _ops.math.softplus
   split = _ops.split
   stack = _ops.stack
   squeeze = _ops.squeeze

@@ -986,6 +986,10 @@ class Analyzer:
     tau_gt = backend.expand_dims(dist_tensors.tau_g, -1) + backend.expand_dims(
         dist_tensors.mu_t, -2
     )
+    # When force_non_negative_baseline_total is True, apply softplus to the
+    # combined baseline to match the constraint applied during model fitting.
+    if self.model_context.model_spec.force_non_negative_baseline_total:
+      tau_gt = backend.softplus(tau_gt)
     combined_media_transformed, combined_beta = (
         self._get_transformed_media_and_beta(
             data_tensors=data_tensors,

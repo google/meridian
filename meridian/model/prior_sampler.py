@@ -617,10 +617,15 @@ class PriorDistributionSampler:
         ),
     }
 
+    # When force_non_negative_baseline_trend is True, apply softplus to
+    # knot_values before computing mu_t, ensuring the trend is always >= 0.
+    effective_knot_values = base_vars[constants.KNOT_VALUES]
+    if ctx.model_spec.force_non_negative_baseline_trend:
+      effective_knot_values = backend.softplus(effective_knot_values)
     base_vars[constants.MU_T] = backend.tfd.Deterministic(
         backend.einsum(
             "...k,kt->...t",
-            base_vars[constants.KNOT_VALUES],
+            effective_knot_values,
             backend.to_tensor(ctx.knot_info.weights),
         ),
         name=constants.MU_T,

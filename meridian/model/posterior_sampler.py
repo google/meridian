@@ -168,9 +168,15 @@ def _joint_dist_base_logic(
     yield backend.tfd.Deterministic(tau_g, name="tau_g")
 
   # Deterministic: mu_t
+  # When force_non_negative_baseline_trend is True, apply softplus to
+  # knot_values before computing mu_t. Since B-spline weights are non-negative,
+  # this ensures mu_t >= 0.
+  effective_knot_values = knot_values
+  if model_context.model_spec.force_non_negative_baseline_trend:
+    effective_knot_values = backend.softplus(knot_values)
   mu_t = backend.einsum(
       "k,kt->t",
-      knot_values,
+      effective_knot_values,
       backend.to_tensor(knot_info.weights),
   )
   if yield_deterministics:
@@ -181,6 +187,10 @@ def _joint_dist_base_logic(
   # mu_t  (..., T) -> (..., 1, T)
   # result (..., G, T)
   tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)
+  # When force_non_negative_baseline_total is True, apply softplus to the
+  # combined baseline (tau_g + mu_t), ensuring it is always >= 0.
+  if model_context.model_spec.force_non_negative_baseline_total:
+    tau_gt = backend.softplus(tau_gt)
 
   # Accumulate media tensors in lists to avoid empty tensor shape/rank issues
   media_transformed_list = []

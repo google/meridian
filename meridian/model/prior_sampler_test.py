@@ -768,6 +768,60 @@ class PriorDistributionSamplerInitTest(
     ):
       prior_sampler.PriorDistributionSampler()
 
+  def test_force_non_negative_baseline_trend_produces_non_negative_mu_t(self):
+    model_spec = spec.ModelSpec(force_non_negative_baseline_trend=True)
+    input_data = self.short_input_data_with_media_and_rf
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian_model.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    mu_t = meridian_model.inference_data.prior.mu_t
+    self.assertTrue(
+        np.all(mu_t >= 0),
+        "mu_t should be non-negative when"
+        " force_non_negative_baseline_trend=True",
+    )
+
+  def test_force_non_negative_baseline_trend_false_allows_negative_mu_t(self):
+    model_spec = spec.ModelSpec(force_non_negative_baseline_trend=False)
+    input_data = self.short_input_data_with_media_and_rf
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    # Use a seed that produces negative knot_values with Normal(0, 5) prior.
+    meridian_model.sample_prior(n_draws=100, seed=42)
+    mu_t = meridian_model.inference_data.prior.mu_t
+    # With Normal(0, 5) prior and enough draws, mu_t should contain some
+    # negative values.
+    self.assertTrue(
+        np.any(mu_t < 0),
+        "mu_t should contain negative values when"
+        " force_non_negative_baseline_trend=False with default Normal prior",
+    )
+
+  def test_custom_knot_values_prior_half_normal_produces_non_negative_mu_t(
+      self,
+  ):
+    from meridian.model import prior_distribution
+    custom_prior = prior_distribution.PriorDistribution(
+        knot_values=backend.tfd.HalfNormal(5.0, name=constants.KNOT_VALUES),
+    )
+    model_spec = spec.ModelSpec(prior=custom_prior)
+    input_data = self.short_input_data_with_media_and_rf
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian_model.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    mu_t = meridian_model.inference_data.prior.mu_t
+    self.assertTrue(
+        np.all(mu_t >= 0),
+        "mu_t should be non-negative when using HalfNormal prior on"
+        " knot_values",
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

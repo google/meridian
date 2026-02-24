@@ -214,6 +214,23 @@ class ModelSpec:
       instead of the default 1 for national models and n_times for geo models.
       If this is set to `True` and the `knots` arg is provided, then an error
       will be raised. Default: `False`.
+    force_non_negative_baseline_trend: A boolean indicating whether to
+      constrain the time-varying trend component (`mu_t`) to be non-negative.
+      When `True`, a softplus transformation is applied to the sampled
+      `knot_values` before computing `mu_t`, ensuring the trend is always
+      >= 0. This is analogous to setting the `coef_trend` prior to a
+      positive-only distribution (e.g. `HalfNormal`) in lightweight_mmm.
+      For an alternative prior-based approach, you can set a non-negative
+      distribution on `knot_values` in `PriorDistribution` (see
+      `PriorDistribution.knot_values` for details). Default: `False`.
+    force_non_negative_baseline_total: A boolean indicating whether to
+      constrain the full baseline (`tau_g + mu_t`) to be non-negative. When
+      `True`, a softplus transformation is applied to the combined geo
+      intercept and trend, ensuring the baseline is always >= 0 for all geos
+      and time periods. This is analogous to the
+      `baseline_positivity_constraint` flag in lightweight_mmm. Can be used
+      independently of or in combination with
+      `force_non_negative_baseline_trend`. Default: `False`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -241,6 +258,8 @@ class ModelSpec:
   non_media_population_scaling_id: np.ndarray | None = None
   adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
   enable_aks: bool = False
+  force_non_negative_baseline_trend: bool = False
+  force_non_negative_baseline_total: bool = False
 
   def __post_init__(self):
     # Validate media_effects_dist.

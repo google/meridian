@@ -98,8 +98,17 @@ class PriorDistribution:
   (σ) `n_geos` if `unique_sigma_for_each_geo`, otherwise this is `1`
 
   Attributes:
-    knot_values: Prior distribution on knots for time effects. Default
-      distribution is `Normal(0.0, 5.0)`.
+    knot_values: Prior distribution on knots for time effects. The knot values
+      are interpolated via B-spline weights to produce the time-varying trend
+      component `mu_t` of the baseline. Default distribution is
+      `Normal(0.0, 5.0)`, which allows the trend to take both positive and
+      negative values. To prevent the trend from fitting to negative values,
+      you can set this to a non-negative distribution such as
+      `HalfNormal(scale=5.0)` or `LogNormal(loc=0.0, scale=1.0)`. Since the
+      B-spline interpolation weights are non-negative and sum to 1, using a
+      non-negative prior on `knot_values` guarantees that `mu_t >= 0`. This
+      is the prior-based alternative to setting
+      `ModelSpec.force_non_negative_baseline_trend=True`.
     tau_g_excl_baseline: Prior distribution on geo effects, which represent the
       average KPI of each geo relative to the baseline geo. This parameter is
       broadcast to a vector of length `n_geos - 1`, preserving the geo order and

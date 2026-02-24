@@ -42,6 +42,8 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertIsNone(model_spec.holdout_id)
     self.assertIsNone(model_spec.control_population_scaling_id)
     self.assertIsNone(model_spec.non_media_population_scaling_id)
+    self.assertFalse(model_spec.force_non_negative_baseline_trend)
+    self.assertFalse(model_spec.force_non_negative_baseline_total)
 
   @parameterized.named_parameters(
       ("log_normal", "log_normal"),
@@ -449,6 +451,24 @@ class ModelSpecTest(parameterized.TestCase):
         ValueError, "Unsupported type for `knots` parameter"
     ):
       spec.ModelSpec(knots=3.5)  # pytype: disable=wrong-arg-types
+
+  def test_spec_inits_force_non_negative_baseline_trend(self):
+    model_spec = spec.ModelSpec(force_non_negative_baseline_trend=True)
+    self.assertTrue(model_spec.force_non_negative_baseline_trend)
+    self.assertFalse(model_spec.force_non_negative_baseline_total)
+
+  def test_spec_inits_force_non_negative_baseline_total(self):
+    model_spec = spec.ModelSpec(force_non_negative_baseline_total=True)
+    self.assertFalse(model_spec.force_non_negative_baseline_trend)
+    self.assertTrue(model_spec.force_non_negative_baseline_total)
+
+  def test_spec_inits_both_non_negative_flags(self):
+    model_spec = spec.ModelSpec(
+        force_non_negative_baseline_trend=True,
+        force_non_negative_baseline_total=True,
+    )
+    self.assertTrue(model_spec.force_non_negative_baseline_trend)
+    self.assertTrue(model_spec.force_non_negative_baseline_total)
 
 
 if __name__ == "__main__":
