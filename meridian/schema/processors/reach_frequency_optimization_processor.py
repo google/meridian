@@ -447,7 +447,7 @@ class ReachFrequencyOptimizationProcessor(
         aggregated_reach = backend.einsum(
             f"{input_tensor_dims}->...{output_tensor_dims}", filtered_reach
         )
-        reach = aggregated_reach.numpy()[-1]
+        reach = np.asarray(aggregated_reach)[-1]
 
         metric_data_array = optimal_frequency_dataset[constants.ROI].sel(
             frequency=frequency, rf_channel=channel
