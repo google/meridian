@@ -481,53 +481,88 @@ class ModelFit:
       y_axis_label = summary_text.KPI_LABEL
     else:
       y_axis_label = summary_text.REVENUE_LABEL
-    plot = (
-        alt.Chart(model_fit_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
-        .mark_line()
-        .encode(
-            x=alt.X(
-                f'{c.TIME}:T',
-                title='Time period',
-                axis=alt.Axis(
-                    format=c.QUARTER_FORMAT,
-                    grid=False,
-                    tickCount=8,
-                    domainColor=c.GREY_300,
-                ),
-            ),
-            y=alt.Y(
-                f'{c.MEAN}:Q',
-                title=y_axis_label,
-                axis=alt.Axis(
-                    ticks=False,
-                    domain=False,
-                    tickCount=5,
-                    labelPadding=c.PADDING_10,
-                    labelExpr=formatter.compact_number_expr(),
-                    **formatter.Y_AXIS_TITLE_CONFIG,
-                ),
-            ),
-            color=alt.Color(
-                'type:N', scale=alt.Scale(domain=domain, range=colors)
-            ),
-        )
+
+    base = alt.Chart(model_fit_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
+
+    hover = alt.selection_point(
+        fields=[c.TIME],
+        nearest=True,
+        on='pointerover',
+        empty=False,
+        clear='pointerout',
     )
+
+    lines = base.mark_line().encode(
+        x=alt.X(
+            f'{c.TIME}:T',
+            title='Time period',
+            axis=alt.Axis(
+                format=c.QUARTER_FORMAT,
+                grid=False,
+                tickCount=8,
+                domainColor=c.GREY_300,
+            ),
+        ),
+        y=alt.Y(
+            f'{c.MEAN}:Q',
+            title=y_axis_label,
+            axis=alt.Axis(
+                ticks=False,
+                domain=False,
+                tickCount=5,
+                labelPadding=c.PADDING_10,
+                labelExpr=formatter.compact_number_expr(),
+                **formatter.Y_AXIS_TITLE_CONFIG,
+            ),
+        ),
+        color=alt.Color('type:N', scale=alt.Scale(domain=domain, range=colors)),
+    )
+
+    tooltip = [alt.Tooltip(f'{c.TIME}:T', title='Time period')]
+    for field in domain:
+      tooltip.append(
+          alt.Tooltip(
+              f'{field}:Q',
+              title=field.title(),
+              format=',.0f',
+          )
+      )
+
+    tooltips = (
+        base.transform_pivot(c.TYPE, value=c.MEAN, groupby=[c.TIME])
+        .mark_rule(opacity=0)
+        .encode(
+            x=f'{c.TIME}:T',
+            opacity=alt.condition(hover, alt.value(0.3), alt.value(0)),
+            tooltip=tooltip,
+        )
+        .add_params(hover)
+    )
+
+    points = base.mark_circle(size=c.MARK_CIRCLE_SIZE, filled=False).encode(
+        x=f'{c.TIME}:T',
+        y=f'{c.MEAN}:Q',
+        color=alt.Color(
+            'type:N',
+            scale=alt.Scale(domain=domain, range=colors),
+            legend=None,
+        ),
+        opacity=alt.condition(hover, alt.value(1), alt.value(0)),
+    )
+
+    plot = alt.layer(lines, tooltips, points)
 
     if include_ci:
       # Only add a confidence interval area for the modeled data.
-      confidence_band = (
-          alt.Chart(model_fit_df)
-          .mark_area(opacity=0.3)
-          .encode(
-              x=f'{c.TIME}:T',
-              y=f'{c.CI_HI}:Q',
-              y2=f'{c.CI_LO}:Q',
-              color=alt.Color(
-                  'type:N',
-                  scale=alt.Scale(domain=[domain[0]], range=[colors[0]]),
-                  legend=None,
-              ),
-          )
+      confidence_band = base.mark_area(opacity=0.3).encode(
+          x=f'{c.TIME}:T',
+          y=f'{c.CI_HI}:Q',
+          y2=f'{c.CI_LO}:Q',
+          color=alt.Color(
+              'type:N',
+              scale=alt.Scale(domain=[domain[0]], range=[colors[0]]),
+              legend=None,
+          ),
       )
       plot = (plot + confidence_band).resolve_scale(color=c.INDEPENDENT)
 
