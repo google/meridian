@@ -153,7 +153,7 @@ To cite this repository:
   author = {Google Meridian Marketing Mix Modeling Team},
   title = {Meridian: Marketing Mix Modeling},
   url = {https://github.com/google/meridian},
-  version = {1.5.2},
-  year = {2025},
+  version = {1.5.3},
+  year = {2026},
 }
 ```

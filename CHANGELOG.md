@@ -23,8 +23,13 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-02-27
+
 * Pin `arviz` dependency to `< 0.20.0` to fix upstream `InferenceData`
   deprecation.
+* Refactor model fit plot to include interactive tooltips and hover effects
+* Always process specs including full time range in MMM UI proto generator.
+* Update MarketingData serialization to support float population values.
 
 ## [1.5.2] - 2026-02-10
 
@@ -455,4 +460,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.0]: https://github.com/google/meridian/releases/tag/v1.5.0
 [1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
 [1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
-[Unreleased]: https://github.com/google/meridian/compare/v1.5.2...HEAD
+[1.5.3]: https://github.com/google/meridian/releases/tag/v1.5.3
+[Unreleased]: https://github.com/google/meridian/compare/v1.5.3...HEAD
