@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Pin `arviz` dependency to `< 0.20.0` to fix upstream `InferenceData`
+  deprecation.
+
 ## [1.5.2] - 2026-02-10
 
 * Move `schema` package as `meridian.schema`.

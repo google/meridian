@@ -24,7 +24,7 @@ keywords = [
 # pip dependencies of the project
 # Installed locally with `pip install -e .`
 dependencies = [
-  "arviz",
+  "arviz < 0.20.0",
   "altair >= 5",
   "bidict",
   "immutabledict",
