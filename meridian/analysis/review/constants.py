@@ -53,9 +53,9 @@ BAYESIAN_PPP = "bayesian_ppp"
 CHECK_RESULT_NAME_MAP = immutabledict({
     "ConvergenceCheckResult": "Convergence",
     "BaselineCheckResult": "Baseline",
-    "GoodnessOfFitCheckResult": "Goodness of Fit",
+    "GoodnessOfFitCheckResult": "Goodness of fit",
     "BayesianPPPCheckResult": "Bayesian p-value",
-    "PriorPosteriorShiftCheckResult": "Prior-Posterior Shift",
+    "PriorPosteriorShiftCheckResult": "Prior-posterior shift",
     "ROIConsistencyCheckResult": "ROI consistency",
 })
 
