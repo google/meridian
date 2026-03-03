@@ -399,6 +399,112 @@ Convergence Check:
   Recommendation: The model has likely converged, as all parameters have R-hat values < 1.2."""
     self.assertMultiLineEqual(str(summary), expected_repr)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="pass_no_banner",
+          overall_status=results.Status.PASS,
+          summary_message="Passed: No major quality issues were identified.",
+          expected_html_snippet="""<div class="metrics-section">""",
+      ),
+      dict(
+          testcase_name="pass_reviews_info_banner",
+          overall_status=results.Status.PASS,
+          summary_message="Passed with reviews: Review is needed.",
+          expected_html_snippet=(
+              '<div class="status-banner-strip info">\n'
+              '     <span class="material-icons-outlined">check_circle</span>\n'
+              "     <span>Passed with reviews: Review is needed.</span>\n"
+              "  </div>"
+          ),
+      ),
+      dict(
+          testcase_name="fail_banner",
+          overall_status=results.Status.FAIL,
+          summary_message="Failed: Quality issues were detected in your model.",
+          expected_html_snippet=(
+              '<div class="status-banner-strip fail">\n     <span'
+              ' class="material-icons-outlined">error_outline</span>\n    '
+              " <span>Failed: Quality issues were detected in your"
+              " model.</span>\n  </div>"
+          ),
+      ),
+  )
+  def test_health_card_html_banner(
+      self,
+      overall_status: results.Status,
+      summary_message: str,
+      expected_html_snippet: str,
+  ):
+    summary = results.ReviewSummary(
+        overall_status=overall_status,
+        summary_message=summary_message,
+        results=[],
+        health_score=80.0,
+    )
+
+    html_output = summary._create_health_card_html()
+    self.assertIn(expected_html_snippet, html_output)
+
+  def test_health_card_html_content(self):
+    mock_result_model = results.GoodnessOfFitCheckResult(
+        case=results.GoodnessOfFitCases.PASS,
+        metrics=results.GoodnessOfFitMetrics(
+            r_squared=0.5,
+            mape=0.1,
+            wmape=0.2,
+        ),
+    )
+    mock_result_channel = results.PriorPosteriorShiftCheckResult(
+        case=results.PriorPosteriorShiftAggregateCases.REVIEW,
+        channel_results=[
+            results.PriorPosteriorShiftChannelResult(
+                case=results.PriorPosteriorShiftChannelCases.SHIFT,
+                channel_name="mock_channel1",
+            ),
+            results.PriorPosteriorShiftChannelResult(
+                case=results.PriorPosteriorShiftChannelCases.NO_SHIFT,
+                channel_name="mock_channel2",
+            ),
+        ],
+        no_shift_channels=["mock_channel2"],
+    )
+
+    summary = results.ReviewSummary(
+        overall_status=results.Status.REVIEW,
+        summary_message="Review is needed.",
+        results=[mock_result_model, mock_result_channel],
+        health_score=85.2,
+    )
+
+    html_output = summary._create_health_card_html()
+
+    # 1. Validate health score number
+    self.assertIn('<div class="score-value">85%</div>', html_output)
+
+    # 2. Validate health score graph
+    self.assertIn(
+        '<div class="health-score-chart" style="--score: 85.2">', html_output
+    )
+
+    # 3. Validate metrics check table
+    # Model-level check (Goodness of Fit)
+    self.assertIn("<td>Goodness of Fit</td>", html_output)
+    self.assertIn('<chip class="pass">Pass</chip>', html_output)
+    self.assertIn(
+        "R-squared = 0.5000, MAPE = 0.1000, and wMAPE = 0.2000.", html_output
+    )
+
+    # Channel-level check (Prior-Posterior Shift)
+    self.assertIn("<td>Prior-Posterior Shift</td>", html_output)
+    self.assertIn('<chip class="review">Review</chip>', html_output)
+    self.assertIn(
+        '<div class="stats-text">1/2 channels passed</div>', html_output
+    )
+    self.assertIn(
+        "We've detected channel(s) `mock_channel2` where the posterior",
+        html_output,
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

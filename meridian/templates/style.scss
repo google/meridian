@@ -24,6 +24,15 @@ $error_red: #f8d7da;
 $text_yellow: #664d03;
 $warning_yellow: #fff3cd;
 $info_blue: #dae8fc;
+$border_grey: var(--grey-300, #dadce0);
+$white: #fff;
+$blue_50: var(--blue-50, #e8f0fe);
+$red_50: var(--red-50, #fce8e6);
+$red_700: var(--red-700, #c5221f);
+$green_50: var(--green-50, #e6f4ea);
+$green_800: var(--green-800, #137333);
+$yellow_50: var(--yellow-50, #fef7e0);
+$yellow_900: #b06000;
 
 $google_sans: 'Google Sans Display', 'Google Sans', sans-serif;
 $roboto: Roboto;
@@ -76,7 +85,7 @@ chip {
   flex-shrink: 0;
 
   border-radius: 100px;
-  background: #e8f0fe;
+  background: $blue_50;
 
   color: $chip_blue;
   text-align: center;
@@ -98,8 +107,8 @@ cards {
 
 card {
   border-radius: 8px;
-  border: 1px solid #dadce0;
-  background: #fff;
+  border: 1px solid $border_grey;
+  background: $white;
 
   display: flex;
   flex-direction: column;
@@ -234,7 +243,7 @@ charts {
       padding-bottom: 20px;
       @mixin border-style {
         border-radius: 4px;
-        border: 1px solid var(--Grey-300, #dadce0);
+        border: 1px solid $border_grey;
         border-spacing: 0;
         border-collapse: collapse;
       }
@@ -347,4 +356,159 @@ stats-section {
       color: $text_red;
     }
   }
+}
+
+/* Model Health Summary Card Styles */
+.health-score-section {
+  display: flex;
+  padding: 32px;
+  gap: 40px;
+}
+
+.score-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.score-chart-and-value {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.health-score-chart {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: conic-gradient(#6ba4ff calc(var(--score) * 1%), $insights_bg_grey 0);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  &::before {
+    content: '';
+    position: absolute;
+    width: 74px;
+    height: 74px;
+    background: $white;
+    border-radius: 50%;
+  }
+}
+
+.score-value {
+  font-size: 36px;
+}
+
+.score-label {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.score-explanation {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .explanation-title {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+  }
+}
+
+.status-banner-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  font-size: 14px;
+
+  &.fail {
+    background-color: $red_50;
+    color: $red_700;
+    .material-icons-outlined {
+      color: $text_red;
+    }
+  }
+
+  &.info {
+    background-color: $blue_50;
+    color: $chip_blue;
+    .material-icons-outlined {
+      color: $chip_blue;
+    }
+  }
+}
+
+.metrics-section {
+  padding: 32px;
+
+  .section-title {
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 24px;
+  }
+}
+
+.metrics-table {
+  font-size: 14px;
+
+  th {
+    text-align: left;
+    font-weight: 500;
+    padding-bottom: 16px;
+    border-bottom: 1px solid $border_grey;
+  }
+
+  td {
+    padding: 24px 0;
+    border-bottom: 1px solid #f1f3f4;
+    vertical-align: top;
+
+    &:first-child {
+      width: 250px;
+      font-weight: 500;
+    }
+
+    &:nth-child(2) {
+      width: 200px;
+    }
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+
+  .stats-text {
+    font-size: 12px;
+  }
+}
+
+chip.pass {
+  background-color: $green_50;
+  color: $green_800;
+}
+
+chip.review {
+  background-color: $yellow_50;
+  color: $yellow_900;
+}
+
+chip.fail {
+  background-color: $red_50;
+  color: $red_700;
 }

@@ -18,10 +18,15 @@ import abc
 from collections.abc import Mapping
 import dataclasses
 import enum
+import functools
+import os
 from typing import Any
 
+import jinja2
+from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
+from meridian.templates import formatter
 
 
 # ==============================================================================
@@ -632,6 +637,11 @@ class ReviewSummary:
 
     return "\n".join(report)
 
+  @functools.cached_property
+  def _template_env(self) -> jinja2.Environment:
+    """A shared template environment bound to this summary."""
+    return formatter.create_template_env()
+
   @property
   def checks_status(self) -> Mapping[str, str]:
     """Returns a dictionary of check names and statuses."""
@@ -639,3 +649,83 @@ class ReviewSummary:
         result.__class__.__name__: result.case.status.name
         for result in self.results
     }
+
+  def output_model_health_card(
+      self,
+      filename: str,
+      filepath: str,
+  ):
+    """Generates and saves the HTML output for the model health card.
+
+    Args:
+      filename: The name of the file to save the HTML output to.
+      filepath: The path to the directory to save the HTML output to.
+    """
+    os.makedirs(filepath, exist_ok=True)
+    with open(os.path.join(filepath, filename), "w") as f:
+      f.write(self._gen_model_health_card())
+
+  def _gen_model_health_card(self) -> str:
+    """Generates the HTML model health card (as sanitized content str)."""
+    html_template = self._template_env.get_template("summary.html.jinja")
+    return html_template.render(
+        title=summary_text.MODEL_HEALTH_CARD_TITLE,
+        cards=[self._create_health_card_html()],
+    )
+
+  def _create_health_card_html(self) -> str:
+    """Creates the HTML snippet for the Model Health Card."""
+    model_checks = []
+    channel_checks = []
+
+    for result in self.results:
+      check_data = self._get_check_data(result)
+      if isinstance(
+          result,
+          (
+              PriorPosteriorShiftCheckResult,
+              ROIConsistencyCheckResult,
+          ),
+      ):
+        channel_checks.append(check_data)
+      else:
+        model_checks.append(check_data)
+
+    template = self._template_env.get_template(
+        "model_health_summary_card.html.jinja"
+    )
+
+    return template.render(
+        health_score=self.health_score,
+        overall_status=self.overall_status.name,
+        summary_message=self.summary_message,
+        metrics_checks=model_checks,
+        advanced_checks=channel_checks,
+    )
+
+  def _get_check_data(self, result: CheckResult) -> Mapping[str, Any]:
+    """Returns data for a health check."""
+    check_data = {
+        constants.NAME: self._get_check_name(result),
+        constants.STATUS: result.case.status.name,
+        constants.RECOMMENDATION: result.recommendation,
+    }
+
+    if isinstance(result, PriorPosteriorShiftCheckResult) or isinstance(
+        result, ROIConsistencyCheckResult
+    ):
+      check_data[constants.TOTAL_CHANNELS] = len(result.channel_results)
+      check_data[constants.PASSED_CHANNELS] = sum(
+          1 for r in result.channel_results if r.case.status == Status.PASS
+      )
+
+    return check_data
+
+  def _get_check_name(self, result: CheckResult) -> str:
+    """Returns a readable name for the check."""
+    name = result.__class__.__name__
+    if name not in constants.CHECK_RESULT_NAME_MAP:
+      raise ValueError(
+          f"Check result {name} not found in CHECK_RESULT_NAME_MAP."
+      )
+    return constants.CHECK_RESULT_NAME_MAP[name]

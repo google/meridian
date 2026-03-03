@@ -215,6 +215,9 @@ constraints."""
 OPTIMIZED_RESPONSE_CURVES_CHART_ID = 'optimized-response-curves-chart'
 OPTIMIZED_RESPONSE_CURVES_CHART_TITLE = 'Optimized response curves'
 
+# Model health card texts.
+MODEL_HEALTH_CARD_ID = 'model-health-summary-card'
+MODEL_HEALTH_CARD_TITLE = 'Model health summary card'
 
 # Visualizer-only plot titles.
 PRIOR_POSTERIOR_DIST_CHART_TITLE = 'Prior vs Posterior Distributions'

@@ -1,0 +1,90 @@
+{#
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+#}
+
+<card>
+  <div class="health-score-section">
+    <div class="score-container">
+      <div class="score-label">Model health score</div>
+      <div class="score-chart-and-value">
+        <div class="health-score-chart" style="--score: {{ health_score }}">
+        </div>
+        <div class="score-value">{{ "%.0f"|format(health_score) }}%</div>
+      </div>
+    </div>
+    <div class="score-explanation">
+      <div class="explanation-title">How is health score measured?</div>
+      <p>
+        The Meridian model health score is a 0 to 100 scalar metric that
+        synthesizes six individual health checks into a unified view of model
+        integrity. While individual diagnostics provide granular insights into
+        specific model components, the model health score provides an aggregate
+        measure on a model's health for causal inference.
+        <a href="https://developers.google.com/meridian/docs/post-modeling/health-score" target="_blank">Learn more</a>
+      </p>
+    </div>
+  </div>
+
+  {% if overall_status == 'FAIL' %}
+  <div class="status-banner-strip fail">
+     <span class="material-icons-outlined">error_outline</span>
+     <span>{{ summary_message }}</span>
+  </div>
+  {% else %}
+  <div class="status-banner-strip info">
+     <span class="material-icons-outlined">check_circle</span>
+     <span>{{ summary_message }}</span>
+  </div>
+  {% endif %}
+
+  <div class="metrics-section">
+    <div class="section-title">Metrics check</div>
+    <table class="metrics-table">
+      <thead>
+        <tr>
+          <th>Metric Check</th>
+          <th>Status</th>
+          <th>Recommended Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for check in metrics_checks %}
+        <tr>
+          <td>{{ check.name }}</td>
+          <td><chip class="{{ check.status|lower }}">{{ check.status|title }}</chip></td>
+          <td>{{ check.recommendation }}</td>
+        </tr>
+        {% endfor %}
+        {% for check in advanced_checks %}
+        <tr>
+          <td>{{ check.name }}</td>
+          <td>
+            <div class="status-cell">
+              {% if check.status == 'PASS' %}
+                 <chip class="pass">Pass</chip>
+              {% else %}
+                 <chip class="review">Review</chip>
+              {% endif %}
+              <div class="stats-text">{{ check.passed_channels }}/{{ check.total_channels }} channels passed</div>
+            </div>
+          </td>
+          <td>{{ check.recommendation }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</card>

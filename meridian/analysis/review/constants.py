@@ -14,6 +14,8 @@
 
 """Constants for model review."""
 
+from immutabledict import immutabledict
+
 RHAT = "rhat"
 PARAMETER = "parameter"
 CONVERGENCE_THRESHOLD = "convergence_threshold"
@@ -35,6 +37,11 @@ WMAPE = "wmape"
 ALL_SUFFIX = ""
 TRAIN_SUFFIX = "_train"
 TEST_SUFFIX = "_test"
+NAME = "name"
+STATUS = "status"
+RECOMMENDATION = "recommendation"
+TOTAL_CHANNELS = "total_channels"
+PASSED_CHANNELS = "passed_channels"
 EVALUATION_SET_SUFFIXES = (ALL_SUFFIX, TRAIN_SUFFIX, TEST_SUFFIX)
 MEAN = "mean"
 VARIANCE = "variance"
@@ -42,6 +49,15 @@ MEDIAN = "median"
 Q1 = "q1"
 Q3 = "q3"
 BAYESIAN_PPP = "bayesian_ppp"
+
+CHECK_RESULT_NAME_MAP = immutabledict({
+    "ConvergenceCheckResult": "Convergence",
+    "BaselineCheckResult": "Baseline",
+    "GoodnessOfFitCheckResult": "Goodness of Fit",
+    "BayesianPPPCheckResult": "Bayesian p-value",
+    "PriorPosteriorShiftCheckResult": "Prior-Posterior Shift",
+    "ROIConsistencyCheckResult": "ROI consistency",
+})
 
 # Health score constants
 R2_MIDPOINT = 0.5
