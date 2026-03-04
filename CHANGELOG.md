@@ -25,6 +25,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * Pin `arviz` dependency to `< 0.20.0` to fix upstream `InferenceData`
   deprecation.
+* Dropped support for Python 3.10. The minimum required Python version is now
+  3.11.
+* Upgraded JAX dependencies to version `0.7.2`.
 
 ## [1.5.2] - 2026-02-10
 
