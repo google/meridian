@@ -597,7 +597,7 @@ class PriorPosteriorShiftCheckResult(CheckResult):
 # ==============================================================================
 # Review Summary
 # ==============================================================================
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=False)
 class ReviewSummary:
   """The final summary of all model quality checks.
 
