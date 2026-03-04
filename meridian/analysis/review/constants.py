@@ -53,16 +53,16 @@ BAYESIAN_PPP = "bayesian_ppp"
 CHECK_RESULT_NAME_MAP = immutabledict({
     "ConvergenceCheckResult": "Convergence",
     "BaselineCheckResult": "Baseline",
-    "GoodnessOfFitCheckResult": "Goodness of Fit",
+    "GoodnessOfFitCheckResult": "Goodness of fit",
     "BayesianPPPCheckResult": "Bayesian p-value",
-    "PriorPosteriorShiftCheckResult": "Prior-Posterior Shift",
+    "PriorPosteriorShiftCheckResult": "Prior-posterior shift",
     "ROIConsistencyCheckResult": "ROI consistency",
 })
 
 # Health score constants
 R2_MIDPOINT = 0.5
 R2_STEEPNESS = 15
-FAIL_RATIO_POWER = 0.3
+FAIL_RATIO_POWER = 0.4
 HEALTH_SCORE_WEIGHT_BASELINE = 0.3
 HEALTH_SCORE_WEIGHT_BAYESIAN_PPP = 0.3
 HEALTH_SCORE_WEIGHT_GOF = 0.1

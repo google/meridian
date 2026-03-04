@@ -479,7 +479,7 @@ Convergence Check:
     html_output = summary._create_health_card_html()
 
     # 1. Validate health score number
-    self.assertIn('<div class="score-value">85%</div>', html_output)
+    self.assertIn('<div class="score-value">85.2</div>', html_output)
 
     # 2. Validate health score graph
     self.assertIn(
@@ -488,14 +488,14 @@ Convergence Check:
 
     # 3. Validate metrics check table
     # Model-level check (Goodness of Fit)
-    self.assertIn("<td>Goodness of Fit</td>", html_output)
+    self.assertIn("<td>Goodness of fit</td>", html_output)
     self.assertIn('<chip class="pass">Pass</chip>', html_output)
     self.assertIn(
         "R-squared = 0.5000, MAPE = 0.1000, and wMAPE = 0.2000.", html_output
     )
 
     # Channel-level check (Prior-Posterior Shift)
-    self.assertIn("<td>Prior-Posterior Shift</td>", html_output)
+    self.assertIn("<td>Prior-posterior shift</td>", html_output)
     self.assertIn('<chip class="review">Review</chip>', html_output)
     self.assertIn(
         '<div class="stats-text">1/2 channels passed</div>', html_output

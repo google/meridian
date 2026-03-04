@@ -256,7 +256,7 @@ class ReviewerTest(parameterized.TestCase):
           pps_total=2,
           roi_review=1,
           roi_total=2,
-          expected_score=74.4,
+          expected_score=72.7,
       ),
       dict(
           testcase_name='edge_cases',
