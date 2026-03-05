@@ -1717,18 +1717,22 @@ class RNGHandlerTest(BackendTest):
 
     self._assert_key_equal(handler._key, seed_key)
 
-  def test_jax_initialization_with_sequence_seed_raises(self):
-    """JAX must not be initialized with a sequence."""
+  def test_jax_initialization_with_sequence_seed(self):
+    """JAX should accept a sequence of two integers as a stateless seed."""
     self._set_backend_for_test(_JAX)
-    with self.assertRaisesRegex(
-        ValueError, "JAX backend requires a seed that is an integer"
-    ):
-      backend.RNGHandler([42, 99])
+    seed_seq = [1, 1]
+    handler = backend.RNGHandler(seed_seq)
+
+    self.assertEqual(handler._seed_input, seed_seq)
+    self.assertIsNone(handler._int_seed)
+    self.assertIsInstance(handler._key, jax.Array)
+    self.assertEqual(handler._key.shape, (2,))
+    self.assertEqual(handler._key.dtype, jnp.uint32)
 
   def test_jax_initialization_with_non_scalar_array_raises(self):
     """JAX must not be initialized with a non-scalar array."""
     self._set_backend_for_test(_JAX)
-    seed_array = jnp.array([42, 99])
+    seed_array = jnp.array([42, 99, 123])
     with self.assertRaisesRegex(
         ValueError, "JAX backend requires a seed that is an integer"
     ):
