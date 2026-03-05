@@ -23,11 +23,17 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-03-04
+
 * Pin `arviz` dependency to `< 0.20.0` to fix upstream `InferenceData`
   deprecation.
 * Dropped support for Python 3.10. The minimum required Python version is now
   3.11.
 * Upgraded JAX dependencies to version `0.7.2`.
+* Refactor model fit plot to include interactive tooltips and hover effects.
+* Fix a bug in tagging in `mmm_ui_proto_generator.py`.
+* Update MarketingData serialization to support float population values.
+* Add Model Health Summary Card.
 
 ## [1.5.2] - 2026-02-10
 
@@ -458,4 +464,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.0]: https://github.com/google/meridian/releases/tag/v1.5.0
 [1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
 [1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
-[Unreleased]: https://github.com/google/meridian/compare/v1.5.2...HEAD
+[1.5.3]: https://github.com/google/meridian/releases/tag/v1.5.3
+[Unreleased]: https://github.com/google/meridian/compare/v1.5.3...HEAD

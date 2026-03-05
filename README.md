@@ -29,7 +29,7 @@ you understand the differences between these MMM projects.
 
 ## Install Meridian
 
-Python 3.11 or 3.12 is required to use Meridian. We also recommend using a
+Python 3.11-3.13 is required to use Meridian. We also recommend using a
 minimum of 1 GPU.
 
 Note: This project has been tested on T4 GPU using 16 GB of RAM.
@@ -153,7 +153,7 @@ To cite this repository:
   author = {Google Meridian Marketing Mix Modeling Team},
   title = {Meridian: Marketing Mix Modeling},
   url = {https://github.com/google/meridian},
-  version = {1.5.2},
-  year = {2025},
+  version = {1.5.3},
+  year = {2026},
 }
 ```
