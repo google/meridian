@@ -488,7 +488,7 @@ class BudgetOptimizationProcessor(
         spec=spec.to_proto(),
         optimized_marketing_analysis=optimized_marketing_analysis,
         nonoptimized_marketing_analysis=nonoptimized_marketing_analysis,
-        incremental_outcome_grid=_to_incremental_outcome_grid(
+        incremental_outcome_grid=to_incremental_outcome_grid(
             opt_result.optimization_grid.grid_dataset,
             grid_name=spec.grid_name,
         ),
@@ -757,7 +757,7 @@ def _to_outcome(channel_data: xr.Dataset) -> outcome_pb.Outcome:
   )
 
 
-def _to_incremental_outcome_grid(
+def to_incremental_outcome_grid(
     optimization_grid: xr.Dataset,
     grid_name: str | None,
 ) -> budget_pb.IncrementalOutcomeGrid:
