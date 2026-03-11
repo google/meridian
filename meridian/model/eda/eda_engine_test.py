@@ -300,7 +300,7 @@ class EDAEngineTest(
     )
     mock_media_transformer = mock_media_transformer_cls.return_value
     mock_media_transformer.forward.side_effect = (
-        lambda x: backend.cast(x, dtype=backend.float32)
+        lambda x: backend.cast(x, dtype=backend.float_dtype)
         * self.mock_scale_factor
     )
     mock_scaling_transformer_cls = self.enter_context(
@@ -312,7 +312,7 @@ class EDAEngineTest(
     )
     mock_scaling_transformer = mock_scaling_transformer_cls.return_value
     mock_scaling_transformer.forward.side_effect = (
-        lambda x: backend.cast(x, dtype=backend.float32)
+        lambda x: backend.cast(x, dtype=backend.float_dtype)
         * self.mock_scale_factor
     )
 
@@ -1868,7 +1868,7 @@ class EDAEngineTest(
       mean_population = backend.reduce_mean(population)
       scale_factor = mean_population * self.mock_scale_factor
       mock_instance.forward.side_effect = (
-          lambda tensor: backend.cast(tensor, dtype=backend.float32)
+          lambda tensor: backend.cast(tensor, dtype=backend.float_dtype)
           * scale_factor
       )
       return mock_instance
@@ -2480,7 +2480,7 @@ class EDAEngineTest(
       mean_population = backend.reduce_mean(population)
       scale_factor = mean_population * self.mock_scale_factor
       mock_instance.forward.side_effect = (
-          lambda tensor: backend.cast(tensor, dtype=backend.float32)
+          lambda tensor: backend.cast(tensor, dtype=backend.float_dtype)
           * scale_factor
       )
       return mock_instance

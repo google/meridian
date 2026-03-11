@@ -1048,7 +1048,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_marginal_roi_zero_media_spend_returns_inf(self):
     new_media_spend = backend.zeros_like(
         self.meridian_media_only.media_tensors.media_spend,
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     mroi = self.analyzer_media_only.marginal_roi(
         new_data=analyzer.DataTensors(media_spend=new_media_spend)
@@ -1058,7 +1058,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_cpik_zero_media_spend_returns_zero(self):
     new_media_spend = backend.zeros_like(
         self.meridian_media_only.media_tensors.media_spend,
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     cpik = self.analyzer_media_only.cpik(
         new_data=analyzer.DataTensors(media_spend=new_media_spend)
@@ -3613,10 +3613,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   def test_roi_zero_media_spend_returns_inf(self):
     new_media_spend = backend.zeros_like(
-        self.meridian.media_tensors.media_spend, dtype=backend.float32
+        self.meridian.media_tensors.media_spend, dtype=backend.float_dtype
     )
     new_rf_spend = backend.zeros_like(
-        self.meridian.rf_tensors.rf_spend, dtype=backend.float32
+        self.meridian.rf_tensors.rf_spend, dtype=backend.float_dtype
     )
 
     roi = self.analyzer.roi(
@@ -3853,14 +3853,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         seed=1,
     )
     new_data = analyzer.DataTensors(
-        media=backend.to_tensor(data1.media, dtype=backend.float32),
-        reach=backend.to_tensor(data1.reach, dtype=backend.float32),
-        media_spend=backend.to_tensor(data1.media_spend, dtype=backend.float32),
+        media=backend.to_tensor(data1.media, dtype=backend.float_dtype),
+        reach=backend.to_tensor(data1.reach, dtype=backend.float_dtype),
+        media_spend=backend.to_tensor(
+            data1.media_spend, dtype=backend.float_dtype
+        ),
         organic_media=backend.to_tensor(
-            data1.organic_media, dtype=backend.float32
+            data1.organic_media, dtype=backend.float_dtype
         ),
         organic_reach=backend.to_tensor(
-            data1.organic_reach, dtype=backend.float32
+            data1.organic_reach, dtype=backend.float_dtype
         ),
     )
     media_summary = self.analyzer.summary_metrics(
@@ -4817,7 +4819,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           new_data=opt_freq_data,
       ).optimal_frequency
       frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(
-          optimal_frequency, dtype=backend.float32
+          optimal_frequency, dtype=backend.float_dtype
       )
       reach = backend.divide_no_nan(
           new_data.reach * new_data.frequency, frequency
