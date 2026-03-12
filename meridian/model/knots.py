@@ -202,10 +202,9 @@ def get_knot_info(
       )
     else:
       aks = AKS(data)
-      knots = aks.automatic_knot_selection().knots
-      n_knots = len(knots)
-      knot_locations = knots
-  elif isinstance(knots, int):
+      selected_knots = aks.automatic_knot_selection().knots
+      knots = selected_knots if selected_knots.size > 0 else None
+  if isinstance(knots, int):
     if knots < 1:
       raise ValueError('If knots is an integer, it must be at least 1.')
     elif knots > n_times:
@@ -220,7 +219,7 @@ def get_knot_info(
       )
     n_knots = knots
     knot_locations = _get_equally_spaced_knot_locations(n_times, n_knots)
-  elif isinstance(knots, Collection) and knots:
+  elif isinstance(knots, Collection) and len(knots) > 0:
     if any(k < 0 for k in knots):
       raise ValueError('Knots must be all non-negative.')
     if any(k >= n_times for k in knots):
@@ -278,8 +277,11 @@ class AKS:
         value will be used.
 
     Returns:
-      Selected knots and the corresponding B-spline model.
+      Selected knots and the corresponding B-spline model. If at least one knot
+      is selected, boundary knots (min and max time) are added to ensure full
+      time coverage.
     """
+
     if base_penalty is None:
       base_penalty = self._BASE_PENALTY
     n_times = len(self._data.time)
@@ -326,7 +328,15 @@ class AKS:
         np.where(information_criterion == min(information_criterion))[0]
     )
 
-    return AKSResult(knots_sel[opt_idx], model[opt_idx])
+    selected_knots = knots_sel[opt_idx]
+    if selected_knots.size > 0:
+      start_knot = int(x.min())
+      end_knot = int(x.max())
+      selected_knots = np.unique(
+          np.concatenate((selected_knots, [start_knot, end_knot]))
+      )
+
+    return AKSResult(selected_knots, model[opt_idx])
 
   def _get_bspline_matrix(self, x, knots):
     """Replaces patsy.highlevel.dmatrix('bs(...)', ...)"""
