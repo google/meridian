@@ -139,7 +139,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       self, alpha, decay_function, expected_weights
   ):
 
-    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
 
     with self.subTest("unnormalized"):
       weights = adstock_hill.compute_decay_weights(
@@ -160,7 +160,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="all_geometric",
-          alpha=np.array([0.0, 0.5, 1.0], dtype=np.float32),
+          alpha=np.array([0.0, 0.5, 1.0], dtype=backend.np_float_dtype),
           decay_function=constants.GEOMETRIC_DECAY,
           expected_weights=(
               _GEOMETRIC_0_0_WEIGHTS,
@@ -170,7 +170,9 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       ),
       dict(
           testcase_name="all_binomial",
-          alpha=np.array([0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=np.float32),
+          alpha=np.array(
+              [0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=backend.np_float_dtype
+          ),
           decay_function=constants.BINOMIAL_DECAY,
           expected_weights=(
               _BINOMIAL_0_0_WEIGHTS,
@@ -182,7 +184,9 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       ),
       dict(
           testcase_name="mixed_binomial_geometric",
-          alpha=np.array([0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=np.float32),
+          alpha=np.array(
+              [0.0, 0.25, 0.5, 2.0 / 3.0, 1.0], dtype=backend.np_float_dtype
+          ),
           decay_function=(
               constants.GEOMETRIC_DECAY,
               constants.BINOMIAL_DECAY,
@@ -202,7 +206,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
   def test_compute_decay_weights_multiple_channels(
       self, alpha, decay_function, expected_weights
   ):
-    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
 
     with self.subTest("unnormalized"):
       weights = adstock_hill.compute_decay_weights(
@@ -228,7 +232,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
   def test_incompatible_alpha_decay_function_raises_error(self):
     alpha = backend.to_tensor([0.5, 0.5])
     decay_function = [constants.GEOMETRIC_DECAY] * 3
-    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float32)
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,

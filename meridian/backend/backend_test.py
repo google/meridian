@@ -129,6 +129,77 @@ _JAX = config.Backend.JAX.value
 _ALL_BACKENDS = [_TF, _JAX]
 
 
+class BackendJaxX46Test(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # Unload backend modules from Python's cache. This is to ensure that the
+    # module's initialization logic is re-run for each test under different
+    # environment variable conditions.
+    self._original_environ = os.environ.copy()
+    self._original_modules = sys.modules.copy()
+    modules_to_unload = ["meridian.backend.config", "meridian.backend"]
+    for mod_name in modules_to_unload:
+      if mod_name in sys.modules:
+        del sys.modules[mod_name]
+
+  def tearDown(self):
+    super().tearDown()
+    os.environ.clear()
+    os.environ.update(self._original_environ)
+
+    sys.modules.update(self._original_modules)
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      importlib.reload(config)
+      importlib.reload(backend)
+
+  def _import_backend_modules(self):
+    from meridian.backend import config as config_mod  # pylint: disable=reimported
+    from meridian import backend as backend_mod  # pylint: disable=reimported
+
+    return config_mod, backend_mod
+
+  @parameterized.named_parameters(
+      ("enabled_1", "1", True),
+      ("enabled_true", "true", True),
+      ("enabled_True", "True", True),
+      ("disabled_0", "0", False),
+      ("disabled_false", "false", False),
+      ("disabled_empty", "", False),
+  )
+  def test_jax_x64_env_var(self, env_value, expected_x64):
+    os.environ["MERIDIAN_ENABLE_JAX_X64"] = env_value
+    os.environ["MERIDIAN_BACKEND"] = "JAX"
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      _, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(jax.config.jax_enable_x64, expected_x64)
+    if expected_x64:
+      self.assertEqual(backend_mod.float_dtype, jnp.float64)
+      self.assertEqual(backend_mod.np_float_dtype, np.float64)
+      self.assertEqual(backend_mod._DEFAULT_FLOAT, "float64")
+    else:
+      self.assertEqual(backend_mod.float_dtype, jnp.float32)
+      self.assertEqual(backend_mod.np_float_dtype, np.float32)
+      self.assertEqual(backend_mod._DEFAULT_FLOAT, "float32")
+
+    jax.config.update("jax_enable_x64", False)
+
+  def test_jax_x64_env_var_ignored_for_tf(self):
+    os.environ["MERIDIAN_ENABLE_JAX_X64"] = "True"
+    os.environ["MERIDIAN_BACKEND"] = "tensorflow"
+
+    _, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(backend_mod.float_dtype, tf.float32)
+    self.assertEqual(backend_mod.np_float_dtype, np.float32)
+    self.assertEqual(backend_mod._DEFAULT_FLOAT, "float32")
+
+
 class BackendTest(parameterized.TestCase):
 
   @contextlib.contextmanager
@@ -481,7 +552,7 @@ class BackendTest(parameterized.TestCase):
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
-      tensor = backend.to_tensor(f64_data, dtype=backend.float32)
+      tensor = backend.to_tensor(f64_data, dtype=backend.float_dtype)
 
       relevant_warnings = [
           x for x in w if "Casting to float32" in str(x.message)
@@ -689,13 +760,13 @@ class BackendTest(parameterized.TestCase):
           testcase_name="with_float_input_defaults_to_float32",
           args=[5.0],
           kwargs={},
-          expected=np.arange(5.0, dtype=np.float32),
+          expected=np.arange(5.0, dtype=backend.np_float_dtype),
       ),
       dict(
           testcase_name="explicit_dtype_tf",
           args=[3],
           kwargs={"dtype": tf.float32},
-          expected=np.array([0.0, 1.0, 2.0], dtype=np.float32),
+          expected=np.array([0.0, 1.0, 2.0], dtype=backend.np_float_dtype),
       ),
   ]
 
@@ -1364,8 +1435,10 @@ class BackendTest(parameterized.TestCase):
               on_value=1.0,
               off_value=-1.0,
               axis=None,
-              dtype=np.float32,
-              expected=np.array([[-1.0, 1.0], [1.0, -1.0]], dtype=np.float32),
+              dtype=backend.np_float_dtype,
+              expected=np.array(
+                  [[-1.0, 1.0], [1.0, -1.0]], dtype=backend.np_float_dtype
+              ),
           ),
           dict(
               indices=np.array([0, 1]),
@@ -1420,7 +1493,7 @@ class BackendTest(parameterized.TestCase):
   @parameterized.product(
       [
           dict(
-              arr=np.array([1.1, 2.2, 3.3], dtype=np.float32),
+              arr=np.array([1.1, 2.2, 3.3], dtype=backend.np_float_dtype),
           ),
           dict(
               arr=np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32),
@@ -1430,7 +1503,7 @@ class BackendTest(parameterized.TestCase):
               arr=np.array([b"hello", b"world"], dtype=np.bytes_),
           ),
           dict(
-              arr=np.array([], dtype=np.float32),
+              arr=np.array([], dtype=backend.np_float_dtype),
           ),
       ],
       backend_name=_ALL_BACKENDS,
@@ -1955,7 +2028,7 @@ class JitCompatibilityTest(BackendTest):
       res1, res2 = self._compile_and_run(mask_func, x, mask)
       test_utils.assert_allclose(res1, res2)
       test_utils.assert_allclose(
-          res1, np.array([1.0, 3.0, 4.0], dtype=np.float32)
+          res1, np.array([1.0, 3.0, 4.0], dtype=backend.np_float_dtype)
       )
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
@@ -1982,8 +2055,8 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
   def _get_test_model(self, dims=2):
     """Defines a simple multivariate Gaussian model using the active backend."""
     tfd = backend.tfd
-    loc = backend.zeros(dims, dtype=backend.float32)
-    scale_diag = backend.ones(dims, dtype=backend.float32)
+    loc = backend.zeros(dims, dtype=backend.float_dtype)
+    scale_diag = backend.ones(dims, dtype=backend.float_dtype)
     return tfd.JointDistributionNamed(
         {"x": tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)}
     )

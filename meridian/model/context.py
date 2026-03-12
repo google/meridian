@@ -407,44 +407,48 @@ class ModelContext:
 
   @functools.cached_property
   def kpi(self) -> backend.Tensor:
-    return backend.to_tensor(self._input_data.kpi, dtype=backend.float32)
+    return backend.to_tensor(self._input_data.kpi, dtype=backend.float_dtype)
 
   @functools.cached_property
   def revenue_per_kpi(self) -> backend.Tensor | None:
     if self._input_data.revenue_per_kpi is None:
       return None
     return backend.to_tensor(
-        self._input_data.revenue_per_kpi, dtype=backend.float32
+        self._input_data.revenue_per_kpi, dtype=backend.float_dtype
     )
 
   @functools.cached_property
   def controls(self) -> backend.Tensor | None:
     if self._input_data.controls is None:
       return None
-    return backend.to_tensor(self._input_data.controls, dtype=backend.float32)
+    return backend.to_tensor(
+        self._input_data.controls, dtype=backend.float_dtype
+    )
 
   @functools.cached_property
   def non_media_treatments(self) -> backend.Tensor | None:
     if self._input_data.non_media_treatments is None:
       return None
     return backend.to_tensor(
-        self._input_data.non_media_treatments, dtype=backend.float32
+        self._input_data.non_media_treatments, dtype=backend.float_dtype
     )
 
   @functools.cached_property
   def population(self) -> backend.Tensor:
-    return backend.to_tensor(self._input_data.population, dtype=backend.float32)
+    return backend.to_tensor(
+        self._input_data.population, dtype=backend.float_dtype
+    )
 
   @functools.cached_property
   def total_spend(self) -> backend.Tensor:
     return backend.to_tensor(
-        self._input_data.get_total_spend(), dtype=backend.float32
+        self._input_data.get_total_spend(), dtype=backend.float_dtype
     )
 
   @functools.cached_property
   def total_outcome(self) -> backend.Tensor:
     return backend.to_tensor(
-        self._input_data.get_total_outcome(), dtype=backend.float32
+        self._input_data.get_total_outcome(), dtype=backend.float_dtype
     )
 
   @property

@@ -16,8 +16,11 @@
 
 import enum
 import os
-from typing import Union
+from typing import TYPE_CHECKING, Union
 import warnings
+
+if TYPE_CHECKING:
+  import jax  # pylint: disable=g-import-not-at-top,unused-import # pytype: disable=import-error
 
 
 class Backend(enum.Enum):
@@ -80,6 +83,13 @@ def _initialize_backend() -> Backend:
 
 
 _BACKEND = _initialize_backend()
+
+if _BACKEND == Backend.JAX:
+  _enable_jax_x64_str = os.environ.get("MERIDIAN_ENABLE_JAX_X64", "false")
+  if _enable_jax_x64_str.lower() in ("1", "true"):
+    import jax  # pylint: disable=g-import-not-at-top,unused-import # pytype: disable=import-error
+
+    jax.config.update("jax_enable_x64", True)
 
 
 def set_backend(backend: Union[Backend, str]) -> None:

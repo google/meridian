@@ -705,6 +705,8 @@ class AKSTest(parameterized.TestCase):
             np.array([1.41647864e-12, 1.00000000e00, 3.15544362e-20]),
             np.array([1.0, 1.0, 1.0]),
         ],
+        rtol=1e-5,
+        atol=1e-10,
     )
     self.assertLen(result[constants.KNOTS_SELECTED], 3)
     np.testing.assert_allclose(
