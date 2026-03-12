@@ -233,7 +233,7 @@ class ModelEquations:
         )
       elif isinstance(baseline_value, numbers.Number):
         baseline_for_channel = backend.to_tensor(
-            baseline_value, dtype=backend.float32
+            baseline_value, dtype=backend.float_dtype
         )
       else:
         raise ValueError(
@@ -386,7 +386,8 @@ class ModelEquations:
       )
     if self._context.revenue_per_kpi is None:
       revenue_per_kpi = backend.ones(
-          [self._context.n_geos, self._context.n_times], dtype=backend.float32
+          [self._context.n_geos, self._context.n_times],
+          dtype=backend.float_dtype,
       )
     else:
       revenue_per_kpi = self._context.revenue_per_kpi

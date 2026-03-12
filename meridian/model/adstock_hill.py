@@ -276,10 +276,12 @@ def _adstock(
         + (required_n_media_times - n_media_times,)
         + (media.shape[-1],)
     )
-    media = backend.concatenate([backend.zeros(pad_shape), media], axis=-2)
+    media = backend.concatenate(
+        [backend.zeros(pad_shape, dtype=backend.float_dtype), media], axis=-2
+    )
 
   # Adstock calculation.
-  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float32)
+  l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float_dtype)
   weights = compute_decay_weights(
       alpha=alpha,
       l_range=l_range,

@@ -88,9 +88,7 @@ class PriorDistributionSampler:
       self._meridian = None
       self._model_context = model_context
     else:
-      raise ValueError(
-          "Either `meridian` or `model_context` must be provided."
-      )
+      raise ValueError("Either `meridian` or `model_context` must be provided.")
 
   @functools.cached_property
   def _model_equations(self) -> equations.ModelEquations:
@@ -132,7 +130,10 @@ class PriorDistributionSampler:
         ),
     }
     beta_gm_dev = backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [ctx.n_geos, ctx.n_media_channels],
         name=constants.BETA_GM_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
@@ -238,7 +239,10 @@ class PriorDistributionSampler:
         ),
     }
     beta_grf_dev = backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [ctx.n_geos, ctx.n_rf_channels],
         name=constants.BETA_GRF_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
@@ -348,7 +352,10 @@ class PriorDistributionSampler:
         ),
     }
     beta_gom_dev = backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [ctx.n_geos, ctx.n_organic_media_channels],
         name=constants.BETA_GOM_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
@@ -440,7 +447,10 @@ class PriorDistributionSampler:
         ),
     }
     beta_gorf_dev = backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [ctx.n_geos, ctx.n_organic_rf_channels],
         name=constants.BETA_GORF_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
@@ -524,7 +534,10 @@ class PriorDistributionSampler:
         ),
     }
     gamma_gn_dev = backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [ctx.n_geos, ctx.n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
@@ -639,7 +652,10 @@ class PriorDistributionSampler:
       }
 
       gamma_gc_dev = backend.tfd.Sample(
-          backend.tfd.Normal(0, 1),
+          backend.tfd.Normal(
+              loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+              scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+          ),
           [ctx.n_geos, ctx.n_controls],
           name=constants.GAMMA_GC_DEV,
       ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())

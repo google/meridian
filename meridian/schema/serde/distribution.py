@@ -28,6 +28,7 @@ from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import constants as sc
 from meridian.schema.serde import function_registry as function_registry_utils
 from meridian.schema.serde import serde
+import numpy as np
 
 from tensorflow.core.framework import tensor_shape_pb2  # pylint: disable=g-direct-tensorflow-import
 
@@ -261,7 +262,7 @@ class DistributionSerde(
         # explicitly handled above, such as numpy arrays or backend tensors.
         try:
           return meridian_pb.TfpParameterValue(
-              tensor_value=backend.make_tensor_proto(value)
+              tensor_value=backend.make_tensor_proto(np.asarray(value))
           )
         except TypeError as e:
           raise TypeError(f"Unsupported type: {type(value)}, {value!r}") from e

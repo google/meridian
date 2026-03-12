@@ -1338,7 +1338,7 @@ class EDAEngine:
     if transformer_class is None:
       return da
     if population is None:
-      population = backend.ones([1], dtype=backend.float32)
+      population = backend.ones([1], dtype=backend.float_dtype)
     if transformer_class is transformers.CenteringAndScalingTransformer:
       xarray_transformer = transformers.CenteringAndScalingTransformer(
           tensor=da.values, population=population
@@ -1434,7 +1434,9 @@ class EDAEngine:
       )
 
     national_da = national_da.assign_coords({constants.GEO: [temp_geo_dim]})
-    national_da.values = backend.cast(national_da.values, dtype=backend.float32)
+    national_da.values = backend.cast(
+        national_da.values, dtype=backend.float_dtype
+    )
     national_da = self._scale_xarray(national_da, transformer_class)
 
     national_da = national_da.sel({constants.GEO: temp_geo_dim}, drop=True)
@@ -1475,7 +1477,7 @@ class EDAEngine:
     impressions_raw_da = reach_raw_da * frequency_da
     impressions_raw_da.name = names.impressions
     impressions_raw_da.values = backend.cast(
-        impressions_raw_da.values, dtype=backend.float32
+        impressions_raw_da.values, dtype=backend.float_dtype
     )
 
     if self._is_national_data:
@@ -1525,7 +1527,7 @@ class EDAEngine:
       )
       national_frequency_da.name = names.national_frequency
       national_frequency_da.values = backend.cast(
-          national_frequency_da.values, dtype=backend.float32
+          national_frequency_da.values, dtype=backend.float_dtype
       )
 
       # Scale the impressions by population

@@ -1104,18 +1104,18 @@ class Analyzer:
 
     decayed_effect_prior = adstock_hill.compute_decay_weights(
         alpha=backend.to_tensor(
-            prior[backend.newaxis, ...], dtype=backend.float32
+            prior[backend.newaxis, ...], dtype=backend.float_dtype
         ),
-        l_range=backend.to_tensor(l_range, dtype=backend.float32),
+        l_range=backend.to_tensor(l_range, dtype=backend.float_dtype),
         window_size=window_size,
         decay_functions=decay_functions,
         normalize=False,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
         alpha=backend.to_tensor(
-            posterior[backend.newaxis, ...], dtype=backend.float32
+            posterior[backend.newaxis, ...], dtype=backend.float_dtype
         ),
-        l_range=backend.to_tensor(l_range, dtype=backend.float32),
+        l_range=backend.to_tensor(l_range, dtype=backend.float_dtype),
         window_size=window_size,
         decay_functions=decay_functions,
         normalize=False,
@@ -1695,7 +1695,8 @@ class Analyzer:
     n_draws = params.draw.size
     n_chains = params.chain.size
     outcome_means = backend.zeros(
-        (n_chains, 0, self.model_context.n_geos, self.model_context.n_times)
+        (n_chains, 0, self.model_context.n_geos, self.model_context.n_times),
+        dtype=backend.float_dtype,
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = (
@@ -2241,7 +2242,8 @@ class Analyzer:
       )
       non_media_treatments0 = backend.broadcast_to(
           backend.to_tensor(
-              non_media_treatments_baseline_normalized, dtype=backend.float32
+              non_media_treatments_baseline_normalized,
+              dtype=backend.float_dtype,
           )[backend.newaxis, backend.newaxis, :],
           data_tensors.non_media_treatments.shape,  # pytype: disable=attribute-error
       )
@@ -2967,7 +2969,7 @@ class Analyzer:
           non_media_baseline_values=non_media_baseline_values,
       )
       new_non_media_treatments_population_scaled = backend.broadcast_to(
-          backend.to_tensor(baseline, dtype=backend.float32)[
+          backend.to_tensor(baseline, dtype=backend.float_dtype)[
               backend.newaxis, backend.newaxis, :
           ],
           ctx.non_media_treatments.shape,
@@ -3842,16 +3844,22 @@ class Analyzer:
         filled_data.get_modified_times(model_context=self.model_context)
         or self.model_context.n_times
     )
-    dummy_media = backend.ones((
-        self.model_context.n_geos,
-        n_media_times,
-        self.model_context.n_media_channels,
-    ))
-    dummy_media_spend = backend.ones((
-        self.model_context.n_geos,
-        n_times,
-        self.model_context.n_media_channels,
-    ))
+    dummy_media = backend.ones(
+        (
+            self.model_context.n_geos,
+            n_media_times,
+            self.model_context.n_media_channels,
+        ),
+        dtype=backend.float_dtype,
+    )
+    dummy_media_spend = backend.ones(
+        (
+            self.model_context.n_geos,
+            n_times,
+            self.model_context.n_media_channels,
+        ),
+        dtype=backend.float_dtype,
+    )
 
     max_freq = max_frequency or np.max(
         np.array(self.model_context.rf_tensors.frequency)
@@ -3898,7 +3906,7 @@ class Analyzer:
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
     optimal_frequency_values = backend.to_tensor(
-        optimal_frequency, dtype=backend.float32
+        optimal_frequency, dtype=backend.float_dtype
     )
     optimal_frequency_tensor = (
         backend.ones_like(filled_data.rf_impressions) * optimal_frequency_values
@@ -4415,7 +4423,7 @@ class Analyzer:
               selected_times=selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
-          dtype=backend.float32,
+          dtype=backend.float_dtype,
       )
       reach = backend.divide(
           filled_data.reach * filled_data.frequency,
@@ -4434,7 +4442,8 @@ class Analyzer:
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
         incremental_outcome[i, :, :] = backend.zeros(
-            (len(self.model_context.input_data.get_all_paid_channels()), 3)
+            (len(self.model_context.input_data.get_all_paid_channels()), 3),
+            dtype=backend.float_dtype,
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
       scaled_data = _scale_tensors_by_multiplier(

@@ -192,7 +192,10 @@ def _joint_dist_base_logic(
     eta_m = yield prior_broadcast.eta_m
     slope_m = yield prior_broadcast.slope_m
     beta_gm_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_media_channels],
         name=constants.BETA_GM_DEV,
     )
@@ -254,7 +257,10 @@ def _joint_dist_base_logic(
     eta_rf = yield prior_broadcast.eta_rf
     slope_rf = yield prior_broadcast.slope_rf
     beta_grf_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_rf_channels],
         name=constants.BETA_GRF_DEV,
     )
@@ -318,7 +324,10 @@ def _joint_dist_base_logic(
     eta_om = yield prior_broadcast.eta_om
     slope_om = yield prior_broadcast.slope_om
     beta_gom_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_organic_media_channels],
         name=constants.BETA_GOM_DEV,
     )
@@ -365,7 +374,10 @@ def _joint_dist_base_logic(
     eta_orf = yield prior_broadcast.eta_orf
     slope_orf = yield prior_broadcast.slope_orf
     beta_gorf_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_organic_rf_channels],
         name=constants.BETA_GORF_DEV,
     )
@@ -428,7 +440,10 @@ def _joint_dist_base_logic(
     gamma_c = yield prior_broadcast.gamma_c
     xi_c = yield prior_broadcast.xi_c
     gamma_gc_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_controls],
         name=constants.GAMMA_GC_DEV,
     )
@@ -443,7 +458,10 @@ def _joint_dist_base_logic(
   if model_context.non_media_treatments is not None:
     xi_n = yield prior_broadcast.xi_n
     gamma_gn_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(0, 1),
+        backend.tfd.Normal(
+            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+        ),
         [n_geos, n_non_media_channels],
         name=constants.GAMMA_GN_DEV,
     )
@@ -489,8 +507,10 @@ def _joint_dist_base_logic(
   # deviation to `1/sqrt(2pi)`, so the log-density is 0 regardless of the
   # sampled posterior parameter values.
   if holdout_id is not None:
-    y_pred_holdout = backend.where(holdout_id, 0.0, y_pred)
-    test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float32)
+    y_pred_holdout = backend.where(
+        holdout_id, backend.to_tensor(0.0, dtype=backend.float_dtype), y_pred
+    )
+    test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float_dtype)
     sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)
     yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
   else:
