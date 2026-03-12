@@ -180,13 +180,13 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
         c.EC_M: backend.tfd.TruncatedNormal(0.8, 0.8, 0.1, 10, name=c.EC_M),
         c.EC_RF: backend.tfd.TransformedDistribution(
             backend.tfd.LogNormal(0.7, 0.4),
-            backend.bijectors.Shift(0.1),
+            backend.bijectors.Shift(backend.np_float_dtype(0.1)),
             name=c.EC_RF,
         ),
         c.EC_OM: backend.tfd.TruncatedNormal(0.8, 0.8, 0.1, 10, name=c.EC_OM),
         c.EC_ORF: backend.tfd.TransformedDistribution(
             backend.tfd.LogNormal(0.7, 0.4),
-            backend.bijectors.Shift(0.1),
+            backend.bijectors.Shift(backend.np_float_dtype(0.1)),
             name=c.EC_ORF,
         ),
         c.SLOPE_M: backend.tfd.Deterministic(1.0, name=c.SLOPE_M),
@@ -1519,12 +1519,12 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='same_complex_distributions',
           get_a=lambda: backend.tfd.TransformedDistribution(
               backend.tfd.LogNormal(0.7, 0.4),
-              backend.bijectors.Shift(0.1),
+              backend.bijectors.Shift(backend.np_float_dtype(0.1)),
               name='name_1',
           ),
           get_b=lambda: backend.tfd.TransformedDistribution(
               backend.tfd.LogNormal(0.7, 0.4),
-              backend.bijectors.Shift(0.1),
+              backend.bijectors.Shift(backend.np_float_dtype(0.1)),
               name='name_1',
           ),
           expected_result=True,

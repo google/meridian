@@ -57,9 +57,11 @@ class MarketingDataTest(parameterized.TestCase):
     return mock.MagicMock(
         spec=model.Meridian,
         controls_scaled=backend.to_tensor(
-            np.full((2, 3), 5.0), dtype=backend.float32
+            np.full((2, 3), 5.0), dtype=backend.float_dtype
         ),
-        kpi_scaled=backend.to_tensor(np.full((4,), 6.0), dtype=backend.float32),
+        kpi_scaled=backend.to_tensor(
+            np.full((4,), 6.0), dtype=backend.float_dtype
+        ),
         media_tensors=media.MediaTensors(),
         rf_tensors=media.RfTensors(),
         inference_data=az.InferenceData(),

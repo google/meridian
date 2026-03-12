@@ -12,7 +12,12 @@ knot_values {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -24,7 +29,12 @@ knot_values {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -45,7 +55,12 @@ tau_g_excl_baseline {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -57,7 +72,12 @@ tau_g_excl_baseline {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -84,7 +104,12 @@ beta_m {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -111,7 +136,12 @@ beta_rf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -138,7 +168,12 @@ eta_m {
   parameters {
     key: "scale"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -165,7 +200,12 @@ eta_rf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -186,7 +226,12 @@ gamma_c {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -198,7 +243,12 @@ gamma_c {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -225,7 +275,12 @@ xi_c {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -246,13 +301,23 @@ alpha_m {
   parameters {
     key: "high"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -279,13 +344,23 @@ alpha_rf {
   parameters {
     key: "high"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -312,19 +387,34 @@ ec_m {
   parameters {
     key: "high"
     value {
-      int_value: 10
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 10.0
+      }
     }
   }
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.80
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.8
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.10
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.1
+      }
     }
   }
   parameters {
@@ -336,7 +426,12 @@ ec_m {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.80
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.8
+      }
     }
   }
   parameters {
@@ -362,7 +457,12 @@ ec_rf {
         parameters {
           key: "shift"
           value {
-            scalar_value: 0.10
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.1
+            }
           }
         }
         parameters {
@@ -388,7 +488,12 @@ ec_rf {
         parameters {
           key: "loc"
           value {
-            scalar_value: 0.70
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.7
+            }
           }
         }
         parameters {
@@ -400,7 +505,12 @@ ec_rf {
         parameters {
           key: "scale"
           value {
-            scalar_value: 0.40
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.4
+            }
           }
         }
         parameters {
@@ -456,7 +566,12 @@ slope_m {
   parameters {
     key: "loc"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -489,7 +604,12 @@ slope_rf {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.70
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.7
+      }
     }
   }
   parameters {
@@ -501,7 +621,12 @@ slope_rf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.40
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.4
+      }
     }
   }
   parameters {
@@ -528,7 +653,12 @@ sigma {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -549,7 +679,12 @@ roi_m {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.20
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.2
+      }
     }
   }
   parameters {
@@ -561,7 +696,12 @@ roi_m {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.90
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.9
+      }
     }
   }
   parameters {
@@ -582,7 +722,12 @@ roi_rf {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.20
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.2
+      }
     }
   }
   parameters {
@@ -594,7 +739,12 @@ roi_rf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.90
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.9
+      }
     }
   }
   parameters {
@@ -621,7 +771,12 @@ beta_om {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -648,7 +803,12 @@ beta_orf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -675,7 +835,12 @@ eta_om {
   parameters {
     key: "scale"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -702,7 +867,12 @@ eta_orf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -723,7 +893,12 @@ gamma_n {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -735,7 +910,12 @@ gamma_n {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -762,7 +942,12 @@ xi_n {
   parameters {
     key: "scale"
     value {
-      scalar_value: 5.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 5.0
+      }
     }
   }
   parameters {
@@ -783,13 +968,23 @@ alpha_om {
   parameters {
     key: "high"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -816,13 +1011,23 @@ alpha_orf {
   parameters {
     key: "high"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -849,19 +1054,34 @@ ec_om {
   parameters {
     key: "high"
     value {
-      int_value: 10
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 10.0
+      }
     }
   }
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.80
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.8
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: 0.10
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.1
+      }
     }
   }
   parameters {
@@ -873,7 +1093,12 @@ ec_om {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.80
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.8
+      }
     }
   }
   parameters {
@@ -899,7 +1124,12 @@ ec_orf {
         parameters {
           key: "shift"
           value {
-            scalar_value: 0.10
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.1
+            }
           }
         }
         parameters {
@@ -925,7 +1155,12 @@ ec_orf {
         parameters {
           key: "loc"
           value {
-            scalar_value: 0.70
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.7
+            }
           }
         }
         parameters {
@@ -937,7 +1172,12 @@ ec_orf {
         parameters {
           key: "scale"
           value {
-            scalar_value: 0.40
+            tensor_value {
+              dtype: DT_FLOAT
+              tensor_shape {
+              }
+              float_val: 0.4
+            }
           }
         }
         parameters {
@@ -993,7 +1233,12 @@ slope_om {
   parameters {
     key: "loc"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -1026,7 +1271,12 @@ slope_orf {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.70
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.7
+      }
     }
   }
   parameters {
@@ -1038,7 +1288,12 @@ slope_orf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.40
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.4
+      }
     }
   }
   parameters {
@@ -1059,7 +1314,12 @@ mroi_m {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -1071,7 +1331,12 @@ mroi_m {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.50
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.5
+      }
     }
   }
   parameters {
@@ -1092,7 +1357,12 @@ mroi_rf {
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
@@ -1104,7 +1374,12 @@ mroi_rf {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.50
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.5
+      }
     }
   }
   parameters {
@@ -1125,13 +1400,23 @@ contribution_m {
   parameters {
     key: "concentration0"
     value {
-      scalar_value: 99.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 99.0
+      }
     }
   }
   parameters {
     key: "concentration1"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -1164,13 +1449,23 @@ contribution_rf {
   parameters {
     key: "concentration0"
     value {
-      scalar_value: 99.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 99.0
+      }
     }
   }
   parameters {
     key: "concentration1"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -1203,13 +1498,23 @@ contribution_om {
   parameters {
     key: "concentration0"
     value {
-      scalar_value: 99.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 99.0
+      }
     }
   }
   parameters {
     key: "concentration1"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -1242,13 +1547,23 @@ contribution_orf {
   parameters {
     key: "concentration0"
     value {
-      scalar_value: 99.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 99.0
+      }
     }
   }
   parameters {
     key: "concentration1"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
@@ -1281,19 +1596,34 @@ contribution_n {
   parameters {
     key: "high"
     value {
-      scalar_value: 1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
     }
   }
   parameters {
     key: "loc"
     value {
-      scalar_value: 0.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
     }
   }
   parameters {
     key: "low"
     value {
-      scalar_value: -1.00
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: -1.0
+      }
     }
   }
   parameters {
@@ -1305,7 +1635,12 @@ contribution_n {
   parameters {
     key: "scale"
     value {
-      scalar_value: 0.10
+      tensor_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.1
+      }
     }
   }
   parameters {

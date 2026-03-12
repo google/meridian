@@ -56,7 +56,7 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    media = backend.to_tensor(data.media, dtype=backend.float32)
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
     with self.assertRaisesRegex(
         ValueError,
         "n_times_output is required. This argument is only optional when"
@@ -77,7 +77,7 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    media = backend.to_tensor(data.media, dtype=backend.float32)
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
     with mock.patch.object(
         adstock_hill, "AdstockTransformer", autospec=True
     ) as mock_adstock_cls:
@@ -121,7 +121,7 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    media = backend.to_tensor(data.media, dtype=backend.float32)
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
     mock_hill = self.enter_context(
         mock.patch.object(
             adstock_hill.HillTransformer,
@@ -163,8 +163,8 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    reach = backend.to_tensor(data.reach, dtype=backend.float32)
-    frequency = backend.to_tensor(data.frequency, dtype=backend.float32)
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
     with self.assertRaisesRegex(
         ValueError,
         "n_times_output is required. This argument is only optional when"
@@ -186,9 +186,9 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    media = backend.to_tensor(data.media, dtype=backend.float32)
-    reach = backend.to_tensor(data.reach, dtype=backend.float32)
-    frequency = backend.to_tensor(data.frequency, dtype=backend.float32)
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
     with mock.patch.object(
         adstock_hill, "AdstockTransformer", autospec=True
     ) as mock_adstock_cls:
@@ -215,8 +215,8 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    reach = backend.to_tensor(data.reach, dtype=backend.float32)
-    frequency = backend.to_tensor(data.frequency, dtype=backend.float32)
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
     mock_hill = self.enter_context(
         mock.patch.object(
             adstock_hill.HillTransformer,

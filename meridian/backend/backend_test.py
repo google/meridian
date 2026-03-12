@@ -481,7 +481,7 @@ class BackendTest(parameterized.TestCase):
 
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
-      tensor = backend.to_tensor(f64_data, dtype=backend.float32)
+      tensor = backend.to_tensor(f64_data, dtype=backend.float_dtype)
 
       relevant_warnings = [
           x for x in w if "Casting to float32" in str(x.message)
@@ -689,13 +689,13 @@ class BackendTest(parameterized.TestCase):
           testcase_name="with_float_input_defaults_to_float32",
           args=[5.0],
           kwargs={},
-          expected=np.arange(5.0, dtype=np.float32),
+          expected=np.arange(5.0, dtype=backend.np_float_dtype),
       ),
       dict(
           testcase_name="explicit_dtype_tf",
           args=[3],
           kwargs={"dtype": tf.float32},
-          expected=np.array([0.0, 1.0, 2.0], dtype=np.float32),
+          expected=np.array([0.0, 1.0, 2.0], dtype=backend.np_float_dtype),
       ),
   ]
 
@@ -1364,8 +1364,10 @@ class BackendTest(parameterized.TestCase):
               on_value=1.0,
               off_value=-1.0,
               axis=None,
-              dtype=np.float32,
-              expected=np.array([[-1.0, 1.0], [1.0, -1.0]], dtype=np.float32),
+              dtype=backend.np_float_dtype,
+              expected=np.array(
+                  [[-1.0, 1.0], [1.0, -1.0]], dtype=backend.np_float_dtype
+              ),
           ),
           dict(
               indices=np.array([0, 1]),
@@ -1420,7 +1422,7 @@ class BackendTest(parameterized.TestCase):
   @parameterized.product(
       [
           dict(
-              arr=np.array([1.1, 2.2, 3.3], dtype=np.float32),
+              arr=np.array([1.1, 2.2, 3.3], dtype=backend.np_float_dtype),
           ),
           dict(
               arr=np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32),
@@ -1430,7 +1432,7 @@ class BackendTest(parameterized.TestCase):
               arr=np.array([b"hello", b"world"], dtype=np.bytes_),
           ),
           dict(
-              arr=np.array([], dtype=np.float32),
+              arr=np.array([], dtype=backend.np_float_dtype),
           ),
       ],
       backend_name=_ALL_BACKENDS,
@@ -1955,7 +1957,7 @@ class JitCompatibilityTest(BackendTest):
       res1, res2 = self._compile_and_run(mask_func, x, mask)
       test_utils.assert_allclose(res1, res2)
       test_utils.assert_allclose(
-          res1, np.array([1.0, 3.0, 4.0], dtype=np.float32)
+          res1, np.array([1.0, 3.0, 4.0], dtype=backend.np_float_dtype)
       )
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
@@ -1982,8 +1984,8 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
   def _get_test_model(self, dims=2):
     """Defines a simple multivariate Gaussian model using the active backend."""
     tfd = backend.tfd
-    loc = backend.zeros(dims, dtype=backend.float32)
-    scale_diag = backend.ones(dims, dtype=backend.float32)
+    loc = backend.zeros(dims, dtype=backend.float_dtype)
+    scale_diag = backend.ones(dims, dtype=backend.float_dtype)
     return tfd.JointDistributionNamed(
         {"x": tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)}
     )

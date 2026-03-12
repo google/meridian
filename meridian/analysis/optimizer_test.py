@@ -963,9 +963,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       )
 
   def test_incremental_outcome_tensors(self):
-    spend = backend.to_tensor([100, 200, 300, 400, 500], dtype=backend.float32)
+    spend = backend.to_tensor(
+        [100, 200, 300, 400, 500], dtype=backend.float_dtype
+    )
     hist_spend = backend.to_tensor(
-        [350, 400, 200, 50, 500], dtype=backend.float32
+        [350, 400, 200, 50, 500], dtype=backend.float_dtype
     )
     new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
@@ -990,11 +992,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     backend_test_utils.assert_allclose(new_frequency, expected_frequency)
 
   def test_incremental_outcome_tensors_with_optimal_frequency(self):
-    spend = backend.to_tensor([100, 200, 300, 400, 500], dtype=backend.float32)
-    hist_spend = backend.to_tensor(
-        [350, 400, 200, 50, 500], dtype=backend.float32
+    spend = backend.to_tensor(
+        [100, 200, 300, 400, 500], dtype=backend.float_dtype
     )
-    optimal_frequency = backend.to_tensor([2, 2], dtype=backend.float32)
+    hist_spend = backend.to_tensor(
+        [350, 400, 200, 50, 500], dtype=backend.float_dtype
+    )
+    optimal_frequency = backend.to_tensor([2, 2], dtype=backend.float_dtype)
     new_media, new_reach, new_frequency = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend=hist_spend,
@@ -1900,7 +1904,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     new_frequency = backend.ones_like(
         self.meridian_media_and_rf.rf_tensors.frequency
-    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float32)
+    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float_dtype)
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
@@ -1998,7 +2002,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     new_frequency = backend.ones_like(
         self.meridian_media_and_rf.rf_tensors.frequency
-    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float32)
+    ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float_dtype)
     mock_incremental_outcome.assert_called_with(
         use_posterior=True,
         new_data=mock.ANY,
@@ -2971,7 +2975,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         ValueError,
         'Percent of spend must sum to one.',
     ):
-      pct_of_spend = np.array([0.1, 0.2, 0.3, 0.3, 0.5], dtype=np.float32)
+      pct_of_spend = np.array(
+          [0.1, 0.2, 0.3, 0.3, 0.5], dtype=backend.np_float_dtype
+      )
       self.budget_optimizer_media_and_rf.optimize(
           pct_of_spend=pct_of_spend, fixed_budget=True
       )
@@ -3816,7 +3822,6 @@ class OptimizerOutputTest(parameterized.TestCase):
         instance=True,
         input_data=mock_data_kpi_output,
         model_context=model_context_kpi_output,
-
     )
     self.budget_optimizer = optimizer.BudgetOptimizer(meridian_mock)
     self.budget_optimizer_kpi_output = optimizer.BudgetOptimizer(
@@ -4757,17 +4762,17 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     super().setUp()
     self.time = ['2023-01-01', '2023-01-08']
     self.population = backend.to_tensor(
-        [1000.0, 4000.0], dtype=backend.float32
+        [1000.0, 4000.0], dtype=backend.float_dtype
     )  # n_geos=2
     self.cpmu = backend.to_tensor(
         [
             [[10.0, 11.0, 12.0], [13.0, 14.0, 15.0]],
             [[16.0, 17.0, 18.0], [19.0, 20.0, 21.0]],
         ],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )  # n_channels=3
     self.cprf = backend.to_tensor(
-        [[[1.0], [1.0]], [[2.0], [2.0]]], dtype=backend.float32
+        [[[1.0], [1.0]], [[2.0], [2.0]]], dtype=backend.float_dtype
     )
     self.frequency = backend.to_tensor(
         [[[2.0], [2.0]], [[3.0], [3.0]]], dtype=backend.float32

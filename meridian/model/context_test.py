@@ -333,50 +333,52 @@ class ContextTest(
         input_data=data, model_spec=spec.ModelSpec()
     )
     test_utils.assert_allequal(
-        backend.to_tensor(data.kpi, dtype=backend.float32),
+        backend.to_tensor(data.kpi, dtype=backend.float_dtype),
         model_context.kpi,
     )
     test_utils.assert_allequal(
-        backend.to_tensor(data.revenue_per_kpi, dtype=backend.float32),
+        backend.to_tensor(data.revenue_per_kpi, dtype=backend.float_dtype),
         model_context.revenue_per_kpi,
     )
     if data.controls is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.controls, dtype=backend.float32),
+          backend.to_tensor(data.controls, dtype=backend.float_dtype),
           model_context.controls,
       )
     if data.non_media_treatments is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.non_media_treatments, dtype=backend.float32),
+          backend.to_tensor(
+              data.non_media_treatments, dtype=backend.float_dtype
+          ),
           model_context.non_media_treatments,
       )
     test_utils.assert_allequal(
-        backend.to_tensor(data.population, dtype=backend.float32),
+        backend.to_tensor(data.population, dtype=backend.float_dtype),
         model_context.population,
     )
     if data.media is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.media, dtype=backend.float32),
+          backend.to_tensor(data.media, dtype=backend.float_dtype),
           model_context.media_tensors.media,
       )
     if data.media_spend is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.media_spend, dtype=backend.float32),
+          backend.to_tensor(data.media_spend, dtype=backend.float_dtype),
           model_context.media_tensors.media_spend,
       )
     if data.reach is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.reach, dtype=backend.float32),
+          backend.to_tensor(data.reach, dtype=backend.float_dtype),
           model_context.rf_tensors.reach,
       )
     if data.frequency is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.frequency, dtype=backend.float32),
+          backend.to_tensor(data.frequency, dtype=backend.float_dtype),
           model_context.rf_tensors.frequency,
       )
     if data.rf_spend is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.rf_spend, dtype=backend.float32),
+          backend.to_tensor(data.rf_spend, dtype=backend.float_dtype),
           model_context.rf_tensors.rf_spend,
       )
     if data.organic_media is not None:
@@ -777,7 +779,7 @@ class ContextTest(
 
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
-    atol = np.finfo(np.float32).eps * 100
+    atol = np.finfo(backend.np_float_dtype).eps * 100
     test_utils.assert_allclose(
         model_context.controls_transformer.inverse(model_context.controls_scaled),  # pytype: disable=attribute-error
         data.controls,
