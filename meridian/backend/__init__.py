@@ -1371,11 +1371,11 @@ class _JaxRNGHandler(_BaseRNGHandler):
     """Initializes the JAX RNG handler.
 
     Args:
-      seed: The initial seed, which must be a Python integer, a scalar integer
-        Tensor/array, or None.
+      seed: The initial seed, which must be a Python integer, a sequence of two
+        integers, a scalar integer Tensor/array, or None.
 
     Raises:
-      ValueError: If the provided seed is not a scalar integer or None.
+      ValueError: If the provided seed is invalid.
     """
     super().__init__(seed)
     self._key: Optional["_jax.Array"] = None
@@ -1394,10 +1394,19 @@ class _JaxRNGHandler(_BaseRNGHandler):
       self._key = seed
       return
 
+    try:
+      seed_arr = np.asarray(seed)
+      if seed_arr.shape == (2,) and np.issubdtype(seed_arr.dtype, np.integer):
+        self._key = jax_ops.asarray(seed_arr, dtype=jax_ops.uint32)
+        return
+    except (TypeError, ValueError):
+      pass
+
     if self._int_seed is None:
       raise ValueError(
-          "JAX backend requires a seed that is an integer or a scalar array,"
-          f" but got: {type(seed)} with value {seed!r}"
+          "JAX backend requires a seed that is an integer, a sequence of two"
+          f" integers, or a scalar array, but got: {type(seed)} with value"
+          f" {seed!r}"
       )
 
     self._key = random.prng_key(self._int_seed)
