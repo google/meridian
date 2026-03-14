@@ -482,14 +482,15 @@ class MarketingProcessor(
     )
 
     return self._marketing_metrics_to_protos(
-        media_summary_metrics,
-        non_media_summary_metrics,
-        baseline_outcome,
-        secondary_non_revenue_kpi_metrics,
-        secondary_non_revenue_kpi_non_media_metrics,
-        response_curves,
-        marketing_analysis_spec,
-        date_intervals,
+        metrics=media_summary_metrics,
+        non_media_metrics=non_media_summary_metrics,
+        baseline_outcome=baseline_outcome,
+        secondary_non_revenue_kpi_baseline_outcome=None,
+        secondary_non_revenue_kpi_metrics=secondary_non_revenue_kpi_metrics,
+        secondary_non_revenue_kpi_non_media_metrics=secondary_non_revenue_kpi_non_media_metrics,
+        response_curves=response_curves,
+        marketing_analysis_spec=marketing_analysis_spec,
+        date_intervals=date_intervals,
     )
 
   def _generate_media_and_non_media_summary_metrics(
@@ -556,6 +557,7 @@ class MarketingProcessor(
     if incremental_outcome_spec is None:
       return []
 
+    selected_times = resolver.resolve_to_enumerated_selected_times()
     compute_incremental_outcome = functools.partial(
         self._incremental_outcome_dataset,
         resolver=resolver,
@@ -569,7 +571,18 @@ class MarketingProcessor(
     # This contains either a revenue-based KPI or a non-revenue KPI analysis.
     incremental_outcome = compute_incremental_outcome(use_kpi=self._kpi_only)
 
+    # Baseline outcome is not computed for new data.
+    if incremental_outcome_spec.new_data is not None:
+      baseline_outcome = None
+    else:
+      baseline_outcome = self._analyzer.baseline_summary_metrics(
+          confidence_level=marketing_analysis_spec.confidence_level,
+          aggregate_times=incremental_outcome_spec.aggregate_times,
+          selected_times=selected_times,
+      ).sel(distribution=constants.POSTERIOR)
+
     secondary_non_revenue_kpi_metrics = None
+    secondary_non_revenue_kpi_baseline_outcome = None
     # If the input data KPI type is "non-revenue", and we calculated its
     # revenue-based KPI outcomes above, then we should also compute its
     # non-revenue KPI outcomes.
@@ -577,6 +590,15 @@ class MarketingProcessor(
       secondary_non_revenue_kpi_metrics = compute_incremental_outcome(
           use_kpi=True
       )
+      if incremental_outcome_spec.new_data is None:
+        secondary_non_revenue_kpi_baseline_outcome = (
+            self._analyzer.baseline_summary_metrics(
+                confidence_level=marketing_analysis_spec.confidence_level,
+                aggregate_times=incremental_outcome_spec.aggregate_times,
+                selected_times=selected_times,
+                use_kpi=True,
+            ).sel(distribution=constants.POSTERIOR)
+        )
 
     date_intervals = self._build_time_intervals(
         aggregate_times=incremental_outcome_spec.aggregate_times,
@@ -586,7 +608,8 @@ class MarketingProcessor(
     return self._marketing_metrics_to_protos(
         metrics=incremental_outcome,
         non_media_metrics=None,
-        baseline_outcome=None,
+        baseline_outcome=baseline_outcome,
+        secondary_non_revenue_kpi_baseline_outcome=secondary_non_revenue_kpi_baseline_outcome,
         secondary_non_revenue_kpi_metrics=secondary_non_revenue_kpi_metrics,
         secondary_non_revenue_kpi_non_media_metrics=None,
         response_curves=None,
@@ -620,9 +643,11 @@ class MarketingProcessor(
 
   def _marketing_metrics_to_protos(
       self,
+      *,
       metrics: xr.Dataset,
       non_media_metrics: xr.Dataset | None,
       baseline_outcome: xr.Dataset | None,
+      secondary_non_revenue_kpi_baseline_outcome: xr.Dataset | None,
       secondary_non_revenue_kpi_metrics: xr.Dataset | None,
       secondary_non_revenue_kpi_non_media_metrics: xr.Dataset | None,
       response_curves: xr.Dataset | None,
@@ -682,19 +707,21 @@ class MarketingProcessor(
         ):
           non_media_analyses.append(channel_analysis)
 
+      if baseline_outcome is not None:
+        baseline_analysis = self._get_baseline_metrics(
+            marketing_analysis_spec=marketing_analysis_spec,
+            baseline_outcome=baseline_outcome,
+            secondary_baseline_outcome=secondary_non_revenue_kpi_baseline_outcome,
+            start_date=start_date_str,
+            is_revenue_type=(not self._kpi_only),
+        )
+        non_media_analyses.append(baseline_analysis)
+
       marketing_analysis = marketing_analysis_pb2.MarketingAnalysis(
           date_interval=date_interval,
           media_analyses=media_analyses,
           non_media_analyses=non_media_analyses,
       )
-      if baseline_outcome is not None:
-        baseline_analysis = self._get_baseline_metrics(
-            marketing_analysis_spec=marketing_analysis_spec,
-            baseline_outcome=baseline_outcome,
-            start_date=start_date_str,
-        )
-        marketing_analysis.non_media_analyses.append(baseline_analysis)
-
       marketing_analyses.append(marketing_analysis)
 
     return marketing_analyses
@@ -826,7 +853,9 @@ class MarketingProcessor(
       self,
       marketing_analysis_spec: MarketingAnalysisSpec,
       baseline_outcome: xr.Dataset,
+      secondary_baseline_outcome: xr.Dataset | None,
       start_date: str,
+      is_revenue_type: bool,
   ) -> non_media_analysis_pb2.NonMediaAnalysis:
     """Analyzes "baseline" pseudo-channel outcomes over the given time points.
 
@@ -834,7 +863,10 @@ class MarketingProcessor(
       marketing_analysis_spec: A user input parameter specs for this analysis.
       baseline_outcome: A dataset containing the model's baseline summary
         metrics.
+      secondary_baseline_outcome: A dataset containing the model's secondary
+        baseline summary metrics.
       start_date: The date of the analysis.
+      is_revenue_type: Whether the baseline outcome is revenue type.
 
     Returns:
       A `NonMediaAnalysis` representing baseline analysis.
@@ -855,25 +887,46 @@ class MarketingProcessor(
             contribution_share, marketing_analysis_spec.confidence_level
         ),
     )
-    baseline_analysis = non_media_analysis_pb2.NonMediaAnalysis(
-        non_media_name=constants.BASELINE,
-    )
-    baseline_outcome = outcome_pb2.Outcome(
-        contribution=contribution,
-        # Baseline outcome is always revenue-based, unless `revenue_per_kpi`
-        # is undefined.
-        # TODO: kpi_type here is synced with what is used inside
-        # `baseline_summary_metrics()`. Ideally, really, we should inject this
-        # value into that function rather than re-deriving it here.
-        kpi_type=(
-            kpi_type_pb2.KpiType.NON_REVENUE
-            if self._kpi_only
-            else kpi_type_pb2.KpiType.REVENUE
-        ),
-    )
-    baseline_analysis.non_media_outcomes.append(baseline_outcome)
+    outcomes = [
+        outcome_pb2.Outcome(
+            contribution=contribution,
+            kpi_type=kpi_type_pb2.REVENUE
+            if is_revenue_type
+            else kpi_type_pb2.NON_REVENUE,
+        )
+    ]
+    if secondary_baseline_outcome is not None:
+      if constants.TIME in secondary_baseline_outcome.coords:
+        secondary_baseline_outcome = secondary_baseline_outcome.sel(
+            time=start_date,
+        )
+      secondary_incremental_outcome = secondary_baseline_outcome[
+          constants.BASELINE_OUTCOME
+      ]
+      # Convert percentage to decimal.
+      secondary_contribution_share = (
+          secondary_baseline_outcome[constants.PCT_OF_CONTRIBUTION] / 100
+      )
+      secondary_contribution = outcome_pb2.Contribution(
+          value=common.to_estimate(
+              secondary_incremental_outcome,
+              marketing_analysis_spec.confidence_level,
+          ),
+          share=common.to_estimate(
+              secondary_contribution_share,
+              marketing_analysis_spec.confidence_level,
+          ),
+      )
+      secondary_outcome = outcome_pb2.Outcome(
+          contribution=secondary_contribution,
+          kpi_type=kpi_type_pb2.NON_REVENUE,
+      )
+      outcomes.append(secondary_outcome)
 
-    return baseline_analysis
+    return non_media_analysis_pb2.NonMediaAnalysis(
+        non_media_name=constants.BASELINE,
+        non_media_outcomes=outcomes,
+    )
 
   def _compute_outcome(
       self,
@@ -918,7 +971,6 @@ class MarketingProcessor(
             confidence_level,
         ),
     )
-    # Convert percentage to decimal.
     if constants.PCT_OF_CONTRIBUTION in data_vars:
       contribution_share = (
           media_summary_metrics[constants.PCT_OF_CONTRIBUTION] / 100
