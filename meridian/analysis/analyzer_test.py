@@ -4981,6 +4981,52 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
     self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
 
+  def test_channel_contribution_returns_correct_shapes(self):
+    channel_contribution_dataset = self.analyzer_non_paid.channel_contribution()
+
+    self.assertIn(constants.TIME, channel_contribution_dataset.dims)
+    self.assertEqual(
+        channel_contribution_dataset.dims[constants.TIME], _N_TIMES
+    )
+    self.assertIn(constants.CHANNEL, channel_contribution_dataset.dims)
+    self.assertAllEqual(
+        list(channel_contribution_dataset.data_vars.keys()),
+        [constants.INCREMENTAL_OUTCOME],
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="include_non_paid_channels_true",
+          include_non_paid_channels=True,
+          expected_num_channels=(
+              _N_MEDIA_CHANNELS
+              + _N_RF_CHANNELS
+              + _N_NON_MEDIA_CHANNELS
+              + _N_ORGANIC_MEDIA_CHANNELS
+              + _N_ORGANIC_RF_CHANNELS
+              + 1  # baseline
+          ),
+      ),
+      dict(
+          testcase_name="include_non_paid_channels_false",
+          include_non_paid_channels=False,
+          expected_num_channels=(
+              _N_MEDIA_CHANNELS + _N_RF_CHANNELS + 1  # baseline
+          ),
+      ),
+  )
+  def test_channel_contribution_returns_correct_channels(
+      self, include_non_paid_channels, expected_num_channels
+  ):
+    channel_contribution_dataset = self.analyzer_non_paid.channel_contribution(
+        include_non_paid_channels=include_non_paid_channels
+    )
+    self.assertEqual(True, False)  # should fail
+    self.assertEqual(
+        channel_contribution_dataset.dims[constants.CHANNEL],
+        expected_num_channels,
+    )
+
 
 class AnalyzerNotFittedTest(absltest.TestCase):
 
