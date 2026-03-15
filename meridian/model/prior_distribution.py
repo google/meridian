@@ -1296,11 +1296,11 @@ def _get_total_media_contribution_prior(
   roi_mean = p_mean * kpi / np.sum(total_spend)
   roi_sd = p_sd * kpi / np.sqrt(np.sum(np.power(total_spend, 2)))
   lognormal_sigma = backend.cast(
-      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=backend.float32
+      np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=backend.float_dtype
   )
   lognormal_mu = backend.cast(
       np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)),
-      dtype=backend.float32,
+      dtype=backend.float_dtype,
   )
   return backend.tfd.LogNormal(lognormal_mu, lognormal_sigma, name=name)
 

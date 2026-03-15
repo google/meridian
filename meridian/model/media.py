@@ -101,10 +101,12 @@ def build_media_tensors(
     return MediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  media = backend.to_tensor(input_data.media, dtype=backend.float32)
-  media_spend = backend.to_tensor(input_data.media_spend, dtype=backend.float32)
+  media = backend.to_tensor(input_data.media, dtype=backend.float_dtype)
+  media_spend = backend.to_tensor(
+      input_data.media_spend, dtype=backend.float_dtype
+  )
   media_transformer = transformers.MediaTransformer(
-      media, backend.to_tensor(input_data.population, dtype=backend.float32)
+      media, backend.to_tensor(input_data.population, dtype=backend.float_dtype)
   )
   media_scaled = media_transformer.forward(media)
   prior_type = model_spec.effective_media_prior_type
@@ -118,7 +120,7 @@ def build_media_tensors(
 
   aggregated_media_spend = backend.to_tensor(
       input_data.aggregate_media_spend(calibration_period=calibration_period),
-      dtype=backend.float32,
+      dtype=backend.float_dtype,
   )
   # Set `prior_media_scaled_counterfactual` and `prior_denominator` depending on
   # the prior type.
@@ -140,7 +142,7 @@ def build_media_tensors(
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_media_scaled_counterfactual = None
     total_outcome = backend.to_tensor(
-        input_data.get_total_outcome(), dtype=backend.float32
+        input_data.get_total_outcome(), dtype=backend.float_dtype
     )
     prior_denominator = backend.repeat(
         total_outcome, len(input_data.media_channel)
@@ -188,11 +190,11 @@ def build_organic_media_tensors(
 
   # Derive and set media tensors from media values in the input data.
   organic_media = backend.to_tensor(
-      input_data.organic_media, dtype=backend.float32
+      input_data.organic_media, dtype=backend.float_dtype
   )
   organic_media_transformer = transformers.MediaTransformer(
       organic_media,
-      backend.to_tensor(input_data.population, dtype=backend.float32),
+      backend.to_tensor(input_data.population, dtype=backend.float_dtype),
   )
   organic_media_scaled = organic_media_transformer.forward(organic_media)
 
@@ -254,12 +256,12 @@ def build_rf_tensors(
   if input_data.reach is None:
     return RfTensors()
 
-  reach = backend.to_tensor(input_data.reach, dtype=backend.float32)
-  frequency = backend.to_tensor(input_data.frequency, dtype=backend.float32)
+  reach = backend.to_tensor(input_data.reach, dtype=backend.float_dtype)
+  frequency = backend.to_tensor(input_data.frequency, dtype=backend.float_dtype)
   rf_impressions = (
       reach * frequency if reach is not None and frequency is not None else None
   )
-  rf_spend = backend.to_tensor(input_data.rf_spend, dtype=backend.float32)
+  rf_spend = backend.to_tensor(input_data.rf_spend, dtype=backend.float_dtype)
   reach_transformer = transformers.MediaTransformer(
       reach, backend.to_tensor(input_data.population, dtype=backend.float32)
   )

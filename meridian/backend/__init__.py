@@ -1081,6 +1081,8 @@ if _BACKEND == config.Backend.JAX:
   zeros_like = _ops.zeros_like
 
   float32 = _ops.float32
+  float_dtype = _ops.float32
+  np_float_dtype = np.float32
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
@@ -1266,6 +1268,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   stabilize_rf_roi_grid = _tf_stabilize_rf_roi_grid
 
   float32 = _ops.float32
+  float_dtype = _ops.float32
+  np_float_dtype = np.float32
   bool_ = _ops.bool
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape

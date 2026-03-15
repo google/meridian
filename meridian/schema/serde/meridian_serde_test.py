@@ -122,13 +122,13 @@ class MeridianSerdeTest(parameterized.TestCase):
     )
     self._r_hats = {
         constants.ALPHA_M: backend.to_tensor(
-            np.full((1, 2, 3), 22.0), dtype=backend.float32
+            np.full((1, 2, 3), 22.0), dtype=backend.float_dtype
         ),
         constants.BETA_GRF: backend.to_tensor(
-            np.full((4, 5), 33.0), dtype=backend.float32
+            np.full((4, 5), 33.0), dtype=backend.float_dtype
         ),
         constants.TAU_G: backend.to_tensor(
-            np.full((6,), 44.0), dtype=backend.float32
+            np.full((6,), 44.0), dtype=backend.float_dtype
         ),
     }
 

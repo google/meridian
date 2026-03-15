@@ -21,6 +21,7 @@ import math
 import pprint
 from typing import Any
 
+from meridian import backend
 from meridian import constants
 from meridian.data import input_data
 import numpy as np
@@ -108,7 +109,7 @@ def l1_distance_weights(
   times = np.arange(n_times)
   time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])
 
-  w = np.zeros(time_minus_knot.shape, dtype=np.float32)
+  w = np.zeros(time_minus_knot.shape, dtype=backend.np_float_dtype)
   left_knot_indices = _find_left_knot_indices(
       times=times, knot_locations=knot_locations
   )
@@ -238,7 +239,7 @@ def get_knot_info(
     knot_locations = _get_equally_spaced_knot_locations(n_times, n_knots)
 
   if n_knots == 1:
-    weights = np.ones((1, n_times), dtype=np.float32)
+    weights = np.ones((1, n_times), dtype=backend.np_float_dtype)
   else:
     weights = l1_distance_weights(n_times, knot_locations)
 
@@ -490,7 +491,7 @@ class AKS:
         x_sel[index_penalty] = design_mat
         bs_model = linear_model.OLS(y, x_sel[index_penalty]).fit()
         model[index_penalty] = bs_model
-        coefs = np.zeros(ncol, dtype=np.float32)
+        coefs = np.zeros(ncol, dtype=backend.np_float_dtype)
         idx = np.concatenate([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
         coefs[idx] = bs_model.params
         par_ls[index_penalty] = coefs
