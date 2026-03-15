@@ -14,7 +14,7 @@
 
 """Implementation of the runner of the Model Quality Checks."""
 
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 import dataclasses
 import typing
 
@@ -201,8 +201,20 @@ class ModelReviewer:
         inference_data=meridian.inference_data,
     )
 
-  def _run_and_handle(self, check_class: CheckType, config: configs.BaseConfig):
-    instance: checks.BaseCheck = check_class(self._meridian, self._analyzer, config)  # pytype: disable=not-instantiable
+  def _run_and_handle(
+      self,
+      check_class: CheckType,
+      config: configs.BaseConfig,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+  ):
+    instance: checks.BaseCheck = check_class(
+        self._meridian,
+        self._analyzer,
+        config,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )  # pytype: disable=not-instantiable
     self._results[check_class] = instance.run()
 
   def _uses_roi_priors(self):
@@ -276,7 +288,11 @@ class ModelReviewer:
 
     return sum_score / total_weight if total_weight else 0.0
 
-  def run(self) -> results.ReviewSummary:
+  def run(
+      self,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+  ) -> results.ReviewSummary:
     """Executes all checks and generates the final summary."""
     self._results = {}
     self._run_and_handle(checks.ConvergenceCheck, configs.ConvergenceConfig())
@@ -310,7 +326,12 @@ class ModelReviewer:
       ):
         # Skip the ROI Consistency check if no custom ROI priors are provided.
         continue
-      self._run_and_handle(check_class, config)
+      self._run_and_handle(
+          check_class,
+          config,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+      )
 
     # Determine the final overall status.
     has_failures = any(

@@ -744,22 +744,46 @@ class ReviewerTest(parameterized.TestCase):
     review.run()
 
     self._mock_convergence_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.ConvergenceConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.ConvergenceConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_baseline_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.BaselineConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.BaselineConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_bayesian_ppp_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.BayesianPPPConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.BayesianPPPConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_roi_consistency_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.ROIConsistencyConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.ROIConsistencyConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_gof_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.GoodnessOfFitConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.GoodnessOfFitConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_pps_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.PriorPosteriorShiftConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.PriorPosteriorShiftConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
 
   def test_run_missing_required_check_raises_error(self):

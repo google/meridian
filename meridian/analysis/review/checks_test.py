@@ -183,6 +183,10 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
 
     self.meridian.inference_data.posterior.coords = coords
 
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+
     check = checks.ROIConsistencyCheck(
         meridian=self.meridian, analyzer=self.analyzer, config=self.config
     )
@@ -610,6 +614,10 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
     self.meridian.inference_data.posterior.variables = posterior_vars
     self.meridian.inference_data.posterior.coords = posterior_coords
 
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+
     check = checks.PriorPosteriorShiftCheck(
         meridian=self.meridian, analyzer=self.analyzer, config=self.config
     )
@@ -857,6 +865,9 @@ class BayesianPPPCheckTest(parameterized.TestCase):
     self.meridian.kpi = kpi
     self.meridian.revenue_per_kpi = revenue_per_kpi
     self.analyzer.expected_outcome.return_value = expected_outcome
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
 
     check = checks.BayesianPPPCheck(
         meridian=self.meridian, analyzer=self.analyzer, config=self.config
