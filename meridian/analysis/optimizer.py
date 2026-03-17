@@ -1349,7 +1349,7 @@ class BudgetOptimizer:
       new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      # TODO: b/409550413 - Remove this argument.
+      # TODO: Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
       end_date: tc.Date = None,
@@ -1975,7 +1975,7 @@ class BudgetOptimizer:
       new_data: xr.Dataset | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      # TODO: b/409550413 - Remove this argument.
+      # TODO: Remove this argument.
       selected_times: tuple[str | None, str | None] | None = None,
       start_date: tc.Date = None,
       end_date: tc.Date = None,

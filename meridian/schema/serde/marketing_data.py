@@ -493,7 +493,7 @@ class _InputDataSerializer:
     data_point = marketing_pb.MarketingDataPoint(
         geo_info=marketing_pb.GeoInfo(
             geo_id=geo,
-            # TODO: b/483475229 - not populating population when users are ready
+            # TODO: not populating population when users are ready
             population=round(population_value),
             population_value=population_value,
         ),
