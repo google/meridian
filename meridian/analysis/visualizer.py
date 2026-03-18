@@ -2023,8 +2023,8 @@ class MediaSummary:
                 summary_text.CHANNEL_DRIVERS_CHART_TITLE
             ),
             width=c.VEGALITE_FACET_LARGE_WIDTH,
-            height=c.BAR_SIZE * num_channels
-            + c.BAR_SIZE * 2 * c.SCALED_PADDING,
+            height=c.BAR_SIZE * num_channels + 4
+            + c.BAR_SIZE * 2 * c.SCALED_PADDING - 4,
         )
         .configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
         .configure_view(strokeOpacity=0)
