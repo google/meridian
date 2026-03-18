@@ -3238,7 +3238,6 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.sample_optimized_data = _get_sample_optimized_data(is_revenue_kpi=True)
 
     self.optimization_results = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer._meridian,
         analyzer=self.budget_optimizer._analyzer,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(
@@ -3854,7 +3853,6 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
 
     self.optimization_results = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer._meridian,
         analyzer=self.budget_optimizer._analyzer,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(np.array([0.7]), np.array([1.3])),
@@ -3864,7 +3862,6 @@ class OptimizerOutputTest(parameterized.TestCase):
         _optimization_grid=self.optimization_grid,
     )
     self.optimization_results_kpi_output = optimizer.OptimizationResults(
-        meridian=self.budget_optimizer_kpi_output._meridian,
         analyzer=self.budget_optimizer_kpi_output._analyzer,
         spend_ratio=np.array([1.0, 1.0, 1.0]),
         spend_bounds=(np.array([0.7]), np.array([1.3])),
