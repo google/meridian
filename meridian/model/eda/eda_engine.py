@@ -271,7 +271,7 @@ def _find_extreme_corr_pairs(
 def _get_outlier_bounds(
     input_da: xr.DataArray,
 ) -> tuple[xr.DataArray, xr.DataArray]:
-  """Computes lower and upper bounds for outliers across time using the IQR method.
+  """Computes lower and upper bounds for outliers across time based on IQR.
 
   Args:
     input_da: A DataArray for which to calculate outlier bounds.
@@ -1573,7 +1573,7 @@ class EDAEngine:
   def check_geo_pairwise_corr(
       self,
   ) -> eda_outcome.EDAOutcome[eda_outcome.PairwiseCorrArtifact]:
-    """Checks pairwise correlation among treatments and controls for geo data.
+    """Checks pairwise correlation for geo treatments and controls.
 
     Returns:
       An EDAOutcome object with findings and result values.
@@ -1674,7 +1674,7 @@ class EDAEngine:
   def check_national_pairwise_corr(
       self,
   ) -> eda_outcome.EDAOutcome[eda_outcome.PairwiseCorrArtifact]:
-    """Checks pairwise correlation among treatments and controls for national data.
+    """Checks pairwise correlation for national treatments and controls.
 
     Returns:
       An EDAOutcome object with findings and result values.

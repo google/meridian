@@ -45,7 +45,7 @@ __all__ = (
 @enum.unique
 class EDASeverity(enum.Enum):
   """Enumeration for the severity of an EDA check's finding."""
-
+  # TODO: Change severity to INFO/REVIEW/FAIL.
   # For the non-critical findings.
   INFO = enum.auto()
   # For the non-critical findings that require user attention.
@@ -215,7 +215,9 @@ class CostPerMediaUnitArtifact(AnalysisArtifact):
 
 @dataclasses.dataclass(frozen=True)
 class VariableGeoTimeCollinearityArtifact(AnalysisArtifact):
-  """Artifacts from a Geo/Time Collinearity analysis for Treatment/Control variables.
+  """Artifacts from a collinearity analysis for Treatment/Control variables.
+
+  The analysis pertains to collinearity with geo and time main effects.
 
   Attributes:
     rsquared_ds: Dataset containing adjusted R-squared values for treatments and
