@@ -2025,6 +2025,7 @@ class MediaSummary:
             width=c.VEGALITE_FACET_LARGE_WIDTH,
             height=c.BAR_SIZE * num_channels
             + c.BAR_SIZE * 2 * c.SCALED_PADDING,
+            padding={"right": 120},
         )
         .configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
         .configure_view(strokeOpacity=0)
