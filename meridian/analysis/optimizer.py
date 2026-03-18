@@ -471,8 +471,6 @@ class OptimizationResults:
   mROI, incremental outcome, CPIK, and effectiveness.
 
   Attributes:
-    meridian: The fitted Meridian model that was used to create this budget
-      allocation.
     analyzer: The analyzer bound to the model above.
     spend_ratio: The spend ratio used to scale the non-optimized performance
       metrics to the optimized performance metrics.
@@ -490,8 +488,7 @@ class OptimizationResults:
       budget allocation.
   """
 
-  meridian: model.Meridian
-  # The analyzer bound to the model above.
+  # The analyzer bound to the model.
   analyzer: analyzer_module.Analyzer
   spend_ratio: np.ndarray  # spend / historical spend
   spend_bounds: tuple[np.ndarray, np.ndarray]
@@ -1747,7 +1744,6 @@ class BudgetOptimizer:
 
     return OptimizationResults(
         new_data=new_data,
-        meridian=self._meridian,
         analyzer=self._analyzer,
         spend_ratio=spend_ratio,
         spend_bounds=spend_bounds,
