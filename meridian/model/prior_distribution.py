@@ -277,178 +277,238 @@ class PriorDistribution:
 
   knot_values: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Normal(
-          0.0, 5.0, name=constants.KNOT_VALUES
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(5.0),
+          name=constants.KNOT_VALUES,
       ),
   )
   tau_g_excl_baseline: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Normal(
-          0.0, 5.0, name=constants.TAU_G_EXCL_BASELINE
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(5.0),
+          name=constants.TAU_G_EXCL_BASELINE,
       ),
   )
   beta_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          5.0, name=constants.BETA_M
+          backend.np_float_dtype(5.0), name=constants.BETA_M
       ),
   )
   beta_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          5.0, name=constants.BETA_RF
+          backend.np_float_dtype(5.0), name=constants.BETA_RF
       ),
   )
   beta_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          5.0, name=constants.BETA_OM
+          backend.np_float_dtype(5.0), name=constants.BETA_OM
       ),
   )
   beta_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          5.0, name=constants.BETA_ORF
+          backend.np_float_dtype(5.0), name=constants.BETA_ORF
       ),
   )
   eta_m: backend.tfd.Distribution = dataclasses.field(
-      default_factory=lambda: backend.tfd.HalfNormal(1.0, name=constants.ETA_M),
+      default_factory=lambda: backend.tfd.HalfNormal(
+          backend.np_float_dtype(1.0), name=constants.ETA_M
+      ),
   )
   eta_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          1.0, name=constants.ETA_RF
+          backend.np_float_dtype(1.0), name=constants.ETA_RF
       ),
   )
   eta_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          1.0, name=constants.ETA_OM
+          backend.np_float_dtype(1.0), name=constants.ETA_OM
       ),
   )
   eta_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
-          1.0, name=constants.ETA_ORF
+          backend.np_float_dtype(1.0), name=constants.ETA_ORF
       ),
   )
   gamma_c: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Normal(
-          0.0, 5.0, name=constants.GAMMA_C
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(5.0),
+          name=constants.GAMMA_C,
       ),
   )
   gamma_n: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Normal(
-          0.0, 5.0, name=constants.GAMMA_N
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(5.0),
+          name=constants.GAMMA_N,
       ),
   )
   xi_c: backend.tfd.Distribution = dataclasses.field(
-      default_factory=lambda: backend.tfd.HalfNormal(5.0, name=constants.XI_C),
+      default_factory=lambda: backend.tfd.HalfNormal(
+          backend.np_float_dtype(5.0), name=constants.XI_C
+      ),
   )
   xi_n: backend.tfd.Distribution = dataclasses.field(
-      default_factory=lambda: backend.tfd.HalfNormal(5.0, name=constants.XI_N),
+      default_factory=lambda: backend.tfd.HalfNormal(
+          backend.np_float_dtype(5.0), name=constants.XI_N
+      ),
   )
   alpha_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Uniform(
-          0.0, 1.0, name=constants.ALPHA_M
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(1.0),
+          name=constants.ALPHA_M,
       ),
   )
   alpha_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Uniform(
-          0.0, 1.0, name=constants.ALPHA_RF
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(1.0),
+          name=constants.ALPHA_RF,
       ),
   )
   alpha_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Uniform(
-          0.0, 1.0, name=constants.ALPHA_OM
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(1.0),
+          name=constants.ALPHA_OM,
       ),
   )
   alpha_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Uniform(
-          0.0, 1.0, name=constants.ALPHA_ORF
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(1.0),
+          name=constants.ALPHA_ORF,
       ),
   )
   ec_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.TruncatedNormal(
-          0.8, 0.8, 0.1, 10, name=constants.EC_M
+          backend.np_float_dtype(0.8),
+          backend.np_float_dtype(0.8),
+          backend.np_float_dtype(0.1),
+          backend.np_float_dtype(10.0),
+          name=constants.EC_M,
       ),
   )
   ec_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.TransformedDistribution(
-          backend.tfd.LogNormal(0.7, 0.4),
-          backend.bijectors.Shift(0.1),
+          backend.tfd.LogNormal(
+              backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+          ),
+          backend.bijectors.Shift(backend.np_float_dtype(0.1)),
           name=constants.EC_RF,
       ),
   )
   ec_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.TruncatedNormal(
-          0.8, 0.8, 0.1, 10, name=constants.EC_OM
+          backend.np_float_dtype(0.8),
+          backend.np_float_dtype(0.8),
+          backend.np_float_dtype(0.1),
+          backend.np_float_dtype(10.0),
+          name=constants.EC_OM,
       ),
   )
   ec_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.TransformedDistribution(
-          backend.tfd.LogNormal(0.7, 0.4),
-          backend.bijectors.Shift(0.1),
+          backend.tfd.LogNormal(
+              backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+          ),
+          backend.bijectors.Shift(backend.np_float_dtype(0.1)),
           name=constants.EC_ORF,
       ),
   )
   slope_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Deterministic(
-          1.0, name=constants.SLOPE_M
+          backend.np_float_dtype(1.0), name=constants.SLOPE_M
       ),
   )
   slope_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.7, 0.4, name=constants.SLOPE_RF
+          backend.np_float_dtype(0.7),
+          backend.np_float_dtype(0.4),
+          name=constants.SLOPE_RF,
       ),
   )
   slope_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Deterministic(
-          1.0, name=constants.SLOPE_OM
+          backend.np_float_dtype(1.0), name=constants.SLOPE_OM
       ),
   )
   slope_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.7, 0.4, name=constants.SLOPE_ORF
+          backend.np_float_dtype(0.7),
+          backend.np_float_dtype(0.4),
+          name=constants.SLOPE_ORF,
       ),
   )
   sigma: backend.tfd.Distribution = dataclasses.field(
-      default_factory=lambda: backend.tfd.HalfNormal(5.0, name=constants.SIGMA),
+      default_factory=lambda: backend.tfd.HalfNormal(
+          backend.np_float_dtype(5.0), name=constants.SIGMA
+      ),
   )
   roi_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.2, 0.9, name=constants.ROI_M
+          backend.np_float_dtype(0.2),
+          backend.np_float_dtype(0.9),
+          name=constants.ROI_M,
       ),
   )
   roi_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.2, 0.9, name=constants.ROI_RF
+          backend.np_float_dtype(0.2),
+          backend.np_float_dtype(0.9),
+          name=constants.ROI_RF,
       ),
   )
   mroi_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.0, 0.5, name=constants.MROI_M
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(0.5),
+          name=constants.MROI_M,
       ),
   )
   mroi_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.LogNormal(
-          0.0, 0.5, name=constants.MROI_RF
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(0.5),
+          name=constants.MROI_RF,
       ),
   )
   contribution_m: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_M
+          backend.np_float_dtype(1.0),
+          backend.np_float_dtype(99.0),
+          name=constants.CONTRIBUTION_M,
       ),
   )
   contribution_rf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_RF
+          backend.np_float_dtype(1.0),
+          backend.np_float_dtype(99.0),
+          name=constants.CONTRIBUTION_RF,
       ),
   )
   contribution_om: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_OM
+          backend.np_float_dtype(1.0),
+          backend.np_float_dtype(99.0),
+          name=constants.CONTRIBUTION_OM,
       ),
   )
   contribution_orf: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.Beta(
-          1.0, 99.0, name=constants.CONTRIBUTION_ORF
+          backend.np_float_dtype(1.0),
+          backend.np_float_dtype(99.0),
+          name=constants.CONTRIBUTION_ORF,
       ),
   )
   contribution_n: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.TruncatedNormal(
-          loc=0.0, scale=0.1, low=-1.0, high=1.0, name=constants.CONTRIBUTION_N
+          loc=backend.np_float_dtype(0.0),
+          scale=backend.np_float_dtype(0.1),
+          low=-backend.np_float_dtype(1.0),
+          high=backend.np_float_dtype(1.0),
+          name=constants.CONTRIBUTION_N,
       ),
   )
 
@@ -1155,7 +1215,7 @@ def distributions_are_equal(
       if not backend.allclose(a_params[key], b_params[key]):
         return False
     else:
-      if a_params[key] != b_params[key]:
+      if np.any(a_params[key] != b_params[key]):
         return False
 
   return True

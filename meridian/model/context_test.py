@@ -779,7 +779,7 @@ class ContextTest(
 
     # With the default tolerance of eps * 10 the test fails due to rounding
     # errors.
-    atol = np.finfo(np.float32).eps * 100
+    atol = np.finfo(backend.np_float_dtype).eps * 100
     test_utils.assert_allclose(
         model_context.controls_transformer.inverse(model_context.controls_scaled),  # pytype: disable=attribute-error
         data.controls,

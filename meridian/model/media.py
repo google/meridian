@@ -50,7 +50,11 @@ def _roi_calibration_scaled_counterfactual(
     A tensor of scaled metric values with shape `(n_geos, n_times, n_channels)`
     where media values are set to zero during the calibration period.
   """
-  factors = backend.where(calibration_period, 0.0, 1.0)
+  factors = backend.where(
+      calibration_period,
+      backend.to_tensor(0.0, dtype=backend.float_dtype),
+      backend.to_tensor(1.0, dtype=backend.float_dtype),
+  )
   return backend.einsum("gtm,tm->gtm", metric_scaled, factors)
 
 

@@ -637,7 +637,7 @@ ec_m {
         parameters {
           key: "high"
           value {
-            int_value: 10
+            scalar_value: 10.00
           }
         }
         parameters {
@@ -1654,7 +1654,7 @@ ec_om {
         parameters {
           key: "high"
           value {
-            int_value: 10
+            scalar_value: 10.00
           }
         }
         parameters {

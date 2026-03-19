@@ -1434,6 +1434,12 @@ class BackendTest(parameterized.TestCase):
           dict(
               arr=np.array([], dtype=backend.np_float_dtype),
           ),
+          dict(
+              arr=np.array(1.5, dtype=backend.np_float_dtype),
+          ),
+          dict(
+              arr=np.array([1.5], dtype=backend.np_float_dtype),
+          ),
       ],
       backend_name=_ALL_BACKENDS,
   )

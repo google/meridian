@@ -1695,7 +1695,8 @@ class Analyzer:
     n_draws = params.draw.size
     n_chains = params.chain.size
     outcome_means = backend.zeros(
-        (n_chains, 0, self.model_context.n_geos, self.model_context.n_times)
+        (n_chains, 0, self.model_context.n_geos, self.model_context.n_times),
+        dtype=backend.float_dtype,
     )
     batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = (
@@ -3843,16 +3844,22 @@ class Analyzer:
         filled_data.get_modified_times(model_context=self.model_context)
         or self.model_context.n_times
     )
-    dummy_media = backend.ones((
-        self.model_context.n_geos,
-        n_media_times,
-        self.model_context.n_media_channels,
-    ))
-    dummy_media_spend = backend.ones((
-        self.model_context.n_geos,
-        n_times,
-        self.model_context.n_media_channels,
-    ))
+    dummy_media = backend.ones(
+        (
+            self.model_context.n_geos,
+            n_media_times,
+            self.model_context.n_media_channels,
+        ),
+        dtype=backend.float_dtype,
+    )
+    dummy_media_spend = backend.ones(
+        (
+            self.model_context.n_geos,
+            n_times,
+            self.model_context.n_media_channels,
+        ),
+        dtype=backend.float_dtype,
+    )
 
     max_freq = max_frequency or np.max(
         np.array(self.model_context.rf_tensors.frequency)
@@ -4435,7 +4442,8 @@ class Analyzer:
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
         incremental_outcome[i, :, :] = backend.zeros(
-            (len(self.model_context.input_data.get_all_paid_channels()), 3)
+            (len(self.model_context.input_data.get_all_paid_channels()), 3),
+            dtype=backend.float_dtype,
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
       scaled_data = _scale_tensors_by_multiplier(

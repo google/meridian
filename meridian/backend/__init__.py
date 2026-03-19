@@ -359,7 +359,31 @@ def _jax_make_tensor_proto(values, dtype=None, shape=None):  # pylint: disable=u
       ),
   )
 
-  proto.tensor_content = values.tobytes()
+  if proto_dtype != types_pb2.DT_STRING and values.size > 1:
+    proto.tensor_content = values.tobytes()
+  else:
+    flat_values = values.flatten()
+    if proto_dtype == types_pb2.DT_FLOAT:
+      proto.float_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_DOUBLE:
+      proto.double_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_INT32:
+      proto.int_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_INT64:
+      proto.int64_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_BOOL:
+      proto.bool_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_UINT32:
+      proto.uint32_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_UINT64:
+      proto.uint64_val.extend(flat_values)
+    elif proto_dtype == types_pb2.DT_STRING:
+      proto.string_val.extend(
+          [v.encode("utf-8") if isinstance(v, str) else v for v in flat_values]
+      )
+    else:
+      proto.tensor_content = values.tobytes()
+
   return proto
 
 
@@ -946,6 +970,7 @@ if _BACKEND == config.Backend.JAX:
     media_reshaped = jax_ops.reshape(media_transposed, (1, -1, n_times_in))
 
     total_channels = media_reshaped.shape[1]
+    weights = jax_ops.asarray(weights, dtype=media.dtype)
     weights_expanded = jax_ops.expand_dims(weights, -3)
     weights_tiled = jax_ops.broadcast_to(
         weights_expanded, batch_dims + (n_geos, n_channels, window_size)
@@ -1082,7 +1107,7 @@ if _BACKEND == config.Backend.JAX:
 
   float32 = _ops.float32
   float_dtype = _ops.float32
-  np_float_dtype = np.float32
+  np_float_dtype = np.float64 if jax.config.jax_enable_x64 else np.float32
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape

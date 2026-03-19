@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Ensure consistent float precision across tensors, NumPy arrays, and prior
+  distributions.
+
 ## [1.5.3] - 2026-03-04
 
 * Pin `arviz` dependency to `< 0.20.0` to fix upstream `InferenceData`

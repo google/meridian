@@ -463,7 +463,7 @@ class AKS:
     xx_rot = np.concatenate(
         [
             self._mat2rot(xx + (1e-20 * np.identity(ncol))),
-            np.zeros(ncol)[:, np.newaxis],
+            np.zeros(ncol, dtype=backend.np_float_dtype)[:, np.newaxis],
         ],
         axis=1,
     )
@@ -471,8 +471,11 @@ class AKS:
     model, x_sel, knots_sel, sel_ls, par_ls, aic, bic, ebic, dim, loglik = (
         [None] * len(penalty) for _ in range(10)
     )
-    old_sel, w = [np.ones(ncol - self._DEGREE - 1) for _ in range(2)]
-    par = np.ones(ncol)
+    old_sel, w = [
+        np.ones(ncol - self._DEGREE - 1, dtype=backend.np_float_dtype)
+        for _ in range(2)
+    ]
+    par = np.ones(ncol, dtype=backend.np_float_dtype)
     index_penalty = 0
     for _ in range(max_iterations):
       par = self._wridge_solver(
@@ -503,7 +506,7 @@ class AKS:
             np.log(nrow) * dim[index_penalty] + 2 * loglik[index_penalty]
         )
         ebic[index_penalty] = bic[index_penalty] + 2 * np.log(
-            np.float32(math.comb(ncol, design_mat.shape[1]))
+            backend.np_float_dtype(math.comb(ncol, design_mat.shape[1]))
         )
         index_penalty = index_penalty + 1
       if index_penalty > len(penalty) - 1:
@@ -541,13 +544,13 @@ class AKS:
       lprime = np.where(band_mat[i, :] != 0)[0]
       l = np.maximum(l, lprime[len(lprime) - 1] - i)
 
-    rot_mat = np.zeros([p, l + 1])
+    rot_mat = np.zeros([p, l + 1], dtype=backend.np_float_dtype)
     rot_mat[:, 0] = np.diag(band_mat)
     if l > 0:
       for j in range(l):
         rot_mat[:, j + 1] = np.concatenate([
             np.diag(band_mat[range(p - j - 1), :][:, range(j + 1, p)]),
-            np.zeros(j + 1),
+            np.zeros(j + 1, dtype=backend.np_float_dtype),
         ])
     return rot_mat
 
