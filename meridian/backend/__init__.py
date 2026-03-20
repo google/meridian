@@ -32,7 +32,6 @@ from typing_extensions import Literal
 # extensive boilerplate.
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
-_DEFAULT_FLOAT = "float32"
 _DEFAULT_INT = "int64"
 
 _TENSORFLOW_TILE_KEYWORD = "multiples"
@@ -1106,8 +1105,9 @@ if _BACKEND == config.Backend.JAX:
   zeros_like = _ops.zeros_like
 
   float32 = _ops.float32
-  float_dtype = _ops.float32
+  float_dtype = _ops.float64 if jax.config.jax_enable_x64 else _ops.float32
   np_float_dtype = np.float64 if jax.config.jax_enable_x64 else np.float32
+  _DEFAULT_FLOAT = "float64" if jax.config.jax_enable_x64 else "float32"
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
   TensorShape = _jax_tensor_shape
@@ -1295,6 +1295,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   float32 = _ops.float32
   float_dtype = _ops.float32
   np_float_dtype = np.float32
+  _DEFAULT_FLOAT = "float32"
   bool_ = _ops.bool
   newaxis = _ops.newaxis
   TensorShape = _ops.TensorShape

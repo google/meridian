@@ -42,31 +42,24 @@ class BackendInitializationTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self._original_environ = os.environ.copy()
-    self._original_modules = sys.modules.copy()
+    def restore_and_reload():
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        sys.modules["meridian.backend.config"] = config
+        sys.modules["meridian.backend"] = backend
+        importlib.reload(config)
+        importlib.reload(backend)
+
+    self.addCleanup(restore_and_reload)
+    self.enter_context(mock.patch.dict(os.environ))
+    self.enter_context(mock.patch.dict(sys.modules))
 
     # Unload backend modules from Python's cache. This is to ensure that the
     # module's initialization logic is re-run for each test under different
     # environment variable conditions.
     modules_to_unload = ["meridian.backend.config", "meridian.backend"]
     for mod_name in modules_to_unload:
-      if mod_name in sys.modules:
-        del sys.modules[mod_name]
-
-  def tearDown(self):
-    super().tearDown()
-    # Restore the original environment variables.
-    os.environ.clear()
-    os.environ.update(self._original_environ)
-
-    # Restore the original modules.
-    sys.modules.update(self._original_modules)
-
-    # Reload the backend modules to a clean, default state for subsequent tests.
-    with warnings.catch_warnings():
-      warnings.simplefilter("ignore", UserWarning)
-      importlib.reload(config)
-      importlib.reload(backend)
+      sys.modules.pop(mod_name, None)
 
   def _import_backend_modules(self):
     from meridian.backend import config as config_mod  # pylint: disable=reimported
@@ -127,6 +120,122 @@ class BackendInitializationTest(parameterized.TestCase):
 _TF = config.Backend.TENSORFLOW.value
 _JAX = config.Backend.JAX.value
 _ALL_BACKENDS = [_TF, _JAX]
+
+
+class BackendJaxX64Test(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    def restore_and_reload():
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        sys.modules["meridian.backend.config"] = config
+        sys.modules["meridian.backend"] = backend
+        importlib.reload(config)
+        importlib.reload(backend)
+
+    self.addCleanup(restore_and_reload)
+    self.enter_context(mock.patch.dict(os.environ))
+    self.enter_context(mock.patch.dict(sys.modules))
+
+    # Unload backend modules from Python's cache. This is to ensure that the
+    # module's initialization logic is re-run for each test under different
+    # environment variable conditions.
+    modules_to_unload = ["meridian.backend.config", "meridian.backend"]
+    for mod_name in modules_to_unload:
+      sys.modules.pop(mod_name, None)
+
+    # Ensure jax_enable_x64 is reset after each test.
+    original_jax_x64 = jax.config.jax_enable_x64
+    self.addCleanup(
+        lambda: jax.config.update("jax_enable_x64", original_jax_x64)
+    )
+
+  def _import_backend_modules(self):
+    from meridian.backend import config as config_mod  # pylint: disable=reimported
+    from meridian import backend as backend_mod  # pylint: disable=reimported
+
+    return config_mod, backend_mod
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="enabled_1",
+          env_value="1",
+          expected_x64=True,
+          expected_float_dtype=jnp.float64,
+          expected_np_float_dtype=np.float64,
+          expected_default_float="float64",
+      ),
+      dict(
+          testcase_name="enabled_true",
+          env_value="true",
+          expected_x64=True,
+          expected_float_dtype=jnp.float64,
+          expected_np_float_dtype=np.float64,
+          expected_default_float="float64",
+      ),
+      dict(
+          testcase_name="enabled_True",
+          env_value="True",
+          expected_x64=True,
+          expected_float_dtype=jnp.float64,
+          expected_np_float_dtype=np.float64,
+          expected_default_float="float64",
+      ),
+      dict(
+          testcase_name="disabled_0",
+          env_value="0",
+          expected_x64=False,
+          expected_float_dtype=jnp.float32,
+          expected_np_float_dtype=np.float32,
+          expected_default_float="float32",
+      ),
+      dict(
+          testcase_name="disabled_false",
+          env_value="false",
+          expected_x64=False,
+          expected_float_dtype=jnp.float32,
+          expected_np_float_dtype=np.float32,
+          expected_default_float="float32",
+      ),
+      dict(
+          testcase_name="disabled_empty",
+          env_value="",
+          expected_x64=False,
+          expected_float_dtype=jnp.float32,
+          expected_np_float_dtype=np.float32,
+          expected_default_float="float32",
+      ),
+  )
+  def test_jax_x64_env_var(
+      self,
+      env_value,
+      expected_x64,
+      expected_float_dtype,
+      expected_np_float_dtype,
+      expected_default_float,
+  ):
+    os.environ["MERIDIAN_ENABLE_JAX_X64"] = env_value
+    os.environ["MERIDIAN_BACKEND"] = "JAX"
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      _, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(jax.config.jax_enable_x64, expected_x64)
+    self.assertEqual(backend_mod.float_dtype, expected_float_dtype)
+    self.assertEqual(backend_mod.np_float_dtype, expected_np_float_dtype)
+    self.assertEqual(backend_mod._DEFAULT_FLOAT, expected_default_float)
+
+  def test_jax_x64_env_var_ignored_for_tf(self):
+    os.environ["MERIDIAN_ENABLE_JAX_X64"] = "True"
+    os.environ["MERIDIAN_BACKEND"] = "tensorflow"
+
+    _, backend_mod = self._import_backend_modules()
+
+    self.assertEqual(backend_mod.float_dtype, tf.float32)
+    self.assertEqual(backend_mod.np_float_dtype, np.float32)
+    self.assertEqual(backend_mod._DEFAULT_FLOAT, "float32")
 
 
 class BackendTest(parameterized.TestCase):
