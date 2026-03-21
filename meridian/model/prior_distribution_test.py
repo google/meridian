@@ -1956,7 +1956,7 @@ class TestLognormalDistFromMeanStd(test_utils.MeridianTestCase):
   @parameterized.product(
       mean=(1.0, 2.0, 3.0),
       std=(1.0, 2.0, 3.0),
-      input_type=(float, int, np.float32, backend.to_tensor),
+      input_type=(float, int, backend.np_float_dtype, backend.to_tensor),
   )
   def test_correct_mean_std_scalar(self, mean, std, input_type):
     mean = input_type(mean)
@@ -2006,7 +2006,7 @@ class TestLognormalDistFromRange(parameterized.TestCase):
           dict(low=1.0, high=10.0),
       ),
       mass_percent=(0.1, 0.8, 0.9, 0.95),
-      input_type=(float, np.float32, backend.to_tensor),
+      input_type=(float, backend.np_float_dtype, backend.to_tensor),
   )
   def test_correct_quantile_scalar(
       self,
@@ -2038,7 +2038,7 @@ class TestLognormalDistFromRange(parameterized.TestCase):
           dict(low=(0.1, 0.2, 0.3), high=(1.0, 2.0, 3.0)),
       ),
       mass_percent=(0.1, 0.8, 0.9, (0.95,), (0.8, 0.9, 0.95)),
-      input_type=(tuple, list, np.array, backend.to_tensor)
+      input_type=(tuple, list, np.array, backend.to_tensor),
   )
   def test_correct_quantile_array(
       self,
@@ -2069,7 +2069,7 @@ class TestLognormalDistFromRange(parameterized.TestCase):
 
     dist = prior_distribution.lognormal_dist_from_range(
         low, high, mass_percent=mass_percent
-        )
+    )
 
     mass_lower = 0.5 - (np.asarray(mass_percent) / 2)
     mass_upper = 0.5 + (np.asarray(mass_percent) / 2)
@@ -2086,37 +2086,37 @@ class TestLognormalDistFromRange(parameterized.TestCase):
           testcase_name='low_negative',
           low=-0.1,
           high=0.5,
-          ),
+      ),
       dict(
           testcase_name='low_zero',
           low=0.0,
           high=0.5,
-          ),
+      ),
       dict(
           testcase_name='high_less_than_low',
           low=1.0,
           high=0.5,
-          ),
+      ),
       dict(
           testcase_name='array_low_negative',
           low=(-0.1, 0.1),
           high=0.5,
-          ),
+      ),
       dict(
           testcase_name='array_low_zero',
           low=(0.0, 0.1),
           high=0.5,
-          ),
+      ),
       dict(
           testcase_name='array_high_less_than_low',
           low=(0.5, 1.0),
           high=(1.0, 0.75),
-          ),
+      ),
   )
   def test_out_of_bounds_low_high_raises_error(self, low, high):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "'low' and 'high' values must be non-negative and satisfy high > low."
+        "'low' and 'high' values must be non-negative and satisfy high > low.",
     ):
       _ = prior_distribution.lognormal_dist_from_range(low, high)
 
@@ -2124,11 +2124,11 @@ class TestLognormalDistFromRange(parameterized.TestCase):
       dict(
           testcase_name='negative',
           mass_percent=-0.1,
-          ),
+      ),
       dict(
           testcase_name='greater_than_1',
           mass_percent=1.1,
-          ),
+      ),
       dict(
           testcase_name='array_negative',
           mass_percent=(-0.1, 0.5),
@@ -2140,8 +2140,7 @@ class TestLognormalDistFromRange(parameterized.TestCase):
   )
   def test_out_of_bounds_mass_percent_raises_error(self, mass_percent):
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "'mass_percent' values must be between 0 and 1, exclusive."
+        ValueError, "'mass_percent' values must be between 0 and 1, exclusive."
     ):
       _ = prior_distribution.lognormal_dist_from_range(
           1.0, 2.0, mass_percent=mass_percent

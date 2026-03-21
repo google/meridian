@@ -341,16 +341,16 @@ class CalculateBetaXTest(
     n_channels = (
         self._N_NON_MEDIA_CHANNELS if is_non_media else self._N_MEDIA_CHANNELS
     )
-    eta_x = backend.to_tensor([[0.0] * n_channels], dtype=backend.float32)
+    eta_x = backend.to_tensor([[0.0] * n_channels], dtype=backend.float_dtype)
     beta_gx_dev = backend.zeros(
-        (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float32
+        (1, self._N_GEOS_SMALL, n_channels), dtype=backend.float_dtype
     )
     linear_predictor_counterfactual_difference = backend.to_tensor(
         backend.ones((1, self._N_GEOS_SMALL, self._N_TIMES_SMALL, n_channels)),
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     incremental_outcome_x = backend.to_tensor(
-        [[1.0] * n_channels], dtype=backend.float32
+        [[1.0] * n_channels], dtype=backend.float_dtype
     )
 
     calculated_beta_x = eqn.calculate_beta_x(
@@ -363,7 +363,7 @@ class CalculateBetaXTest(
 
     test_utils.assert_allclose(
         calculated_beta_x,
-        backend.to_tensor(expected_coef, dtype=backend.float32),
+        backend.to_tensor(expected_coef, dtype=backend.float_dtype),
         rtol=1e-4,
     )
 
@@ -394,7 +394,7 @@ class LinearPredictorCounterfactualDifferenceTest(
   ):
     self.mock_context.media_tensors = mock.Mock()
     self.mock_context.media_tensors.prior_media_scaled_counterfactual = None
-    media_transformed = backend.to_tensor([1.0, 2.0], dtype=backend.float32)
+    media_transformed = backend.to_tensor([1.0, 2.0], dtype=backend.float_dtype)
 
     result = self.equations.linear_predictor_counterfactual_difference_media(
         media_transformed=media_transformed,
@@ -415,8 +415,8 @@ class LinearPredictorCounterfactualDifferenceTest(
     self.mock_context.adstock_decay_spec = mock.Mock()
     self.mock_context.adstock_decay_spec.media = "geometric"
 
-    media_transformed = backend.to_tensor([10.0], dtype=backend.float32)
-    counterfactual_result = backend.to_tensor([4.0], dtype=backend.float32)
+    media_transformed = backend.to_tensor([10.0], dtype=backend.float_dtype)
+    counterfactual_result = backend.to_tensor([4.0], dtype=backend.float_dtype)
 
     with mock.patch.object(
         self.equations, "adstock_hill_media", return_value=counterfactual_result
@@ -440,7 +440,7 @@ class LinearPredictorCounterfactualDifferenceTest(
           decay_functions="geometric",
       )
       test_utils.assert_allclose(
-          result, backend.to_tensor([6.0], dtype=backend.float32)
+          result, backend.to_tensor([6.0], dtype=backend.float_dtype)
       )
 
   def test_linear_predictor_counterfactual_difference_rf_no_counterfactual(
@@ -448,7 +448,7 @@ class LinearPredictorCounterfactualDifferenceTest(
   ):
     self.mock_context.rf_tensors = mock.Mock()
     self.mock_context.rf_tensors.prior_reach_scaled_counterfactual = None
-    rf_transformed = backend.to_tensor([1.0, 2.0], dtype=backend.float32)
+    rf_transformed = backend.to_tensor([1.0, 2.0], dtype=backend.float_dtype)
 
     result = self.equations.linear_predictor_counterfactual_difference_rf(
         rf_transformed=rf_transformed,
@@ -470,8 +470,8 @@ class LinearPredictorCounterfactualDifferenceTest(
     self.mock_context.adstock_decay_spec = mock.Mock()
     self.mock_context.adstock_decay_spec.rf = "geometric"
 
-    rf_transformed = backend.to_tensor([10.0], dtype=backend.float32)
-    counterfactual_result = backend.to_tensor([4.0], dtype=backend.float32)
+    rf_transformed = backend.to_tensor([10.0], dtype=backend.float_dtype)
+    counterfactual_result = backend.to_tensor([4.0], dtype=backend.float_dtype)
 
     with mock.patch.object(
         self.equations, "adstock_hill_rf", return_value=counterfactual_result
@@ -496,7 +496,7 @@ class LinearPredictorCounterfactualDifferenceTest(
           decay_functions="geometric",
       )
       test_utils.assert_allclose(
-          result, backend.to_tensor([6.0], dtype=backend.float32)
+          result, backend.to_tensor([6.0], dtype=backend.float_dtype)
       )
 
 
@@ -585,7 +585,7 @@ class ComputeNonMediaTreatmentsBaselineTest(
     model_context_instance = context.ModelContext(data, model_spec)
     eqs = equations.ModelEquations(model_context=model_context_instance)
     expected_baseline = backend.to_tensor(
-        baseline_values, dtype=backend.float32
+        baseline_values, dtype=backend.float_dtype
     )
     actual_baseline = eqs.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
@@ -607,7 +607,7 @@ class ComputeNonMediaTreatmentsBaselineTest(
         non_media_treatments[..., 0], axis=[0, 1]
     )
     expected_baseline_float = backend.to_tensor(
-        baseline_value_float, dtype=backend.float32
+        baseline_value_float, dtype=backend.float_dtype
     )
     expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1
@@ -636,7 +636,7 @@ class ComputeNonMediaTreatmentsBaselineTest(
         axis=[0, 1],
     )
     expected_baseline_float = backend.to_tensor(
-        baseline_value_float, dtype=backend.float32
+        baseline_value_float, dtype=backend.float_dtype
     )
     expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_float], axis=-1

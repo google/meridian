@@ -145,58 +145,58 @@ class DataTensors(backend.ExtensionType):
       time: Optional[Sequence[str] | backend.Tensor] = None,
   ):
     self.media = (
-        backend.cast(media, backend.float32) if media is not None else None
+        backend.cast(media, backend.float_dtype) if media is not None else None
     )
     self.media_spend = (
-        backend.cast(media_spend, backend.float32)
+        backend.cast(media_spend, backend.float_dtype)
         if media_spend is not None
         else None
     )
     self.reach = (
-        backend.cast(reach, backend.float32) if reach is not None else None
+        backend.cast(reach, backend.float_dtype) if reach is not None else None
     )
     self.frequency = (
-        backend.cast(frequency, backend.float32)
+        backend.cast(frequency, backend.float_dtype)
         if frequency is not None
         else None
     )
     self.rf_impressions = (
-        backend.cast(rf_impressions, backend.float32)
+        backend.cast(rf_impressions, backend.float_dtype)
         if rf_impressions is not None
         else None
     )
     self.rf_spend = (
-        backend.cast(rf_spend, backend.float32)
+        backend.cast(rf_spend, backend.float_dtype)
         if rf_spend is not None
         else None
     )
     self.organic_media = (
-        backend.cast(organic_media, backend.float32)
+        backend.cast(organic_media, backend.float_dtype)
         if organic_media is not None
         else None
     )
     self.organic_reach = (
-        backend.cast(organic_reach, backend.float32)
+        backend.cast(organic_reach, backend.float_dtype)
         if organic_reach is not None
         else None
     )
     self.organic_frequency = (
-        backend.cast(organic_frequency, backend.float32)
+        backend.cast(organic_frequency, backend.float_dtype)
         if organic_frequency is not None
         else None
     )
     self.non_media_treatments = (
-        backend.cast(non_media_treatments, backend.float32)
+        backend.cast(non_media_treatments, backend.float_dtype)
         if non_media_treatments is not None
         else None
     )
     self.controls = (
-        backend.cast(controls, backend.float32)
+        backend.cast(controls, backend.float_dtype)
         if controls is not None
         else None
     )
     self.revenue_per_kpi = (
-        backend.cast(revenue_per_kpi, backend.float32)
+        backend.cast(revenue_per_kpi, backend.float_dtype)
         if revenue_per_kpi is not None
         else None
     )

@@ -7505,10 +7505,11 @@ class EDAEngineTest(
   def test_stack_variables(self):
     media_data = np.array(
         [[0.0, 1.0, 2.0], [10.0, 11.0, 12.0], [20.0, 21.0, 22.0]],
-        dtype="float32",
+        dtype=backend.np_float_dtype,
     )
     rf_data = np.array(
-        [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]], dtype="float32"
+        [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]],
+        dtype=backend.np_float_dtype,
     )
     media_ds = _create_dataset_with_var_dim(
         media_data,

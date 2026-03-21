@@ -267,7 +267,7 @@ def build_rf_tensors(
   )
   rf_spend = backend.to_tensor(input_data.rf_spend, dtype=backend.float_dtype)
   reach_transformer = transformers.MediaTransformer(
-      reach, backend.to_tensor(input_data.population, dtype=backend.float32)
+      reach, backend.to_tensor(input_data.population, dtype=backend.float_dtype)
   )
   reach_scaled = reach_transformer.forward(reach)
   prior_type = model_spec.effective_rf_prior_type
@@ -278,7 +278,7 @@ def build_rf_tensors(
     )
   aggregated_rf_spend = backend.to_tensor(
       input_data.aggregate_rf_spend(calibration_period=calibration_period),
-      dtype=backend.float32,
+      dtype=backend.float_dtype,
   )
   # Set `prior_reach_scaled_counterfactual` and `prior_denominator` depending on
   # the prior type.
@@ -299,7 +299,7 @@ def build_rf_tensors(
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_reach_scaled_counterfactual = None
     total_outcome = backend.to_tensor(
-        input_data.get_total_outcome(), dtype=backend.float32
+        input_data.get_total_outcome(), dtype=backend.float_dtype
     )
     prior_denominator = backend.repeat(
         total_outcome, len(input_data.rf_channel)
@@ -350,14 +350,14 @@ def build_organic_rf_tensors(
     return OrganicRfTensors()
 
   organic_reach = backend.to_tensor(
-      input_data.organic_reach, dtype=backend.float32
+      input_data.organic_reach, dtype=backend.float_dtype
   )
   organic_frequency = backend.to_tensor(
-      input_data.organic_frequency, dtype=backend.float32
+      input_data.organic_frequency, dtype=backend.float_dtype
   )
   organic_reach_transformer = transformers.MediaTransformer(
       organic_reach,
-      backend.to_tensor(input_data.population, dtype=backend.float32),
+      backend.to_tensor(input_data.population, dtype=backend.float_dtype),
   )
   organic_reach_scaled = organic_reach_transformer.forward(organic_reach)
 

@@ -570,7 +570,7 @@ class BackendTest(parameterized.TestCase):
 
     if backend_name == _JAX:
       # JAX backend defaults to float32
-      self.assertEqual(tensor.dtype, backend.float32)
+      self.assertEqual(tensor.dtype, backend.float_dtype)
       test_utils.assert_allclose(tensor, f64_data.astype(np.float32))
     else:
       self.assertEqual(tensor.dtype, tf.float64)
@@ -614,7 +614,7 @@ class BackendTest(parameterized.TestCase):
             x for x in w if "Casting to float32" in str(x.message)
         ]
         self.assertNotEmpty(relevant_warnings)
-        self.assertEqual(tensor.dtype, backend.float32)
+        self.assertEqual(tensor.dtype, backend.float_dtype)
 
   def test_to_tensor_defers_to_jax_default_when_x64_enabled_for_jax(self):
     """Tests no warning is issued when x64 is enabled."""
@@ -653,7 +653,7 @@ class BackendTest(parameterized.TestCase):
           x for x in w if "Casting to float32" in str(x.message)
       ]
       self.assertEmpty(relevant_warnings)
-      self.assertEqual(tensor.dtype, backend.float32)
+      self.assertEqual(tensor.dtype, backend.float_dtype)
 
   def test_to_tensor_warns_on_scalar_float_downcast_for_jax(self):
     """Tests that a warning is issued when scalar float is implicitly cast."""
@@ -669,7 +669,7 @@ class BackendTest(parameterized.TestCase):
             x for x in w if "Casting to float32" in str(x.message)
         ]
         self.assertNotEmpty(relevant_warnings)
-        self.assertEqual(tensor.dtype, backend.float32)
+        self.assertEqual(tensor.dtype, backend.float_dtype)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_to_tensor_supports_pandas_series(self, backend_name):
@@ -682,7 +682,7 @@ class BackendTest(parameterized.TestCase):
 
     self.assertIsInstance(tensor, backend.Tensor)
     if backend_name == _JAX:
-      self.assertEqual(tensor.dtype, backend.float32)
+      self.assertEqual(tensor.dtype, backend.float_dtype)
       test_utils.assert_allclose(tensor, pd_data.values.astype(np.float32))
     else:
       self.assertEqual(tensor.dtype, tf.float64)
@@ -699,7 +699,7 @@ class BackendTest(parameterized.TestCase):
 
     self.assertIsInstance(tensor, backend.Tensor)
     if backend_name == _JAX:
-      self.assertEqual(tensor.dtype, backend.float32)
+      self.assertEqual(tensor.dtype, backend.float_dtype)
       test_utils.assert_allclose(tensor, xr_data.values.astype(np.float32))
     else:
       self.assertEqual(tensor.dtype, tf.float64)

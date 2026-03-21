@@ -383,25 +383,27 @@ class ContextTest(
       )
     if data.organic_media is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.organic_media, dtype=backend.float32),
+          backend.to_tensor(data.organic_media, dtype=backend.float_dtype),
           model_context.organic_media_tensors.organic_media,
       )
     if data.organic_reach is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.organic_reach, dtype=backend.float32),
+          backend.to_tensor(data.organic_reach, dtype=backend.float_dtype),
           model_context.organic_rf_tensors.organic_reach,
       )
     if data.organic_frequency is not None:
       test_utils.assert_allequal(
-          backend.to_tensor(data.organic_frequency, dtype=backend.float32),
+          backend.to_tensor(data.organic_frequency, dtype=backend.float_dtype),
           model_context.organic_rf_tensors.organic_frequency,
       )
     if data.media_spend is not None and data.rf_spend is not None:
       test_utils.assert_allclose(
           backend.concatenate(
               [
-                  backend.to_tensor(data.media_spend, dtype=backend.float32),
-                  backend.to_tensor(data.rf_spend, dtype=backend.float32),
+                  backend.to_tensor(
+                      data.media_spend, dtype=backend.float_dtype
+                  ),
+                  backend.to_tensor(data.rf_spend, dtype=backend.float_dtype),
               ],
               axis=-1,
           ),
@@ -409,12 +411,12 @@ class ContextTest(
       )
     elif data.media_spend is not None:
       test_utils.assert_allclose(
-          backend.to_tensor(data.media_spend, dtype=backend.float32),
+          backend.to_tensor(data.media_spend, dtype=backend.float_dtype),
           model_context.total_spend,
       )
     elif data.rf_spend is not None:
       test_utils.assert_allclose(
-          backend.to_tensor(data.rf_spend, dtype=backend.float32),
+          backend.to_tensor(data.rf_spend, dtype=backend.float_dtype),
           model_context.total_spend,
       )
 

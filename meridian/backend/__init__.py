@@ -1104,7 +1104,6 @@ if _BACKEND == config.Backend.JAX:
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like
 
-  float32 = _ops.float32
   float_dtype = _ops.float64 if jax.config.jax_enable_x64 else _ops.float32
   np_float_dtype = np.float64 if jax.config.jax_enable_x64 else np.float32
   _DEFAULT_FLOAT = "float64" if jax.config.jax_enable_x64 else "float32"
@@ -1292,7 +1291,6 @@ elif _BACKEND == config.Backend.TENSORFLOW:
 
   stabilize_rf_roi_grid = _tf_stabilize_rf_roi_grid
 
-  float32 = _ops.float32
   float_dtype = _ops.float32
   np_float_dtype = np.float32
   _DEFAULT_FLOAT = "float32"

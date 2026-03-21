@@ -876,7 +876,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             autospec=True,
             spec_set=True,
             return_value=backend.to_tensor(
-                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
             ),
         )
     )
@@ -889,7 +889,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             autospec=True,
             spec_set=True,
             return_value=backend.to_tensor(
-                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], backend.float32
+                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], backend.float_dtype
             ),
         )
     )
@@ -1096,10 +1096,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS]], backend.float_dtype
     )
 
     expected_data = _create_budget_data(
@@ -1124,10 +1124,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_NONOPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS]]],
-        backend.float32,
+        backend.float_dtype,
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[:_N_MEDIA_CHANNELS],
@@ -1153,10 +1153,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_NONOPTIMIZED_INCREMENTAL_OUTCOME[-_N_RF_CHANNELS:]]],
-        backend.float32,
+        backend.float_dtype,
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_NONOPTIMIZED_SPEND[-_N_RF_CHANNELS:],
@@ -1179,10 +1179,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_SPEND,
@@ -1211,10 +1211,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS]]],
-        backend.float32,
+        backend.float_dtype,
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS[:_N_MEDIA_CHANNELS]]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_MEDIA_ONLY_SPEND,
@@ -1244,10 +1244,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME[-_N_RF_CHANNELS:]]],
-        backend.float32,
+        backend.float_dtype,
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS[-_N_RF_CHANNELS:]]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_OPTIMIZED_RF_ONLY_SPEND,
@@ -1276,10 +1276,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS]], backend.float_dtype
     )
     expected_roi = np.array([
         [np.inf, np.inf, np.nan, np.nan],
@@ -1322,10 +1322,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_get_aggregated_impressions,
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     mock_get_aggregated_impressions.return_value = backend.to_tensor(
-        [[_AGGREGATED_IMPRESSIONS]], backend.float32
+        [[_AGGREGATED_IMPRESSIONS]], backend.float_dtype
     )
     expected_data = _create_budget_data(
         spend=_TARGET_ROI_SPEND,
@@ -2820,7 +2820,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     budget = 2000
 
@@ -2848,7 +2848,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
@@ -2890,7 +2890,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     expected_pct_of_spend = [0.1, 0.2, 0.3, 0.3, 0.1]
 
@@ -2953,7 +2953,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -2969,7 +2969,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self, mock_incremental_outcome
   ):
     mock_incremental_outcome.return_value = backend.to_tensor(
-        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+        [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -2990,7 +2990,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             'incremental_outcome',
             autospec=True,
             return_value=backend.to_tensor(
-                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
             ),
         )
     )
@@ -3018,7 +3018,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             'incremental_outcome',
             autospec=True,
             return_value=backend.to_tensor(
-                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float32
+                [[_NONOPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
             ),
         )
     )
@@ -4775,7 +4775,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
         [[[1.0], [1.0]], [[2.0], [2.0]]], dtype=backend.float_dtype
     )
     self.frequency = backend.to_tensor(
-        [[[2.0], [2.0]], [[3.0], [3.0]]], dtype=backend.float32
+        [[[2.0], [2.0]], [[3.0], [3.0]]], dtype=backend.float_dtype
     )
     test_input_data = (
         data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
@@ -4942,7 +4942,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
             [[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
             [[20.0, 20.0, 20.0], [20.0, 20.0, 20.0]],
         ],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time, cpmu=self.cpmu, media=media
@@ -4957,7 +4957,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
             [[100.0, 110.0, 120.0], [130.0, 140.0, 150.0]],
             [[260.0, 270.0, 280.0], [290.0, 300.0, 310.0]],
         ],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time, cpmu=self.cpmu, media_spend=media_spend
@@ -4970,7 +4970,8 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
 
   def test_population_scaling_for_2d_media_spend(self):
     media_spend_2d = backend.to_tensor(
-        [[500.0, 500.0, 500.0], [1000.0, 1000.0, 1000.0]], dtype=backend.float32
+        [[500.0, 500.0, 500.0], [1000.0, 1000.0, 1000.0]],
+        dtype=backend.float_dtype,
     )  # (time, channel)
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time,
@@ -4984,7 +4985,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
             [[100.0, 100.0, 100.0], [200.0, 200.0, 200.0]],
             [[400.0, 400.0, 400.0], [800.0, 800.0, 800.0]],
         ],  # Geo 1 (20%)  # Geo 2 (80%)
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
 
     # Avoid the pytype check complaint.
@@ -4999,7 +5000,9 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     self.assertEqual(result.media.shape, (2, 2, 3))
 
   def test_rf_flighting_with_scaling(self):
-    rf_spend_2d = backend.to_tensor([[100.0], [200.0]], dtype=backend.float32)
+    rf_spend_2d = backend.to_tensor(
+        [[100.0], [200.0]], dtype=backend.float_dtype
+    )
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time,
         cprf=self.cprf,
@@ -5023,8 +5026,10 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     backend_test_utils.assert_allclose(result.rf_spend, calculated_rf_spend)
 
   def test_frequency_with_expansion(self):
-    frequency = backend.to_tensor(1.0, dtype=backend.float32)
-    rf_spend_2d = backend.to_tensor([[100.0], [200.0]], dtype=backend.float32)
+    frequency = backend.to_tensor(1.0, dtype=backend.float_dtype)
+    rf_spend_2d = backend.to_tensor(
+        [[100.0], [200.0]], dtype=backend.float_dtype
+    )
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time,
         cprf=self.cprf,
@@ -5034,7 +5039,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     )
     expected_scaled_frequency = backend.to_tensor(
         [[[1.0], [1.0]], [[1.0], [1.0]]],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     # Avoid the pytype check complaint.
     assert result.frequency is not None
@@ -5044,14 +5049,14 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     )
 
   def test_scalar_revenue_per_kpi_with_expansion(self):
-    revenue_per_kpi = backend.to_tensor(100.0, dtype=backend.float32)
+    revenue_per_kpi = backend.to_tensor(100.0, dtype=backend.float_dtype)
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time,
         revenue_per_kpi=revenue_per_kpi,
     )
     expected_scaled_revenue_per_kpi = backend.to_tensor(
         [[100.0, 100.0], [100.0, 100.0]],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     # Avoid the pytype check complaint.
     assert result.revenue_per_kpi is not None
@@ -5061,14 +5066,16 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     )
 
   def test_revenue_per_kpi_with_expansion(self):
-    revenue_per_kpi = backend.to_tensor([100.0, 200.0], dtype=backend.float32)
+    revenue_per_kpi = backend.to_tensor(
+        [100.0, 200.0], dtype=backend.float_dtype
+    )
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time,
         revenue_per_kpi=revenue_per_kpi,
     )
     expected_scaled_revenue_per_kpi = backend.to_tensor(
         [[100.0, 200.0], [100.0, 200.0]],
-        dtype=backend.float32,
+        dtype=backend.float_dtype,
     )
     # Avoid the pytype check complaint.
     assert result.revenue_per_kpi is not None

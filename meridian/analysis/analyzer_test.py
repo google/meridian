@@ -4939,7 +4939,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       ).optimal_frequency
       frequency = backend.ones_like(
           self.meridian.rf_tensors.frequency
-      ) * backend.to_tensor(optimal_frequency, dtype=backend.float32)
+      ) * backend.to_tensor(optimal_frequency, dtype=backend.float_dtype)
       reach = backend.divide_no_nan(
           self.meridian.rf_tensors.reach * self.meridian.rf_tensors.frequency,
           frequency,
