@@ -37,6 +37,18 @@ class ComputationBackend(enum.IntEnum):
   JAX = 2
 
 
+class ComputationPrecision(enum.IntEnum):
+  """A computational precision for a Meridian model.
+
+  This mirrors the `ComputationPrecision` enum in
+  `proto/mmm/v1/model/meridian/meridian_model.proto`.
+  """
+
+  COMPUTATION_PRECISION_UNSPECIFIED = 0
+  FLOAT32 = 1
+  FLOAT64 = 2
+
+
 _DEFAULT_BACKEND = Backend.TENSORFLOW
 
 

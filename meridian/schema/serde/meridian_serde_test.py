@@ -206,6 +206,25 @@ class MeridianSerdeTest(parameterized.TestCase):
         unpacked_model.computation_backend, meridian_pb.ComputationBackend.JAX
     )
 
+  def test_serialize_sets_computation_precision(self):
+    meridian_model = model.Meridian(
+        input_data=_INPUT_DATA, model_spec=test_data.get_default_model_spec()
+    )
+    with mock.patch.object(
+        model.Meridian,
+        'computation_precision',
+        new_callable=mock.PropertyMock,
+    ) as mock_precision:
+      mock_precision.return_value = 'FLOAT64'
+      serialized_model = self.serde.serialize(meridian_model)
+
+    unpacked_model = meridian_pb.MeridianModel()
+    serialized_model.model.Unpack(unpacked_model)
+    self.assertEqual(
+        unpacked_model.computation_precision,
+        meridian_pb.ComputationPrecision.FLOAT64,
+    )
+
   def test_deserialize_warns_on_backend_mismatch(self):
     # Create a proto indicating it was trained with JAX.
     meridian_model = meridian_pb.MeridianModel(
@@ -227,6 +246,8 @@ class MeridianSerdeTest(parameterized.TestCase):
         backend,
         'computation_backend',
         return_value=backend_config.ComputationBackend.TENSORFLOW,
+        autospec=True,
+        spec_set=True,
     ):
       with self.assertWarnsRegex(
           UserWarning,
@@ -256,6 +277,8 @@ class MeridianSerdeTest(parameterized.TestCase):
         backend,
         'computation_backend',
         return_value=backend_config.ComputationBackend.TENSORFLOW,
+        autospec=True,
+        spec_set=True,
     ):
       with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
@@ -263,6 +286,59 @@ class MeridianSerdeTest(parameterized.TestCase):
         # Ensure no backend-related warnings were raised.
         backend_warnings = [x for x in w if 'backend' in str(x.message).lower()]
         self.assertEmpty(backend_warnings)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='mismatch_warns',
+          stored_precision=meridian_pb.ComputationPrecision.FLOAT64,
+          current_precision=backend_config.ComputationPrecision.FLOAT32,
+          expected_warning=(
+              'The model was trained using FLOAT64, but the current precision'
+              ' is FLOAT32'
+          ),
+      ),
+      dict(
+          testcase_name='match_no_warning',
+          stored_precision=meridian_pb.ComputationPrecision.FLOAT32,
+          current_precision=backend_config.ComputationPrecision.FLOAT32,
+          expected_warning=None,
+      ),
+  )
+  def test_deserialize_precision_validation(
+      self, stored_precision, current_precision, expected_warning
+  ):
+    meridian_model = meridian_pb.MeridianModel(
+        model_version='1.2.3',
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        computation_precision=stored_precision,
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        model=any_model,
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+    )
+
+    with mock.patch.object(
+        backend,
+        'computation_precision',
+        return_value=current_precision,
+        autospec=True,
+        spec_set=True,
+    ):
+      if expected_warning:
+        with self.assertWarnsRegex(UserWarning, expected_warning):
+          self.serde.deserialize(mmm_kernel)
+      else:
+        with warnings.catch_warnings(record=True) as w:
+          warnings.simplefilter('always')
+          self.serde.deserialize(mmm_kernel)
+          precision_warnings = [
+              x for x in w if 'precision' in str(x.message).lower()
+          ]
+          self.assertEmpty(precision_warnings)
 
   def test_serialize_no_controls(self):
     meridian_model = model.Meridian(

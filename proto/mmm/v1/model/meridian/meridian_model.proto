@@ -326,6 +326,13 @@ enum ComputationBackend {
   JAX = 2;
 }
 
+// The computational precision used to train the model.
+enum ComputationPrecision {
+  COMPUTATION_PRECISION_UNSPECIFIED = 0;
+  FLOAT32 = 1;
+  FLOAT64 = 2;
+}
+
 // Specifies the adstock decay function for each channel.
 message AdstockDecayByChannel {
   // A map where keys are channel names and values are the adstock decay
@@ -606,6 +613,7 @@ message MeridianModel {
   eda.EDASpec eda_spec = 19;
 
   ComputationBackend computation_backend = 21;
+  ComputationPrecision computation_precision = 22;
 }
 
 // Represents TensorFlow statistical distribution spec that are used in user

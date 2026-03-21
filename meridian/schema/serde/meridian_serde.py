@@ -164,6 +164,15 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         meridian_pb.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED,
     )
 
+    precision_name = getattr(
+        mmm, 'computation_precision', 'COMPUTATION_PRECISION_UNSPECIFIED'
+    )
+    computation_precision_enum = getattr(
+        meridian_pb.ComputationPrecision,
+        precision_name,
+        meridian_pb.ComputationPrecision.COMPUTATION_PRECISION_UNSPECIFIED,
+    )
+
     model_proto = meridian_pb.MeridianModel(
         model_id=model_id,
         model_version=str(meridian_version),
@@ -178,6 +187,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         ),
         arviz_version=az.__version__,
         computation_backend=computation_backend_enum,
+        computation_precision=computation_precision_enum,
     )
     # For backwards compatibility, only serialize EDA spec if it exists.
     if hasattr(mmm, 'eda_spec'):
@@ -288,6 +298,23 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
               f' {meridian_pb.ComputationBackend.Name(stored_backend)}, but the'
               f' current backend is {current_backend.name}. This may lead to'
               ' numerical discrepancies or compatibility issues.'
+          ),
+          UserWarning,
+      )
+
+    stored_precision = ser_meridian.computation_precision
+    current_precision = backend.computation_precision()
+    if (
+        stored_precision
+        != meridian_pb.ComputationPrecision.COMPUTATION_PRECISION_UNSPECIFIED
+        and stored_precision != current_precision
+    ):
+      warnings.warn(
+          (
+              'The model was trained using'
+              f' {meridian_pb.ComputationPrecision.Name(stored_precision)}, but'
+              f' the current precision is {current_precision.name}. This may'
+              ' lead to numerical discrepancies or compatibility issues.'
           ),
           UserWarning,
       )

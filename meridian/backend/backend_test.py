@@ -38,10 +38,32 @@ import tensorflow as tf
 import xarray as xr
 
 
+def _unload_backend_modules():
+  """Unloads backend modules from Python's cache."""
+  modules_to_unload = ["meridian.backend.config", "meridian.backend"]
+  for mod_name in modules_to_unload:
+    sys.modules.pop(mod_name, None)
+
+
+def _reload_backend_modules():
+  """Reloads backend modules to a clean, default state."""
+  with warnings.catch_warnings():
+    warnings.simplefilter("ignore", UserWarning)
+    if "meridian.backend.config" in sys.modules:
+      importlib.reload(sys.modules["meridian.backend.config"])
+    else:
+      importlib.import_module("meridian.backend.config")
+    if "meridian.backend" in sys.modules:
+      importlib.reload(sys.modules["meridian.backend"])
+    else:
+      importlib.import_module("meridian.backend")
+
+
 class BackendInitializationTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+
     def restore_and_reload():
       with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -57,9 +79,12 @@ class BackendInitializationTest(parameterized.TestCase):
     # Unload backend modules from Python's cache. This is to ensure that the
     # module's initialization logic is re-run for each test under different
     # environment variable conditions.
-    modules_to_unload = ["meridian.backend.config", "meridian.backend"]
-    for mod_name in modules_to_unload:
-      sys.modules.pop(mod_name, None)
+    _unload_backend_modules()
+
+  def tearDown(self):
+    super().tearDown()
+    # Reload the backend modules to a clean, default state for subsequent tests.
+    _reload_backend_modules()
 
   def _import_backend_modules(self):
     from meridian.backend import config as config_mod  # pylint: disable=reimported
@@ -126,6 +151,7 @@ class BackendJaxX64Test(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+
     def restore_and_reload():
       with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -141,15 +167,17 @@ class BackendJaxX64Test(parameterized.TestCase):
     # Unload backend modules from Python's cache. This is to ensure that the
     # module's initialization logic is re-run for each test under different
     # environment variable conditions.
-    modules_to_unload = ["meridian.backend.config", "meridian.backend"]
-    for mod_name in modules_to_unload:
-      sys.modules.pop(mod_name, None)
+    _unload_backend_modules()
 
     # Ensure jax_enable_x64 is reset after each test.
     original_jax_x64 = jax.config.jax_enable_x64
     self.addCleanup(
         lambda: jax.config.update("jax_enable_x64", original_jax_x64)
     )
+
+  def tearDown(self):
+    super().tearDown()
+    _reload_backend_modules()
 
   def _import_backend_modules(self):
     from meridian.backend import config as config_mod  # pylint: disable=reimported
@@ -222,10 +250,28 @@ class BackendJaxX64Test(parameterized.TestCase):
       warnings.simplefilter("ignore", UserWarning)
       _, backend_mod = self._import_backend_modules()
 
-    self.assertEqual(jax.config.jax_enable_x64, expected_x64)
-    self.assertEqual(backend_mod.float_dtype, expected_float_dtype)
-    self.assertEqual(backend_mod.np_float_dtype, expected_np_float_dtype)
-    self.assertEqual(backend_mod._DEFAULT_FLOAT, expected_default_float)
+    expected_precision = (
+        config.ComputationPrecision.FLOAT64
+        if expected_default_float == "float64"
+        else config.ComputationPrecision.FLOAT32
+    )
+
+    self.assertEqual(
+        (
+            jax.config.jax_enable_x64,
+            backend_mod.float_dtype,
+            backend_mod.np_float_dtype,
+            backend_mod._DEFAULT_FLOAT,
+            backend_mod.computation_precision(),
+        ),
+        (
+            expected_x64,
+            expected_float_dtype,
+            expected_np_float_dtype,
+            expected_default_float,
+            expected_precision,
+        ),
+    )
 
   def test_jax_x64_env_var_ignored_for_tf(self):
     os.environ["MERIDIAN_ENABLE_JAX_X64"] = "True"
@@ -233,9 +279,20 @@ class BackendJaxX64Test(parameterized.TestCase):
 
     _, backend_mod = self._import_backend_modules()
 
-    self.assertEqual(backend_mod.float_dtype, tf.float32)
-    self.assertEqual(backend_mod.np_float_dtype, np.float32)
-    self.assertEqual(backend_mod._DEFAULT_FLOAT, "float32")
+    self.assertEqual(
+        (
+            backend_mod.float_dtype,
+            backend_mod.np_float_dtype,
+            backend_mod._DEFAULT_FLOAT,
+            backend_mod.computation_precision(),
+        ),
+        (
+            tf.float32,
+            np.float32,
+            "float32",
+            config.ComputationPrecision.FLOAT32,
+        ),
+    )
 
 
 class BackendTest(parameterized.TestCase):

@@ -1568,3 +1568,20 @@ def computation_backend() -> config.ComputationBackend:
     return config.ComputationBackend.TENSORFLOW
 
   return config.ComputationBackend.COMPUTATION_BACKEND_UNSPECIFIED
+
+
+def computation_precision() -> config.ComputationPrecision:
+  """Returns the active computation precision.
+
+  Returns:
+    The ComputationPrecision enum corresponding to the active precision.
+
+  Raises:
+    ValueError: If `_DEFAULT_FLOAT` is an unsupported format.
+  """
+  if _DEFAULT_FLOAT == "float32":
+    return config.ComputationPrecision.FLOAT32
+  if _DEFAULT_FLOAT == "float64":
+    return config.ComputationPrecision.FLOAT64
+
+  raise ValueError(f"Unsupported computation precision: {_DEFAULT_FLOAT}")
