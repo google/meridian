@@ -261,9 +261,7 @@ VARIABILITY_PLOT_INFO = (
 RELATIVE_SPEND_SHARE_INFO = (
     "Please review the channel's share of spend. Channels with a very small"
     ' share of spend might be difficult to estimate. You might want to combine'
-    ' them with other channels. Meanwhile, a channel with a huge spend share'
-    ' would increase the risk of producing a negative baseline if it also has a'
-    ' high ROI.'
+    ' them with other channels.'
 )
 PAIRWISE_CORRELATION_CHECK_INFO = (
     'Please review the computed pairwise correlations. Note that'
