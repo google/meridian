@@ -1327,7 +1327,10 @@ def _convert_to_deterministic_0_distribution(
         f' for national models. {distribution.name} has been automatically set'
         ' to Deterministic(0).'
     )
-    return backend.tfd.Deterministic(loc=0, name=distribution.name)
+    return backend.tfd.Deterministic(
+        loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+        name=distribution.name,
+    )
   else:
     return distribution
 
