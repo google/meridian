@@ -42,10 +42,15 @@ class BaseCheck(abc.ABC, Generic[ConfigType, ResultType]):
       meridian: model.Meridian,
       analyzer: analyzer_module.Analyzer,
       config: ConfigType,
+      *,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
   ):
     self._meridian = meridian
     self._analyzer = analyzer
     self._config = config
+    self._selected_geos = selected_geos
+    self._selected_times = selected_times
 
   @abc.abstractmethod
   def run(self) -> ResultType:
@@ -117,7 +122,12 @@ class BaselineCheck(
   """Checks for negative baseline probability."""
 
   def run(self) -> results.BaselineCheckResult:
-    prob = float(self._analyzer.negative_baseline_probability())
+    prob = float(
+        self._analyzer.negative_baseline_probability(
+            selected_geos=self._selected_geos,
+            selected_times=self._selected_times,
+        )
+    )
 
     # Case 1: FAIL
     if prob > self._config.negative_baseline_prob_fail_threshold:
@@ -153,10 +163,22 @@ class BayesianPPPCheck(
     outcome = mmm.kpi
     if mmm.revenue_per_kpi is not None:
       outcome *= mmm.revenue_per_kpi
-    total_outcome_actual = np.sum(outcome)
-
+    total_actual_outcome_filtered = (
+        self._analyzer.filter_and_aggregate_geos_and_times(
+            outcome,
+            selected_geos=self._selected_geos,
+            selected_times=self._selected_times,
+            aggregate_geos=False,
+            aggregate_times=False,
+            has_media_dim=False,
+        )
+    )
+    total_outcome_actual = np.sum(total_actual_outcome_filtered)
     total_outcome_posterior = analyzer.expected_outcome(
-        aggregate_times=True, aggregate_geos=True
+        aggregate_times=True,
+        aggregate_geos=True,
+        selected_geos=self._selected_geos,
+        selected_times=self._selected_times,
     )
     total_outcome_expected = np.asarray(total_outcome_posterior).flatten()
 
@@ -225,7 +247,10 @@ class GoodnessOfFitCheck(
   """Checks for goodness of fit of the model."""
 
   def run(self) -> results.GoodnessOfFitCheckResult:
-    gof_ds = self._analyzer.predictive_accuracy()
+    gof_ds = self._analyzer.predictive_accuracy(
+        selected_geos=self._selected_geos,
+        selected_times=self._selected_times,
+    )
     gof_df = gof_ds.to_dataframe().reset_index()
 
     geo_granularity = (
@@ -619,7 +644,10 @@ def _bootstrap(x: np.ndarray, n_bootstraps: int) -> np.ndarray:
 
 
 def _calculate_new_statistics_from_samples(
-    mmm: model.Meridian, n_bootstraps: int, var_name: str, n_channels: int
+    mmm: model.Meridian,
+    n_bootstraps: int,
+    var_name: str,
+    n_channels: int,
 ) -> dict[str, np.ndarray]:
   """Calculate Mean, Median, Q1, and Q3 from posterior samples."""
   n_chains = len(mmm.inference_data.posterior.coords[constants.CHAIN])
@@ -717,7 +745,10 @@ class PriorPosteriorShiftCheck(
       pass
 
     post_stats = _calculate_new_statistics_from_samples(
-        self._meridian, self._config.n_bootstraps, var_name, n_channels
+        self._meridian,
+        self._config.n_bootstraps,
+        var_name,
+        n_channels,
     )
 
     alpha = self._config.alpha

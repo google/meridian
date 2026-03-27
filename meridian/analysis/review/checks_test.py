@@ -183,6 +183,10 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
 
     self.meridian.inference_data.posterior.coords = coords
 
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+
     check = checks.ROIConsistencyCheck(
         meridian=self.meridian, analyzer=self.analyzer, config=self.config
     )
@@ -515,6 +519,28 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
         [res.channel_name for res in result.channel_results], all_channels
     )
 
+  def test_roi_consistency_check_with_selected_times_geos(self):
+    self.meridian.inference_data.posterior.media_channel.values = ["ch1"]
+    self.meridian.inference_data.posterior.roi_m = np.array([5.0])[
+        np.newaxis, np.newaxis, :
+    ]
+    self.meridian.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+    self.meridian.model_spec.prior.roi_m.quantile.side_effect = (
+        self._get_quantile_side_effect(1)
+    )
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+
+    check = checks.ROIConsistencyCheck(
+        meridian=self.meridian,
+        analyzer=self.analyzer,
+        config=self.config,
+        selected_times=["time1"],
+        selected_geos=["geo1"],
+    )
+    check.run()
+
 
 class PriorPosteriorShiftCheckTest(parameterized.TestCase):
 
@@ -816,6 +842,21 @@ class BaselineCheckTest(parameterized.TestCase):
           + results._BASELINE_FAIL_RECOMMENDATION,
       )
 
+  def test_baseline_check_with_selected_times_geos(self):
+    self.analyzer.negative_baseline_probability.return_value = 0.5
+    check = checks.BaselineCheck(
+        meridian=self.meridian,
+        analyzer=self.analyzer,
+        config=self.config,
+        selected_times=["time1"],
+        selected_geos=["geo1"],
+    )
+    check.run()
+    self.analyzer.negative_baseline_probability.assert_called_once_with(
+        selected_geos=["geo1"],
+        selected_times=["time1"],
+    )
+
 
 class BayesianPPPCheckTest(parameterized.TestCase):
 
@@ -857,6 +898,9 @@ class BayesianPPPCheckTest(parameterized.TestCase):
     self.meridian.kpi = kpi
     self.meridian.revenue_per_kpi = revenue_per_kpi
     self.analyzer.expected_outcome.return_value = expected_outcome
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
 
     check = checks.BayesianPPPCheck(
         meridian=self.meridian, analyzer=self.analyzer, config=self.config
@@ -866,6 +910,28 @@ class BayesianPPPCheckTest(parameterized.TestCase):
     self.assertEqual(result.case, expected_case)
     self.assertAlmostEqual(
         result.details[results.constants.BAYESIAN_PPP], expected_ppp
+    )
+
+  def test_bayesian_ppp_check_with_selected_times_geos(self):
+    self.meridian.kpi = np.array([10, 20])
+    self.meridian.revenue_per_kpi = None
+    self.analyzer.expected_outcome.return_value = np.array([25, 35])
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+    check = checks.BayesianPPPCheck(
+        meridian=self.meridian,
+        analyzer=self.analyzer,
+        config=self.config,
+        selected_times=["time1"],
+        selected_geos=["geo1"],
+    )
+    check.run()
+    self.analyzer.expected_outcome.assert_called_once_with(
+        aggregate_times=True,
+        aggregate_geos=True,
+        selected_geos=["geo1"],
+        selected_times=["time1"],
     )
 
 
@@ -1127,6 +1193,24 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       self.assertIn(
           results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION, result.recommendation
       )
+
+  def test_goodness_of_fit_check_with_selected_times_geos(self):
+    self.meridian.n_geos = 2
+    gof_dataset = self._get_gof_dataset_no_holdout(0.5, 0.1, 0.1, False)
+    self.analyzer.predictive_accuracy.return_value = gof_dataset
+    config = configs.GoodnessOfFitConfig()
+    check = checks.GoodnessOfFitCheck(
+        meridian=self.meridian,
+        analyzer=self.analyzer,
+        config=config,
+        selected_times=["time1"],
+        selected_geos=["geo1"],
+    )
+    check.run()
+    self.analyzer.predictive_accuracy.assert_called_once_with(
+        selected_geos=["geo1"],
+        selected_times=["time1"],
+    )
 
 
 if __name__ == "__main__":

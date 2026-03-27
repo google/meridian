@@ -646,6 +646,64 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_gof_check_cls.assert_called_once()
     self._mock_pps_check_cls.assert_called_once()
 
+  def test_run_with_selected_geos_and_times(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.PASS
+    )
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+
+    review = reviewer.ModelReviewer(
+        meridian=self._meridian,
+    )
+    review.run(selected_geos=['geo1'], selected_times=['time1'])
+
+    self._mock_convergence_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.ConvergenceConfig(),
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_baseline_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.BaselineConfig(),
+        selected_geos=['geo1'],
+        selected_times=['time1'],
+    )
+    self._mock_bayesian_ppp_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.BayesianPPPConfig(),
+        selected_geos=['geo1'],
+        selected_times=['time1'],
+    )
+    self._mock_roi_consistency_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.ROIConsistencyConfig(),
+        selected_geos=['geo1'],
+        selected_times=['time1'],
+    )
+    self._mock_gof_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.GoodnessOfFitConfig(),
+        selected_geos=['geo1'],
+        selected_times=['time1'],
+    )
+    self._mock_pps_check_cls.assert_called_once_with(
+        mock.ANY,
+        mock.ANY,
+        configs.PriorPosteriorShiftConfig(),
+        selected_geos=['geo1'],
+        selected_times=['time1'],
+    )
+
   def test_run_skip_checks_with_custom_roi_priors(self):
     type(self._meridian).is_roi_prior = mock.PropertyMock(return_value=False)
     type(self._meridian).is_custom_roi_prior = mock.PropertyMock(
@@ -744,22 +802,46 @@ class ReviewerTest(parameterized.TestCase):
     review.run()
 
     self._mock_convergence_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.ConvergenceConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.ConvergenceConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_baseline_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.BaselineConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.BaselineConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_bayesian_ppp_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.BayesianPPPConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.BayesianPPPConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_roi_consistency_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.ROIConsistencyConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.ROIConsistencyConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_gof_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.GoodnessOfFitConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.GoodnessOfFitConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
     self._mock_pps_check_cls.assert_called_once_with(
-        mock.ANY, mock.ANY, configs.PriorPosteriorShiftConfig()
+        mock.ANY,
+        mock.ANY,
+        configs.PriorPosteriorShiftConfig(),
+        selected_geos=None,
+        selected_times=None,
     )
 
   def test_run_missing_required_check_raises_error(self):
@@ -795,7 +877,7 @@ class ReviewerTest(parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           r'The following required checks results are missing: '
-          r"\['BayesianPPPCheck', 'GoodnessOfFitCheck'\].",
+          r'\[\'BayesianPPPCheck\', \'GoodnessOfFitCheck\'\].',
       ):
         review.run()
 
