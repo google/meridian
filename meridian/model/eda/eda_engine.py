@@ -306,8 +306,11 @@ def _calculate_std(
     input_da: A DataArray for which to calculate the std.
 
   Returns:
-    A Dataset with two data variables: 'std_with_outliers' and
-    'std_without_outliers'.
+    A Dataset with 'std_with_outliers' and 'std_without_outliers' data
+    variables. It preserves the input DataArray's dimensions and coordinates,
+    except for the time dimension over which the standard deviation is
+    calculated. If the input includes geo or variable dimensions, they will be
+    retained in the output.
   """
   std_with_outliers = input_da.std(dim=constants.TIME, ddof=1)
 
@@ -332,8 +335,9 @@ def _calculate_outliers(
     input_da: A DataArray from which to extract outliers.
 
   Returns:
-    A DataFrame with columns for variables, geo (if applicable), time, and
-    outlier values.
+    A DataFrame containing outlier values, including columns for time, and
+    optionally for variables and geo if the input DataArray includes these
+    dimensions.
   """
   lower_bound, upper_bound = _get_outlier_bounds(input_da)
   return (

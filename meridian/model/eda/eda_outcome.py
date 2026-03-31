@@ -158,8 +158,12 @@ class StandardDeviationArtifact(AnalysisArtifact):
 
   Attributes:
     variable: The variable for which standard deviation is calculated.
-    std_ds: Dataset with stdev_with_outliers and stdev_without_outliers.
-    outlier_df: DataFrame with outliers.
+    std_ds: A Dataset with 'std_with_outliers' and 'std_without_outliers' data
+      variables. Depending on `variable`, it may include 'geo' and 'variable'
+      dimensions.
+    outlier_df: A DataFrame containing outlier values with a 'time' column. If
+      `std_ds` has 'geo' or 'variable' dimensions, `outlier_df` will include
+      corresponding 'geo' or 'variable' columns.
   """
 
   variable: str
