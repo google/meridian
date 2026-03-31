@@ -7502,45 +7502,6 @@ class EDAEngineTest(
           finding.explanation,
       )
 
-  def test_stack_variables(self):
-    media_data = np.array(
-        [[0.0, 1.0, 2.0], [10.0, 11.0, 12.0], [20.0, 21.0, 22.0]],
-        dtype=backend.np_float_dtype,
-    )
-    rf_data = np.array(
-        [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]],
-        dtype=backend.np_float_dtype,
-    )
-    media_ds = _create_dataset_with_var_dim(
-        media_data,
-        var_name=constants.NATIONAL_MEDIA_SPEND,
-    )
-    rf_ds = _create_dataset_with_var_dim(
-        rf_data,
-        var_name=constants.NATIONAL_RF_SPEND,
-    )
-    ds = xr.merge([media_ds, rf_ds])
-    xr.testing.assert_equal(
-        eda_engine.stack_variables(ds),
-        xr.DataArray(
-            data=np.concatenate([media_data, rf_data], axis=1),
-            dims=[constants.TIME, eda_constants.VARIABLE],
-            coords={
-                constants.TIME: pd.to_datetime(
-                    ["2023-01-01", "2023-01-08", "2023-01-15"]
-                ),
-                eda_constants.VARIABLE: [
-                    "national_media_spend_1",
-                    "national_media_spend_2",
-                    "national_media_spend_3",
-                    "national_rf_spend_1",
-                    "national_rf_spend_2",
-                ],
-            },
-            name=None,
-        ),
-    )
-
   def test_check_variable_geo_time_collinearity_raises_for_national_model(self):
     model_context = context.ModelContext(
         model_spec=model_spec.ModelSpec(),
@@ -8098,6 +8059,120 @@ class EDAEngineTest(
       )
     with self.subTest("finding_associated_artifact"):
       self.assertIs(finding.associated_artifact, outcome.analysis_artifacts[0])
+
+
+class HelpersTest(test_utils.MeridianTestCase):
+
+  def test_stack_variables(self):
+    media_data = np.array(
+        [[0.0, 1.0, 2.0], [10.0, 11.0, 12.0], [20.0, 21.0, 22.0]],
+        dtype=backend.np_float_dtype,
+    )
+    rf_data = np.array(
+        [[100.0, 101.0], [110.0, 111.0], [120.0, 121.0]],
+        dtype=backend.np_float_dtype,
+    )
+    media_ds = _create_dataset_with_var_dim(
+        media_data,
+        var_name=constants.NATIONAL_MEDIA_SPEND,
+    )
+    rf_ds = _create_dataset_with_var_dim(
+        rf_data,
+        var_name=constants.NATIONAL_RF_SPEND,
+    )
+    ds = xr.merge([media_ds, rf_ds])
+    xr.testing.assert_equal(
+        eda_engine.stack_variables(ds),
+        xr.DataArray(
+            data=np.concatenate([media_data, rf_data], axis=1),
+            dims=[constants.TIME, eda_constants.VARIABLE],
+            coords={
+                constants.TIME: pd.to_datetime(
+                    ["2023-01-01", "2023-01-08", "2023-01-15"]
+                ),
+                eda_constants.VARIABLE: [
+                    "national_media_spend_1",
+                    "national_media_spend_2",
+                    "national_media_spend_3",
+                    "national_rf_spend_1",
+                    "national_rf_spend_2",
+                ],
+            },
+            name=None,
+        ),
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="upper_triangle",
+          lower=False,
+          expected_values=np.array([
+              [np.nan, 0.5, 0.2],
+              [np.nan, np.nan, -0.4],
+              [np.nan, np.nan, np.nan],
+          ]),
+      ),
+      dict(
+          testcase_name="lower_triangle",
+          lower=True,
+          expected_values=np.array([
+              [np.nan, np.nan, np.nan],
+              [0.5, np.nan, np.nan],
+              [0.2, -0.4, np.nan],
+          ]),
+      ),
+  )
+  def test_get_triangle_corr_mat(self, lower, expected_values):
+    da = xr.DataArray(
+        np.array([[1.0, 0.5, 0.2], [0.5, 1.0, -0.4], [0.2, -0.4, 1.0]]),
+        dims=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
+        coords={
+            eda_constants.VARIABLE_1: ["v1", "v2", "v3"],
+            eda_constants.VARIABLE_2: ["v1", "v2", "v3"],
+        },
+    )
+
+    actual = eda_engine.get_triangle_corr_mat(da, lower=lower)
+    np.testing.assert_allclose(actual.values, expected_values)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="upper_triangle",
+          lower=False,
+          expected_values=np.array([
+              [[np.nan, 0.5], [np.nan, np.nan]],
+              [[np.nan, -0.2], [np.nan, np.nan]],
+          ]),
+      ),
+      dict(
+          testcase_name="lower_triangle",
+          lower=True,
+          expected_values=np.array([
+              [[np.nan, np.nan], [0.5, np.nan]],
+              [[np.nan, np.nan], [-0.2, np.nan]],
+          ]),
+      ),
+  )
+  def test_get_triangle_corr_mat_with_geo(self, lower, expected_values):
+    da = xr.DataArray(
+        np.array([
+            [[1.0, 0.5], [0.5, 1.0]],
+            [[1.0, -0.2], [-0.2, 1.0]],
+        ]),
+        dims=[
+            constants.GEO,
+            eda_constants.VARIABLE_1,
+            eda_constants.VARIABLE_2,
+        ],
+        coords={
+            constants.GEO: ["geo1", "geo2"],
+            eda_constants.VARIABLE_1: ["v1", "v2"],
+            eda_constants.VARIABLE_2: ["v1", "v2"],
+        },
+    )
+
+    actual = eda_engine.get_triangle_corr_mat(da, lower=lower)
+    np.testing.assert_allclose(actual.values, expected_values)
 
 
 if __name__ == "__main__":

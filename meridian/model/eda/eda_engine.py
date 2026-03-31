@@ -222,18 +222,25 @@ def _compute_correlation_matrix(
   return corr_mat_da
 
 
-def _get_upper_triangle_corr_mat(corr_mat_da: xr.DataArray) -> xr.DataArray:
-  """Gets the upper triangle of a correlation matrix.
+def get_triangle_corr_mat(
+    corr_mat_da: xr.DataArray,
+    lower: bool = False,
+) -> xr.DataArray:
+  """Gets the upper or lower triangle of a correlation matrix.
 
   Args:
     corr_mat_da: An xr.DataArray containing the correlation matrix.
+    lower: Whether to return the lower triangle instead of the upper triangle.
 
   Returns:
-    An xr.DataArray containing only the elements in the upper triangle of the
-    correlation matrix, with other elements masked as NaN.
+    An xr.DataArray containing only the elements in the specified triangle of
+    the correlation matrix, with other elements masked as NaN.
   """
   n_vars = corr_mat_da.sizes[eda_constants.VARIABLE_1]
-  mask_np = np.triu(np.ones((n_vars, n_vars), dtype=bool), k=1)
+  if lower:
+    mask_np = np.tri(n_vars, n_vars, k=-1, dtype=bool)
+  else:
+    mask_np = ~np.tri(n_vars, n_vars, k=0, dtype=bool)
   mask = xr.DataArray(
       mask_np,
       dims=[eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
@@ -249,8 +256,10 @@ def _find_extreme_corr_pairs(
     extreme_corr_da: xr.DataArray, extreme_corr_threshold: float
 ) -> pd.DataFrame:
   """Finds extreme correlation pairs in a correlation matrix."""
-  corr_tri = _get_upper_triangle_corr_mat(extreme_corr_da)
-  extreme_corr_da = corr_tri.where(abs(corr_tri) > extreme_corr_threshold)
+  corr_upper_tri = get_triangle_corr_mat(extreme_corr_da, lower=False)
+  extreme_corr_da = corr_upper_tri.where(
+      abs(corr_upper_tri) > extreme_corr_threshold
+  )
 
   return (
       extreme_corr_da.to_dataframe(name=eda_constants.CORRELATION)
