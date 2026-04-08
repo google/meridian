@@ -72,6 +72,7 @@ class PriorDistribution:
   | `gamma_n`             | `n_non_media_channels`     |
   | `xi_c`                | `n_controls`               |
   | `xi_n`                | `n_non_media_channels`     |
+  | `alpha_c`             | `n_controls`               |
   | `alpha_m`             | `n_media_channels`         |
   | `alpha_rf`            | `n_rf_channels`            |
   | `alpha_om`            | `n_organic_media_channels` |
@@ -177,6 +178,8 @@ class PriorDistribution:
     xi_n: Prior distribution on the hierarchical standard deviation of
       `gamma_gn` which is the coefficient on non-media channel `n` for geo `g`.
       Hierarchy is defined over geos. Default distribution is `HalfNormal(5.0)`.
+    alpha_c: Prior distribution on the Adstock decay parameter for control
+      variables. Default distribution is `Uniform(0.0, 1.0)`.
     alpha_m: Prior distribution on the Adstock decay parameter for media input.
       Default distribution is `Uniform(0.0, 1.0)`.
     alpha_rf: Prior distribution on the Adstock decay parameter for RF input.
@@ -351,6 +354,13 @@ class PriorDistribution:
   xi_n: backend.tfd.Distribution = dataclasses.field(
       default_factory=lambda: backend.tfd.HalfNormal(
           backend.np_float_dtype(5.0), name=constants.XI_N
+      ),
+  )
+  alpha_c: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.Uniform(
+          backend.np_float_dtype(0.0),
+          backend.np_float_dtype(1.0),
+          name=constants.ALPHA_C,
       ),
   )
   alpha_m: backend.tfd.Distribution = dataclasses.field(
@@ -718,6 +728,7 @@ class PriorDistribution:
 
     _validate_control_custom_priors(self.gamma_c)
     _validate_control_custom_priors(self.xi_c)
+    _validate_control_custom_priors(self.alpha_c)
 
     def _validate_non_media_custom_priors(
         param: backend.tfd.Distribution,
@@ -807,6 +818,9 @@ class PriorDistribution:
       xi_n_converted = self.xi_n
     xi_n = backend.tfd.BatchBroadcast(
         xi_n_converted, n_non_media_channels, name=constants.XI_N
+    )
+    alpha_c = backend.tfd.BatchBroadcast(
+        self.alpha_c, n_controls, name=constants.ALPHA_C
     )
     alpha_m = backend.tfd.BatchBroadcast(
         self.alpha_m, n_media_channels, name=constants.ALPHA_M
@@ -936,6 +950,7 @@ class PriorDistribution:
         gamma_n=gamma_n,
         xi_c=xi_c,
         xi_n=xi_n,
+        alpha_c=alpha_c,
         alpha_m=alpha_m,
         alpha_rf=alpha_rf,
         alpha_om=alpha_om,
@@ -1447,6 +1462,7 @@ _parameter_space_bounds = {
     'eta_orf': (0, np.inf),
     'xi_c': (0, np.inf),
     'xi_n': (0, np.inf),
+    'alpha_c': (0, 1),
     'alpha_m': (0, 1),
     'alpha_rf': (0, 1),
     'alpha_om': (0, 1),
@@ -1471,6 +1487,7 @@ _parameter_space_bounds = {
 # not have point mass at zero, but this is not checked here because unit tests
 # require the ability to simulate data with `sigma` set to zero.
 _prevent_deterministic_prior_at_bounds = {
+    'alpha_c': (False, True),
     'alpha_m': (False, True),
     'alpha_rf': (False, True),
     'alpha_om': (False, True),

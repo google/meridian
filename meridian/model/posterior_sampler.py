@@ -22,6 +22,7 @@ import warnings
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
@@ -439,6 +440,22 @@ def _joint_dist_base_logic(
   if n_controls:
     gamma_c = yield prior_broadcast.gamma_c
     xi_c = yield prior_broadcast.xi_c
+
+    controls_for_model = controls_scaled
+    if model_context.model_spec.control_adstock_id is not None:
+      alpha_c_sampled = yield prior_broadcast.alpha_c
+      alpha_c = backend.where(
+          model_context.model_spec.control_adstock_id,
+          alpha_c_sampled,
+          backend.zeros_like(alpha_c_sampled),
+      )
+      adstock_transformer = adstock_hill.AdstockTransformer(
+          alpha=alpha_c,
+          max_lag=model_context.model_spec.max_lag,
+          n_times_output=n_times,
+      )
+      controls_for_model = adstock_transformer.forward(controls_scaled)
+
     gamma_gc_dev = yield backend.tfd.Sample(
         backend.tfd.Normal(
             loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
@@ -452,7 +469,7 @@ def _joint_dist_base_logic(
       yield backend.tfd.Deterministic(gamma_gc, name=constants.GAMMA_GC)
 
     y_pred_combined_media += backend.einsum(
-        "...gtc,...gc->...gt", controls_scaled, gamma_gc
+        "...gtc,...gc->...gt", controls_for_model, gamma_gc
     )
 
   if model_context.non_media_treatments is not None:
