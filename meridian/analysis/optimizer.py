@@ -2422,10 +2422,12 @@ class BudgetOptimizer:
         include_median=True,
     )
     total_inc_outcome = backend.reduce_sum(incremental_outcome, -1)
-    total_cpik = backend.nanmean(
-        backend.divide(budget, total_inc_outcome),
-        axis=(0, 1),
-    )
+    total_cpik = np.asarray(
+        backend.nanmean(
+            backend.divide(budget, total_inc_outcome),
+            axis=(0, 1),
+        )
+    ).item()
 
     total_spend = np.sum(spend) if np.sum(spend) > 0 else 1
     pct_of_spend = spend / total_spend
