@@ -512,3 +512,50 @@ chip.fail {
   background-color: $red_50;
   color: $red_700;
 }
+
+/* Force white background and black text for Model Health Summary Card */
+.model-health-card {
+  background-color: #fff !important;
+  color: #000 !important;
+
+  // Override for nested elements
+  * {
+    color: #000 !important;
+  }
+
+  // Preserve link colors
+  a {
+    color: #1967d2 !important; // $chip_blue
+  }
+
+  // Preserve chip colors
+  chip {
+    color: $chip_blue !important;
+  }
+  chip.pass {
+    color: $green_800 !important;
+  }
+  chip.review {
+    color: $yellow_900 !important;
+  }
+  chip.fail {
+    color: $red_700 !important;
+  }
+
+  // Preserve status banner colors
+  .status-banner-strip.fail {
+    background-color: $red_50 !important;
+    color: $red_700 !important;
+    .material-icons-outlined {
+      color: $text_red !important;
+    }
+  }
+
+  .status-banner-strip.info {
+    background-color: $blue_50 !important;
+    color: $chip_blue !important;
+    .material-icons-outlined {
+      color: $chip_blue !important;
+    }
+  }
+}
