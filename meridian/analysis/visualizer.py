@@ -1979,7 +1979,7 @@ class MediaSummary:
                     ticks=False,
                     labelPadding=c.PADDING_10,
                     domain=False,
-                    labelLimit=0,
+                    labelLimit=250,
                 ),
                 title=None,
                 sort=None,
