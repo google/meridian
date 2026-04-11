@@ -3182,7 +3182,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertEqual(kwargs['selected_geos'], selected_geos)
 
 
-class OptimizerPlotsTest(absltest.TestCase):
+class OptimizerPlotsTest(parameterized.TestCase):
 
   def setUp(self):
     super(OptimizerPlotsTest, self).setUp()
@@ -3262,8 +3262,11 @@ class OptimizerPlotsTest(absltest.TestCase):
         )
     )
 
-  def test_outcome_waterfall_chart_data_correct(self):
-    plot = self.optimization_results.plot_incremental_outcome_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_outcome_waterfall_chart_data_correct(self, orientation: str):
+    plot = self.optimization_results.plot_incremental_outcome_delta(
+        orientation=orientation
+    )
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.INCREMENTAL_OUTCOME])
     self.assertEqual(
@@ -3271,8 +3274,11 @@ class OptimizerPlotsTest(absltest.TestCase):
         ['non_optimized', 'channel 2', 'channel 0', 'channel 1', 'optimized'],
     )
 
-  def test_outcome_waterfall_chart_correct_config(self):
-    plot = self.optimization_results.plot_incremental_outcome_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_outcome_waterfall_chart_correct_config(self, orientation: str):
+    plot = self.optimization_results.plot_incremental_outcome_delta(
+        orientation=orientation
+    )
     config = plot.config.to_dict()
     self.assertEqual(
         config['axis'],
@@ -3288,8 +3294,11 @@ class OptimizerPlotsTest(absltest.TestCase):
     )
     self.assertEqual(config['view'], {'strokeOpacity': 0})
 
-  def test_outcome_waterfall_chart_correct_mark(self):
-    plot = self.optimization_results.plot_incremental_outcome_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_outcome_waterfall_chart_correct_mark(self, orientation: str):
+    plot = self.optimization_results.plot_incremental_outcome_delta(
+        orientation=orientation
+    )
     self.assertEqual(
         plot.layer[0].mark.to_dict(),
         {
@@ -3299,19 +3308,34 @@ class OptimizerPlotsTest(absltest.TestCase):
             'type': 'bar',
         },
     )
-    self.assertEqual(
-        plot.layer[1].mark.to_dict(),
-        {
-            'baseline': 'top',
-            'color': c.GREY_800,
-            'dy': -20,
-            'fontSize': c.AXIS_FONT_SIZE,
-            'type': 'text',
-        },
-    )
+    if orientation == 'vertical':
+      self.assertEqual(
+          plot.layer[1].mark.to_dict(),
+          {
+              'baseline': 'top',
+              'color': c.GREY_800,
+              'dy': -20,
+              'fontSize': c.AXIS_FONT_SIZE,
+              'type': 'text',
+          },
+      )
+    else:
+      self.assertEqual(
+          plot.layer[1].mark.to_dict(),
+          {
+              'align': 'left',
+              'color': c.GREY_800,
+              'dx': 5,
+              'fontSize': c.AXIS_FONT_SIZE,
+              'type': 'text',
+          },
+      )
 
-  def test_outcome_waterfall_chart_correct_bar_encoding(self):
-    plot = self.optimization_results.plot_incremental_outcome_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_outcome_waterfall_chart_correct_bar_encoding(self, orientation: str):
+    plot = self.optimization_results.plot_incremental_outcome_delta(
+        orientation=orientation
+    )
     encoding = plot.layer[0].encoding.to_dict()
     self.assertEqual(
         encoding['color'],
@@ -3329,26 +3353,32 @@ class OptimizerPlotsTest(absltest.TestCase):
             'value': c.CYAN_400,
         },
     )
-    self.assertEqual(
-        encoding['y'],
-        {
-            'axis': {
-                'domain': False,
-                'labelExpr': "replace(format(datum.value, '.3~s'), 'G', 'B')",
-                'labelPadding': c.PADDING_10,
-                'tickCount': 5,
-                'ticks': False,
-                'title': summary_text.INC_REVENUE_LABEL,
-                'titleAlign': 'left',
-                'titleAngle': 0,
-                'titleY': -20,
-            },
-            'field': 'prev_sum',
-            'scale': {'domain': [690.0, 840.0]},
-            'type': 'quantitative',
+
+    title_align = 'left' if orientation == 'vertical' else 'center'
+    title_y = -20 if orientation == 'vertical' else 30
+    expected_encoding = {
+        'axis': {
+            'domain': False,
+            'labelExpr': "replace(format(datum.value, '.3~s'), 'G', 'B')",
+            'labelPadding': c.PADDING_10,
+            'tickCount': 5,
+            'ticks': False,
+            'title': summary_text.INC_REVENUE_LABEL,
+            'titleAlign': title_align,
+            'titleAngle': 0,
+            'titleY': title_y,
         },
-    )
-    self.assertEqual(encoding['y2'], {'field': 'sum_outcome'})
+        'field': 'prev_sum',
+        'scale': {'domain': [690.0, 840.0]},
+        'type': 'quantitative',
+    }
+    if orientation == 'vertical':
+      self.assertEqual(encoding['y'], expected_encoding)
+      self.assertEqual(encoding['y2'], {'field': 'sum_outcome'})
+    else:
+      self.assertEqual(encoding['x'], expected_encoding)
+      self.assertEqual(encoding['x2'], {'field': 'sum_outcome'})
+
     self.assertEqual(
         encoding['tooltip'],
         [
@@ -3361,28 +3391,55 @@ class OptimizerPlotsTest(absltest.TestCase):
         summary_text.OUTCOME_DELTA_CHART_TITLE.format(outcome=c.REVENUE),
     )
 
-  def test_outcome_waterfall_chart_correct_text_encoding(self):
-    plot = self.optimization_results.plot_incremental_outcome_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_outcome_waterfall_chart_correct_text_encoding(
+      self, orientation: str
+  ):
+    plot = self.optimization_results.plot_incremental_outcome_delta(
+        orientation=orientation
+    )
     encoding = plot.layer[1].encoding.to_dict()
     text = encoding['text']
-    self.assertEqual(
-        encoding['x'],
-        {
-            'axis': {
-                'domainColor': c.GREY_300,
-                'labelAngle': -45,
-                'labelPadding': c.PADDING_10,
-                'ticks': False,
-            },
-            'field': c.CHANNEL,
-            'scale': {'paddingOuter': c.SCALED_PADDING},
-            'sort': None,
-            'title': None,
-            'type': 'nominal',
-        },
-    )
     self.assertEqual(text, {'field': 'calc_amount', 'type': 'nominal'})
-    self.assertEqual(encoding['y'], {'field': 'text_y', 'type': 'quantitative'})
+    if orientation == 'vertical':
+      self.assertEqual(
+          encoding['x'],
+          {
+              'axis': {
+                  'domainColor': c.GREY_300,
+                  'labelAngle': -45,
+                  'labelPadding': c.PADDING_10,
+                  'ticks': False,
+              },
+              'field': c.CHANNEL,
+              'scale': {'paddingOuter': c.SCALED_PADDING},
+              'sort': None,
+              'title': None,
+              'type': 'nominal',
+          },
+      )
+      self.assertEqual(
+          encoding['y'], {'field': 'text_y', 'type': 'quantitative'}
+      )
+    else:  # orientation == 'horizontal'
+      self.assertEqual(
+          encoding['y'],
+          {
+              'axis': {
+                  'domainColor': c.GREY_300,
+                  'labelPadding': c.PADDING_10,
+                  'ticks': False,
+                  'title': None,
+              },
+              'field': c.CHANNEL,
+              'scale': {'paddingOuter': c.SCALED_PADDING},
+              'sort': None,
+              'type': 'nominal',
+          },
+      )
+      self.assertEqual(
+          encoding['x'], {'field': 'text_x', 'type': 'quantitative'}
+      )
 
   def test_budget_allocation_optimized_data(self):
     plot = self.optimization_results.plot_budget_allocation()
@@ -3425,8 +3482,9 @@ class OptimizerPlotsTest(absltest.TestCase):
     self.assertEqual(mark, {'padAngle': 0.02, 'tooltip': True, 'type': 'arc'})
     self.assertEqual(plot.title.text, summary_text.SPEND_ALLOCATION_CHART_TITLE)
 
-  def test_plot_spend_delta_correct_data(self):
-    plot = self.optimization_results.plot_spend_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_plot_spend_delta_correct_data(self, orientation: str):
+    plot = self.optimization_results.plot_spend_delta(orientation=orientation)
     df = plot.data
     self.assertEqual(list(df.columns), [c.CHANNEL, c.SPEND])
     self.assertEqual(
@@ -3438,18 +3496,26 @@ class OptimizerPlotsTest(absltest.TestCase):
         ],
     )
 
-  def test_plot_spend_delta_correct_config(self):
-    plot = self.optimization_results.plot_spend_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_plot_spend_delta_correct_config(self, orientation: str):
+    plot = self.optimization_results.plot_spend_delta(orientation=orientation)
     axis_config = plot.config.axis.to_dict()
     view_config = plot.config.view.to_dict()
 
     self.assertEqual(axis_config, formatter.TEXT_CONFIG)
     self.assertEqual(view_config, {'stroke': None})
-    self.assertEqual(plot.width, formatter.bar_chart_width(5))  # n_channels + 2
-    self.assertEqual(plot.height, 400)
+    if orientation == 'vertical':
+      self.assertEqual(
+          plot.width, formatter.bar_chart_width(5)
+      )  # n_channels + 2
+      self.assertEqual(plot.height, 400)
+    else:
+      self.assertEqual(plot.width, 300)
+      self.assertEqual(plot.height, formatter.bar_chart_width(5))
 
-  def test_plot_spend_delta_correct_mark(self):
-    plot = self.optimization_results.plot_spend_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_plot_spend_delta_correct_mark(self, orientation: str):
+    plot = self.optimization_results.plot_spend_delta(orientation=orientation)
     bar_mark = plot.layer[0].mark.to_dict()
     text_mark = plot.layer[1].mark.to_dict()
     self.assertEqual(
@@ -3461,19 +3527,32 @@ class OptimizerPlotsTest(absltest.TestCase):
             'type': 'bar',
         },
     )
-    self.assertEqual(
-        text_mark,
-        {
-            'baseline': 'top',
-            'color': c.GREY_800,
-            'dy': -20,
-            'fontSize': c.AXIS_FONT_SIZE,
-            'type': 'text',
-        },
-    )
+    if orientation == 'vertical':
+      self.assertEqual(
+          text_mark,
+          {
+              'baseline': 'top',
+              'color': c.GREY_800,
+              'dy': -20,
+              'fontSize': c.AXIS_FONT_SIZE,
+              'type': 'text',
+          },
+      )
+    else:
+      self.assertEqual(
+          text_mark,
+          {
+              'align': 'left',
+              'color': c.GREY_800,
+              'dx': 5,
+              'fontSize': c.AXIS_FONT_SIZE,
+              'type': 'text',
+          },
+      )
 
-  def test_plot_spend_delta_correct_bar_encoding(self):
-    plot = self.optimization_results.plot_spend_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_plot_spend_delta_correct_bar_encoding(self, orientation: str):
+    plot = self.optimization_results.plot_spend_delta(orientation=orientation)
     encoding = plot.layer[0].encoding.to_dict()
     self.assertEqual(
         encoding['color'],
@@ -3482,52 +3561,103 @@ class OptimizerPlotsTest(absltest.TestCase):
             'value': c.RED_300,
         },
     )
-    self.assertEqual(
-        encoding['x'],
-        {
-            'axis': {
-                'labelAngle': -45,
-                'title': None,
-                **formatter.AXIS_CONFIG,
-            },
-            'field': c.CHANNEL,
-            'scale': {'padding': c.BAR_SIZE},
-            'sort': None,
-            'type': 'nominal',
-        },
-    )
-    self.assertEqual(
-        encoding['y'],
-        {
-            'axis': {
-                'domain': False,
-                'labelExpr': formatter.compact_number_expr(),
-                'title': '$',
-                **formatter.AXIS_CONFIG,
-                **formatter.Y_AXIS_TITLE_CONFIG,
-            },
-            'field': c.SPEND,
-            'type': 'quantitative',
-        },
-    )
+    if orientation == 'vertical':
+      self.assertEqual(
+          encoding['x'],
+          {
+              'axis': {
+                  'labelAngle': -45,
+                  'title': None,
+                  **formatter.AXIS_CONFIG,
+              },
+              'field': c.CHANNEL,
+              'scale': {'padding': c.BAR_SIZE},
+              'sort': None,
+              'type': 'nominal',
+          },
+      )
+      self.assertEqual(
+          encoding['y'],
+          {
+              'axis': {
+                  'domain': False,
+                  'labelExpr': formatter.compact_number_expr(),
+                  'title': '$',
+                  **formatter.AXIS_CONFIG,
+                  **formatter.Y_AXIS_TITLE_CONFIG,
+              },
+              'field': c.SPEND,
+              'type': 'quantitative',
+          },
+      )
+    else:
+      self.assertEqual(
+          encoding['y'],
+          {
+              'axis': {
+                  'title': None,
+                  **formatter.AXIS_CONFIG,
+              },
+              'field': c.CHANNEL,
+              'scale': {'padding': c.BAR_SIZE},
+              'sort': None,
+              'type': 'nominal',
+          },
+      )
+      self.assertEqual(
+          encoding['x'],
+          {
+              'axis': {
+                  'domain': False,
+                  'labelExpr': formatter.compact_number_expr(),
+                  'title': '$',
+                  **formatter.AXIS_CONFIG,
+                  **formatter.X_AXIS_TITLE_CONFIG,
+              },
+              'field': c.SPEND,
+              'type': 'quantitative',
+          },
+      )
     self.assertEqual(plot.title.text, summary_text.SPEND_DELTA_CHART_TITLE)
 
-  def test_plot_spend_delta_correct_text_encoding(self):
-    plot = self.optimization_results.plot_spend_delta()
+  @parameterized.parameters('vertical', 'horizontal')
+  def test_plot_spend_delta_correct_text_encoding(self, orientation: str):
+    plot = self.optimization_results.plot_spend_delta(orientation=orientation)
     encoding = plot.layer[1].encoding.to_dict()
     text_encoding = encoding['text']
     self.assertEqual(text_encoding, {'field': 'text_value', 'type': 'nominal'})
-    self.assertEqual(encoding['y'], {'field': 'text_y', 'type': 'quantitative'})
-    self.assertEqual(
-        encoding['x'],
-        {
-            'axis': {'labelAngle': -45, 'title': None, **formatter.AXIS_CONFIG},
-            'field': c.CHANNEL,
-            'scale': {'padding': c.BAR_SIZE},
-            'sort': None,
-            'type': 'nominal',
-        },
-    )
+    if orientation == 'vertical':
+      self.assertEqual(
+          encoding['y'], {'field': 'text_y', 'type': 'quantitative'}
+      )
+      self.assertEqual(
+          encoding['x'],
+          {
+              'axis': {
+                  'labelAngle': -45,
+                  'title': None,
+                  **formatter.AXIS_CONFIG,
+              },
+              'field': c.CHANNEL,
+              'scale': {'padding': c.BAR_SIZE},
+              'sort': None,
+              'type': 'nominal',
+          },
+      )
+    else:
+      self.assertEqual(
+          encoding['x'], {'field': 'text_x', 'type': 'quantitative'}
+      )
+      self.assertEqual(
+          encoding['y'],
+          {
+              'axis': {'title': None, **formatter.AXIS_CONFIG},
+              'field': c.CHANNEL,
+              'scale': {'padding': c.BAR_SIZE},
+              'sort': None,
+              'type': 'nominal',
+          },
+      )
 
   def test_get_response_curves(self):
     ds = self.optimization_results.get_response_curves()

@@ -594,79 +594,56 @@ class OptimizationResults:
     with open(os.path.join(filepath, filename), 'w') as f:
       f.write(self._gen_optimization_summary(currency))
 
-  def plot_incremental_outcome_delta(self) -> alt.Chart:
-    """Plots a waterfall chart showing the change in incremental outcome."""
-    outcome = self._kpi_or_revenue
-    if outcome == c.REVENUE:
-      y_axis_label = summary_text.INC_REVENUE_LABEL
-    else:
-      y_axis_label = summary_text.INC_KPI_LABEL
-    df = self._transform_outcome_delta_data()
-    base = (
-        alt.Chart(df)
-        .transform_window(
-            sum_outcome=f'sum({c.INCREMENTAL_OUTCOME})',
-            lead_channel=f'lead({c.CHANNEL})',
+  def _apply_common_outcome_delta_configs(
+      self, chart: alt.Chart, outcome: str, width: int, height: int
+  ) -> alt.Chart:
+    """Applies common configurations to the incremental outcome delta charts."""
+    return (
+        chart.properties(
+            title=formatter.custom_title_params(
+                summary_text.OUTCOME_DELTA_CHART_TITLE.format(outcome=outcome)
+            ),
+            width=width,
+            height=height,
         )
-        .transform_calculate(
-            calc_lead=(
-                'datum.lead_channel === null ? datum.channel :'
-                ' datum.lead_channel'
+        .configure_axis(**formatter.TEXT_CONFIG)
+        .configure_view(strokeOpacity=0)
+    )
+
+  def _plot_incremental_outcome_delta_vertical(
+      self,
+      base: alt.Chart,
+      outcome: str,
+      color_coding: dict[str, Any],
+      domain_scale: list[float],
+  ) -> alt.Chart:
+    """Plots a vertical waterfall chart showing the change in incremental outcome."""
+    y_axis_label = (
+        summary_text.INC_REVENUE_LABEL
+        if outcome == c.REVENUE
+        else summary_text.INC_KPI_LABEL
+    )
+
+    base = base.transform_calculate(
+        text_y=(
+            'datum.sum_outcome < datum.prev_sum ? datum.prev_sum :'
+            ' datum.sum_outcome'
+        ),
+    ).encode(
+        x=alt.X(
+            f'{c.CHANNEL}:N',
+            axis=alt.Axis(
+                ticks=False,
+                labelPadding=c.PADDING_10,
+                domainColor=c.GREY_300,
+                labelAngle=-45,
             ),
-            prev_sum=(
-                f"datum.channel === '{c.OPTIMIZED}' ? 0 : datum.sum_outcome -"
-                ' datum.incremental_outcome'
-            ),
-            calc_amount=(
-                f"datum.channel === '{c.OPTIMIZED}' ?"
-                f" {formatter.compact_number_expr('sum_outcome')} :"
-                f' {formatter.compact_number_expr(c.INCREMENTAL_OUTCOME)}'
-            ),
-            text_y=(
-                'datum.sum_outcome < datum.prev_sum ? datum.prev_sum :'
-                ' datum.sum_outcome'
-            ),
-        )
-        .encode(
-            x=alt.X(
-                f'{c.CHANNEL}:N',
-                axis=alt.Axis(
-                    ticks=False,
-                    labelPadding=c.PADDING_10,
-                    domainColor=c.GREY_300,
-                    labelAngle=-45,
-                ),
-                title=None,
-                sort=None,
-                scale=alt.Scale(paddingOuter=c.SCALED_PADDING),
-            )
+            title=None,
+            sort=None,
+            scale=alt.Scale(paddingOuter=c.SCALED_PADDING),
         )
     )
 
-    color_coding = {
-        'condition': [
-            {
-                'test': (
-                    f"datum.channel === '{c.NON_OPTIMIZED}' || datum.channel"
-                    f" === '{c.OPTIMIZED}'"
-                ),
-                'value': c.BLUE_500,
-            },
-            {'test': 'datum.incremental_outcome < 0', 'value': c.RED_300},
-        ],
-        'value': c.CYAN_400,
-    }
-
-    # To show the details of the incremental outcome delta, zoom into the plot
-    # by adjusting the domain of the y-axis so that the incremental outcome does
-    # not start at 0. Calculate the total decrease in incremental outcome to pad
-    # the y-axis from the non-optimized total incremental outcome value.
-    sum_decr = df[df.incremental_outcome < 0].incremental_outcome.sum()
-    y_padding = float(f'1e{int(math.log10(-sum_decr))}') if sum_decr < 0 else 2
-    domain_scale = [
-        self.nonoptimized_data.total_incremental_outcome + sum_decr - y_padding,
-        self.optimized_data.total_incremental_outcome + y_padding,
-    ]
     bar = base.mark_bar(
         size=c.BAR_SIZE, clip=True, cornerRadius=c.CORNER_RADIUS
     ).encode(
@@ -695,19 +672,169 @@ class OptimizationResults:
         y='text_y:Q',
     )
 
-    return (
-        (bar + text)
-        .properties(
-            title=formatter.custom_title_params(
-                summary_text.OUTCOME_DELTA_CHART_TITLE.format(outcome=outcome)
-            ),
-            width=(c.BAR_SIZE + c.PADDING_20) * len(df)
-            + c.BAR_SIZE * 2 * c.SCALED_PADDING,
-            height=400,
-        )
-        .configure_axis(**formatter.TEXT_CONFIG)
-        .configure_view(strokeOpacity=0)
+    chart = bar + text
+    width = int(
+        (c.BAR_SIZE + c.PADDING_20) * len(base.data)
+        + c.BAR_SIZE * 2 * c.SCALED_PADDING
     )
+    height = 400
+    return self._apply_common_outcome_delta_configs(
+        chart, outcome, width, height
+    )
+
+  def _plot_incremental_outcome_delta_horizontal(
+      self,
+      base: alt.Chart,
+      outcome: str,
+      color_coding: dict[str, Any],
+      domain_scale: list[float],
+  ) -> alt.Chart:
+    """Plots a horizontal waterfall chart showing the change in incremental outcome."""
+    x_axis_label = (
+        summary_text.INC_REVENUE_LABEL
+        if outcome == c.REVENUE
+        else summary_text.INC_KPI_LABEL
+    )
+
+    base = base.transform_calculate(
+        text_x=(
+            'datum.sum_outcome < datum.prev_sum ? datum.prev_sum :'
+            ' datum.sum_outcome'
+        ),
+    ).encode(
+        y=alt.Y(
+            f'{c.CHANNEL}:N',
+            axis=alt.Axis(
+                ticks=False,
+                labelPadding=c.PADDING_10,
+                domainColor=c.GREY_300,
+                title=None,
+            ),
+            sort=None,
+            scale=alt.Scale(paddingOuter=c.SCALED_PADDING),
+        )
+    )
+
+    bar = base.mark_bar(
+        size=c.BAR_SIZE, clip=True, cornerRadius=c.CORNER_RADIUS
+    ).encode(
+        x=alt.X(
+            'prev_sum:Q',
+            axis=alt.Axis(
+                title=x_axis_label,
+                ticks=False,
+                domain=False,
+                tickCount=5,
+                labelPadding=c.PADDING_10,
+                labelExpr=formatter.compact_number_expr(),
+                **formatter.X_AXIS_TITLE_CONFIG,
+            ),
+            scale=alt.Scale(domain=domain_scale),
+        ),
+        x2='sum_outcome:Q',
+        color=color_coding,
+        tooltip=[f'{c.CHANNEL}:N', f'{c.INCREMENTAL_OUTCOME}:Q'],
+    )
+
+    text = base.mark_text(
+        align='left', dx=5, fontSize=c.AXIS_FONT_SIZE, color=c.GREY_800
+    ).encode(
+        text=alt.Text('calc_amount:N'),
+        x='text_x:Q',
+    )
+
+    chart = bar + text
+    width = 300
+    height = int(
+        (c.BAR_SIZE + c.PADDING_20) * len(base.data)
+        + c.BAR_SIZE * 2 * c.SCALED_PADDING
+    )
+    return self._apply_common_outcome_delta_configs(
+        chart, outcome, width, height
+    )
+
+  def plot_incremental_outcome_delta(
+      self, orientation: str = 'vertical'
+  ) -> alt.Chart:
+    """Plots a waterfall chart showing the change in incremental outcome.
+
+    Args:
+      orientation: The orientation of the bars, either "vertical" or
+        "horizontal". Defaults to "vertical".
+
+    Returns:
+      An Altair waterfall chart showing the incremental outcome delta by
+      channel.
+
+    Raises:
+      ValueError: If the orientation is not "vertical" or "horizontal".
+    """
+    if orientation not in ['vertical', 'horizontal']:
+      raise ValueError(
+          f"Invalid orientation: {orientation}. Must be 'vertical' or"
+          " 'horizontal'."
+      )
+    df = self._transform_outcome_delta_data()
+    outcome = self._kpi_or_revenue
+    base = (
+        alt.Chart(df)
+        .transform_window(
+            sum_outcome=f'sum({c.INCREMENTAL_OUTCOME})',
+            lead_channel=f'lead({c.CHANNEL})',
+        )
+        .transform_calculate(
+            calc_lead=(
+                'datum.lead_channel === null ? datum.channel :'
+                ' datum.lead_channel'
+            ),
+            prev_sum=(
+                f"datum.channel === '{c.OPTIMIZED}' ? 0 : datum.sum_outcome -"
+                ' datum.incremental_outcome'
+            ),
+            calc_amount=(
+                f"datum.channel === '{c.OPTIMIZED}' ?"
+                f" {formatter.compact_number_expr('sum_outcome')} :"
+                f' {formatter.compact_number_expr(c.INCREMENTAL_OUTCOME)}'
+            ),
+        )
+    )
+    color_coding = {
+        'condition': [
+            {
+                'test': (
+                    f"datum.channel === '{c.NON_OPTIMIZED}' || datum.channel"
+                    f" === '{c.OPTIMIZED}'"
+                ),
+                'value': c.BLUE_500,
+            },
+            {'test': 'datum.incremental_outcome < 0', 'value': c.RED_300},
+        ],
+        'value': c.CYAN_400,
+    }
+    # To show the details of the incremental outcome delta, zoom into the plot
+    # by adjusting the domain of the y-axis so that the incremental outcome does
+    # not start at 0. Calculate the total decrease in incremental outcome to pad
+    # the y-axis from the non-optimized total incremental outcome value.
+    sum_decr = df[df.incremental_outcome < 0].incremental_outcome.sum()
+    padding = float(f'1e{int(math.log10(-sum_decr))}') if sum_decr < 0 else 2
+    domain_scale = [
+        self.nonoptimized_data.total_incremental_outcome + sum_decr - padding,
+        self.optimized_data.total_incremental_outcome + padding,
+    ]
+    if orientation == 'vertical':
+      return self._plot_incremental_outcome_delta_vertical(
+          base=base,
+          outcome=outcome,
+          color_coding=color_coding,
+          domain_scale=domain_scale,
+      )
+    else:
+      return self._plot_incremental_outcome_delta_horizontal(
+          base=base,
+          outcome=outcome,
+          color_coding=color_coding,
+          domain_scale=domain_scale,
+      )
 
   def plot_budget_allocation(self, optimized: bool = True) -> alt.Chart:
     """Plots a pie chart showing the spend allocated for each channel.
@@ -742,38 +869,49 @@ class OptimizationResults:
         )
     )
 
-  def plot_spend_delta(self, currency: str = c.DEFAULT_CURRENCY) -> alt.Chart:
-    """Plots a bar chart showing the optimized change in spend per channel."""
-    df = self._get_delta_data(c.SPEND)
-    base = (
-        alt.Chart(df)
-        .transform_calculate(
-            text_value=f'{formatter.compact_number_expr(c.SPEND, 2)}',
-            text_y='datum.spend < 0 ? 0 : datum.spend',
-        )
-        .encode(
-            x=alt.X(
-                f'{c.CHANNEL}:N',
-                sort=None,
-                axis=alt.Axis(
-                    title=None, labelAngle=-45, **formatter.AXIS_CONFIG
-                ),
-                scale=alt.Scale(padding=c.BAR_SIZE),
+  def _apply_common_spend_delta_configs(
+      self, chart: alt.Chart, width: int, height: int
+  ) -> alt.Chart:
+    """Applies common configurations to the spend delta charts."""
+    return (
+        chart.configure_view(stroke=None)
+        .properties(
+            title=formatter.custom_title_params(
+                summary_text.SPEND_DELTA_CHART_TITLE
             ),
-            y=alt.Y(
-                f'{c.SPEND}:Q',
-                axis=alt.Axis(
-                    title=currency,
-                    domain=False,
-                    labelExpr=formatter.compact_number_expr(),
-                    **formatter.AXIS_CONFIG,
-                    **formatter.Y_AXIS_TITLE_CONFIG,
-                ),
-            ),
+            width=width,
+            height=height,
         )
+        .configure_axis(**formatter.TEXT_CONFIG)
     )
 
-    bar_plot = base.mark_bar(
+  def _plot_spend_delta_vertical(
+      self, base: alt.Chart, currency: str
+  ) -> alt.Chart:
+    """Plots a vertical bar chart showing the optimized change in spend."""
+    base = base.transform_calculate(
+        text_y='datum.spend < 0 ? 0 : datum.spend',
+    )
+    encoded_base = base.encode(
+        x=alt.X(
+            f'{c.CHANNEL}:N',
+            sort=None,
+            axis=alt.Axis(title=None, labelAngle=-45, **formatter.AXIS_CONFIG),
+            scale=alt.Scale(padding=c.BAR_SIZE),
+        ),
+        y=alt.Y(
+            f'{c.SPEND}:Q',
+            axis=alt.Axis(
+                title=currency,
+                domain=False,
+                labelExpr=formatter.compact_number_expr(),
+                **formatter.AXIS_CONFIG,
+                **formatter.Y_AXIS_TITLE_CONFIG,
+            ),
+        ),
+    )
+
+    bar_plot = encoded_base.mark_bar(
         tooltip=True, size=c.BAR_SIZE, cornerRadiusEnd=c.CORNER_RADIUS
     ).encode(
         color=alt.condition(
@@ -783,25 +921,95 @@ class OptimizationResults:
         ),
     )
 
-    text = base.mark_text(
+    text = encoded_base.mark_text(
         baseline='top', dy=-20, fontSize=c.AXIS_FONT_SIZE, color=c.GREY_800
     ).encode(
         text=alt.Text('text_value:N'),
         y='text_y:Q',
     )
 
-    return (
-        (bar_plot + text)
-        .configure_view(stroke=None)
-        .properties(
-            title=formatter.custom_title_params(
-                summary_text.SPEND_DELTA_CHART_TITLE
-            ),
-            width=formatter.bar_chart_width(len(df) + 2),
-            height=400,
-        )
-        .configure_axis(**formatter.TEXT_CONFIG)
+    chart = bar_plot + text
+    width = formatter.bar_chart_width(len(base.data) + 2)
+    height = 400
+    return self._apply_common_spend_delta_configs(chart, width, height)
+
+  def _plot_spend_delta_horizontal(
+      self, base: alt.Chart, currency: str
+  ) -> alt.Chart:
+    """Plots a horizontal bar chart showing the optimized change in spend."""
+    base = base.transform_calculate(
+        text_x='datum.spend < 0 ? 0 : datum.spend',
     )
+    encoded_base = base.encode(
+        y=alt.Y(
+            f'{c.CHANNEL}:N',
+            sort=None,
+            axis=alt.Axis(title=None, **formatter.AXIS_CONFIG),
+            scale=alt.Scale(padding=c.BAR_SIZE),
+        ),
+        x=alt.X(
+            f'{c.SPEND}:Q',
+            axis=alt.Axis(
+                title=currency,
+                domain=False,
+                labelExpr=formatter.compact_number_expr(),
+                **formatter.AXIS_CONFIG,
+                **formatter.X_AXIS_TITLE_CONFIG,
+            ),
+        ),
+    )
+
+    bar_plot = encoded_base.mark_bar(
+        tooltip=True, size=c.BAR_SIZE, cornerRadiusEnd=c.CORNER_RADIUS
+    ).encode(
+        color=alt.condition(
+            alt.datum.spend > 0,
+            alt.value(c.CYAN_400),
+            alt.value(c.RED_300),
+        ),
+    )
+
+    text = encoded_base.mark_text(
+        align='left', dx=5, fontSize=c.AXIS_FONT_SIZE, color=c.GREY_800
+    ).encode(
+        text=alt.Text('text_value:N'),
+        x='text_x:Q',
+    )
+
+    chart = bar_plot + text
+    width = 300
+    height = formatter.bar_chart_width(len(base.data) + 2)
+    return self._apply_common_spend_delta_configs(chart, width, height)
+
+  def plot_spend_delta(
+      self, currency: str = c.DEFAULT_CURRENCY, orientation: str = 'vertical'
+  ) -> alt.Chart:
+    """Plots a bar chart showing the optimized change in spend per channel.
+
+    Args:
+      currency: The currency symbol to use for axis labels.
+      orientation: The orientation of the bars, either "vertical" or
+        "horizontal". Defaults to "vertical".
+
+    Returns:
+      An Altair bar chart showing the spend delta by channel.
+
+    Raises:
+      ValueError: If the orientation is not "vertical" or "horizontal".
+    """
+    if orientation not in ['vertical', 'horizontal']:
+      raise ValueError(
+          f"Invalid orientation: {orientation}. Must be 'vertical' or"
+          " 'horizontal'."
+      )
+    df = self._get_delta_data(c.SPEND)
+    base = alt.Chart(df).transform_calculate(
+        text_value=f'{formatter.compact_number_expr(c.SPEND, 2)}'
+    )
+    if orientation == 'vertical':
+      return self._plot_spend_delta_vertical(base, currency)
+    else:
+      return self._plot_spend_delta_horizontal(base, currency)
 
   def plot_response_curves(
       self, n_top_channels: int | None = None
