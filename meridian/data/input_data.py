@@ -115,7 +115,7 @@ class InputData:
   Attributes:
     kpi: A DataArray of dimensions `(n_geos, n_times)` containing the
       non-negative dependent variable. Typically this is the number of units
-      sold, but it can be any metric, such as revenue or conversions.
+      sold, but it can be any summable metric, such as revenue or conversions.
     kpi_type: A string denoting whether the KPI is of a `'revenue'` or
       `'non-revenue'` type. When the `kpi_type` is `'non-revenue'` and
       `revenue_per_kpi` exists, ROI calibration is used and the analysis is run
@@ -133,17 +133,17 @@ class InputData:
       corresponds to revenue, then an array of ones is passed automatically.
     media: An optional DataArray of dimensions `(n_geos, n_media_times,
       n_media_channels)` containing non-negative media execution values.
-      Typically these are impressions, but it can be any metric, such as cost or
-      clicks. `n_media_times` ≥ `n_times` is required, and the final `n_times`
-      time periods must align with the time window of `kpi` and `controls`. Due
-      to lagged effects, we recommend that the time window for media includes up
-      to `max_lag` additional periods prior to this window. If `n_media_times` <
-      `n_times` + `max_lag`, the model effectively imputes media history as zero
-      (no media execution). If `n_media_times` > `n_times` + `max_lag`, then
-      only the final `n_times` + `max_lag` periods are used to fit the model.
-      `media` and `media_spend` must contain the same number of media channels
-      in the same order. If either of these arguments is passed, then the other
-      is not optional.
+      Typically these are impressions, but it can be any summable metric, such
+      as cost or clicks. `n_media_times` ≥ `n_times` is required, and the final
+      `n_times` time periods must align with the time window of `kpi` and
+      `controls`. Due to lagged effects, we recommend that the time window for
+      media includes up to `max_lag` additional periods prior to this window. If
+      `n_media_times` < `n_times` + `max_lag`, the model effectively imputes
+      media history as zero (no media execution). If `n_media_times` > `n_times`
+      + `max_lag`, then only the final `n_times` + `max_lag` periods are used to
+      fit the model. `media` and `media_spend` must contain the same number of
+      media channels in the same order. If either of these arguments is passed,
+      then the other is not optional.
     media_spend: An optional `DataArray` containing the cost of each media
       channel. This is used as the denominator for ROI calculations. It is also
       used to calculate an assumed cost per media unit for post-modeling
