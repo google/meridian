@@ -87,6 +87,12 @@ Y_AXIS_TITLE_CONFIG = immutabledict.immutabledict({
     'titleY': -20,
 })
 
+X_AXIS_TITLE_CONFIG = immutabledict.immutabledict({
+    'titleAngle': 0,
+    'titleAlign': 'center',
+    'titleY': 30,
+})
+
 AXIS_CONFIG = immutabledict.immutabledict({
     'ticks': False,
     'labelPadding': c.PADDING_10,
