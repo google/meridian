@@ -52,21 +52,6 @@ class ComputationPrecision(enum.IntEnum):
 _DEFAULT_BACKEND = Backend.TENSORFLOW
 
 
-def _warn_jax_experimental() -> None:
-  """Issues a warning that the JAX backend is experimental."""
-  warnings.warn(
-      (
-          "The JAX backend is currently under development and is not yet"
-          " functional. It is intended for internal testing only and should"
-          " not be used. Please use the TensorFlow backend."
-      ),
-      UserWarning,
-      # Set stacklevel=2 so the warning points to the caller of set_backend
-      # or the location where the module is imported if initialized via env var.
-      stacklevel=2,
-  )
-
-
 def _initialize_backend() -> Backend:
   """Initializes the backend based on environment variables or defaults."""
   env_backend_str = os.environ.get("MERIDIAN_BACKEND")
@@ -76,8 +61,6 @@ def _initialize_backend() -> Backend:
 
   try:
     backend = Backend(env_backend_str.lower())
-    if backend == Backend.JAX:
-      _warn_jax_experimental()
     return backend
   except ValueError:
     warnings.warn(
@@ -114,8 +97,6 @@ def set_backend(backend: Union[Backend, str]) -> None:
   imported can lead to unpredictable behavior. This is because already-imported
   modules will not reflect the backend change.
 
-  Note: The JAX backend is currently under development and should not be used.
-
   Changing the backend at runtime requires reloading the `meridian.backend`
   module for the changes to take effect globally.
 
@@ -140,9 +121,6 @@ def set_backend(backend: Union[Backend, str]) -> None:
     backend_enum = backend
   else:
     raise ValueError("Backend must be a Backend enum member or a string.")
-
-  if backend_enum == Backend.JAX and _BACKEND != Backend.JAX:
-    _warn_jax_experimental()
 
   _BACKEND = backend_enum
 

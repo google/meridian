@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* JAX support is now available.
 * Add JAX 64-bit precision opt-in configuration.
 * Ensure consistent float precision across tensors, NumPy arrays, and prior
   distributions.

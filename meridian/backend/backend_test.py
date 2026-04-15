@@ -120,11 +120,8 @@ class BackendInitializationTest(parameterized.TestCase):
   def test_env_var_jax(self, env_value):
     os.environ["MERIDIAN_BACKEND"] = env_value
 
-    # We expect the UserWarning during import because JAX is selected
-    with self.assertWarns(UserWarning) as cm:
-      config_mod, backend_mod = self._import_backend_modules()
+    config_mod, backend_mod = self._import_backend_modules()
 
-    self.assertIn("under development", str(cm.warning))
     self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
     self.assertIs(backend_mod.Tensor, jax.Array)
 
@@ -320,18 +317,8 @@ class BackendTest(parameterized.TestCase):
     importlib.reload(backend)
 
   def _set_backend_for_test(self, backend_name: str):
-    expected_backend = config.Backend(backend_name)
 
-    if (
-        expected_backend == config.Backend.JAX
-        and config.get_backend() != config.Backend.JAX
-    ):
-      with self.assertWarns(UserWarning):
-        config.set_backend(backend_name)
-    else:
-      with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        config.set_backend(backend_name)
+    config.set_backend(backend_name)
 
     importlib.reload(backend)
 
@@ -349,16 +336,7 @@ class BackendTest(parameterized.TestCase):
     else:
       backend_selection = input_value
 
-    if (
-        expected_backend == config.Backend.JAX
-        and config.get_backend() != config.Backend.JAX
-    ):
-      with self.assertWarns(UserWarning):
-        config.set_backend(backend_selection)
-    else:
-      with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        config.set_backend(backend_selection)
+    config.set_backend(backend_selection)
 
     importlib.reload(backend)
 
@@ -378,18 +356,6 @@ class BackendTest(parameterized.TestCase):
         ValueError, "Backend must be a Backend enum member or a string."
     ):
       config.set_backend(123)
-
-  def test_set_backend_to_jax_raises_warning(self):
-    self._set_backend_for_test(_TF)
-    self._set_backend_for_test(_JAX)
-
-  def test_set_backend_to_jax_idempotent_warning(self):
-    self._set_backend_for_test(_JAX)
-
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("always")
-      config.set_backend(config.Backend.JAX)
-      self.assertEmpty(w)
 
   def test_set_random_seed_warns_for_jax(self):
     self._set_backend_for_test(_JAX)
@@ -1670,11 +1636,7 @@ class BackendFunctionWrappersTest(parameterized.TestCase):
 
   def _set_backend_for_test(self, backend_name: str):
     if config.get_backend().value != backend_name:
-      if backend_name == "jax":
-        with self.assertWarns(UserWarning):
-          config.set_backend(backend_name)
-      else:
-        config.set_backend(backend_name)
+      config.set_backend(backend_name)
       importlib.reload(backend)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
