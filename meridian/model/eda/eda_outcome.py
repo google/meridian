@@ -23,10 +23,10 @@ import xarray as xr
 
 __all__ = (
     "EDASeverity",
-    "EDAFinding",
+    "FindingCause",
     "AnalysisLevel",
     "AnalysisArtifact",
-    "FindingCause",
+    "EDAFinding",
     "PairwiseCorrArtifact",
     "StandardDeviationArtifact",
     "VIFArtifact",
@@ -35,8 +35,8 @@ __all__ = (
     "VariableGeoTimeCollinearityArtifact",
     "PopulationCorrelationArtifact",
     "PriorProbabilityArtifact",
+    "DataParameterRatioArtifact",
     "EDACheckType",
-    "ArtifactType",
     "EDAOutcome",
     "CriticalCheckEDAOutcomes",
 )
@@ -260,6 +260,21 @@ class PriorProbabilityArtifact(AnalysisArtifact):
   mean_prior_contribution_da: xr.DataArray
 
 
+@dataclasses.dataclass(frozen=True)
+class DataParameterRatioArtifact(AnalysisArtifact):
+  """Artifact for model complexity check.
+
+  Attributes:
+    n_parameters: The number of parameters in the model.
+    n_data_points: The number of data points.
+    ratio: The ratio of data points to parameters.
+  """
+
+  n_parameters: int
+  n_data_points: int
+  ratio: float
+
+
 @enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
@@ -272,6 +287,7 @@ class EDACheckType(enum.Enum):
   VARIABLE_GEO_TIME_COLLINEARITY = enum.auto()
   POPULATION_CORRELATION = enum.auto()
   PRIOR_PROBABILITY = enum.auto()
+  DATA_ADEQUACY = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)

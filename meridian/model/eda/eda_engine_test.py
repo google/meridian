@@ -21,6 +21,7 @@ from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
 from meridian.model import context
+from meridian.model import knots
 from meridian.model import model_test_data
 from meridian.model import spec as model_spec
 from meridian.model.eda import constants as eda_constants
@@ -8060,6 +8061,76 @@ class EDAEngineTest(
     with self.subTest("finding_associated_artifact"):
       self.assertIs(finding.associated_artifact, outcome.analysis_artifacts[0])
 
+  def test_check_data_param_ratio(self):
+    mock_model_context = mock.create_autospec(
+        context.ModelContext, instance=True, spec_set=True
+    )
+
+    mock_model_context.n_geos = 10
+    mock_model_context.n_times = 20
+    mock_model_context.n_controls = 2
+    mock_model_context.n_media_channels = 3
+    mock_model_context.n_rf_channels = 1
+    mock_model_context.n_organic_media_channels = 0
+    mock_model_context.n_organic_rf_channels = 0
+    mock_model_context.n_non_media_channels = 0
+    n_knots = 5
+    mock_model_context.knot_info = knots.KnotInfo(
+        n_knots=n_knots, knot_locations=np.array([1]), weights=np.array([1])
+    )
+    mock.seal(mock_model_context)
+
+    engine = eda_engine.EDAEngine(model_context=mock_model_context)
+    outcome = engine.check_data_param_ratio()
+
+    expected_n_treatments = (
+        mock_model_context.n_media_channels
+        + mock_model_context.n_rf_channels
+        + mock_model_context.n_organic_media_channels
+        + mock_model_context.n_organic_rf_channels
+        + mock_model_context.n_non_media_channels
+    )
+    expected_n_parameters = (
+        (mock_model_context.n_geos - 1)
+        + n_knots
+        + mock_model_context.n_controls
+        + expected_n_treatments
+    )
+    expected_n_data_points = (
+        mock_model_context.n_geos * mock_model_context.n_times
+    )
+    expected_ratio = expected_n_data_points / expected_n_parameters
+
+    with self.subTest(name="check_type"):
+      self.assertEqual(
+          outcome.check_type, eda_outcome.EDACheckType.DATA_ADEQUACY
+      )
+
+    with self.subTest(name="finding_details"):
+      self.assertLen(outcome.findings, 1)
+      finding = outcome.findings[0]
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
+      self.assertIn(
+          "As a rough guidance, please review the ratio of data points to",
+          finding.explanation,
+      )
+      self.assertIn(
+          f"This ratio is {expected_ratio:.2f} for your dataset",
+          finding.explanation,
+      )
+      self.assertIn(
+          f"* n_treatments = {expected_n_treatments}.",
+          finding.explanation,
+      )
+
+    with self.subTest(name="artifact_details"):
+      self.assertLen(outcome.analysis_artifacts, 1)
+      artifact = outcome.analysis_artifacts[0]
+      self.assertIsInstance(artifact, eda_outcome.DataParameterRatioArtifact)
+      self.assertEqual(artifact.n_parameters, expected_n_parameters)
+      self.assertEqual(artifact.n_data_points, expected_n_data_points)
+      self.assertAlmostEqual(artifact.ratio, expected_ratio)
+
 
 class HelpersTest(test_utils.MeridianTestCase):
 
@@ -8173,7 +8244,6 @@ class HelpersTest(test_utils.MeridianTestCase):
 
     actual = eda_engine.get_triangle_corr_mat(da, lower=lower)
     np.testing.assert_allclose(actual.values, expected_values)
-
 
 if __name__ == "__main__":
   absltest.main()

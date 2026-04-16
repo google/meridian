@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 import dataclasses
 import functools
+import textwrap
 import typing
 from typing import Protocol
 import warnings
@@ -2491,4 +2492,67 @@ class EDAEngine:
         ds=xr.merge(to_merge, join='inner'),
         explanation=eda_constants.POPULATION_CORRELATION_RAW_MEDIA_INFO,
         check_name='check_population_corr_raw_media',
+    )
+
+  def check_data_param_ratio(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.DataParameterRatioArtifact]:
+    """Checks the ratio of data points to model parameters.
+
+    Returns:
+      An EDAOutcome object with findings and result values.
+    """
+    n_geos = self._model_context.n_geos
+    n_times = self._model_context.n_times
+    n_knots = self._model_context.knot_info.n_knots
+    n_controls = self._model_context.n_controls
+    n_treatments = (
+        self._model_context.n_media_channels
+        + self._model_context.n_rf_channels
+        + self._model_context.n_organic_media_channels
+        + self._model_context.n_organic_rf_channels
+        + self._model_context.n_non_media_channels
+    )
+
+    n_parameters = (n_geos - 1) + n_knots + n_controls + n_treatments
+    n_data_points = n_geos * n_times
+    ratio = n_data_points / n_parameters if n_parameters > 0 else float('inf')
+
+    artifact = eda_outcome.DataParameterRatioArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        n_parameters=n_parameters,
+        n_data_points=n_data_points,
+        ratio=ratio,
+    )
+
+    explanation = textwrap.dedent(f"""\
+    As a rough guidance, please review the ratio of data points to
+    parameters, where
+    * the number of data points = n_geos * n_times,
+    * the number of parameters = (n_geos-1) + n_knots + n_controls + n_treatments.\n
+    A very small ratio indicates insufficient data for estimation.
+    In that case, consider dropping or combining channels,
+    or reducing the number of knots with `knots` argument in `ModelSpec`.
+    For more details, please refer to this documentation page:
+    https://developers.google.com/meridian/docs/pre-modeling/amount-data-needed.\n
+    This ratio is {ratio:.2f} for your dataset, where
+    * n_geos = {n_geos}
+    * n_times = {n_times}
+    * n_knots = {n_knots}
+    * n_controls = {n_controls}
+    * n_treatments = {n_treatments}.""")
+
+    findings = [
+        eda_outcome.EDAFinding(
+            severity=eda_outcome.EDASeverity.INFO,
+            explanation=explanation,
+            finding_cause=eda_outcome.FindingCause.NONE,
+            associated_artifact=artifact,
+        )
+    ]
+
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.DATA_ADEQUACY,
+        findings=findings,
+        analysis_artifacts=[artifact],
     )
