@@ -42,7 +42,7 @@ with mlflow.start_run(run_name="my_run"):
 
   # Run Meridian sampling processes
   mmm.sample_prior(n_draws=100, seed=123)
-  mmm.sample_posterior(n_chains=7, n_adapt=500, n_burnin=500, n_keep=1000,
+  mmm.sample_posterior(n_chains=7, n_adapt=1000, n_burnin=500, n_keep=1000,
   seed=1)
 
 # After the run completes, you can retrieve run results using the MLflow client.
