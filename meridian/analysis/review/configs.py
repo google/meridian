@@ -37,6 +37,7 @@ class ConvergenceConfig(BaseConfig):
   """
 
   convergence_threshold: float = 1.2
+  # TODO: Rename to not_fully_converged_threshold.
   not_fully_convergence_threshold: float = 10.0
 
 

@@ -1,0 +1,74 @@
+// Copyright 2026 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.model.meridian.review;
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+option java_outer_classname = "ConfigsProto";
+option java_package = "com.google.protos.mmm.v1.model.meridian.review";
+
+// Configuration for the Convergence Check.
+message ConvergenceConfig {
+  // The threshold for the R-hat statistic to determine if the model has
+  // converged. R-hat values below this are considered converged.
+  double convergence_threshold = 1;
+  // The threshold for the R-hat statistic to determine if the model is not
+  // fully converged but potentially acceptable. R-hat values between
+  // `convergence_threshold` and this value are considered not fully converged.
+  // R-hat values above this threshold are considered not converged.
+  double not_fully_converged_threshold = 2;
+}
+
+// Configuration for the ROI Consistency Check.
+message ROIConsistencyConfig {
+  // The lower quantile of the ROI prior distribution to define the lower bound
+  // of the reasonable range.
+  double prior_lower_quantile = 1;
+  // The upper quantile of the ROI prior distribution to define the upper bound
+  // of the reasonable range.
+  double prior_upper_quantile = 2;
+}
+
+// Configuration for the Baseline Check.
+message BaselineConfig {
+  // Probability threshold for a review. If the probability of a negative
+  // baseline is above this value, a review is issued.
+  double negative_baseline_prob_review_threshold = 1;
+  // Probability threshold for a failure. If the probability of a negative
+  // baseline is above this value, the check fails.
+  double negative_baseline_prob_fail_threshold = 2;
+}
+
+// Configuration for the Bayesian Posterior Predictive P-value Check.
+message BayesianPPPConfig {
+  // P-value threshold for posterior predictive check.
+  double ppp_threshold = 1;
+}
+
+// An empty config for the Goodness of Fit Check.
+message GoodnessOfFitConfig {}
+
+// Configuration for the Prior-Posterior Shift Check.
+message PriorPosteriorShiftConfig {
+  // Number of bootstrap samples to use for calculating posterior statistics.
+  int32 n_bootstraps = 1;
+  // Significance level for detecting a shift between prior and posterior
+  // distributions.
+  double alpha = 2;
+  // Random seed for reproducibility of bootstrap sampling.
+  int32 seed = 3;
+}

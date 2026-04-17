@@ -160,6 +160,7 @@ class ConvergenceCheckResult(CheckResult):
 
   case: ConvergenceCases
   config: configs.ConvergenceConfig
+  # TODO: Rename to max_r_hat.
   max_rhat: float
   max_parameter: str
 

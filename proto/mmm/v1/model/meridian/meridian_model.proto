@@ -17,6 +17,7 @@ edition = "2023";
 package mmm.v1.model.meridian;
 
 import "mmm/v1/model/meridian/eda/eda_spec.proto";
+import "mmm/v1/model/meridian/review/results.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 
@@ -614,6 +615,8 @@ message MeridianModel {
 
   ComputationBackend computation_backend = 21;
   ComputationPrecision computation_precision = 22;
+
+  review.ReviewSummaryResults review_summary = 23;
 }
 
 // Represents TensorFlow statistical distribution spec that are used in user

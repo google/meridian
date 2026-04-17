@@ -1,0 +1,195 @@
+// Copyright 2026 The Meridian Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package mmm.v1.model.meridian.review;
+
+import "mmm/v1/model/meridian/review/configs.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+option java_outer_classname = "ResultsProto";
+option java_package = "com.google.protos.mmm.v1.model.meridian.review";
+
+// Enum for the status of a check.
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_PASS = 1;
+  HEALTH_STATUS_REVIEW = 2;
+  HEALTH_STATUS_FAIL = 3;
+}
+
+// Enum for the specific outcomes of the Convergence Check.
+enum ConvergenceCase {
+  CONVERGENCE_CASE_UNSPECIFIED = 0;
+  CONVERGENCE_CASE_PASS_CONVERGED = 1;
+  CONVERGENCE_CASE_FAIL_NOT_FULLY_CONVERGED = 2;
+  CONVERGENCE_CASE_FAIL_NOT_CONVERGED = 3;
+}
+
+// Result for the Convergence Check.
+message ConvergenceCheckResult {
+  // The maximum R-hat value observed across all parameters.
+  double max_r_hat = 1;
+  // The name of the parameter with highest R-hat value.
+  string max_parameter = 2;
+  ConvergenceCase convergence_case = 3;
+  ConvergenceConfig convergence_config = 4;
+}
+
+// Enum for the specific outcomes of the Baseline Anomaly Check.
+enum BaselineCase {
+  BASELINE_CASE_UNSPECIFIED = 0;
+  BASELINE_CASE_PASS = 1;
+  BASELINE_CASE_REVIEW = 2;
+  BASELINE_CASE_FAIL = 3;
+}
+
+// Result for the Baseline Anomaly Check.
+message BaselineCheckResult {
+  // Posterior probability that the baseline is negative.
+  double negative_baseline_prob = 1;
+  BaselineCase baseline_case = 2;
+  BaselineConfig baseline_config = 3;
+}
+
+// Enum for the specific outcomes of the Bayesian PPP Check.
+enum BayesianPPPCase {
+  BAYESIAN_PPP_CASE_UNSPECIFIED = 0;
+  BAYESIAN_PPP_CASE_PASS = 1;
+  BAYESIAN_PPP_CASE_FAIL = 2;
+}
+
+// Result for the Bayesian P-value Check.
+message BayesianPPPCheckResult {
+  // The calculated Bayesian Posterior Predictive P-value.
+  double bayesian_ppp = 1;
+  BayesianPPPCase bayesian_ppp_case = 2;
+  BayesianPPPConfig bayesian_ppp_config = 3;
+}
+
+// Enum for the specific outcomes of the Goodness of Fit Check.
+enum GoodnessOfFitCase {
+  GOODNESS_OF_FIT_CASE_UNSPECIFIED = 0;
+  GOODNESS_OF_FIT_CASE_PASS = 1;
+  GOODNESS_OF_FIT_CASE_FAIL = 2;
+}
+
+// Result for the Goodness of Fit Check.
+message GoodnessOfFitCheckResult {
+  // R-squared value on the entire dataset.
+  double r_squared = 1;
+  // Mean Absolute Percentage Error (MAPE) on the entire dataset.
+  double mape = 2;
+  // Weighted Mean Absolute Percentage Error (wMAPE) on the entire dataset.
+  double wmape = 3;
+  // R-squared value on the training set. Used only when holdout sample is used.
+  double r_squared_train = 4;
+  // Mean Absolute Percentage Error (MAPE) on the training set. Used only when
+  // holdout sample is used.
+  double mape_train = 5;
+  // Weighted Mean Absolute Percentage Error (wMAPE) on the training set. Used
+  // only when holdout sample is used.
+  double wmape_train = 6;
+  // R-squared value on the test set. Used only when holdout sample is used.
+  double r_squared_test = 7;
+  // Mean Absolute Percentage Error (MAPE) on the test set. Used only when
+  // holdout sample is used.
+  double mape_test = 8;
+  // Weighted Mean Absolute Percentage Error (wMAPE) on the test set. Used only
+  // when holdout sample is used.
+  double wmape_test = 9;
+  GoodnessOfFitCase goodness_of_fit_case = 10;
+  GoodnessOfFitConfig goodness_of_fit_config = 11;
+}
+
+// Enum for the specific outcomes of the Prior-Posterior Shift Channel Check.
+enum PriorPosteriorShiftChannelCase {
+  PRIOR_POSTERIOR_SHIFT_CHANNEL_CASE_UNSPECIFIED = 0;
+  PRIOR_POSTERIOR_SHIFT_CHANNEL_CASE_SHIFT = 1;
+  PRIOR_POSTERIOR_SHIFT_CHANNEL_CASE_NO_SHIFT = 2;
+}
+
+// Message for the channel-level results of the Prior-Posterior Shift check.
+message PriorPosteriorShiftChannelResult {
+  string channel_name = 1;
+  PriorPosteriorShiftChannelCase prior_posterior_shift_channel_case = 2;
+}
+
+// Enum for the specific outcomes of the Prior-Posterior Shift Aggregate Check.
+enum PriorPosteriorShiftCase {
+  PRIOR_POSTERIOR_SHIFT_CASE_UNSPECIFIED = 0;
+  PRIOR_POSTERIOR_SHIFT_CASE_PASS = 1;
+  PRIOR_POSTERIOR_SHIFT_CASE_REVIEW = 2;
+}
+
+// Result for the Prior-Posterior Shift Check (references channel-level
+// results).
+message PriorPosteriorShiftCheckResult {
+  repeated PriorPosteriorShiftChannelResult channel_results = 1;
+  PriorPosteriorShiftCase prior_posterior_shift_case = 2;
+  PriorPosteriorShiftConfig config = 3;
+}
+
+// Enum for the specific outcomes of the ROI Consistency Channel Check.
+enum ROIConsistencyChannelCase {
+  ROI_CONSISTENCY_CHANNEL_CASE_UNSPECIFIED = 0;
+  ROI_CONSISTENCY_CHANNEL_CASE_ROI_PASS = 1;
+  ROI_CONSISTENCY_CHANNEL_CASE_ROI_LOW = 2;
+  ROI_CONSISTENCY_CHANNEL_CASE_ROI_HIGH = 3;
+  ROI_CONSISTENCY_CHANNEL_CASE_PRIOR_ROI_QUANTILE_INF = 4;
+  ROI_CONSISTENCY_CHANNEL_CASE_QUANTILE_NOT_DEFINED = 5;
+}
+
+// Message for the channel-level results of the ROI Consistency check.
+message ROIConsistencyChannelResult {
+  string channel_name = 1;
+  // The lower quantile of the prior ROI distribution (used for comparison).
+  double prior_roi_lo = 2;
+  // The upper quantile of the prior ROI distribution (used for comparison).
+  double prior_roi_hi = 3;
+  // The estimated ROI mean from the posterior distribution.
+  double posterior_roi_mean = 4;
+  ROIConsistencyChannelCase roi_consistency_channel_case = 5;
+}
+
+// Enum for the specific outcomes of the ROI Sanity Aggregate Check.
+enum ROIConsistencyCase {
+  ROI_CONSISTENCY_CASE_UNSPECIFIED = 0;
+  ROI_CONSISTENCY_CASE_PASS = 1;
+  ROI_CONSISTENCY_CASE_REVIEW = 2;
+}
+
+// Result for the ROI Consistency Check (references channel-level results).
+message ROIConsistencyCheckResult {
+  repeated ROIConsistencyChannelResult channel_results = 1;
+  ROIConsistencyCase roi_consistency_case = 2;
+  ROIConsistencyConfig roi_consistency_config = 3;
+}
+
+message ReviewSummaryResults {
+  HealthStatus overall_status = 1;
+  string summary_message = 2;
+
+  ConvergenceCheckResult convergence_check_result = 3;
+  BaselineCheckResult baseline_check_result = 4;
+  BayesianPPPCheckResult bayesian_ppp_check_result = 5;
+  GoodnessOfFitCheckResult goodness_of_fit_check_result = 6;
+  PriorPosteriorShiftCheckResult prior_posterior_shift_check_result = 7;
+  ROIConsistencyCheckResult roi_consistency_check_result = 8;
+
+  // The composite health score (0-100).
+  double health_score = 9;
+}
