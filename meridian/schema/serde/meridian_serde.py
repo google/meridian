@@ -228,7 +228,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_convergence_proto.convergence = True
     except model.MCMCSamplingError:
       model_convergence_proto.convergence = False
-    except model.NotFittedModelError:
+    except analyzer.NotFittedModelError:
       return None
 
     if hasattr(mmm.inference_data, 'trace'):

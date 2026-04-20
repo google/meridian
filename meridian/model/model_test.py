@@ -33,6 +33,8 @@ from meridian.model import spec
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
+from meridian.analysis.review import reviewer
+from meridian.analysis.review import results as review_results
 import numpy as np
 
 
@@ -101,14 +103,42 @@ class ModelTest(
 
     self.assertIsInstance(meridian.eda_engine, eda_engine.EDAEngine)
     self.assertEqual(meridian.eda_spec, expected_eda_spec)
-
+\
   def test_equations_initialization(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
     self.assertIsInstance(meridian.model_equations, equations.ModelEquations)
 
+  @mock.patch.object(reviewer, "ModelReviewer", autospec=True)
+  def test_health_summary_property(self, mock_model_reviewer):
+    mock_run = mock_model_reviewer.return_value.run
+    mock_summary = review_results.ReviewSummary(
+        overall_status=review_results.Status.PASS,
+        summary_message="Passed",
+        results=[],
+        health_score=100.0,
+    )
+    mock_run.return_value = mock_summary
+
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    summary = meridian.health_summary
+
+    self.assertIs(summary, mock_summary)
+    mock_model_reviewer.assert_called_once_with(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+    mock_run.assert_called_once_with()
+
+    # Test caching
+    summary2 = meridian.health_summary
+    self.assertIs(summary2, mock_summary)
+    self.assertEqual(mock_model_reviewer.call_count, 1)
+    self.assertEqual(mock_run.call_count, 1)
+
   def test_base_geo_properties(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
     self.assertIsNotNone(meridian.prior_broadcast)
+
     self.assertIsNotNone(meridian.inference_data)
     self.assertIsNotNone(meridian.eda_engine)
     self.assertNotIn(constants.PRIOR, meridian.inference_data.attrs)
@@ -493,7 +523,10 @@ class ModelPersistenceTest(
     model.save_mmm(mmm, str(self.file_path))
     self.assertTrue(os.path.exists(self.file_path))
     new_mmm = model.load_mmm(self.file_path)
+    attrs_to_skip = ["health_summary"]
     for attr in dir(mmm):
+      if attr in attrs_to_skip:
+        continue
       if isinstance(getattr(mmm, attr), (int, bool)):
         with self.subTest(name=attr):
           self.assertEqual(getattr(mmm, attr), getattr(new_mmm, attr))

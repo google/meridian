@@ -465,7 +465,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     budget_optimizer = optimizer.BudgetOptimizer(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        analyzer.NotFittedModelError,
         'Running budget optimization scenarios requires fitting the model.',
     ):
       budget_optimizer.create_optimization_grid(

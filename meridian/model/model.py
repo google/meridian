@@ -37,17 +37,19 @@ from meridian.model import prior_distribution
 from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model import transformers
+\
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
+from meridian.analysis.review import reviewer
+from meridian.analysis.review import results as review_results
 import numpy as np
 
 __all__ = [
     "MCMCSamplingError",
-    "MCMCOOMError",
+
     "Meridian",
     "ModelFittingError",
-    "NotFittedModelError",
     "save_mmm",
     "load_mmm",
 ]
@@ -55,10 +57,6 @@ __all__ = [
 
 class ModelFittingError(Exception):
   """Model has critical issues preventing fitting."""
-
-
-class NotFittedModelError(Exception):
-  """Model has not been fitted."""
 
 
 MCMCSamplingError = posterior_sampler.MCMCSamplingError
@@ -378,7 +376,6 @@ class Meridian:
     return prior_sampler.PriorDistributionSampler(
         model_context=self.model_context,
     )
-
   @functools.cached_property
   def posterior_sampler_callable(
       self,
@@ -388,9 +385,17 @@ class Meridian:
         model_context=self.model_context,
     )
 
+  @functools.cached_property
+  def health_summary(self) -> review_results.ReviewSummary:
+    """Model health summary."""
+    return reviewer.ModelReviewer(
+        model_context=self.model_context, inference_data=self.inference_data
+    ).run()
+
   # TODO: Remove this method.
   def compute_non_media_treatments_baseline(
       self,
+
       non_media_baseline_values: Sequence[str | float] | None = None,
   ) -> backend.Tensor:
     """Computes the baseline for each non-media treatment channel.

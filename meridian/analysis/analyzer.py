@@ -28,17 +28,22 @@ from meridian import constants
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
-from meridian.model import model
 from meridian.model import transformers
 import numpy as np
 import pandas as pd
 from typing_extensions import Self
 import xarray as xr
 
+
+class NotFittedModelError(Exception):
+  """Model has not been fitted."""
+
+
 __all__ = [
     "Analyzer",
     "DataTensors",
     "DistributionTensors",
+    "NotFittedModelError",
     "get_central_tendency_and_ci",
 ]
 
@@ -59,7 +64,7 @@ def _validate_non_media_baseline_values_numbers(
 
 # TODO: Remove this method.
 def _get_model_context(
-    meridian: model.Meridian | None,
+    meridian: Any | None,
     model_context: context.ModelContext | None,
 ) -> context.ModelContext:
   """Gets `model_context`, handling the deprecated `meridian` argument."""
@@ -245,7 +250,7 @@ class DataTensors(backend.ExtensionType):
 
   def get_modified_times(
       self,
-      meridian: model.Meridian | None = None,
+      meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
   ) -> int | None:
     """Returns `n_times` of any tensor where `n_times` has been modified.
@@ -297,7 +302,7 @@ class DataTensors(backend.ExtensionType):
   def validate_and_fill_missing_data(
       self,
       required_tensors_names: Sequence[str],
-      meridian: model.Meridian | None = None,
+      meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
       allow_modified_times: bool = True,
   ) -> Self:
@@ -925,7 +930,7 @@ class Analyzer:
   def __init__(
       self,
       # TODO: Remove this argument.
-      meridian: model.Meridian | None = None,
+      meridian: Any | None = None,
       *,
       model_context: context.ModelContext | None = None,
       inference_data: az.InferenceData | None = None,
@@ -1664,7 +1669,7 @@ class Analyzer:
       )
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
     if dist_type not in self._inference_data.groups():
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           f"sample_{dist_type}() must be called prior to calling"
           " `expected_outcome()`."
       )
@@ -2162,7 +2167,7 @@ class Analyzer:
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
 
     if dist_type not in self.inference_data.groups():
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           f"sample_{dist_type}() must be called prior to calling this method."
       )
 
@@ -3820,7 +3825,7 @@ class Analyzer:
           "Must have at least one channel with reach and frequency data."
       )
     if dist_type not in self.inference_data.groups():
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           f"sample_{dist_type}() must be called prior to calling this method."
       )
 
@@ -4201,7 +4206,7 @@ class Analyzer:
         calling this method.
     """
     if constants.POSTERIOR not in self._inference_data.groups():
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           "sample_posterior() must be called prior to calling this method."
       )
 
@@ -4518,7 +4523,7 @@ class Analyzer:
         constants.PRIOR not in self._inference_data.groups()
         or constants.POSTERIOR not in self._inference_data.groups()
     ):
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           "sample_prior() and sample_posterior() must be called prior to"
           " calling this method."
       )
@@ -4983,7 +4988,7 @@ class Analyzer:
         constants.PRIOR not in self._inference_data.groups()
         or constants.POSTERIOR not in self._inference_data.groups()
     ):
-      raise model.NotFittedModelError(
+      raise NotFittedModelError(
           "sample_prior() and sample_posterior() must be called prior to"
           " calling this method."
       )

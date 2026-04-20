@@ -217,7 +217,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
     not_fitted_model_diagnostics = visualizer.ModelDiagnostics(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        analyzer.NotFittedModelError,
         "Plotting prior and posterior distributions requires fitting the model",
     ):
       not_fitted_model_diagnostics.plot_prior_and_posterior_distribution()
@@ -356,7 +356,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
     not_fitted_model_diagnostics = visualizer.ModelDiagnostics(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        analyzer.NotFittedModelError,
         "Plotting the r-hat values requires fitting the model.",
     ):
       not_fitted_model_diagnostics.plot_rhat_boxplot()

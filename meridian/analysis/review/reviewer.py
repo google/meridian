@@ -17,7 +17,9 @@
 from collections.abc import MutableMapping, Sequence
 import dataclasses
 import typing
-
+from typing import Any
+import warnings
+import arviz as az
 import immutabledict
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
@@ -25,6 +27,7 @@ from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
+from meridian.model import context
 from meridian.model import prior_distribution
 import numpy as np
 
@@ -192,13 +195,31 @@ class ModelReviewer:
 
   def __init__(
       self,
-      meridian,
+      # TODO: Remove.
+      meridian: Any | None = None,
+      model_context: context.ModelContext | None = None,
+      inference_data: az.InferenceData | None = None,
   ):
-    self._meridian = meridian
+    if meridian is not None:
+      warnings.warn(
+          "The `meridian` argument is deprecated. "
+          "Please use `model_context` and `inference_data` instead.",
+          category=DeprecationWarning,
+          stacklevel=2,
+      )
+      model_context = meridian.model_context
+      inference_data = meridian.inference_data
+    if model_context is None or inference_data is None:
+      raise ValueError(
+          "ModelReviewer requires either (model_context AND inference_data) "
+          "or the deprecated (meridian) object."
+      )
+
+    self._model_context = model_context
+    self._inference_data = inference_data
     self._results: MutableMapping[CheckType, results.CheckResult] = {}
     self._analyzer = analyzer_module.Analyzer(
-        model_context=meridian.model_context,
-        inference_data=meridian.inference_data,
+        model_context=self._model_context, inference_data=self._inference_data
     )
 
   def _run_and_handle(
@@ -218,9 +239,10 @@ class ModelReviewer:
       selected_times: Optional sequence of times to filter the analysis.
     """
     instance: checks.BaseCheck = check_class(
-        self._meridian,
-        self._analyzer,
-        config,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=self._analyzer,
+        config=config,
         selected_geos=selected_geos,
         selected_times=selected_times,
     )  # pytype: disable=not-instantiable
@@ -229,12 +251,12 @@ class ModelReviewer:
   def _uses_roi_priors(self):
     """Checks if the model uses ROI priors."""
     return (
-        self._meridian.n_media_channels > 0
-        and self._meridian.model_spec.effective_media_prior_type
+        self._model_context.n_media_channels > 0
+        and self._model_context.model_spec.effective_media_prior_type
         == constants.TREATMENT_PRIOR_TYPE_ROI
     ) or (
-        self._meridian.n_rf_channels > 0
-        and self._meridian.model_spec.effective_rf_prior_type
+        self._model_context.n_rf_channels > 0
+        and self._model_context.model_spec.effective_rf_prior_type
         == constants.TREATMENT_PRIOR_TYPE_ROI
     )
 
@@ -242,21 +264,22 @@ class ModelReviewer:
     """Checks if the model uses custom ROI priors."""
     default_distribution = prior_distribution.PriorDistribution()
     if (
-        self._meridian.n_media_channels > 0
-        and self._meridian.model_spec.effective_media_prior_type
+        self._model_context.n_media_channels > 0
+        and self._model_context.model_spec.effective_media_prior_type
         == constants.TREATMENT_PRIOR_TYPE_ROI
     ):
       if not prior_distribution.distributions_are_equal(
-          self._meridian.model_spec.prior.roi_m, default_distribution.roi_m
+          self._model_context.model_spec.prior.roi_m, default_distribution.roi_m
       ):
         return True
     if (
-        self._meridian.n_rf_channels > 0
-        and self._meridian.model_spec.effective_rf_prior_type
+        self._model_context.n_rf_channels > 0
+        and self._model_context.model_spec.effective_rf_prior_type
         == constants.TREATMENT_PRIOR_TYPE_ROI
     ):
       if not prior_distribution.distributions_are_equal(
-          self._meridian.model_spec.prior.roi_rf, default_distribution.roi_rf
+          self._model_context.model_spec.prior.roi_rf,
+          default_distribution.roi_rf,
       ):
         return True
     return False

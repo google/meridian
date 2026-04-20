@@ -182,7 +182,7 @@ class ModelDiagnostics:
         hasattr(self._meridian.inference_data, c.PRIOR)
         and hasattr(self._meridian.inference_data, c.POSTERIOR)
     ):
-      raise model.NotFittedModelError(
+      raise analyzer.NotFittedModelError(
           'Plotting prior and posterior distributions requires fitting the'
           ' model.'
       )
@@ -317,7 +317,7 @@ class ModelDiagnostics:
       MCMCSamplingError: The MCMC sampling did not converge.
     """
     if not hasattr(self._meridian.inference_data, c.POSTERIOR):
-      raise model.NotFittedModelError(
+      raise analyzer.NotFittedModelError(
           'Plotting the r-hat values requires fitting the model.'
       )
 

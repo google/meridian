@@ -4998,7 +4998,7 @@ class AnalyzerNotFittedTest(absltest.TestCase):
         inference_data=not_fitted_mmm.inference_data,
     )
     with self.assertRaisesWithLiteralMatch(
-        model.NotFittedModelError,
+        analyzer.NotFittedModelError,
         "sample_posterior() must be called prior to calling this method.",
     ):
       not_fitted_analyzer.rhat_summary()

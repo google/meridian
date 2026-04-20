@@ -1413,7 +1413,7 @@ class BudgetOptimizer:
     """Validates that the model is fit."""
     dist_type = c.POSTERIOR if use_posterior else c.PRIOR
     if dist_type not in self._analyzer.inference_data.groups():
-      raise model.NotFittedModelError(
+      raise analyzer_module.NotFittedModelError(
           'Running budget optimization scenarios requires fitting the model.'
       )
 
