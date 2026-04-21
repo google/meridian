@@ -25,6 +25,8 @@ import arviz as az
 import joblib
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import results
+from meridian.analysis.review import reviewer
 from meridian.common import errors
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
@@ -168,6 +170,7 @@ class Meridian:
     self._computation_backend = backend.computation_backend().name
     self._computation_precision = backend.computation_precision().name
     self._eda_spec = eda_spec
+    self._health_summary: results.ReviewSummary | None = None
 
     self._validate_injected_inference_data()
 
@@ -211,6 +214,10 @@ class Meridian:
   @property
   def eda_outcomes(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     return self.eda_engine.run_all_critical_checks()
+
+  @property
+  def health_summary(self) -> results.ReviewSummary | None:
+    return self._health_summary
 
   @property
   def media_tensors(self) -> media.MediaTensors:
@@ -971,6 +978,7 @@ class Meridian:
       )
       raise ModelFittingError("\n".join(error_message_lines))
 
+  # TODO: Require keyword-only arguments.
   def sample_posterior(
       self,
       n_chains: Sequence[int] | int,
@@ -1066,6 +1074,40 @@ class Meridian:
         **pins,
     )
     self.inference_data.extend(posterior_inference_data, join="right")
+
+  def review(self) -> results.ReviewSummary:
+    """Runs the model health checks and stores the results in `health_summary`.
+
+    This method should be called after the model has been fitted, i.e., after
+    `sample_posterior` has been executed to populate `self.inference_data`.
+
+    Returns:
+      A `ReviewSummary` object containing the results of the health checks.
+    """
+    model_reviewer = reviewer.ModelReviewer(
+        model_context=self.model_context, inference_data=self.inference_data
+    )
+    self._health_summary = model_reviewer.run()
+    return self._health_summary
+
+  # TODO: Require keyword-only arguments.
+  def sample_posterior_and_review(
+      self, *args, **kwargs
+  ) -> results.ReviewSummary:
+    """Runs MCMC sampling and then the model health checks.
+
+    This method is a convenience wrapper that calls `sample_posterior` with the
+    given arguments, and then calls `review`.
+
+    Args:
+      *args: Positional arguments to pass to `sample_posterior`.
+      **kwargs: Keyword arguments to pass to `sample_posterior`.
+
+    Returns:
+      A `ReviewSummary` object containing the results of the health checks.
+    """
+    self.sample_posterior(*args, **kwargs)
+    return self.review()
 
 
 def save_mmm(mmm: Meridian, file_path: str):
