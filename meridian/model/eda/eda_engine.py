@@ -19,7 +19,6 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 import dataclasses
 import functools
-import textwrap
 import typing
 from typing import Protocol
 import warnings
@@ -2456,6 +2455,9 @@ class EDAEngine:
     """
     return self._calculate_population_corr(
         ds=self.treatment_control_scaled_ds,
+        # TODO: The explanation is using <br/> for line breaks ,
+        # which won't work for EDA Engine when printing the explanation on a
+        # console.
         explanation=eda_constants.POPULATION_CORRELATION_SCALED_TREATMENT_CONTROL_INFO,
         check_name='check_population_corr_scaled_treatment_control',
     )
@@ -2514,38 +2516,19 @@ class EDAEngine:
         + self._model_context.n_non_media_channels
     )
 
-    n_parameters = (n_geos - 1) + n_knots + n_controls + n_treatments
-    n_data_points = n_geos * n_times
-    ratio = n_data_points / n_parameters if n_parameters > 0 else float('inf')
-
     artifact = eda_outcome.DataParameterRatioArtifact(
         level=eda_outcome.AnalysisLevel.OVERALL,
-        n_parameters=n_parameters,
-        n_data_points=n_data_points,
-        ratio=ratio,
+        n_geos=n_geos,
+        n_times=n_times,
+        n_knots=n_knots,
+        n_controls=n_controls,
+        n_treatments=n_treatments,
     )
-
-    explanation = textwrap.dedent(f"""\
-    As a rough guidance, please review the ratio of data points to
-    parameters, where
-    * the number of data points = n_geos * n_times,
-    * the number of parameters = (n_geos-1) + n_knots + n_controls + n_treatments.\n
-    A very small ratio indicates insufficient data for estimation.
-    In that case, consider dropping or combining channels,
-    or reducing the number of knots with `knots` argument in `ModelSpec`.
-    For more details, please refer to this documentation page:
-    https://developers.google.com/meridian/docs/pre-modeling/amount-data-needed.\n
-    This ratio is {ratio:.2f} for your dataset, where
-    * n_geos = {n_geos}
-    * n_times = {n_times}
-    * n_knots = {n_knots}
-    * n_controls = {n_controls}
-    * n_treatments = {n_treatments}.""")
 
     findings = [
         eda_outcome.EDAFinding(
             severity=eda_outcome.EDASeverity.INFO,
-            explanation=explanation,
+            explanation=eda_constants.DATA_ADEQUACY_INFO,
             finding_cause=eda_outcome.FindingCause.NONE,
             associated_artifact=artifact,
         )

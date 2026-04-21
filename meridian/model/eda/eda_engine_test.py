@@ -8110,23 +8110,17 @@ class EDAEngineTest(
       self.assertLen(outcome.findings, 1)
       finding = outcome.findings[0]
       self.assertEqual(finding.severity, eda_outcome.EDASeverity.INFO)
-      self.assertIn(
-          "As a rough guidance, please review the ratio of data points to",
-          finding.explanation,
-      )
-      self.assertIn(
-          f"This ratio is {expected_ratio:.2f} for your dataset",
-          finding.explanation,
-      )
-      self.assertIn(
-          f"* n_treatments = {expected_n_treatments}.",
-          finding.explanation,
-      )
+      self.assertEqual(finding.explanation, eda_constants.DATA_ADEQUACY_INFO)
 
     with self.subTest(name="artifact_details"):
       self.assertLen(outcome.analysis_artifacts, 1)
       artifact = outcome.analysis_artifacts[0]
       self.assertIsInstance(artifact, eda_outcome.DataParameterRatioArtifact)
+      self.assertEqual(artifact.n_geos, mock_model_context.n_geos)
+      self.assertEqual(artifact.n_times, mock_model_context.n_times)
+      self.assertEqual(artifact.n_knots, n_knots)
+      self.assertEqual(artifact.n_controls, mock_model_context.n_controls)
+      self.assertEqual(artifact.n_treatments, expected_n_treatments)
       self.assertEqual(artifact.n_parameters, expected_n_parameters)
       self.assertEqual(artifact.n_data_points, expected_n_data_points)
       self.assertAlmostEqual(artifact.ratio, expected_ratio)

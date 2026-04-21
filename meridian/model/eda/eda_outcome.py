@@ -260,19 +260,44 @@ class PriorProbabilityArtifact(AnalysisArtifact):
   mean_prior_contribution_da: xr.DataArray
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class DataParameterRatioArtifact(AnalysisArtifact):
   """Artifact for model complexity check.
 
   Attributes:
+    n_geos: The number of geos.
+    n_times: The number of times.
+    n_knots: The number of knots.
+    n_controls: The number of controls.
+    n_treatments: The number of treatments.
     n_parameters: The number of parameters in the model.
     n_data_points: The number of data points.
     ratio: The ratio of data points to parameters.
   """
 
-  n_parameters: int
-  n_data_points: int
-  ratio: float
+  n_geos: int
+  n_times: int
+  n_knots: int
+  n_controls: int
+  n_treatments: int
+
+  @property
+  def n_data_points(self) -> int:
+    return self.n_geos * self.n_times
+
+  @property
+  def n_parameters(self) -> int:
+    return (
+        (self.n_geos - 1) + self.n_knots + self.n_controls + self.n_treatments
+    )
+
+  @property
+  def ratio(self) -> float:
+    return (
+        self.n_data_points / self.n_parameters
+        if self.n_parameters > 0
+        else float("inf")
+    )
 
 
 @enum.unique
