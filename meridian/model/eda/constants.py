@@ -162,6 +162,7 @@ SPEND_AND_MEDIA_UNIT_CARD_ID = 'spend-and-media-unit'
 SPEND_AND_MEDIA_UNIT_CARD_TITLE = 'Spend and Media Unit'
 RELATIVE_SPEND_SHARE_CHART_ID = 'relative-spend-share-chart'
 SPEND_PER_MEDIA_UNIT_CHART_ID = 'spend-per-media-unit-chart'
+DATA_ADEQUACY_TABLE_ID = 'data-adequacy-table'
 INCONSISTENT_DATA_TABLE_ID = 'inconsistent-data-table'
 COST_PER_MEDIA_UNIT_OUTLIER_TABLE_ID = 'cost-per-media-unit-outlier-table'
 # category 2
