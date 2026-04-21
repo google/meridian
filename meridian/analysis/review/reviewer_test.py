@@ -16,12 +16,14 @@ import dataclasses
 from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
+import arviz as az
 import immutabledict
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import results
 from meridian.analysis.review import reviewer
+from meridian.model import context
 
 
 class ReviewerTest(parameterized.TestCase):
@@ -31,25 +33,34 @@ class ReviewerTest(parameterized.TestCase):
     self.enter_context(
         mock.patch.object(analyzer_module, 'Analyzer', autospec=True)
     )
-    self._meridian = mock.MagicMock()
-    type(self._meridian).n_media_channels = mock.PropertyMock(return_value=1)
-    type(self._meridian).n_rf_channels = mock.PropertyMock(return_value=1)
-    type(self._meridian).is_roi_prior = mock.PropertyMock(return_value=True)
-    type(self._meridian).is_custom_roi_prior = mock.PropertyMock(
+    self._model_context = mock.create_autospec(
+        context.ModelContext, spec_set=True, instance=True
+    )
+    type(self._model_context).n_media_channels = mock.PropertyMock(
+        return_value=1
+    )
+    type(self._model_context).n_rf_channels = mock.PropertyMock(return_value=1)
+    type(self._model_context).is_roi_prior = mock.PropertyMock(
         return_value=True
+    )
+    type(self._model_context).is_custom_roi_prior = mock.PropertyMock(
+        return_value=True
+    )
+    self._inference_data = mock.create_autospec(
+        az.InferenceData, spec_set=True, instance=True
     )
     self.enter_context(
         mock.patch.object(
             reviewer.ModelReviewer,
             '_uses_roi_priors',
-            side_effect=lambda: self._meridian.is_roi_prior,
+            side_effect=lambda: self._model_context.is_roi_prior,
         )
     )
     self.enter_context(
         mock.patch.object(
             reviewer.ModelReviewer,
             '_has_custom_roi_priors',
-            side_effect=lambda: self._meridian.is_custom_roi_prior,
+            side_effect=lambda: self._model_context.is_custom_roi_prior,
         )
     )
 
@@ -335,7 +346,8 @@ class ReviewerTest(parameterized.TestCase):
     ] * pps_total
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -352,7 +364,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -385,7 +398,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -420,7 +434,8 @@ class ReviewerTest(parameterized.TestCase):
     )
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -446,7 +461,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_convergence_result.case = results.ConvergenceCases.NOT_CONVERGED
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -478,7 +494,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -517,7 +534,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -555,7 +573,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -587,7 +606,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -624,7 +644,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -657,56 +678,65 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     review.run(selected_geos=['geo1'], selected_times=['time1'])
 
     self._mock_convergence_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.ConvergenceConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.ConvergenceConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_baseline_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.BaselineConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.BaselineConfig(),
         selected_geos=['geo1'],
         selected_times=['time1'],
     )
     self._mock_bayesian_ppp_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.BayesianPPPConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.BayesianPPPConfig(),
         selected_geos=['geo1'],
         selected_times=['time1'],
     )
     self._mock_roi_consistency_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.ROIConsistencyConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.ROIConsistencyConfig(),
         selected_geos=['geo1'],
         selected_times=['time1'],
     )
     self._mock_gof_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.GoodnessOfFitConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.GoodnessOfFitConfig(),
         selected_geos=['geo1'],
         selected_times=['time1'],
     )
     self._mock_pps_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.PriorPosteriorShiftConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.PriorPosteriorShiftConfig(),
         selected_geos=['geo1'],
         selected_times=['time1'],
     )
 
   def test_run_skip_checks_with_custom_roi_priors(self):
-    type(self._meridian).is_roi_prior = mock.PropertyMock(return_value=False)
-    type(self._meridian).is_custom_roi_prior = mock.PropertyMock(
+    type(self._model_context).is_roi_prior = mock.PropertyMock(
+        return_value=False
+    )
+    type(self._model_context).is_custom_roi_prior = mock.PropertyMock(
         return_value=False
     )
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
@@ -715,7 +745,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -733,8 +764,10 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_roi_consistency_check_cls.assert_not_called()
 
   def test_run_skip_checks_with_non_roi_priors(self):
-    type(self._meridian).is_roi_prior = mock.PropertyMock(return_value=False)
-    type(self._meridian).is_custom_roi_prior = mock.PropertyMock(
+    type(self._model_context).is_roi_prior = mock.PropertyMock(
+        return_value=False
+    )
+    type(self._model_context).is_custom_roi_prior = mock.PropertyMock(
         return_value=False
     )
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
@@ -743,7 +776,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 
@@ -797,49 +831,56 @@ class ReviewerTest(parameterized.TestCase):
     ]
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     review.run()
 
     self._mock_convergence_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.ConvergenceConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.ConvergenceConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_baseline_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.BaselineConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.BaselineConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_bayesian_ppp_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.BayesianPPPConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.BayesianPPPConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_roi_consistency_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.ROIConsistencyConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.ROIConsistencyConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_gof_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.GoodnessOfFitConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.GoodnessOfFitConfig(),
         selected_geos=None,
         selected_times=None,
     )
     self._mock_pps_check_cls.assert_called_once_with(
-        mock.ANY,
-        mock.ANY,
-        configs.PriorPosteriorShiftConfig(),
+        model_context=mock.ANY,
+        inference_data=mock.ANY,
+        analyzer=mock.ANY,
+        config=configs.PriorPosteriorShiftConfig(),
         selected_geos=None,
         selected_times=None,
     )
@@ -873,7 +914,10 @@ class ReviewerTest(parameterized.TestCase):
     with mock.patch.object(
         reviewer, '_POST_CONVERGENCE_CHECKS', new=custom_checks
     ):
-      review = reviewer.ModelReviewer(meridian=self._meridian)
+      review = reviewer.ModelReviewer(
+          model_context=self._model_context,
+          inference_data=self._inference_data,
+      )
       with self.assertRaisesRegex(
           ValueError,
           r'The following required checks results are missing: '
@@ -892,7 +936,8 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary1 = review.run()
     summary2 = review.run()
@@ -915,7 +960,8 @@ class ReviewerTest(parameterized.TestCase):
     )
 
     review = reviewer.ModelReviewer(
-        meridian=self._meridian,
+        model_context=self._model_context,
+        inference_data=self._inference_data,
     )
     summary = review.run()
 

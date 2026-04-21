@@ -12,16 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Meridian API module that models the data."""
+"""Tests for review_summary_serde."""
 
-from meridian.model import adstock_hill
-from meridian.model import context
-from meridian.model import eda
-from meridian.model import equations
-from meridian.model import knots
-from meridian.model import media
-from meridian.model import posterior_sampler
-from meridian.model import prior_distribution
-from meridian.model import prior_sampler
-from meridian.model import spec
-from meridian.model import transformers
+from absl.testing import absltest
+from meridian.schema.serde import review_summary_serde
+
+
+class ReviewSummarySerdeTest(absltest.TestCase):
+
+  def test_save_review_summary(self):
+    # TODO: Add tests for save_review_summary.
+    pass
+
+  def test_load_review_summary(self):
+    # TODO: Add tests for load_review_summary.
+    pass
+
+
+if __name__ == "__main__":
+  absltest.main()

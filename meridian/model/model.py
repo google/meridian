@@ -25,6 +25,9 @@ import arviz as az
 import joblib
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import results as review_results
+from meridian.analysis.review import reviewer
+from meridian.common import errors
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
@@ -57,12 +60,9 @@ class ModelFittingError(Exception):
   """Model has critical issues preventing fitting."""
 
 
-class NotFittedModelError(Exception):
-  """Model has not been fitted."""
-
-
 MCMCSamplingError = posterior_sampler.MCMCSamplingError
 MCMCOOMError = posterior_sampler.MCMCOOMError
+NotFittedModelError = errors.NotFittedModelError
 
 
 def _warn_setting_national_args(**kwargs):
@@ -169,6 +169,7 @@ class Meridian:
     self._computation_backend = backend.computation_backend().name
     self._computation_precision = backend.computation_precision().name
     self._eda_spec = eda_spec
+    self.health_summary = None
 
     self._validate_injected_inference_data()
 
@@ -1067,6 +1068,18 @@ class Meridian:
         **pins,
     )
     self.inference_data.extend(posterior_inference_data, join="right")
+
+  def review(self) -> None:
+    """Runs the model health checks and stores the results in `health_summary`."""
+    model_reviewer = reviewer.ModelReviewer(
+        model_context=self.model_context, inference_data=self.inference_data
+    )
+    self.health_summary = model_reviewer.run()
+
+  def sample_posterior_and_review(self, *args, **kwargs) -> None:
+    """Runs MCMC sampling and then the model health checks."""
+    self.sample_posterior(*args, **kwargs)
+    self.review()
 
 
 def save_mmm(mmm: Meridian, file_path: str):

@@ -27,6 +27,7 @@ from meridian.analysis import analyzer
 from meridian.analysis import visualizer
 from meridian.backend import config as backend_config
 from meridian.backend import test_utils as backend_test_utils
+from meridian.common import errors
 from meridian.data import input_data as meridian_input_data
 from meridian.data import test_utils
 from meridian.model import context
@@ -52,7 +53,6 @@ import xarray.testing as xrt
 
 from google.protobuf import any_pb2
 from tensorflow.core.framework import types_pb2  # pylint: disable=g-direct-tensorflow-import
-
 
 _PRIOR_DATASET_CHAINS = 1
 _PRIOR_DATASET_DRAWS = 2
