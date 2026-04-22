@@ -23,27 +23,33 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-04-22
+
+*   Add `ComputationPrecision` proto for Meridian models.
+
 ## [1.1.2] - 2026-03-02
 
-* Add population_value field to GeoInfo Proto
-* Add ComputationBackend proto to Meridian
+*   Add `population_value` field to `GeoInfo` proto.
+*   Add `ComputationBackend` proto for Meridian models.
 
 ## [1.1.1] - 2025-12-22
 
-* Add field to record ArviZ version in meridian_model proto definition.
+*   Add field to record ArviZ version in meridian_model proto definition.
 
 ## [1.1.0] - 2025-12-08
 
-* Add proto definitions needed for Meridian Scenario Planner.
+*   Add proto definitions needed for Meridian Scenario Planner.
 
 ## [1.0.0] - 2025-11-12
 
-* Initial release of `mmm-proto-schema` package.
-* Add proto definitions needed for Meridian `serde` package.
+*   Initial release of `mmm-proto-schema` package.
+*   Add proto definitions needed for Meridian `serde` package.
 
 <!-- mdlint off(LINK_UNUSED_ID) -->
+
 [1.0.0]: https://github.com/google/meridian/releases/tag/proto-v1.0.0
 [1.1.0]: https://github.com/google/meridian/releases/tag/proto-v1.1.0
 [1.1.1]: https://github.com/google/meridian/releases/tag/proto-v1.1.1
 [1.1.2]: https://github.com/google/meridian/releases/tag/proto-v1.1.2
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.2...HEAD
+[1.1.3]: https://github.com/google/meridian/releases/tag/proto-v1.1.3
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.3...HEAD
