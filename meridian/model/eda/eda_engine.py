@@ -2455,9 +2455,6 @@ class EDAEngine:
     """
     return self._calculate_population_corr(
         ds=self.treatment_control_scaled_ds,
-        # TODO: The explanation is using <br/> for line breaks ,
-        # which won't work for EDA Engine when printing the explanation on a
-        # console.
         explanation=eda_constants.POPULATION_CORRELATION_SCALED_TREATMENT_CONTROL_INFO,
         check_name='check_population_corr_scaled_treatment_control',
     )
