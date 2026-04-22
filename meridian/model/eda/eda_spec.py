@@ -17,8 +17,11 @@
 import dataclasses
 from typing import Any, Callable, Dict, TypeAlias
 
+from meridian.model.eda import constants as eda_constants
+
 __all__ = [
     "AggregationConfig",
+    "PairwiseCorrSpec",
     "VIFSpec",
     "EDASpec",
 ]
@@ -51,13 +54,34 @@ class AggregationConfig:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class PairwiseCorrSpec:
+  """A spec for the EDA pairwise correlation check.
+
+  Attributes:
+    overall_threshold: The threshold for overall pairwise correlation. Exceeding
+      this threshold triggers an ERROR.
+    geo_threshold: The threshold for geo-level pairwise correlation. Exceeding
+      this threshold triggers an ATTENTION.
+    national_threshold: The threshold for national pairwise correlation.
+      Exceeding this threshold triggers an ERROR.
+  """
+
+  overall_threshold: float = eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD
+  geo_threshold: float = eda_constants.GEO_PAIRWISE_CORR_THRESHOLD
+  national_threshold: float = eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class VIFSpec:
   """A spec for the EDA VIF check.
 
   Attributes:
-    geo_threshold: The threshold for geo-level VIF.
-    overall_threshold: The threshold for overall VIF.
-    national_threshold: The threshold for national VIF.
+    geo_threshold: The threshold for geo-level VIF. Exceeding this threshold
+      triggers an ATTENTION.
+    overall_threshold: The threshold for overall VIF. Exceeding this threshold
+      triggers an ERROR.
+    national_threshold: The threshold for national VIF. Exceeding this threshold
+      triggers an ERROR.
   """
 
   geo_threshold: float = _DEFAULT_VIF_THRESHOLD
@@ -75,10 +99,15 @@ class EDASpec:
 
   Attributes:
     aggregation_config: A configuration object for custom aggregation functions.
+    pairwise_corr_spec: A configuration object for the EDA pairwise correlation
+      check.
     vif_spec: A configuration object for the EDA VIF check.
   """
 
   aggregation_config: AggregationConfig = dataclasses.field(
       default_factory=AggregationConfig
+  )
+  pairwise_corr_spec: PairwiseCorrSpec = dataclasses.field(
+      default_factory=PairwiseCorrSpec
   )
   vif_spec: VIFSpec = dataclasses.field(default_factory=VIFSpec)

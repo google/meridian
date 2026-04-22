@@ -5013,16 +5013,16 @@ class EDAEngineTest(
       )
 
   def test_national_extreme_corr_var_pairs_are_correctly_sorted(self):
-    self.enter_context(
-        mock.patch.object(
-            eda_constants, "NATIONAL_PAIRWISE_CORR_THRESHOLD", 0.7
-        )
-    )
     model_context = context.ModelContext(
         model_spec=model_spec.ModelSpec(),
         input_data=self.national_input_data_media_only,
     )
-    engine = eda_engine.EDAEngine(model_context=model_context)
+    spec = eda_spec.EDASpec(
+        pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+            national_threshold=0.7
+        )
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=spec)
     # data for forcing correlation order
     # m0=[1,2,3], c0=[1,2,4], c1=[-1,-2,-2]
     # c(m0,c0)=0.98198, c(m0,c1)=-0.866025, c(c0,c1)=-0.755928
@@ -5065,17 +5065,17 @@ class EDAEngineTest(
     )
 
   def test_geo_extreme_corr_var_pairs_are_correctly_sorted(self):
-    self.enter_context(
-        mock.patch.object(eda_constants, "GEO_PAIRWISE_CORR_THRESHOLD", 0.7)
-    )
-    self.enter_context(
-        mock.patch.object(eda_constants, "OVERALL_PAIRWISE_CORR_THRESHOLD", 0.7)
-    )
     model_context = context.ModelContext(
         model_spec=model_spec.ModelSpec(),
         input_data=self.input_data_with_media_only,
     )
-    engine = eda_engine.EDAEngine(model_context=model_context)
+    spec = eda_spec.EDASpec(
+        pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+            geo_threshold=0.7,
+            overall_threshold=0.7,
+        )
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=spec)
     # data for forcing correlation order
     # m0=[1,2,3], c0=[1,2,4], c1=[-1,-2,-2]
     # c(m0,c0)=0.98198, c(m0,c1)=-0.866025, c(c0,c1)=-0.755928
@@ -5147,6 +5147,65 @@ class EDAEngineTest(
               ("control_0", "control_1"),
           ],
       )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="custom_geo_attention",
+          spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  geo_threshold=0.8,
+              )
+          ),
+          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+      ),
+      dict(
+          testcase_name="custom_overall_error",
+          spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  overall_threshold=0.8,
+              )
+          ),
+          expected_severity=eda_outcome.EDASeverity.ERROR,
+      ),
+      dict(
+          testcase_name="custom_threshold_not_met",
+          spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  overall_threshold=0.9,
+                  geo_threshold=0.9,
+              )
+          ),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+      ),
+  )
+  def test_check_geo_pairwise_corr_with_spec(self, spec, expected_severity):
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(),
+        input_data=self.input_data_with_media_only,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=spec)
+    # m0=[1,2,3], c1=[-1,-2,-2]
+    # c(m0,c1)=-0.866025. Abs: 0.866025.
+    data_1geo = np.array([
+        [1, -1],
+        [2, -2],
+        [3, -2],
+    ]).astype(float)
+    # Use 2 geos for test
+    data = np.stack([data_1geo] * 2, axis=0)
+    geo_da = _create_data_array_with_var_dim(
+        data,
+        name="data",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords({eda_constants.VARIABLE: ["media_0", "control_1"]})
+    self._mock_eda_engine_property(
+        "_stacked_treatment_control_scaled_da", geo_da
+    )
+    outcome = engine.check_geo_pairwise_corr()
+    self.assertLen(outcome.findings, 1)
+    (finding,) = outcome.findings
+    self.assertEqual(finding.severity, expected_severity)
 
   def test_check_geo_pairwise_corr_raises_error_for_national_model(self):
     model_context = context.ModelContext(
@@ -5272,6 +5331,56 @@ class EDAEngineTest(
         artifact.corr_matrix.coords.keys(),
         [eda_constants.VARIABLE_1, eda_constants.VARIABLE_2],
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="custom_national_error",
+          spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  national_threshold=0.8,
+              )
+          ),
+          expected_severity=eda_outcome.EDASeverity.ERROR,
+      ),
+      dict(
+          testcase_name="custom_threshold_not_met",
+          spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  national_threshold=0.9,
+              )
+          ),
+          expected_severity=eda_outcome.EDASeverity.INFO,
+      ),
+  )
+  def test_check_national_pairwise_corr_with_spec(
+      self, spec, expected_severity
+  ):
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(),
+        input_data=self.national_input_data_media_only,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=spec)
+    # m0=[1,2,3], c1=[-1,-2,-2]
+    # c(m0,c1)=-0.866025. Abs: 0.866025.
+    data = np.array([
+        [1, -1],
+        [2, -2],
+        [3, -2],
+    ]).astype(float)
+    national_da = _create_data_array_with_var_dim(
+        data,
+        name="data",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords({eda_constants.VARIABLE: ["media_0", "control_1"]})
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", national_da
+    )
+    outcome = engine.check_national_pairwise_corr()
+
+    self.assertLen(outcome.findings, 1)
+    (finding,) = outcome.findings
+    self.assertEqual(finding.severity, expected_severity)
 
   def test_check_national_pairwise_corr_correlation_values(self):
     # Create data to test correlation computations.

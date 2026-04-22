@@ -1601,18 +1601,19 @@ class EDAEngine:
       )
 
     findings = []
+    spec = self.spec.pairwise_corr_spec
 
     overall_corr_mat, overall_extreme_corr_var_pairs_df = (
         self._pairwise_corr_for_geo_data(
             dims=[constants.GEO, constants.TIME],
-            extreme_corr_threshold=eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
+            extreme_corr_threshold=spec.overall_threshold,
         )
     )
     overall_artifact = eda_outcome.PairwiseCorrArtifact(
         level=eda_outcome.AnalysisLevel.OVERALL,
         corr_matrix=overall_corr_mat,
         extreme_corr_var_pairs=overall_extreme_corr_var_pairs_df,
-        extreme_corr_threshold=eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD,
+        extreme_corr_threshold=spec.overall_threshold,
     )
 
     if not overall_extreme_corr_var_pairs_df.empty:
@@ -1634,7 +1635,7 @@ class EDAEngine:
     geo_corr_mat, geo_extreme_corr_var_pairs_df = (
         self._pairwise_corr_for_geo_data(
             dims=constants.TIME,
-            extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
+            extreme_corr_threshold=spec.geo_threshold,
         )
     )
     # Pairs that cause overall level findings are very likely to cause geo
@@ -1649,7 +1650,7 @@ class EDAEngine:
         level=eda_outcome.AnalysisLevel.GEO,
         corr_matrix=geo_corr_mat,
         extreme_corr_var_pairs=geo_extreme_corr_var_pairs_df,
-        extreme_corr_threshold=eda_constants.GEO_PAIRWISE_CORR_THRESHOLD,
+        extreme_corr_threshold=spec.geo_threshold,
     )
 
     if not geo_df_for_attention.empty:
@@ -1693,19 +1694,20 @@ class EDAEngine:
       An EDAOutcome object with findings and result values.
     """
     findings = []
+    spec = self.spec.pairwise_corr_spec
 
     corr_mat = _compute_correlation_matrix(
         self._stacked_national_treatment_control_scaled_da, dims=constants.TIME
     )
     extreme_corr_var_pairs_df = _find_extreme_corr_pairs(
-        corr_mat, eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD
+        corr_mat, spec.national_threshold
     )
 
     artifact = eda_outcome.PairwiseCorrArtifact(
         level=eda_outcome.AnalysisLevel.NATIONAL,
         corr_matrix=corr_mat,
         extreme_corr_var_pairs=extreme_corr_var_pairs_df,
-        extreme_corr_threshold=eda_constants.NATIONAL_PAIRWISE_CORR_THRESHOLD,
+        extreme_corr_threshold=spec.national_threshold,
     )
 
     if not extreme_corr_var_pairs_df.empty:
