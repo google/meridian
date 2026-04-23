@@ -17,13 +17,14 @@ from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import results
-from meridian.model import model
+from meridian.model import context
 import numpy as np
 import xarray as xr
 
@@ -32,8 +33,18 @@ class ConvergenceCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=True, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
 
   @parameterized.named_parameters(
       dict(
@@ -63,7 +74,8 @@ class ConvergenceCheckTest(parameterized.TestCase):
 
     config = configs.ConvergenceConfig()
     convergence_check = checks.ConvergenceCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=config,
     )
@@ -98,7 +110,8 @@ class ConvergenceCheckTest(parameterized.TestCase):
 
     config = configs.ConvergenceConfig()
     convergence_check = checks.ConvergenceCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=config,
     )
@@ -121,8 +134,24 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.media_channel = mock.create_autospec(
+        xr.DataArray, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.rf_channel = mock.create_autospec(
+        xr.DataArray, spec_set=False, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
     self.config = configs.ROIConsistencyConfig(
         prior_lower_quantile=0.01, prior_upper_quantile=0.99
     )
@@ -164,31 +193,30 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     """
     coords = []
     if media_channel_names:
-      self.meridian.inference_data.posterior.media_channel.values = (
-          media_channel_names
-      )
-      self.meridian.inference_data.posterior.roi_m = np.array(
+      self.inference_data.posterior.media_channel.values = media_channel_names
+      self.inference_data.posterior.roi_m = np.array(
           posterior_means, dtype=float
       )[np.newaxis, np.newaxis, :]
       coords.append(constants.MEDIA_CHANNEL)
 
     if rf_channel_names:
-      self.meridian.inference_data.posterior.rf_channel.values = (
-          rf_channel_names
-      )
-      self.meridian.inference_data.posterior.roi_rf = np.array(
+      self.inference_data.posterior.rf_channel.values = rf_channel_names
+      self.inference_data.posterior.roi_rf = np.array(
           rf_posterior_means, dtype=float
       )[np.newaxis, np.newaxis, :]
       coords.append(constants.RF_CHANNEL)
 
-    self.meridian.inference_data.posterior.coords = coords
+    self.inference_data.posterior.coords = coords
 
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
         lambda tensor, **kwargs: tensor
     )
 
     check = checks.ROIConsistencyCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=self.config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
     )
     return check.run()
 
@@ -349,13 +377,13 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
       global_prior=False,
   ):
     if media_channel_names:
-      self.meridian.model_spec.prior.roi_m.quantile.side_effect = (
+      self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
           self._get_quantile_side_effect(
               len(media_channel_names), return_scalar=global_prior
           )
       )
     if rf_channel_names:
-      self.meridian.model_spec.prior.roi_rf.quantile.side_effect = (
+      self.model_context.model_spec.prior.roi_rf.quantile.side_effect = (
           self._get_quantile_side_effect(
               len(rf_channel_names), return_scalar=global_prior
           )
@@ -405,10 +433,10 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
       else:
         raise ValueError(f"Unexpected quantile: {q}")
 
-    self.meridian.model_spec.prior.roi_m.quantile.side_effect = (
+    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
         get_m_quantile_side_effect
     )
-    self.meridian.model_spec.prior.roi_rf.quantile.side_effect = (
+    self.model_context.model_spec.prior.roi_rf.quantile.side_effect = (
         get_rf_quantile_side_effect
     )
     result = self._run_roi_consistency_check(
@@ -444,10 +472,12 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     rf_channel_names = ["rf1"]
     rf_posterior_means = [6.0]
 
-    self.meridian.model_spec.prior.roi_m.quantile.side_effect = (
+    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
         self._get_quantile_side_effect(1)
     )
-    self.meridian.model_spec.prior.roi_rf = backend.tfd.Deterministic(loc=6.0)
+    self.model_context.model_spec.prior.roi_rf = backend.tfd.Deterministic(
+        loc=6.0
+    )
     result = self._run_roi_consistency_check(
         media_channel_names=media_channel_names,
         posterior_means=posterior_means,
@@ -484,8 +514,12 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     rf_channel_names = ["rf1"]
     rf_posterior_means = [6.0]
 
-    self.meridian.model_spec.prior.roi_m = backend.tfd.Deterministic(loc=5.0)
-    self.meridian.model_spec.prior.roi_rf = backend.tfd.Deterministic(loc=6.0)
+    self.model_context.model_spec.prior.roi_m = backend.tfd.Deterministic(
+        loc=5.0
+    )
+    self.model_context.model_spec.prior.roi_rf = backend.tfd.Deterministic(
+        loc=6.0
+    )
     all_channels = media_channel_names + rf_channel_names
     result = self._run_roi_consistency_check(
         media_channel_names=media_channel_names,
@@ -520,12 +554,12 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     )
 
   def test_roi_consistency_check_with_selected_times_geos(self):
-    self.meridian.inference_data.posterior.media_channel.values = ["ch1"]
-    self.meridian.inference_data.posterior.roi_m = np.array([5.0])[
+    self.inference_data.posterior.media_channel.values = ["ch1"]
+    self.inference_data.posterior.roi_m = np.array([5.0])[
         np.newaxis, np.newaxis, :
     ]
-    self.meridian.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
-    self.meridian.model_spec.prior.roi_m.quantile.side_effect = (
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
         self._get_quantile_side_effect(1)
     )
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
@@ -533,7 +567,8 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     )
 
     check = checks.ROIConsistencyCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=self.config,
         selected_times=["time1"],
@@ -546,8 +581,24 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.media_channel = mock.create_autospec(
+        xr.DataArray, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.rf_channel = mock.create_autospec(
+        xr.DataArray, spec_set=False, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
     self.config = configs.PriorPosteriorShiftConfig(
         n_bootstraps=100, alpha=0.05, seed=0
     )
@@ -571,14 +622,17 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
           constants.DRAW: range(n_draws),
           constants.MEDIA_CHANNEL: media_channel_names,
       })
-      self.meridian.inference_data.posterior.media_channel.values = (
-          media_channel_names
-      )
-      posterior_vars[constants.ROI_M] = mock.Mock(
-          values=posterior_media_samples
+      self.inference_data.posterior.media_channel.values = media_channel_names
+      posterior_vars[constants.ROI_M] = mock.create_autospec(
+          spec=xr.DataArray,
+          spec_set=True,
+          instance=True,
+          values=posterior_media_samples,
       )
 
-      dist_m = mock.MagicMock()
+      dist_m = mock.create_autospec(
+          spec=backend.tfd.Distribution, spec_set=True, instance=True
+      )
       dist_m.mean.return_value = np.zeros(n_channels)
 
       if quantile_not_defined:
@@ -594,7 +648,7 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
             return np.full(n_channels, 0.67448975)
 
         dist_m.quantile.side_effect = quantile_m
-      self.meridian.model_spec.prior.roi_m = dist_m
+      self.model_context.model_spec.prior.roi_m = dist_m
 
     if rf_channel_names is not None and posterior_rf_samples is not None:
       n_channels = len(rf_channel_names)
@@ -604,12 +658,17 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
           constants.DRAW: range(n_draws),
           constants.RF_CHANNEL: rf_channel_names,
       })
-      self.meridian.inference_data.posterior.rf_channel.values = (
-          rf_channel_names
+      self.inference_data.posterior.rf_channel.values = rf_channel_names
+      posterior_vars[constants.ROI_RF] = mock.create_autospec(
+          spec=xr.DataArray,
+          spec_set=True,
+          instance=True,
+          values=posterior_rf_samples,
       )
-      posterior_vars[constants.ROI_RF] = mock.Mock(values=posterior_rf_samples)
 
-      dist_rf = mock.MagicMock()
+      dist_rf = mock.create_autospec(
+          spec=backend.tfd.Distribution, spec_set=True, instance=True
+      )
       dist_rf.mean.return_value = np.zeros(n_channels)
 
       if quantile_not_defined:
@@ -625,19 +684,20 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
             return np.full(n_channels, 0.67448975)
 
         dist_rf.quantile.side_effect = quantile_rf
-      self.meridian.model_spec.prior.roi_rf = dist_rf
+      self.model_context.model_spec.prior.roi_rf = dist_rf
 
     def getitem_side_effect(key):
-      return getattr(self.meridian.inference_data.posterior, key)
+      return getattr(self.inference_data.posterior, key)
 
-    self.meridian.inference_data.posterior.__getitem__.side_effect = (
-        getitem_side_effect
-    )
-    self.meridian.inference_data.posterior.variables = posterior_vars
-    self.meridian.inference_data.posterior.coords = posterior_coords
+    self.inference_data.posterior.__getitem__.side_effect = getitem_side_effect
+    self.inference_data.posterior.variables = posterior_vars
+    self.inference_data.posterior.coords = posterior_coords
 
     check = checks.PriorPosteriorShiftCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=self.config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
     )
     return check.run()
 
@@ -790,8 +850,18 @@ class BaselineCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=True, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
     self.config = configs.BaselineConfig(
         negative_baseline_prob_review_threshold=0.2,
         negative_baseline_prob_fail_threshold=0.8,
@@ -819,7 +889,10 @@ class BaselineCheckTest(parameterized.TestCase):
   ):
     self.analyzer.negative_baseline_probability.return_value = prob
     check = checks.BaselineCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=self.config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
     )
     result = check.run()
     self.assertEqual(result.case, expected_case)
@@ -845,7 +918,8 @@ class BaselineCheckTest(parameterized.TestCase):
   def test_baseline_check_with_selected_times_geos(self):
     self.analyzer.negative_baseline_probability.return_value = 0.5
     check = checks.BaselineCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=self.config,
         selected_times=["time1"],
@@ -862,8 +936,20 @@ class BayesianPPPCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext,
+        spec_set=True,
+        instance=True,
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=True, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
     self.config = configs.BayesianPPPConfig(ppp_threshold=0.05)
 
   @parameterized.named_parameters(
@@ -895,15 +981,18 @@ class BayesianPPPCheckTest(parameterized.TestCase):
   def test_bayesian_ppp_check(
       self, kpi, revenue_per_kpi, expected_outcome, expected_case, expected_ppp
   ):
-    self.meridian.kpi = kpi
-    self.meridian.revenue_per_kpi = revenue_per_kpi
+    self.model_context.input_data.kpi = kpi
+    self.model_context.input_data.revenue_per_kpi = revenue_per_kpi
     self.analyzer.expected_outcome.return_value = expected_outcome
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
         lambda tensor, **kwargs: tensor
     )
 
     check = checks.BayesianPPPCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=self.config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
     )
     result = check.run()
 
@@ -913,14 +1002,16 @@ class BayesianPPPCheckTest(parameterized.TestCase):
     )
 
   def test_bayesian_ppp_check_with_selected_times_geos(self):
-    self.meridian.kpi = np.array([10, 20])
-    self.meridian.revenue_per_kpi = None
+    self.model_context.input_data.kpi = np.array([10, 20])
+    self.model_context.input_data.revenue_per_kpi = None
     self.analyzer.expected_outcome.return_value = np.array([25, 35])
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
         lambda tensor, **kwargs: tensor
     )
+
     check = checks.BayesianPPPCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=self.config,
         selected_times=["time1"],
@@ -939,8 +1030,18 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.meridian = mock.MagicMock(spec=model.Meridian)
-    self.analyzer = mock.MagicMock(spec=analyzer_module.Analyzer)
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        xr.Dataset, spec_set=True, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
 
   def _get_gof_dataset(
       self,
@@ -1098,7 +1199,7 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       is_national,
       expected_case,
   ):
-    self.meridian.n_geos = 1 if is_national else 2
+    self.model_context.n_geos = 1 if is_national else 2
     gof_dataset = self._get_gof_dataset(
         r_squared_all=r_squared_all,
         mape_all=mape,
@@ -1114,7 +1215,10 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
     gof_check = checks.GoodnessOfFitCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
     )
     result = gof_check.run()
     self.assertEqual(result.case, expected_case)
@@ -1171,14 +1275,17 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
   def test_goodness_of_fit_check_no_holdout(
       self, r_squared, mape, wmape, is_national, expected_case
   ):
-    self.meridian.n_geos = 1 if is_national else 2
+    self.model_context.n_geos = 1 if is_national else 2
     gof_dataset = self._get_gof_dataset_no_holdout(
         r_squared, mape, wmape, is_national
     )
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
     gof_check = checks.GoodnessOfFitCheck(
-        meridian=self.meridian, analyzer=self.analyzer, config=config
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
     )
     result = gof_check.run()
     self.assertEqual(result.case, expected_case)
@@ -1195,12 +1302,13 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       )
 
   def test_goodness_of_fit_check_with_selected_times_geos(self):
-    self.meridian.n_geos = 2
+    self.model_context.n_geos = 2
     gof_dataset = self._get_gof_dataset_no_holdout(0.5, 0.1, 0.1, False)
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
     check = checks.GoodnessOfFitCheck(
-        meridian=self.meridian,
+        model_context=self.model_context,
+        inference_data=self.inference_data,
         analyzer=self.analyzer,
         config=config,
         selected_times=["time1"],
