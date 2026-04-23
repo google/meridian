@@ -36,7 +36,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-
 __all__ = [
     'BudgetOptimizer',
     'OptimizationGrid',
@@ -1946,17 +1945,32 @@ class BudgetOptimizer:
           ' new grid will be created.'
       )
       return False
-
+    normalized_start_date = (
+        tc.normalize_date(start_date) if start_date is not None else None
+    )
+    normalized_start_date_grid = (
+        tc.normalize_date(optimization_grid.start_date)
+        if optimization_grid.start_date is not None
+        else None
+    )
+    normalized_end_date = (
+        tc.normalize_date(end_date) if end_date is not None else None
+    )
+    normalized_end_date_grid = (
+        tc.normalize_date(optimization_grid.end_date)
+        if optimization_grid.end_date is not None
+        else None
+    )
     if (
-        start_date != optimization_grid.start_date
-        or end_date != optimization_grid.end_date
+        normalized_start_date != normalized_start_date_grid
+        or normalized_end_date != normalized_end_date_grid
     ):
       warnings.warn(
           'Given optimization grid was created with `start_date` ='
-          f' {optimization_grid.start_date} and `end_date` ='
-          f' {optimization_grid.end_date}, but optimization was called with'
-          f' `start_date` = {start_date} and `end_date` = {end_date}. A new'
-          ' grid will be created.'
+          f' {normalized_start_date_grid} and `end_date` ='
+          f' {normalized_end_date_grid}, but optimization was called with'
+          f' `start_date` = {normalized_start_date} and `end_date` ='
+          f' {normalized_end_date}. A new grid will be created.'
       )
       return False
 

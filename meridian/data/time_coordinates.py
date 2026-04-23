@@ -55,6 +55,7 @@ def _to_pandas_datetime_index(times: _TimeCoordinateValues) -> pd.DatetimeIndex:
   return pd.to_datetime(times)
 
 
+# TODO: Handle `None`.
 def normalize_date(date: Date) -> datetime.date:
   """Normalizes the given date value into a `datetime.date`."""
   if isinstance(date, str):

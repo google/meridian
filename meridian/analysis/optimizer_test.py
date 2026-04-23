@@ -24,6 +24,7 @@ The unit tests generally follow this procedure:
 
 from collections.abc import Mapping
 import dataclasses
+import datetime
 import math
 import os
 import tempfile
@@ -52,7 +53,6 @@ from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
-
 
 mock = absltest.mock
 
@@ -2499,8 +2499,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           warning_regex=(
               'Given optimization grid was created with `start_date` = None'
               ' and `end_date` = None, but optimization was called with'
-              ' `start_date` = 2021-02-01 and `end_date` = None. A new grid'
-              ' will be created.'
+              ' `start_date` = 2021-02-01 and `end_date` ='
+              ' None\\. A new grid will be created\\.'
           ),
       ),
       dict(
@@ -2510,8 +2510,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           warning_regex=(
               'Given optimization grid was created with `start_date` = None and'
               ' `end_date` = None, but optimization was called with'
-              ' `start_date` = None and `end_date` = 2021-02-01. A new grid'
-              ' will be created.'
+              ' `start_date` = None and `end_date` = 2021-02-01\\. A new grid'
+              ' will be created\\.'
           ),
       ),
       dict(
@@ -2704,10 +2704,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     }
     with self.assertWarnsRegex(
         UserWarning,
-        'Given optimization grid was created with `start_date` = 2025-04-07 and'
-        ' `end_date` = 2025-04-21, but optimization was called with'
-        ' `start_date` = 2025-04-07 and `end_date` = 2025-04-28. A new grid'
-        ' will be created.',
+        'Given optimization grid was created with `start_date` ='
+        ' 2025-04-07 and `end_date` ='
+        ' 2025-04-21, but optimization was called with'
+        ' `start_date` = 2025-04-07 and `end_date` ='
+        ' 2025-04-28\\. A new grid will be created\\.',
     ):
       budget_optimizer.optimize(optimization_grid=grid, **optimization_args)
 
@@ -2746,6 +2747,33 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     gtol = 0.01
     grid = budget_optimizer.create_optimization_grid(gtol=gtol)
     budget_optimizer.optimize(optimization_grid=grid, gtol=gtol)
+
+    # Only called once in the test itself.
+    mock_create_optimization_grid.assert_called_once()
+
+  def test_optimize_with_different_date_types_grid_reuses_grid(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(
+        start_date=datetime.date(2021, 5, 17),
+        end_date=datetime.date(2021, 6, 14),
+        gtol=gtol,
+    )
+    budget_optimizer.optimize(
+        optimization_grid=grid,
+        start_date='2021-05-17',
+        end_date='2021-06-14',
+        gtol=gtol,
+    )
 
     # Only called once in the test itself.
     mock_create_optimization_grid.assert_called_once()
