@@ -83,6 +83,56 @@ class MediaTransformerTest(test_utils.MeridianTestCase):
     )
     test_utils.assert_allclose(median, np.ones(self._n_media_channels))
 
+  def test_media_transformer_ignores_zeros_when_tensor_equality_disabled(self):
+    """Tests that MediaTransformer correctly masks zeros.
+
+    Disables tensor equality in the backend to ensure the transformer safely
+    isolates zeros and computes the correct median even when element-wise
+    comparison operators (`==`) are not available.
+    """
+    media_data = [[[0.0], [0.0], [0.0], [10.0], [20.0]]]
+    media_tensor = backend.to_tensor(media_data, dtype=backend.float_dtype)
+    population_tensor = backend.to_tensor([1.0], dtype=backend.float_dtype)
+
+    is_tf = (
+        backend.computation_backend()
+        == backend.config.ComputationBackend.TENSORFLOW
+    )
+    if is_tf:
+      tf = backend._ops
+      tf.compat.v1.disable_tensor_equality()
+
+    try:
+      transformer = transformers.MediaTransformer(
+          media=media_tensor, population=population_tensor
+      )
+
+      expected_median = [15.0]
+      np.testing.assert_allclose(
+          backend.make_ndarray(
+              backend.make_tensor_proto(transformer.population_scaled_median_m)
+          ),
+          expected_median,
+          err_msg=(
+              "MediaTransformer median calculation failed to mask out zeros."
+          ),
+      )
+
+      transformed = transformer.forward(media_tensor)
+      transformed_np = backend.make_ndarray(
+          backend.make_tensor_proto(transformed)
+      )
+      self.assertTrue(
+          np.all(np.isfinite(transformed_np)),
+          "Forward pass produced non-finite values, indicating division by"
+          " zero.",
+      )
+
+    finally:
+      if is_tf:
+        tf = backend._ops
+        tf.compat.v1.enable_tensor_equality()
+
   @parameterized.named_parameters(
       dict(testcase_name="all_zeros", channel_fill_value=0.0),
       dict(testcase_name="all_nans", channel_fill_value=np.nan),

@@ -19,7 +19,6 @@ import abc
 from meridian import backend
 import numpy as np
 
-
 __all__ = [
     "TensorTransformer",
     "MediaTransformer",
@@ -69,7 +68,9 @@ class MediaTransformer(TensorTransformer):
     )
     # Replace zeros with NaNs
     population_scaled_media_nan = backend.where(
-        population_scaled_media == 0, np.nan, population_scaled_media
+        backend.equal(population_scaled_media, 0),
+        np.nan,
+        population_scaled_media,
     )
     # Tensor of medians of the positive portion of `media`. Used as a component
     # for scaling.
