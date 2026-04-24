@@ -21,6 +21,7 @@ from meridian.model.eda import constants as eda_constants
 
 __all__ = [
     "AggregationConfig",
+    "KpiInvariabilitySpec",
     "PairwiseCorrSpec",
     "VIFSpec",
     "EDASpec",
@@ -51,6 +52,18 @@ class AggregationConfig:
 
   control_variables: AggregationMap = dataclasses.field(default_factory=dict)
   non_media_treatments: AggregationMap = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class KpiInvariabilitySpec:
+  """A spec for the EDA KPI invariability check.
+
+  Attributes:
+    std_threshold: The threshold for KPI standard deviation. Exceeding this
+      threshold triggers an ERROR.
+  """
+
+  std_threshold: float = eda_constants.STD_THRESHOLD
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -99,6 +112,8 @@ class EDASpec:
 
   Attributes:
     aggregation_config: A configuration object for custom aggregation functions.
+    kpi_invariability_spec: A configuration object for the EDA KPI invariability
+      check.
     pairwise_corr_spec: A configuration object for the EDA pairwise correlation
       check.
     vif_spec: A configuration object for the EDA VIF check.
@@ -106,6 +121,9 @@ class EDASpec:
 
   aggregation_config: AggregationConfig = dataclasses.field(
       default_factory=AggregationConfig
+  )
+  kpi_invariability_spec: KpiInvariabilitySpec = dataclasses.field(
+      default_factory=KpiInvariabilitySpec
   )
   pairwise_corr_spec: PairwiseCorrSpec = dataclasses.field(
       default_factory=PairwiseCorrSpec

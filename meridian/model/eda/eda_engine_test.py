@@ -6895,30 +6895,53 @@ class EDAEngineTest(
       dict(
           testcase_name="has_variability",
           kpi_scaled_stdev=1.0,
+          std_threshold=eda_constants.STD_THRESHOLD,
           expected_result=True,
       ),
       dict(
           testcase_name="no_variability",
           kpi_scaled_stdev=0.0,
+          std_threshold=eda_constants.STD_THRESHOLD,
           expected_result=False,
       ),
       dict(
           testcase_name="below_threshold",
           kpi_scaled_stdev=eda_constants.STD_THRESHOLD / 2,
+          std_threshold=eda_constants.STD_THRESHOLD,
           expected_result=False,
       ),
       dict(
           testcase_name="at_threshold",
           kpi_scaled_stdev=eda_constants.STD_THRESHOLD,
+          std_threshold=eda_constants.STD_THRESHOLD,
+          expected_result=True,
+      ),
+      dict(
+          testcase_name="custom_threshold_below",
+          kpi_scaled_stdev=0.005,
+          std_threshold=0.01,
+          expected_result=False,
+      ),
+      dict(
+          testcase_name="custom_threshold_above",
+          kpi_scaled_stdev=0.015,
+          std_threshold=0.01,
           expected_result=True,
       ),
   )
-  def test_kpi_has_variability(self, kpi_scaled_stdev, expected_result):
+  def test_kpi_has_variability(
+      self, kpi_scaled_stdev, std_threshold, expected_result
+  ):
     model_context = mock.create_autospec(
         context.ModelContext,
         instance=True,
     )
-    engine = eda_engine.EDAEngine(model_context=model_context)
+    spec = eda_spec.EDASpec(
+        kpi_invariability_spec=eda_spec.KpiInvariabilitySpec(
+            std_threshold=std_threshold,
+        )
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=spec)
     mock_kpi_scaled_da = mock.create_autospec(
         xr.DataArray,
         instance=True,

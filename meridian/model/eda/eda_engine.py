@@ -2203,7 +2203,7 @@ class EDAEngine:
     """Whether the KPI has variability across geos and times."""
     return (
         self._overall_scaled_kpi_invariability_artifact.kpi_stdev.item()
-        >= eda_constants.STD_THRESHOLD
+        >= self.spec.kpi_invariability_spec.std_threshold
     )
 
   def check_overall_kpi_invariability(

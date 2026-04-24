@@ -681,6 +681,9 @@ class MeridianSerdeTest(parameterized.TestCase):
     mock_eda_spec_serde.return_value.serialize.return_value = (
         eda_spec_pb2.EDASpec()
     )
+    mock_eda_spec_serde.return_value.deserialize.return_value = (
+        eda_spec.EDASpec()
+    )
     meridian_model = model.Meridian(
         input_data=_INPUT_DATA, model_spec=test_data.get_default_model_spec()
     )
@@ -696,6 +699,9 @@ class MeridianSerdeTest(parameterized.TestCase):
     mock_eda_spec_serde.return_value.serialize.return_value = (
         eda_spec_pb2.EDASpec()
     )
+    mock_eda_spec_serde.return_value.deserialize.return_value = (
+        eda_spec.EDASpec()
+    )
     custom_registry = function_registry_utils.FunctionRegistry()
     meridian_model = model.Meridian(
         input_data=_INPUT_DATA, model_spec=test_data.get_default_model_spec()
@@ -706,6 +712,9 @@ class MeridianSerdeTest(parameterized.TestCase):
   def test_deserialize_with_default_eda_registry(self):
     mock_eda_spec_serde = self.enter_context(
         mock.patch.object(eda_spec_serde, 'EDASpecSerde', autospec=True)
+    )
+    mock_eda_spec_serde.return_value.deserialize.return_value = (
+        eda_spec.EDASpec()
     )
     meridian_model_proto = meridian_pb.MeridianModel(
         model_version='1.2.3',
@@ -729,6 +738,9 @@ class MeridianSerdeTest(parameterized.TestCase):
   def test_deserialize_with_custom_eda_registry(self):
     mock_eda_spec_serde = self.enter_context(
         mock.patch.object(eda_spec_serde, 'EDASpecSerde', autospec=True)
+    )
+    mock_eda_spec_serde.return_value.deserialize.return_value = (
+        eda_spec.EDASpec()
     )
     custom_registry = function_registry_utils.FunctionRegistry()
     meridian_model_proto = meridian_pb.MeridianModel(
