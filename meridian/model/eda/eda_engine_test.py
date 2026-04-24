@@ -5644,7 +5644,7 @@ class EDAEngineTest(
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
           expected_std_message_substr=(
-              "Some treatment or control variables have zero standard deviation"
+              "Some treatment or control variables show zero standard deviation"
           ),
           expected_outlier_message_substr=None,
           expected_num_findings=1,
@@ -6047,8 +6047,7 @@ class EDAEngineTest(
           mock_reach_ndarray=None,
           mock_freq_ndarray=None,
           expected_std_message_substr=(
-              "The standard deviation of these scaled treatment or control"
-              " variables drops from positive to zero"
+              "Some treatment or control variables show zero standard deviation"
           ),
           expected_outlier_message_substr=None,
           expected_num_findings=1,

@@ -1826,11 +1826,13 @@ class EDAEngine:
         (
             self._stacked_treatment_control_scaled_da,
             (
-                'Some treatment or control variables have zero standard'
-                ' deviation after removing outliers in certain geo(s). Please'
-                ' review the input data. If these variables are sparse,'
-                ' consider combining them to mitigate potential model'
-                ' identifiability and convergence issues.'
+                'Some treatment or control variables show zero standard'
+                ' deviation in specific geo(s) after outlier removal. While'
+                " this may be intentional (e.g., data sparsity due to 'go dark'"
+                ' periods), it can impact model convergence and'
+                ' identifiability. Please verify if this is by design. If not,'
+                ' consider aggregating these variables to improve model'
+                ' stability.'
             ),
             (
                 'There are outliers in the scaled treatment or control'
@@ -1924,12 +1926,12 @@ class EDAEngine:
         (
             self._stacked_national_treatment_control_scaled_da,
             (
-                'The standard deviation of these scaled treatment or control'
-                ' variables drops from positive to zero after removing'
-                ' outliers. This indicates sparsity of these variables, which'
-                ' may cause model identifiability and convergence issues.'
-                ' Please review the input data, and/or consider combining these'
-                ' variables to mitigate sparsity.'
+                'Some treatment or control variables show zero standard'
+                ' deviation after outlier removal. While this may be'
+                " intentional (e.g., data sparsity due to 'go dark' periods),"
+                ' it can impact model convergence and identifiability. Please'
+                ' verify if this is by design. If not, consider aggregating'
+                ' these variables to improve model stability.'
             ),
             (
                 'There are outliers in the scaled treatment or control'
