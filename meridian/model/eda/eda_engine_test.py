@@ -6780,6 +6780,78 @@ class EDAEngineTest(
 
   @parameterized.named_parameters(
       dict(
+          testcase_name="geo",
+          is_national=False,
+          kpi_data=np.array([[10.0, 10.0, 10.0, 10.0, 10.0, 11.0]]),
+          kpi_name=constants.KPI_SCALED,
+          da_properties_to_mock=[
+              "kpi_scaled_da",
+              "_stacked_treatment_control_scaled_da",
+              "all_reach_scaled_da",
+              "all_freq_da",
+          ],
+          method_to_call="check_geo_std",
+          std_spec_kwargs={"geo_std_threshold": 1.5},
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+          kpi_data=np.array([10.0, 10.0, 10.0, 10.0, 10.0, 11.0]),
+          kpi_name=constants.NATIONAL_KPI_SCALED,
+          da_properties_to_mock=[
+              "national_kpi_scaled_da",
+              "_stacked_national_treatment_control_scaled_da",
+              "national_all_reach_scaled_da",
+              "national_all_freq_da",
+          ],
+          method_to_call="check_national_std",
+          std_spec_kwargs={"national_std_threshold": 1.5},
+      ),
+  )
+  def test_custom_std_spec(
+      self,
+      is_national,
+      kpi_data,
+      kpi_name,
+      da_properties_to_mock,
+      method_to_call,
+      std_spec_kwargs,
+  ):
+    custom_spec = eda_spec.EDASpec(
+        std_spec=eda_spec.StandardDeviationSpec(**std_spec_kwargs)
+    )
+    model_context = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        is_national=is_national,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=custom_spec)
+
+    kpi_da = _create_data_array_with_var_dim(kpi_data, name=kpi_name)
+
+    self._mock_eda_engine_property(da_properties_to_mock[0], kpi_da)
+    for prop in da_properties_to_mock[1:]:
+      self._mock_eda_engine_property(prop, None)
+
+    outcome = getattr(engine, method_to_call)()
+
+    with self.subTest("analysis_artifacts"):
+      artifacts = outcome.analysis_artifacts
+      self.assertLen(artifacts, 1)
+      (kpi_artifact,) = artifacts
+      self.assertFalse(kpi_artifact.outlier_df.empty)
+      self.assertLen(kpi_artifact.outlier_df, 1)
+
+    with self.subTest("findings"):
+      # 2 ATTENTION findings: one for 0 std, one for outliers.
+      self.assertLen(outcome.findings, 2)
+      self.assertEqual(
+          [finding.severity for finding in outcome.findings],
+          [eda_outcome.EDASeverity.ATTENTION] * 2,
+      )
+
+  @parameterized.named_parameters(
+      dict(
           testcase_name="national_model",
           is_national=True,
           expected_call="check_national_std",

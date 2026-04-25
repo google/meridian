@@ -1756,9 +1756,11 @@ class EDAEngine:
   def _check_std(
       self,
       data: xr.DataArray,
+      *,
       level: eda_outcome.AnalysisLevel,
       zero_std_message: str,
       outlier_message: str,
+      std_threshold: float,
   ) -> tuple[
       list[eda_outcome.EDAFinding], eda_outcome.StandardDeviationArtifact
   ]:
@@ -1775,8 +1777,7 @@ class EDAEngine:
 
     findings = []
     if (
-        std_ds[eda_constants.STD_WITHOUT_OUTLIERS_VAR_NAME]
-        < eda_constants.STD_THRESHOLD
+        std_ds[eda_constants.STD_WITHOUT_OUTLIERS_VAR_NAME] < std_threshold
     ).any():
       findings.append(
           eda_outcome.EDAFinding(
@@ -1880,6 +1881,7 @@ class EDAEngine:
           data=data_da,
           zero_std_message=std_message,
           outlier_message=outlier_message,
+          std_threshold=self.spec.std_spec.geo_std_threshold,
       )
       artifacts.append(artifact)
       if current_findings:
@@ -1976,6 +1978,7 @@ class EDAEngine:
           level=eda_outcome.AnalysisLevel.NATIONAL,
           zero_std_message=std_message,
           outlier_message=outlier_message,
+          std_threshold=self.spec.std_spec.national_std_threshold,
       )
       artifacts.append(artifact)
       if current_findings:
