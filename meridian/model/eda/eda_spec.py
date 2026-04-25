@@ -111,11 +111,14 @@ class VIFSpec:
       triggers an ERROR.
     national_threshold: The threshold for national VIF. Exceeding this threshold
       triggers an ERROR.
+    std_threshold: The threshold for standard deviation. Used to determine if a
+      variable is a constant.
   """
 
   geo_threshold: float = _DEFAULT_VIF_THRESHOLD
   overall_threshold: float = _DEFAULT_VIF_THRESHOLD
   national_threshold: float = _DEFAULT_VIF_THRESHOLD
+  std_threshold: float = eda_constants.STD_THRESHOLD
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

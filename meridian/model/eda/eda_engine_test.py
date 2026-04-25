@@ -6778,6 +6778,45 @@ class EDAEngineTest(
       self.assertIsInstance(vif_artifact, eda_outcome.VIFArtifact)
       self.assertTrue(np.isnan(vif_artifact.vif_da.sel(var="var_2").item()))
 
+  def test_check_vif_custom_std_threshold(self):
+    custom_spec = eda_spec.EDASpec(vif_spec=eda_spec.VIFSpec(std_threshold=0.5))
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(),
+        input_data=self.national_input_data_media_and_rf,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context, spec=custom_spec)
+    # v1 has std > 0.5
+    v1 = np.linspace(0, 5, _N_TIMES_VIF, dtype=float)
+    # v2 has std > 0 but < 0.5
+    v2 = np.array([1.1] + [1.0] * (_N_TIMES_VIF - 1), dtype=float)
+    # v3 has std > 0.5
+    v3 = np.linspace(0, 6, _N_TIMES_VIF, dtype=float)
+    data_np = np.stack([v1, v2, v3], axis=-1)
+    data = _create_data_array_with_var_dim(
+        data=data_np,
+        name="VIF",
+        var_name=eda_constants.VARIABLE,
+        var_dim_name=eda_constants.VARIABLE,
+    ).assign_coords({eda_constants.VARIABLE: ["var_1", "var_2", "var_3"]})
+    self._mock_eda_engine_property(
+        "_stacked_national_treatment_control_scaled_da", data
+    )
+
+    outcome = engine.check_national_vif()
+
+    (vif_artifact,) = outcome.analysis_artifacts
+    with self.subTest(name="artifact_type"):
+      self.assertIsInstance(vif_artifact, eda_outcome.VIFArtifact)
+    # v2 is considered constant because its standard deviation (~0.022) is less
+    # than the custom std_threshold of 0.5, so VIF is NaN.
+    with self.subTest(name="vif_for_low_std_variable"):
+      self.assertTrue(np.isnan(vif_artifact.vif_da.sel(var="var_2").item()))
+    # v1 (std ~1.56) and v3 (std ~1.87) should have non-NaN VIFs as their std
+    # is greater than 0.5.
+    with self.subTest(name="vif_for_high_std_variables"):
+      self.assertFalse(np.isnan(vif_artifact.vif_da.sel(var="var_1").item()))
+      self.assertFalse(np.isnan(vif_artifact.vif_da.sel(var="var_3").item()))
+
   @parameterized.named_parameters(
       dict(
           testcase_name="geo",

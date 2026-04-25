@@ -357,7 +357,11 @@ def _calculate_outliers(
   )
 
 
-def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
+def _calculate_vif(
+    input_da: xr.DataArray,
+    var_dim: str,
+    std_threshold: float,
+) -> xr.DataArray:
   """Helper function to compute variance inflation factor.
 
   The VIF calculation only focuses on multicollinearity among non-constant
@@ -367,6 +371,7 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
     input_da: A DataArray for which to calculate the VIF over sample dimensions
       (e.g. time and geo if applicable).
     var_dim: The dimension name of the variable to compute VIF for.
+    std_threshold: The threshold to consider a variable as constant.
 
   Returns:
     A DataArray containing the VIF for each variable in the variable dimension.
@@ -375,7 +380,7 @@ def _calculate_vif(input_da: xr.DataArray, var_dim: str) -> xr.DataArray:
   num_vars = input_da.sizes[var_dim]
   np_data = input_da.values.reshape(-1, num_vars)
 
-  is_constant = np.std(np_data, axis=0) < eda_constants.STD_THRESHOLD
+  is_constant = np.std(np_data, axis=0) < std_threshold
   vif_values = np.full(num_vars, np.nan)
   (non_constant_vars_indices,) = (~is_constant).nonzero()
 
@@ -2031,8 +2036,13 @@ class EDAEngine:
     # Overall level VIF check for geo data.
     tc_da = self._stacked_treatment_control_scaled_da
     overall_threshold = self._spec.vif_spec.overall_threshold
+    std_threshold = self._spec.vif_spec.std_threshold
 
-    overall_vif_da = _calculate_vif(tc_da, eda_constants.VARIABLE)
+    overall_vif_da = _calculate_vif(
+        tc_da,
+        eda_constants.VARIABLE,
+        std_threshold,
+    )
     extreme_overall_vif_da = overall_vif_da.where(
         overall_vif_da > overall_threshold
     )
@@ -2049,7 +2059,7 @@ class EDAEngine:
     # Geo level VIF check.
     geo_threshold = self._spec.vif_spec.geo_threshold
     geo_vif_da = tc_da.groupby(constants.GEO).map(
-        lambda x: _calculate_vif(x, eda_constants.VARIABLE)
+        lambda x: _calculate_vif(x, eda_constants.VARIABLE, std_threshold)
     )
     extreme_geo_vif_da = geo_vif_da.where(geo_vif_da > geo_threshold)
     extreme_geo_vif_df = extreme_geo_vif_da.to_dataframe(
@@ -2137,7 +2147,12 @@ class EDAEngine:
     """
     national_tc_da = self._stacked_national_treatment_control_scaled_da
     national_threshold = self._spec.vif_spec.national_threshold
-    national_vif_da = _calculate_vif(national_tc_da, eda_constants.VARIABLE)
+    std_threshold = self._spec.vif_spec.std_threshold
+    national_vif_da = _calculate_vif(
+        national_tc_da,
+        eda_constants.VARIABLE,
+        std_threshold,
+    )
 
     extreme_national_vif_df = (
         national_vif_da.where(national_vif_da > national_threshold)
