@@ -342,6 +342,13 @@ message AdstockDecayByChannel {
   map<string, string> channel_decays = 1;
 }
 
+// Specifies the saturation function for each channel.
+message SaturationByChannel {
+  // A map where keys are channel names and values are the saturation
+  // function to use for that channel. Allowed values are 'hill' or 'none'.
+  map<string, string> channel_saturations = 1;
+}
+
 // A container for non-media baseline function or float values. If float, then
 // that value is used as the baseline for all non-media channels. Otherwise, the
 // min or max value is used as the baseline for the corresponding non-media
@@ -509,6 +516,18 @@ message Hyperparameters {
     // Channel-specific adstock decay functions. Defaults to 'geometric' for
     // channels not specified in the map.
     AdstockDecayByChannel adstock_decay_by_channel = 24;
+  }
+
+  // Specifies the saturation function for each media, RF, organic media and
+  // organic RF channel. Default is 'hill'.
+  oneof saturation_spec {
+    // The global saturation function to use for all channels. Allowed
+    // values are 'hill' or 'none'.
+    string global_saturation = 26;
+
+    // Channel-specific saturation functions. Defaults to 'hill' for
+    // channels not specified in the map.
+    SaturationByChannel saturation_by_channel = 27;
   }
 
   // A list with the shape `(n_non_media_channels,)`. Each element is
