@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `saturation_spec` to `Hyperparameters` proto to support selective
+    saturation.
+
 ## [1.1.3] - 2026-04-22
 
 *   Add `ComputationPrecision` proto for Meridian models.

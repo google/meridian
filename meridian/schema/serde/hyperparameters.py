@@ -14,6 +14,7 @@
 
 """Serde for Hyperparameters."""
 
+from collections.abc import Mapping
 import warnings
 
 import bidict
@@ -149,9 +150,16 @@ class HyperparametersSerde(
 
     if isinstance(obj.adstock_decay_spec, str):
       hyperparameters_proto.global_adstock_decay = obj.adstock_decay_spec
-    elif isinstance(obj.adstock_decay_spec, dict):
+    elif isinstance(obj.adstock_decay_spec, Mapping):
       hyperparameters_proto.adstock_decay_by_channel.channel_decays.update(
           obj.adstock_decay_spec
+      )
+
+    if isinstance(obj.saturation_spec, str):
+      hyperparameters_proto.global_saturation = obj.saturation_spec
+    elif isinstance(obj.saturation_spec, Mapping):
+      hyperparameters_proto.saturation_by_channel.channel_saturations.update(
+          obj.saturation_spec
       )
 
     if obj.non_media_baseline_values is not None:
@@ -272,6 +280,16 @@ class HyperparametersSerde(
     else:
       adstock_decay_spec = sc.DEFAULT_DECAY
 
+    saturation_spec_field = serialized.WhichOneof(sc.SATURATION_SPEC)
+    if saturation_spec_field == sc.GLOBAL_SATURATION:
+      saturation_spec = serialized.global_saturation
+    elif saturation_spec_field == sc.SATURATION_BY_CHANNEL:
+      saturation_spec = dict(
+          serialized.saturation_by_channel.channel_saturations
+      )
+    else:
+      saturation_spec = sc.DEFAULT_SATURATION
+
     return spec.ModelSpec(
         media_effects_dist=media_effects_converter.from_proto(
             serialized.media_effects_dist
@@ -307,4 +325,5 @@ class HyperparametersSerde(
         control_population_scaling_id=control_population_scaling_id,
         non_media_population_scaling_id=non_media_population_scaling_id,
         adstock_decay_spec=adstock_decay_spec,
+        saturation_spec=saturation_spec,
     )
