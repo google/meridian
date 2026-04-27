@@ -25,6 +25,7 @@ import arviz as az
 import joblib
 from meridian import backend
 from meridian import constants
+from meridian.common import errors
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
@@ -47,6 +48,7 @@ __all__ = [
     "MCMCOOMError",
     "Meridian",
     "ModelFittingError",
+    # TODO: Migrate to a direct call to common/errors.py.
     "NotFittedModelError",
     "save_mmm",
     "load_mmm",
@@ -57,12 +59,9 @@ class ModelFittingError(Exception):
   """Model has critical issues preventing fitting."""
 
 
-class NotFittedModelError(Exception):
-  """Model has not been fitted."""
-
-
 MCMCSamplingError = posterior_sampler.MCMCSamplingError
 MCMCOOMError = posterior_sampler.MCMCOOMError
+NotFittedModelError = errors.NotFittedModelError
 
 
 def _warn_setting_national_args(**kwargs):

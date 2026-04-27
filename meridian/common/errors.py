@@ -12,16 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Meridian API module that models the data."""
+"""Common errors for the Meridian library."""
 
-from meridian.model import adstock_hill
-from meridian.model import context
-from meridian.model import eda
-from meridian.model import equations
-from meridian.model import knots
-from meridian.model import media
-from meridian.model import posterior_sampler
-from meridian.model import prior_distribution
-from meridian.model import prior_sampler
-from meridian.model import spec
-from meridian.model import transformers
+
+class NotFittedModelError(Exception):
+  """Model has not been fitted."""

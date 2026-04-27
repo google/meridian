@@ -43,6 +43,7 @@ from meridian.analysis import optimizer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
+from meridian.common import errors
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
@@ -465,7 +466,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     budget_optimizer = optimizer.BudgetOptimizer(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        errors.NotFittedModelError,
         'Running budget optimization scenarios requires fitting the model.',
     ):
       budget_optimizer.create_optimization_grid(

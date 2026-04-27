@@ -28,6 +28,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis import summary_text
+from meridian.common import errors as common_errors
 from meridian.data import time_coordinates as tc
 from meridian.model import context
 from meridian.model import model
@@ -1412,7 +1413,7 @@ class BudgetOptimizer:
     """Validates that the model is fit."""
     dist_type = c.POSTERIOR if use_posterior else c.PRIOR
     if dist_type not in self._analyzer.inference_data.groups():
-      raise model.NotFittedModelError(
+      raise common_errors.NotFittedModelError(
           'Running budget optimization scenarios requires fitting the model.'
       )
 

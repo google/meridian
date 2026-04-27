@@ -30,6 +30,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Add JAX 64-bit precision opt-in configuration.
 * Ensure consistent float precision across tensors, NumPy arrays, and prior
   distributions.
+* Deprecate model.NotFittedModelError and migrate it to common/errors.py.
+* Deprecate importing `model` module from `analyzer` and `review` modules.
 
 ## [1.5.3] - 2026-03-04
 

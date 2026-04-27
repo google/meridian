@@ -23,6 +23,7 @@ from meridian.analysis import analyzer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils
 from meridian.analysis import visualizer
+from meridian.common import errors
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
@@ -217,7 +218,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
     not_fitted_model_diagnostics = visualizer.ModelDiagnostics(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        errors.NotFittedModelError,
         "Plotting prior and posterior distributions requires fitting the model",
     ):
       not_fitted_model_diagnostics.plot_prior_and_posterior_distribution()
@@ -356,7 +357,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
     not_fitted_model_diagnostics = visualizer.ModelDiagnostics(not_fitted_mmm)
     with self.assertRaisesRegex(
-        model.NotFittedModelError,
+        errors.NotFittedModelError,
         "Plotting the r-hat values requires fitting the model.",
     ):
       not_fitted_model_diagnostics.plot_rhat_boxplot()

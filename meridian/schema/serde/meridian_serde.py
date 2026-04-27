@@ -49,6 +49,7 @@ import meridian
 from meridian import backend
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.common import errors
 from meridian.model import model
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
@@ -62,7 +63,6 @@ from meridian.schema.serde import serde
 import semver
 
 from google.protobuf import any_pb2
-
 
 _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
 
@@ -228,7 +228,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_convergence_proto.convergence = True
     except model.MCMCSamplingError:
       model_convergence_proto.convergence = False
-    except model.NotFittedModelError:
+    except errors.NotFittedModelError:
       return None
 
     if hasattr(mmm.inference_data, 'trace'):
