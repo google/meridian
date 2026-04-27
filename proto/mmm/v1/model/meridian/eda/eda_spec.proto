@@ -26,9 +26,7 @@ message AggregationFunction {
   // A key that maps to a custom function in the user-provided function
   // registry. The registry allows the EDA spec to be serialized without
   // including the function's code, enabling a more secure deserialization
-  // process.
-  //
-  // Required.
+  // process. Required.
   string function_key = 1;
 }
 
@@ -42,14 +40,40 @@ message AggregationConfig {
   map<string, AggregationFunction> non_media_treatments = 2;
 }
 
+// A spec for the EDA KPI invariability check.
+message KpiInvariabilitySpec {
+  // The threshold for KPI standard deviation. Required.
+  double std_threshold = 1 [features.field_presence = EXPLICIT];
+}
+
+// A spec for the EDA standard deviation check.
+message StandardDeviationSpec {
+  // The threshold for geo-level standard deviation. Required.
+  double geo_std_threshold = 1 [features.field_presence = EXPLICIT];
+  // The threshold for national-level standard deviation. Required.
+  double national_std_threshold = 2 [features.field_presence = EXPLICIT];
+}
+
 // A spec for the EDA VIF check.
 message VIFSpec {
-  // The threshold for geo-level VIF. (Python default: 1000.0)
+  // The threshold for geo-level VIF. Required.
   double geo_threshold = 1;
-  // The threshold for overall VIF. (Python default: 1000.0)
+  // The threshold for overall VIF. Required.
   double overall_threshold = 2;
-  // The threshold for national VIF. (Python default: 1000.0)
+  // The threshold for national VIF. Required.
   double national_threshold = 3;
+  // The threshold for standard deviation. Required.
+  double std_threshold = 4 [features.field_presence = EXPLICIT];
+}
+
+// A spec for the EDA pairwise correlation check.
+message PairwiseCorrSpec {
+  // The threshold for overall pairwise correlation. Required.
+  double overall_threshold = 1 [features.field_presence = EXPLICIT];
+  // The threshold for geo-level pairwise correlation. Required.
+  double geo_threshold = 2 [features.field_presence = EXPLICIT];
+  // The threshold for national pairwise correlation. Required.
+  double national_threshold = 3 [features.field_presence = EXPLICIT];
 }
 
 // A container for all user-configurable EDA check specs.
@@ -61,4 +85,10 @@ message EDASpec {
   // Lookup table that contains function names mapped to hashed functions used
   // by various aggregation functions.
   map<string, string> function_registry = 3;
+  // Specification for the EDA pairwise correlation check.
+  PairwiseCorrSpec pairwise_corr_spec = 4;
+  // Specification for the EDA KPI invariability check.
+  KpiInvariabilitySpec kpi_invariability_spec = 5;
+  // Specification for the EDA standard deviation check.
+  StandardDeviationSpec std_spec = 6;
 }
