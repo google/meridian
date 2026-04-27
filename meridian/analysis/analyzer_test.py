@@ -27,6 +27,7 @@ from meridian import constants
 from meridian.analysis import analyzer
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
+from meridian.common import errors
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
 from meridian.model import model
@@ -4998,7 +4999,7 @@ class AnalyzerNotFittedTest(absltest.TestCase):
         inference_data=not_fitted_mmm.inference_data,
     )
     with self.assertRaisesWithLiteralMatch(
-        model.NotFittedModelError,
+        errors.NotFittedModelError,
         "sample_posterior() must be called prior to calling this method.",
     ):
       not_fitted_analyzer.rhat_summary()

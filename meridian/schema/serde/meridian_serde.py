@@ -49,6 +49,7 @@ import meridian
 from meridian import backend
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.common import errors
 from meridian.model import model
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
@@ -58,11 +59,11 @@ from meridian.schema.serde import function_registry as function_registry_utils
 from meridian.schema.serde import hyperparameters
 from meridian.schema.serde import inference_data
 from meridian.schema.serde import marketing_data
+from meridian.schema.serde import review_summary_serde
 from meridian.schema.serde import serde
 import semver
 
 from google.protobuf import any_pb2
-
 
 _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
 
@@ -228,7 +229,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_convergence_proto.convergence = True
     except model.MCMCSamplingError:
       model_convergence_proto.convergence = False
-    except model.NotFittedModelError:
+    except errors.NotFittedModelError:
       return None
 
     if hasattr(mmm.inference_data, 'trace'):
@@ -382,7 +383,13 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     else:
       warnings.warn('MeridianModel does not contain an EDA spec.')
 
-    return model.Meridian(**meridian_kwargs)
+    meridian_model = model.Meridian(**meridian_kwargs)
+    if ser_meridian.HasField('review_summary'):
+      meridian_model.health_summary = review_summary_serde.load_review_summary(
+          ser_meridian.review_summary
+      )
+
+    return meridian_model
 
 
 def save_meridian(

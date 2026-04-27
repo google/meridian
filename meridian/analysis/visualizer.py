@@ -23,6 +23,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
+from meridian.common import errors
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
@@ -182,7 +183,7 @@ class ModelDiagnostics:
         hasattr(self._meridian.inference_data, c.PRIOR)
         and hasattr(self._meridian.inference_data, c.POSTERIOR)
     ):
-      raise model.NotFittedModelError(
+      raise errors.NotFittedModelError(
           'Plotting prior and posterior distributions requires fitting the'
           ' model.'
       )
@@ -317,7 +318,7 @@ class ModelDiagnostics:
       MCMCSamplingError: The MCMC sampling did not converge.
     """
     if not hasattr(self._meridian.inference_data, c.POSTERIOR):
-      raise model.NotFittedModelError(
+      raise errors.NotFittedModelError(
           'Plotting the r-hat values requires fitting the model.'
       )
 
