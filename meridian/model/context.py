@@ -15,6 +15,7 @@
 """Defines ModelContext class for Meridian."""
 
 from collections.abc import Mapping, Sequence
+import dataclasses
 import functools
 import warnings
 
@@ -32,7 +33,29 @@ import numpy as np
 
 __all__ = [
     "ModelContext",
+    "SaturationSpec",
 ]
+
+
+@dataclasses.dataclass(frozen=True)
+class SaturationSpec:
+  """Specification for each channel's saturation function.
+
+  Attributes:
+    media: A string or sequence of strings specifying the saturation function to
+      use for media channels.
+    rf: A string or sequence of strings specifying the saturation function to
+      use for reach and frequency channels.
+    organic_media: A string or sequence of strings specifying the saturation
+      function to use for organic media channels.
+    organic_rf: A string or sequence of strings specifying the saturation
+      function to use for organic reach and frequency channels.
+  """
+
+  media: str | Sequence[str] = constants.HILL
+  rf: str | Sequence[str] = constants.HILL
+  organic_media: str | Sequence[str] = constants.HILL
+  organic_rf: str | Sequence[str] = constants.HILL
 
 
 class ModelContext:
@@ -170,8 +193,8 @@ class ModelContext:
         raise ValueError(
             f"The shape of `holdout_id` {self._model_spec.holdout_id.shape} is"
             " different from"
-            f" {'`(n_times,)`' if self.is_national else '`(n_geos, n_times)`'} ="
-            f" {expected_shape}."
+            f" {'`(n_times,)`' if self.is_national else '`(n_geos, n_times)`'}"
+            f" = {expected_shape}."
         )
 
     if self._model_spec.control_population_scaling_id is not None:
@@ -890,8 +913,8 @@ class ModelContext:
           "Unrecognized channel names found in `adstock_decay_spec` keys"
           f" {tuple(self._model_spec.adstock_decay_spec.keys())}. Keys should"
           " either contain only channel_names"
-          f" {tuple(self._input_data.get_all_adstock_hill_channels().tolist())} or"
-          " be one or more of {'media', 'rf', 'organic_media',"
+          f" {tuple(self._input_data.get_all_adstock_hill_channels().tolist())}"
+          " or be one or more of {'media', 'rf', 'organic_media',"
           " 'organic_rf'}."
       ) from e
 
@@ -945,6 +968,81 @@ class ModelContext:
         rf=rf_adstock_function,
         organic_media=organic_media_adstock_function,
         organic_rf=organic_rf_adstock_function,
+    )
+
+  @functools.cached_property
+  def saturation_spec(self) -> SaturationSpec:
+    """Returns `SaturationSpec` object with correctly mapped channels."""
+    if isinstance(self._model_spec.saturation_spec, str):
+      return SaturationSpec(
+          media=self._model_spec.saturation_spec,
+          rf=self._model_spec.saturation_spec,
+          organic_media=self._model_spec.saturation_spec,
+          organic_rf=self._model_spec.saturation_spec,
+      )
+
+    try:
+      return self._create_saturation_functions_from_channel_map(
+          self._model_spec.saturation_spec
+      )
+    except KeyError as e:
+      raise ValueError(
+          "Unrecognized channel names found in `saturation_spec` keys"
+          f" {tuple(self._model_spec.saturation_spec.keys())}. Keys should"
+          " either contain only channel_names"
+          f" {tuple(self._input_data.get_all_adstock_hill_channels().tolist())}"
+          " or be one or more of {'media', 'rf', 'organic_media',"
+          " 'organic_rf'}."
+      ) from e
+
+  def _create_saturation_functions_from_channel_map(
+      self, channel_function_map: Mapping[str, str]
+  ) -> SaturationSpec:
+    """Create `SaturationSpec` from mapping from channels to saturation functions."""
+
+    for channel in channel_function_map:
+      if channel not in self._input_data.get_all_adstock_hill_channels():
+        raise KeyError(f"Channel {channel} not found in data.")
+
+    if self._input_data.media_channel is not None:
+      media_channel_builder = self._input_data.get_paid_media_channels_argument_builder().with_default_value(
+          constants.HILL
+      )
+      media_saturation = media_channel_builder(**channel_function_map)
+    else:
+      media_saturation = constants.HILL
+
+    if self._input_data.rf_channel is not None:
+      rf_channel_builder = self._input_data.get_paid_rf_channels_argument_builder().with_default_value(
+          constants.HILL
+      )
+      rf_saturation = rf_channel_builder(**channel_function_map)
+    else:
+      rf_saturation = constants.HILL
+
+    if self._input_data.organic_media_channel is not None:
+      organic_media_channel_builder = self._input_data.get_organic_media_channels_argument_builder().with_default_value(
+          constants.HILL
+      )
+      organic_media_saturation = organic_media_channel_builder(
+          **channel_function_map
+      )
+    else:
+      organic_media_saturation = constants.HILL
+
+    if self._input_data.organic_rf_channel is not None:
+      organic_rf_channel_builder = self._input_data.get_organic_rf_channels_argument_builder().with_default_value(
+          constants.HILL
+      )
+      organic_rf_saturation = organic_rf_channel_builder(**channel_function_map)
+    else:
+      organic_rf_saturation = constants.HILL
+
+    return SaturationSpec(
+        media=media_saturation,
+        rf=rf_saturation,
+        organic_media=organic_media_saturation,
+        organic_rf=organic_rf_saturation,
     )
 
   def create_inference_data_coords(

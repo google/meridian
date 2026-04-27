@@ -1335,6 +1335,47 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
       mock_populate.assert_called_once()
 
+  def test_response_curves_with_linear_channel_is_linear(self):
+    saturation_spec = {
+        "ch_0": "none",
+        "ch_1": "hill",
+        "ch_2": "hill",
+    }
+    model_spec = spec.ModelSpec(max_lag=15, saturation_spec=saturation_spec)
+    m = model.Meridian(input_data=self.input_data, model_spec=model_spec)
+
+    inference_data = _build_inference_data(
+        _TEST_SAMPLE_PRIOR_NON_PAID_PATH,
+        _TEST_SAMPLE_POSTERIOR_NON_PAID_PATH,
+    )
+
+    with mock.patch.object(
+        model.Meridian,
+        "inference_data",
+        new=property(lambda unused_self: inference_data),
+    ):
+      a = analyzer.Analyzer(
+          model_context=m.model_context, inference_data=inference_data
+      )
+      multipliers = [0.5, 1.0, 1.5, 2.0]
+      rc_dataset = a.response_curves(
+          spend_multipliers=multipliers, use_posterior=True
+      )
+
+      df_rc = rc_dataset.to_dataframe().reset_index()
+      df_rc = df_rc[df_rc[constants.METRIC] == constants.MEAN]
+      channel_df = df_rc[df_rc[constants.CHANNEL] == "ch_0"]
+      spends = channel_df[constants.SPEND].values
+      outcomes = channel_df[constants.INCREMENTAL_OUTCOME].values
+
+      outcome_per_spend = outcomes / spends
+      np.testing.assert_allclose(
+          outcome_per_spend,
+          outcome_per_spend[0],
+          rtol=1e-5,
+          err_msg=f"ch_0 does not scale perfectly! Rates: {outcome_per_spend}",
+      )
+
   def test_use_kpi_direct_calls_non_revenue_with_revenue_per_kpi(self):
     # `use_kpi` is respected
     with warnings.catch_warnings(record=True) as w:
