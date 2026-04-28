@@ -4774,6 +4774,7 @@ DEFAULT_HYPERPARAMETERS_PROTO = meridian_pb.Hyperparameters(
     non_media_treatments_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION,
     enable_aks=False,
     global_adstock_decay='geometric',
+    global_saturation='hill',
 )
 
 
@@ -4811,6 +4812,7 @@ CUSTOM_HYPERPARAMETERS_PROTO_1 = meridian_pb.Hyperparameters(
     baseline_geo_string='baseline_geo',
     enable_aks=False,
     global_adstock_decay='binomial',
+    global_saturation='hill',
 )
 
 
@@ -4835,6 +4837,7 @@ def get_custom_model_spec_2() -> spec.ModelSpec:
       control_population_scaling_id=np.full((7, 8), False),
       non_media_population_scaling_id=np.full((9, 10), False),
       adstock_decay_spec={'ch_paid_0': 'binomial', 'rf_ch_paid_1': 'geometric'},
+      saturation_spec={'ch_paid_0': 'hill', 'ch_paid_1': 'none'},
   )
 
 CUSTOM_HYPERPARAMETERS_PROTO_2 = meridian_pb.Hyperparameters(
@@ -4888,6 +4891,9 @@ CUSTOM_HYPERPARAMETERS_PROTO_2 = meridian_pb.Hyperparameters(
     adstock_decay_by_channel=meridian_pb.AdstockDecayByChannel(
         channel_decays={'ch_paid_0': 'binomial', 'rf_ch_paid_1': 'geometric'}
     ),
+    saturation_by_channel=meridian_pb.SaturationByChannel(
+        channel_saturations={'ch_paid_0': 'hill', 'ch_paid_1': 'none'}
+    ),
 )
 
 
@@ -4926,6 +4932,7 @@ CUSTOM_HYPERPARAMETERS_PROTO_3 = meridian_pb.Hyperparameters(
     baseline_geo_string='baseline_geo',
     enable_aks=True,
     global_adstock_decay='geometric',
+    global_saturation='hill',
 )
 
 

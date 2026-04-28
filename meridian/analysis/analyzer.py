@@ -1364,6 +1364,7 @@ class Analyzer:
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
               decay_functions=self.model_context.adstock_decay_spec.media,
+              saturation_spec=self.model_context.saturation_spec.media,
               n_times_output=n_times_output,
           )
       )
@@ -1378,6 +1379,7 @@ class Analyzer:
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
               decay_functions=self.model_context.adstock_decay_spec.rf,
+              saturation_spec=self.model_context.saturation_spec.rf,
               n_times_output=n_times_output,
           )
       )
@@ -1390,6 +1392,7 @@ class Analyzer:
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
               decay_functions=self.model_context.adstock_decay_spec.organic_media,
+              saturation_spec=self.model_context.saturation_spec.organic_media,
               n_times_output=n_times_output,
           )
       )
@@ -1403,6 +1406,7 @@ class Analyzer:
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
               decay_functions=self.model_context.adstock_decay_spec.organic_rf,
+              saturation_spec=self.model_context.saturation_spec.organic_rf,
               n_times_output=n_times_output,
           )
       )
@@ -4213,10 +4217,68 @@ class Analyzer:
       perm = [1, 0] + list(range(2, n_dim))
       return backend.transpose(x_tensor, perm)
 
-    return backend.mcmc.potential_scale_reduction({
+    rhat = backend.mcmc.potential_scale_reduction({
         k: _transpose_first_two_dims(v)
         for k, v in self._inference_data.posterior.data_vars.items()
     })
+
+    return self._mask_hill_parameters_for_linear_channels(rhat)
+
+  def _mask_hill_parameters_for_linear_channels(
+      self, rhat: Mapping[str, backend.Tensor]
+  ) -> Mapping[str, backend.Tensor]:
+    """Masks Hill parameters with NaN for linear channels in R-hat values."""
+    sat_spec = self.model_context.saturation_spec
+
+    if sat_spec is None:
+      return rhat
+
+    phantom_configs = [
+        (
+            self.model_context.n_media_channels,
+            sat_spec.media,
+            [constants.EC_M, constants.SLOPE_M],
+        ),
+        (
+            self.model_context.n_rf_channels,
+            sat_spec.rf,
+            [constants.EC_RF, constants.SLOPE_RF],
+        ),
+        (
+            self.model_context.n_organic_media_channels,
+            sat_spec.organic_media,
+            [constants.EC_OM, constants.SLOPE_OM],
+        ),
+        (
+            self.model_context.n_organic_rf_channels,
+            sat_spec.organic_rf,
+            [constants.EC_ORF, constants.SLOPE_ORF],
+        ),
+    ]
+
+    mask_mapping = {}
+    for n_channels, spec, param_names in phantom_configs:
+      if n_channels == 0 or spec is None:
+        continue
+      if isinstance(spec, str):
+        is_linear_mask = backend.to_tensor(
+            np.repeat(spec == "none", n_channels), dtype=backend.bool_
+        )
+      else:
+        is_linear_mask = backend.to_tensor(
+            [s == "none" for s in spec], dtype=backend.bool_
+        )
+      for param in param_names:
+        mask_mapping[param] = is_linear_mask
+
+    return {
+        k: (
+            backend.where(mask_mapping[k], backend.to_tensor(np.nan), v)
+            if k in mask_mapping
+            else v
+        )
+        for k, v in rhat.items()
+    }
 
   def rhat_summary(self, bad_rhat_threshold: float = 1.2) -> pd.DataFrame:
     """Computes a summary of the R-hat values for each parameter in the model.

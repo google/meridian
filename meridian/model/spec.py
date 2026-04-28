@@ -16,6 +16,7 @@
 
 from collections.abc import Collection, Mapping
 import dataclasses
+import enum
 from typing import Sequence
 import warnings
 from meridian import constants
@@ -25,6 +26,11 @@ import numpy as np
 __all__ = [
     "ModelSpec",
 ]
+
+
+class SaturationType(enum.Enum):
+  HILL = "hill"
+  NONE = "none"
 
 
 def _validate_roi_calibration_period(
@@ -209,6 +215,13 @@ class ModelSpec:
       key-value pair denoting the adstock decay function to use for that
       channel. Channels that are not specified in the mapping default to using
       'geometric'. Default: `'geometric'`.
+    saturation_spec: A string or mapping specifying the saturation function for
+      each media, RF, organic media and organic RF channel. If a string, must be
+      either `'hill'` or `'none'`, specifying that saturation function for all
+      channels. If a mapping, keys should be channel names and values should be
+      `'hill'` or `'none'`, with each key-value pair denoting the saturation
+      function to use for that channel. Channels that are not specified in the
+      mapping default to using `'hill'`. Default: `'hill'`.
     enable_aks: A boolean indicating whether to use the Automatic Knot Selection
       algorithm to select an optimal number of knots for running the model
       instead of the default 1 for national models and n_times for geo models.
@@ -240,6 +253,7 @@ class ModelSpec:
   control_population_scaling_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
   adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
+  saturation_spec: str | Mapping[str, str] = "hill"
   enable_aks: bool = False
 
   def __post_init__(self):
@@ -338,6 +352,26 @@ class ModelSpec:
     if not (self.knots is None or isinstance(self.knots, (int, list))):
       raise ValueError(
           f"Unsupported type for `knots` parameter: {type(self.knots)}."
+      )
+
+    valid_saturations = {e.value for e in SaturationType}
+    if isinstance(self.saturation_spec, str):
+      if self.saturation_spec not in valid_saturations:
+        raise ValueError(
+            f"The `saturation_spec` parameter {self.saturation_spec!r} must be"
+            f" one of {sorted(valid_saturations)}."
+        )
+    elif isinstance(self.saturation_spec, Mapping):
+      for channel, saturation in self.saturation_spec.items():
+        if saturation not in valid_saturations:
+          raise ValueError(
+              f"The `saturation_spec` for channel {channel!r} must be"
+              f" one of {sorted(valid_saturations)}, but got {saturation!r}."
+          )
+    else:
+      raise ValueError(
+          "Unsupported type for `saturation_spec` parameter:"
+          f" {type(self.saturation_spec)}."
       )
 
   @property
