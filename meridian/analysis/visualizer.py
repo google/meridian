@@ -14,12 +14,12 @@
 
 """Visualization module that creates analytical plots for the Meridian model."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import functools
-from typing import Mapping
+import itertools
+from typing import Generator, Mapping
 import warnings
 import altair as alt
-from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
@@ -42,6 +42,30 @@ __all__ = [
 
 # Disable max row limitations in Altair.
 alt.data_transformers.disable_max_rows()
+
+
+def _get_channels_to_exclude(
+    channels: xr.DataArray | None, spec: list[str] | str | None
+) -> Generator[str, None, None]:
+  """Generator that yields channels to exclude based on saturation spec.
+
+  Args:
+    channels: DataArray containing channel names.
+    spec: Saturation spec for the channels.
+
+  Yields:
+    Channel names to exclude.
+  """
+  if channels is None or spec is None:
+    return
+  if isinstance(spec, str):
+    if spec == 'none':
+      yield from channels.values
+  else:
+    channels_arr = np.asarray(channels.values)
+    spec_arr = np.asarray(spec)
+    mask = spec_arr == 'none'
+    yield from channels_arr[mask]
 
 
 class ModelDiagnostics:
@@ -322,22 +346,17 @@ class ModelDiagnostics:
           'Plotting the r-hat values requires fitting the model.'
       )
 
-    rhat = pd.DataFrame()
-    mcmc_states = {
-        k: v.values
-        for k, v in self._meridian.inference_data.posterior.data_vars.items()
-    }
-    for k, v in backend.mcmc.potential_scale_reduction(
-        {k: backend.einsum('ij...->ji...', v) for k, v in mcmc_states.items()}
-    ).items():
+    rhat_dict = self._analyzer.get_rhat()
+    rhat_list = []
+    for k, v in rhat_dict.items():
       rhat_temp = np.asarray(v).flatten()
-      rhat = pd.concat([
-          rhat,
+      rhat_list.append(
           pd.DataFrame({
               c.PARAMETER: np.repeat(k, len(rhat_temp)),
               c.RHAT: rhat_temp,
-          }),
-      ])
+          })
+      )
+    rhat = pd.concat(rhat_list)
 
     # If the MCMC sampling fails, the r-hat value calculated will be very large.
     if (rhat[c.RHAT] > 1e10).any():
@@ -1009,7 +1028,27 @@ class MediaEffects:
       *   `end_interval_histogram`: Media unit or average frequency ending point
           for a histogram bin.
     """
-    return self._analyzer.hill_curves(confidence_level=confidence_level)
+    df = self._analyzer.hill_curves(confidence_level=confidence_level)
+
+    model_context = self._meridian.model_context
+    saturation_spec = model_context.saturation_spec
+    input_data = model_context.input_data
+    channels_to_exclude = list(
+        itertools.chain(
+            _get_channels_to_exclude(
+                input_data.media_channel, saturation_spec.media
+            ),
+            _get_channels_to_exclude(input_data.rf_channel, saturation_spec.rf),
+            _get_channels_to_exclude(
+                input_data.organic_media_channel, saturation_spec.organic_media
+            ),
+            _get_channels_to_exclude(
+                input_data.organic_rf_channel, saturation_spec.organic_rf
+            ),
+        )
+    )
+
+    return df[~df[c.CHANNEL].isin(channels_to_exclude)]
 
   def plot_response_curves(
       self,

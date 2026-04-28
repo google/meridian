@@ -26,6 +26,11 @@ GLOBAL_ADSTOCK_DECAY = 'global_adstock_decay'
 ADSTOCK_DECAY_BY_CHANNEL = 'adstock_decay_by_channel'
 DEFAULT_DECAY = 'geometric'
 
+SATURATION_SPEC = 'saturation_spec'
+GLOBAL_SATURATION = 'global_saturation'
+SATURATION_BY_CHANNEL = 'saturation_by_channel'
+DEFAULT_SATURATION = 'hill'
+
 # Constants for marketing data protobuf structure
 GEO_INFO = 'geo_info'
 METADATA = 'metadata'
