@@ -22,6 +22,8 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import results as review_results
+from meridian.analysis.review import reviewer
 from meridian.backend import config as backend_config
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
@@ -465,6 +467,50 @@ class ModelTest(
         model.ModelFittingError, expected_error_message
     ):
       meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
+
+  def test_health_summary_attribute(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    self.assertIsNone(meridian.health_summary)
+
+  @mock.patch.object(reviewer, "ModelReviewer", autospec=True, spec_set=True)
+  def test_review_method(self, mock_model_reviewer):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    mock_review_run = mock_model_reviewer.return_value.run
+    expected_results = review_results.ReviewSummary(
+        overall_status=review_results.Status.PASS,
+        summary_message="summary",
+        results=[],
+        health_score=0.0,
+    )
+    mock_review_run.return_value = expected_results
+
+    meridian.review()
+
+    mock_model_reviewer.assert_called_once_with(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+    mock_review_run.assert_called_once()
+    self.assertIs(meridian.health_summary, expected_results)
+
+  def test_sample_posterior_and_review_method(self):
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(model.Meridian, "sample_posterior", autospec=True)
+    )
+    mock_review = self.enter_context(
+        mock.patch.object(model.Meridian, "review", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    n_chains, n_adapt, n_burnin, n_keep = 1, 2, 3, 4
+    kwarg = "test"
+    meridian.sample_posterior_and_review(
+        n_chains, n_adapt, n_burnin, n_keep, test=kwarg
+    )
+
+    mock_sample_posterior.assert_called_once_with(
+        meridian, n_chains, n_adapt, n_burnin, n_keep, test=kwarg
+    )
+    mock_review.assert_called_once_with(meridian)
 
 
 class ModelPersistenceTest(
