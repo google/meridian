@@ -24,6 +24,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Add support for user-configured EDA Specs.
+
+## [1.6.0] - 2026-04-29
+
+* Add support for user-configured EDA Specs.
 * Fix `MediaTransformer` median calculation when tensor equality is disabled in
   TensorFlow.
 * Add EDA check for data-to-parameter ratio (DATA_ADEQUACY).
@@ -476,4 +480,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.1]: https://github.com/google/meridian/releases/tag/v1.5.1
 [1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
 [1.5.3]: https://github.com/google/meridian/releases/tag/v1.5.3
-[Unreleased]: https://github.com/google/meridian/compare/v1.5.3...HEAD
+[1.6.0]: https://github.com/google/meridian/releases/tag/v1.6.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.6.0...HEAD

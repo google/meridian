@@ -21,7 +21,6 @@ import "mmm/v1/common/estimate.proto";
 import "mmm/v1/common/kpi_type.proto";
 import "mmm/v1/common/target_metric.proto";
 import "mmm/v1/marketing/analysis/marketing_analysis.proto";
-import "mmm/v1/marketing/marketing_data.proto";
 import "mmm/v1/marketing/new_marketing_data.proto";
 import "mmm/v1/marketing/optimization/constraints.proto";
 
