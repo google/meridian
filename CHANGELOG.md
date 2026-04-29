@@ -22,6 +22,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 -->
 
 ## [Unreleased]
+* ``build_design_matrix()`` now detects the temporal dimension name and
+  supports ``"time"``, ``"media_time"`` and ``"geo_time"``.
 
 * Add support for user-configured EDA Specs.
 * Fix `MediaTransformer` median calculation when tensor equality is disabled in
