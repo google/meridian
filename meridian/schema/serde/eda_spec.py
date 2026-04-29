@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+import typing
 import warnings
 
 from meridian.model.eda import eda_spec
@@ -26,6 +28,103 @@ from meridian.schema.serde import serde
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
 _FUNCTION_REGISTRY_NAME = "function_registry"
+
+
+def _extract_if_present(
+    proto: typing.Any,
+    field_name: str,
+    transform_fn: Callable[[typing.Any], typing.Any] | None = None,
+) -> dict[str, typing.Any]:
+  """Returns a dict with the field if present, optionally transforming it."""
+  if not proto.HasField(field_name):
+    return {}
+
+  field = getattr(proto, field_name)
+  return {field_name: field if transform_fn is None else transform_fn(field)}
+
+
+def _to_vif_spec_proto(
+    vif_spec_obj: eda_spec.VIFSpec,
+) -> eda_spec_pb.VIFSpec:
+  """Converts a Python `VIFSpec` to a proto."""
+  return eda_spec_pb.VIFSpec(
+      geo_threshold=vif_spec_obj.geo_threshold,
+      overall_threshold=vif_spec_obj.overall_threshold,
+      national_threshold=vif_spec_obj.national_threshold,
+      std_threshold=vif_spec_obj.std_threshold,
+  )
+
+
+def _from_vif_spec_proto(
+    vif_spec_proto: eda_spec_pb.VIFSpec,
+) -> eda_spec.VIFSpec:
+  """Converts a proto `VIFSpec` to a Python object."""
+  return eda_spec.VIFSpec(
+      geo_threshold=vif_spec_proto.geo_threshold,
+      overall_threshold=vif_spec_proto.overall_threshold,
+      national_threshold=vif_spec_proto.national_threshold,
+      **_extract_if_present(vif_spec_proto, "std_threshold"),
+  )
+
+
+def _to_pairwise_corr_spec_proto(
+    pairwise_corr_spec_obj: eda_spec.PairwiseCorrSpec,
+) -> eda_spec_pb.PairwiseCorrSpec:
+  """Converts a Python `PairwiseCorrSpec` to a proto."""
+  return eda_spec_pb.PairwiseCorrSpec(
+      overall_threshold=pairwise_corr_spec_obj.overall_threshold,
+      geo_threshold=pairwise_corr_spec_obj.geo_threshold,
+      national_threshold=pairwise_corr_spec_obj.national_threshold,
+  )
+
+
+def _from_pairwise_corr_spec_proto(
+    pairwise_corr_spec_proto: eda_spec_pb.PairwiseCorrSpec,
+) -> eda_spec.PairwiseCorrSpec:
+  """Converts a proto `PairwiseCorrSpec` to a Python object."""
+  return eda_spec.PairwiseCorrSpec(
+      **_extract_if_present(pairwise_corr_spec_proto, "overall_threshold"),
+      **_extract_if_present(pairwise_corr_spec_proto, "geo_threshold"),
+      **_extract_if_present(pairwise_corr_spec_proto, "national_threshold"),
+  )
+
+
+def _to_kpi_invariability_spec_proto(
+    kpi_invariability_spec_obj: eda_spec.KpiInvariabilitySpec,
+) -> eda_spec_pb.KpiInvariabilitySpec:
+  """Converts a Python `KpiInvariabilitySpec` to a proto."""
+  return eda_spec_pb.KpiInvariabilitySpec(
+      std_threshold=kpi_invariability_spec_obj.std_threshold
+  )
+
+
+def _from_kpi_invariability_spec_proto(
+    kpi_invariability_spec_proto: eda_spec_pb.KpiInvariabilitySpec,
+) -> eda_spec.KpiInvariabilitySpec:
+  """Converts a proto `KpiInvariabilitySpec` to a Python object."""
+  return eda_spec.KpiInvariabilitySpec(
+      **_extract_if_present(kpi_invariability_spec_proto, "std_threshold"),
+  )
+
+
+def _to_std_spec_proto(
+    std_spec_obj: eda_spec.StandardDeviationSpec,
+) -> eda_spec_pb.StandardDeviationSpec:
+  """Converts a Python `StandardDeviationSpec` to a proto."""
+  return eda_spec_pb.StandardDeviationSpec(
+      geo_std_threshold=std_spec_obj.geo_std_threshold,
+      national_std_threshold=std_spec_obj.national_std_threshold,
+  )
+
+
+def _from_std_spec_proto(
+    std_spec_proto: eda_spec_pb.StandardDeviationSpec,
+) -> eda_spec.StandardDeviationSpec:
+  """Converts a proto `StandardDeviationSpec` to a Python object."""
+  return eda_spec.StandardDeviationSpec(
+      **_extract_if_present(std_spec_proto, "geo_std_threshold"),
+      **_extract_if_present(std_spec_proto, "national_std_threshold"),
+  )
 
 
 class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
@@ -52,7 +151,12 @@ class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
         aggregation_config=self._to_aggregation_config_proto(
             obj.aggregation_config
         ),
-        vif_spec=self._to_vif_spec_proto(obj.vif_spec),
+        vif_spec=_to_vif_spec_proto(obj.vif_spec),
+        pairwise_corr_spec=_to_pairwise_corr_spec_proto(obj.pairwise_corr_spec),
+        kpi_invariability_spec=_to_kpi_invariability_spec_proto(
+            obj.kpi_invariability_spec
+        ),
+        std_spec=_to_std_spec_proto(obj.std_spec),
     )
     hashed_function_registry = self.function_registry.hashed_registry
     proto.function_registry.update(hashed_function_registry)
@@ -92,16 +196,27 @@ class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
         self.function_registry.validate(hashed_function_registry)
       except Exception as e:
         raise ValueError(
-            f"An issue found during deserializing EDASpec: {e}"
+            "Function registry validation failed when deserializing EDASpec."
         ) from e
 
-    aggregation_config = self._from_aggregation_config_proto(
-        serialized.aggregation_config
-    )
-    vif_spec = self._from_vif_spec_proto(serialized.vif_spec)
     return eda_spec.EDASpec(
-        aggregation_config=aggregation_config,
-        vif_spec=vif_spec,
+        **_extract_if_present(
+            serialized,
+            "aggregation_config",
+            self._from_aggregation_config_proto,
+        ),
+        **_extract_if_present(serialized, "vif_spec", _from_vif_spec_proto),
+        **_extract_if_present(
+            serialized,
+            "pairwise_corr_spec",
+            _from_pairwise_corr_spec_proto,
+        ),
+        **_extract_if_present(
+            serialized,
+            "kpi_invariability_spec",
+            _from_kpi_invariability_spec_proto,
+        ),
+        **_extract_if_present(serialized, "std_spec", _from_std_spec_proto),
     )
 
   def _to_aggregation_config_proto(
@@ -169,24 +284,4 @@ class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
 
     raise ValueError(
         f"Function key `{agg_func.function_key}` not found in registry."
-    )
-
-  def _to_vif_spec_proto(
-      self, vif_spec_obj: eda_spec.VIFSpec
-  ) -> eda_spec_pb.VIFSpec:
-    """Converts a Python `VIFSpec` to a proto."""
-    return eda_spec_pb.VIFSpec(
-        geo_threshold=vif_spec_obj.geo_threshold,
-        overall_threshold=vif_spec_obj.overall_threshold,
-        national_threshold=vif_spec_obj.national_threshold,
-    )
-
-  def _from_vif_spec_proto(
-      self, vif_spec_proto: eda_spec_pb.VIFSpec
-  ) -> eda_spec.VIFSpec:
-    """Converts a proto `VIFSpec` to a Python object."""
-    return eda_spec.VIFSpec(
-        geo_threshold=vif_spec_proto.geo_threshold,
-        overall_threshold=vif_spec_proto.overall_threshold,
-        national_threshold=vif_spec_proto.national_threshold,
     )

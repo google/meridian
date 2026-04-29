@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add support for user-configured EDA Specs.
 * Fix `MediaTransformer` median calculation when tensor equality is disabled in
   TensorFlow.
 * Add EDA check for data-to-parameter ratio (DATA_ADEQUACY).

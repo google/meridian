@@ -15,6 +15,7 @@
 import copy
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from meridian.model.eda import eda_spec
 from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
@@ -30,25 +31,56 @@ def _custom_agg_fn_other(x: xr.DataArray) -> np.ndarray:
   return np.sum(x).values
 
 
-class EDASpecSerdeTest(absltest.TestCase):
+class EDASpecSerdeTest(parameterized.TestCase):
 
-  def test_serialize_deserialize_default_eda_spec(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default_eda_spec",
+          original_spec=eda_spec.EDASpec(),
+      ),
+      dict(
+          testcase_name="custom_vif_spec",
+          original_spec=eda_spec.EDASpec(
+              vif_spec=eda_spec.VIFSpec(
+                  geo_threshold=100.0,
+                  overall_threshold=200.0,
+                  national_threshold=300.0,
+                  std_threshold=0.5,
+              )
+          ),
+      ),
+      dict(
+          testcase_name="custom_pairwise_corr_spec",
+          original_spec=eda_spec.EDASpec(
+              pairwise_corr_spec=eda_spec.PairwiseCorrSpec(
+                  overall_threshold=0.5,
+                  geo_threshold=0.6,
+                  national_threshold=0.7,
+              )
+          ),
+      ),
+      dict(
+          testcase_name="custom_kpi_invariability_spec",
+          original_spec=eda_spec.EDASpec(
+              kpi_invariability_spec=eda_spec.KpiInvariabilitySpec(
+                  std_threshold=1e-3
+              )
+          ),
+      ),
+      dict(
+          testcase_name="custom_std_spec",
+          original_spec=eda_spec.EDASpec(
+              std_spec=eda_spec.StandardDeviationSpec(
+                  geo_std_threshold=1e-2,
+                  national_std_threshold=1e-1,
+              )
+          ),
+      ),
+  )
+  def test_serialize_deserialize_spec(self, original_spec):
     serde = eda_spec_serde.EDASpecSerde(
         function_registry_utils.FunctionRegistry()
     )
-    original_spec = eda_spec.EDASpec()
-    serialized = serde.serialize(original_spec)
-    deserialized = serde.deserialize(serialized)
-    self.assertEqual(original_spec, deserialized)
-
-  def test_serialize_deserialize_custom_vif_spec(self):
-    serde = eda_spec_serde.EDASpecSerde(
-        function_registry_utils.FunctionRegistry()
-    )
-    custom_vif = eda_spec.VIFSpec(
-        geo_threshold=100.0, overall_threshold=200.0, national_threshold=300.0
-    )
-    original_spec = eda_spec.EDASpec(vif_spec=custom_vif)
     serialized = serde.serialize(original_spec)
     deserialized = serde.deserialize(serialized)
     self.assertEqual(original_spec, deserialized)
@@ -86,7 +118,8 @@ class EDASpecSerdeTest(absltest.TestCase):
         function_registry=changed_function_registry
     )
     with self.assertRaisesRegex(
-        ValueError, "An issue found during deserializing EDASpec"
+        ValueError,
+        "Function registry validation failed when deserializing EDASpec",
     ):
       serde_with_changed_registry.deserialize(serialized)
 
