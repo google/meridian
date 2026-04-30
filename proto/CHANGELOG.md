@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-04-27
+
+*   Add `saturation_spec` to `Hyperparameters` proto to support selective
+    saturation.
+
 ## [1.1.3] - 2026-04-22
 
 *   Add `ComputationPrecision` proto for Meridian models.
@@ -52,4 +57,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.1]: https://github.com/google/meridian/releases/tag/proto-v1.1.1
 [1.1.2]: https://github.com/google/meridian/releases/tag/proto-v1.1.2
 [1.1.3]: https://github.com/google/meridian/releases/tag/proto-v1.1.3
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.3...HEAD
+[1.1.4]: https://github.com/google/meridian/releases/tag/proto-v1.1.4
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.1.4...HEAD
