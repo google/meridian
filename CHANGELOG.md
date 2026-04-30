@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Add MeridianEDA for EDA visualizations and two-pager generation.
 * Add support for user-configured EDA Specs.
 * Fix `MediaTransformer` median calculation when tensor equality is disabled in
   TensorFlow.
