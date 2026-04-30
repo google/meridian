@@ -184,6 +184,16 @@ class ModelContext:
             f" different from `(n_controls,) = ({self.n_controls},)`."
         )
 
+    if self._model_spec.control_adstock_id is not None:
+      if self._model_spec.control_adstock_id.shape != (
+          self.n_controls,
+      ):
+        raise ValueError(
+            "The shape of `control_adstock_id`"
+            f" {self._model_spec.control_adstock_id.shape} is"
+            f" different from `(n_controls,) = ({self.n_controls},)`."
+        )
+
   def _validate_geo_invariants(self):
     """Validates non-national model invariants."""
     if self.is_national:

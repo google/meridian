@@ -197,6 +197,10 @@ class ModelSpec:
       `(n_controls,)` indicating the control variables for which the control
       value will be scaled by population. If `None`, no control variables are
       scaled by population. Default: `None`.
+    control_adstock_id: An optional boolean tensor of dimension
+      `(n_controls,)` indicating the control variables for which adstock will
+      be applied. If `None`, no control variables are modeled with adstock.
+      Default: `None`.
     non_media_population_scaling_id: An optional boolean tensor of dimension
       `(n_non_media_channels,)` indicating the non-media variables for which the
       non-media value will be scaled by population. If `None`, then no non-media
@@ -238,6 +242,7 @@ class ModelSpec:
   baseline_geo: int | str | None = None
   holdout_id: np.ndarray | None = None
   control_population_scaling_id: np.ndarray | None = None
+  control_adstock_id: np.ndarray | None = None
   non_media_population_scaling_id: np.ndarray | None = None
   adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
   enable_aks: bool = False

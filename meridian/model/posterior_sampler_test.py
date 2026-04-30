@@ -2126,6 +2126,44 @@ class PosteriorMCMCSamplerTest(
     )
     self.assertNotIn("log_likelihood", posterior)
 
+  def test_sample_posterior_with_control_adstock(self):
+    self.enter_context(
+        mock.patch.object(
+            backend,
+            "xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec(
+        control_adstock_id=np.array([True] * self._N_CONTROLS),
+    )
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    meridian.sample_posterior(
+        n_chains=self._N_CHAINS,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=123,
+    )
+
+    posterior = meridian.inference_data.posterior
+    self.assertIn(constants.ALPHA_C, posterior)
+    self.assertEqual(
+        posterior[constants.ALPHA_C].shape,
+        (self._N_CHAINS, self._N_KEEP, self._N_CONTROLS),
+    )
+
 
 class PosteriorMCMCSamplerInitTest(
     parameterized.TestCase,
