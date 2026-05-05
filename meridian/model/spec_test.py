@@ -14,6 +14,7 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import constants
 from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
@@ -72,6 +73,42 @@ class ModelSpecTest(parameterized.TestCase):
   def test_spec_inits_invalid_media_effects_fails(self, dist, error_message):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(media_effects_dist=dist)
+
+  @parameterized.named_parameters(
+      ("hill", constants.HILL),
+      ("none", "none"),
+  )
+  def test_spec_inits_valid_saturation_spec_works(self, saturation):
+    model_spec = spec.ModelSpec(saturation_spec=saturation)
+    self.assertEqual(model_spec.saturation_spec, saturation)
+
+  def test_spec_inits_valid_saturation_spec_mapping_works(self):
+    saturation_mapping = {"ch1": constants.HILL, "ch2": "none"}
+    model_spec = spec.ModelSpec(saturation_spec=saturation_mapping)
+    self.assertEqual(model_spec.saturation_spec, saturation_mapping)
+
+  def test_spec_inits_invalid_saturation_spec_str_fails(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The `saturation_spec` parameter 'invalid' must be one of ['hill',"
+        " 'none'].",
+    ):
+      spec.ModelSpec(saturation_spec="invalid")
+
+  def test_spec_inits_invalid_saturation_spec_mapping_fails(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The `saturation_spec` for channel 'ch1' must be one of ['hill',"
+        " 'none'], but got 'invalid'.",
+    ):
+      spec.ModelSpec(saturation_spec={"ch1": "invalid"})
+
+  def test_spec_inits_unsupported_saturation_spec_type_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Unsupported type for `saturation_spec` parameter: <class 'int'>",
+    ):
+      spec.ModelSpec(saturation_spec=123)  # pytype: disable=wrong-arg-types
 
   @parameterized.named_parameters(
       dict(
