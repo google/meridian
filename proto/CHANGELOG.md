@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-05-04
+
 *   Add `saturation_spec` to `Hyperparameters` proto to support selective
     saturation.
 
@@ -60,4 +62,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.1.2]: https://github.com/google/meridian/releases/tag/proto-v1.1.2
 [1.1.3]: https://github.com/google/meridian/releases/tag/proto-v1.1.3
 [1.2.0]: https://github.com/google/meridian/releases/tag/proto-v1.2.0
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.2.0...HEAD
+[1.2.1]: https://github.com/google/meridian/releases/tag/proto-v1.2.1
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.2.1...HEAD
