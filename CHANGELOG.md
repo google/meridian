@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-04-30
+
+*   Update `mmm-proto-schema` dependency to >= 1.2.1.
+
 ## [1.6.0] - 2026-04-29
 
 * Add MeridianEDA for EDA visualizations and two-pager generation.
@@ -480,4 +484,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.2]: https://github.com/google/meridian/releases/tag/v1.5.2
 [1.5.3]: https://github.com/google/meridian/releases/tag/v1.5.3
 [1.6.0]: https://github.com/google/meridian/releases/tag/v1.6.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.6.0...HEAD
+[1.6.1]: https://github.com/google/meridian/releases/tag/v1.6.1
+[Unreleased]: https://github.com/google/meridian/compare/v1.6.1...HEAD
