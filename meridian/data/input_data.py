@@ -369,7 +369,8 @@ class InputData:
     """Returns the media time dimension in a `TimeCoordinates` wrapper."""
     return tc.TimeCoordinates.from_dates(self.media_time)
 
-  @property
+
+  # @property
   def media_channel(self) -> xr.DataArray | None:
     """Returns the media channel dimension."""
     if self.media is not None:
@@ -377,7 +378,8 @@ class InputData:
     else:
       return None
 
-  @property
+
+  # @property
   def rf_channel(self) -> xr.DataArray | None:
     """Returns the RF channel dimension."""
     if self.reach is not None:
