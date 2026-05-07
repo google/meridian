@@ -32,7 +32,6 @@ from meridian.model import spec
 import numpy as np
 import xarray as xr
 
-
 # Data dimensions for sample input.
 _MEDIA_CHANNEL_NAMES = ("ch_0", "ch_1", "ch_2")
 _RF_CHANNEL_NAMES = ("rf_ch_0", "rf_ch_1", "rf_ch_2")
@@ -234,28 +233,33 @@ class ContextTest(
   def test_get_knot_info_is_called(
       self, knots: int | Collection[int] | None, is_national: bool
   ):
-    with mock.patch.object(
-        knots_module,
-        "get_knot_info",
-        autospec=True,
-        return_value=knots_module.KnotInfo(3, np.array([2, 5, 8]), np.eye(3)),
-    ) as mock_get_knot_info:
-      data = (
-          self.national_input_data_media_only
-          if is_national
-          else self.input_data_with_media_only
-      )
-      _ = context.ModelContext(
-          input_data=data,
-          model_spec=spec.ModelSpec(knots=knots),
-      ).knot_info
-      mock_get_knot_info.assert_called_once_with(
-          self._N_TIMES,
-          knots,
-          False,
-          data,
-          is_national,
-      )
+    mock_get_knot_info = self.enter_context(
+        mock.patch.object(
+            knots_module,
+            "get_knot_info",
+            autospec=True,
+            spec_set=True,
+            return_value=knots_module.KnotInfo(
+                3, np.array([2, 5, 8]), np.eye(3)
+            ),
+        )
+    )
+    data = (
+        self.national_input_data_media_only
+        if is_national
+        else self.input_data_with_media_only
+    )
+    _ = context.ModelContext(
+        input_data=data,
+        model_spec=spec.ModelSpec(knots=knots),
+    ).knot_info
+    mock_get_knot_info.assert_called_once_with(
+        self._N_TIMES,
+        knots,
+        False,
+        data,
+        is_national,
+    )
 
   def test_base_geo_properties(self):
     model_context = context.ModelContext(
@@ -278,6 +282,55 @@ class ContextTest(
     self.assertEqual(model_context.n_times, self._N_TIMES)
     self.assertEqual(model_context.n_media_times, self._N_MEDIA_TIMES)
     self.assertTrue(model_context.is_national)
+
+  def test_saturation_spec_property_global_string(self):
+    data = self.input_data_with_media_only
+    model_spec = spec.ModelSpec(saturation_spec="none")
+    model_context = context.ModelContext(input_data=data, model_spec=model_spec)
+
+    spec_obj = model_context.saturation_spec
+    expected_spec = context.SaturationSpec(
+        media="none", rf="none", organic_media="none", organic_rf="none"
+    )
+    self.assertEqual(spec_obj, expected_spec)
+
+  def test_saturation_spec_property_mapping(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=2, n_organic_media_channels=2
+    )
+    self.assertIsNotNone(data.media_channel)
+    self.assertIsNotNone(data.organic_media_channel)
+    media_channels = data.media_channel.values.tolist()  # pytype: disable=attribute-error
+    organic_media_channels = data.organic_media_channel.values.tolist()  # pytype: disable=attribute-error
+
+    mapping = {
+        media_channels[0]: "none",
+        organic_media_channels[0]: "none",
+    }
+
+    model_spec = spec.ModelSpec(saturation_spec=mapping)
+    model_context = context.ModelContext(input_data=data, model_spec=model_spec)
+
+    spec_obj = model_context.saturation_spec
+
+    expected_spec = context.SaturationSpec(
+        media=["none", constants.HILL],
+        rf=constants.HILL,
+        organic_media=["none", constants.HILL],
+        organic_rf=constants.HILL,
+    )
+    self.assertEqual(spec_obj, expected_spec)
+
+  def test_saturation_spec_property_invalid_mapping_fails(self):
+    data = self.input_data_with_media_only
+    model_spec = spec.ModelSpec(saturation_spec={"invalid_channel": "none"})
+    model_context = context.ModelContext(input_data=data, model_spec=model_spec)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "Unrecognized channel names found in `saturation_spec` keys",
+    ):
+      _ = model_context.saturation_spec
 
   @parameterized.named_parameters(
       dict(
@@ -1695,9 +1748,8 @@ class AdstockDecaySpecFromChannelMappingTest(
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Unrecognized channel names found in `adstock_decay_spec` keys "
-        f"{tuple(decay_spec.keys())}. Keys should either contain only "
-        f"channel_names {valid_channel_names} or be "
-        "one or more of {'media', 'rf', 'organic_media', 'organic_rf'}.",
+        f"{tuple(decay_spec.keys())}. Keys should contain only "
+        f"channel_names {valid_channel_names}.",
     ):
       _ = model_context.adstock_decay_spec
 

@@ -170,6 +170,7 @@ class PriorDistributionSampler:
           ec=media_vars[constants.EC_M],
           slope=media_vars[constants.SLOPE_M],
           decay_functions=ctx.adstock_decay_spec.media,
+          saturation_spec=ctx.saturation_spec.media,
       )
       linear_predictor_counterfactual_difference = self._model_equations.linear_predictor_counterfactual_difference_media(
           media_transformed=media_transformed,
@@ -280,6 +281,7 @@ class PriorDistributionSampler:
           ec=rf_vars[constants.EC_RF],
           slope=rf_vars[constants.SLOPE_RF],
           decay_functions=ctx.adstock_decay_spec.rf,
+          saturation_spec=ctx.saturation_spec.rf,
       )
       linear_predictor_counterfactual_difference = (
           self._model_equations.linear_predictor_counterfactual_difference_rf(
@@ -380,6 +382,7 @@ class PriorDistributionSampler:
           ec=organic_media_vars[constants.EC_OM],
           slope=organic_media_vars[constants.SLOPE_OM],
           decay_functions=ctx.adstock_decay_spec.organic_media,
+          saturation_spec=ctx.saturation_spec.organic_media,
       )
       beta_om_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
@@ -476,6 +479,7 @@ class PriorDistributionSampler:
           ec=organic_rf_vars[constants.EC_ORF],
           slope=organic_rf_vars[constants.SLOPE_ORF],
           decay_functions=ctx.adstock_decay_spec.organic_rf,
+          saturation_spec=ctx.saturation_spec.organic_rf,
       )
       beta_orf_value = self._model_equations.calculate_beta_x(
           is_non_media=False,

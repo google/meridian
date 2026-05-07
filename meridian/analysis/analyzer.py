@@ -1364,6 +1364,7 @@ class Analyzer:
               ec=dist_tensors.ec_m,
               slope=dist_tensors.slope_m,
               decay_functions=self.model_context.adstock_decay_spec.media,
+              saturation_spec=self.model_context.saturation_spec.media,
               n_times_output=n_times_output,
           )
       )
@@ -1378,6 +1379,7 @@ class Analyzer:
               ec=dist_tensors.ec_rf,
               slope=dist_tensors.slope_rf,
               decay_functions=self.model_context.adstock_decay_spec.rf,
+              saturation_spec=self.model_context.saturation_spec.rf,
               n_times_output=n_times_output,
           )
       )
@@ -1390,6 +1392,7 @@ class Analyzer:
               ec=dist_tensors.ec_om,
               slope=dist_tensors.slope_om,
               decay_functions=self.model_context.adstock_decay_spec.organic_media,
+              saturation_spec=self.model_context.saturation_spec.organic_media,
               n_times_output=n_times_output,
           )
       )
@@ -1403,6 +1406,7 @@ class Analyzer:
               ec=dist_tensors.ec_orf,
               slope=dist_tensors.slope_orf,
               decay_functions=self.model_context.adstock_decay_spec.organic_rf,
+              saturation_spec=self.model_context.saturation_spec.organic_rf,
               n_times_output=n_times_output,
           )
       )

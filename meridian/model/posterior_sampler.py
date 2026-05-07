@@ -205,6 +205,7 @@ def _joint_dist_base_logic(
         ec=ec_m,
         slope=slope_m,
         decay_functions=model_context.adstock_decay_spec.media,
+        saturation_spec=model_context.saturation_spec.media,
     )
     prior_type = model_context.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -271,6 +272,7 @@ def _joint_dist_base_logic(
         ec=ec_rf,
         slope=slope_rf,
         decay_functions=model_context.adstock_decay_spec.rf,
+        saturation_spec=model_context.saturation_spec.rf,
     )
 
     prior_type = model_context.model_spec.effective_rf_prior_type
@@ -337,6 +339,7 @@ def _joint_dist_base_logic(
         ec=ec_om,
         slope=slope_om,
         decay_functions=model_context.adstock_decay_spec.organic_media,
+        saturation_spec=model_context.saturation_spec.organic_media,
     )
     prior_type = model_context.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -388,6 +391,7 @@ def _joint_dist_base_logic(
         ec=ec_orf,
         slope=slope_orf,
         decay_functions=model_context.adstock_decay_spec.organic_rf,
+        saturation_spec=model_context.saturation_spec.organic_rf,
     )
 
     prior_type = model_context.model_spec.organic_rf_prior_type

@@ -28,7 +28,6 @@ from meridian import constants
 from meridian.model import adstock_hill
 from meridian.model import context
 
-
 __all__ = [
     "ModelEquations",
 ]
@@ -48,6 +47,7 @@ class ModelEquations:
       ec: backend.Tensor,
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      saturation_spec: str | Sequence[str] = constants.HILL,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms media or using Adstock and Hill functions in the desired order.
@@ -62,6 +62,8 @@ class ModelEquations:
       slope: Deterministic distribution for Adstock and Hill calculations.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
+      saturation_spec: String or sequence of strings denoting the saturation
+        function(s) for each channel. Default: 'hill'.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `media` equals
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
@@ -90,16 +92,37 @@ class ModelEquations:
         ec=ec,
         slope=slope,
     )
-    transformers_list = (
-        [hill_transformer, adstock_transformer]
-        if self._context.model_spec.hill_before_adstock
-        else [adstock_transformer, hill_transformer]
-    )
 
-    media_out = media
-    for transformer in transformers_list:
-      media_out = transformer.forward(media_out)
-    return media_out
+    valid_saturation_funcs = {constants.HILL, "none"}
+    if isinstance(saturation_spec, str):
+      if saturation_spec not in valid_saturation_funcs:
+        raise ValueError(
+            f"Invalid saturation_spec: {saturation_spec}. Must be 'hill' or"
+            " 'none'."
+        )
+      if saturation_spec == constants.HILL:
+        mask = backend.ones((media.shape[-1],), dtype=backend.bool_)
+      else:
+        mask = backend.zeros((media.shape[-1],), dtype=backend.bool_)
+    else:
+      for s in saturation_spec:
+        if s not in valid_saturation_funcs:
+          raise ValueError(
+              f"Invalid saturation function in saturation_spec: {s}. Must be"
+              " 'hill' or 'none'."
+          )
+      mask = backend.to_tensor(
+          [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
+      )
+
+    if self._context.model_spec.hill_before_adstock:
+      hill_out = hill_transformer.forward(media)
+      selected_media = backend.where(mask, hill_out, media)
+      return adstock_transformer.forward(selected_media)
+
+    adstock_out = adstock_transformer.forward(media)
+    hill_out = hill_transformer.forward(adstock_out)
+    return backend.where(mask, hill_out, adstock_out)
 
   def adstock_hill_rf(
       self,
@@ -110,6 +133,7 @@ class ModelEquations:
       ec: backend.Tensor,
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      saturation_spec: str | Sequence[str] = constants.HILL,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
@@ -124,6 +148,8 @@ class ModelEquations:
       slope: Deterministic distribution for Adstock and Hill calculations.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
+      saturation_spec: String or sequence of strings denoting the saturation
+        function(s) for each channel. Default: 'hill'.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `reach` equals
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
@@ -153,7 +179,31 @@ class ModelEquations:
         decay_functions=decay_functions,
     )
     adj_frequency = hill_transformer.forward(frequency)
-    rf_out = adstock_transformer.forward(reach * adj_frequency)
+
+    valid_saturation_funcs = {constants.HILL, "none"}
+    if isinstance(saturation_spec, str):
+      if saturation_spec not in valid_saturation_funcs:
+        raise ValueError(
+            f"Invalid saturation_spec: {saturation_spec}. Must be 'hill' or"
+            " 'none'."
+        )
+      if saturation_spec == constants.HILL:
+        mask = backend.ones((frequency.shape[-1],), dtype=backend.bool_)
+      else:
+        mask = backend.zeros((frequency.shape[-1],), dtype=backend.bool_)
+    else:
+      for s in saturation_spec:
+        if s not in valid_saturation_funcs:
+          raise ValueError(
+              f"Invalid saturation function in saturation_spec: {s}. Must be"
+              " 'hill' or 'none'."
+          )
+      mask = backend.to_tensor(
+          [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
+      )
+
+    selected_frequency = backend.where(mask, adj_frequency, frequency)
+    rf_out = adstock_transformer.forward(reach * selected_frequency)
 
     return rf_out
 
