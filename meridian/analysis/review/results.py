@@ -596,6 +596,20 @@ class PriorPosteriorShiftCheckResult(CheckResult):
 
 
 # ==============================================================================
+# Valid subsets of result types for health summary validation.
+# ==============================================================================
+CONVERGENCE_ONLY_SET = frozenset([ConvergenceCheckResult])
+MODEL_LEVEL_SET = frozenset([
+    ConvergenceCheckResult,
+    BaselineCheckResult,
+    GoodnessOfFitCheckResult,
+    BayesianPPPCheckResult,
+])
+PPS_SET = MODEL_LEVEL_SET | frozenset([PriorPosteriorShiftCheckResult])
+ROI_SET = PPS_SET | frozenset([ROIConsistencyCheckResult])
+
+
+# ==============================================================================
 # Review Summary
 # ==============================================================================
 @dataclasses.dataclass(frozen=True)

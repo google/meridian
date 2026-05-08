@@ -199,6 +199,7 @@ class ModelReviewer:
       meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
       inference_data: az.InferenceData | None = None,
+      post_convergence_checks: ChecksBattery | None = None,
   ):
     if meridian is not None:
       warnings.warn(
@@ -217,6 +218,11 @@ class ModelReviewer:
 
     self._model_context = model_context
     self._inference_data = inference_data
+    self._post_convergence_checks = (
+        post_convergence_checks
+        if post_convergence_checks is not None
+        else _POST_CONVERGENCE_CHECKS
+    )
     self._results: MutableMapping[CheckType, results.CheckResult] = {}
     self._analyzer = analyzer_module.Analyzer(
         model_context=self._model_context, inference_data=self._inference_data
@@ -346,7 +352,7 @@ class ModelReviewer:
       )
 
     # Run all other checks in sequence.
-    for check_class, config in _POST_CONVERGENCE_CHECKS.items():
+    for check_class, config in self._post_convergence_checks.items():
       if (
           check_class == checks.PriorPosteriorShiftCheck
           and not self._uses_roi_priors()

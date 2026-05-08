@@ -667,6 +667,36 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_gof_check_cls.assert_called_once()
     self._mock_pps_check_cls.assert_called_once()
 
+  def test_run_with_custom_post_convergence_checks(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+
+    custom_checks = immutabledict.immutabledict({
+        self._mock_baseline_check_cls: configs.BaselineConfig(),
+        self._mock_bayesian_ppp_check_cls: configs.BayesianPPPConfig(),
+        self._mock_gof_check_cls: configs.GoodnessOfFitConfig(),
+    })
+
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=custom_checks,
+    )
+    summary = review.run()
+
+    self.assertEqual(summary.overall_status, results.Status.PASS)
+    self.assertLen(summary.results, 4)
+    self.assertEqual(summary.results[0], self._mock_convergence_result)
+    self.assertEqual(summary.results[1], self._mock_baseline_result)
+    self._mock_convergence_check_cls.assert_called_once()
+    self._mock_baseline_check_cls.assert_called_once()
+    self._mock_bayesian_ppp_check_cls.assert_called_once()
+    self._mock_gof_check_cls.assert_called_once()
+    self._mock_roi_consistency_check_cls.assert_not_called()
+    self._mock_pps_check_cls.assert_not_called()
+
   def test_run_with_selected_geos_and_times(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.PASS

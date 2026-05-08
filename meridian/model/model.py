@@ -25,6 +25,8 @@ import arviz as az
 import joblib
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import results
+from meridian.analysis.review import reviewer
 from meridian.common import errors
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
@@ -64,6 +66,24 @@ MCMCOOMError = posterior_sampler.MCMCOOMError
 NotFittedModelError = errors.NotFittedModelError
 
 
+def _is_valid_results_subset(
+    present_types: frozenset[type[results.CheckResult]],
+    results_by_type: Mapping[type[results.CheckResult], results.CheckResult],
+) -> bool:
+  """Checks if the present results match one of the allowed subsets."""
+  # Case A: Convergence check only, which must have failed.
+  if present_types == results.CONVERGENCE_ONLY_SET:
+    conv_result = results_by_type[results.ConvergenceCheckResult]
+    return conv_result.case is results.ConvergenceCases.NOT_CONVERGED
+
+  # Cases B, C, and D: Standard sets of successful model checks.
+  return present_types in (
+      results.MODEL_LEVEL_SET,
+      results.PPS_SET,
+      results.ROI_SET,
+  )
+
+
 def _warn_setting_national_args(**kwargs):
   """Raises a warning if a geo argument is found in kwargs."""
   for kwarg, value in kwargs.items():
@@ -92,6 +112,8 @@ class Meridian:
     eda_spec: An `EDASpec` object containing the EDA specification.
     eda_outcomes: A list of `EDAOutcome` objects containing the outcomes from
       running critical EDA checks.
+    health_summary: A `ReviewSummary` object containing the results of the model
+      health checks, or `None` if `review()` has not been called.
     n_geos: Number of geos in the data.
     n_media_channels: Number of media channels in the data.
     n_rf_channels: Number of reach and frequency (RF) channels in the data.
@@ -156,6 +178,9 @@ class Meridian:
           az.InferenceData | None
       ) = None,  # for deserializer use only
       eda_spec: eda_spec_module.EDASpec = eda_spec_module.EDASpec(),
+      health_summary: (
+          results.ReviewSummary | None
+      ) = None,  # for deserializer use only
   ):
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
@@ -168,8 +193,10 @@ class Meridian:
     self._computation_backend = backend.computation_backend().name
     self._computation_precision = backend.computation_precision().name
     self._eda_spec = eda_spec
+    self._health_summary = health_summary
 
     self._validate_injected_inference_data()
+    self._validate_injected_health_summary()
 
     if self.is_national:
       _warn_setting_national_args(
@@ -177,6 +204,48 @@ class Meridian:
           unique_sigma_for_each_geo=self.model_spec.unique_sigma_for_each_geo,
       )
     self._validate_kpi_variability()
+
+  def _validate_injected_health_summary(self):
+    """Validates that the injected health summary has correct shapes and content.
+
+    Raises:
+      ValueError: If the injected `ReviewSummary` is invalid.
+    """
+    if self._health_summary is None:
+      return
+
+    results_by_type = {type(r): r for r in self._health_summary.results}
+    if len(results_by_type) != len(self._health_summary.results):
+      raise ValueError(
+          "Injected health summary contains duplicate check types."
+      )
+
+    for result in self._health_summary.results:
+      self._validate_check_result_shape(result)
+
+    present_types = frozenset(results_by_type.keys())
+    if not _is_valid_results_subset(present_types, results_by_type):
+      raise ValueError(
+          "Injected health summary results do not form a valid subset. "
+          f"Got: {[t.__name__ for t in present_types]}"
+      )
+
+  def _validate_check_result_shape(self, result: results.CheckResult):
+    """Verifies that channel-level results match model expectations."""
+    if isinstance(
+        result,
+        (
+            results.PriorPosteriorShiftCheckResult,
+            results.ROIConsistencyCheckResult,
+        ),
+    ):
+      n_expected = self.n_media_channels + self.n_rf_channels
+      n_got = len(result.channel_results)
+      if n_got != n_expected:
+        raise ValueError(
+            f"Injected {type(result).__name__} contains {n_got} channels, "
+            f"but model expects {n_expected}."
+        )
 
   @property
   def input_data(self) -> data.InputData:
@@ -211,6 +280,10 @@ class Meridian:
   @property
   def eda_outcomes(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     return self.eda_engine.run_all_critical_checks()
+
+  @property
+  def health_summary(self) -> results.ReviewSummary | None:
+    return self._health_summary
 
   @property
   def media_tensors(self) -> media.MediaTensors:
@@ -971,6 +1044,7 @@ class Meridian:
       )
       raise ModelFittingError("\n".join(error_message_lines))
 
+  # TODO: Require keyword-only arguments.
   def sample_posterior(
       self,
       n_chains: Sequence[int] | int,
@@ -1066,6 +1140,60 @@ class Meridian:
         **pins,
     )
     self.inference_data.extend(posterior_inference_data, join="right")
+
+  def review(self) -> results.ReviewSummary:
+    """Runs the model health checks and stores the results in `health_summary`.
+
+    This method should be called after the model has been fitted, i.e., after
+    `sample_posterior` has been executed to populate `self.inference_data`.
+
+    Returns:
+      A `ReviewSummary` object containing the results of the health checks.
+    """
+    if not hasattr(self.inference_data, constants.POSTERIOR):
+      raise NotFittedModelError(
+          "The model must be fitted before calling review()."
+      )
+    model_reviewer = reviewer.ModelReviewer(
+        model_context=self.model_context, inference_data=self.inference_data
+    )
+    self._health_summary = model_reviewer.run()
+    return self._health_summary
+
+  def sample_posterior_and_review(
+      self,
+      *,
+      n_chains: Sequence[int] | int,
+      n_adapt: int,
+      n_burnin: int,
+      n_keep: int,
+      current_state: Mapping[str, backend.Tensor] | None = None,
+      init_step_size: int | None = None,
+      dual_averaging_kwargs: Mapping[str, int] | None = None,
+      max_tree_depth: int = 10,
+      max_energy_diff: float = 500.0,
+      unrolled_leapfrog_steps: int = 1,
+      parallel_iterations: int = 10,
+      seed: Sequence[int] | int | None = None,
+      **pins,
+  ) -> None:
+    """Runs MCMC sampling and then the model health checks."""
+    self.sample_posterior(
+        n_chains=n_chains,
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        current_state=current_state,
+        init_step_size=init_step_size,
+        dual_averaging_kwargs=dual_averaging_kwargs,
+        max_tree_depth=max_tree_depth,
+        max_energy_diff=max_energy_diff,
+        unrolled_leapfrog_steps=unrolled_leapfrog_steps,
+        parallel_iterations=parallel_iterations,
+        seed=seed,
+        **pins,
+    )
+    self.review()
 
 
 def save_mmm(mmm: Meridian, file_path: str):

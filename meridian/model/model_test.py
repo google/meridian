@@ -22,6 +22,8 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import results
+from meridian.analysis.review import reviewer
 from meridian.backend import config as backend_config
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
@@ -34,6 +36,75 @@ from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
+
+CONVERGENCE_CHECK_RESULT_NOT_CONVERGED = results.ConvergenceCheckResult(
+    case=results.ConvergenceCases.NOT_CONVERGED,
+    config=mock.create_autospec(
+        results.configs.ConvergenceConfig, spec_set=True
+    ),
+    max_rhat=1.5,
+    max_parameter="beta",
+)
+CONVERGENCE_CHECK_RESULT_CONVERGED = results.ConvergenceCheckResult(
+    case=results.ConvergenceCases.CONVERGED,
+    config=mock.create_autospec(
+        results.configs.ConvergenceConfig, spec_set=True
+    ),
+    max_rhat=1.01,
+    max_parameter="beta",
+)
+BASELINE_CHECK_RESULT_PASS = results.BaselineCheckResult(
+    case=results.BaselineCases.PASS,
+    config=mock.create_autospec(results.configs.BaselineConfig, spec_set=True),
+    negative_baseline_prob=0.0,
+)
+GOODNESS_OF_FIT_CHECK_RESULT_PASS = results.GoodnessOfFitCheckResult(
+    case=results.GoodnessOfFitCases.PASS,
+    metrics=mock.create_autospec(results.GoodnessOfFitMetrics, spec_set=True),
+)
+BAYESIAN_PPP_CHECK_RESULT_PASS = results.BayesianPPPCheckResult(
+    case=results.BayesianPPPCases.PASS,
+    config=mock.create_autospec(
+        results.configs.BayesianPPPConfig, spec_set=True
+    ),
+    bayesian_ppp=0.5,
+)
+PRIOR_POSTERIOR_SHIFT_CHECK_RESULT_PASS = (
+    results.PriorPosteriorShiftCheckResult(
+        case=results.PriorPosteriorShiftAggregateCases.PASS,
+        channel_results=[
+            mock.create_autospec(
+                results.PriorPosteriorShiftChannelResult,
+                instance=True,
+                spec_set=True,
+            )
+            for _ in range(3)
+        ],
+        no_shift_channels=[],
+    )
+)
+ROI_CONSISTENCY_CHECK_RESULT_PASS = results.ROIConsistencyCheckResult(
+    case=results.ROIConsistencyAggregateCases.PASS,
+    channel_results=[
+        mock.create_autospec(
+            results.ROIConsistencyChannelResult,
+            instance=True,
+            spec_set=True,
+        )
+        for _ in range(3)
+    ],
+    aggregate_details={},
+)
+
+CONVERGENCE_ONLY_SET_TEST = (CONVERGENCE_CHECK_RESULT_NOT_CONVERGED,)
+MODEL_LEVEL_SET_TEST = (
+    CONVERGENCE_CHECK_RESULT_CONVERGED,
+    BASELINE_CHECK_RESULT_PASS,
+    GOODNESS_OF_FIT_CHECK_RESULT_PASS,
+    BAYESIAN_PPP_CHECK_RESULT_PASS,
+)
+PPS_SET_TEST = MODEL_LEVEL_SET_TEST + (PRIOR_POSTERIOR_SHIFT_CHECK_RESULT_PASS,)
+ROI_SET_TEST = PPS_SET_TEST + (ROI_CONSISTENCY_CHECK_RESULT_PASS,)
 
 
 class ModelTest(
@@ -465,6 +536,167 @@ class ModelTest(
         model.ModelFittingError, expected_error_message
     ):
       meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
+
+  def test_health_summary_attribute(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    self.assertIsNone(meridian.health_summary)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_convergence_only_set",
+          fake_results=CONVERGENCE_ONLY_SET_TEST,
+          overall_status=results.Status.FAIL,
+          health_score=0.0,
+      ),
+      dict(
+          testcase_name="with_model_level_set",
+          fake_results=MODEL_LEVEL_SET_TEST,
+          overall_status=results.Status.PASS,
+          health_score=90.0,
+      ),
+      dict(
+          testcase_name="with_pps_set",
+          fake_results=PPS_SET_TEST,
+          overall_status=results.Status.PASS,
+          health_score=90.0,
+      ),
+      dict(
+          testcase_name="with_roi_set",
+          fake_results=ROI_SET_TEST,
+          overall_status=results.Status.PASS,
+          health_score=90.0,
+      ),
+  )
+  def test_health_summary_injection_succeeds(
+      self, fake_results, overall_status, health_score
+  ):
+    summary = results.ReviewSummary(
+        overall_status=overall_status,
+        summary_message="Injected summary",
+        results=fake_results,
+        health_score=health_score,
+    )
+    meridian = model.Meridian(
+        input_data=self.input_data_with_media_only, health_summary=summary
+    )
+    self.assertIsNotNone(meridian.health_summary)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="wrong_shape",
+          fake_results=MODEL_LEVEL_SET_TEST
+          + (
+              results.PriorPosteriorShiftCheckResult(
+                  case=results.PriorPosteriorShiftAggregateCases.PASS,
+                  channel_results=[
+                      mock.create_autospec(
+                          results.PriorPosteriorShiftChannelResult,
+                          instance=True,
+                          spec_set=True,
+                      ),
+                  ],
+                  no_shift_channels=[],
+              ),
+          ),
+          expected_error_regex=(
+              "Injected PriorPosteriorShiftCheckResult contains 1 channels,"
+              " but model expects 3."
+          ),
+          health_score=88.8,
+      ),
+      dict(
+          testcase_name="disallowed_subset",
+          # Only convergence but it CONVERGED (expects other model-level checks
+          # to follow).
+          fake_results=(CONVERGENCE_CHECK_RESULT_CONVERGED,),
+          expected_error_regex=(
+              "Injected health summary results do not form a valid subset."
+          ),
+          health_score=100.0,
+      ),
+  )
+  def test_health_summary_injection_raises_error(
+      self, fake_results, expected_error_regex, health_score
+  ):
+    summary = results.ReviewSummary(
+        overall_status=results.Status.PASS,
+        summary_message="Injected summary",
+        results=fake_results,
+        health_score=health_score,
+    )
+    with self.assertRaisesRegex(ValueError, expected_error_regex):
+      model.Meridian(
+          input_data=self.input_data_with_media_only, health_summary=summary
+      )
+
+  def test_review_called_before_fitting_raises_error(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    with self.assertRaisesWithLiteralMatch(
+        model.NotFittedModelError,
+        "The model must be fitted before calling review().",
+    ):
+      meridian.review()
+
+  @mock.patch.object(reviewer, "ModelReviewer", autospec=True, spec_set=True)
+  def test_review_method(self, mock_model_reviewer):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian._inference_data = az.convert_to_inference_data(
+        {"dummy": [1.0]}, group=constants.POSTERIOR
+    )
+
+    mock_review_run = mock_model_reviewer.return_value.run
+    expected_results = results.ReviewSummary(
+        overall_status=results.Status.PASS,
+        summary_message="summary",
+        results=[],
+        health_score=0.0,
+    )
+    mock_review_run.return_value = expected_results
+
+    meridian.review()
+
+    mock_model_reviewer.assert_called_once_with(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+    mock_review_run.assert_called_once()
+    self.assertIs(meridian.health_summary, expected_results)
+
+  def test_sample_posterior_and_review_method(self):
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(model.Meridian, "sample_posterior", autospec=True)
+    )
+    mock_review = self.enter_context(
+        mock.patch.object(model.Meridian, "review", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    n_chains, n_adapt, n_burnin, n_keep = 1, 2, 3, 4
+    kwarg = "test"
+    meridian.sample_posterior_and_review(
+        n_chains=n_chains,
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        test=kwarg,
+    )
+
+    mock_sample_posterior.assert_called_once_with(
+        meridian,
+        n_chains=n_chains,
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        current_state=None,
+        init_step_size=None,
+        dual_averaging_kwargs=None,
+        max_tree_depth=10,
+        max_energy_diff=500.0,
+        unrolled_leapfrog_steps=1,
+        parallel_iterations=10,
+        seed=None,
+        test=kwarg,
+    )
+    mock_review.assert_called_once_with(meridian)
 
 
 class ModelPersistenceTest(
