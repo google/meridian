@@ -575,6 +575,7 @@ SAMPLE_STATS_METRICS = immutabledict.immutabledict({
 
 
 # Adstock hill functions.
+NONE = 'none'
 HILL = 'hill'
 ADSTOCK_HILL_FUNCTIONS = frozenset({
     'adstock_memory_optimized',

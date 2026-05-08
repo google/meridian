@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Filter linear channels from Hill curves and refactor R-hat in visualizer.
+
 ## [1.6.1] - 2026-04-30
 
 *   Update `mmm-proto-schema` dependency to >= 1.2.1.

@@ -18,6 +18,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import altair as alt
 import arviz as az
+from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
@@ -30,6 +31,7 @@ from meridian.model import context
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 mock = absltest.mock
@@ -64,6 +66,17 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         instance=True,
         input_data=cls.input_data,
     )
+    type(cls.model_context).saturation_spec = property(
+        lambda self: context.SaturationSpec()
+    )
+    cls.model_context.n_media_channels = _N_MEDIA_CHANNELS
+    cls.model_context.n_rf_channels = _N_RF_CHANNELS
+    cls.model_context.n_organic_media_channels = 0
+    cls.model_context.n_organic_rf_channels = 0
+    cls.model_context.n_controls = _N_CONTROLS
+    cls.model_context.n_non_media_channels = 0
+    cls.model_context.n_times = _N_TIMES
+    cls.model_context.n_geos = _N_GEOS
     cls.meridian = mock.create_autospec(
         model.Meridian,
         instance=True,
@@ -80,9 +93,19 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     inference_data.posterior = xr.open_dataset(
         os.path.join(_TEST_DATA_DIR, "sample_posterior_media_and_rf.nc")
     )
-    type(cls.meridian).inference_data = mock.PropertyMock(
-        return_value=inference_data
-    )
+    inference_data.groups = lambda: [
+        c.PRIOR,
+        c.POSTERIOR,
+    ]
+    cls.enter_context(
+        mock.patch.object(
+            type(cls.meridian),
+            "inference_data",
+            new_callable=mock.PropertyMock,
+            create=True,
+        )
+    ).return_value = inference_data
+
     cls.meridian.model_context = cls.model_context
     cls.mock_analyzer_method = cls.enter_context(
         mock.patch.object(
@@ -363,43 +386,16 @@ class ModelDiagnosticsTest(parameterized.TestCase):
       not_fitted_model_diagnostics.plot_rhat_boxplot()
 
   def test_plot_rhat_boxplot_mcmc_failed_raises_exception(self):
-    # Simulate alpha_m posterior data to not converge. When the MCMC sampling
-    # does not converge, there will be a constant value within each chain, but
-    # each chain will have a different constant value.
-    chain = [0, 1]
-    draw = [0, 1, 2, 3, 4]
-    channels = ["channel_0", "channel_1"]
-    alpha_m = [[0.1, 0.2], [0.3, 0.4]]
-    da = (
-        xr.DataArray(
-            data=alpha_m,
-            coords={c.CHAIN: chain, c.MEDIA_CHANNEL: channels},
-            name=c.ALPHA_M,
-        )
-        .expand_dims({c.DRAW: len(draw)})
-        .assign_coords({c.DRAW: draw})
-        .transpose(c.CHAIN, c.DRAW, c.MEDIA_CHANNEL)
-    )
-    ds = xr.Dataset()
-    ds[c.ALPHA_M] = da
-
-    inference_data = az.InferenceData()
-    inference_data.posterior = ds
-    meridian = mock.create_autospec(
-        model.Meridian,
-        instance=True,
-        input_data=self.input_data,
-    )
-    type(meridian).inference_data = mock.PropertyMock(
-        return_value=inference_data
-    )
-    model_diagnostics = visualizer.ModelDiagnostics(meridian)
-
-    with self.assertRaisesRegex(
-        model.MCMCSamplingError,
-        "MCMC sampling failed with a maximum R-hat value of inf",
+    with mock.patch.object(
+        analyzer.Analyzer,
+        "get_rhat",
+        return_value={c.ALPHA_M: backend.to_tensor([np.inf])},
     ):
-      model_diagnostics.plot_rhat_boxplot()
+      with self.assertRaisesRegex(
+          model.MCMCSamplingError,
+          "MCMC sampling failed with a maximum R-hat value of inf",
+      ):
+        self.model_diagnostics.plot_rhat_boxplot()
 
   def test_plot_rhat_boxplot_correct_data(self):
     plot = self.model_diagnostics.plot_rhat_boxplot()
@@ -1053,6 +1049,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     cls.context_revenue.input_data.kpi_type = c.REVENUE
     cls.context_revenue.input_data.revenue_per_kpi = revenue_per_kpi
+    cls.context_revenue.saturation_spec = context.SaturationSpec()
 
     cls.meridian_revenue.model_context = cls.context_revenue
     # Label = `KPI`.
@@ -1071,6 +1068,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     context_kpi.input_data.kpi_type = c.NON_REVENUE
     context_kpi.input_data.revenue_per_kpi = None
+    context_kpi.saturation_spec = context.SaturationSpec()
 
     meridian_kpi.model_context = context_kpi
 
@@ -1090,6 +1088,7 @@ class MediaEffectsTest(parameterized.TestCase):
     )
     context_revenue_2.input_data.kpi_type = c.NON_REVENUE
     context_revenue_2.input_data.revenue_per_kpi = revenue_per_kpi
+    context_revenue_2.saturation_spec = context.SaturationSpec()
 
     meridian_revenue_2.model_context = context_revenue_2
 
@@ -1180,6 +1179,64 @@ class MediaEffectsTest(parameterized.TestCase):
         confidence_level=0.85
     )
     self.mock_hill_curves_method.assert_called_once()
+
+  def test_hill_curves_dataframe_filters_none_channels(self):
+    mock_saturation_spec = context.SaturationSpec(
+        media=[c.HILL, c.NONE, c.HILL],
+        rf=[c.NONE, c.HILL],
+    )
+
+    with mock.patch.object(
+        self.context_revenue,
+        "saturation_spec",
+        new=mock_saturation_spec,
+    ):
+      df = self.media_effects_kpi_type_revenue.hill_curves_dataframe(
+          confidence_level=0.8
+      )
+
+      remaining_channels = df[c.CHANNEL].unique()
+      self.assertIn("ch_0", remaining_channels)
+      self.assertNotIn("ch_1", remaining_channels)
+      self.assertIn("ch_2", remaining_channels)
+
+      self.assertNotIn("rf_ch_0", remaining_channels)
+      self.assertIn("rf_ch_1", remaining_channels)
+
+      self.mock_hill_curves_method.reset_mock()
+
+  def test_plot_hill_curves_filters_none_channels(self):
+    mock_saturation_spec = context.SaturationSpec(
+        media=[c.HILL, c.NONE, c.HILL],
+        rf=[c.NONE, c.HILL],
+    )
+
+    with mock.patch.object(
+        self.context_revenue,
+        "saturation_spec",
+        new=mock_saturation_spec,
+    ):
+      plots = self.media_effects_kpi_type_revenue.plot_hill_curves(
+          confidence_level=0.8
+      )
+
+      self.assertIn(c.MEDIA, plots)
+      self.assertIn(c.RF, plots)
+
+      media_plot = plots[c.MEDIA]
+      media_data = media_plot.data
+      remaining_media_channels = media_data[c.CHANNEL].unique()
+      self.assertIn("ch_0", remaining_media_channels)
+      self.assertNotIn("ch_1", remaining_media_channels)
+      self.assertIn("ch_2", remaining_media_channels)
+
+      rf_plot = plots[c.RF]
+      rf_data = rf_plot.data
+      remaining_rf_channels = rf_data[c.CHANNEL].unique()
+      self.assertNotIn("rf_ch_0", remaining_rf_channels)
+      self.assertIn("rf_ch_1", remaining_rf_channels)
+
+      self.mock_hill_curves_method.reset_mock()
 
   def test_media_effects_plot_response_curves_plot_include_ci(self):
     plot = self.media_effects_kpi_type_revenue.plot_response_curves(
@@ -1501,6 +1558,23 @@ class MediaEffectsTest(parameterized.TestCase):
 
     line_layer = plot.spec.layer[1]
     self.assertEqual(line_layer.encoding.x["title"], expected_x_label)
+
+  def test_plot_hill_curves_omits_keys_for_fully_linear_channel_types(self):
+    mock_df = pd.DataFrame({
+        c.CHANNEL: ["rf_0", "rf_1"],
+        c.CHANNEL_TYPE: [c.RF, c.RF],
+    })
+
+    with mock.patch.object(
+        visualizer.MediaEffects,
+        "hill_curves_dataframe",
+        return_value=mock_df,
+        autospec=True,
+    ):
+      plots = self.media_effects_kpi_type_revenue.plot_hill_curves()
+
+    self.assertNotIn(c.MEDIA, plots)
+    self.assertIn(c.RF, plots)
 
   def test_media_effects_plot_hill_curves_no_ci(self):
     plot_media = self.media_effects_kpi_type_revenue.plot_hill_curves(

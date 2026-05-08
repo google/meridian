@@ -1082,6 +1082,42 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         set(constants.COMMON_PARAMETER_NAMES + constants.MEDIA_PARAMETER_NAMES),
     )
 
+  def test_get_rhat_linear_channels_returns_nan(self):
+    mock_context = mock.Mock()
+    mock_context.saturation_spec.media = ["none", "hill", "hill"]
+    mock_context.input_data.media_channel.values = ["ch_0", "ch_1", "ch_2"]
+
+    mock_inference_data = mock.Mock()
+    mock_inference_data.groups.return_value = [constants.POSTERIOR]
+    mock_inference_data.posterior.data_vars = {
+        constants.EC_M: xr.DataArray(np.ones((2, 10, 3))),
+        constants.SLOPE_M: xr.DataArray(np.ones((2, 10, 3))),
+    }
+
+    analyzer_obj = analyzer.Analyzer(
+        model_context=mock_context, inference_data=mock_inference_data
+    )
+
+    mock_rhats = {
+        constants.EC_M: backend.ones(3),
+        constants.SLOPE_M: backend.ones(3),
+    }
+
+    with mock.patch.object(
+        backend.mcmc,
+        "potential_scale_reduction",
+        return_value=mock_rhats,
+        autospec=True,
+    ):
+      rhat = analyzer_obj.get_rhat()
+
+    np.testing.assert_array_equal(
+        np.isnan(np.asarray(rhat[constants.EC_M])), [True, False, False]
+    )
+    np.testing.assert_array_equal(
+        np.isnan(np.asarray(rhat[constants.SLOPE_M])), [True, False, False]
+    )
+
   def test_rhat_summary_media_only_correct(self):
     rhat_summary = self.analyzer_media_only.rhat_summary()
     self.assertEqual(rhat_summary.shape, (13, 7))
@@ -1327,7 +1363,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   def test_init_populates_cached_properties(self):
     with mock.patch.object(
-        context.ModelContext, "populate_cached_properties"
+        context.ModelContext,
+        "populate_cached_properties",
+        autospec=True,
+        spec_set=True,
     ) as mock_populate:
       analyzer.Analyzer(
           model_context=self.meridian.model_context,
@@ -1916,6 +1955,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         self.analyzer,
         "incremental_outcome",
         return_value=mock_incremental_outcome,
+        autospec=True,
     ):
       incremental_outcome_with_totals = np.full(
           (_N_CHAINS, _N_DRAWS, 1),
@@ -2949,7 +2989,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     model_spec = spec.ModelSpec(max_lag=15)
     # Patch validation to avoid errors due to mismatched inference data
-    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
       meridian = model.Meridian(input_data=data, model_spec=model_spec)
     meridian_analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
@@ -3005,7 +3047,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     model_spec = spec.ModelSpec()
     # Patch validation to avoid errors due to mismatched inference data
-    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
       meridian = model.Meridian(input_data=data, model_spec=model_spec)
     meridian_analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
@@ -3064,7 +3108,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     model_spec = spec.ModelSpec(max_lag=15)
     # Patch validation to avoid errors due to mismatched inference data
-    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
       meridian = model.Meridian(input_data=data, model_spec=model_spec)
     meridian_analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
@@ -3168,7 +3214,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     model_spec = spec.ModelSpec(max_lag=15)
 
     # Patch validation to avoid errors due to mismatched inference data
-    with mock.patch.object(model.Meridian, "_validate_injected_inference_data"):
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
       meridian = model.Meridian(input_data=data, model_spec=model_spec)
     meridian_analyzer = analyzer.Analyzer(
         model_context=meridian.model_context,
