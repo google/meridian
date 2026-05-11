@@ -1838,9 +1838,10 @@ class Analyzer:
     else:
       return combined_media_kpi
 
-  def _inverse_outcome(
+  def inverse_outcome(
       self,
       modeled_incremental_outcome: backend.Tensor,
+      *,
       use_kpi: bool,
       revenue_per_kpi: backend.Tensor | None,
   ) -> backend.Tensor:
@@ -1973,7 +1974,7 @@ class Analyzer:
         non_media_treatments_baseline_normalized=non_media_treatments_baseline_normalized,
     )
     if inverse_transform_outcome:
-      incremental_outcome = self._inverse_outcome(
+      incremental_outcome = self.inverse_outcome(
           transformed_outcome,
           use_kpi=use_kpi,
           revenue_per_kpi=data_tensors.revenue_per_kpi,

@@ -262,7 +262,7 @@ class ComputeAdstockHillsTest(
     media = backend.to_tensor(data.media, dtype=backend.float_dtype)
     with self.assertRaisesRegex(
         ValueError,
-        "Invalid saturation_spec: invalid. Must be 'hill' or 'none'.",
+        "Invalid saturation_spec: 'invalid'. Must be 'hill' or 'none'.",
     ):
       self.equations.adstock_hill_media(
           media=media,
@@ -286,7 +286,7 @@ class ComputeAdstockHillsTest(
     )
     with self.assertRaisesRegex(
         ValueError,
-        "Invalid saturation function in saturation_spec: invalid. Must be"
+        "Invalid saturation function in saturation_spec: 'invalid'. Must be"
         " 'hill' or 'none'.",
     ):
       self.equations.adstock_hill_media(
@@ -296,6 +296,197 @@ class ComputeAdstockHillsTest(
           slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
           saturation_spec=saturation_spec,
+      )
+
+  def test_adstock_hill_media_invalid_saturation_spec_sequence_length(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    saturation_spec = [constants.HILL] * (self._N_MEDIA_CHANNELS + 1)
+    with self.assertRaisesRegex(
+        ValueError,
+        rf"Length of saturation_spec \({self._N_MEDIA_CHANNELS + 1}\) must"
+        r" match"
+        rf" n_channels \({self._N_MEDIA_CHANNELS}\).",
+    ):
+      self.equations.adstock_hill_media(
+          media=media,
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions=constants.GEOMETRIC_DECAY,
+          saturation_spec=saturation_spec,
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="hill_first",
+          hill_before_adstock=True,
+          expected_channel_0_func=lambda mock_adstock, media: mock_adstock[
+              ..., 0
+          ],
+          expected_channel_1_func=lambda mock_adstock, media: (media * 2.0)[
+              ..., 1
+          ],
+      ),
+      dict(
+          testcase_name="adstock_first",
+          hill_before_adstock=False,
+          expected_channel_0_func=lambda mock_adstock, media: (
+              mock_adstock * 3.0
+          )[..., 0],
+          expected_channel_1_func=lambda mock_adstock, media: (media * 3.0)[
+              ..., 1
+          ],
+      ),
+  )
+  def test_adstock_hill_media_selective_decay(
+      self,
+      hill_before_adstock,
+      expected_channel_0_func,
+      expected_channel_1_func,
+  ):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec(
+        hill_before_adstock=hill_before_adstock,
+    )
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    n_channels = self._N_MEDIA_CHANNELS
+    alpha = backend.ones(shape=(n_channels,))
+    ec = backend.ones(shape=(n_channels,))
+    slope = backend.ones(shape=(n_channels,))
+
+    mock_output = media * 4.0
+
+    if hill_before_adstock:
+      self.enter_context(
+          mock.patch.object(
+              adstock_hill.HillTransformer,
+              "forward",
+              autospec=True,
+              side_effect=lambda self, x: x * 2.0,
+          )
+      )
+      self.enter_context(
+          mock.patch.object(
+              adstock_hill.AdstockTransformer,
+              "forward",
+              autospec=True,
+              return_value=mock_output,
+          )
+      )
+    else:
+      self.enter_context(
+          mock.patch.object(
+              adstock_hill.AdstockTransformer,
+              "forward",
+              autospec=True,
+              return_value=mock_output,
+          )
+      )
+      self.enter_context(
+          mock.patch.object(
+              adstock_hill.HillTransformer,
+              "forward",
+              autospec=True,
+              side_effect=lambda self, x: x * 3.0,
+          )
+      )
+
+    decay_functions = [constants.GEOMETRIC_DECAY, "none"] + [
+        constants.GEOMETRIC_DECAY
+    ] * (n_channels - 2)
+
+    result = self.equations.adstock_hill_media(
+        media=media,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        saturation_spec=constants.HILL,
+    )
+
+    test_utils.assert_allclose(
+        result[..., 0], expected_channel_0_func(mock_output, media)
+    )
+    test_utils.assert_allclose(
+        result[..., 1], expected_channel_1_func(mock_output, media)
+    )
+
+  def test_adstock_hill_media_invalid_decay_functions_string(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid decay_functions: 'invalid'. Must be 'geometric', 'binomial',"
+        " or 'none'.",
+    ):
+      self.equations.adstock_hill_media(
+          media=media,
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions="invalid",
+      )
+
+  def test_adstock_hill_media_invalid_decay_functions_sequence(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    decay_functions = ["invalid"] + [constants.GEOMETRIC_DECAY] * (
+        self._N_MEDIA_CHANNELS - 1
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid decay function in decay_functions: 'invalid'. Must be"
+        " 'geometric', 'binomial', or 'none'.",
+    ):
+      self.equations.adstock_hill_media(
+          media=media,
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions=decay_functions,
+      )
+
+  def test_adstock_hill_media_invalid_decay_functions_sequence_length(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    decay_functions = [constants.GEOMETRIC_DECAY] * (self._N_MEDIA_CHANNELS + 1)
+    with self.assertRaisesRegex(
+        ValueError,
+        rf"Length of decay_functions \({self._N_MEDIA_CHANNELS + 1}\) must"
+        r" match"
+        rf" n_channels \({self._N_MEDIA_CHANNELS}\).",
+    ):
+      self.equations.adstock_hill_media(
+          media=media,
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions=decay_functions,
       )
 
   def test_adstock_hill_rf_missing_required_n_times_output(self):
@@ -328,13 +519,12 @@ class ComputeAdstockHillsTest(
     self.mock_context.n_media_times = self._N_MEDIA_TIMES
     self.mock_context.n_times = self._N_TIMES
 
-    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
     reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
     frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
     with mock.patch.object(
         adstock_hill, "AdstockTransformer", autospec=True
     ) as mock_adstock_cls:
-      mock_adstock_cls.return_value.forward.return_value = media
+      mock_adstock_cls.return_value.forward.return_value = reach * frequency
 
       self.equations.adstock_hill_rf(
           reach=reach,
@@ -459,7 +649,7 @@ class ComputeAdstockHillsTest(
     frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
     with self.assertRaisesRegex(
         ValueError,
-        "Invalid saturation_spec: invalid. Must be 'hill' or 'none'.",
+        "Invalid saturation_spec: 'invalid'. Must be 'hill' or 'none'.",
     ):
       self.equations.adstock_hill_rf(
           reach=reach,
@@ -483,7 +673,7 @@ class ComputeAdstockHillsTest(
     saturation_spec = ["invalid"] + [constants.HILL] * (self._N_RF_CHANNELS - 1)
     with self.assertRaisesRegex(
         ValueError,
-        "Invalid saturation function in saturation_spec: invalid. Must be"
+        "Invalid saturation function in saturation_spec: 'invalid'. Must be"
         " 'hill' or 'none'.",
     ):
       self.equations.adstock_hill_rf(
@@ -494,6 +684,157 @@ class ComputeAdstockHillsTest(
           slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
           decay_functions=constants.GEOMETRIC_DECAY,
           saturation_spec=saturation_spec,
+      )
+
+  def test_adstock_hill_rf_invalid_saturation_spec_sequence_length(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    saturation_spec = [constants.HILL] * (self._N_RF_CHANNELS + 1)
+    with self.assertRaisesRegex(
+        ValueError,
+        rf"Length of saturation_spec \({self._N_RF_CHANNELS + 1}\) must match"
+        rf" n_channels \({self._N_RF_CHANNELS}\).",
+    ):
+      self.equations.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          decay_functions=constants.GEOMETRIC_DECAY,
+          saturation_spec=saturation_spec,
+      )
+
+  def test_adstock_hill_rf_selective_decay(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    n_channels = self._N_RF_CHANNELS
+    alpha = backend.ones(shape=(n_channels,))
+    ec = backend.ones(shape=(n_channels,))
+    slope = backend.ones(shape=(n_channels,))
+
+    self.enter_context(
+        mock.patch.object(
+            adstock_hill.HillTransformer,
+            "forward",
+            autospec=True,
+            side_effect=lambda self, x: x * 2.0,
+        )
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            adstock_hill.AdstockTransformer,
+            "forward",
+            autospec=True,
+            side_effect=lambda self, x: x * 3.0,
+        )
+    )
+
+    decay_functions = [constants.GEOMETRIC_DECAY, "none"] + [
+        constants.GEOMETRIC_DECAY
+    ] * (n_channels - 2)
+
+    result = self.equations.adstock_hill_rf(
+        reach=reach,
+        frequency=frequency,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        saturation_spec=constants.HILL,
+    )
+
+    rf_media = reach * (frequency * 2.0)
+    expected_channel_0 = rf_media[..., 0] * 3.0
+    expected_channel_1 = rf_media[..., 1]
+
+    test_utils.assert_allclose(result[..., 0], expected_channel_0)
+    test_utils.assert_allclose(result[..., 1], expected_channel_1)
+
+  def test_adstock_hill_rf_invalid_decay_functions_string(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid decay_functions: 'invalid'. Must be 'geometric', 'binomial',"
+        " or 'none'.",
+    ):
+      self.equations.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          decay_functions="invalid",
+      )
+
+  def test_adstock_hill_rf_invalid_decay_functions_sequence(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    decay_functions = ["invalid"] + [constants.GEOMETRIC_DECAY] * (
+        self._N_RF_CHANNELS - 1
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid decay function in decay_functions: 'invalid'. Must be"
+        " 'geometric', 'binomial', or 'none'.",
+    ):
+      self.equations.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          decay_functions=decay_functions,
+      )
+
+  def test_adstock_hill_rf_invalid_decay_functions_sequence_length(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    decay_functions = [constants.GEOMETRIC_DECAY] * (self._N_RF_CHANNELS + 1)
+    with self.assertRaisesRegex(
+        ValueError,
+        rf"Length of decay_functions \({self._N_RF_CHANNELS + 1}\) must match"
+        rf" n_channels \({self._N_RF_CHANNELS}\).",
+    ):
+      self.equations.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          decay_functions=decay_functions,
       )
 
 

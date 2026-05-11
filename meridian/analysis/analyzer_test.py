@@ -1608,6 +1608,56 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     ):
       method(inverse_transform_outcome=False, use_kpi=False)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_kpi_true",
+          use_kpi=True,
+          pass_revenue_per_kpi=False,
+      ),
+      dict(
+          testcase_name="use_kpi_false",
+          use_kpi=False,
+          pass_revenue_per_kpi=True,
+      ),
+  )
+  def test_inverse_outcome(self, use_kpi: bool, pass_revenue_per_kpi: bool):
+    scale_factor = 2.0
+    shift_factor = 5.0
+    revenue_multiplier = 3.0
+
+    mock_transformer = mock.Mock()
+    mock_transformer.inverse.side_effect = (
+        lambda x: x * scale_factor + shift_factor
+    )
+
+    with mock.patch.object(
+        self.analyzer.model_context, "kpi_transformer", mock_transformer
+    ):
+      # Shape: (chains, draws, geos, times, channels)
+      mock_outcome = backend.ones((2, 3, _N_GEOS, _N_TIMES, 1))
+
+      revenue_per_kpi = (
+          backend.ones((_N_GEOS, _N_TIMES)) * revenue_multiplier
+          if pass_revenue_per_kpi
+          else None
+      )
+
+      outcome = self.analyzer.inverse_outcome(
+          mock_outcome, use_kpi=use_kpi, revenue_per_kpi=revenue_per_kpi
+      )
+
+      base_outcome = backend.ones((2, 3, _N_GEOS, _N_TIMES, 1)) * scale_factor
+      expected_outcome = (
+          base_outcome * revenue_multiplier if not use_kpi else base_outcome
+      )
+
+      backend_test_utils.assert_allclose(
+          outcome,
+          expected_outcome,
+          rtol=1e-5,
+          atol=1e-5,
+      )
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],

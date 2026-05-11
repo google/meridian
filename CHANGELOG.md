@@ -24,6 +24,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 * Filter linear channels from Hill curves and refactor R-hat in visualizer.
+* Expose `inverse_outcome` as a public method in `Analyzer`.
+* Add `get_media_transformation_divisor` to `ModelContext` to retrieve channel transformation divisors.
 
 ## [1.6.1] - 2026-04-30
 

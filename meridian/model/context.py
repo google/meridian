@@ -1122,6 +1122,81 @@ class ModelContext:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
+  def get_media_transformation_divisor(
+      self, channel_name: str
+  ) -> backend.Tensor:
+    """Retrieves the population-scaled median used to normalize a specific channel's volume.
+
+    For Reach & Frequency (RF) channels, this returns the divisor applied
+    to the 'reach' component, as 'frequency' is not transformed.
+
+    This method does not support non-media treatments or control variables, as
+    they are not normalized by a population-scaled median divisor.
+
+    Args:
+      channel_name: The string name of the paid or organic channel.
+
+    Returns:
+      A tensor of shape (n_geos,) representing the transformation divisor.
+
+    Raises:
+      ValueError: If the channel is a non-media treatment or control variable,
+                  is not found, or the transformer is uninitialized.
+    """
+    input_data = self.input_data
+
+    if (
+        input_data.non_media_channel is not None
+        and channel_name in input_data.non_media_channel.values
+    ):
+      raise ValueError(
+          "Cannot return a transformation divisor for non-media treatment"
+          f" '{channel_name}'. Non-media variables are not normalized by a"
+          " population-scaled median divisor."
+      )
+
+    if (
+        input_data.control_variable is not None
+        and channel_name in input_data.control_variable.values
+    ):
+      raise ValueError(
+          "Cannot return a transformation divisor for control variable"
+          f" '{channel_name}'. Control variables are not normalized by a"
+          " population-scaled median divisor."
+      )
+
+    configs = [
+        (
+            input_data.organic_media_channel,
+            self.organic_media_tensors.organic_media_transformer,
+            "organic media",
+        ),
+        (
+            input_data.organic_rf_channel,
+            self.organic_rf_tensors.organic_reach_transformer,
+            "organic RF",
+        ),
+        (
+            input_data.media_channel,
+            self.media_tensors.media_transformer,
+            "media",
+        ),
+        (input_data.rf_channel, self.rf_tensors.reach_transformer, "RF"),
+    ]
+
+    for channel_data, transformer, channel_type_name in configs:
+      if channel_data is not None and channel_name in channel_data.values:
+        idx = np.where(channel_data.values == channel_name)[0][0]
+
+        if transformer is None:
+          raise ValueError(
+              f"Transformer for {channel_type_name} channel '{channel_name}' is"
+              " missing."
+          )
+        return self.population * transformer.population_scaled_median_m[idx]
+
+    raise ValueError(f"Channel '{channel_name}' not found in any model inputs.")
+
   def expand_selected_time_dims(
       self,
       start_date: tc.Date = None,
