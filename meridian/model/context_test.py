@@ -356,18 +356,18 @@ class ContextTest(
           testcase_name="media_non_media_and_organic",
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
       dict(
           testcase_name="rf_non_media_and_organic",
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
       dict(
@@ -375,9 +375,9 @@ class ContextTest(
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
   )
@@ -1521,6 +1521,110 @@ class ContextTest(
     np.testing.assert_equal(
         actual_knot_info.weights, expected_knot_info.weights
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="paid_media",
+          channel_type=constants.MEDIA,
+          tensor_attr="media_tensors",
+          transformer_attr="media_transformer",
+      ),
+      dict(
+          testcase_name="organic_media",
+          channel_type=constants.ORGANIC_MEDIA,
+          tensor_attr="organic_media_tensors",
+          transformer_attr="organic_media_transformer",
+      ),
+      dict(
+          testcase_name="paid_rf",
+          channel_type=constants.RF,
+          tensor_attr="rf_tensors",
+          transformer_attr="reach_transformer",
+      ),
+      dict(
+          testcase_name="organic_rf",
+          channel_type=constants.ORGANIC_RF,
+          tensor_attr="organic_rf_tensors",
+          transformer_attr="organic_reach_transformer",
+      ),
+  )
+  def test_get_media_scaling_factor_success(
+      self, channel_type: str, tensor_attr: str, transformer_attr: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        n_organic_rf_channels=1,
+        n_non_media_channels=1,
+        seed=0,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    channel_attr = f"{channel_type}_channel"
+    channel_data = getattr(data, channel_attr)
+    self.assertIsNotNone(channel_data)
+    assert channel_data is not None
+    channel_name = channel_data.values[0]
+
+    scaling_factor = model_context.get_media_scaling_factor(channel_name)
+
+    tensors = getattr(model_context, tensor_attr)
+    transformer = getattr(tensors, transformer_attr)
+    self.assertIsNotNone(transformer)
+    expected = (
+        model_context.population * transformer.population_scaled_median_m[0]
+    )
+
+    test_utils.assert_allclose(scaling_factor, expected)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="non_media",
+          channel_type="non_media",
+          error_msg="Cannot return a scaling factor for non-media treatment",
+      ),
+      dict(
+          testcase_name="control",
+          channel_type="control",
+          error_msg="Cannot return a scaling factor for control variable",
+      ),
+      dict(
+          testcase_name="unknown",
+          channel_type="unknown",
+          error_msg="not found in any model inputs",
+      ),
+  )
+  def test_get_media_scaling_factor_failure(
+      self, channel_type: str, error_msg: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        n_organic_rf_channels=1,
+        n_non_media_channels=1,
+        seed=0,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    if channel_type == "non_media":
+      self.assertIsNotNone(data.non_media_channel)
+      assert data.non_media_channel is not None
+      channel_name = data.non_media_channel.values[0]
+    elif channel_type == "control":
+      self.assertIsNotNone(data.control_variable)
+      assert data.control_variable is not None
+      channel_name = data.control_variable.values[0]
+    else:
+      channel_name = "unknown_channel"
+
+    with self.assertRaisesRegex(ValueError, error_msg):
+      model_context.get_media_scaling_factor(channel_name)
 
 
 class AdstockDecaySpecFromChannelMappingTest(

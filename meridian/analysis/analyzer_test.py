@@ -1374,6 +1374,76 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
       mock_populate.assert_called_once()
 
+  @parameterized.named_parameters(
+      (
+          "media",
+          "media_channel",
+          False,
+          "adstock_hill_media",
+      ),
+      (
+          "rf",
+          "rf_channel",
+          True,
+          "adstock_hill_rf",
+      ),
+  )
+  def test_apply_channel_transformations(
+      self, channel_attr, is_rf, mock_method_name
+  ):
+    self.assertIsNotNone(getattr(self.input_data, channel_attr))
+    channel_name = getattr(self.input_data, channel_attr).values[0]
+    media_data = backend.ones((_N_GEOS, _N_MEDIA_TIMES, 1))
+    frequency_data = (
+        backend.ones((_N_GEOS, _N_MEDIA_TIMES, 1)) if is_rf else None
+    )
+
+    with mock.patch.object(
+        self.analyzer._model_equations,
+        mock_method_name,
+        autospec=True,
+    ) as mock_method:
+      self.analyzer.apply_channel_transformations(
+          channel_name=channel_name,
+          media_data=media_data,
+          frequency_data=frequency_data,
+          decay_functions="none",
+          saturation_spec="none",
+          n_times_output=_N_TIMES,
+      )
+
+      if is_rf:
+        mock_method.assert_called_once_with(
+            reach=media_data,
+            frequency=frequency_data,
+            alpha=mock.ANY,
+            ec=mock.ANY,
+            slope=mock.ANY,
+            decay_functions="none",
+            saturation_spec="none",
+            n_times_output=_N_TIMES,
+        )
+      else:
+        mock_method.assert_called_once_with(
+            media=media_data,
+            alpha=mock.ANY,
+            ec=mock.ANY,
+            slope=mock.ANY,
+            decay_functions="none",
+            saturation_spec="none",
+            n_times_output=_N_TIMES,
+        )
+
+
+  def test_apply_channel_transformations_missing_channel(self):
+    with self.assertRaisesRegex(
+        ValueError, "Channel 'not_a_channel' not found in the model."
+    ):
+      self.analyzer.apply_channel_transformations(
+          channel_name="not_a_channel",
+          media_data=backend.ones((_N_GEOS, _N_MEDIA_TIMES, 1)),
+      )
+
   def test_response_curves_with_linear_channel_is_linear(self):
     saturation_spec = {
         "ch_0": "none",
@@ -1607,6 +1677,56 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         r" inverse_transform_outcome=True\.",
     ):
       method(inverse_transform_outcome=False, use_kpi=False)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_kpi_true",
+          use_kpi=True,
+          pass_revenue_per_kpi=False,
+      ),
+      dict(
+          testcase_name="use_kpi_false",
+          use_kpi=False,
+          pass_revenue_per_kpi=True,
+      ),
+  )
+  def test_inverse_outcome(self, use_kpi: bool, pass_revenue_per_kpi: bool):
+    scale_factor = 2.0
+    shift_factor = 5.0
+    revenue_multiplier = 3.0
+
+    mock_transformer = mock.Mock()
+    mock_transformer.inverse.side_effect = (
+        lambda x: x * scale_factor + shift_factor
+    )
+
+    with mock.patch.object(
+        self.analyzer.model_context, "kpi_transformer", mock_transformer
+    ):
+      # Shape: (chains, draws, geos, times, channels)
+      mock_outcome = backend.ones((2, 3, _N_GEOS, _N_TIMES, 1))
+
+      revenue_per_kpi = (
+          backend.ones((_N_GEOS, _N_TIMES)) * revenue_multiplier
+          if pass_revenue_per_kpi
+          else None
+      )
+
+      outcome = self.analyzer.inverse_outcome(
+          mock_outcome, use_kpi=use_kpi, revenue_per_kpi=revenue_per_kpi
+      )
+
+      base_outcome = backend.ones((2, 3, _N_GEOS, _N_TIMES, 1)) * scale_factor
+      expected_outcome = (
+          base_outcome * revenue_multiplier if not use_kpi else base_outcome
+      )
+
+      backend_test_utils.assert_allclose(
+          outcome,
+          expected_outcome,
+          rtol=1e-5,
+          atol=1e-5,
+      )
 
   @parameterized.product(
       use_posterior=[False, True],

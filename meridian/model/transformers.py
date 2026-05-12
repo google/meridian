@@ -91,6 +91,10 @@ class MediaTransformer(TensorTransformer):
   def population_scaled_median_m(self):
     return self._population_scaled_median_m
 
+  @property
+  def scale_factors_gm(self):
+    return self._scale_factors_gm
+
   @backend.function(jit_compile=True)
   def forward(self, tensor: backend.Tensor) -> backend.Tensor:
     """Scales a given tensor using the stored scale factors."""

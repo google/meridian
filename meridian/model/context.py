@@ -1122,6 +1122,78 @@ class ModelContext:
     for attr in cached_properties:
       _ = getattr(self, attr)
 
+  def get_media_scaling_factor(
+      self, channel_name: str
+  ) -> backend.Tensor:
+    """Retrieves the population-scaled median used to scale a specific channel's volume.
+
+    For Reach & Frequency (RF) channels, this returns the scaling factor applied
+    to the 'reach' component, as 'frequency' is not transformed.
+
+    Args:
+      channel_name: The string name of the paid or organic channel.
+
+    Returns:
+      A tensor of shape (n_geos,) representing the scaling factor.
+
+    Raises:
+      ValueError: If the channel is not found, or the transformer is
+        uninitialized.
+    """
+    input_data = self.input_data
+
+    if (
+        input_data.non_media_channel is not None
+        and channel_name in input_data.non_media_channel.values
+    ):
+      raise ValueError(
+          "Cannot return a scaling factor for non-media treatment"
+          f" '{channel_name}'."
+      )
+
+    if (
+        input_data.control_variable is not None
+        and channel_name in input_data.control_variable.values
+    ):
+      raise ValueError(
+          "Cannot return a scaling factor for control variable"
+          f" '{channel_name}'."
+      )
+
+    configs = [
+        (
+            input_data.media_channel,
+            self.media_tensors.media_transformer,
+            "media",
+        ),
+        (input_data.rf_channel, self.rf_tensors.reach_transformer, "RF"),
+        (
+            input_data.organic_media_channel,
+            self.organic_media_tensors.organic_media_transformer,
+            "organic media",
+        ),
+        (
+            input_data.organic_rf_channel,
+            self.organic_rf_tensors.organic_reach_transformer,
+            "organic RF",
+        ),
+    ]
+
+    for channel_data, transformer, channel_type_name in configs:
+      if channel_data is None or channel_name not in channel_data.values:
+        continue
+
+      if transformer is None:
+        raise ValueError(
+            f"Transformer for {channel_type_name} channel '{channel_name}'"
+            " is missing."
+        )
+      (indices,) = np.where(channel_data.values == channel_name)
+      idx = indices[0]
+      return transformer.scale_factors_gm[:, idx]
+
+    raise ValueError(f"Channel '{channel_name}' not found in any model inputs.")
+
   def expand_selected_time_dims(
       self,
       start_date: tc.Date = None,

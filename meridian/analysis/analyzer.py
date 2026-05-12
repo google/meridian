@@ -1330,6 +1330,157 @@ class Analyzer:
         ])
     return params
 
+  def _get_channel_params(
+      self, channel_name: str
+  ) -> tuple[int, str, str | Sequence[str], bool]:
+    """Maps channel names to index, prefix, default decay spec, and is_rf.
+
+    Args:
+      channel_name: Name of the channel.
+
+    Returns:
+      A tuple (index, prefix, default_decay_spec, is_rf), where index is the
+      index of the channel within its type, prefix is the distribution prefix
+      (e.g., 'm', 'rf', 'om', 'orf'), default_decay_spec is the model's
+      default decay spec for this channel type, and is_rf is a boolean
+      indicating if the channel is an RF channel.
+
+    Raises:
+      ValueError: If the channel is not found.
+    """
+    input_data = self.model_context.input_data
+    decay_spec = self.model_context.adstock_decay_spec
+
+    if (
+        input_data.media_channel is not None
+        and channel_name in input_data.media_channel.values
+    ):
+      index = list(input_data.media_channel.values).index(channel_name)
+      return index, "m", decay_spec.media, False
+
+    if (
+        input_data.rf_channel is not None
+        and channel_name in input_data.rf_channel.values
+    ):
+      index = list(input_data.rf_channel.values).index(channel_name)
+      return index, "rf", decay_spec.rf, True
+
+    if (
+        input_data.organic_media_channel is not None
+        and channel_name in input_data.organic_media_channel.values
+    ):
+      index = list(input_data.organic_media_channel.values).index(channel_name)
+      return index, "om", decay_spec.organic_media, False
+
+    if (
+        input_data.organic_rf_channel is not None
+        and channel_name in input_data.organic_rf_channel.values
+    ):
+      index = list(input_data.organic_rf_channel.values).index(channel_name)
+      return index, "orf", decay_spec.organic_rf, True
+
+    raise ValueError(f"Channel '{channel_name}' not found in the model.")
+
+  def apply_channel_transformations(
+      self,
+      channel_name: str,
+      media_data: backend.Tensor,
+      *,
+      frequency_data: backend.Tensor | None = None,
+      use_posterior: bool = True,
+      decay_functions: str | Sequence[str] | None = None,
+      saturation_spec: str | Sequence[str] | None = None,
+      n_times_output: int | None = None,
+      dist_tensors: DistributionTensors | None = None,
+  ) -> backend.Tensor:
+    """Applies channel transformations to the given media data.
+
+    Args:
+      channel_name: Name of the channel.
+      media_data: Media tensor for the channel.
+      frequency_data: Frequency tensor for RF channels.
+      use_posterior: Whether to use posterior or prior distributions.
+      decay_functions: Override for decay functions. If None, uses model
+        default.
+      saturation_spec: Override for saturation spec. If None, uses model
+        default.
+      n_times_output: Number of output times.
+      dist_tensors: Optional distribution tensors to use instead of full
+        posterior/prior.
+
+    Returns:
+      Tensor representing the transformed media.
+    """
+    index, prefix, default_decay_spec, is_rf = self._get_channel_params(
+        channel_name
+    )
+
+    if decay_functions is None:
+      if isinstance(default_decay_spec, str):
+        decay_functions = default_decay_spec
+      else:
+        decay_functions = default_decay_spec[index]
+
+    if saturation_spec is None:
+      attr_by_prefix = {
+          "m": "media",
+          "rf": "rf",
+          "om": "organic_media",
+          "orf": "organic_rf",
+      }
+      attr = attr_by_prefix[prefix]
+      default_sat_spec = getattr(self.model_context.saturation_spec, attr)
+      if isinstance(default_sat_spec, str):
+        saturation_spec = default_sat_spec
+      else:
+        saturation_spec = default_sat_spec[index]
+
+    if dist_tensors is not None:
+      alpha = getattr(dist_tensors, f"alpha_{prefix}")[..., index : index + 1]
+      ec = getattr(dist_tensors, f"ec_{prefix}")[..., index : index + 1]
+      slope = getattr(dist_tensors, f"slope_{prefix}")[..., index : index + 1]
+    else:
+      dist = (
+          self.inference_data.posterior
+          if use_posterior
+          else self.inference_data.prior
+      )
+      alpha = backend.to_tensor(
+          getattr(dist, f"alpha_{prefix}").values[..., index : index + 1]
+      )
+      ec = backend.to_tensor(
+          getattr(dist, f"ec_{prefix}").values[..., index : index + 1]
+      )
+      slope = backend.to_tensor(
+          getattr(dist, f"slope_{prefix}").values[..., index : index + 1]
+      )
+
+    if is_rf:
+      if frequency_data is None:
+        raise ValueError(
+            f"Frequency data is required for RF channel '{channel_name}'."
+        )
+      return self._model_equations.adstock_hill_rf(
+          reach=media_data,
+          frequency=frequency_data,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=decay_functions,
+          saturation_spec=saturation_spec,
+          n_times_output=n_times_output,
+      )
+    else:
+      return self._model_equations.adstock_hill_media(
+          media=media_data,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=decay_functions,
+          saturation_spec=saturation_spec,
+          n_times_output=n_times_output,
+      )
+
   def _get_transformed_media_and_beta(
       self,
       data_tensors: DataTensors,
@@ -1356,61 +1507,58 @@ class Analyzer:
     """
     combined_medias = []
     combined_betas = []
-    if data_tensors.media is not None:
-      combined_medias.append(
-          self._model_equations.adstock_hill_media(
-              media=data_tensors.media,
-              alpha=dist_tensors.alpha_m,
-              ec=dist_tensors.ec_m,
-              slope=dist_tensors.slope_m,
-              decay_functions=self.model_context.adstock_decay_spec.media,
-              saturation_spec=self.model_context.saturation_spec.media,
-              n_times_output=n_times_output,
-          )
-      )
-      combined_betas.append(dist_tensors.beta_gm)
+    input_data = self.model_context.input_data
 
-    if data_tensors.reach is not None:
-      combined_medias.append(
-          self._model_equations.adstock_hill_rf(
-              reach=data_tensors.reach,
-              frequency=data_tensors.frequency,
-              alpha=dist_tensors.alpha_rf,
-              ec=dist_tensors.ec_rf,
-              slope=dist_tensors.slope_rf,
-              decay_functions=self.model_context.adstock_decay_spec.rf,
-              saturation_spec=self.model_context.saturation_spec.rf,
-              n_times_output=n_times_output,
-          )
-      )
-      combined_betas.append(dist_tensors.beta_grf)
-    if data_tensors.organic_media is not None:
-      combined_medias.append(
-          self._model_equations.adstock_hill_media(
-              media=data_tensors.organic_media,
-              alpha=dist_tensors.alpha_om,
-              ec=dist_tensors.ec_om,
-              slope=dist_tensors.slope_om,
-              decay_functions=self.model_context.adstock_decay_spec.organic_media,
-              saturation_spec=self.model_context.saturation_spec.organic_media,
-              n_times_output=n_times_output,
-          )
-      )
-      combined_betas.append(dist_tensors.beta_gom)
-    if data_tensors.organic_reach is not None:
-      combined_medias.append(
-          self._model_equations.adstock_hill_rf(
-              reach=data_tensors.organic_reach,
-              frequency=data_tensors.organic_frequency,
-              alpha=dist_tensors.alpha_orf,
-              ec=dist_tensors.ec_orf,
-              slope=dist_tensors.slope_orf,
-              decay_functions=self.model_context.adstock_decay_spec.organic_rf,
-              saturation_spec=self.model_context.saturation_spec.organic_rf,
-              n_times_output=n_times_output,
-          )
-      )
-      combined_betas.append(dist_tensors.beta_gorf)
+    channel_groups = []
+    if data_tensors.media is not None and input_data.media_channel is not None:
+      channel_groups.append((
+          input_data.media_channel.values,
+          data_tensors.media,
+          None,
+          dist_tensors.beta_gm,
+      ))
+    if data_tensors.reach is not None and input_data.rf_channel is not None:
+      channel_groups.append((
+          input_data.rf_channel.values,
+          data_tensors.reach,
+          data_tensors.frequency,
+          dist_tensors.beta_grf,
+      ))
+    if (
+        data_tensors.organic_media is not None
+        and input_data.organic_media_channel is not None
+    ):
+      channel_groups.append((
+          input_data.organic_media_channel.values,
+          data_tensors.organic_media,
+          None,
+          dist_tensors.beta_gom,
+      ))
+    if (
+        data_tensors.organic_reach is not None
+        and input_data.organic_rf_channel is not None
+    ):
+      channel_groups.append((
+          input_data.organic_rf_channel.values,
+          data_tensors.organic_reach,
+          data_tensors.organic_frequency,
+          dist_tensors.beta_gorf,
+      ))
+
+    for channel_names, media_tensor, freq_tensor, beta_tensor in channel_groups:
+      for i, channel_name in enumerate(channel_names):
+        freq_data = (
+            freq_tensor[..., i : i + 1] if freq_tensor is not None else None
+        )
+        transformed = self.apply_channel_transformations(
+            channel_name=channel_name,
+            media_data=media_tensor[..., i : i + 1],
+            frequency_data=freq_data,
+            n_times_output=n_times_output,
+            dist_tensors=dist_tensors,
+        )
+        combined_medias.append(transformed)
+        combined_betas.append(beta_tensor[..., i : i + 1])
 
     combined_media_transformed = backend.concatenate(combined_medias, axis=-1)
     combined_beta = backend.concatenate(combined_betas, axis=-1)
@@ -1838,9 +1986,10 @@ class Analyzer:
     else:
       return combined_media_kpi
 
-  def _inverse_outcome(
+  def inverse_outcome(
       self,
       modeled_incremental_outcome: backend.Tensor,
+      *,
       use_kpi: bool,
       revenue_per_kpi: backend.Tensor | None,
   ) -> backend.Tensor:
@@ -1973,7 +2122,7 @@ class Analyzer:
         non_media_treatments_baseline_normalized=non_media_treatments_baseline_normalized,
     )
     if inverse_transform_outcome:
-      incremental_outcome = self._inverse_outcome(
+      incremental_outcome = self.inverse_outcome(
           transformed_outcome,
           use_kpi=use_kpi,
           revenue_per_kpi=data_tensors.revenue_per_kpi,
