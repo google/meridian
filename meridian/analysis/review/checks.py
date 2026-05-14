@@ -179,7 +179,7 @@ class BayesianPPPCheck(
     analyzer = self._analyzer
 
     revenue_per_kpi = self._model_context.input_data.revenue_per_kpi
-    outcome = (
+    outcome = backend.to_tensor(
         self._model_context.input_data.kpi * revenue_per_kpi
         if revenue_per_kpi is not None
         else self._model_context.input_data.kpi

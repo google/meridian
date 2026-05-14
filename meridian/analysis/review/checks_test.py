@@ -1018,6 +1018,10 @@ class BayesianPPPCheckTest(parameterized.TestCase):
         selected_geos=["geo1"],
     )
     check.run()
+    args, _ = self.analyzer.filter_and_aggregate_geos_and_times.call_args
+    np.testing.assert_array_equal(
+        args[0], backend.to_tensor(np.array([10, 20]))
+    )
     self.analyzer.expected_outcome.assert_called_once_with(
         aggregate_times=True,
         aggregate_geos=True,
