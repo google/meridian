@@ -710,12 +710,12 @@ def _check_n_dims(tensor: backend.Tensor, name: str, n_dims: int):
 
 def _is_bool_list(l: Sequence[Any]) -> bool:
   """Returns True if the list contains only booleans."""
-  return all(isinstance(item, bool) for item in l)
+  return all(isinstance(item, (bool, np.bool_)) for item in l)
 
 
 def _is_str_list(l: Sequence[Any]) -> bool:
   """Returns True if the list contains only strings."""
-  return all(isinstance(item, str) for item in l)
+  return all(isinstance(item, (str, np.str_)) for item in l)
 
 
 def _validate_selected_times(
@@ -740,7 +740,7 @@ def _validate_selected_times(
     arg_name: The name of the argument being validated.
     comparison_arg_name: The name of the argument being compared to.
   """
-  if not selected_times:
+  if selected_times is None or np.size(selected_times) == 0:
     return
   if _is_bool_list(selected_times):
     if len(selected_times) != n_times:
@@ -5098,6 +5098,13 @@ class Analyzer:
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
   ) -> xr.Dataset:
     """Computes the MediaSummary metrics involving the input data.
+
+    Args:
+      spend_with_total: A tensor with the spend data including the total.
+      impressions_with_total: A tensor with the impressions data including the
+        total.
+      xr_dims: A sequence of dimension names for the xarray Dataset.
+      xr_coords: A mapping of coordinate names to values for the xarray Dataset.
 
     Returns:
       An xarray Dataset consisting of the following arrays:
