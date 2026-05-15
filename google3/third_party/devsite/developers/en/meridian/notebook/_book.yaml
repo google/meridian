@@ -1,0 +1,58 @@
+upper_tabs:
+- name: Home
+  path: /meridian/
+- name: MMM
+  path: /meridian/mmm/
+  lower_tabs:
+    other:
+    - name: Overview
+      path: /meridian/mmm/
+    - name: Guides
+      path: /meridian/docs/basics/meridian-introduction
+      contents:
+      - heading: Basics
+      - include: /meridian/docs/basics/_basics_toc.yaml
+      - include: /meridian/docs/user-guide/_user_guide_toc.yaml
+      - include: /meridian/docs/pre-modeling/_premodeling_toc.yaml
+      - include: /meridian/docs/advanced-modeling/_advanced_modeling_toc.yaml
+      - include: /meridian/docs/post-modeling/_postmodeling_toc.yaml
+      - include: /meridian/docs/causal-inference/_causal_inference_toc.yaml
+    - name: Examples
+      path: /meridian/notebook/
+      contents:
+      - title: Catalog of Examples
+        path: /meridian/notebook/
+      - title: Getting Started (TensorFlow)
+        path: /meridian/notebook/meridian-getting-started
+      - title: Getting Started (JAX)
+        path: /meridian/notebook/meridian-getting-started-jax
+      - title: Meridian MLFlow Demo
+        path: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/Meridian_MLflow_Demo.ipynb
+      - title: Reach & Frequency Demo
+        path: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/Meridian_RF_Demo.ipynb
+      - title: Reach & Frequency Simulated Dataset
+        path: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/RF_Data_Simulation_for_Meridian.ipynb
+      - title: ROI, mROI & Response Curves Demo
+        path: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/ROI_mROI_Response_Curves.ipynb
+    - name: API Reference
+      path: /meridian/reference/
+      contents:
+      - include: /meridian/reference/api/meridian/_toc.yaml
+      - include: /meridian/reference/api/proto/_toc.yaml
+    - name: Changelog
+      path: https://github.com/google/meridian/blob/main/CHANGELOG.md
+- name: GeoX
+  path: /meridian/geox/
+- name: Studio
+  path: /meridian/studio/
+- name: Scenario Planning
+  path: /meridian/docs/scenario-planning/meridian-scenario-planner
+  lower_tabs:
+    other:
+    - name: Scenario Planning
+      contents:
+      - include: /meridian/docs/scenario-planning/_toc.yaml
+- name: Partners
+  path: /meridian/partners
+- name: Support
+  path: /meridian/support
