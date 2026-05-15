@@ -26,6 +26,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Filter linear channels from Hill curves and refactor R-hat in visualizer.
 * Fix TypeError by wrapping KPI outcome in backend.to_tensor() in
   BayesianPPPCheck.
+* Expose `inverse_outcome` as a public method in `Analyzer`.
 
 ## [1.6.1] - 2026-04-30
 
