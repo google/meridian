@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-05-15
+
 * Filter linear channels from Hill curves and refactor R-hat in visualizer.
 * Fix TypeError by wrapping KPI outcome in backend.to_tensor() in
   BayesianPPPCheck.
@@ -490,4 +492,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.3]: https://github.com/google/meridian/releases/tag/v1.5.3
 [1.6.0]: https://github.com/google/meridian/releases/tag/v1.6.0
 [1.6.1]: https://github.com/google/meridian/releases/tag/v1.6.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.6.1...HEAD
+[1.6.2]: https://github.com/google/meridian/releases/tag/v1.6.2
+[Unreleased]: https://github.com/google/meridian/compare/v1.6.2...HEAD
