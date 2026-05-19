@@ -48,7 +48,9 @@ from meridian.schema.serde import marketing_data
 from meridian.schema.serde import meridian_serde as serde
 from meridian.schema.serde import test_data
 import numpy as np
+import pandas as pd
 import semver
+import xarray as xr
 import xarray.testing as xrt
 
 from google.protobuf import any_pb2
@@ -961,6 +963,69 @@ class MeridianSerdeTest(parameterized.TestCase):
           backend_test_utils.assert_allclose(
               getattr(meridian_model, attr), getattr(loaded_model, attr)
           )
+
+  def test_save_meridian_with_pandas_and_numpy_dtypes(self):
+    flags.FLAGS.mark_as_parsed()
+    file_path = os.path.join(self.create_tempdir().full_path, 'serde.binpb')
+
+    input_data = _INPUT_DATA.copy()
+    pop_values = input_data.population.values.copy()
+    population_pd = pd.array(pop_values, dtype=pd.Float64Dtype())
+    input_data.population = xr.DataArray(
+        population_pd,
+        dims=_INPUT_DATA.population.dims,
+        coords={constants.GEO: _INPUT_DATA.population.coords[constants.GEO]},
+        name=constants.POPULATION,
+    )
+    media_spend_values = input_data.media_spend.values.copy()
+    media_spend_values[0, 0] = np.nan
+    input_data.media_spend = xr.DataArray(
+        media_spend_values,
+        dims=_INPUT_DATA.media_spend.dims,
+        coords={
+            constants.TIME: _INPUT_DATA.media_spend.coords[constants.TIME],
+            constants.GEO: _INPUT_DATA.media_spend.coords[constants.GEO],
+            constants.MEDIA_CHANNEL: pd.Index(
+                _INPUT_DATA.media_spend.coords[constants.MEDIA_CHANNEL].values,
+                dtype=pd.StringDtype(),
+            ),
+        },
+        name=constants.MEDIA_SPEND,
+    )
+
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=test_data.get_default_model_spec(),
+    )
+
+    serde.save_meridian(meridian_model, file_path)
+    self.assertTrue(os.path.exists(file_path))
+
+    loaded_model = serde.load_meridian(file_path)
+    xrt.assert_allclose(
+        meridian_model.input_data.population,
+        loaded_model.input_data.population,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.kpi,
+        loaded_model.input_data.kpi,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.controls,
+        loaded_model.input_data.controls,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.media,
+        loaded_model.input_data.media,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.media_spend,
+        loaded_model.input_data.media_spend,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.revenue_per_kpi,
+        loaded_model.input_data.revenue_per_kpi,
+    )
 
 
 if __name__ == '__main__':

@@ -388,17 +388,17 @@ class _InputDataSerializer:
     """
     media_variables = []
     for media_data in impressions_data_array.sel(geo=geo, media_time=time):
-      channel = media_data[channel_dim_name].item()
+      channel = str(media_data[channel_dim_name].values)
       media_variable = marketing_pb.MediaVariable(
           channel_name=channel,
           scalar_metric=marketing_pb.ScalarMetric(
-              name=c.IMPRESSIONS, value=media_data.item()
+              name=c.IMPRESSIONS, value=float(media_data)
           ),
       )
       if spend_data_array is not None and time in spend_data_array.time:
-        media_variable.media_spend = spend_data_array.sel(
+        media_variable.media_spend = float(spend_data_array.sel(
             geo=geo, time=time, **{channel_dim_name: channel}
-        ).item()
+        ))
       media_variables.append(media_variable)
     return media_variables
 
@@ -434,22 +434,22 @@ class _InputDataSerializer:
     """
     rf_variables = []
     for reach_data in reach_data_array.sel(geo=geo, media_time=time):
-      reach_value = reach_data.item()
-      channel = reach_data[channel_dim_name].item()
-      frequency_value = frequency_data_array.sel(
+      reach_value = int(reach_data)
+      channel = str(reach_data[channel_dim_name].values)
+      frequency_value = float(frequency_data_array.sel(
           geo=geo,
           media_time=time,
           **{channel_dim_name: channel},
-      ).item()
+      ))
       rf_variable = marketing_pb.ReachFrequencyVariable(
           channel_name=channel,
-          reach=int(reach_value),
+          reach=reach_value,
           average_frequency=frequency_value,
       )
       if spend_data_array is not None and time in spend_data_array.time:
-        rf_variable.spend = spend_data_array.sel(
+        rf_variable.spend = float(spend_data_array.sel(
             geo=geo, time=time, **{channel_dim_name: channel}
-        ).item()
+        ))
       rf_variables.append(rf_variable)
     return rf_variables
 
@@ -476,8 +476,8 @@ class _InputDataSerializer:
       ):
         non_media_treatment_variables.append(
             marketing_pb.NonMediaTreatmentVariable(
-                name=non_media_treatment_data[c.NON_MEDIA_CHANNEL].item(),
-                value=non_media_treatment_data.item(),
+                name=str(non_media_treatment_data[c.NON_MEDIA_CHANNEL].values),
+                value=float(non_media_treatment_data),
             )
         )
     return non_media_treatment_variables
@@ -489,7 +489,7 @@ class _InputDataSerializer:
       times_to_date_intervals: Mapping[str, date_interval_pb2.DateInterval],
   ) -> marketing_pb.MarketingDataPoint:
     """Serializes a MarketingDataPoint proto for a given geo and time."""
-    population_value = self._input_data.population.sel(geo=geo).item()
+    population_value = float(self._input_data.population.sel(geo=geo))
     data_point = marketing_pb.MarketingDataPoint(
         geo_info=marketing_pb.GeoInfo(
             geo_id=geo,
@@ -504,8 +504,8 @@ class _InputDataSerializer:
       if time in self._input_data.controls.time:
         for control_data in self._input_data.controls.sel(geo=geo, time=time):
           data_point.control_variables.add(
-              name=control_data.control_variable.item(),
-              value=control_data.item(),
+              name=str(control_data.control_variable.values),
+              value=float(control_data),
           )
 
     if self._input_data.media is not None:
@@ -593,9 +593,9 @@ class _InputDataSerializer:
     spend_data_point.date_interval.CopyFrom(date_interval)
 
     for channel_name in spend_data_array.coords[c.MEDIA_CHANNEL].values:
-      spend_value = spend_data_array.sel(
+      spend_value = float(spend_data_array.sel(
           **{c.MEDIA_CHANNEL: channel_name}
-      ).item()
+      ))
       spend_data_point.media_variables.add(
           channel_name=channel_name, media_spend=spend_value
       )
@@ -615,7 +615,7 @@ class _InputDataSerializer:
     spend_data_point.date_interval.CopyFrom(date_interval)
 
     for channel_name in spend_data_array.coords[c.RF_CHANNEL].values:
-      spend_value = spend_data_array.sel(**{c.RF_CHANNEL: channel_name}).item()
+      spend_value = float(spend_data_array.sel(**{c.RF_CHANNEL: channel_name}))
       spend_data_point.reach_frequency_variables.add(
           channel_name=channel_name, spend=spend_value
       )
@@ -703,18 +703,18 @@ class _InputDataSerializer:
     if self._input_data.kpi_type == c.REVENUE:
       kpi_proto.revenue.CopyFrom(
           marketing_pb.Kpi.Revenue(
-              value=self._input_data.kpi.sel(geo=geo, time=time).item()
+              value=float(self._input_data.kpi.sel(geo=geo, time=time))
           )
       )
     else:
       kpi_proto.non_revenue.CopyFrom(
           marketing_pb.Kpi.NonRevenue(
-              value=self._input_data.kpi.sel(geo=geo, time=time).item()
+              value=float(self._input_data.kpi.sel(geo=geo, time=time))
           )
       )
       if self._input_data.revenue_per_kpi is not None:
-        kpi_proto.non_revenue.revenue_per_kpi = (
-            self._input_data.revenue_per_kpi.sel(geo=geo, time=time).item()
+        kpi_proto.non_revenue.revenue_per_kpi = float(
+            self._input_data.revenue_per_kpi.sel(geo=geo, time=time)
         )
     return kpi_proto
 
