@@ -102,6 +102,12 @@ message BudgetOptimizationSpec {
   // If a media channel that is present in the model is not represented here,
   // it will be given the default constraint of `[0, max_budget]`.
   repeated ChannelConstraint channel_constraints = 5;
+
+  // Maximum draws per chain in each batch. The calculation is run in batches
+  // to avoid memory exhaustion. If a memory error occurs, try reducing
+  // `batch_size`. The calculation will generally be faster with larger
+  // `batch_size` values. Default is 100.
+  int32 batch_size = 10;
 }
 
 // A message representing a grid that details the incremental outcome of

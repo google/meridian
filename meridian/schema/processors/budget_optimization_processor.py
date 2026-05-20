@@ -241,6 +241,10 @@ class BudgetOptimizationSpec(model_processor.OptimizationSpec):
     max_frequency: The max frequency to use for the optimal frequency search
       space. If not set when `use_optimal_frequency` is set to `True`, the max
       frequency of the input data is used.
+    batch_size: Maximum draws per chain in each batch. The calculation is run in
+      batches to avoid memory exhaustion. If a memory error occurs, try reducing
+      `batch_size`. The calculation will generally be faster with larger
+      `batch_size` values. Default is 100.
   """
 
   scenario: optimizer.FixedBudgetScenario | optimizer.FlexibleBudgetScenario = (
@@ -255,6 +259,7 @@ class BudgetOptimizationSpec(model_processor.OptimizationSpec):
   new_data: analyzer.DataTensors | None = None
   use_optimal_frequency: bool = True
   max_frequency: float | None = None
+  batch_size: int = c.DEFAULT_BATCH_SIZE
 
   @property
   def objective(self) -> common.TargetMetric:
@@ -264,6 +269,8 @@ class BudgetOptimizationSpec(model_processor.OptimizationSpec):
   @override
   def validate(self):
     super().validate()
+    if self.batch_size <= 0:
+      raise ValueError('`batch_size` must be positive.')
     if (self.new_data is not None) and (self.new_data.time is None):
       raise ValueError('`time` must be provided in `new_data`.')
     if self.use_optimal_frequency:
@@ -293,6 +300,7 @@ class BudgetOptimizationSpec(model_processor.OptimizationSpec):
             if self.kpi_type == common.KpiType.REVENUE
             else kpi_type_pb.KpiType.NON_REVENUE
         ),
+        batch_size=self.batch_size,
     )
 
     match self.scenario:
@@ -405,6 +413,7 @@ class BudgetOptimizationProcessor(
           new_data=spec.new_data,
           use_optimal_frequency=spec.use_optimal_frequency,
           max_frequency=spec.max_frequency,
+          batch_size=spec.batch_size,
           **kwargs,
       )
 
