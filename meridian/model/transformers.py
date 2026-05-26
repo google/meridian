@@ -82,7 +82,8 @@ class MediaTransformer(TensorTransformer):
           "MediaTransformer has a NaN population-scaled non-zero median due to"
           " a media channel with either all zeroes or all NaNs."
       )
-    # Tensor of dimensions (`n_geos` x 1) of weights for scaling `metric`.
+    # Tensor of dimensions (`n_geos`, `n_media_channels`) of weights for scaling
+    # `media`.
     self._scale_factors_gm = backend.einsum(
         "g,m->gm", population, self._population_scaled_median_m
     )
@@ -90,6 +91,10 @@ class MediaTransformer(TensorTransformer):
   @property
   def population_scaled_median_m(self):
     return self._population_scaled_median_m
+
+  @property
+  def scale_factors_gm(self):
+    return self._scale_factors_gm
 
   @backend.function(jit_compile=True)
   def forward(self, tensor: backend.Tensor) -> backend.Tensor:

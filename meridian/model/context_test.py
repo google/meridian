@@ -356,18 +356,18 @@ class ContextTest(
           testcase_name="media_non_media_and_organic",
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
       dict(
           testcase_name="rf_non_media_and_organic",
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
       dict(
@@ -375,9 +375,9 @@ class ContextTest(
           data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
               n_media_channels=input_data_samples._N_MEDIA_CHANNELS,
               n_rf_channels=input_data_samples._N_RF_CHANNELS,
-              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
               n_organic_media_channels=input_data_samples._N_ORGANIC_MEDIA_CHANNELS,
               n_organic_rf_channels=input_data_samples._N_ORGANIC_RF_CHANNELS,
+              n_non_media_channels=input_data_samples._N_NON_MEDIA_CHANNELS,
           ),
       ),
   )
