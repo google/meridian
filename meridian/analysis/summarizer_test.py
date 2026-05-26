@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 from absl.testing import absltest
 from absl.testing import parameterized
 import jinja2
+from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summarizer
@@ -1285,6 +1286,46 @@ class SummarizerTest(parameterized.TestCase):
         summary_text.RESPONSE_CURVES_INSIGHTS_FORMAT.format(outcome=c.REVENUE),
         insights_text,
     )
+
+  def test_select_optimal_rf_data_with_backend_tensors(self):
+    mock_rf = mock.MagicMock(spec=['optimal_frequency_data'])
+
+    rf_channels = ['rf_ch_0', 'rf_ch_1']
+    optimal_frequency_values = backend.to_tensor([1.0, 2.0])
+
+    mock_rf.optimal_frequency_data = xr.Dataset(
+        data_vars={
+            c.OPTIMAL_FREQUENCY: (
+                [c.RF_CHANNEL],
+                optimal_frequency_values,
+            ),
+        },
+        coords={
+            c.RF_CHANNEL: rf_channels,
+        },
+    )
+
+    mock_ms = mock.MagicMock(spec=['get_paid_summary_metrics'])
+
+    channels = ['ch_0', 'ch_1'] + rf_channels + [c.ALL_CHANNELS]
+    spend_values = backend.to_tensor([100.0, 200.0, 300.0, 400.0, 1000.0])
+
+    paid_metrics = xr.Dataset(
+        data_vars={
+            c.SPEND: ([c.CHANNEL], spend_values),
+        },
+        coords={
+            c.CHANNEL: channels,
+        },
+    )
+
+    mock_ms.get_paid_summary_metrics.return_value = paid_metrics
+
+    result = self.summarizer_revenue._select_optimal_rf_data(mock_ms, mock_rf)
+
+    self.assertIsNotNone(result)
+    self.assertEqual(result.coords[c.RF_CHANNEL].item(), 'rf_ch_1')
+    self.assertEqual(result.values.item(), 2.0)
 
 
 if __name__ == '__main__':

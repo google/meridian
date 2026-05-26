@@ -534,7 +534,7 @@ class Summarizer:
     rf_channel_spends = media_summary.get_paid_summary_metrics()[c.SPEND].sel(
         channel=rf_channels
     )
-    most_spend_rf_channel = rf_channel_spends.idxmax()
+    most_spend_rf_channel = rf_channel_spends.to_series().idxmax()
 
     return reach_frequency.optimal_frequency_data.sel(
         rf_channel=most_spend_rf_channel

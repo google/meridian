@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix a JAX compatibility issue in `Summarizer` when calling `.idxmax()` on data backed by JAX.
+
 ## [1.6.2] - 2026-05-15
 
 * Filter linear channels from Hill curves and refactor R-hat in visualizer.
