@@ -109,3 +109,18 @@ class PriorPosteriorShiftConfig(BaseConfig):
   n_bootstraps: int = 1000
   alpha: float = 0.05
   seed: int = 42
+
+
+@dataclasses.dataclass(frozen=True)
+class ImplausibleROIConfig(BaseConfig):
+  """Configuration for the Implausible ROI Check.
+
+  Attributes:
+    roi_upper_bound: The upper bound threshold for spend-weighted posterior
+      median ROI.
+    roi_lower_bound: The lower bound threshold for reciprocal-spend-weighted
+      posterior median ROI.
+  """
+
+  roi_upper_bound: float = 20.0
+  roi_lower_bound: float = 0.5

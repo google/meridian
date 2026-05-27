@@ -61,6 +61,7 @@ class ModelCheckCase(BaseCase):
       message_template: str,
       recommendation: str | None = None,
   ):
+    """Initializes the instance."""
     super().__init__(status)
     self.message_template = message_template
     self.recommendation = recommendation
@@ -75,7 +76,7 @@ class BaseResultData(abc.ABC):
   @property
   @abc.abstractmethod
   def details(self) -> Mapping[str, Any]:
-    """Returns the details for message formatting."""
+    """The details for message formatting."""
     raise NotImplementedError
 
 
@@ -94,7 +95,7 @@ class CheckResult(BaseResultData):
 
   @property
   def recommendation(self) -> str:
-    """Returns the check result message."""
+    """The check result message."""
     report_str = self.case.message_template.format(**self.details)
     if self.case.recommendation:
       return f"{report_str} {self.case.recommendation}"
@@ -104,6 +105,7 @@ class CheckResult(BaseResultData):
 # ==============================================================================
 # Check: Convergence
 # ==============================================================================
+# TODO: Move to constants.
 NOT_FULLY_CONVERGED_RECOMMENDATION = (
     "Manually inspect the parameters with high R-hat values to determine if the"
     " results are acceptable for your use case, and consider increasing MCMC"
@@ -151,6 +153,7 @@ class ConvergenceCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -231,6 +234,7 @@ class BaselineCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -292,6 +296,7 @@ class BayesianPPPCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -348,6 +353,7 @@ class GoodnessOfFitCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -452,6 +458,7 @@ class ROIConsistencyChannelCases(BaseCase, enum.Enum):
   QUANTILE_NOT_DEFINED = (Status.REVIEW, enum.auto())
 
   def __init__(self, status: Status, unique_id: Any):
+    """Initializes the instance."""
     super().__init__(status)
 
 
@@ -478,6 +485,7 @@ class ROIConsistencyAggregateCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -492,7 +500,7 @@ class ROIConsistencyChannelResult(ChannelResult):
 
   @property
   def details(self) -> Mapping[str, Any]:
-    """Returns the check result details."""
+    """The check result details."""
     return {
         constants.PRIOR_ROI_LO: self.prior_roi_lo,
         constants.PRIOR_ROI_HI: self.prior_roi_hi,
@@ -510,7 +518,7 @@ class ROIConsistencyCheckResult(CheckResult):
 
   @property
   def details(self) -> Mapping[str, Any]:
-    """Returns the check result details."""
+    """The check result details."""
     return self.aggregate_details
 
 
@@ -531,6 +539,7 @@ class PriorPosteriorShiftChannelCases(BaseCase, enum.Enum):
   NO_SHIFT = (Status.REVIEW, enum.auto())
 
   def __init__(self, status: Status, unique_id: Any):
+    """Initializes the instance."""
     super().__init__(status)
 
 
@@ -562,6 +571,7 @@ class PriorPosteriorShiftAggregateCases(ModelCheckCase, enum.Enum):
       message_template: str,
       recommendation: str | None,
   ):
+    """Initializes the instance."""
     super().__init__(status, message_template, recommendation)
 
 
@@ -573,7 +583,7 @@ class PriorPosteriorShiftChannelResult(ChannelResult):
 
   @property
   def details(self) -> Mapping[str, Any]:
-    """Returns the check result details."""
+    """The check result details."""
     return {}
 
 
@@ -587,12 +597,88 @@ class PriorPosteriorShiftCheckResult(CheckResult):
 
   @property
   def details(self) -> Mapping[str, Any]:
-    """Returns the check result details."""
+    """The check result details."""
     return {
-        "channels_str": ", ".join(
+        constants.CHANNELS_STR: ", ".join(
             f"`{channel}`" for channel in self.no_shift_channels
         )
     }
+
+
+# ==============================================================================
+# Check: Implausible ROI
+# ==============================================================================
+@enum.unique
+class ImplausibleROIChannelCases(BaseCase, enum.Enum):
+  """Cases for Implausible ROI Check per channel."""
+
+  ROI_PASS = (Status.PASS, enum.auto())
+  ROI_HIGH = (Status.REVIEW, enum.auto())
+  ROI_LOW = (Status.REVIEW, enum.auto())
+
+  # TODO: Remove unused unique_id argument, here and elsewhere.
+  def __init__(self, status: Status, unique_id: Any):
+    """Initializes the instance."""
+    super().__init__(status)
+
+
+class ImplausibleROIAggregateCases(ModelCheckCase, enum.Enum):
+  """Cases for Implausible ROI Check aggregate result."""
+
+  PASS = (
+      Status.PASS,
+      "All channels have plausible ROI estimates.",
+      None,
+  )
+  REVIEW = (
+      Status.REVIEW,
+      "{implausible_roi_msg}",
+      constants.IMPLAUSIBLE_ROI_RECOMMENDATION,
+  )
+
+  def __init__(
+      self,
+      status: Status,
+      message_template: str,
+      recommendation: str | None,
+  ):
+    """Initializes the instance."""
+    super().__init__(status, message_template, recommendation)
+
+
+@dataclasses.dataclass(frozen=True)
+class ImplausibleROIChannelResult(ChannelResult):
+  """The immutable result of Implausible ROI Check for a single channel."""
+
+  case: ImplausibleROIChannelCases
+  spend_share: float
+  roi_mean: float
+  spend_weighted_roi: float
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        constants.SPEND_SHARE: self.spend_share,
+        constants.ROI_MEAN: self.roi_mean,
+        constants.SPEND_WEIGHTED_ROI: self.spend_weighted_roi,
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class ImplausibleROICheckResult(CheckResult):
+  """The immutable result of model-level Implausible ROI Check."""
+
+  case: ImplausibleROIAggregateCases
+  channel_results: list[ImplausibleROIChannelResult]
+  high_roi_channels: list[str]
+  low_roi_channels: list[str]
+  aggregate_details: Mapping[str, Any]
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return self.aggregate_details
 
 
 # ==============================================================================
@@ -659,7 +745,7 @@ class ReviewSummary:
 
   @property
   def checks_status(self) -> Mapping[str, str]:
-    """Returns a dictionary of check names and statuses."""
+    """A dictionary of check names and statuses."""
     return {
         result.__class__.__name__: result.case.status.name
         for result in self.results

@@ -30,6 +30,7 @@ from meridian.analysis.review import results
 from meridian.model import context
 import numpy as np
 import pandas as pd
+from typing_extensions import override
 
 ConfigType = TypeVar("ConfigType", bound=configs.BaseConfig)
 ResultType = TypeVar("ResultType", bound=results.CheckResult)
@@ -815,3 +816,105 @@ class PriorPosteriorShiftCheck(
     media_results = self._run_for_channel_type(constants.MEDIA_CHANNEL)
     rf_results = self._run_for_channel_type(constants.RF_CHANNEL)
     return self._aggregate(media_results, rf_results)
+
+
+# ==============================================================================
+# Check: Implausible ROI
+# ==============================================================================
+class ImplausibleROICheck(
+    BaseCheck[configs.ImplausibleROIConfig, results.ImplausibleROICheckResult]
+):
+  """A check for paid channels with implausible posterior ROI estimates."""
+
+  @override
+  def run(self) -> results.ImplausibleROICheckResult:
+    # 1. Get spend and calculate spend share
+    spend = self._model_context.input_data.get_total_spend()
+    if spend.ndim == 3:
+      spend = np.sum(spend, axis=(0, 1))
+
+    # Per-channel spend for paid channels is validated to be positive during
+    # ModelContext initialization, so total_spend_sum > 0.
+    total_spend_sum = np.sum(spend)
+    spend_share = spend / total_spend_sum
+
+    # 2. Get posterior ROI and channels
+    posterior_rois = []
+    channels = []
+    if constants.MEDIA_CHANNEL in self._inference_data.posterior.coords:
+      posterior_rois.append(self._inference_data.posterior.roi_m.values)
+      channels.extend(
+          self._inference_data.posterior.media_channel.values.tolist()
+      )
+    if constants.RF_CHANNEL in self._inference_data.posterior.coords:
+      posterior_rois.append(self._inference_data.posterior.roi_rf.values)
+      channels.extend(self._inference_data.posterior.rf_channel.values.tolist())
+
+    if not posterior_rois:
+      raise ValueError("No posterior ROI data found in inference_data.")
+
+    posterior_roi_concat = np.concatenate(posterior_rois, axis=-1)
+    roi_means = np.mean(posterior_roi_concat, axis=(0, 1))
+
+    # 3. Evaluate checks
+    channel_results = []
+    high_roi_channels = []
+    low_roi_channels = []
+
+    spend_weighted_roi_all = roi_means * spend_share
+    reciprocal_spend_weighted_roi_all = roi_means / spend_share
+
+    for i, channel in enumerate(channels):
+      mean = roi_means[i]
+      share = spend_share[i]
+
+      spend_weighted_roi = spend_weighted_roi_all[i]
+      reciprocal_spend_weighted_roi = reciprocal_spend_weighted_roi_all[i]
+
+      if spend_weighted_roi > self._config.roi_upper_bound:
+        case = results.ImplausibleROIChannelCases.ROI_HIGH
+        high_roi_channels.append(channel)
+      elif reciprocal_spend_weighted_roi < self._config.roi_lower_bound:
+        case = results.ImplausibleROIChannelCases.ROI_LOW
+        low_roi_channels.append(channel)
+      else:
+        case = results.ImplausibleROIChannelCases.ROI_PASS
+
+      channel_results.append(
+          results.ImplausibleROIChannelResult(
+              case=case,
+              channel_name=channel,
+              spend_share=share,
+              roi_mean=mean,
+              spend_weighted_roi=spend_weighted_roi,
+          )
+      )
+
+    if high_roi_channels or low_roi_channels:
+      agg_case = results.ImplausibleROIAggregateCases.REVIEW
+      msg_parts = []
+      if high_roi_channels:
+        msg_parts.append(
+            "high ROI estimates (for channel(s) "
+            f"{', '.join(f'`{c}`' for c in high_roi_channels)})"
+        )
+      if low_roi_channels:
+        msg_parts.append(
+            "low ROI estimates (for channel(s) "
+            f"{', '.join(f'`{c}`' for c in low_roi_channels)})"
+        )
+      implausible_roi_msg = (
+          "We've detected implausibly " + " and ".join(msg_parts) + "."
+      )
+      aggregate_details = {"implausible_roi_msg": implausible_roi_msg}
+    else:
+      agg_case = results.ImplausibleROIAggregateCases.PASS
+      aggregate_details = {"implausible_roi_msg": ""}
+
+    return results.ImplausibleROICheckResult(
+        case=agg_case,
+        channel_results=channel_results,
+        high_roi_channels=high_roi_channels,
+        low_roi_channels=low_roi_channels,
+        aggregate_details=aggregate_details,
+    )

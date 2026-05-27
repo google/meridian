@@ -506,5 +506,93 @@ Convergence Check:
     )
 
 
+class ImplausibleROICheckResultTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="pass",
+          case=results.ImplausibleROIAggregateCases.PASS,
+          high_roi_channels=[],
+          low_roi_channels=[],
+          aggregate_details={"implausible_roi_msg": ""},
+          expected_status=results.Status.PASS,
+          expected_recommendation="All channels have plausible ROI estimates.",
+      ),
+      dict(
+          testcase_name="review_high",
+          case=results.ImplausibleROIAggregateCases.REVIEW,
+          high_roi_channels=["channel1"],
+          low_roi_channels=[],
+          aggregate_details={
+              "implausible_roi_msg": (
+                  "We've detected implausibly high ROI estimates (for"
+                  " channel(s) `channel1`)."
+              )
+          },
+          expected_status=results.Status.REVIEW,
+          expected_recommendation=(
+              "We've detected implausibly high ROI estimates (for channel(s)"
+              " `channel1`). "
+              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+          ),
+      ),
+      dict(
+          testcase_name="review_low",
+          case=results.ImplausibleROIAggregateCases.REVIEW,
+          high_roi_channels=[],
+          low_roi_channels=["channel1"],
+          aggregate_details={
+              "implausible_roi_msg": (
+                  "We've detected implausibly low ROI estimates (for"
+                  " channel(s) `channel1`)."
+              )
+          },
+          expected_status=results.Status.REVIEW,
+          expected_recommendation=(
+              "We've detected implausibly low ROI estimates (for channel(s)"
+              " `channel1`). "
+              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+          ),
+      ),
+      dict(
+          testcase_name="review_both",
+          case=results.ImplausibleROIAggregateCases.REVIEW,
+          high_roi_channels=["channel1"],
+          low_roi_channels=["channel2"],
+          aggregate_details={
+              "implausible_roi_msg": (
+                  "We've detected implausibly high ROI estimates (for"
+                  " channel(s) `channel1`) and low ROI estimates (for"
+                  " channel(s) `channel2`)."
+              )
+          },
+          expected_status=results.Status.REVIEW,
+          expected_recommendation=(
+              "We've detected implausibly high ROI estimates (for channel(s)"
+              " `channel1`) and low ROI estimates (for channel(s) `channel2`). "
+              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+          ),
+      ),
+  )
+  def test_implausible_roi_check_result(
+      self,
+      case: results.ImplausibleROIAggregateCases,
+      high_roi_channels: list[str],
+      low_roi_channels: list[str],
+      aggregate_details: dict[str, Any],
+      expected_status: results.Status,
+      expected_recommendation: str,
+  ):
+    result = results.ImplausibleROICheckResult(
+        case=case,
+        channel_results=[],
+        high_roi_channels=high_roi_channels,
+        low_roi_channels=low_roi_channels,
+        aggregate_details=aggregate_details,
+    )
+    self.assertEqual(result.case.status, expected_status)
+    self.assertEqual(result.recommendation, expected_recommendation)
+
+
 if __name__ == "__main__":
   absltest.main()

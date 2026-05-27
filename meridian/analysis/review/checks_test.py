@@ -24,6 +24,7 @@ from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import results
+from meridian.data import input_data
 from meridian.model import context
 import numpy as np
 import xarray as xr
@@ -1323,6 +1324,187 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
         selected_geos=["geo1"],
         selected_times=["time1"],
     )
+
+
+class ImplausibleROICheckTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.input_data = mock.create_autospec(
+        spec=input_data.InputData, spec_set=True, instance=True
+    )
+    self.model_context.input_data = self.input_data
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.create_autospec(
+        spec=xr.Dataset, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.media_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=True, instance=True
+    )
+    self.inference_data.posterior.roi_m = mock.create_autospec(
+        spec=xr.DataArray, spec_set=True, instance=True
+    )
+    self.inference_data.posterior.rf_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=True, instance=True
+    )
+    self.inference_data.posterior.roi_rf = mock.create_autospec(
+        spec=xr.DataArray, spec_set=True, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+    self.config = configs.ImplausibleROIConfig()
+
+  def test_implausible_roi_check_pass(self):
+    # Spend share: [0.5, 0.5]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [50.0, 50.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    # Median ROI: [2.0, 4.0]
+    # Spend weighted: [1.0, 2.0] (< 20.0 upper bound)
+    # Reciprocal spend weighted: [4.0, 8.0] (> 0.5 lower bound)
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 4.0]],
+    ])  # (chain=1, draw=1, channel=2)
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
+    self.assertEmpty(result.high_roi_channels)
+    self.assertEmpty(result.low_roi_channels)
+
+  def test_implausible_roi_check_pass_with_3d_spend(self):
+    # Spend share: [0.5, 0.5]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [[[20.0, 30.0]], [[30.0, 20.0]]]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    # Median ROI: [2.0, 4.0]
+    # Spend weighted: [1.0, 2.0] (< 20.0 upper bound)
+    # Reciprocal spend weighted: [4.0, 8.0] (> 0.5 lower bound)
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 4.0]],
+    ])  # (chain=1, draw=1, channel=2)
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
+    self.assertEmpty(result.high_roi_channels)
+    self.assertEmpty(result.low_roi_channels)
+
+  def test_implausible_roi_check_high(self):
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [50.0, 50.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    # ch1: ROI median = 50.0. Spend weighted = 25.0 (> 20.0 upper bound)
+    # -> high ROI!
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[50.0, 4.0]],
+    ])
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.ImplausibleROIAggregateCases.REVIEW)
+    self.assertEqual(result.high_roi_channels, ["ch1"])
+    self.assertEmpty(result.low_roi_channels)
+
+  def test_implausible_roi_check_low(self):
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [50.0, 50.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    # ch2: ROI median = 0.1. Reciprocal spend weighted = 0.2 (< 0.5 lower bound)
+    # -> low ROI!
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 0.1]],
+    ])
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.ImplausibleROIAggregateCases.REVIEW)
+    self.assertEmpty(result.high_roi_channels)
+    self.assertEqual(result.low_roi_channels, ["ch2"])
+
+  def test_implausible_roi_check_pass_with_media_and_rf_channels(self):
+    # Spend: ch1=50, ch2=50, rf1=50. Spend share: [1/3, 1/3, 1/3]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [50.0, 50.0, 50.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    self.inference_data.posterior.rf_channel.values = np.array(["rf1"])
+    # Media channel Median ROI: [2.0, 4.0]
+    # RF channel Median ROI: [3.0]
+    # For ch1: spend_weighted=2/3, reciprocal=6.
+    # For ch2: spend_weighted=4/3, reciprocal=12.
+    # For rf1: spend_weighted=3/3=1, reciprocal=9.
+    # All are within bounds (0.5, 20.0).
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 4.0]],
+    ])  # (chain=1, draw=1, channel=2)
+    self.inference_data.posterior.roi_rf.values = np.array([
+        [[3.0]],
+    ])  # (chain=1, draw=1, channel=1)
+    self.inference_data.posterior.coords = [
+        constants.MEDIA_CHANNEL,
+        constants.RF_CHANNEL,
+    ]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
+    self.assertEmpty(result.high_roi_channels)
+    self.assertEmpty(result.low_roi_channels)
 
 
 if __name__ == "__main__":

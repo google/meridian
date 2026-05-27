@@ -49,6 +49,10 @@ MEDIAN = "median"
 Q1 = "q1"
 Q3 = "q3"
 BAYESIAN_PPP = "bayesian_ppp"
+CHANNELS_STR = "channels_str"
+SPEND_SHARE = "spend_share"
+ROI_MEAN = "roi_mean"
+SPEND_WEIGHTED_ROI = "spend_weighted_roi"
 
 CHECK_RESULT_NAME_MAP = immutabledict({
     "ConvergenceCheckResult": "Convergence",
@@ -57,6 +61,7 @@ CHECK_RESULT_NAME_MAP = immutabledict({
     "BayesianPPPCheckResult": "Bayesian p-value",
     "PriorPosteriorShiftCheckResult": "Prior-posterior shift",
     "ROIConsistencyCheckResult": "ROI consistency",
+    "ImplausibleROICheckResult": "Implausible ROI",
 })
 
 # Health score constants
@@ -68,3 +73,9 @@ HEALTH_SCORE_WEIGHT_BAYESIAN_PPP = 0.3
 HEALTH_SCORE_WEIGHT_GOF = 0.1
 HEALTH_SCORE_WEIGHT_PRIOR_POSTERIOR_SHIFT = 0.15
 HEALTH_SCORE_WEIGHT_ROI_CONSISTENCY = 0.15
+
+IMPLAUSIBLE_ROI_RECOMMENDATION = (
+    "Please review these channels to determine if the ROI estimates are "
+    "reasonable within your business context. Consider calibrating with an "
+    "incrementality experiment to improve accuracy."
+)
