@@ -36,6 +36,7 @@ from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
+import xarray as xr
 
 CONVERGENCE_CHECK_RESULT_NOT_CONVERGED = results.ConvergenceCheckResult(
     case=results.ConvergenceCases.NOT_CONVERGED,
@@ -105,6 +106,26 @@ MODEL_LEVEL_SET_TEST = (
 )
 PPS_SET_TEST = MODEL_LEVEL_SET_TEST + (PRIOR_POSTERIOR_SHIFT_CHECK_RESULT_PASS,)
 ROI_SET_TEST = PPS_SET_TEST + (ROI_CONSISTENCY_CHECK_RESULT_PASS,)
+
+
+def _simple_posterior(n_chains: int = 2, n_draws: int = 10) -> xr.Dataset:
+  """Creates a simple posterior Dataset for testing."""
+  return xr.Dataset(
+      data_vars={
+          "param": (
+              (constants.CHAIN, constants.DRAW),
+              np.arange(n_chains * n_draws).reshape((n_chains, n_draws)),
+          ),
+          "draw_id": (
+              (constants.CHAIN, constants.DRAW),
+              np.tile(np.arange(n_draws), (n_chains, 1)),
+          ),
+      },
+      coords={
+          constants.CHAIN: np.arange(n_chains),
+          constants.DRAW: np.arange(n_draws),
+      },
+  )
 
 
 class ModelTest(
@@ -697,6 +718,196 @@ class ModelTest(
         test=kwarg,
     )
     mock_review.assert_called_once_with(meridian)
+
+  def _meridian_with_posterior(self, posterior: xr.Dataset) -> model.Meridian:
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian.inference_data.posterior = posterior
+    return meridian
+
+  def test_downsample_posterior_preserves_chains(self):
+    values = np.arange(3 * 10 * 2).reshape((3, 10, 2))
+    meridian = self._meridian_with_posterior(xr.Dataset(
+        data_vars={
+            "param": (
+                (constants.CHAIN, constants.DRAW, "channel"),
+                values,
+            ),
+            "draw_id": (
+                (constants.CHAIN, constants.DRAW),
+                np.tile(np.arange(10), (3, 1)),
+            ),
+        },
+        coords={
+            constants.CHAIN: np.arange(3),
+            constants.DRAW: np.arange(10),
+            "channel": ["a", "b"],
+        },
+    ))
+
+    downsampled = meridian.downsample_posterior(n_draws=4, seed=7)
+
+    self.assertEqual(downsampled.sizes[constants.CHAIN], 3)
+    self.assertEqual(downsampled.sizes[constants.DRAW], 4)
+    self.assertEqual(downsampled.sizes["channel"], 2)
+    self.assertEqual(
+        downsampled.attrs["posterior_selected_draw_count_per_chain"], 4
+    )
+    self.assertTrue(downsampled.attrs["posterior_is_downsampled"])
+    self.assertEqual(
+        downsampled.attrs["posterior_downsample_method"], "systematic"
+    )
+    for chain in range(3):
+      with self.subTest(chain=chain):
+        selected_draws = downsampled["draw_id"].sel(chain=chain).values
+        self.assertLen(set(selected_draws.tolist()), 4)
+        self.assertTrue(np.all(np.diff(selected_draws) >= 1))
+        self.assertTrue(np.all(selected_draws >= 0))
+        self.assertTrue(np.all(selected_draws < 10))
+        selected_values = downsampled["param"].sel(chain=chain).values[:, 0]
+        self.assertTrue(np.all(selected_values >= chain * 20))
+        self.assertTrue(np.all(selected_values < (chain + 1) * 20))
+
+    restored = meridian.restore_full_posterior()
+
+    self.assertEqual(restored.sizes[constants.CHAIN], 3)
+    self.assertEqual(restored.sizes[constants.DRAW], 10)
+    np.testing.assert_array_equal(restored["param"].values, values)
+
+  def test_downsample_posterior_accepts_downsample_method_enum(self):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    downsampled = meridian.downsample_posterior(
+        n_draws=4, method=model.DownsampleMethod.SYSTEMATIC, seed=7
+    )
+
+    self.assertEqual(
+        downsampled.attrs["posterior_downsample_method"], "systematic"
+    )
+
+  def test_downsample_posterior_supports_non_leading_draw_dimension(self):
+    values = np.arange(2 * 3 * 10).reshape((2, 3, 10))
+    meridian = self._meridian_with_posterior(xr.Dataset(
+        data_vars={
+            "param": (
+                ("channel", constants.CHAIN, constants.DRAW),
+                values,
+            ),
+        },
+        coords={
+            "channel": ["a", "b"],
+            constants.CHAIN: np.arange(3),
+            constants.DRAW: np.arange(10),
+        },
+    ))
+
+    downsampled = meridian.downsample_posterior(n_draws=4, seed=7)
+
+    self.assertEqual(
+        downsampled["param"].dims, ("channel", constants.CHAIN, constants.DRAW)
+    )
+    self.assertEqual(downsampled.sizes[constants.CHAIN], 3)
+    self.assertEqual(downsampled.sizes[constants.DRAW], 4)
+    self.assertEqual(downsampled.sizes["channel"], 2)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="ten_to_four", n_original_draws=10, n_selected_draws=4
+      ),
+      dict(
+          testcase_name="eleven_to_six", n_original_draws=11, n_selected_draws=6
+      ),
+      dict(testcase_name="same_count", n_original_draws=5, n_selected_draws=5),
+  )
+  def test_systematic_draw_indices_returns_exact_count(
+      self, n_original_draws, n_selected_draws
+  ):
+    selected = model._systematic_draw_indices(
+        n_original_draws=n_original_draws,
+        n_selected_draws=n_selected_draws,
+        rng=np.random.default_rng(7),
+    )
+
+    self.assertLen(selected, n_selected_draws)
+    self.assertLen(set(selected.tolist()), n_selected_draws)
+    self.assertTrue(np.all(np.diff(selected) >= 1))
+    self.assertTrue(np.all(selected >= 0))
+    self.assertTrue(np.all(selected < n_original_draws))
+
+  def test_downsample_posterior_seed_reproducible(self):
+    values = np.arange(2 * 30).reshape((2, 30))
+    first_meridian = self._meridian_with_posterior(xr.Dataset(
+        data_vars={
+            "param": (
+                (constants.CHAIN, constants.DRAW),
+                values,
+            ),
+        },
+        coords={
+            constants.CHAIN: np.arange(2),
+            constants.DRAW: np.arange(30),
+        },
+    ))
+    second_meridian = self._meridian_with_posterior(
+        first_meridian.inference_data.posterior.copy(deep=True)
+    )
+
+    first = first_meridian.downsample_posterior(n_draws=5, seed=7)
+    second = second_meridian.downsample_posterior(n_draws=5, seed=7)
+
+    self.assertEqual(first.attrs["posterior_downsample_seed"], 7)
+    np.testing.assert_array_equal(first["param"].values, second["param"].values)
+
+  def test_downsample_posterior_requires_posterior(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    with self.assertRaises(model.NotFittedModelError):
+      meridian.downsample_posterior(sampling_rate=0.1)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="missing", kwargs={}),
+      dict(testcase_name="both", kwargs={"sampling_rate": 0.1, "n_draws": 2}),
+  )
+  def test_downsample_posterior_requires_exactly_one_draw_argument(
+      self, kwargs
+  ):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    with self.assertRaisesRegex(ValueError, "Exactly one"):
+      meridian.downsample_posterior(**kwargs)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="zero", kwargs={"n_draws": 0}),
+      dict(testcase_name="too_many", kwargs={"n_draws": 11}),
+  )
+  def test_downsample_posterior_rejects_invalid_n_draws(self, kwargs):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    with self.assertRaisesRegex(ValueError, "`n_draws`"):
+      meridian.downsample_posterior(**kwargs)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="zero", kwargs={"sampling_rate": 0}),
+      dict(testcase_name="too_large", kwargs={"sampling_rate": 1.1}),
+  )
+  def test_downsample_posterior_rejects_invalid_sampling_rate(self, kwargs):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    with self.assertRaisesRegex(ValueError, "`sampling_rate`"):
+      meridian.downsample_posterior(**kwargs)
+
+  def test_downsample_posterior_rejects_invalid_method(self):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    with self.assertRaisesRegex(ValueError, "Unsupported"):
+      meridian.downsample_posterior(n_draws=4, method=mock.MagicMock())
+
+  def test_downsample_posterior_rejects_downsampling_twice(self):
+    meridian = self._meridian_with_posterior(_simple_posterior())
+
+    meridian.downsample_posterior(n_draws=4, seed=7)
+
+    with self.assertRaisesRegex(ValueError, "already been downsampled"):
+      meridian.downsample_posterior(n_draws=2)
 
 
 class ModelPersistenceTest(

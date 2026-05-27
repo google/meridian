@@ -23,7 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-* Fix a JAX compatibility issue in `Summarizer` when calling `.idxmax()` on data backed by JAX.
+* Fix a JAX compatibility issue in `Summarizer` when calling `.idxmax()` on data
+  backed by JAX.
+* Add support for posterior downsampling for faster, near approximate inference.
 
 ## [1.6.2] - 2026-05-15
 

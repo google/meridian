@@ -17,6 +17,7 @@
 import collections
 from collections.abc import Mapping, Sequence
 import dataclasses
+import enum
 import functools
 import os
 import warnings
@@ -44,6 +45,7 @@ from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
+import xarray as xr
 
 __all__ = [
     "MCMCSamplingError",
@@ -55,6 +57,13 @@ __all__ = [
     "save_mmm",
     "load_mmm",
 ]
+
+
+@enum.unique
+class DownsampleMethod(enum.Enum):
+  """Posterior draw downsampling methods."""
+
+  SYSTEMATIC = "systematic"
 
 
 class ModelFittingError(Exception):
@@ -95,6 +104,20 @@ def _warn_setting_national_args(**kwargs):
           f"In a nationally aggregated model, the `{kwarg}` will be reset to"
           f" `{constants.NATIONAL_MODEL_SPEC_ARGS[kwarg]}`."
       )
+
+
+def _systematic_draw_indices(
+    n_original_draws: int,
+    n_selected_draws: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+  """Returns unique systematically selected draw indices for one chain."""
+  step_size = n_original_draws / n_selected_draws
+  offset = rng.uniform(0, step_size)
+  selected = np.floor(offset + step_size * np.arange(n_selected_draws)).astype(
+      np.int64
+  )
+  return np.minimum(selected, n_original_draws - 1)
 
 
 class Meridian:
@@ -194,6 +217,7 @@ class Meridian:
     self._computation_precision = backend.computation_precision().name
     self._eda_spec = eda_spec
     self._health_summary = health_summary
+    self._full_posterior = None
 
     self._validate_injected_inference_data()
     self._validate_injected_health_summary()
@@ -1194,6 +1218,139 @@ class Meridian:
         **pins,
     )
     self.review()
+
+  def downsample_posterior(
+      self,
+      sampling_rate: float | None = None,
+      n_draws: int | None = None,
+      method: DownsampleMethod = DownsampleMethod.SYSTEMATIC,
+      seed: int | Sequence[int] | None = None,
+      preserve_original: bool = True,
+  ) -> xr.Dataset:
+    """Downsamples `inference_data.posterior` while preserving chains.
+
+    This method replaces `self.inference_data.posterior` with a chain-preserving
+    subset of posterior draws. For example, a posterior with shape
+    `chain=10, draw=1000` and `sampling_rate=0.1` becomes
+    `chain=10, draw=100`.
+
+    The main use case is accelerating posterior workflows such as budget
+    optimization while continuing to use Meridian's existing APIs unchanged.
+    Outputs produced after downsampling are approximate with respect to the full
+    posterior.
+
+    Systematic sampling selects posterior samples from each MCMC chain at a
+    fixed, regular interval (such as every 10th sample) starting from a randomly
+    chosen point. This is done to minimize the auto-correlation of the sample.
+
+    Args:
+      sampling_rate: Fraction of draws to keep per chain. Must be in `(0, 1]`.
+        Exactly one of `sampling_rate` or `n_draws` must be provided.
+      n_draws: Number of draws to keep per chain. Must be in `[1,
+        original_n_draws]`. Exactly one of `sampling_rate` or `n_draws` must be
+        provided.
+      method: Draw selection method. Currently only
+        `DownsampleMethod.SYSTEMATIC` is supported.
+      seed: Optional random seed for reproducible draw selection. This is used
+        only for selecting posterior draw indices.
+      preserve_original: If `True`, stores a copy of the full posterior on this
+        model so `restore_full_posterior()` can restore it.
+
+    Returns:
+      The downsampled posterior `xarray.Dataset`.
+
+    Raises:
+      NotFittedModelError: If the model does not have posterior samples.
+      ValueError: If arguments are invalid.
+    """
+    if not hasattr(self.inference_data, constants.POSTERIOR):
+      raise NotFittedModelError(
+          "sample_posterior() must be called before downsample_posterior()."
+      )
+    if (sampling_rate is None) == (n_draws is None):
+      raise ValueError(
+          "Exactly one of `sampling_rate` or `n_draws` must be provided."
+      )
+    if method is not DownsampleMethod.SYSTEMATIC:
+      raise ValueError(f"Unsupported posterior downsample method: {method}.")
+
+    posterior = self.inference_data.posterior
+    if posterior.attrs.get(constants.POSTERIOR_IS_DOWNSAMPLED):
+      raise ValueError("Posterior has already been downsampled.")
+    if (
+        constants.CHAIN not in posterior.sizes
+        or constants.DRAW not in posterior.sizes
+    ):
+      raise ValueError("Posterior must contain `chain` and `draw` dimensions.")
+    n_chains = int(posterior.sizes[constants.CHAIN])
+    n_original_draws = int(posterior.sizes[constants.DRAW])
+    if sampling_rate is not None:
+      if sampling_rate <= 0 or sampling_rate > 1:
+        raise ValueError("`sampling_rate` must be in the interval `(0, 1]`.")
+      n_selected_draws = max(1, int(np.ceil(n_original_draws * sampling_rate)))
+    else:
+      if n_draws is None or n_draws < 1 or n_draws > n_original_draws:
+        raise ValueError(
+            "`n_draws` must be in `[1, original_n_draws]` for each chain."
+        )
+      n_selected_draws = int(n_draws)
+
+    if n_selected_draws == n_original_draws:
+      return posterior
+
+    if preserve_original and self._full_posterior is None:
+      self._full_posterior = posterior.copy(deep=True)
+
+    rng = np.random.default_rng(seed)
+    selected_draw_indices = np.stack([
+        _systematic_draw_indices(
+            n_original_draws=n_original_draws,
+            n_selected_draws=n_selected_draws,
+            rng=rng,
+        )
+        for _ in range(n_chains)
+    ])
+
+    draw_indexer = xr.DataArray(
+        selected_draw_indices,
+        dims=(constants.CHAIN, constants.DRAW),
+    )
+    downsampled_posterior = posterior.isel(
+        {constants.DRAW: draw_indexer}
+    ).assign_coords({constants.DRAW: np.arange(n_selected_draws)})
+    attrs = dict(posterior.attrs)
+    attrs.update({
+        constants.POSTERIOR_IS_DOWNSAMPLED: True,
+        constants.POSTERIOR_DOWNSAMPLE_METHOD: method.value,
+        constants.POSTERIOR_DOWNSAMPLE_SAMPLING_RATE: (
+            float(sampling_rate)
+            if sampling_rate is not None
+            else n_selected_draws / n_original_draws
+        ),
+        constants.POSTERIOR_ORIGINAL_CHAIN_COUNT: n_chains,
+        constants.POSTERIOR_ORIGINAL_DRAW_COUNT: n_original_draws,
+        constants.POSTERIOR_SELECTED_DRAW_COUNT_PER_CHAIN: n_selected_draws,
+    })
+    if seed is not None:
+      attrs[constants.POSTERIOR_DOWNSAMPLE_SEED] = (
+          list(seed)
+          if isinstance(seed, Sequence) and not isinstance(seed, (str, bytes))
+          else int(seed)
+      )
+    downsampled_posterior.attrs = attrs
+    self.inference_data.posterior = downsampled_posterior
+    return downsampled_posterior
+
+  def restore_full_posterior(self) -> xr.Dataset:
+    """Restores the full posterior saved by `downsample_posterior()`."""
+    if self._full_posterior is None:
+      raise ValueError(
+          "No preserved full posterior is available. Call "
+          "downsample_posterior(..., preserve_original=True) first."
+      )
+    self.inference_data.posterior = self._full_posterior
+    self._full_posterior = None
+    return self.inference_data.posterior
 
 
 def save_mmm(mmm: Meridian, file_path: str):

@@ -814,3 +814,14 @@ SELECTED_MATRIX = 'selected_matrix'
 AIC = 'aic'
 BIC = 'bic'
 EBIC = 'ebic'
+
+# Posterior downsampling constants.
+POSTERIOR_IS_DOWNSAMPLED = 'posterior_is_downsampled'
+POSTERIOR_DOWNSAMPLE_METHOD = 'posterior_downsample_method'
+POSTERIOR_DOWNSAMPLE_SAMPLING_RATE = 'posterior_downsample_sampling_rate'
+POSTERIOR_ORIGINAL_CHAIN_COUNT = 'posterior_original_chain_count'
+POSTERIOR_ORIGINAL_DRAW_COUNT = 'posterior_original_draw_count'
+POSTERIOR_SELECTED_DRAW_COUNT_PER_CHAIN = (
+    'posterior_selected_draw_count_per_chain'
+)
+POSTERIOR_DOWNSAMPLE_SEED = 'posterior_downsample_seed'
