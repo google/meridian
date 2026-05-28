@@ -2571,10 +2571,11 @@ class BudgetOptimizer:
 
   def _update_incremental_outcome_grid(
       self,
+      *,
       i: int,
       incremental_outcome_grid: np.ndarray,
       multipliers_grid: backend.Tensor,
-      new_data: analyzer_module.DataTensors | None = None,
+      filled_data: analyzer_module.DataTensors,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       use_posterior: bool = True,
@@ -2591,12 +2592,8 @@ class BudgetOptimizer:
         number of columns is equal to the number of total channels, containing
         incremental outcome by channel.
       multipliers_grid: A grid derived from spend.
-      new_data: An optional `DataTensors` object containing the new `media`,
-        `reach`, `frequency`, and `revenue_per_kpi` tensors. If `None`, the
-        existing tensors from the Meridian object are used. If any of the
-        tensors is provided with a different number of time periods than in
-        `InputData`, then all tensors must be provided with the same number of
-        time periods.
+      filled_data: A `DataTensors` object containing the new `media`,
+        `reach`, `frequency`, and `revenue_per_kpi` tensors.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
@@ -2621,11 +2618,6 @@ class BudgetOptimizer:
         larger `batch_size` values.
     """
     model_context = self._analyzer.model_context
-    new_data = new_data or analyzer_module.DataTensors()
-    filled_data = new_data.validate_and_fill_missing_data(
-        required_tensors_names=c.PAID_DATA,
-        model_context=model_context,
-    )
     if model_context.n_media_channels > 0:
       new_media = (
           multipliers_grid[i, : model_context.n_media_channels]
@@ -2763,6 +2755,11 @@ class BudgetOptimizer:
     multipliers_grid = np.where(
         np.isnan(spend_grid), np.nan, multipliers_grid_base
     )
+    new_data = new_data or analyzer_module.DataTensors()
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=c.PAID_DATA,
+        model_context=model_context,
+    )
     for i in range(n_grid_rows):
       self._update_incremental_outcome_grid(
           i=i,
@@ -2770,7 +2767,7 @@ class BudgetOptimizer:
           multipliers_grid=multipliers_grid,
           selected_geos=selected_geos,
           selected_times=selected_times,
-          new_data=new_data,
+          filled_data=filled_data,
           use_posterior=use_posterior,
           use_kpi=use_kpi,
           optimal_frequency=optimal_frequency,
