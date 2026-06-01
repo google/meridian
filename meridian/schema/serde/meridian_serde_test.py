@@ -874,6 +874,75 @@ class MeridianSerdeTest(parameterized.TestCase):
             deserialized_model.inference_data.posterior,
         )
 
+  def test_serialize_deserialize_thinned_model(self):
+    model_spec = spec.ModelSpec(knots=49)
+    sample_stats = xr.Dataset(
+        data_vars={
+            'diverging': (
+                (constants.CHAIN, constants.DRAW),
+                np.zeros(
+                    (_POSTERIOR_DATASET_CHAINS, _POSTERIOR_DATASET_DRAWS),
+                    dtype=bool,
+                ),
+            ),
+        },
+        coords={
+            constants.CHAIN: np.arange(_POSTERIOR_DATASET_CHAINS),
+            constants.DRAW: np.arange(_POSTERIOR_DATASET_DRAWS),
+        },
+    )
+    inf_data = az.InferenceData(
+        prior=_PRIOR_DATASET,
+        posterior=_POSTERIOR_DATASET,
+        sample_stats=sample_stats,
+    )
+    with mock.patch.object(
+        context.ModelContext, '_validate_geo_invariants', autospec=True
+    ):
+      original_model = model.Meridian(
+          input_data=_INPUT_DATA,
+          model_spec=model_spec,
+          inference_data=inf_data,
+      )
+      original_model.thin_posterior(n_draws=4, seed=7)
+      serialized_model = self.serde.serialize(original_model, 'test_model')
+      deserialized_model = self.serde.deserialize(serialized_model)
+
+      self.assertIsInstance(deserialized_model, model.Meridian)
+      self.assertTrue(
+          deserialized_model.inference_data.posterior.attrs[
+              constants.POSTERIOR_IS_THINNED
+          ]
+      )
+      self.assertEqual(
+          deserialized_model.inference_data.posterior.sizes[constants.DRAW], 4
+      )
+      self.assertEqual(
+          deserialized_model.inference_data.posterior.attrs[
+              constants.POSTERIOR_THINNING_SEED
+          ],
+          7,
+      )
+      xrt.assert_allclose(
+          original_model.inference_data.posterior,
+          deserialized_model.inference_data.posterior,
+      )
+      self.assertTrue(
+          deserialized_model.inference_data.sample_stats.attrs[
+              constants.POSTERIOR_IS_THINNED
+          ]
+      )
+      self.assertEqual(
+          deserialized_model.inference_data.sample_stats.sizes[
+              constants.DRAW
+          ],
+          4,
+      )
+      xrt.assert_allclose(
+          original_model.inference_data.sample_stats,
+          deserialized_model.inference_data.sample_stats,
+      )
+
   def test_save_load_meridian_binpb(self):
     # The create_tempdir() method below internally uses command line flag
     # (--test_tmpdir) and such flags are not marked as parsed by default
