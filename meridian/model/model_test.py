@@ -724,7 +724,7 @@ class ModelTest(
     meridian.inference_data.posterior = posterior
     return meridian
 
-  def test_downsample_posterior_preserves_chains(self):
+  def test_posterior_thinning_preserves_chains(self):
     values = np.arange(3 * 10 * 2).reshape((3, 10, 2))
     meridian = self._meridian_with_posterior(xr.Dataset(
         data_vars={
@@ -744,26 +744,24 @@ class ModelTest(
         },
     ))
 
-    downsampled = meridian.downsample_posterior(n_draws=4, seed=7)
+    thinned = meridian.posterior_thinning(n_draws=4, seed=7)
 
-    self.assertEqual(downsampled.sizes[constants.CHAIN], 3)
-    self.assertEqual(downsampled.sizes[constants.DRAW], 4)
-    self.assertEqual(downsampled.sizes["channel"], 2)
+    self.assertEqual(thinned.sizes[constants.CHAIN], 3)
+    self.assertEqual(thinned.sizes[constants.DRAW], 4)
+    self.assertEqual(thinned.sizes["channel"], 2)
     self.assertEqual(
-        downsampled.attrs["posterior_selected_draw_count_per_chain"], 4
+        thinned.attrs["posterior_selected_draw_count_per_chain"], 4
     )
-    self.assertTrue(downsampled.attrs["posterior_is_downsampled"])
-    self.assertEqual(
-        downsampled.attrs["posterior_downsample_method"], "systematic"
-    )
+    self.assertTrue(thinned.attrs["posterior_is_thinned"])
+    self.assertEqual(thinned.attrs["posterior_thinning_method"], "systematic")
     for chain in range(3):
       with self.subTest(chain=chain):
-        selected_draws = downsampled["draw_id"].sel(chain=chain).values
+        selected_draws = thinned["draw_id"].sel(chain=chain).values
         self.assertLen(set(selected_draws.tolist()), 4)
         self.assertTrue(np.all(np.diff(selected_draws) >= 1))
         self.assertTrue(np.all(selected_draws >= 0))
         self.assertTrue(np.all(selected_draws < 10))
-        selected_values = downsampled["param"].sel(chain=chain).values[:, 0]
+        selected_values = thinned["param"].sel(chain=chain).values[:, 0]
         self.assertTrue(np.all(selected_values >= chain * 20))
         self.assertTrue(np.all(selected_values < (chain + 1) * 20))
 
@@ -773,18 +771,16 @@ class ModelTest(
     self.assertEqual(restored.sizes[constants.DRAW], 10)
     np.testing.assert_array_equal(restored["param"].values, values)
 
-  def test_downsample_posterior_accepts_downsample_method_enum(self):
+  def test_posterior_thinning_accepts_thinning_method_enum(self):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
-    downsampled = meridian.downsample_posterior(
-        n_draws=4, method=model.DownsampleMethod.SYSTEMATIC, seed=7
+    thinned = meridian.posterior_thinning(
+        n_draws=4, method=model.ThinningMethod.SYSTEMATIC, seed=7
     )
 
-    self.assertEqual(
-        downsampled.attrs["posterior_downsample_method"], "systematic"
-    )
+    self.assertEqual(thinned.attrs["posterior_thinning_method"], "systematic")
 
-  def test_downsample_posterior_supports_non_leading_draw_dimension(self):
+  def test_posterior_thinning_supports_non_leading_draw_dimension(self):
     values = np.arange(2 * 3 * 10).reshape((2, 3, 10))
     meridian = self._meridian_with_posterior(xr.Dataset(
         data_vars={
@@ -800,14 +796,14 @@ class ModelTest(
         },
     ))
 
-    downsampled = meridian.downsample_posterior(n_draws=4, seed=7)
+    thinned = meridian.posterior_thinning(n_draws=4, seed=7)
 
     self.assertEqual(
-        downsampled["param"].dims, ("channel", constants.CHAIN, constants.DRAW)
+        thinned["param"].dims, ("channel", constants.CHAIN, constants.DRAW)
     )
-    self.assertEqual(downsampled.sizes[constants.CHAIN], 3)
-    self.assertEqual(downsampled.sizes[constants.DRAW], 4)
-    self.assertEqual(downsampled.sizes["channel"], 2)
+    self.assertEqual(thinned.sizes[constants.CHAIN], 3)
+    self.assertEqual(thinned.sizes[constants.DRAW], 4)
+    self.assertEqual(thinned.sizes["channel"], 2)
 
   @parameterized.named_parameters(
       dict(
@@ -833,7 +829,7 @@ class ModelTest(
     self.assertTrue(np.all(selected >= 0))
     self.assertTrue(np.all(selected < n_original_draws))
 
-  def test_downsample_posterior_seed_reproducible(self):
+  def test_posterior_thinning_seed_reproducible(self):
     values = np.arange(2 * 30).reshape((2, 30))
     first_meridian = self._meridian_with_posterior(xr.Dataset(
         data_vars={
@@ -851,63 +847,61 @@ class ModelTest(
         first_meridian.inference_data.posterior.copy(deep=True)
     )
 
-    first = first_meridian.downsample_posterior(n_draws=5, seed=7)
-    second = second_meridian.downsample_posterior(n_draws=5, seed=7)
+    first = first_meridian.posterior_thinning(n_draws=5, seed=7)
+    second = second_meridian.posterior_thinning(n_draws=5, seed=7)
 
-    self.assertEqual(first.attrs["posterior_downsample_seed"], 7)
+    self.assertEqual(first.attrs["posterior_thinning_seed"], 7)
     np.testing.assert_array_equal(first["param"].values, second["param"].values)
 
-  def test_downsample_posterior_requires_posterior(self):
+  def test_posterior_thinning_requires_posterior(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
 
     with self.assertRaises(model.NotFittedModelError):
-      meridian.downsample_posterior(sampling_rate=0.1)
+      meridian.posterior_thinning(sampling_rate=0.1)
 
   @parameterized.named_parameters(
       dict(testcase_name="missing", kwargs={}),
       dict(testcase_name="both", kwargs={"sampling_rate": 0.1, "n_draws": 2}),
   )
-  def test_downsample_posterior_requires_exactly_one_draw_argument(
-      self, kwargs
-  ):
+  def test_posterior_thinning_requires_exactly_one_draw_argument(self, kwargs):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
     with self.assertRaisesRegex(ValueError, "Exactly one"):
-      meridian.downsample_posterior(**kwargs)
+      meridian.posterior_thinning(**kwargs)
 
   @parameterized.named_parameters(
       dict(testcase_name="zero", kwargs={"n_draws": 0}),
       dict(testcase_name="too_many", kwargs={"n_draws": 11}),
   )
-  def test_downsample_posterior_rejects_invalid_n_draws(self, kwargs):
+  def test_posterior_thinning_rejects_invalid_n_draws(self, kwargs):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
     with self.assertRaisesRegex(ValueError, "`n_draws`"):
-      meridian.downsample_posterior(**kwargs)
+      meridian.posterior_thinning(**kwargs)
 
   @parameterized.named_parameters(
       dict(testcase_name="zero", kwargs={"sampling_rate": 0}),
       dict(testcase_name="too_large", kwargs={"sampling_rate": 1.1}),
   )
-  def test_downsample_posterior_rejects_invalid_sampling_rate(self, kwargs):
+  def test_posterior_thinning_rejects_invalid_sampling_rate(self, kwargs):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
     with self.assertRaisesRegex(ValueError, "`sampling_rate`"):
-      meridian.downsample_posterior(**kwargs)
+      meridian.posterior_thinning(**kwargs)
 
-  def test_downsample_posterior_rejects_invalid_method(self):
+  def test_posterior_thinning_rejects_invalid_method(self):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
     with self.assertRaisesRegex(ValueError, "Unsupported"):
-      meridian.downsample_posterior(n_draws=4, method=mock.MagicMock())
+      meridian.posterior_thinning(n_draws=4, method=mock.MagicMock())
 
-  def test_downsample_posterior_rejects_downsampling_twice(self):
+  def test_posterior_thinning_rejects_thinning_twice(self):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
-    meridian.downsample_posterior(n_draws=4, seed=7)
+    meridian.posterior_thinning(n_draws=4, seed=7)
 
-    with self.assertRaisesRegex(ValueError, "already been downsampled"):
-      meridian.downsample_posterior(n_draws=2)
+    with self.assertRaisesRegex(ValueError, "already been thinned"):
+      meridian.posterior_thinning(n_draws=2)
 
 
 class ModelPersistenceTest(

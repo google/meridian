@@ -60,8 +60,8 @@ __all__ = [
 
 
 @enum.unique
-class DownsampleMethod(enum.Enum):
-  """Posterior draw downsampling methods."""
+class ThinningMethod(enum.Enum):
+  """Posterior draw thinning methods."""
 
   SYSTEMATIC = "systematic"
 
@@ -1219,15 +1219,15 @@ class Meridian:
     )
     self.review()
 
-  def downsample_posterior(
+  def posterior_thinning(
       self,
       sampling_rate: float | None = None,
       n_draws: int | None = None,
-      method: DownsampleMethod = DownsampleMethod.SYSTEMATIC,
+      method: ThinningMethod = ThinningMethod.SYSTEMATIC,
       seed: int | Sequence[int] | None = None,
       preserve_original: bool = True,
   ) -> xr.Dataset:
-    """Downsamples `inference_data.posterior` while preserving chains.
+    """Thins `inference_data.posterior` while preserving chains.
 
     This method replaces `self.inference_data.posterior` with a chain-preserving
     subset of posterior draws. For example, a posterior with shape
@@ -1236,10 +1236,10 @@ class Meridian:
 
     The main use case is accelerating posterior workflows such as budget
     optimization while continuing to use Meridian's existing APIs unchanged.
-    Outputs produced after downsampling are approximate with respect to the full
+    Outputs produced after thinning are approximate with respect to the full
     posterior.
 
-    Systematic sampling selects posterior samples from each MCMC chain at a
+    Systematic thinning selects posterior samples from each MCMC chain at a
     fixed, regular interval (such as every 10th sample) starting from a randomly
     chosen point. This is done to minimize the auto-correlation of the sample.
 
@@ -1249,15 +1249,15 @@ class Meridian:
       n_draws: Number of draws to keep per chain. Must be in `[1,
         original_n_draws]`. Exactly one of `sampling_rate` or `n_draws` must be
         provided.
-      method: Draw selection method. Currently only
-        `DownsampleMethod.SYSTEMATIC` is supported.
+      method: Draw selection method. Currently only `ThinningMethod.SYSTEMATIC`
+        is supported.
       seed: Optional random seed for reproducible draw selection. This is used
         only for selecting posterior draw indices.
       preserve_original: If `True`, stores a copy of the full posterior on this
         model so `restore_full_posterior()` can restore it.
 
     Returns:
-      The downsampled posterior `xarray.Dataset`.
+      The thinned posterior `xarray.Dataset`.
 
     Raises:
       NotFittedModelError: If the model does not have posterior samples.
@@ -1265,18 +1265,18 @@ class Meridian:
     """
     if not hasattr(self.inference_data, constants.POSTERIOR):
       raise NotFittedModelError(
-          "sample_posterior() must be called before downsample_posterior()."
+          "sample_posterior() must be called before posterior_thinning()."
       )
     if (sampling_rate is None) == (n_draws is None):
       raise ValueError(
           "Exactly one of `sampling_rate` or `n_draws` must be provided."
       )
-    if method is not DownsampleMethod.SYSTEMATIC:
-      raise ValueError(f"Unsupported posterior downsample method: {method}.")
+    if method is not ThinningMethod.SYSTEMATIC:
+      raise ValueError(f"Unsupported posterior thinning method: {method}.")
 
     posterior = self.inference_data.posterior
-    if posterior.attrs.get(constants.POSTERIOR_IS_DOWNSAMPLED):
-      raise ValueError("Posterior has already been downsampled.")
+    if posterior.attrs.get(constants.POSTERIOR_IS_THINNED):
+      raise ValueError("Posterior has already been thinned.")
     if (
         constants.CHAIN not in posterior.sizes
         or constants.DRAW not in posterior.sizes
@@ -1315,14 +1315,14 @@ class Meridian:
         selected_draw_indices,
         dims=(constants.CHAIN, constants.DRAW),
     )
-    downsampled_posterior = posterior.isel(
+    thinned_posterior = posterior.isel(
         {constants.DRAW: draw_indexer}
     ).assign_coords({constants.DRAW: np.arange(n_selected_draws)})
     attrs = dict(posterior.attrs)
     attrs.update({
-        constants.POSTERIOR_IS_DOWNSAMPLED: True,
-        constants.POSTERIOR_DOWNSAMPLE_METHOD: method.value,
-        constants.POSTERIOR_DOWNSAMPLE_SAMPLING_RATE: (
+        constants.POSTERIOR_IS_THINNED: True,
+        constants.POSTERIOR_THINNING_METHOD: method.value,
+        constants.POSTERIOR_THINNING_SAMPLING_RATE: (
             float(sampling_rate)
             if sampling_rate is not None
             else n_selected_draws / n_original_draws
@@ -1332,21 +1332,21 @@ class Meridian:
         constants.POSTERIOR_SELECTED_DRAW_COUNT_PER_CHAIN: n_selected_draws,
     })
     if seed is not None:
-      attrs[constants.POSTERIOR_DOWNSAMPLE_SEED] = (
+      attrs[constants.POSTERIOR_THINNING_SEED] = (
           list(seed)
           if isinstance(seed, Sequence) and not isinstance(seed, (str, bytes))
           else int(seed)
       )
-    downsampled_posterior.attrs = attrs
-    self.inference_data.posterior = downsampled_posterior
-    return downsampled_posterior
+    thinned_posterior.attrs = attrs
+    self.inference_data.posterior = thinned_posterior
+    return thinned_posterior
 
   def restore_full_posterior(self) -> xr.Dataset:
-    """Restores the full posterior saved by `downsample_posterior()`."""
+    """Restores the full posterior saved by `posterior_thinning()`."""
     if self._full_posterior is None:
       raise ValueError(
           "No preserved full posterior is available. Call "
-          "downsample_posterior(..., preserve_original=True) first."
+          "posterior_thinning(..., preserve_original=True) first."
       )
     self.inference_data.posterior = self._full_posterior
     self._full_posterior = None
