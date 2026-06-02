@@ -2962,5 +2962,48 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(plot.encoding.x["scale"]["domain"][1], max_value)
 
 
+class MediaEffectsInitTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.input_data = mock.create_autospec(
+        input_data.InputData,
+        instance=True,
+    )
+    self.model_context = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=self.input_data,
+    )
+    type(self.model_context).saturation_spec = property(
+        lambda self: context.SaturationSpec()
+    )
+    self.meridian = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        model_context=self.model_context,
+        input_data=self.input_data,
+    )
+    self.inference_data = az.InferenceData()
+    self.inference_data.posterior = xr.Dataset()
+    self.inference_data.groups = lambda: [c.POSTERIOR]
+    self.meridian.inference_data = self.inference_data
+
+  def test_init_with_analyzer_works(self):
+    custom_analyzer = analyzer.Analyzer(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+    )
+    me = visualizer.MediaEffects(analyzer=custom_analyzer)
+    self.assertIs(me._analyzer, custom_analyzer)
+    self.assertIsNone(me._meridian)
+
+  def test_init_with_neither_raises_value_error(self):
+    with self.assertRaisesRegex(
+        ValueError, "Either `analyzer` or `meridian` must be provided."
+    ):
+      visualizer.MediaEffects()
+
+
 if __name__ == "__main__":
   absltest.main()

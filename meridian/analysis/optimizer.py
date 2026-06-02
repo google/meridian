@@ -489,9 +489,6 @@ class OptimizationResults:
     new_data: The optional `DataTensors` container that was used to create this
       budget allocation.
   """
-
-  meridian: model.Meridian
-  # The analyzer bound to the model above.
   analyzer: analyzer_module.Analyzer
   spend_ratio: np.ndarray  # spend / historical spend
   spend_bounds: tuple[np.ndarray, np.ndarray]
@@ -502,6 +499,7 @@ class OptimizationResults:
   _optimized_data: xr.Dataset
   _optimization_grid: OptimizationGrid
 
+  meridian: model.Meridian | None = None
   # The optional `DataTensors` container to use if optimization was performed
   # on data different from the original `input_data`.
   new_data: analyzer_module.DataTensors | None = None
@@ -1401,13 +1399,30 @@ class BudgetOptimizer:
 
   def __init__(
       self,
-      meridian: model.Meridian,
+      # TODO: Remove deprecated meridian parameter.
+      meridian: model.Meridian | None = None,
+      *,
+      analyzer: analyzer_module.Analyzer | None = None,
   ):
-    self._meridian = meridian
-    self._analyzer = analyzer_module.Analyzer(
-        model_context=meridian.model_context,
-        inference_data=meridian.inference_data,
-    )
+    """Initializes the Budget Optimizer based on the model data and params.
+
+    Args:
+      meridian: Media mix model with the raw data from the model fitting.
+      analyzer: The analyzer bound to the model.
+    """
+    # TODO: Throw a deprecation warning for meridian.
+
+    if analyzer is not None:
+      self._analyzer = analyzer
+      self._meridian = meridian
+    elif meridian is not None:
+      self._analyzer = analyzer_module.Analyzer(
+          model_context=meridian.model_context,
+          inference_data=meridian.inference_data,
+      )
+      self._meridian = meridian
+    else:
+      raise ValueError('Either `analyzer` or `meridian` must be provided.')
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""

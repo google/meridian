@@ -21,7 +21,7 @@ from typing import Generator, Mapping
 import warnings
 import altair as alt
 from meridian import constants as c
-from meridian.analysis import analyzer
+from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis import summary_text
 from meridian.common import errors
 from meridian.model import model
@@ -73,7 +73,7 @@ class ModelDiagnostics:
 
   def __init__(self, meridian: model.Meridian, use_kpi: bool = False):
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(
+    self._analyzer = analyzer_module.Analyzer(
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
     )
@@ -411,7 +411,7 @@ class ModelFit:
         represented as a value between zero and one. Default is `0.9`.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(
+    self._analyzer = analyzer_module.Analyzer(
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
     )
@@ -719,7 +719,7 @@ class ReachAndFrequency:
       use_kpi: If `True`, KPI is used instead of revenue.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(
+    self._analyzer = analyzer_module.Analyzer(
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
     )
@@ -907,9 +907,12 @@ class MediaEffects:
 
   def __init__(
       self,
-      meridian: model.Meridian,
+      # TODO: Remove deprecated meridian parameter.
+      meridian: model.Meridian | None = None,
       by_reach: bool = True,
       use_kpi: bool = False,
+      *,
+      analyzer: analyzer_module.Analyzer | None = None,
   ):
     """Initializes the Media Effects based on the model data and params.
 
@@ -920,12 +923,22 @@ class MediaEffects:
         curves by frequency given fixed reach if false.
       use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
         the incremental revenue using the revenue per KPI (if available).
+      analyzer: The analyzer bound to the model.
     """
-    self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(
-        model_context=meridian.model_context,
-        inference_data=meridian.inference_data,
-    )
+    # TODO: Throw a deprecation warning for meridian.
+
+    if analyzer is not None:
+      self._analyzer = analyzer
+      self._meridian = meridian
+    elif meridian is not None:
+      self._analyzer = analyzer_module.Analyzer(
+          model_context=meridian.model_context,
+          inference_data=meridian.inference_data,
+      )
+      self._meridian = meridian
+    else:
+      raise ValueError('Either `analyzer` or `meridian` must be provided.')
+
     self._by_reach = by_reach
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
 
@@ -1027,7 +1040,7 @@ class MediaEffects:
     """
     df = self._analyzer.hill_curves(confidence_level=confidence_level)
 
-    model_context = self._meridian.model_context
+    model_context = self._analyzer.model_context
     saturation_spec = model_context.saturation_spec
     input_data = model_context.input_data
     channels_to_exclude = itertools.chain(
@@ -1085,7 +1098,9 @@ class MediaEffects:
       An Altair plot showing the response curves per channel.
     """
 
-    total_num_channels = len(self._meridian.input_data.get_all_channels())
+    total_num_channels = len(
+        self._analyzer.model_context.input_data.get_all_channels()
+    )
     if plot_separately:
       title = summary_text.RESPONSE_CURVES_CHART_TITLE.format(top_channels='')
       num_channels_displayed = total_num_channels
@@ -1517,7 +1532,7 @@ class MediaSummary:
       use_kpi: If `True`, use KPI instead of revenue.
     """
     self._meridian = meridian
-    self._analyzer = analyzer.Analyzer(
+    self._analyzer = analyzer_module.Analyzer(
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
     )

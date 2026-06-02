@@ -5276,5 +5276,66 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     )
 
 
+class BudgetOptimizerInitTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=2, n_times=5, n_media_channels=3, seed=0
+        )
+    )
+    self.meridian = model.Meridian(input_data=self.input_data)
+    # Mock inference data to avoid needing to fit the model
+    self.inference_data = az.InferenceData(
+        posterior=xr.Dataset(
+            {c.ROI_M: (['chain', 'draw', 'media_channels'], np.ones((1, 1, 3)))}
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            type(self.meridian),
+            'inference_data',
+            new_callable=mock.PropertyMock,
+            create=True,
+        )
+    ).return_value = self.inference_data
+
+  def test_init_with_analyzer_works(self):
+    custom_analyzer = analyzer.Analyzer(
+        model_context=self.meridian.model_context,
+        inference_data=self.meridian.inference_data,
+    )
+    opt = optimizer.BudgetOptimizer(analyzer=custom_analyzer)
+    self.assertIs(opt._analyzer, custom_analyzer)
+    self.assertIsNone(opt._meridian)
+
+  def test_init_with_neither_raises_value_error(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Either `analyzer` or `meridian` must be provided.'
+    ):
+      optimizer.BudgetOptimizer()
+
+  def test_optimization_results_meridian_is_none(self):
+    custom_analyzer = analyzer.Analyzer(
+        model_context=self.meridian.model_context,
+        inference_data=self.meridian.inference_data,
+    )
+    results = optimizer.OptimizationResults(
+        analyzer=custom_analyzer,
+        spend_ratio=np.ones(3),
+        spend_bounds=(np.zeros(3), np.ones(3)),
+        _nonoptimized_data=xr.Dataset(),
+        _nonoptimized_data_with_optimal_freq=xr.Dataset(),
+        _optimized_data=xr.Dataset(),
+        _optimization_grid=mock.create_autospec(
+            optimizer.OptimizationGrid, instance=True
+        ),
+        meridian=None,
+    )
+
+    self.assertIsNone(results.meridian)
+
+
 if __name__ == '__main__':
   absltest.main()
