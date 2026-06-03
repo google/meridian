@@ -14,7 +14,7 @@
 
 """Methods to compute analysis metrics of the model and the data."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 import dataclasses
 import functools
 import itertools
@@ -961,6 +961,47 @@ class Analyzer:
   def inference_data(self) -> az.InferenceData:
     return self._inference_data
 
+  def _yield_batched_distribution_tensors(
+      self,
+      param_list: Sequence[str],
+      *,
+      use_posterior: bool = True,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> Iterator[DistributionTensors]:
+    """Yields batched DistributionTensors for the given parameters.
+
+    Preconditions:
+      The model must be fitted (i.e. posterior/prior groups must exist in the
+      inference data). This is typically checked by the calling methods.
+
+    Args:
+      param_list: Sequence of parameter names to include in the batch.
+      use_posterior: Whether to use posterior or prior parameters.
+      batch_size: The batch size. Must be a positive integer.
+
+    Yields:
+      DistributionTensors containing the sliced parameters for the batch.
+    """
+    if batch_size <= 0:
+      raise ValueError(
+          f"batch_size must be a positive integer. Got {batch_size}."
+      )
+
+    params = (
+        self.inference_data.posterior
+        if use_posterior
+        else self.inference_data.prior
+    )
+    n_draws = params.draw.size
+    batch_starting_indices = np.arange(n_draws, step=batch_size)
+
+    for start_index in batch_starting_indices:
+      stop_index = min(n_draws, start_index + batch_size)
+      yield DistributionTensors(**{
+          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
+          for k in param_list
+      })
+
   @backend.function(jit_compile=True)
   def _get_kpi_means(
       self,
@@ -1686,11 +1727,6 @@ class Analyzer:
         allow_modified_times=False,
     )
 
-    params = (
-        self._inference_data.posterior
-        if use_posterior
-        else self._inference_data.prior
-    )
     # We always compute the expected outcome of all channels, including non-paid
     # channels.
     data_tensors = self._get_scaled_data_tensors(
@@ -1698,13 +1734,6 @@ class Analyzer:
         include_non_paid_channels=True,
     )
 
-    n_draws = params.draw.size
-    n_chains = params.chain.size
-    outcome_means = backend.zeros(
-        (n_chains, 0, self.model_context.n_geos, self.model_context.n_times),
-        dtype=backend.float_dtype,
-    )
-    batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = (
         [
             constants.MU_T,
@@ -1714,23 +1743,18 @@ class Analyzer:
         + self._get_causal_param_names(include_non_paid_channels=True)
     )
     outcome_means_temps = []
-    for start_index in batch_starting_indices:
-      stop_index = np.min([n_draws, start_index + batch_size])
-      batch_dists = {
-          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
-          for k in param_list
-      }
-      dist_tensors = DistributionTensors(**batch_dists)
-
+    for dist_tensors in self._yield_batched_distribution_tensors(
+        param_list=param_list,
+        use_posterior=use_posterior,
+        batch_size=batch_size,
+    ):
       outcome_means_temps.append(
           self._get_kpi_means(
               data_tensors=data_tensors,
               dist_tensors=dist_tensors,
           )
       )
-    outcome_means = backend.concatenate(
-        [outcome_means, *outcome_means_temps], axis=1
-    )
+    outcome_means = backend.concatenate(outcome_means_temps, axis=1)
     if inverse_transform_outcome:
       outcome_means = self.model_context.kpi_transformer.inverse(outcome_means)
       if not use_kpi:
@@ -2291,17 +2315,10 @@ class Analyzer:
     )
 
     # Calculate incremental outcome in batches.
-    params = (
-        self.inference_data.posterior
-        if use_posterior
-        else self.inference_data.prior
-    )
-    n_draws = params.draw.size
-    batch_starting_indices = np.arange(n_draws, step=batch_size)
     param_list = self._get_causal_param_names(
         include_non_paid_channels=include_non_paid_channels
     )
-    incremental_outcome_temps = [None] * len(batch_starting_indices)
+    incremental_outcome_temps = []
     dim_kwargs = {
         "selected_geos": (
             tuple(selected_geos) if selected_geos is not None else None
@@ -2319,14 +2336,12 @@ class Analyzer:
             non_media_treatments_baseline_normalized
         ),
     }
-    for i, start_index in enumerate(batch_starting_indices):
-      stop_index = np.min([n_draws, start_index + batch_size])
-      batch_dists = {
-          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
-          for k in param_list
-      }
-      dist_tensors = DistributionTensors(**batch_dists)
-      incremental_outcome_temps[i] = self._incremental_outcome_impl(
+    for dist_tensors in self._yield_batched_distribution_tensors(
+        param_list=param_list,
+        use_posterior=use_posterior,
+        batch_size=batch_size,
+    ):
+      batch_incremental_outcome = self._incremental_outcome_impl(
           data_tensors=data_tensors1,
           dist_tensors=dist_tensors,
           **dim_kwargs,
@@ -2334,12 +2349,13 @@ class Analyzer:
       )
       # Calculate incremental outcome under counterfactual scenario "Media_0".
       if scaling_factor0 != 0 or not all(media_selected_times):
-        incremental_outcome_temps[i] -= self._incremental_outcome_impl(
+        batch_incremental_outcome -= self._incremental_outcome_impl(
             data_tensors=data_tensors0,
             dist_tensors=dist_tensors,
             **dim_kwargs,
             **incremental_outcome_kwargs,
         )
+      incremental_outcome_temps.append(batch_incremental_outcome)
     return backend.concatenate(incremental_outcome_temps, axis=1)
 
   def _validate_geo_and_time_granularity(
