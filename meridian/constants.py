@@ -735,6 +735,7 @@ SPEND_STEP_SIZE = 'spend_step_size'
 INCREMENTAL_OUTCOME_GRID = 'incremental_outcome_grid'
 GRID_SPEND_INDEX = 'grid_spend_index'
 USE_HISTORICAL_BUDGET = 'use_historical_budget'
+DEFAULT_GTOL = 0.0001
 
 
 # Optimization constraints.

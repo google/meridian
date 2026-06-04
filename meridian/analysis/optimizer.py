@@ -1448,7 +1448,7 @@ class BudgetOptimizer:
       spend_constraint_upper: _SpendConstraint | None = None,
       target_roi: float | None = None,
       target_mroi: float | None = None,
-      gtol: float = 0.0001,
+      gtol: float = c.DEFAULT_GTOL,
       # TODO:
       # merging use_optimal_frequency and max_frequency into a single argument.
       use_optimal_frequency: bool = True,
@@ -3144,7 +3144,9 @@ def _exceeds_optimization_constraints(
       isinstance(scenario, FlexibleBudgetScenario)
       and scenario.target_metric == c.ROI
   ):
-    cur_total_roi = np.sum(incremental_outcome) / np.sum(spend)
+    cur_total_roi = np.round(
+        np.sum(incremental_outcome) / np.sum(spend), decimals=8
+    )
     # In addition to the total roi being less than the target roi, the roi of
     # the current optimization step should also be less than the total roi.
     # Without the second condition, the optimization algorithm may not have
