@@ -266,6 +266,8 @@ class AKS:
       base_penalty: np.ndarray | None = None,
       min_internal_knots: int = 1,
       max_internal_knots: int | None = None,
+      required_knots: Collection[int] | None = None,
+      restrict_to_right_of_required_knots: bool = False,
   ) -> AKSResult:
     """Calculates the optimal number of knots for Meridian model using Automatic knot selection with A-spline.
 
@@ -277,6 +279,11 @@ class AKS:
         value is calculated as the number of initial knots minus the total count
         of all treatment and control variables. Otherwise, the user-provided
         value will be used.
+      required_knots: An optional collection of user-defined knot locations that
+        must be included in the final model.
+      restrict_to_right_of_required_knots: If True, candidate knots strictly to
+        the left of the maximum required knot are removed from the candidate
+        pool, leaving only the required knots and those to the right of them.
 
     Returns:
       Selected knots and the corresponding B-spline model.
@@ -299,7 +306,36 @@ class AKS:
     geo_scaling_factor = 1 / np.sqrt(len(self._data.geo))
     penalty = geo_scaling_factor * base_penalty
 
-    aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
+    if required_knots is not None and len(required_knots) > 0:
+      required_knots_arr = np.unique(required_knots)
+      if not np.all(np.isin(required_knots_arr, knots)):
+        raise ValueError(
+            'The required knots are not legitimate knot locations.'
+        )
+      if len(required_knots_arr) > max_internal_knots:
+        raise ValueError(
+            'The number of required knots exceeds `max_internal_knots`.'
+        )
+
+      if restrict_to_right_of_required_knots:
+        max_req_knot = np.max(required_knots_arr)
+        # Keep only required knots or those strictly to the right
+        mask = np.isin(knots, required_knots_arr) | (knots > max_req_knot)
+        knots = knots[mask]
+      aspline = self.aspline(
+          x=x,
+          y=y,
+          knots=knots,
+          penalty=penalty,
+          required_knots=required_knots_arr,
+      )
+    else:
+      if restrict_to_right_of_required_knots:
+        raise ValueError(
+            '`restrict_to_right_of_required_knots` can only be True if'
+            ' `required_knots` are provided and not empty.'
+        )
+      aspline = self.aspline(x=x, y=y, knots=knots, penalty=penalty)
     # Ensure defined knot range covers at least one of the available knot sets.
     available_knots_lengths = np.unique(
         np.fromiter(
@@ -415,6 +451,7 @@ class AKS:
       y: np.ndarray,
       knots: np.ndarray,
       penalty: np.ndarray,
+      required_knots: np.ndarray | None = None,
       max_iterations: int = 1000,
       epsilon: float = 1e-5,
       tol: float = 1e-6,
@@ -423,12 +460,13 @@ class AKS:
 
     Args:
       x: A flattened array of indexed time coordinates, repeated n_geos times.
-        e.g. [0, 1, 2, 3, ..., 0, 1, 2, 3, ...].
+        E.g., [0, 1, 2, 3, ..., 0, 1, 2, 3, ...].
       y: The flattened array of KPI values that have been population-scaled and
         mean-centered by geo.
       knots: Internal knots used for spline regression.
       penalty: A vector of positive penalty values. The adaptive spline
         regression is performed for every value of penalty.
+      required_knots: Array of required internal knots.
       max_iterations: Maximum number of iterations in the main loop.
       epsilon: Value of the constant in the adaptive ridge procedure (see
         Frommlet, F., Nuel, G. (2016) An Adaptive Ridge Procedure for L0
@@ -455,8 +493,7 @@ class AKS:
       )
 
     xmat = self._get_bspline_matrix(x, knots)
-    nrow = xmat.shape[0]
-    ncol = xmat.shape[1]
+    nrow, ncol = xmat.shape
 
     xx = xmat.T.dot(xmat)
     xy = xmat.T.dot(y)
@@ -476,6 +513,12 @@ class AKS:
         for _ in range(2)
     ]
     par = np.ones(ncol, dtype=backend.np_float_dtype)
+
+    is_required = np.isin(knots, required_knots)
+    # Setting weight to 1.0 penalizes the required knots according to
+    # non-adpative ridge regression.
+    w[is_required] = 1.0
+
     index_penalty = 0
     for _ in range(max_iterations):
       par = self._weighted_ridge_solver(
@@ -484,8 +527,16 @@ class AKS:
       par_diff = np.diff(par, n=self._DEGREE + 1)
 
       w = 1 / (par_diff**2 + epsilon**2)
+      # Override the adaptive weight to 1.0 for required knots. This prevents
+      # the weight from approaching infinity (which would drop the knot), while
+      # maintaining a standard Ridge penalty to prevent the spline from
+      # overfitting.
+      w[is_required] = 1.0
+
       sel = w * par_diff**2
-      converge = max(abs(old_sel - sel)) < tol
+      sel[is_required] = 1.0
+
+      converge = np.max(abs(old_sel - sel)) < tol
       if converge:
         sel_ls[index_penalty] = sel
         knots_sel[index_penalty] = knots[sel > 0.99]
@@ -499,7 +550,7 @@ class AKS:
         coefs[idx] = bs_model.params
         par_ls[index_penalty] = coefs
 
-        loglik[index_penalty] = sum(bs_model.resid**2 / sigma0sq) / 2
+        loglik[index_penalty] = np.sum(bs_model.resid**2 / sigma0sq) / 2
         dim[index_penalty] = len(knots_sel[index_penalty]) + self._DEGREE + 1
         aic[index_penalty] = 2 * dim[index_penalty] + 2 * loglik[index_penalty]
         bic[index_penalty] = (
@@ -763,7 +814,7 @@ class AKS:
           diff=degree + 1,
       )
       index = old_par != 0
-      rel_error = max(abs(par - old_par)[index] / abs(old_par)[index])
+      rel_error = np.max(abs(par - old_par)[index] / abs(old_par)[index])
       if rel_error < tol:
         break
       old_par = par
