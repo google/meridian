@@ -17,6 +17,7 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from google.protobuf import text_format
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
@@ -31,7 +32,6 @@ import numpy as np
 import xarray.testing as xrt
 
 from tensorflow.python.util.protobuf import compare
-from google.protobuf import text_format
 
 
 class MarketingDataTest(parameterized.TestCase):

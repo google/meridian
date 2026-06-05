@@ -19,6 +19,7 @@ import types
 from typing import Any, Sequence
 from unittest import mock
 
+from google.protobuf import text_format
 from meridian import backend
 from meridian import constants as c
 from meridian.model import prior_distribution
@@ -28,7 +29,6 @@ from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 import numpy as np
 import xarray as xr
 
-from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import tensor_shape_pb2  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import types_pb2  # pylint: disable=g-direct-tensorflow-import
