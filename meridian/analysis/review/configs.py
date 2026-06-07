@@ -16,6 +16,8 @@
 
 import dataclasses
 
+from meridian.analysis.review import constants as review_constants
+
 
 @dataclasses.dataclass(frozen=True)
 class BaseConfig:
@@ -45,7 +47,7 @@ class ConvergenceConfig(BaseConfig):
 class ROIConsistencyConfig(BaseConfig):
   """Configuration for the ROI Consistency Check.
 
-  This check verifies if the posterior median of the ROI falls within a
+  This check verifies if the posterior mean of the ROI falls within a
   reasonable range of the prior distribution.
 
   Attributes:
@@ -117,10 +119,32 @@ class ImplausibleROIConfig(BaseConfig):
 
   Attributes:
     roi_upper_bound: The upper bound threshold for spend-weighted posterior
-      median ROI.
+      mean ROI.
     roi_lower_bound: The lower bound threshold for reciprocal-spend-weighted
-      posterior median ROI.
+      posterior mean ROI.
   """
 
   roi_upper_bound: float = 20.0
   roi_lower_bound: float = 0.5
+
+
+@dataclasses.dataclass(frozen=True)
+class HighVarianceConfig(BaseConfig):
+  """Configuration for the High Variance Check.
+
+  Attributes:
+    high_variance_threshold: The threshold for spend-weighted relative width
+      ratio.
+    prior_relative_hdi_width: The relative width of the prior highest density
+      interval (HDI) benchmark.
+    hdi_prob: The probability for the highest density interval.
+  """
+
+  high_variance_threshold: float = 1.0
+  prior_relative_hdi_width: float = (
+      review_constants.PRIOR_RELATIVE_HDI_WIDTH_FOR_80_PERCENT
+  )
+  hdi_prob: float = 0.8
+
+
+

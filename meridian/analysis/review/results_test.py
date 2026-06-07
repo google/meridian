@@ -51,7 +51,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
         result.recommendation,
         "The model hasn't fully converged, and the `max_r_hat` for parameter"
         " `mock_var` is 3.00. "
-        + results.NOT_FULLY_CONVERGED_RECOMMENDATION,
+        f"{results.NOT_FULLY_CONVERGED_RECOMMENDATION}",
     )
 
   def test_convergence_check_result_not_converged(self):
@@ -67,7 +67,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
         result.recommendation,
         "The model hasn't converged, and the `max_r_hat` for parameter"
         " `mock_var` is 11.00. "
-        + results.NOT_CONVERGED_RECOMMENDATION,
+        f"{results.NOT_CONVERGED_RECOMMENDATION}",
     )
 
 
@@ -86,7 +86,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.01. "
-        + results._BASELINE_PASS_RECOMMENDATION,
+        f"{results._BASELINE_PASS_RECOMMENDATION}",
     )
 
   def test_baseline_check_result_review(self):
@@ -102,7 +102,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.15. "
-        + results._BASELINE_REVIEW_RECOMMENDATION,
+        f"{results._BASELINE_REVIEW_RECOMMENDATION}",
     )
 
   def test_baseline_check_result_fail(self):
@@ -118,7 +118,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.25. "
-        + results._BASELINE_FAIL_RECOMMENDATION,
+        f"{results._BASELINE_FAIL_RECOMMENDATION}",
     )
 
 
@@ -143,7 +143,7 @@ class ROIConsistencyResultTest(parameterized.TestCase):
               review_constants.LOW_HIGH_CHANNELS_MSG: "msg3",
           },
           expected_recommendation=(
-              "msg1msg2msg3 " + results._ROI_CONSISTENCY_RECOMMENDATION
+              f"msg1msg2msg3 {results._ROI_CONSISTENCY_RECOMMENDATION}"
           ),
       ),
   )
@@ -173,7 +173,7 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.06. "
-        + results._BAYESIAN_PPP_PASS_RECOMMENDATION,
+        f"{results._BAYESIAN_PPP_PASS_RECOMMENDATION}",
     )
 
   def test_bayesian_ppp_check_result_fail(self):
@@ -186,7 +186,7 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.04. "
-        + results._BAYESIAN_PPP_FAIL_RECOMMENDATION,
+        f"{results._BAYESIAN_PPP_FAIL_RECOMMENDATION}",
     )
 
 
@@ -263,7 +263,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "R-squared = 0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
-        + results._GOODNESS_OF_FIT_PASS_RECOMMENDATION,
+        f"{results._GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_pass_holdout(self):
@@ -284,10 +284,10 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
     )
     self.assertEqual(
         result.recommendation,
-        "R-squared = 0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE = 0.1000"
-        " (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All), 0.1900"
-        " (Train), 0.2100 (Test). "
-        + results._GOODNESS_OF_FIT_PASS_RECOMMENDATION,
+        "R-squared = 0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE ="
+        " 0.1000 (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All),"
+        " 0.1900 (Train), 0.2100 (Test)."
+        f" {results._GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_review(self):
@@ -302,7 +302,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "R-squared = -0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
-        + results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+        f"{results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_review_holdout(self):
@@ -325,8 +325,8 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
         result.recommendation,
         "R-squared = -0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE ="
         " 0.1000 (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All),"
-        " 0.1900 (Train), 0.2100 (Test). "
-        + results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+        " 0.1900 (Train), 0.2100 (Test)."
+        f" {results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
     )
 
 
@@ -349,10 +349,9 @@ class PriorPosteriorShiftCheckResultTest(parameterized.TestCase):
           expected_recommendation=(
               "We've detected channel(s) `channel1`, `channel2` where the"
               " posterior distribution did not significantly shift from the"
-              " prior. This suggests the data signal for these channels was not"
-              " strong enough to update the model's beliefs."
-              " "
-              + results._PPS_REVIEW_RECOMMENDATION
+              " prior. This suggests the data signal for these channels was"
+              " not strong enough to update the model's beliefs."
+              f" {results._PPS_REVIEW_RECOMMENDATION}"
           ),
       ),
   )
@@ -532,8 +531,7 @@ class ImplausibleROICheckResultTest(parameterized.TestCase):
           expected_status=results.Status.REVIEW,
           expected_recommendation=(
               "We've detected implausibly high ROI estimates (for channel(s)"
-              " `channel1`). "
-              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+              f" `channel1`). {review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION}"
           ),
       ),
       dict(
@@ -550,8 +548,7 @@ class ImplausibleROICheckResultTest(parameterized.TestCase):
           expected_status=results.Status.REVIEW,
           expected_recommendation=(
               "We've detected implausibly low ROI estimates (for channel(s)"
-              " `channel1`). "
-              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+              f" `channel1`). {review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION}"
           ),
       ),
       dict(
@@ -569,8 +566,8 @@ class ImplausibleROICheckResultTest(parameterized.TestCase):
           expected_status=results.Status.REVIEW,
           expected_recommendation=(
               "We've detected implausibly high ROI estimates (for channel(s)"
-              " `channel1`) and low ROI estimates (for channel(s) `channel2`). "
-              + review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION
+              " `channel1`) and low ROI estimates (for channel(s) `channel2`)."
+              f" {review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION}"
           ),
       ),
   )
@@ -592,6 +589,35 @@ class ImplausibleROICheckResultTest(parameterized.TestCase):
     )
     self.assertEqual(result.case.status, expected_status)
     self.assertEqual(result.recommendation, expected_recommendation)
+
+
+class HighVarianceCheckResultTest(parameterized.TestCase):
+
+  def test_high_variance_check_result_pass(self):
+    result = results.HighVarianceCheckResult(
+        case=results.HighVarianceAggregateCases.PASS,
+        channel_results=[],
+        high_variance_channels=[],
+    )
+    self.assertEqual(result.case.status, results.Status.PASS)
+    self.assertEqual(
+        result.recommendation,
+        "All channels have acceptable ROI variance.",
+    )
+
+  def test_high_variance_check_result_review(self):
+    result = results.HighVarianceCheckResult(
+        case=results.HighVarianceAggregateCases.REVIEW,
+        channel_results=[],
+        high_variance_channels=["channel1", "channel2"],
+    )
+    self.assertEqual(result.case.status, results.Status.REVIEW)
+    self.assertEqual(
+        result.recommendation,
+        "We've detected channel(s) `channel1`, `channel2` with highly uncertain"
+        " ROI estimates (wide posterior intervals). "
+        f"{review_constants.HIGH_VARIANCE_ROI_RECOMMENDATION}",
+    )
 
 
 if __name__ == "__main__":

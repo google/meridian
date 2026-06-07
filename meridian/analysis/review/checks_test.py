@@ -1368,7 +1368,7 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.inference_data.posterior.media_channel.values = np.array(
         ["ch1", "ch2"]
     )
-    # Median ROI: [2.0, 4.0]
+    # Mean ROI: [2.0, 4.0]
     # Spend weighted: [1.0, 2.0] (< 20.0 upper bound)
     # Reciprocal spend weighted: [4.0, 8.0] (> 0.5 lower bound)
     self.inference_data.posterior.roi_m.values = np.array([
@@ -1387,6 +1387,44 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
     self.assertEmpty(result.high_roi_channels)
     self.assertEmpty(result.low_roi_channels)
+    self.assertAlmostEqual(result.channel_results[0].spend_share, 0.5)
+    self.assertAlmostEqual(result.channel_results[1].spend_share, 0.5)
+
+  def test_implausible_roi_check_spend_share_calculation(self):
+    # Spend share for [10.0, 30.0] is [0.25, 0.75]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [10.0, 30.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    # Mean ROI: [2.0, 4.0]
+    # ch1: spend_weighted=2.0*0.25=0.5, reciprocal=2.0/0.25=8.0
+    # ch2: spend_weighted=4.0*0.75=3.0, reciprocal=4.0/0.75=5.333
+    # All are within bounds (0.5, 20.0), so check should pass.
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 4.0]],
+    ])  # (chain=1, draw=1, channel=2)
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    config = configs.ImplausibleROIConfig()
+    check = checks.ImplausibleROICheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+
+    with self.subTest("AggregateCase"):
+      self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
+      self.assertEmpty(result.high_roi_channels)
+      self.assertEmpty(result.low_roi_channels)
+
+    with self.subTest("SpendShareCalculation"):
+      self.assertLen(result.channel_results, 2)
+      self.assertAlmostEqual(result.channel_results[0].spend_share, 0.25)
+      self.assertAlmostEqual(result.channel_results[1].spend_share, 0.75)
 
   def test_implausible_roi_check_pass_with_3d_spend(self):
     # Spend share: [0.5, 0.5]
@@ -1396,7 +1434,7 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.inference_data.posterior.media_channel.values = np.array(
         ["ch1", "ch2"]
     )
-    # Median ROI: [2.0, 4.0]
+    # Mean ROI: [2.0, 4.0]
     # Spend weighted: [1.0, 2.0] (< 20.0 upper bound)
     # Reciprocal spend weighted: [4.0, 8.0] (> 0.5 lower bound)
     self.inference_data.posterior.roi_m.values = np.array([
@@ -1423,7 +1461,7 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.inference_data.posterior.media_channel.values = np.array(
         ["ch1", "ch2"]
     )
-    # ch1: ROI median = 50.0. Spend weighted = 25.0 (> 20.0 upper bound)
+    # ch1: ROI mean = 50.0. Spend weighted = 25.0 (> 20.0 upper bound)
     # -> high ROI!
     self.inference_data.posterior.roi_m.values = np.array([
         [[50.0, 4.0]],
@@ -1449,7 +1487,7 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.inference_data.posterior.media_channel.values = np.array(
         ["ch1", "ch2"]
     )
-    # ch2: ROI median = 0.1. Reciprocal spend weighted = 0.2 (< 0.5 lower bound)
+    # ch2: ROI mean = 0.1. Reciprocal spend weighted = 0.2 (< 0.5 lower bound)
     # -> low ROI!
     self.inference_data.posterior.roi_m.values = np.array([
         [[2.0, 0.1]],
@@ -1477,8 +1515,8 @@ class ImplausibleROICheckTest(parameterized.TestCase):
         ["ch1", "ch2"]
     )
     self.inference_data.posterior.rf_channel.values = np.array(["rf1"])
-    # Media channel Median ROI: [2.0, 4.0]
-    # RF channel Median ROI: [3.0]
+    # Media channel Mean ROI: [2.0, 4.0]
+    # RF channel Mean ROI: [3.0]
     # For ch1: spend_weighted=2/3, reciprocal=6.
     # For ch2: spend_weighted=4/3, reciprocal=12.
     # For rf1: spend_weighted=3/3=1, reciprocal=9.
@@ -1505,6 +1543,212 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.assertEqual(result.case, results.ImplausibleROIAggregateCases.PASS)
     self.assertEmpty(result.high_roi_channels)
     self.assertEmpty(result.low_roi_channels)
+
+
+class HighVarianceCheckTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.input_data = mock.create_autospec(
+        spec=input_data.InputData, spec_set=False, instance=True
+    )
+    self.model_context.input_data = self.input_data
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.inference_data.posterior = mock.Mock()
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+
+  def test_high_variance_roi_check_pass(self):
+    mock_hdi = self.enter_context(mock.patch("arviz.hdi", autospec=True))
+    # Spend share: [0.5]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [100.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(["ch1"])
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0]],
+    ])
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    # HDI bounds: [1.5, 2.5]
+    # Width: 1.0, Rel Width: 0.5
+    # Rel Width Ratio = 0.5 / 2.07377 ≈ 0.24
+    # Spend weighted ratio = 0.12 (< 1.0 upper bound)
+    mock_hdi.return_value = np.array([[1.5, 2.5]])
+
+    config = configs.HighVarianceConfig()
+    check = checks.HighVarianceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.HighVarianceAggregateCases.PASS)
+    self.assertEmpty(result.high_variance_channels)
+
+  def test_high_variance_roi_check_high(self):
+    mock_hdi = self.enter_context(mock.patch("arviz.hdi", autospec=True))
+    # Spend share: [0.5]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [100.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(["ch1"])
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[1.0]],
+    ])
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    # HDI bounds: [0.0, 10.0]
+    # Width: 10.0, Rel Width: 10.0
+    # Rel Width Ratio = 10.0 / 2.07377 ≈ 4.82
+    # Spend weighted ratio = 2.41 (> 1.0 upper bound)
+    mock_hdi.return_value = np.array([[0.0, 10.0]])
+
+    config = configs.HighVarianceConfig()
+    check = checks.HighVarianceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.HighVarianceAggregateCases.REVIEW)
+    self.assertEqual(result.high_variance_channels, ["ch1"])
+
+  def _setup_media_and_rf_channels_for_hdi_check(self):
+    mock_hdi = self.enter_context(mock.patch("arviz.hdi", autospec=True))
+    # Spend: ch1=50, ch2=50, rf1=50. Spend share: [1/3, 1/3, 1/3]
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [50.0, 50.0, 50.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(
+        ["ch1", "ch2"]
+    )
+    self.inference_data.posterior.rf_channel.values = np.array(["rf1"])
+    self.inference_data.posterior.roi_m.values = np.array([
+        [[2.0, 4.0]],
+    ])  # (chain=1, draw=1, channel=2)
+    self.inference_data.posterior.roi_rf.values = np.array([
+        [[3.0]],
+    ])  # (chain=1, draw=1, channel=1)
+    self.inference_data.posterior.coords = [
+        constants.MEDIA_CHANNEL,
+        constants.RF_CHANNEL,
+    ]
+
+    # HDI bounds for 3 channels:
+    # ch1: [1.5, 2.5], width=1.0, median=2.0, rel_width=0.5
+    # ch2: [3.5, 4.5], width=1.0, median=4.0, rel_width=0.25
+    # rf1: [2.5, 3.5], width=1.0, median=3.0, rel_width=0.333
+    mock_hdi.return_value = np.array([[1.5, 2.5], [3.5, 4.5], [2.5, 3.5]])
+
+    # Expected prior_widths_concat for [ch1, ch2, rf1] is [2.0, 2.0, 2.0]
+    # rel_width_post for ch1=0.5, ch2=0.25, rf1=1/3
+    # relative_width_ratio for ch1=0.25, ch2=0.125, rf1=1/6
+    # spend_share = 1/3 for all
+    # spend_weighted_ratio for ch1=0.0833, ch2=0.0416, rf1=0.0555 (< 1.0)
+    return mock_hdi
+
+  def test_high_variance_roi_check_pass_with_media_and_rf_channels(self):
+    mock_hdi = self._setup_media_and_rf_channels_for_hdi_check()
+    config = configs.HighVarianceConfig(prior_relative_hdi_width=2.0)
+    check = checks.HighVarianceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.HighVarianceAggregateCases.PASS)
+    self.assertEmpty(result.high_variance_channels)
+    mock_hdi.assert_called_once()
+
+  def test_high_variance_roi_check_hdi_call_arguments(self):
+    mock_hdi = self._setup_media_and_rf_channels_for_hdi_check()
+    config = configs.HighVarianceConfig(prior_relative_hdi_width=2.0)
+    check = checks.HighVarianceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    check.run()
+
+    mock_hdi.assert_called_once()
+    posterior_roi_concat = np.array([[[2.0, 4.0, 3.0]]])
+    np.testing.assert_allclose(
+        mock_hdi.call_args[0][0], posterior_roi_concat
+    )
+    self.assertEqual(mock_hdi.call_args[1]["hdi_prob"], config.hdi_prob)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="boundary_pass",
+          roi_m_values=np.array([[[1.0]]]),
+          hdi_return_value=np.array([[0.0, 2.0]]),
+          prior_relative_hdi_width=2.0,
+          high_variance_threshold=1.0,
+          expected_relative_width_ratio=1.0,
+      ),
+      dict(
+          testcase_name="zero_mean_roi_pass",
+          roi_m_values=np.array([[[0.0]]]),
+          hdi_return_value=np.array([[-1.0, 1.0]]),
+          prior_relative_hdi_width=2.0,
+          high_variance_threshold=1.0,
+          expected_relative_width_ratio=0.0,
+      ),
+      dict(
+          testcase_name="zero_prior_width_pass",
+          roi_m_values=np.array([[[1.0]]]),
+          hdi_return_value=np.array([[0.0, 2.0]]),
+          prior_relative_hdi_width=0.0,
+          high_variance_threshold=1.0,
+          expected_relative_width_ratio=0.0,
+      ),
+  )
+  def test_high_variance_roi_check_edge_cases(
+      self,
+      roi_m_values,
+      hdi_return_value,
+      prior_relative_hdi_width,
+      high_variance_threshold,
+      expected_relative_width_ratio,
+  ):
+    mock_hdi = self.enter_context(mock.patch("arviz.hdi", autospec=True))
+    self.model_context.input_data.get_total_spend.return_value = np.array(
+        [100.0]
+    )
+    self.inference_data.posterior.media_channel.values = np.array(["ch1"])
+    self.inference_data.posterior.roi_m.values = roi_m_values
+    self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
+
+    mock_hdi.return_value = hdi_return_value
+
+    config = configs.HighVarianceConfig(
+        prior_relative_hdi_width=prior_relative_hdi_width,
+        high_variance_threshold=high_variance_threshold,
+    )
+    check = checks.HighVarianceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = check.run()
+    self.assertEqual(result.case, results.HighVarianceAggregateCases.PASS)
+    self.assertEqual(result.high_variance_channels, [])
+    self.assertEqual(
+        result.channel_results[0].relative_width_ratio,
+        expected_relative_width_ratio,
+    )
 
 
 if __name__ == "__main__":

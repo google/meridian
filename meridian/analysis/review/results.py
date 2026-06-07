@@ -648,7 +648,14 @@ class ImplausibleROIAggregateCases(ModelCheckCase, enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class ImplausibleROIChannelResult(ChannelResult):
-  """The immutable result of Implausible ROI Check for a single channel."""
+  """The immutable result of Implausible ROI Check for a single channel.
+
+  Attributes:
+    case: The specific case for this channel's implausible ROI check.
+    spend_share: The proportion of total spend for this channel.
+    roi_mean: The posterior mean of the ROI for this channel.
+    spend_weighted_roi: The spend-weighted ROI for this channel.
+  """
 
   case: ImplausibleROIChannelCases
   spend_share: float
@@ -679,6 +686,96 @@ class ImplausibleROICheckResult(CheckResult):
   def details(self) -> Mapping[str, Any]:
     """The check result details."""
     return self.aggregate_details
+
+
+# ==============================================================================
+# Check: High Variance
+# ==============================================================================
+@enum.unique
+class HighVarianceChannelCases(BaseCase, enum.Enum):
+  """Cases for High Variance Check per channel."""
+
+  ROI_PASS = (Status.PASS, enum.auto())
+  HIGH_VARIANCE = (Status.REVIEW, enum.auto())
+
+  # TODO: Remove unused unique_id argument, here and elsewhere.
+  def __init__(self, status: Status, unique_id: Any):
+    super().__init__(status)
+
+
+class HighVarianceAggregateCases(ModelCheckCase, enum.Enum):
+  """Cases for High Variance Check aggregate result."""
+
+  PASS = (
+      Status.PASS,
+      "All channels have acceptable ROI variance.",
+      None,
+  )
+  REVIEW = (
+      Status.REVIEW,
+      (
+          "We've detected channel(s) {high_variance_channels_str} with highly"
+          " uncertain ROI estimates (wide posterior intervals)."
+      ),
+      constants.HIGH_VARIANCE_ROI_RECOMMENDATION,
+  )
+
+  def __init__(
+      self,
+      status: Status,
+      message_template: str,
+      recommendation: str | None,
+  ):
+    super().__init__(status, message_template, recommendation)
+
+
+@dataclasses.dataclass(frozen=True)
+class HighVarianceChannelResult(ChannelResult):
+  """The immutable result of High Variance Check for a single channel.
+
+  Attributes:
+    case: The specific case for this channel's high variance check.
+    spend_share: The proportion of total spend for this channel.
+    relative_width_ratio: The ratio of the posterior ROI credible interval width
+      to the prior width.
+  """
+
+  case: HighVarianceChannelCases
+  spend_share: float
+  relative_width_ratio: float
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        "spend_share": self.spend_share,
+        "relative_width_ratio": self.relative_width_ratio,
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class HighVarianceCheckResult(CheckResult):
+  """The immutable result of model-level High Variance Check.
+
+  Attributes:
+    case: The aggregate case for the high variance check across all channels.
+    channel_results: A list of `HighVarianceChannelResult` for each channel.
+    high_variance_channels: A list of channel names flagged as having high ROI
+      variance.
+  """
+
+  case: HighVarianceAggregateCases
+  channel_results: list[HighVarianceChannelResult]
+  high_variance_channels: list[str]
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        "high_variance_channels_str": ", ".join(
+            f"`{c}`" for c in self.high_variance_channels
+        )
+    }
 
 
 # ==============================================================================
