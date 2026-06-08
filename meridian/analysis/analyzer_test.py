@@ -35,7 +35,6 @@ from meridian.model import spec
 import numpy as np
 import xarray as xr
 
-
 _TEST_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "model", "test_data"
 )

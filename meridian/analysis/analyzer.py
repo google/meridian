@@ -1792,6 +1792,8 @@ class Analyzer:
           "use_kpi=False is only supported when inverse_transform_outcome=True."
       )
 
+  # TODO: Make this method public when this feature is ready for
+  # open source.
   def _get_incremental_kpi(
       self,
       data_tensors: DataTensors,
