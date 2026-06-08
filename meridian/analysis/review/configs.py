@@ -68,9 +68,9 @@ class BaselineConfig(BaseConfig):
   This check warns if there is a high probability of a negative baseline.
 
   Attributes:
-    negative_baseline_prob_review_threshold: Probability threshold for a
-      review. If the probability of a negative baseline is above this value, a
-      review is issued.
+    negative_baseline_prob_review_threshold: Probability threshold for a review.
+      If the probability of a negative baseline is above this value, a review is
+      issued.
     negative_baseline_prob_fail_threshold: Probability threshold for a failure.
       If the probability of a negative baseline is above this value, the check
       fails.
@@ -118,8 +118,8 @@ class ImplausibleROIConfig(BaseConfig):
   """Configuration for the Implausible ROI Check.
 
   Attributes:
-    roi_upper_bound: The upper bound threshold for spend-weighted posterior
-      mean ROI.
+    roi_upper_bound: The upper bound threshold for spend-weighted posterior mean
+      ROI.
     roi_lower_bound: The lower bound threshold for reciprocal-spend-weighted
       posterior mean ROI.
   """
@@ -147,4 +147,13 @@ class HighVarianceConfig(BaseConfig):
   hdi_prob: float = 0.8
 
 
+@dataclasses.dataclass(frozen=True)
+class PotentialBiasConfig(BaseConfig):
+  """Configuration for the Potential Bias Check.
 
+  Attributes:
+    correlation_threshold: The threshold for maximum absolute Pearson
+      correlation.
+  """
+
+  correlation_threshold: float = 0.1

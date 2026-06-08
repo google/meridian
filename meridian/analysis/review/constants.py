@@ -54,6 +54,7 @@ SPEND_SHARE = "spend_share"
 ROI_MEAN = "roi_mean"
 ROI_MEDIAN = "roi_median"
 SPEND_WEIGHTED_ROI = "spend_weighted_roi"
+CORRELATION_MATRIX = "correlation_matrix"
 PRIOR_RELATIVE_HDI_WIDTH_FOR_80_PERCENT = 2.0687
 
 CHECK_RESULT_NAME_MAP = immutabledict.immutabledict({
@@ -65,6 +66,7 @@ CHECK_RESULT_NAME_MAP = immutabledict.immutabledict({
     "ROIConsistencyCheckResult": "ROI consistency",
     "ImplausibleROICheckResult": "Implausible ROI",
     "HighVarianceCheckResult": "High-variance ROI",
+    "PotentialBiasCheckResult": "Potential bias",
 })
 
 # Health score constants
@@ -86,4 +88,11 @@ IMPLAUSIBLE_ROI_RECOMMENDATION = (
 HIGH_VARIANCE_ROI_RECOMMENDATION = (
     "We recommend calibrating these channels using an incrementality experiment"
     " to reduce posterior ROI uncertainty."
+)
+
+POTENTIAL_BIAS_RECOMMENDATION = (
+    "Some channels have low correlation with all controls. These channels might"
+    " have biased posterior estimates due to missing potential confounders."
+    " We recommend checking if important controls are missing or calibrating"
+    " these channels using an incrementality experiment to address this."
 )

@@ -30,7 +30,10 @@ from meridian.analysis.review import results
 from meridian.model import context
 import numpy as np
 import pandas as pd
+from scipy import stats as scipy_stats
 from typing_extensions import override
+import xarray as xr
+
 
 ConfigType = TypeVar("ConfigType", bound=configs.BaseConfig)
 ResultType = TypeVar("ResultType", bound=results.CheckResult)
@@ -1026,3 +1029,105 @@ class HighVarianceCheck(
         channel_results=channel_results,
         high_variance_channels=high_variance_channels,
     )
+
+
+# ==============================================================================
+# Check: Potential Bias
+# ==============================================================================
+class PotentialBiasCheck(
+    BaseCheck[configs.PotentialBiasConfig, results.PotentialBiasCheckResult]
+):
+  """A check for correlation between paid channels and control variables to flag potential confounding."""
+
+  @override
+  def run(self) -> results.PotentialBiasCheckResult:
+    """Runs the potential bias check.
+
+    This check computes the Pearson correlation between each paid channel's
+    media/RF data and all control variables. It flags channels where the
+    maximum absolute correlation with any control variable exceeds a
+    predefined threshold.
+
+    Returns:
+      A results.PotentialBiasCheckResult object containing the results of the
+      check.
+    """
+    channels = self._model_context.input_data.get_all_paid_channels().tolist()
+
+    controls = self._model_context.input_data.controls
+    if controls is None or self._model_context.n_controls == 0:
+      correlation_matrix = xr.DataArray(
+          np.zeros((self._model_context.n_geos, len(channels), 0)),
+          coords={
+              constants.GEO: self._model_context.input_data.geo.values,
+              constants.CHANNEL: channels,
+              constants.CONTROL_VARIABLE: [],
+          },
+          dims=[constants.GEO, constants.CHANNEL, constants.CONTROL_VARIABLE],
+      )
+      return results.PotentialBiasCheckResult(
+          case=results.PotentialBiasAggregateCases.NO_CONTROLS,
+          channel_results=[],
+          low_correlation_channels=[],
+          correlation_matrix=correlation_matrix,
+      )
+
+    media_data = self._model_context.input_data.get_all_media_and_rf()
+    n_times = self._model_context.n_times
+    media_aligned = media_data[:, -n_times:, :]
+
+    controls_data = controls.values
+
+    # media_aligned: (n_geos, n_times, n_channels)
+    # controls_data: (n_geos, n_times, n_controls)
+    with warnings.catch_warnings():
+      warnings.filterwarnings("ignore", category=RuntimeWarning)
+      correlation = scipy_stats.pearsonr(
+          media_aligned[..., np.newaxis],
+          controls_data[:, :, np.newaxis, :],
+          axis=1,
+      ).statistic
+      abs_correlation = np.abs(correlation)
+      max_abs_correlations = np.nanmax(abs_correlation, axis=(0, 2))
+
+    channel_results = []
+    low_correlation_channels = []
+
+    for channel, max_corr in zip(channels, max_abs_correlations):
+      if max_corr < self._config.correlation_threshold:
+        case = results.PotentialBiasChannelCases.LOW_CORRELATION
+        low_correlation_channels.append(channel)
+      else:
+        case = results.PotentialBiasChannelCases.ROI_PASS
+
+      channel_results.append(
+          results.PotentialBiasChannelResult(
+              case=case,
+              channel_name=channel,
+              max_abs_correlation=max_corr,
+          )
+      )
+
+    correlation_matrix = xr.DataArray(
+        correlation,
+        coords={
+            constants.GEO: self._model_context.input_data.geo.values,
+            constants.CHANNEL: channels,
+            constants.CONTROL_VARIABLE: (
+                controls.coords[constants.CONTROL_VARIABLE].values
+            ),
+        },
+        dims=[constants.GEO, constants.CHANNEL, constants.CONTROL_VARIABLE],
+    )
+
+    return results.PotentialBiasCheckResult(
+        case=(
+            results.PotentialBiasAggregateCases.REVIEW
+            if low_correlation_channels
+            else results.PotentialBiasAggregateCases.PASS
+        ),
+        channel_results=channel_results,
+        low_correlation_channels=low_correlation_channels,
+        correlation_matrix=correlation_matrix,
+    )
+

@@ -1683,9 +1683,7 @@ class HighVarianceCheckTest(parameterized.TestCase):
 
     mock_hdi.assert_called_once()
     posterior_roi_concat = np.array([[[2.0, 4.0, 3.0]]])
-    np.testing.assert_allclose(
-        mock_hdi.call_args[0][0], posterior_roi_concat
-    )
+    np.testing.assert_allclose(mock_hdi.call_args[0][0], posterior_roi_concat)
     self.assertEqual(mock_hdi.call_args[1]["hdi_prob"], config.hdi_prob)
 
   @parameterized.named_parameters(
@@ -1748,6 +1746,173 @@ class HighVarianceCheckTest(parameterized.TestCase):
     self.assertEqual(
         result.channel_results[0].relative_width_ratio,
         expected_relative_width_ratio,
+    )
+
+
+class PotentialBiasCheckTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    self.input_data = mock.create_autospec(
+        spec=input_data.InputData, spec_set=False, instance=True
+    )
+    self.model_context.input_data = self.input_data
+    self.inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    self.analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+    self.model_context.n_geos = 1
+    self.model_context.n_times = 4
+    self.config = configs.PotentialBiasConfig(correlation_threshold=0.03)
+    geo_da = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    geo_da.values = np.array(["geo1"])
+    self.input_data.geo = geo_da
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_controls",
+          paid_channels=["ch1", "ch2"],
+          media_all_data=np.array(
+              [[[1.0, 1.0], [2.0, 2.0], [3.0, 1.0], [4.0, 2.0]]]
+          ),
+          controls_data=np.array([[[4.0], [5.0], [2.0], [1.0]]]),
+          expected_aggregate_case=results.PotentialBiasAggregateCases.REVIEW,
+          expected_low_correlation_channels=["ch2"],
+          expected_channel_cases=[
+              results.PotentialBiasChannelCases.ROI_PASS,
+              results.PotentialBiasChannelCases.LOW_CORRELATION,
+          ],
+          expected_correlation_matrix=xr.DataArray(
+              np.array([[[-0.84852814], [0.0]]]),
+              coords={
+                  constants.GEO: ["geo1"],
+                  constants.CHANNEL: ["ch1", "ch2"],
+                  constants.CONTROL_VARIABLE: ["ctrl0"],
+              },
+              dims=[
+                  constants.GEO,
+                  constants.CHANNEL,
+                  constants.CONTROL_VARIABLE,
+              ],
+          ),
+      ),
+      dict(
+          testcase_name="no_controls",
+          paid_channels=["ch1"],
+          media_all_data=np.array([[[1.0], [2.0], [3.0], [4.0]]]),
+          controls_data=None,
+          expected_aggregate_case=results.PotentialBiasAggregateCases.NO_CONTROLS,
+          expected_low_correlation_channels=[],
+          expected_channel_cases=[],
+          expected_correlation_matrix=xr.DataArray(
+              np.zeros((1, 1, 0)),
+              coords={
+                  constants.GEO: ["geo1"],
+                  constants.CHANNEL: ["ch1"],
+                  constants.CONTROL_VARIABLE: [],
+              },
+              dims=[
+                  constants.GEO,
+                  constants.CHANNEL,
+                  constants.CONTROL_VARIABLE,
+              ],
+          ),
+      ),
+      dict(
+          testcase_name="constant_input",
+          paid_channels=["ch1"],
+          media_all_data=np.array([
+              [[1.0], [2.0], [3.0], [4.0]],
+              [[1.0], [1.0], [1.0], [1.0]],  # constant media in geo2
+          ]),
+          controls_data=np.array([
+              [[4.0], [5.0], [2.0], [1.0]],
+              [[4.0], [5.0], [2.0], [1.0]],
+          ]),
+          expected_aggregate_case=results.PotentialBiasAggregateCases.PASS,
+          expected_low_correlation_channels=[],
+          expected_channel_cases=[
+              results.PotentialBiasChannelCases.ROI_PASS,
+          ],
+          expected_correlation_matrix=xr.DataArray(
+              np.array([[[-0.84852814]], [[np.nan]]]),
+              coords={
+                  constants.GEO: ["geo1", "geo2"],
+                  constants.CHANNEL: ["ch1"],
+                  constants.CONTROL_VARIABLE: ["ctrl0"],
+              },
+              dims=[
+                  constants.GEO,
+                  constants.CHANNEL,
+                  constants.CONTROL_VARIABLE,
+              ],
+          ),
+      ),
+  )
+  def test_potential_bias_check(
+      self,
+      paid_channels,
+      media_all_data,
+      controls_data,
+      expected_aggregate_case,
+      expected_low_correlation_channels,
+      expected_channel_cases,
+      expected_correlation_matrix,
+  ):
+    self.input_data.get_all_paid_channels.return_value = np.array(paid_channels)
+    self.input_data.get_all_media_and_rf.return_value = media_all_data
+
+    n_geos = media_all_data.shape[0]
+    self.model_context.n_geos = n_geos
+    self.input_data.geo.values = np.array([f"geo{i+1}" for i in range(n_geos)])
+
+    if controls_data is not None:
+      controls_da = mock.create_autospec(
+          spec=xr.DataArray, spec_set=False, instance=True
+      )
+      controls_da.values = controls_data
+      coord_da = mock.create_autospec(
+          spec=xr.DataArray, spec_set=False, instance=True
+      )
+      coord_da.values = np.array(
+          [f"ctrl{i}" for i in range(controls_data.shape[-1])]
+      )
+      controls_da.coords = {constants.CONTROL_VARIABLE: coord_da}
+      self.input_data.controls = controls_da
+      self.model_context.n_controls = controls_data.shape[-1]
+    else:
+      self.input_data.controls = None
+      self.model_context.n_controls = 0
+
+    check = checks.PotentialBiasCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
+    )
+
+    result = check.run()
+    self.assertEqual(result.case, expected_aggregate_case)
+    self.assertEqual(
+        result.low_correlation_channels, expected_low_correlation_channels
+    )
+    self.assertEqual(
+        [res.case for res in result.channel_results], expected_channel_cases
+    )
+    xr.testing.assert_allclose(
+        result.correlation_matrix, expected_correlation_matrix, atol=1e-6
+    )
+    xr.testing.assert_allclose(
+        result.details[results.constants.CORRELATION_MATRIX],
+        expected_correlation_matrix,
+        atol=1e-6,
     )
 
 

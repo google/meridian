@@ -27,6 +27,7 @@ from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
 from meridian.templates import formatter
+import xarray as xr
 
 
 # ==============================================================================
@@ -775,6 +776,89 @@ class HighVarianceCheckResult(CheckResult):
         "high_variance_channels_str": ", ".join(
             f"`{c}`" for c in self.high_variance_channels
         )
+    }
+
+
+# ==============================================================================
+# Check: Potential Bias
+# ==============================================================================
+@enum.unique
+class PotentialBiasChannelCases(BaseCase, enum.Enum):
+  """Cases for Potential Bias Check per channel."""
+
+  ROI_PASS = (Status.PASS, enum.auto())
+  LOW_CORRELATION = (Status.REVIEW, enum.auto())
+
+  def __init__(self, status: Status, unique_id: Any):
+    super().__init__(status)
+
+
+class PotentialBiasAggregateCases(ModelCheckCase, enum.Enum):
+  """Cases for Potential Bias Check aggregate result."""
+
+  PASS = (
+      Status.PASS,
+      "All channels have sufficient correlation with control variables.",
+      None,
+  )
+  REVIEW = (
+      Status.REVIEW,
+      (
+          "We've detected channel(s) {low_correlation_channels_str} with very"
+          " low correlation with all included control variables."
+      ),
+      constants.POTENTIAL_BIAS_RECOMMENDATION,
+  )
+  NO_CONTROLS = (
+      Status.REVIEW,
+      (
+          "No control variables are included in the model. Consider adding"
+          " control variables to control for potential confounding bias."
+      ),
+      constants.POTENTIAL_BIAS_RECOMMENDATION,
+  )
+
+  def __init__(
+      self,
+      status: Status,
+      message_template: str,
+      recommendation: str | None,
+  ):
+    super().__init__(status, message_template, recommendation)
+
+
+@dataclasses.dataclass(frozen=True)
+class PotentialBiasChannelResult(ChannelResult):
+  """The immutable result of Potential Bias Check for a single channel."""
+
+  case: PotentialBiasChannelCases
+  max_abs_correlation: float
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        "max_abs_correlation": self.max_abs_correlation,
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class PotentialBiasCheckResult(CheckResult):
+  """The immutable result of model-level Potential Bias Check."""
+
+  case: PotentialBiasAggregateCases
+  channel_results: list[PotentialBiasChannelResult]
+  low_correlation_channels: list[str]
+  correlation_matrix: xr.DataArray
+
+  @property
+  def details(self) -> Mapping[str, Any]:
+    """The check result details."""
+    return {
+        "low_correlation_channels_str": ", ".join(
+            f"`{c}`" for c in self.low_correlation_channels
+        ),
+        constants.CORRELATION_MATRIX: self.correlation_matrix,
     }
 
 

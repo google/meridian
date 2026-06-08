@@ -16,9 +16,12 @@ from typing import Any
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import constants
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
+import numpy as np
+import xarray as xr
 
 
 class ConvergenceCheckResultTest(parameterized.TestCase):
@@ -617,6 +620,69 @@ class HighVarianceCheckResultTest(parameterized.TestCase):
         "We've detected channel(s) `channel1`, `channel2` with highly uncertain"
         " ROI estimates (wide posterior intervals). "
         f"{review_constants.HIGH_VARIANCE_ROI_RECOMMENDATION}",
+    )
+
+
+class PotentialBiasCheckResultTest(parameterized.TestCase):
+
+  def test_potential_bias_check_result_pass(self):
+    corr_matrix = xr.DataArray(
+        np.array([[[0.5]]]),
+        coords={
+            constants.GEO: ["geo1"],
+            constants.CHANNEL: ["channel1"],
+            constants.CONTROL_VARIABLE: ["control1"],
+        },
+        dims=[
+            constants.GEO,
+            constants.CHANNEL,
+            constants.CONTROL_VARIABLE,
+        ],
+    )
+    result = results.PotentialBiasCheckResult(
+        case=results.PotentialBiasAggregateCases.PASS,
+        channel_results=[],
+        low_correlation_channels=[],
+        correlation_matrix=corr_matrix,
+    )
+    self.assertEqual(result.case.status, results.Status.PASS)
+    self.assertEqual(
+        result.recommendation,
+        "All channels have sufficient correlation with control variables.",
+    )
+    xr.testing.assert_equal(
+        result.details[review_constants.CORRELATION_MATRIX], corr_matrix
+    )
+
+  def test_potential_bias_check_result_review(self):
+    corr_matrix = xr.DataArray(
+        np.array([[[0.0]]]),
+        coords={
+            constants.GEO: ["geo1"],
+            constants.CHANNEL: ["channel1"],
+            constants.CONTROL_VARIABLE: ["control1"],
+        },
+        dims=[
+            constants.GEO,
+            constants.CHANNEL,
+            constants.CONTROL_VARIABLE,
+        ],
+    )
+    result = results.PotentialBiasCheckResult(
+        case=results.PotentialBiasAggregateCases.REVIEW,
+        channel_results=[],
+        low_correlation_channels=["channel1"],
+        correlation_matrix=corr_matrix,
+    )
+    self.assertEqual(result.case.status, results.Status.REVIEW)
+    self.assertEqual(
+        result.recommendation,
+        "We've detected channel(s) `channel1` with very low correlation with"
+        " all included control variables."
+        f" {review_constants.POTENTIAL_BIAS_RECOMMENDATION}",
+    )
+    xr.testing.assert_equal(
+        result.details[review_constants.CORRELATION_MATRIX], corr_matrix
     )
 
 
