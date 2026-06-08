@@ -5546,11 +5546,9 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
     # Scale each channel's spend to be between 4-6% of total revenue. (Otherwise
     # spend values can be so small that they cause numerical inaccuracies with
     # ROI priors.)
-    # pytype: disable=attribute-error
     total_outcome = np.sum(
-        input_data.kpi.values * input_data.revenue_per_kpi.values
+        input_data.kpi.values * input_data.revenue_per_kpi.values  # pytype: disable=attribute-error
     )
-    # pytype: enable=attribute-error
 
     total_spend_m = np.sum(input_data.media_spend.values, (0, 1))
     total_spend_rf = np.sum(input_data.rf_spend.values, (0, 1))
