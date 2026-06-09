@@ -162,10 +162,10 @@ class RfOptimizationSpecsConverter(_RfOptimizationConverter):
       if set([
           channel_constraint.channel_name
           for channel_constraint in channel_constraints
-      ]) != set(self._mmm.marketing_data.rf_channels):
+      ]) != set(rf_opt_result.optimized_channels):
         raise ValueError(
             "R&F optimization spec must have channel constraints specified for"
-            " all R&F channels."
+            " all paid R&F channels."
         )
 
       for channel_constraint in channel_constraints:
@@ -250,7 +250,7 @@ class RfOptimizationResultsConverter(_RfOptimizationConverter):
         if channel == c.ALL_CHANNELS:
           continue
         # Skip non-R&F channels.
-        if channel not in self._mmm.marketing_data.rf_channels:
+        if channel not in rf_opt_result.optimized_channels:
           continue
 
         initial_spend = initial_budget[channel]

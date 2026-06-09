@@ -982,6 +982,28 @@ class ReachFrequencyOptimizationResultTest(absltest.TestCase):
         },
     )
 
+  def test_optimized_channels(self):
+    result = mmm.ReachFrequencyOptimizationResult(
+        rf_pb.ReachFrequencyOptimizationResult(
+            name="Test",
+            optimized_channel_frequencies=[
+                rf_pb.OptimizedChannelFrequency(
+                    channel_name="Channel 1",
+                    optimal_average_frequency=1.0,
+                ),
+                rf_pb.OptimizedChannelFrequency(
+                    channel_name="Channel 2",
+                    optimal_average_frequency=2.0,
+                ),
+            ],
+        )
+    )
+
+    self.assertEqual(
+        result.optimized_channels,
+        ("Channel 1", "Channel 2"),
+    )
+
   def test_optimized_marketing_analysis(self):
     analysis_proto = marketing_pb.MarketingAnalysis(
         date_interval=date_interval_pb.DateInterval(

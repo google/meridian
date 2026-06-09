@@ -194,7 +194,7 @@ class RfOptimizationSpecsConverterTest(absltest.TestCase):
     with self.assertRaisesRegex(
         ValueError,
         "R&F optimization spec must have channel constraints specified for all"
-        " R&F channels.",
+        " paid R&F channels.",
     ):
       next(conv())
 
@@ -217,6 +217,31 @@ class RfOptimizationSpecsConverterTest(absltest.TestCase):
         " specified. Missing for channel: RF Channel 2",
     ):
       next(conv())
+
+  def test_call_with_organic_rf_channels(self):
+    mmm_proto = mmm_pb.Mmm()
+    mmm_proto.CopyFrom(_DEFAULT_MMM_PROTO)
+    for data_point in mmm_proto.mmm_kernel.marketing_data.marketing_data_points:
+      data_point.reach_frequency_variables.add(
+          channel_name="Organic RF Channel",
+          reach=5000,
+          average_frequency=1.05,
+      )
+
+    conv = converters.RfOptimizationSpecsConverter(
+        mmm_wrapper=mmm.Mmm(mmm_proto)
+    )
+
+    name, output_df = next(conv())
+
+    self.assertEqual(name, dc.RF_OPTIMIZATION_SPECS)
+    self.assertNotIn(
+        "Organic RF Channel", output_df[dc.OPTIMIZATION_CHANNEL_COLUMN].values
+    )
+    self.assertEqual(
+        list(output_df[dc.OPTIMIZATION_CHANNEL_COLUMN].values),
+        ["RF Channel 1", "RF Channel 2"],
+    )
 
 
 class RfOptimizationResultsConverterTest(absltest.TestCase):
@@ -400,6 +425,30 @@ class RfOptimizationResultsConverterTest(absltest.TestCase):
                 dc.OPTIMIZATION_RESULT_CPC_COLUMN,
             ],
         ),
+    )
+
+  def test_call_with_organic_rf_channels(self):
+    mmm_proto = mmm_pb.Mmm()
+    mmm_proto.CopyFrom(_DEFAULT_MMM_PROTO)
+    for data_point in mmm_proto.mmm_kernel.marketing_data.marketing_data_points:
+      data_point.reach_frequency_variables.add(
+          channel_name="Organic RF Channel",
+          reach=5000,
+          average_frequency=1.05,
+      )
+
+    for analysis in mmm_proto.marketing_analysis_list.marketing_analyses:
+      analysis.media_analyses.add(channel_name="Organic RF Channel")
+
+    conv = converters.RfOptimizationResultsConverter(
+        mmm_wrapper=mmm.Mmm(mmm_proto)
+    )
+
+    name, output_df = next(conv())
+
+    self.assertEqual(name, dc.RF_OPTIMIZATION_RESULTS)
+    self.assertNotIn(
+        "Organic RF Channel", output_df[dc.OPTIMIZATION_CHANNEL_COLUMN].values
     )
 
 

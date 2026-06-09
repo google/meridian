@@ -55,9 +55,7 @@ class _BudgetOptimizationConverter(converter.Converter, abc.ABC):
           " results."
       )
 
-    yield from self._handle_budget_optimization_results(
-        self._mmm.budget_optimization_results
-    )
+    yield from self._handle_budget_optimization_results(results)
 
   def _handle_budget_optimization_results(
       self, results: Sequence[mmm.BudgetOptimizationResult]

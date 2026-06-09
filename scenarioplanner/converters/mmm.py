@@ -554,8 +554,15 @@ class ReachFrequencyOptimizationResult(_NamedResultMixin):
         optimized_channel_frequency.channel_name: (
             optimized_channel_frequency.optimal_average_frequency
         )
-        for optimized_channel_frequency in self.rf_optimization_result_proto.optimized_channel_frequencies
+        for optimized_channel_frequency in (
+            self.rf_optimization_result_proto.optimized_channel_frequencies
+        )
     }
+
+  @functools.cached_property
+  def optimized_channels(self) -> tuple[str, ...]:
+    """The tuple of optimized channel names."""
+    return tuple(self.channel_mapped_optimized_frequencies.keys())
 
   @functools.cached_property
   def optimized_marketing_analysis(self) -> MarketingAnalysis:
@@ -712,7 +719,9 @@ class Mmm:
     """Returns a list of `MarketingAnalysis` wrappers."""
     return [
         MarketingAnalysis(analysis)
-        for analysis in self.mmm_proto.marketing_analysis_list.marketing_analyses
+        for analysis in (
+            self.mmm_proto.marketing_analysis_list.marketing_analyses
+        )
     ]
 
   @functools.cached_property
@@ -729,7 +738,9 @@ class Mmm:
     """Returns a list of `BudgetOptimizationResult` wrappers."""
     return [
         BudgetOptimizationResult(result)
-        for result in self.mmm_proto.marketing_optimization.budget_optimization.results
+        for result in (
+            self.mmm_proto.marketing_optimization.budget_optimization.results
+        )
     ]
 
   @functools.cached_property
@@ -739,5 +750,7 @@ class Mmm:
     """Returns a list of `ReachFrequencyOptimizationResult` wrappers."""
     return [
         ReachFrequencyOptimizationResult(result)
-        for result in self.mmm_proto.marketing_optimization.reach_frequency_optimization.results
+        for result in (
+            self.mmm_proto.marketing_optimization.reach_frequency_optimization.results
+        )
     ]
