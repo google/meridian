@@ -478,7 +478,7 @@ class AKS:
     par = np.ones(ncol, dtype=backend.np_float_dtype)
     index_penalty = 0
     for _ in range(max_iterations):
-      par = self._wridge_solver(
+      par = self._weighted_ridge_solver(
           xx_rot, xy, self._DEGREE, penalty[index_penalty], w, old_par=par
       )
       par_diff = np.diff(par, n=self._DEGREE + 1)
@@ -690,7 +690,7 @@ class AKS:
 
     return self._bandsolve_kernel(rot_mat, rhs_mat[:, np.newaxis])
 
-  def _wridge_solver(
+  def _weighted_ridge_solver(
       self,
       xx_rot: np.ndarray,
       xy: np.ndarray,
