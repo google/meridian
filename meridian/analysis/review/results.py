@@ -15,7 +15,7 @@
 """Data structures for the Model Quality Checks results."""
 
 import abc
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import dataclasses
 import enum
 import functools
