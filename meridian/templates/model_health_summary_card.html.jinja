@@ -24,6 +24,7 @@ limitations under the License.
         <div class="score-value">{{ "%.1f"|format(health_score) }}</div>
       </div>
     </div>
+
     <div class="score-explanation">
       <div class="explanation-title">How is health score measured?</div>
       <p>
@@ -84,6 +85,31 @@ limitations under the License.
           <td>{{ check.recommendation }}</td>
         </tr>
         {% endfor %}
+        {# copybara:strip_begin #}
+        {% if has_calibration_recommendations %}
+        <tr>
+          <td>Calibration score</td>
+          <td>
+            <div class="status-cell">
+              {% if n_recommended > 0 %}
+                 <chip class="review">Review</chip>
+              {% else %}
+                 <chip class="pass">Pass</chip>
+              {% endif %}
+              <div class="stats-text">{{ n_recommended }}/{{ n_total_channels }} channels recommended for calibration</div>
+            </div>
+          </td>
+          <td>
+            The overall calibration score is {{ "%.1f"|format(calibration_score) }}/100.
+            {% if recommended_channels_text %}
+              We recommend incrementality experiments to improve prior accuracy for {{ recommended_channels_text }}.
+            {% else %}
+              No channels require calibration.
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {# copybara:strip_end #}
       </tbody>
     </table>
   </div>

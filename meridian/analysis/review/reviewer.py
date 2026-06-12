@@ -29,6 +29,7 @@ from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
 from meridian.model import context
 from meridian.model import prior_distribution
+
 import numpy as np
 
 CheckType = typing.Type[checks.BaseCheck]
