@@ -29,6 +29,7 @@ dependencies = [
   "bidict",
   "immutabledict",
   "joblib",
+  "matplotlib < 3.11.0",
   "natsort >= 7.1.1, < 8",
   "numpy >= 2.0.2, < 2.4.0",
   "pandas >= 2.2.2, < 3",

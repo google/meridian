@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Pin `matplotlib` dependency to `< 3.11.0` to fix upstream `arviz` import
+  error.
 * Fix R&F optimization converters to use optimized channels.
 * Fix a JAX compatibility issue in `Summarizer` when calling `.idxmax()` on data
   backed by JAX.
