@@ -28,7 +28,7 @@ import numpy as np
 from typing_extensions import Self
 import xarray as xr
 
-__all__ = ["DataTensors", "DistributionTensors"]
+__all__ = ("DataTensors", "DataTensorsBuilder", "DistributionTensors")
 
 
 # TODO: Remove this method.
@@ -807,3 +807,145 @@ def _scale_tensors_by_multiplier(
   incremented_data[constants.REVENUE_PER_KPI] = data.revenue_per_kpi
 
   return DataTensors(**incremented_data)
+
+
+class DataTensorsBuilder:
+  """Translates raw modeling inputs into scaled, execution-ready data tensors.
+
+  Attributes:
+    model_context: The Meridian model context.
+  """
+
+  def __init__(self, model_context: context.ModelContext):
+    """Initializes the instance."""
+    self.model_context = model_context
+
+  def _build_scaled_data_tensors(
+      self,
+      new_data: DataTensors | None = None,
+      include_non_paid_channels: bool = True,
+  ) -> DataTensors:
+    """Gets scaled tensors using given new data and original data.
+
+    This method returns a new `DataTensors` container with scaled
+    versions of
+    `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
+    `organic_frequency`, `non_media_treatments`, `controls` and
+    `revenue_per_kpi` tensors. For each tensor, if its value is provided in the
+    `new_data` argument, the provided tensors are used. Otherwise the original
+    tensors from the Meridian model are used. The tensors are then either scaled
+    by their corresponding transformers (`media`, `reach`, `organic_media`,
+    `organic_reach`, `non_media_treatments`, `controls`), or left as is
+    (`frequency`, `organic_frequency`, `revenue_per_kpi`). For example,
+
+    ```
+    build_scaled_data_tensors(
+        new_data=DataTensors(media=new_media),
+    )
+    ```
+
+    returns a `DataTensors` container with `media` set to the scaled
+    version of
+    `new_media`, and all other tensors set to their original scaled values from
+    the Meridian model.
+
+    Args:
+      new_data: An optional `DataTensors` container containing optional `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
+        `organic_frequency`, `non_media_treatments`, `controls`, and
+        `revenue_per_kpi`. If `None`, the original scaled tensors from the
+        Meridian object are used. If `new_data` is provided, the output contains
+        the scaled versions of the tensors in `new_data` and the original scaled
+        versions of all the remaining tensors. The new tensors' dimensions must
+        match the dimensions of the corresponding original tensors from
+        `meridian.input_data`.
+      include_non_paid_channels: Boolean. If `True`, organic media, organic RF
+        and non-media treatments data is included in the output.
+
+    Returns:
+      A DataTensors object containing the scaled `media`, `reach`,
+      `frequency`
+      `organic_media`, `organic_reach`, `organic_frequency`,
+      `non_media_treatments`, `controls` and `revenue_per_kpi` data tensors.
+    """
+    if new_data is None:
+      return DataTensors(
+          media=self.model_context.media_tensors.media_scaled,
+          reach=self.model_context.rf_tensors.reach_scaled,
+          frequency=self.model_context.rf_tensors.frequency,
+          organic_media=self.model_context.organic_media_tensors.organic_media_scaled,
+          organic_reach=self.model_context.organic_rf_tensors.organic_reach_scaled,
+          organic_frequency=self.model_context.organic_rf_tensors.organic_frequency,
+          non_media_treatments=self.model_context.non_media_treatments_normalized,
+          controls=self.model_context.controls_scaled,
+          revenue_per_kpi=self.model_context.revenue_per_kpi,
+      )
+    media_scaled = _transformed_new_or_scaled(
+        new_variable=new_data.media,
+        transformer=self.model_context.media_tensors.media_transformer,
+        scaled_variable=self.model_context.media_tensors.media_scaled,
+    )
+
+    reach_scaled = _transformed_new_or_scaled(
+        new_variable=new_data.reach,
+        transformer=self.model_context.rf_tensors.reach_transformer,
+        scaled_variable=self.model_context.rf_tensors.reach_scaled,
+    )
+
+    frequency = (
+        new_data.frequency
+        if new_data.frequency is not None
+        else self.model_context.rf_tensors.frequency
+    )
+
+    controls_scaled = _transformed_new_or_scaled(
+        new_variable=new_data.controls,
+        transformer=self.model_context.controls_transformer,
+        scaled_variable=self.model_context.controls_scaled,
+    )
+    revenue_per_kpi = (
+        new_data.revenue_per_kpi
+        if new_data.revenue_per_kpi is not None
+        else self.model_context.revenue_per_kpi
+    )
+
+    if include_non_paid_channels:
+      organic_media_scaled = _transformed_new_or_scaled(
+          new_variable=new_data.organic_media,
+          transformer=self.model_context.organic_media_tensors.organic_media_transformer,
+          scaled_variable=self.model_context.organic_media_tensors.organic_media_scaled,
+      )
+      organic_reach_scaled = _transformed_new_or_scaled(
+          new_variable=new_data.organic_reach,
+          transformer=self.model_context.organic_rf_tensors.organic_reach_transformer,
+          scaled_variable=self.model_context.organic_rf_tensors.organic_reach_scaled,
+      )
+      organic_frequency = (
+          new_data.organic_frequency
+          if new_data.organic_frequency is not None
+          else self.model_context.organic_rf_tensors.organic_frequency
+      )
+      non_media_treatments_normalized = _transformed_new_or_scaled(
+          new_variable=new_data.non_media_treatments,
+          transformer=self.model_context.non_media_transformer,
+          scaled_variable=self.model_context.non_media_treatments_normalized,
+      )
+      return DataTensors(
+          media=media_scaled,
+          reach=reach_scaled,
+          frequency=frequency,
+          organic_media=organic_media_scaled,
+          organic_reach=organic_reach_scaled,
+          organic_frequency=organic_frequency,
+          non_media_treatments=non_media_treatments_normalized,
+          controls=controls_scaled,
+          revenue_per_kpi=revenue_per_kpi,
+      )
+    else:
+      return DataTensors(
+          media=media_scaled,
+          reach=reach_scaled,
+          frequency=frequency,
+          controls=controls_scaled,
+          revenue_per_kpi=revenue_per_kpi,
+      )

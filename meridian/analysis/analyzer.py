@@ -967,10 +967,14 @@ class Analyzer:
 
     # We always compute the expected outcome of all channels, including non-paid
     # channels.
-    data_tensors = self._get_scaled_data_tensors(
+    # pylint: disable=protected-access  # TODO: Clean up in next commit.
+    data_tensors = tensors.DataTensorsBuilder(
+        self.model_context
+    )._build_scaled_data_tensors(
         new_data=filled_tensors,
         include_non_paid_channels=True,
     )
+    # pylint: enable=protected-access
 
     param_list = (
         [
@@ -1540,10 +1544,14 @@ class Analyzer:
     )
     # pylint: enable=protected-access
 
-    scaled_data0 = self._get_scaled_data_tensors(
+    # pylint: disable=protected-access  # TODO: Clean up in next commit.
+    scaled_data0 = tensors.DataTensorsBuilder(
+        self.model_context
+    )._build_scaled_data_tensors(
         new_data=incremented_data0,
         include_non_paid_channels=include_non_paid_channels,
     )
+    # pylint: enable=protected-access
     # TODO: Verify the computation of outcome of non-media
     # treatments with `media_selected_times` and scale factors.
 
@@ -1558,10 +1566,14 @@ class Analyzer:
         non_media_treatments=non_media_treatments0,
     )
 
-    data_tensors1 = self._get_scaled_data_tensors(
+    # pylint: disable=protected-access  # TODO: Clean up in next commit.
+    data_tensors1 = tensors.DataTensorsBuilder(
+        self.model_context
+    )._build_scaled_data_tensors(
         new_data=incremented_data1,
         include_non_paid_channels=include_non_paid_channels,
     )
+    # pylint: enable=protected-access
 
     # Calculate incremental outcome in batches.
     param_list = self._get_causal_param_names(
