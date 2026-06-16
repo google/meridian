@@ -145,6 +145,7 @@ class ModelTest(
 
   def setUp(self):
     super().setUp()
+    flags.FLAGS.mark_as_parsed()
     self.small_data = (
         data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
             n_geos=self._N_GEOS_SMALL,
@@ -908,6 +909,35 @@ class ModelTest(
 
     with self.assertRaisesRegex(ValueError, "already been thinned"):
       meridian.posterior_thinning(n_draws=2)
+
+  def test_sample_prior_populates_inference_data(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    self.assertFalse(hasattr(meridian.inference_data, constants.PRIOR))
+
+    n_draws = 5
+    meridian.sample_prior(n_draws=n_draws, seed=42)
+
+    self.assertTrue(hasattr(meridian.inference_data, constants.PRIOR))
+    prior_group = meridian.inference_data[constants.PRIOR]
+    self.assertEqual(prior_group.sizes[constants.CHAIN], 1)
+    self.assertEqual(prior_group.sizes[constants.DRAW], n_draws)
+
+  def test_populate_cached_properties_activates_cache(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    # Verify cached properties are not in __dict__ initially
+    self.assertNotIn("prior_sampler_callable", meridian.__dict__)
+    self.assertNotIn("posterior_sampler_callable", meridian.__dict__)
+
+    with mock.patch.object(
+        meridian.model_context, "populate_cached_properties", autospec=True
+    ) as mock_context_populate:
+      meridian.populate_cached_properties()
+      mock_context_populate.assert_called_once()
+
+    # Verify cached properties are now frozen/populated in __dict__
+    self.assertIn("prior_sampler_callable", meridian.__dict__)
+    self.assertIn("posterior_sampler_callable", meridian.__dict__)
 
 
 class ModelPersistenceTest(
