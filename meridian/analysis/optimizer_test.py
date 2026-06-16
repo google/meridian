@@ -41,6 +41,7 @@ from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import optimizer
 from meridian.analysis import summary_text
+from meridian.analysis import tensors
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.common import errors
@@ -598,7 +599,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         "are missing: `['time']`.",
     ):
       self.budget_optimizer_media_and_rf.optimize(
-          new_data=analyzer.DataTensors(
+          new_data=tensors.DataTensors(
               media=self.meridian_media_and_rf.media_tensors.media[
                   ..., -10:, :
               ],
@@ -779,7 +780,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     optimization_results = self.budget_optimizer_media_and_rf.optimize(
         start_date=start_date,
         end_date=end_date,
-        new_data=analyzer.DataTensors(
+        new_data=tensors.DataTensors(
             media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
             reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
             frequency=self.meridian_media_and_rf.rf_tensors.frequency[
@@ -830,7 +831,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
     optimization_results = self.budget_optimizer_media_and_rf.optimize(
-        new_data=analyzer.DataTensors(
+        new_data=tensors.DataTensors(
             media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
             reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
             frequency=self.meridian_media_and_rf.rf_tensors.frequency[
@@ -1466,7 +1467,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             weekly_step,
         )
     ).tolist()
-    new_data = analyzer.DataTensors(
+    new_data = tensors.DataTensors(
         media=meridian_media_and_rf.media_tensors.media[..., -total_times:, :],
         media_spend=meridian_media_and_rf.media_tensors.media_spend[
             ..., -total_times:, :
@@ -2659,7 +2660,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         '2025-04-21',
         '2025-04-28',
     ]
-    new_data = analyzer.DataTensors(
+    new_data = tensors.DataTensors(
         media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],
         reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],
         frequency=self.meridian_media_and_rf.rf_tensors.frequency[..., -5:, :],
@@ -2937,7 +2938,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     optimization_results = self.budget_optimizer_media_and_rf.optimize(
         pct_of_spend=pct_of_spend,
-        new_data=analyzer.DataTensors(
+        new_data=tensors.DataTensors(
             media=self.meridian_media_and_rf.media_tensors.media[..., -10:, :],
             reach=self.meridian_media_and_rf.rf_tensors.reach[..., -10:, :],
             frequency=self.meridian_media_and_rf.rf_tensors.frequency[
@@ -3120,7 +3121,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     selected_times = ctx.input_data.time.values[-n_new_times:].tolist()
 
     new_data_times = ctx.input_data.time.values[-total_times:].tolist()
-    new_data = analyzer.DataTensors(
+    new_data = tensors.DataTensors(
         media=ctx.media_tensors.media[..., -total_times:, :],
         media_spend=ctx.media_tensors.media_spend[..., -total_times:, :],
         reach=ctx.rf_tensors.reach[..., -total_times:, :],

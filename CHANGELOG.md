@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Move DataTensors and DistributionTensors out of analyzer.py into tensors.py.
 * Pin `matplotlib` dependency to `< 3.11.0` to fix upstream `arviz` import
   error.
 * Fix R&F optimization converters to use optimized channels.

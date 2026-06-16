@@ -83,7 +83,7 @@ Example Usage:
 
     # Create DataTensors for the new data
     # Example:
-    # new_data = analyzer.DataTensors(
+    # new_data = tensors.DataTensors(
     #     media=new_media_spend,
     #     time=new_time_index,
     # )
@@ -118,6 +118,7 @@ import warnings
 
 from meridian import constants
 from meridian.analysis import analyzer
+from meridian.analysis import tensors
 from meridian.data import time_coordinates
 from mmm.v1 import mmm_pb2
 from mmm.v1.common import date_interval_pb2
@@ -172,7 +173,7 @@ class MediaSummarySpec(model_processor.Spec):
   aggregate_times: bool = True
   marginal_roi_by_reach: bool = True
   include_non_paid_channels: bool = False
-  new_data: analyzer.DataTensors | None = None
+  new_data: tensors.DataTensors | None = None
   media_selected_times: Sequence[bool] | None = None
 
   def validate(self):
@@ -211,7 +212,7 @@ class IncrementalOutcomeSpec(model_processor.Spec):
   """
 
   aggregate_times: bool = True
-  new_data: analyzer.DataTensors | None = None
+  new_data: tensors.DataTensors | None = None
   media_selected_times: Sequence[bool] | None = None
   include_non_paid_channels: bool = False
 
@@ -1003,7 +1004,7 @@ class MarketingProcessor(
   def _incremental_outcome_dataset(
       self,
       resolver: model_processor.DatedSpecResolver,
-      new_data: analyzer.DataTensors | None = None,
+      new_data: tensors.DataTensors | None = None,
       media_selected_times: Sequence[bool] | None = None,
       selected_geos: Sequence[str] | None = None,
       aggregate_geos: bool = True,

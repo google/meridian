@@ -19,4 +19,6 @@ from meridian.analysis import optimizer
 from meridian.analysis import review
 from meridian.analysis import summarizer
 from meridian.analysis import visualizer
+from meridian.analysis.tensors import DataTensors
+from meridian.analysis.tensors import DistributionTensors
 from meridian.templates import formatter

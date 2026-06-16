@@ -117,8 +117,8 @@ from typing import TypeAlias
 import warnings
 
 from meridian import constants as c
-from meridian.analysis import analyzer
 from meridian.analysis import optimizer
+from meridian.analysis import tensors
 from meridian.data import time_coordinates as tc
 from mmm.v1 import mmm_pb2 as pb
 from mmm.v1.common import estimate_pb2 as estimate_pb
@@ -256,7 +256,7 @@ class BudgetOptimizationSpec(model_processor.OptimizationSpec):
   kpi_type: common.KpiType = common.KpiType.REVENUE
   grid: optimizer.OptimizationGrid | None = None
   include_response_curves: bool = True
-  new_data: analyzer.DataTensors | None = None
+  new_data: tensors.DataTensors | None = None
   use_optimal_frequency: bool = True
   max_frequency: float | None = None
   batch_size: int = c.DEFAULT_BATCH_SIZE
