@@ -1056,6 +1056,10 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
         name=name,
     )
 
+  @property
+  def distributions(self) -> Sequence[backend.tfd.Distribution]:
+    return self._distributions
+
   def _verify_distributions(
       self, distributions: Sequence[backend.tfd.Distribution]
   ):

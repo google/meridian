@@ -41,6 +41,12 @@ MeridianPriorDistributions = (
 
 _FUNCTION_REGISTRY_NAME = "function_registry"
 
+_CUSTOM_DISTRIBUTIONS = {
+    "IndependentMultivariateDistribution": (
+        pd.IndependentMultivariateDistribution
+    ),
+}
+
 
 # TODO: Delete enumerated schema.
 class DistributionSerde(
@@ -157,7 +163,10 @@ class DistributionSerde(
   ) -> meridian_pb.TfpDistribution:
     """Converts a TensorFlow `Distribution` object to a `TfpDistribution` proto."""
     dist_name = type(dist).__name__
-    dist_class = getattr(backend.tfd, dist_name)
+    if dist_name in _CUSTOM_DISTRIBUTIONS:
+      dist_class = _CUSTOM_DISTRIBUTIONS[dist_name]
+    else:
+      dist_class = getattr(backend.tfd, dist_name)
     return meridian_pb.TfpDistribution(
         distribution_type=dist_name,
         parameters={
@@ -273,7 +282,10 @@ class DistributionSerde(
   ) -> backend.tfd.Distribution:
     """Converts a `Distribution` proto to a TensorFlow `Distribution` object."""
     dist_class_name = dist_proto.distribution_type
-    dist_class = getattr(backend.tfd, dist_class_name)
+    if dist_class_name in _CUSTOM_DISTRIBUTIONS:
+      dist_class = _CUSTOM_DISTRIBUTIONS[dist_class_name]
+    else:
+      dist_class = getattr(backend.tfd, dist_class_name)
     dist_parameters = dist_proto.parameters
     input_parameters = {
         k: self._unpack_tfp_parameters(k, v, dist_class)

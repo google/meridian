@@ -4952,7 +4952,10 @@ def _create_tfp_params_from_dict(
 def create_distribution_proto(
     distribution_type: str, **kwargs
 ) -> meridian_pb.TfpDistribution:
-  distribution = getattr(backend.tfd, distribution_type)
+  if distribution_type == 'IndependentMultivariateDistribution':
+    distribution = prior_distribution.IndependentMultivariateDistribution
+  else:
+    distribution = getattr(backend.tfd, distribution_type)
   return meridian_pb.TfpDistribution(
       distribution_type=distribution_type,
       parameters=_create_tfp_params_from_dict(kwargs, distribution),

@@ -1,0 +1,69 @@
+# proto-file: third_party/py/meridian/proto/mmm/v1/model/meridian/meridian_model.proto
+# proto-message: TfpDistribution
+
+distribution_type: "IndependentMultivariateDistribution"
+parameters {
+  key: "distributions"
+  value {
+    list_value {
+      values {
+        distribution_value {
+          distribution_type: "LogNormal"
+          parameters {
+            key: "loc"
+            value { scalar_value: 1.0 }
+          }
+          parameters {
+            key: "scale"
+            value { scalar_value: 0.4 }
+          }
+          parameters {
+            key: "validate_args"
+            value { bool_value: false }
+          }
+          parameters {
+            key: "allow_nan_stats"
+            value { bool_value: true }
+          }
+          parameters {
+            key: "name"
+            value { string_value: "log_normal" }
+          }
+        }
+      }
+      values {
+        distribution_value {
+          distribution_type: "HalfNormal"
+          parameters {
+            key: "scale"
+            value { scalar_value: 5.0 }
+          }
+          parameters {
+            key: "validate_args"
+            value { bool_value: false }
+          }
+          parameters {
+            key: "allow_nan_stats"
+            value { bool_value: true }
+          }
+          parameters {
+            key: "name"
+            value { string_value: "half_normal" }
+          }
+        }
+      }
+    }
+  }
+}
+parameters {
+  key: "validate_args"
+  value { bool_value: false }
+}
+parameters {
+  key: "allow_nan_stats"
+  value { bool_value: true }
+}
+parameters {
+  key: "name"
+  value { string_value: "independent_multivariate" }
+}

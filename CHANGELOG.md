@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix serialization error in serde when saving models with
+  `IndependentMultivariateDistribution` priors.
 * Move DataTensors and DistributionTensors out of analyzer.py into tensors.py.
 * Pin `matplotlib` dependency to `< 3.11.0` to fix upstream `arviz` import
   error.
