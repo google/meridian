@@ -104,6 +104,7 @@ started quickly with using Meridian:
 | [Migrate from LMMM][9]      | Learn about the differences between Meridian and LightweightMMM as you consider migrating. |
 | [API Reference][10]         | API reference documentation for the Meridian package. |
 | [Reference list][11]        | White papers and other referenced material.    |
+| [Meridian insights][12]     | Discover industry insights, methodology whitepapers, and case studies. |
 
 [1]: https://developers.google.com/meridian
 [2]: https://developers.google.com/meridian/docs/basics/meridian-introduction
@@ -116,6 +117,7 @@ started quickly with using Meridian:
 [9]: https://developers.google.com/meridian/docs/migrate
 [10]: https://developers.google.com/meridian/reference/api/meridian
 [11]: https://developers.google.com/meridian/docs/reference-list
+[12]: https://developers.google.com/meridian/insights
 
 ## Support
 
