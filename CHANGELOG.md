@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-17
+
 * Fix serialization error in serde when saving models with
   `IndependentMultivariateDistribution` priors.
 * Move DataTensors and DistributionTensors out of analyzer.py into tensors.py.
@@ -503,4 +505,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.6.0]: https://github.com/google/meridian/releases/tag/v1.6.0
 [1.6.1]: https://github.com/google/meridian/releases/tag/v1.6.1
 [1.6.2]: https://github.com/google/meridian/releases/tag/v1.6.2
-[Unreleased]: https://github.com/google/meridian/compare/v1.6.2...HEAD
+[1.7.0]: https://github.com/google/meridian/releases/tag/v1.7.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.7.0...HEAD

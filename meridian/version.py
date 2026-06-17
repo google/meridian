@@ -14,4 +14,4 @@
 
 """Module for Meridian version."""
 
-__version__ = "1.6.2"
+__version__ = "1.7.0"
