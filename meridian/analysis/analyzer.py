@@ -147,6 +147,54 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   return xr.Dataset(data_vars=xr_data, coords=xr_coords)
 
 
+# pylint: disable=protected-access
+# TODO: Move to DataTensorsBuilder.
+def _get_validated_selected_times(
+    selected_times: Sequence[str] | Sequence[bool] | None,
+    new_n_media_times: int | None,
+    filled_data: DataTensors,
+    model_context: context.ModelContext,
+) -> tuple[Sequence[bool] | None, Sequence[str]]:
+  """Validates selected times and converts string list to boolean list.
+
+  Args:
+    selected_times: Optional list containing either a subset of dates to include
+      or booleans.
+    new_n_media_times: The number of time periods in the new data, or None if
+      time is not modified.
+    filled_data: A `DataTensors` object containing the filled data.
+    model_context: The `ModelContext` object.
+
+  Returns:
+    A tuple containing `selected_times` (converted to boolean list if originally
+    strings) and `times` (the time coordinates).
+  """
+  if new_n_media_times is not None:
+    new_time = np.asarray(filled_data.time).astype(str).tolist()
+    tensors._validate_flexible_selected_times(
+        selected_times=selected_times,
+        media_selected_times=None,
+        new_n_media_times=new_n_media_times,
+        new_time=new_time,
+    )
+    times = new_time
+  else:
+    times = model_context.input_data.time.data
+    tensors._validate_selected_times(
+        selected_times=selected_times,
+        input_times=model_context.input_data.time,
+        n_times=model_context.n_times,
+        arg_name="selected_times",
+        comparison_arg_name="the input data",
+    )
+
+  if selected_times is not None and tensors._is_str_list(selected_times):
+    selected_times = [x in selected_times for x in times]
+
+  return selected_times, times  # pytype: disable=bad-return-type
+# pylint: enable=protected-access
+
+
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -3747,28 +3795,13 @@ class Analyzer:
         model_context=self.model_context
     )
 
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    if new_n_media_times is None:
-      tensors._validate_selected_times(
-          selected_times=selected_times,
-          input_times=self.model_context.input_data.time,
-          n_times=self.model_context.n_times,
-          arg_name="selected_times",
-          comparison_arg_name="the input data",
-      )
-    else:
-      new_time = np.asarray(filled_data.time).astype(str).tolist()
-      tensors._validate_flexible_selected_times(
-          selected_times=selected_times,
-          media_selected_times=None,
-          new_n_media_times=new_n_media_times,
-          new_time=new_time,
-      )
-      # pylint: enable=protected-access
-      # TODO: Switch to Sequence[str] once it is supported.
-      if selected_times is not None:
-        selected_times = [x in selected_times for x in new_time]
-        dim_kwargs["selected_times"] = selected_times
+    selected_times, _ = _get_validated_selected_times(
+        selected_times=selected_times,
+        new_n_media_times=new_n_media_times,
+        filled_data=filled_data,
+        model_context=self.model_context,
+    )
+    dim_kwargs["selected_times"] = selected_times
 
     if self.model_context.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = DataTensors(
@@ -4550,6 +4583,7 @@ class Analyzer:
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      aggregate_times: bool = True,
       include_media: bool = True,
       include_rf: bool = True,
   ) -> xr.DataArray:
@@ -4571,14 +4605,16 @@ class Analyzer:
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
         KPI data. By default, all time periods are included.
+      aggregate_times: Boolean. If `True`, the spend is summed over all time
+        periods.
       include_media: Whether to include spends for paid media channels that do
         not have R&F data.
       include_rf: Whether to include spends for paid media channels with R&F
         data.
 
     Returns:
-      An `xr.DataArray` with the coordinate `channel` and contains the data
-      variable `spend`.
+      An `xr.DataArray` with the coordinate `channel` (and `time` if
+      `aggregate_times=False`) and contains the data variable `spend`.
 
     Raises:
       ValueError: A ValueError is raised when `include_media` and `include_rf`
@@ -4590,14 +4626,38 @@ class Analyzer:
       )
     new_data = new_data or DataTensors()
     required_tensors_names = constants.PAID_CHANNELS + constants.SPEND_DATA
+    if not aggregate_times:
+      required_tensors_names += (constants.TIME,)
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors_names,
         model_context=self.model_context,
     )
-
-    empty_da = xr.DataArray(
-        dims=[constants.CHANNEL], coords={constants.CHANNEL: []}
+    new_n_media_times = filled_data.get_modified_times(
+        model_context=self.model_context
     )
+
+    selected_times, times = _get_validated_selected_times(
+        selected_times=selected_times,
+        new_n_media_times=new_n_media_times,
+        filled_data=filled_data,
+        model_context=self.model_context,
+    )
+
+    if aggregate_times:
+      empty_da = xr.DataArray(
+          dims=[constants.CHANNEL], coords={constants.CHANNEL: []}
+      )
+      time_dims = None
+    else:
+      if selected_times is None:
+        time_dims = times
+      else:
+        time_dims = np.array(times)[selected_times]
+
+      empty_da = xr.DataArray(
+          dims=[constants.TIME, constants.CHANNEL],
+          coords={constants.TIME: time_dims, constants.CHANNEL: []},
+      )
 
     if not include_media:
       aggregated_media_spend = empty_da
@@ -4615,6 +4675,8 @@ class Analyzer:
       aggregated_media_spend = self._impute_and_aggregate_spend(
           selected_geos=selected_geos,
           selected_times=selected_times,
+          aggregate_times=aggregate_times,
+          time_dims=time_dims,
           media_execution_values=filled_data.media,
           channel_spend=filled_data.media_spend,
           channel_names=list(
@@ -4640,6 +4702,8 @@ class Analyzer:
       aggregated_rf_spend = self._impute_and_aggregate_spend(
           selected_geos=selected_geos,
           selected_times=selected_times,
+          aggregate_times=aggregate_times,
+          time_dims=time_dims,
           media_execution_values=rf_execution_values,
           channel_spend=filled_data.rf_spend,
           channel_names=list(self.model_context.input_data.rf_channel.values),
@@ -4653,9 +4717,11 @@ class Analyzer:
       self,
       selected_geos: Sequence[str] | None,
       selected_times: Sequence[str] | Sequence[bool] | None,
+      aggregate_times: bool,
       media_execution_values: backend.Tensor,
       channel_spend: backend.Tensor,
       channel_names: Sequence[str],
+      time_dims: Sequence[str] | backend.Tensor | None = None,
   ) -> xr.DataArray:
     """Imputes and aggregates the spend within selected dimensions.
 
@@ -4674,21 +4740,24 @@ class Analyzer:
       selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
         KPI data. By default, all time periods are included.
+      aggregate_times: Boolean. If `True`, the spend is summed over all time
+        periods.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
         aggregated over `geo` and `time` dimensions.
       channel_names: The channel names.
+      time_dims: The time coordinates for flexible time dimensions.
 
     Returns:
-      An `xr.DataArray` with the coordinate `channel` and contains the data
-      variable `spend`.
+      An `xr.DataArray` with the coordinate `channel` (and `time` if
+      `aggregate_times=False`) and contains the data variable `spend`.
     """
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
         "aggregate_geos": True,
-        "aggregate_times": True,
+        "aggregate_times": aggregate_times,
         "flexible_time_dim": True,
     }
 
@@ -4721,11 +4790,13 @@ class Analyzer:
       )
       aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)
 
-    return xr.DataArray(
-        data=aggregated_spend,
-        dims=[constants.CHANNEL],
-        coords={constants.CHANNEL: channel_names},
-    )
+    if aggregate_times:
+      dims = [constants.CHANNEL]
+      coords = {constants.CHANNEL: channel_names}
+    else:
+      dims = [constants.TIME, constants.CHANNEL]
+      coords = {constants.TIME: time_dims, constants.CHANNEL: channel_names}
+    return xr.DataArray(data=aggregated_spend, dims=dims, coords=coords)
 
   def negative_baseline_probability(
       self,

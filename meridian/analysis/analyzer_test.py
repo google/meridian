@@ -2510,6 +2510,73 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
+  def test_get_aggregated_spend_without_aggregate_times_correct_values(self):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: self.inference_data),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    # Patch validation to avoid errors due to mismatched inference data
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        aggregate_times=False
+    )
+    self.assertEqual(actual_hist_spend.dims, ("time", "channel"))
+    self.assertEqual(
+        list(actual_hist_spend.time.values), list(data.time.values)
+    )
+    expected_all_spend = np.array([
+        [1.0, 2.0, 3.0],
+        [1.1, 2.1, 3.1],
+        [1.2, 2.2, 3.2],
+    ])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
   def test_get_aggregated_spend_new_data_correct_values(self):
     self.enter_context(
         mock.patch.object(
@@ -2571,6 +2638,173 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
+  def test_get_aggregated_spend_new_data_without_aggregate_times_correct_values(
+      self,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: self.inference_data),
+        )
+    )
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec()
+
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+
+    new_media = backend.to_tensor([[[1.0, 1.0], [1.0, 1.0]]])
+    new_reach = backend.to_tensor([[[1.0], [1.0]]])
+    new_frequency = backend.to_tensor([[[1.0], [1.0]]])
+    new_media_spend = backend.to_tensor([[[10.0, 20.0], [30.0, 40.0]]])
+    new_rf_spend = backend.to_tensor([[[50.0], [60.0]]])
+    new_time = ["2024-01-01", "2024-01-08"]
+
+    new_data = analyzer.DataTensors(
+        media=new_media,
+        reach=new_reach,
+        frequency=new_frequency,
+        media_spend=new_media_spend,
+        rf_spend=new_rf_spend,
+        time=new_time,
+    )
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        new_data=new_data,
+        aggregate_times=False,
+    )
+    self.assertEqual(actual_hist_spend.dims, ("time", "channel"))
+    self.assertEqual(
+        list(actual_hist_spend.time.values), ["2024-01-01", "2024-01-08"]
+    )
+    expected_all_spend = np.array([
+        [10.0, 20.0, 50.0],
+        [30.0, 40.0, 60.0],
+    ])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  def test_impute_and_aggregate_spend_correct_values(self):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: self.inference_data),
+        )
+    )
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=2,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    # Avoid the pytype check complaint.
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([
+            [[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]],
+            [[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]],
+        ]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+
+    actual_spend_3d = meridian_analyzer._impute_and_aggregate_spend(
+        selected_geos=None,
+        selected_times=None,
+        media_execution_values=meridian.model_context.media_tensors.media,
+        channel_spend=backend.to_tensor(data.media_spend.values),
+        channel_names=list(data.media_channel.values),
+        aggregate_times=True,
+    )
+    self.assertEqual(actual_spend_3d.dims, (constants.CHANNEL,))
+    backend_test_utils.assert_allclose(actual_spend_3d.data, [6.6, 12.6])
+
+    actual_spend_3d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
+        selected_geos=None,
+        selected_times=None,
+        media_execution_values=meridian.model_context.media_tensors.media,
+        channel_spend=backend.to_tensor(data.media_spend.values),
+        channel_names=list(data.media_channel.values),
+        aggregate_times=False,
+    )
+    self.assertEqual(
+        actual_spend_3d_no_agg.dims, (constants.TIME, constants.CHANNEL)
+    )
+    backend_test_utils.assert_allclose(
+        actual_spend_3d_no_agg.data, [[2.0, 4.0], [2.2, 4.2], [2.4, 4.4]]
+    )
+
+    channel_spend_1d = backend.to_tensor([6.6, 12.6])
+    actual_spend_1d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
+        selected_geos=None,
+        selected_times=None,
+        media_execution_values=meridian.model_context.media_tensors.media,
+        channel_spend=channel_spend_1d,
+        channel_names=list(data.media_channel.values),
+        aggregate_times=False,
+    )
+    self.assertEqual(
+        actual_spend_1d_no_agg.dims, (constants.TIME, constants.CHANNEL)
+    )
+    self.assertEqual(actual_spend_1d_no_agg.shape, (3, 2))
+
   def test_get_aggregated_spend_selected_times_correct_values(self):
     self.enter_context(
         mock.patch.object(
@@ -2629,6 +2863,176 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         selected_times=selected_times
     )
     expected_all_spend = np.array([2.1, 4.1, 6.1])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  @parameterized.named_parameters(
+      (
+          "str_list",
+          ["2021-01-25", "2021-02-01"],
+      ),
+      (
+          "bool_list",
+          [True, True, False],
+      ),
+  )
+  def test_get_aggregated_spend_selected_times_without_aggregate_times_correct_values(
+      self,
+      selected_times,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: self.inference_data),
+        )
+    )
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec(max_lag=15)
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        selected_times=selected_times,
+        aggregate_times=False,
+    )
+    self.assertEqual(actual_hist_spend.dims, ("time", "channel"))
+    self.assertEqual(
+        list(actual_hist_spend.time.values), ["2021-01-25", "2021-02-01"]
+    )
+    expected_all_spend = np.array([
+        [1.0, 2.0, 3.0],
+        [1.1, 2.1, 3.1],
+    ])
+    backend_test_utils.assert_allclose(
+        expected_all_spend, actual_hist_spend.data
+    )
+
+  @parameterized.named_parameters(
+      (
+          "str_list",
+          ["2024-01-01"],
+      ),
+      (
+          "bool_list",
+          [True, False],
+      ),
+  )
+  def test_get_aggregated_spend_new_data_selected_times_without_aggregate_times_correct_values(
+      self,
+      selected_times,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: self.inference_data),
+        )
+    )
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=1,
+        n_times=3,
+        n_media_times=4,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=0,
+    )
+
+    assert data.media_channel is not None and data.rf_channel is not None
+
+    data.media_spend = xr.DataArray(
+        np.array([[[1.0, 2.0], [1.1, 2.1], [1.2, 2.2]]]),
+        dims=["geo", "time", "media_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "media_channel": data.media_channel.values,
+        },
+    )
+    data.rf_spend = xr.DataArray(
+        np.array([[[3.0], [3.1], [3.2]]]),
+        dims=["geo", "time", "rf_channel"],
+        coords={
+            "geo": data.geo.values,
+            "time": data.time.values,
+            "rf_channel": data.rf_channel.values,
+        },
+    )
+
+    model_spec = spec.ModelSpec()
+
+    with mock.patch.object(
+        model.Meridian, "_validate_injected_inference_data", autospec=True
+    ):
+      meridian = model.Meridian(input_data=data, model_spec=model_spec)
+    meridian_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+
+    new_media = backend.to_tensor([[[1.0, 1.0], [1.0, 1.0]]])
+    new_reach = backend.to_tensor([[[1.0], [1.0]]])
+    new_frequency = backend.to_tensor([[[1.0], [1.0]]])
+    new_media_spend = backend.to_tensor([[[10.0, 20.0], [30.0, 40.0]]])
+    new_rf_spend = backend.to_tensor([[[50.0], [60.0]]])
+    new_time = ["2024-01-01", "2024-01-08"]
+
+    new_data = analyzer.DataTensors(
+        media=new_media,
+        reach=new_reach,
+        frequency=new_frequency,
+        media_spend=new_media_spend,
+        rf_spend=new_rf_spend,
+        time=new_time,
+    )
+
+    actual_hist_spend = meridian_analyzer.get_aggregated_spend(
+        new_data=new_data,
+        selected_times=selected_times,
+        aggregate_times=False,
+    )
+    self.assertEqual(actual_hist_spend.dims, ("time", "channel"))
+    self.assertEqual(list(actual_hist_spend.time.values), ["2024-01-01"])
+    expected_all_spend = np.array([
+        [10.0, 20.0, 50.0],
+    ])
     backend_test_utils.assert_allclose(
         expected_all_spend, actual_hist_spend.data
     )
