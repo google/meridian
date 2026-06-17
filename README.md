@@ -105,6 +105,7 @@ started quickly with using Meridian:
 | [Full-funnel colab][10]     | Learn how to build a full-funnel MMM with intermediate mediator variables. |
 | [API Reference][11]         | API reference documentation for the Meridian package. |
 | [Reference list][12]        | White papers and other referenced material.    |
+| [Meridian insights][13]     | Discover industry insights, methodology whitepapers, and case studies. |
 
 [1]: https://developers.google.com/meridian
 [2]: https://developers.google.com/meridian/docs/basics/meridian-introduction
@@ -118,6 +119,7 @@ started quickly with using Meridian:
 [10]: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/Meridian_Full_Funnel.ipynb
 [11]: https://developers.google.com/meridian/reference/api/meridian
 [12]: https://developers.google.com/meridian/docs/reference-list
+[13]: https://developers.google.com/meridian/insights
 
 ## Support
 
