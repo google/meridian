@@ -21,8 +21,10 @@ from meridian import constants
 from meridian.analysis import tensors
 from meridian.backend import test_utils as backend_test_utils
 from meridian.data import test_utils as data_test_utils
+from meridian.model import equations
 from meridian.model import model
 from meridian.model import spec
+import numpy as np
 
 _N_GEOS = 5
 _N_TIMES = 49
@@ -677,6 +679,143 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(
         inputs.time_indices,
         backend.to_tensor(expected_time_indices, dtype=backend.int32),
+    )
+
+
+class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian = model.Meridian(
+        input_data=cls.input_data,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+
+  def test_build_counterfactual_inputs_returns_correct_type(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    inputs = builder.build_counterfactual_inputs()
+    self.assertIsInstance(inputs, tensors.CounterfactualInputs)
+    self.assertIsInstance(inputs.tensors, tensors.DataTensors)
+
+  def test_build_counterfactual_inputs_resolves_media_selected_times_mask(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+
+    # Test default (None) -> all True
+    inputs_default = builder.build_counterfactual_inputs()
+    self.assertEqual(
+        inputs_default.media_selected_times_mask,
+        tuple([True] * _N_MEDIA_TIMES),
+    )
+
+    # Test with string list
+    selected_times = [
+        self.input_data.media_time.values[1],
+        self.input_data.media_time.values[3],
+    ]
+    inputs_str = builder.build_counterfactual_inputs(
+        media_selected_times=selected_times
+    )
+    expected_mask = [False] * _N_MEDIA_TIMES
+    expected_mask[1] = True
+    expected_mask[3] = True
+    self.assertEqual(
+        inputs_str.media_selected_times_mask,
+        tuple(expected_mask),
+    )
+
+  def test_build_counterfactual_inputs_scales_media_tensors(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    scaling_factor = 0.5
+
+    # Select some times to scale
+    selected_times = [
+        self.input_data.media_time.values[1],
+        self.input_data.media_time.values[3],
+    ]
+
+    inputs = builder.build_counterfactual_inputs(
+        scaling_factor=scaling_factor,
+        media_selected_times=selected_times,
+    )
+
+    # Verify scaled media
+    original_media = self.meridian.model_context.media_tensors.media_scaled
+    expected_media = np.array(original_media)
+    # Indices 1 and 3 should be scaled by 0.5
+    expected_media[:, 1, :] *= scaling_factor
+    expected_media[:, 3, :] *= scaling_factor
+
+    backend_test_utils.assert_allclose(
+        inputs.tensors.media,
+        backend.to_tensor(expected_media, dtype=backend.float_dtype),
+    )
+
+  def test_build_counterfactual_inputs_sets_non_media_baseline(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    non_media_baseline_values = [1.0] * _N_NON_MEDIA_CHANNELS
+
+    # When is_baseline=False, non_media_treatments should be scaled
+    # historical values.
+    inputs_historical = builder.build_counterfactual_inputs(is_baseline=False)
+    backend_test_utils.assert_allclose(
+        inputs_historical.tensors.non_media_treatments,
+        self.meridian.model_context.non_media_treatments_normalized,
+    )
+
+    # When is_baseline=True, non_media_treatments should be baseline
+    inputs_baseline = builder.build_counterfactual_inputs(
+        non_media_baseline_values=non_media_baseline_values,
+        is_baseline=True,
+    )
+
+    # Assert to satisfy pytype
+    assert self.meridian.model_context.non_media_transformer is not None
+    assert inputs_baseline.tensors.non_media_treatments is not None
+
+    # Compute expected baseline
+    expected_baseline_scaled = equations.ModelEquations(
+        self.meridian.model_context
+    ).compute_non_media_treatments_baseline(
+        non_media_baseline_values=non_media_baseline_values
+    )
+    expected_baseline_normalized = (
+        self.meridian.model_context.non_media_transformer.forward(
+            expected_baseline_scaled,
+            apply_population_scaling=False,
+        )
+    )
+    expected_baseline_tensor = backend.broadcast_to(
+        backend.to_tensor(
+            expected_baseline_normalized,
+            dtype=backend.float_dtype,
+        )[backend.newaxis, backend.newaxis, :],
+        inputs_baseline.tensors.non_media_treatments.shape,
+    )
+
+    backend_test_utils.assert_allclose(
+        inputs_baseline.tensors.non_media_treatments,
+        expected_baseline_tensor,
+    )
+
+    # Also verify non_media_baseline_normalized is set correctly
+    backend_test_utils.assert_allclose(
+        inputs_baseline.non_media_baseline_normalized,
+        backend.to_tensor(
+            expected_baseline_normalized, dtype=backend.float_dtype
+        ),
     )
 
 

@@ -1494,13 +1494,7 @@ class Analyzer:
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
       )
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    tensors._validate_non_media_baseline_values_numbers(
-        non_media_baseline_values
-    )
-    # pylint: enable=protected-access
     dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
-
     if dist_type not in self.inference_data.groups():
       raise errors.NotFittedModelError(
           f"sample_{dist_type}() must be called prior to calling this method."
@@ -1517,124 +1511,31 @@ class Analyzer:
           f" {scaling_factor1=} and {scaling_factor0=}."
       )
 
-    if new_data is None:
-      new_data = DataTensors()
-
-    required_params = constants.PAID_DATA
-    if include_non_paid_channels:
-      required_params += constants.NON_PAID_DATA
-    data_tensors = new_data.validate_and_fill_missing_data(
-        required_tensors_names=required_params,
-        model_context=self.model_context,
-    )
-    new_n_media_times = data_tensors.get_modified_times(
-        model_context=self.model_context
-    )
-
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    if new_n_media_times is None:
-      new_n_media_times = m_context.n_media_times
-      tensors._validate_selected_times(
-          selected_times=selected_times,
-          input_times=m_context.input_data.time,
-          n_times=m_context.n_times,
-          arg_name="selected_times",
-          comparison_arg_name="the input data",
-      )
-      tensors._validate_selected_times(
-          selected_times=media_selected_times,
-          input_times=m_context.input_data.media_time,
-          n_times=m_context.n_media_times,
-          arg_name="media_selected_times",
-          comparison_arg_name="the media tensors",
-      )
-    else:
-      tensors._validate_flexible_selected_times(
-          selected_times=selected_times,
-          media_selected_times=media_selected_times,
-          new_n_media_times=new_n_media_times,
-      )
-    # pylint: enable=protected-access
-    if media_selected_times is None:
-      media_selected_times = [True] * new_n_media_times
-    else:
-      if all(isinstance(time, str) for time in media_selected_times):
-        media_selected_times = [
-            x in media_selected_times for x in m_context.input_data.media_time
-        ]
-
-    # Set counterfactual tensors based on the scaling factors and the media
-    # selected times.
-    counterfactual0 = (
-        1 + (scaling_factor0 - 1) * np.array(media_selected_times)
-    )[:, None]
-    counterfactual1 = (
-        1 + (scaling_factor1 - 1) * np.array(media_selected_times)
-    )[:, None]
-
-    if data_tensors.non_media_treatments is not None:
-      non_media_treatments_baseline_scaled = (
-          self._model_equations.compute_non_media_treatments_baseline(
-              non_media_baseline_values=non_media_baseline_values,
-          )
-      )
-      non_media_treatments_baseline_normalized = self.model_context.non_media_transformer.forward(  # pytype: disable=attribute-error
-          non_media_treatments_baseline_scaled,
-          apply_population_scaling=False,
-      )
-      non_media_treatments0 = backend.broadcast_to(
-          backend.to_tensor(
-              non_media_treatments_baseline_normalized,
-              dtype=backend.float_dtype,
-          )[backend.newaxis, backend.newaxis, :],
-          data_tensors.non_media_treatments.shape,  # pytype: disable=attribute-error
-      )
-    else:
-      non_media_treatments_baseline_normalized = None
-      non_media_treatments0 = None
-
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    incremented_data0 = tensors._scale_tensors_by_multiplier(
-        data=data_tensors,
-        multiplier=counterfactual0,
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    inputs0 = builder.build_counterfactual_inputs(
+        new_data=new_data,
+        scaling_factor=scaling_factor0,
+        non_media_baseline_values=non_media_baseline_values,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        media_selected_times=media_selected_times,
         by_reach=by_reach,
-    )
-    incremented_data1 = tensors._scale_tensors_by_multiplier(
-        data=data_tensors, multiplier=counterfactual1, by_reach=by_reach
-    )
-    # pylint: enable=protected-access
-
-    inputs0 = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_scaled_inputs(
-        new_data=incremented_data0,
         include_non_paid_channels=include_non_paid_channels,
+        is_baseline=True,
+    )
+    inputs1 = builder.build_counterfactual_inputs(
+        new_data=new_data,
+        scaling_factor=scaling_factor1,
+        non_media_baseline_values=non_media_baseline_values,
         selected_geos=selected_geos,
         selected_times=selected_times,
-    )
-    scaled_data0 = inputs0.tensors
-    # TODO: Verify the computation of outcome of non-media
-    # treatments with `media_selected_times` and scale factors.
-
-    data_tensors0 = DataTensors(
-        media=scaled_data0.media,
-        reach=scaled_data0.reach,
-        frequency=scaled_data0.frequency,
-        organic_media=scaled_data0.organic_media,
-        organic_reach=scaled_data0.organic_reach,
-        organic_frequency=scaled_data0.organic_frequency,
-        revenue_per_kpi=scaled_data0.revenue_per_kpi,
-        non_media_treatments=non_media_treatments0,
-    )
-
-    inputs1 = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_scaled_inputs(
-        new_data=incremented_data1,
+        media_selected_times=media_selected_times,
+        by_reach=by_reach,
         include_non_paid_channels=include_non_paid_channels,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
+        is_baseline=False,
     )
+
+    data_tensors0 = inputs0.tensors
     data_tensors1 = inputs1.tensors
 
     # Calculate incremental outcome in batches.
@@ -1652,7 +1553,7 @@ class Analyzer:
         "inverse_transform_outcome": inverse_transform_outcome,
         "use_kpi": use_kpi,
         "non_media_treatments_baseline_normalized": (
-            non_media_treatments_baseline_normalized
+            inputs0.non_media_baseline_normalized
         ),
     }
     for dist_tensors in self._yield_batched_distribution_tensors(
@@ -1667,7 +1568,7 @@ class Analyzer:
           **incremental_outcome_kwargs,
       )
       # Calculate incremental outcome under counterfactual scenario "Media_0".
-      if scaling_factor0 != 0 or not all(media_selected_times):
+      if scaling_factor0 != 0 or not all(inputs0.media_selected_times_mask):
         batch_incremental_outcome -= self._incremental_outcome_impl(
             data_tensors=data_tensors0,
             dist_tensors=dist_tensors,

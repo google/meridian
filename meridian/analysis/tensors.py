@@ -17,12 +17,13 @@
 from collections.abc import Sequence
 import dataclasses
 import numbers
-from typing import Any, Union
+from typing import Any, Optional, Union
 import warnings
 
 from meridian import backend
 from meridian import constants
 from meridian.model import context
+from meridian.model import equations
 from meridian.model import transformers
 import numpy as np
 from typing_extensions import Self
@@ -30,6 +31,7 @@ import xarray as xr
 
 __all__ = (
     "AnalyzerInputs",
+    "CounterfactualInputs",
     "DataTensors",
     "DataTensorsBuilder",
     "DistributionTensors",
@@ -819,8 +821,15 @@ class AnalyzerInputs(backend.ExtensionType):
   """Base payload containing DataTensors and resolved indices."""
 
   tensors: DataTensors
-  time_indices: Union[backend.Tensor, None] = None
-  geo_indices: Union[backend.Tensor, None] = None
+  time_indices: Optional[backend.Tensor] = None
+  geo_indices: Optional[backend.Tensor] = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class CounterfactualInputs(AnalyzerInputs):
+  """Payload specifically for counterfactual scenarios."""
+  non_media_baseline_normalized: Optional[backend.Tensor] = None
+  media_selected_times_mask: Optional[tuple[bool, ...]] = None
 
 
 class DataTensorsBuilder:
@@ -944,6 +953,159 @@ class DataTensorsBuilder:
         tensors=scaled_tensors,
         time_indices=time_indices,
         geo_indices=geo_indices,
+    )
+
+  def build_counterfactual_inputs(
+      self,
+      new_data: DataTensors | None = None,
+      *,
+      scaling_factor: float = 1.0,
+      non_media_baseline_values: Sequence[float] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      by_reach: bool = True,
+      include_non_paid_channels: bool = True,
+      is_baseline: bool = False,
+  ) -> CounterfactualInputs:
+    """Builds counterfactual inputs for analyzer.
+
+    Args:
+      new_data: Optional `DataTensors` container.
+      scaling_factor: Float indicating the factor to scale tensors by.
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is a float which means that the
+        fixed value will be used as baseline for the given channel.
+      selected_geos: Optional list containing a subset of geos to include.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans.
+      by_reach: Boolean indicating whether to scale reach or frequency when rf
+        data is available.
+      include_non_paid_channels: Boolean. If `True`, organic media, organic RF
+        and non-media treatments data is included in the output.
+      is_baseline: Boolean. If `True`, the non-media treatments are set to their
+        baseline values.
+
+    Returns:
+      A `CounterfactualInputs` object.
+    """
+    _validate_non_media_baseline_values_numbers(non_media_baseline_values)
+
+    if new_data is None:
+      new_data = DataTensors()
+
+    required_params = constants.PAID_DATA
+    if include_non_paid_channels:
+      required_params += constants.NON_PAID_DATA
+    data_tensors = new_data.validate_and_fill_missing_data(
+        required_tensors_names=required_params,
+        model_context=self.model_context,
+    )
+    new_n_media_times = data_tensors.get_modified_times(
+        model_context=self.model_context
+    )
+
+    if new_n_media_times is None:
+      new_n_media_times = self.model_context.n_media_times
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=self.model_context.input_data.time,
+          n_times=self.model_context.n_times,
+          arg_name="selected_times",
+          comparison_arg_name="the input data",
+      )
+      _validate_selected_times(
+          selected_times=media_selected_times,
+          input_times=self.model_context.input_data.media_time,
+          n_times=self.model_context.n_media_times,
+          arg_name="media_selected_times",
+          comparison_arg_name="the media tensors",
+      )
+    else:
+      _validate_flexible_selected_times(
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+          new_n_media_times=new_n_media_times,
+      )
+
+    if media_selected_times is None:
+      resolved_media_selected_times = [True] * new_n_media_times
+    else:
+      if all(isinstance(time, str) for time in media_selected_times):
+        resolved_media_selected_times = [
+            x in media_selected_times
+            for x in self.model_context.input_data.media_time
+        ]
+      else:
+        resolved_media_selected_times = [bool(x) for x in media_selected_times]
+
+    media_selected_times_mask = tuple(resolved_media_selected_times)
+
+    counterfactual = (
+        1 + (scaling_factor - 1) * np.array(resolved_media_selected_times)
+    )[:, None]
+
+    if data_tensors.non_media_treatments is not None:
+      if self.model_context.non_media_transformer is None:
+        raise ValueError(
+            "non_media_transformer is missing in model_context despite "
+            "non_media_treatments being present in data."
+        )
+      non_media_treatments_baseline_scaled = (
+          equations.ModelEquations(self.model_context)
+          .compute_non_media_treatments_baseline(
+              non_media_baseline_values=non_media_baseline_values,
+          )
+      )
+      non_media_treatments_baseline_normalized = (
+          self.model_context.non_media_transformer.forward(
+              non_media_treatments_baseline_scaled,
+              apply_population_scaling=False,
+          )
+      )
+      non_media_treatments_baseline_tensor = backend.broadcast_to(
+          backend.to_tensor(
+              non_media_treatments_baseline_normalized,
+              dtype=backend.float_dtype,
+          )[backend.newaxis, backend.newaxis, :],
+          data_tensors.non_media_treatments.shape,
+      )
+      non_media_baseline_normalized_tensor = backend.to_tensor(
+          non_media_treatments_baseline_normalized,
+          dtype=backend.float_dtype,
+      )
+    else:
+      non_media_treatments_baseline_tensor = None
+      non_media_baseline_normalized_tensor = None
+
+    incremented_data = _scale_tensors_by_multiplier(
+        data=data_tensors,
+        multiplier=counterfactual,
+        by_reach=by_reach,
+    )
+
+    analyzer_inputs = self.build_scaled_inputs(
+        new_data=incremented_data,
+        include_non_paid_channels=include_non_paid_channels,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    scaled_tensors = analyzer_inputs.tensors
+    if is_baseline and data_tensors.non_media_treatments is not None:
+      scaled_tensors = dataclasses.replace(
+          scaled_tensors,
+          non_media_treatments=non_media_treatments_baseline_tensor,
+      )
+
+    return CounterfactualInputs(
+        tensors=scaled_tensors,
+        time_indices=analyzer_inputs.time_indices,
+        geo_indices=analyzer_inputs.geo_indices,
+        non_media_baseline_normalized=non_media_baseline_normalized_tensor,
+        media_selected_times_mask=media_selected_times_mask,
     )
 
   def _build_scaled_data_tensors(
