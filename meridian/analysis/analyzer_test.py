@@ -2766,8 +2766,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     actual_spend_3d = meridian_analyzer._impute_and_aggregate_spend(
-        selected_geos=None,
-        selected_times=None,
         media_execution_values=meridian.model_context.media_tensors.media,
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
@@ -2777,12 +2775,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(actual_spend_3d.data, [6.6, 12.6])
 
     actual_spend_3d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        selected_geos=None,
-        selected_times=None,
         media_execution_values=meridian.model_context.media_tensors.media,
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
         aggregate_times=False,
+        time_dims=list(data.time.values),
     )
     self.assertEqual(
         actual_spend_3d_no_agg.dims, (constants.TIME, constants.CHANNEL)
@@ -2793,12 +2790,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     channel_spend_1d = backend.to_tensor([6.6, 12.6])
     actual_spend_1d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        selected_geos=None,
-        selected_times=None,
         media_execution_values=meridian.model_context.media_tensors.media,
         channel_spend=channel_spend_1d,
         channel_names=list(data.media_channel.values),
         aggregate_times=False,
+        time_dims=list(data.time.values),
     )
     self.assertEqual(
         actual_spend_1d_no_agg.dims, (constants.TIME, constants.CHANNEL)

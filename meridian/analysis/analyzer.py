@@ -741,11 +741,11 @@ class Analyzer:
     combined_beta = backend.concatenate(combined_betas, axis=-1)
     return combined_media_transformed, combined_beta
 
-  def filter_and_aggregate_geos_and_times(
+  def filter_and_aggregate_by_indices(
       self,
       tensor: backend.Tensor,
-      selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      geo_indices: backend.Tensor | None = None,
+      time_indices: backend.Tensor | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       flexible_time_dim: bool = False,
@@ -758,20 +758,15 @@ class Analyzer:
         n_times, n_channels]`, where `n_channels` is the number of either media
         channels, RF channels, all paid channels (media and RF), or all channels
         (media, RF, non-media, organic media, organic RF).
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included. The selected geos should match those in
-        `InputData.geo`.
-      selected_times: Optional list of times to include. This can either be a
-        string list containing a subset of time dimension coordinates from
-        `InputData.time` or a boolean list with length equal to the time
-        dimension of the tensor. By default, all time periods are included.
+      geo_indices: Optional int32 tensor containing the indices of geos to
+        include. By default, all geos are included.
+      time_indices: Optional int32 tensor containing the indices of times to
+        include. By default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the tensor is summed over all geos.
       aggregate_times: Boolean. If `True`, the tensor is summed over all time
         periods.
       flexible_time_dim: Boolean. If `True`, the time dimension of the tensor is
-        not required to match the number of time periods in `InputData.time`. In
-        this case, if using `selected_times`, it must be a boolean list with
-        length equal to the time dimension of the tensor.
+        not required to match the number of time periods in `InputData.time`.
       has_media_dim: Boolean. Only used if `flexible_time_dim=True`. Otherwise,
         this is assumed based on the tensor dimensions. If `True`, the tensor is
         assumed to have a media dimension following the time dimension. If
@@ -841,52 +836,10 @@ class Analyzer:
     geo_dim = tensor.ndim - 2 - (1 if has_media_dim else 0)
     time_dim = tensor.ndim - 1 - (1 if has_media_dim else 0)
 
-    # Validate the selected geo and time dimensions and create a mask.
-    if selected_geos is not None:
-      if any(geo not in m_context.input_data.geo for geo in selected_geos):
-        raise ValueError(
-            "`selected_geos` must match the geo dimension names from "
-            "meridian.InputData."
-        )
-      geo_indices = [
-          i
-          for i, x in enumerate(m_context.input_data.geo)
-          if x in selected_geos
-      ]
-      tensor = backend.gather(
-          tensor,
-          backend.to_tensor(geo_indices, dtype=backend.int32),
-          axis=geo_dim,
-      )
-
-    if selected_times is not None:
-      # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-      tensors._validate_selected_times(
-          selected_times=selected_times,
-          input_times=m_context.input_data.time,
-          n_times=tensor.shape[time_dim],
-          arg_name="selected_times",
-          comparison_arg_name="`tensor`",
-      )
-      if tensors._is_str_list(selected_times):
-        time_indices = [
-            i
-            for i, x in enumerate(m_context.input_data.time)
-            if x in selected_times
-        ]
-        tensor = backend.gather(
-            tensor,
-            backend.to_tensor(time_indices, dtype=backend.int32),
-            axis=time_dim,
-        )
-      elif tensors._is_bool_list(selected_times):
-        time_indices = [i for i, x in enumerate(selected_times) if x]
-        tensor = backend.gather(
-            tensor,
-            backend.to_tensor(time_indices, dtype=backend.int32),
-            axis=time_dim,
-        )
-      # pylint: enable=protected-access
+    if geo_indices is not None:
+      tensor = backend.gather(tensor, geo_indices, axis=geo_dim)
+    if time_indices is not None:
+      tensor = backend.gather(tensor, time_indices, axis=time_dim)
 
     tensor_dims = "...gt" + "m" * has_media_dim
     output_dims = (
@@ -895,6 +848,72 @@ class Analyzer:
         + "m" * has_media_dim
     )
     return backend.einsum(f"{tensor_dims}->...{output_dims}", tensor)
+
+  def filter_and_aggregate_geos_and_times(
+      self,
+      tensor: backend.Tensor,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      aggregate_geos: bool = True,
+      aggregate_times: bool = True,
+      flexible_time_dim: bool = False,
+      has_media_dim: bool = True,
+  ) -> backend.Tensor:
+    """Filters and/or aggregates geo and time dimensions of a tensor.
+
+    Args:
+      tensor: Tensor with dimensions `[..., n_geos, n_times]` or `[..., n_geos,
+        n_times, n_channels]`, where `n_channels` is the number of either media
+        channels, RF channels, all paid channels (media and RF), or all channels
+        (media, RF, non-media, organic media, organic RF).
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included. The selected geos should match those in
+        `InputData.geo`.
+      selected_times: Optional list of times to include. This can either be a
+        string list containing a subset of time dimension coordinates from
+        `InputData.time` or a boolean list with length equal to the time
+        dimension of the tensor. By default, all time periods are included.
+      aggregate_geos: Boolean. If `True`, the tensor is summed over all geos.
+      aggregate_times: Boolean. If `True`, the tensor is summed over all time
+        periods.
+      flexible_time_dim: Boolean. If `True`, the time dimension of the tensor is
+        not required to match the number of time periods in `InputData.time`. In
+        this case, if using `selected_times`, it must be a boolean list with
+        length equal to the time dimension of the tensor.
+      has_media_dim: Boolean. Only used if `flexible_time_dim=True`. Otherwise,
+        this is assumed based on the tensor dimensions. If `True`, the tensor is
+        assumed to have a media dimension following the time dimension. If
+        `False`, the last dimension of the tensor is assumed to be the time
+        dimension.
+
+    Returns:
+      A tensor with filtered and/or aggregated geo and time dimensions.
+    """
+    # TODO: Make the breaking change to remove this wrapper and
+    # update this method to use the integer-only logic from
+    # filter_and_aggregate_by_indices directly.
+    warnings.warn(
+        (
+            "filter_and_aggregate_geos_and_times with string or boolean"
+            " arguments is deprecated and will be removed in a future version."
+            " Use filter_and_aggregate_by_indices with integer indices"
+            " instead."
+        ),
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    inputs = tensors.DataTensorsBuilder(self.model_context).build_scaled_inputs(
+        selected_geos=selected_geos, selected_times=selected_times
+    )
+    return self.filter_and_aggregate_by_indices(
+        tensor,
+        geo_indices=inputs.geo_indices,
+        time_indices=inputs.time_indices,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        flexible_time_dim=flexible_time_dim,
+        has_media_dim=has_media_dim,
+    )
 
   def expected_outcome(
       self,
@@ -1015,14 +1034,13 @@ class Analyzer:
 
     # We always compute the expected outcome of all channels, including non-paid
     # channels.
-    # pylint: disable=protected-access  # TODO: Clean up in next commit.
-    data_tensors = tensors.DataTensorsBuilder(
-        self.model_context
-    )._build_scaled_data_tensors(
+    inputs = tensors.DataTensorsBuilder(self.model_context).build_scaled_inputs(
         new_data=filled_tensors,
         include_non_paid_channels=True,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
     )
-    # pylint: enable=protected-access
+    data_tensors = inputs.tensors
 
     param_list = (
         [
@@ -1050,10 +1068,10 @@ class Analyzer:
       if not use_kpi:
         outcome_means *= filled_tensors.revenue_per_kpi
 
-    return self.filter_and_aggregate_geos_and_times(
+    return self.filter_and_aggregate_by_indices(
         outcome_means,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
+        geo_indices=inputs.geo_indices,
+        time_indices=inputs.time_indices,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
     )
@@ -1198,8 +1216,6 @@ class Analyzer:
       static_argnames=[
           "inverse_transform_outcome",
           "use_kpi",
-          "selected_geos",
-          "selected_times",
           "aggregate_geos",
           "aggregate_times",
       ],
@@ -1211,36 +1227,36 @@ class Analyzer:
       non_media_treatments_baseline_normalized: Sequence[float] | None = None,
       inverse_transform_outcome: bool | None = None,
       use_kpi: bool | None = None,
-      selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      geo_indices: backend.Tensor | None = None,
+      time_indices: backend.Tensor | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
   ) -> backend.Tensor:
     """Computes incremental outcome (revenue or KPI) on a batch of data.
 
     Args:
-      data_tensors: A `DataTensors` container with: * `media`:
-        `media` data scaled by the per-geo median, normalized by the geo
-        population. Shape (n_geos x T x n_media_channels), for any time
-        dimension T. * `reach`: `reach` data scaled by the per-geo median,
-        normalized by the geo population. Shape (n_geos x T x n_rf_channels),
-        for any time dimension T. * `frequency`: Contains frequency data with
-        shape(n_geos x T x n_rf_channels), for any time dimension T. *
-        `organic_media`: `organic media data scaled by the per-geo median,
-        normalized by the geo population. Shape (n_geos x T x
-        n_organic_media_channels), for any time dimension T. * `organic_reach`:
-        `organic reach` data scaled by the per-geo median, normalized by the geo
-        population. Shape (n_geos x T x n_organic_rf_channels), for any time
-        dimension T. * `organic_frequency`: `organic frequency data` with shape
-        (n_geos x T x n_organic_rf_channels), for any time dimension T. *
+      data_tensors: A `DataTensors` container with: * `media`: `media` data
+        scaled by the per-geo median, normalized by the geo population. Shape
+        (n_geos x T x n_media_channels), for any time dimension T. * `reach`:
+        `reach` data scaled by the per-geo median, normalized by the geo
+        population. Shape (n_geos x T x n_rf_channels), for any time dimension
+        T. * `frequency`: Contains frequency data with shape(n_geos x T x
+        n_rf_channels), for any time dimension T. * `organic_media`: `organic
+        media data scaled by the per-geo median, normalized by the geo
+        population. Shape (n_geos x T x n_organic_media_channels), for any time
+        dimension T. * `organic_reach`: `organic reach` data scaled by the
+        per-geo median, normalized by the geo population. Shape (n_geos x T x
+        n_organic_rf_channels), for any time dimension T. * `organic_frequency`:
+        `organic frequency data` with shape (n_geos x T x
+        n_organic_rf_channels), for any time dimension T. *
         `non_media_treatments`: `non_media_treatments` data scaled by population
         for the selected channels and normalized by means and standard
         deviations with shape (n_geos x T x n_non_media_channels), for any time
         dimension T. * `revenue_per_kpi`: Contains revenue per kpi data with
         shape `(n_geos x T)`, for any time dimension `T`.
-      dist_tensors: A `DistributionTensors` container with the
-        distribution tensors for media, RF, organic media, organic RF and
-        non-media treatments channels.
+      dist_tensors: A `DistributionTensors` container with the distribution
+        tensors for media, RF, organic media, organic RF and non-media
+        treatments channels.
       non_media_treatments_baseline_normalized: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float that will be used as
         baseline for the given channel. The values are expected to be scaled by
@@ -1257,14 +1273,10 @@ class Analyzer:
         revenue `(KPI * revenue_per_kpi)` is calculated. Only used if
         `inverse_transform_outcome=True`. `use_kpi` must be True when
         `revenue_per_kpi` is not defined.
-      selected_geos: Contains a subset of geos to include. By default, all geos
-        are included.
-      selected_times: An optional string list containing a subset of
-        `input_data.time` to include or a boolean list with length equal to the
-        number of time periods in `data_tensors` if time is modified in
-        `data_tensors`, or `input_data.n_times` otherwise. If time in
-        `data_tensors` is modified, then only the boolean list can be used as
-        `selected_times`. By default, all time periods are included.
+      geo_indices: Optional tensor containing a subset of geo indices to
+        include. By default, all geos are included.
+      time_indices: Optional tensor containing a subset of time indices to
+        include. By default, all time periods are included.
       aggregate_geos: If True, then incremental outcome is summed over all
         regions.
       aggregate_times: If True, then incremental outcome is summed over all time
@@ -1297,10 +1309,10 @@ class Analyzer:
       )
     else:
       incremental_outcome = transformed_outcome
-    return self.filter_and_aggregate_geos_and_times(
+    return self.filter_and_aggregate_by_indices(
         tensor=incremental_outcome,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
+        geo_indices=geo_indices,
+        time_indices=time_indices,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
         flexible_time_dim=True,
@@ -1592,14 +1604,15 @@ class Analyzer:
     )
     # pylint: enable=protected-access
 
-    # pylint: disable=protected-access  # TODO: Clean up in next commit.
-    scaled_data0 = tensors.DataTensorsBuilder(
+    inputs0 = tensors.DataTensorsBuilder(
         self.model_context
-    )._build_scaled_data_tensors(
+    ).build_scaled_inputs(
         new_data=incremented_data0,
         include_non_paid_channels=include_non_paid_channels,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
     )
-    # pylint: enable=protected-access
+    scaled_data0 = inputs0.tensors
     # TODO: Verify the computation of outcome of non-media
     # treatments with `media_selected_times` and scale factors.
 
@@ -1614,14 +1627,15 @@ class Analyzer:
         non_media_treatments=non_media_treatments0,
     )
 
-    # pylint: disable=protected-access  # TODO: Clean up in next commit.
-    data_tensors1 = tensors.DataTensorsBuilder(
+    inputs1 = tensors.DataTensorsBuilder(
         self.model_context
-    )._build_scaled_data_tensors(
+    ).build_scaled_inputs(
         new_data=incremented_data1,
         include_non_paid_channels=include_non_paid_channels,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
     )
-    # pylint: enable=protected-access
+    data_tensors1 = inputs1.tensors
 
     # Calculate incremental outcome in batches.
     param_list = self._get_causal_param_names(
@@ -1629,12 +1643,8 @@ class Analyzer:
     )
     incremental_outcome_temps = []
     dim_kwargs = {
-        "selected_geos": (
-            tuple(selected_geos) if selected_geos is not None else None
-        ),
-        "selected_times": (
-            tuple(selected_times) if selected_times is not None else None
-        ),
+        "geo_indices": inputs1.geo_indices,
+        "time_indices": inputs1.time_indices,
         "aggregate_geos": aggregate_geos,
         "aggregate_times": aggregate_times,
     }
@@ -1832,14 +1842,23 @@ class Analyzer:
     )
     spend_inc = filled_data.total_spend() * incremental_increase
     if spend_inc is not None and spend_inc.ndim == 3:
+      inputs = tensors.DataTensorsBuilder(
+          self.model_context
+      ).build_scaled_inputs(
+          new_data=filled_data,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+      )
       return backend.divide(
           numerator,
-          self.filter_and_aggregate_geos_and_times(
+          self.filter_and_aggregate_by_indices(
               spend_inc,
+              geo_indices=inputs.geo_indices,
+              time_indices=inputs.time_indices,
+              aggregate_geos=aggregate_geos,
               aggregate_times=True,
               flexible_time_dim=True,
               has_media_dim=True,
-              **dim_kwargs,
           ),
       )
 
@@ -1948,14 +1967,23 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
+      inputs = tensors.DataTensorsBuilder(
+          self.model_context
+      ).build_scaled_inputs(
+          new_data=filled_data,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+      )
       return backend.divide(
           incremental_outcome,
-          self.filter_and_aggregate_geos_and_times(
+          self.filter_and_aggregate_by_indices(
               spend,
+              geo_indices=inputs.geo_indices,
+              time_indices=inputs.time_indices,
+              aggregate_geos=aggregate_geos,
               aggregate_times=True,
               flexible_time_dim=True,
               has_media_dim=True,
-              **dim_kwargs,
           ),
       )
 
@@ -2078,8 +2106,12 @@ class Analyzer:
     """
 
     if not split_by_holdout:
-      draws = self.filter_and_aggregate_geos_and_times(
-          draws, aggregate_geos=aggregate_geos, aggregate_times=aggregate_times
+      draws = self.filter_and_aggregate_by_indices(
+          draws,
+          geo_indices=None,
+          time_indices=None,
+          aggregate_geos=aggregate_geos,
+          aggregate_times=aggregate_times,
       )
       return get_central_tendency_and_ci(
           draws, confidence_level=confidence_level
@@ -2094,8 +2126,10 @@ class Analyzer:
     draws_by_evaluation_set = np.stack(
         [train_draws, test_draws, draws], axis=0
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, n_geos, n_times)
-    draws_by_evaluation_set = self.filter_and_aggregate_geos_and_times(
+    draws_by_evaluation_set = self.filter_and_aggregate_by_indices(
         draws_by_evaluation_set,
+        geo_indices=None,
+        time_indices=None,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, ...)
@@ -2188,10 +2222,12 @@ class Analyzer:
         confidence_level,
     )
     actual = np.asarray(
-        self.filter_and_aggregate_geos_and_times(
+        self.filter_and_aggregate_by_indices(
             m_context.kpi
             if use_kpi
             else m_context.kpi * m_context.revenue_per_kpi,
+            geo_indices=None,
+            time_indices=None,
             aggregate_geos=aggregate_geos,
             aggregate_times=aggregate_times,
         )
@@ -2732,10 +2768,20 @@ class Analyzer:
     if self.model_context.n_rf_channels > 0:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
-    aggregated_spend = self.filter_and_aggregate_geos_and_times(
+    spend_inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_scaled_inputs(
+        new_data=new_data,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    aggregated_spend = self.filter_and_aggregate_by_indices(
         tensor=backend.concatenate(spend_list, axis=-1),
+        geo_indices=spend_inputs.geo_indices,
+        time_indices=spend_inputs.time_indices,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
         flexible_time_dim=True,
-        **dim_kwargs,
     )
     spend_with_total = backend.concatenate(
         [
@@ -2918,10 +2964,17 @@ class Analyzer:
       if self.model_context.n_non_media_channels > 0:
         impressions_list.append(data_tensors.non_media_treatments)
 
-    return self.filter_and_aggregate_geos_and_times(
-        tensor=backend.concatenate(impressions_list, axis=-1),
+    impressions_inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_scaled_inputs(
+        new_data=data_tensors,
         selected_geos=selected_geos,
         selected_times=selected_times,
+    )
+    return self.filter_and_aggregate_by_indices(
+        tensor=backend.concatenate(impressions_list, axis=-1),
+        geo_indices=impressions_inputs.geo_indices,
+        time_indices=impressions_inputs.time_indices,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
         flexible_time_dim=True,
@@ -3423,10 +3476,18 @@ class Analyzer:
       input_tensor = self.model_context.kpi
     else:
       input_tensor = self.model_context.kpi * self.model_context.revenue_per_kpi
+    predictive_accuracy_inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_scaled_inputs(
+        selected_geos=selected_geos, selected_times=selected_times
+    )
     actual = np.asarray(
-        self.filter_and_aggregate_geos_and_times(
+        self.filter_and_aggregate_by_indices(
             tensor=input_tensor,
-            **dims_kwargs,
+            geo_indices=predictive_accuracy_inputs.geo_indices,
+            time_indices=predictive_accuracy_inputs.time_indices,
+            aggregate_geos=False,
+            aggregate_times=False,
         )
     )
     expected = np.mean(
@@ -3868,10 +3929,20 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
-      spend = self.filter_and_aggregate_geos_and_times(
+      spend_inputs = tensors.DataTensorsBuilder(
+          self.model_context
+      ).build_scaled_inputs(
+          new_data=filled_data,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+      )
+      spend = self.filter_and_aggregate_by_indices(
           tensor=spend,
+          geo_indices=spend_inputs.geo_indices,
+          time_indices=spend_inputs.time_indices,
+          aggregate_geos=True,
+          aggregate_times=True,
           flexible_time_dim=True,
-          **dim_kwargs,
       )
     spend_einsum = backend.einsum("k,m->km", np.array(spend_multipliers), spend)
     xr_coords = {
@@ -4628,20 +4699,20 @@ class Analyzer:
     required_tensors_names = constants.PAID_CHANNELS + constants.SPEND_DATA
     if not aggregate_times:
       required_tensors_names += (constants.TIME,)
-    filled_data = new_data.validate_and_fill_missing_data(
+    raw_filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=required_tensors_names,
         model_context=self.model_context,
     )
-    new_n_media_times = filled_data.get_modified_times(
-        model_context=self.model_context
-    )
 
-    selected_times, times = _get_validated_selected_times(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    inputs = builder.build_scaled_inputs(
+        new_data=new_data,
+        selected_geos=selected_geos,
         selected_times=selected_times,
-        new_n_media_times=new_n_media_times,
-        filled_data=filled_data,
-        model_context=self.model_context,
+        include_non_paid_channels=False,  # We only need paid channels for spend
     )
+    geo_indices = inputs.geo_indices
+    time_indices = inputs.time_indices
 
     if aggregate_times:
       empty_da = xr.DataArray(
@@ -4649,10 +4720,11 @@ class Analyzer:
       )
       time_dims = None
     else:
-      if selected_times is None:
+      times = np.asarray(raw_filled_data.time).astype(str).tolist()
+      if time_indices is None:
         time_dims = times
       else:
-        time_dims = np.array(times)[selected_times]
+        time_dims = np.array(times)[np.asarray(time_indices)]
 
       empty_da = xr.DataArray(
           dims=[constants.TIME, constants.CHANNEL],
@@ -4673,15 +4745,15 @@ class Analyzer:
       aggregated_media_spend = empty_da
     else:
       aggregated_media_spend = self._impute_and_aggregate_spend(
-          selected_geos=selected_geos,
-          selected_times=selected_times,
-          aggregate_times=aggregate_times,
-          time_dims=time_dims,
-          media_execution_values=filled_data.media,
-          channel_spend=filled_data.media_spend,
+          media_execution_values=raw_filled_data.media,
+          channel_spend=raw_filled_data.media_spend,
           channel_names=list(
               self.model_context.input_data.media_channel.values
           ),
+          geo_indices=geo_indices,
+          time_indices=time_indices,
+          aggregate_times=aggregate_times,
+          time_dims=time_dims,
       )
 
     if not include_rf:
@@ -4698,15 +4770,15 @@ class Analyzer:
       )
       aggregated_rf_spend = empty_da
     else:
-      rf_execution_values = filled_data.reach * filled_data.frequency
+      rf_execution_values = raw_filled_data.reach * raw_filled_data.frequency
       aggregated_rf_spend = self._impute_and_aggregate_spend(
-          selected_geos=selected_geos,
-          selected_times=selected_times,
+          media_execution_values=rf_execution_values,
+          channel_spend=raw_filled_data.rf_spend,
+          channel_names=list(self.model_context.input_data.rf_channel.values),
+          geo_indices=geo_indices,
+          time_indices=time_indices,
           aggregate_times=aggregate_times,
           time_dims=time_dims,
-          media_execution_values=rf_execution_values,
-          channel_spend=filled_data.rf_spend,
-          channel_names=list(self.model_context.input_data.rf_channel.values),
       )
 
     return xr.concat(
@@ -4715,12 +4787,12 @@ class Analyzer:
 
   def _impute_and_aggregate_spend(
       self,
-      selected_geos: Sequence[str] | None,
-      selected_times: Sequence[str] | Sequence[bool] | None,
-      aggregate_times: bool,
       media_execution_values: backend.Tensor,
       channel_spend: backend.Tensor,
       channel_names: Sequence[str],
+      geo_indices: backend.Tensor | None = None,
+      time_indices: backend.Tensor | None = None,
+      aggregate_times: bool = True,
       time_dims: Sequence[str] | backend.Tensor | None = None,
   ) -> xr.DataArray:
     """Imputes and aggregates the spend within selected dimensions.
@@ -4728,45 +4800,39 @@ class Analyzer:
     This function is used to aggregate the spend within selected geos over the
     selected time period. Imputation is required when `channel_spend` has only
     one dimension and the aggregation is applied to only a subset of geos or
-    times, as specified by `selected_geos` and `selected_times`. The
+    times, as specified by `geo_indices` and `time_indices`. The
     `media_execution_values` argument only serves the purpose of imputation.
     Although `media_execution_values` is a required argument, its values only
     affect the output when imputation is required.
 
     Args:
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included. The selected geos should match those in
-        `InputData.geo`.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        KPI data. By default, all time periods are included.
-      aggregate_times: Boolean. If `True`, the spend is summed over all time
-        periods.
       media_execution_values: The media execution values over all time points.
       channel_spend: The spend over all time points. Its shape can be `(n_geos,
         n_times, n_media_channels)` or `(n_media_channels,)` if the data is
         aggregated over `geo` and `time` dimensions.
       channel_names: The channel names.
+      geo_indices: Optional int32 tensor containing the indices of geos to
+        include. By default, all geos are included.
+      time_indices: Optional int32 tensor containing the indices of times to
+        include. By default, all time periods are included.
+      aggregate_times: Boolean. If `True`, the spend is summed over all time
+        periods.
       time_dims: The time coordinates for flexible time dimensions.
 
     Returns:
       An `xr.DataArray` with the coordinate `channel` (and `time` if
       `aggregate_times=False`) and contains the data variable `spend`.
     """
-    dim_kwargs = {
-        "selected_geos": selected_geos,
-        "selected_times": selected_times,
-        "aggregate_geos": True,
-        "aggregate_times": aggregate_times,
-        "flexible_time_dim": True,
-    }
-
     if channel_spend.ndim == 3:
       aggregated_spend = np.asarray(
-          self.filter_and_aggregate_geos_and_times(
+          self.filter_and_aggregate_by_indices(
               channel_spend,
+              geo_indices=geo_indices,
+              time_indices=time_indices,
               has_media_dim=True,
-              **dim_kwargs,
+              aggregate_geos=True,
+              aggregate_times=aggregate_times,
+              flexible_time_dim=True,
           )
       )
     # channel_spend.ndim can only be 3 or 1.
@@ -4780,9 +4846,14 @@ class Analyzer:
         media_exe_values = media_execution_values
       # Calculates CPM over all times and geos if the spend does not have time
       # and geo dimensions.
-      target_media_exe_values = self.filter_and_aggregate_geos_and_times(
+      target_media_exe_values = self.filter_and_aggregate_by_indices(
           media_exe_values,
-          **dim_kwargs,
+          geo_indices=geo_indices,
+          time_indices=time_indices,
+          has_media_dim=True,
+          aggregate_geos=True,
+          aggregate_times=aggregate_times,
+          flexible_time_dim=True,
       )
       imputed_cpmu = backend.divide(
           channel_spend,

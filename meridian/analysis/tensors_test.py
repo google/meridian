@@ -605,5 +605,80 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     # pylint: enable=protected-access
 
 
+class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian = model.Meridian(
+        input_data=cls.input_data,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+
+  def test_build_scaled_inputs_resolves_indices(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+
+    # Select a subset of geos and times
+    selected_geos = [
+        self.input_data.geo.values[0],
+        self.input_data.geo.values[2],
+    ]
+    selected_times = [
+        self.input_data.time.values[1],
+        self.input_data.time.values[3],
+    ]
+
+    inputs = builder.build_scaled_inputs(
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    self.assertIsInstance(inputs, tensors.AnalyzerInputs)
+    self.assertIsInstance(inputs.tensors, tensors.DataTensors)
+
+    # Check geo indices
+    expected_geo_indices = [0, 2]
+    backend_test_utils.assert_allclose(
+        inputs.geo_indices,
+        backend.to_tensor(expected_geo_indices, dtype=backend.int32),
+    )
+
+    # Check time indices
+    expected_time_indices = [1, 3]
+    backend_test_utils.assert_allclose(
+        inputs.time_indices,
+        backend.to_tensor(expected_time_indices, dtype=backend.int32),
+    )
+
+  def test_build_scaled_inputs_resolves_boolean_times(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+
+    # Create a boolean mask for times
+    selected_times = [False] * _N_TIMES
+    selected_times[1] = True
+    selected_times[3] = True
+
+    inputs = builder.build_scaled_inputs(
+        selected_times=selected_times,
+    )
+
+    expected_time_indices = [1, 3]
+    backend_test_utils.assert_allclose(
+        inputs.time_indices,
+        backend.to_tensor(expected_time_indices, dtype=backend.int32),
+    )
+
+
 if __name__ == "__main__":
   absltest.main()

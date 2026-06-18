@@ -28,7 +28,12 @@ import numpy as np
 from typing_extensions import Self
 import xarray as xr
 
-__all__ = ("DataTensors", "DataTensorsBuilder", "DistributionTensors")
+__all__ = (
+    "AnalyzerInputs",
+    "DataTensors",
+    "DataTensorsBuilder",
+    "DistributionTensors",
+)
 
 
 # TODO: Remove this method.
@@ -809,6 +814,15 @@ def _scale_tensors_by_multiplier(
   return DataTensors(**incremented_data)
 
 
+@dataclasses.dataclass(kw_only=True)
+class AnalyzerInputs(backend.ExtensionType):
+  """Base payload containing DataTensors and resolved indices."""
+
+  tensors: DataTensors
+  time_indices: Union[backend.Tensor, None] = None
+  geo_indices: Union[backend.Tensor, None] = None
+
+
 class DataTensorsBuilder:
   """Translates raw modeling inputs into scaled, execution-ready data tensors.
 
@@ -819,6 +833,118 @@ class DataTensorsBuilder:
   def __init__(self, model_context: context.ModelContext):
     """Initializes the instance."""
     self.model_context = model_context
+
+  def _resolve_geo_indices(
+      self, selected_geos: Sequence[str] | None
+  ) -> backend.Tensor | None:
+    """Resolves selected geos to their integer indices.
+
+    Args:
+      selected_geos: Sequence of geo names to resolve.
+
+    Returns:
+      A tensor of geo indices, or None if selected_geos is None.
+    """
+    if selected_geos is None:
+      return None
+    if any(
+        geo not in self.model_context.input_data.geo for geo in selected_geos
+    ):
+      raise ValueError(
+          "`selected_geos` must match the geo dimension names from "
+          "meridian.InputData."
+      )
+    geo_indices = [
+        i
+        for i, x in enumerate(self.model_context.input_data.geo)
+        if x in selected_geos
+    ]
+    return backend.to_tensor(geo_indices, dtype=backend.int32)
+
+  def _resolve_time_indices(
+      self,
+      selected_times: Sequence[str] | Sequence[bool] | None,
+      n_times: int,
+      input_times: xr.DataArray,
+  ) -> backend.Tensor | None:
+    """Resolves selected times to their integer indices.
+
+    Args:
+      selected_times: Sequence of time names or booleans to resolve.
+      n_times: The number of time periods.
+      input_times: The input times to resolve against.
+
+    Returns:
+      A tensor of time indices, or None if selected_times is None.
+    """
+    if selected_times is None:
+      return None
+    _validate_selected_times(
+        selected_times=selected_times,
+        input_times=input_times,
+        n_times=n_times,
+        arg_name="selected_times",
+        comparison_arg_name="`tensor`",
+    )
+    if _is_str_list(selected_times):
+      time_indices = [
+          i for i, x in enumerate(input_times) if x in selected_times
+      ]
+    elif _is_bool_list(selected_times):
+      time_indices = [i for i, x in enumerate(selected_times) if x]
+    else:
+      return None
+    return backend.to_tensor(time_indices, dtype=backend.int32)
+
+  def build_scaled_inputs(
+      self,
+      new_data: DataTensors | None = None,
+      include_non_paid_channels: bool = True,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+  ) -> AnalyzerInputs:
+    """Builds scaled inputs and resolves geo and time indices.
+
+    Args:
+      new_data: Optional `DataTensors` object containing new data to scale. If
+        `None`, the historical data from the model context is used.
+      include_non_paid_channels: Boolean indicating whether to include organic
+        media, organic RF, and non-media treatments.
+      selected_geos: Optional subset of geos to include.
+      selected_times: Optional subset of times to include.
+
+    Returns:
+      An `AnalyzerInputs` object.
+    """
+    scaled_tensors = self._build_scaled_data_tensors(
+        new_data=new_data,
+        include_non_paid_channels=include_non_paid_channels,
+    )
+    n_times = scaled_tensors.get_modified_times(
+        model_context=self.model_context
+    )
+    if n_times is None:
+      n_times = self.model_context.n_times
+
+    geo_indices = self._resolve_geo_indices(selected_geos)
+    if scaled_tensors.time is not None:
+      if hasattr(scaled_tensors.time, "ndim"):
+        input_times = np.asarray(scaled_tensors.time).astype(str).tolist()
+      else:
+        input_times = scaled_tensors.time
+    else:
+      input_times = self.model_context.input_data.time
+
+    time_indices = self._resolve_time_indices(
+        selected_times=selected_times,
+        n_times=n_times,
+        input_times=input_times,
+    )
+    return AnalyzerInputs(
+        tensors=scaled_tensors,
+        time_indices=time_indices,
+        geo_indices=geo_indices,
+    )
 
   def _build_scaled_data_tensors(
       self,
@@ -909,6 +1035,7 @@ class DataTensorsBuilder:
         else self.model_context.revenue_per_kpi
     )
 
+    time = new_data.time
     if include_non_paid_channels:
       organic_media_scaled = _transformed_new_or_scaled(
           new_variable=new_data.organic_media,
@@ -940,6 +1067,7 @@ class DataTensorsBuilder:
           non_media_treatments=non_media_treatments_normalized,
           controls=controls_scaled,
           revenue_per_kpi=revenue_per_kpi,
+          time=time,
       )
     else:
       return DataTensors(
@@ -948,4 +1076,5 @@ class DataTensorsBuilder:
           frequency=frequency,
           controls=controls_scaled,
           revenue_per_kpi=revenue_per_kpi,
+          time=time,
       )
