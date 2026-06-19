@@ -1108,6 +1108,80 @@ class DataTensorsBuilder:
         media_selected_times_mask=media_selected_times_mask,
     )
 
+  def build_baseline_inputs(
+      self, non_media_baseline_values: Sequence[float] | None = None
+  ) -> AnalyzerInputs:
+    """Builds baseline inputs for the analyzer.
+
+    Args:
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is a float which means that the
+        fixed value will be used as baseline for the given channel.
+
+    Returns:
+      An `AnalyzerInputs` object containing the baseline data tensors.
+    """
+    _validate_non_media_baseline_values_numbers(non_media_baseline_values)
+
+    ctx = self.model_context
+    media = (
+        backend.zeros_like(ctx.media_tensors.media)
+        if ctx.media_tensors.media is not None
+        else None
+    )
+    reach = (
+        backend.zeros_like(ctx.rf_tensors.reach)
+        if ctx.rf_tensors.reach is not None
+        else None
+    )
+    organic_media = (
+        backend.zeros_like(ctx.organic_media_tensors.organic_media)
+        if ctx.organic_media_tensors.organic_media is not None
+        else None
+    )
+    organic_reach = (
+        backend.zeros_like(ctx.organic_rf_tensors.organic_reach)
+        if ctx.organic_rf_tensors.organic_reach is not None
+        else None
+    )
+
+    if ctx.non_media_treatments is not None:
+      baseline = equations.ModelEquations(
+          ctx
+      ).compute_non_media_treatments_baseline(non_media_baseline_values)
+      baseline_tensor = backend.broadcast_to(
+          backend.to_tensor(
+              baseline,
+              dtype=backend.float_dtype,
+          )[backend.newaxis, backend.newaxis, :],
+          ctx.non_media_treatments.shape,
+      )
+      if ctx.model_spec.non_media_population_scaling_id is not None:
+        scaling_factors = backend.where(
+            ctx.model_spec.non_media_population_scaling_id,
+            ctx.population[:, backend.newaxis, backend.newaxis],
+            backend.ones_like(ctx.population)[
+                :, backend.newaxis, backend.newaxis
+            ],
+        )
+      else:
+        scaling_factors = backend.ones_like(ctx.population)[
+            :, backend.newaxis, backend.newaxis
+        ]
+      non_media_treatments = baseline_tensor * scaling_factors
+    else:
+      non_media_treatments = None
+
+    new_data = DataTensors(
+        media=media,
+        reach=reach,
+        organic_media=organic_media,
+        organic_reach=organic_reach,
+        non_media_treatments=non_media_treatments,
+        controls=ctx.controls,
+    )
+    return AnalyzerInputs(tensors=new_data)
+
   def _build_scaled_data_tensors(
       self,
       new_data: DataTensors | None = None,

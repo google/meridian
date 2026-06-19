@@ -2089,11 +2089,6 @@ class Analyzer:
     Returns:
       A dataset with the expected, baseline, and actual outcome metrics.
     """
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    tensors._validate_non_media_baseline_values_numbers(
-        non_media_baseline_values
-    )
-    # pylint: enable=protected-access
     use_kpi = self._use_kpi(use_kpi)
     m_context = self.model_context
     can_split_by_holdout = self._can_split_by_holdout_id(split_by_holdout_id)
@@ -2202,67 +2197,12 @@ class Analyzer:
       n_draws, n_geos, n_times)`. The `n_geos` and `n_times` dimensions is
       dropped if `aggregate_geos=True` or `aggregate_time=True`, respectively.
     """
-    ctx = self.model_context
-    new_media = (
-        backend.zeros_like(ctx.media_tensors.media)
-        if ctx.media_tensors.media is not None
-        else None
+    inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_baseline_inputs(non_media_baseline_values)
+    return self.expected_outcome(
+        new_data=inputs.tensors, **expected_outcome_kwargs
     )
-    # Frequency is not needed because the reach is zero.
-    new_reach = (
-        backend.zeros_like(ctx.rf_tensors.reach)
-        if ctx.rf_tensors.reach is not None
-        else None
-    )
-    new_organic_media = (
-        backend.zeros_like(ctx.organic_media_tensors.organic_media)
-        if ctx.organic_media_tensors.organic_media is not None
-        else None
-    )
-    new_organic_reach = (
-        backend.zeros_like(ctx.organic_rf_tensors.organic_reach)
-        if ctx.organic_rf_tensors.organic_reach is not None
-        else None
-    )
-    if ctx.non_media_treatments is not None:
-      if ctx.model_spec.non_media_population_scaling_id is not None:
-        scaling_factors = backend.where(
-            ctx.model_spec.non_media_population_scaling_id,
-            ctx.population[:, backend.newaxis, backend.newaxis],
-            backend.ones_like(ctx.population)[
-                :, backend.newaxis, backend.newaxis
-            ],
-        )
-      else:
-        scaling_factors = backend.ones_like(ctx.population)[
-            :, backend.newaxis, backend.newaxis
-        ]
-
-      baseline = self._model_equations.compute_non_media_treatments_baseline(
-          non_media_baseline_values=non_media_baseline_values,
-      )
-      new_non_media_treatments_population_scaled = backend.broadcast_to(
-          backend.to_tensor(baseline, dtype=backend.float_dtype)[
-              backend.newaxis, backend.newaxis, :
-          ],
-          ctx.non_media_treatments.shape,
-      )
-      new_non_media_treatments = (
-          new_non_media_treatments_population_scaled * scaling_factors
-      )
-    else:
-      new_non_media_treatments = None
-    new_controls = ctx.controls
-
-    new_data = DataTensors(
-        media=new_media,
-        reach=new_reach,
-        organic_media=new_organic_media,
-        organic_reach=new_organic_reach,
-        non_media_treatments=new_non_media_treatments,
-        controls=new_controls,
-    )
-    return self.expected_outcome(new_data=new_data, **expected_outcome_kwargs)
 
   def compute_incremental_outcome_aggregate(
       self,
@@ -2314,11 +2254,6 @@ class Analyzer:
       of the channel dimension is incremented by one, with the new component at
       the end containing the total incremental outcome of all channels.
     """
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    tensors._validate_non_media_baseline_values_numbers(
-        non_media_baseline_values
-    )
-    # pylint: enable=protected-access
     use_kpi = self._use_kpi(use_kpi)
     incremental_outcome_m = self.incremental_outcome(
         use_posterior=use_posterior,
@@ -2447,11 +2382,6 @@ class Analyzer:
       when `aggregate_times=False` because they do not have a clear
       interpretation by time period.
     """
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    tensors._validate_non_media_baseline_values_numbers(
-        non_media_baseline_values
-    )
-    # pylint: enable=protected-access
     use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -2924,11 +2854,6 @@ class Analyzer:
       `ci_low`,`ci_high`),`distribution` (prior, posterior) and contains the
       following data variables: `baseline_outcome`, `pct_of_contribution`.
     """
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    tensors._validate_non_media_baseline_values_numbers(
-        non_media_baseline_values
-    )
-    # pylint: enable=protected-access
     # TODO: Change "pct_of_contribution" to a more accurate term.
 
     use_kpi = self._use_kpi(use_kpi)

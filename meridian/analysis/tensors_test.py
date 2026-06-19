@@ -819,5 +819,153 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
     )
 
 
+class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    cls.meridian = model.Meridian(
+        input_data=cls.input_data,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+
+  def test_build_baseline_inputs_returns_correct_type(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    inputs = builder.build_baseline_inputs()
+    self.assertIsInstance(inputs, tensors.AnalyzerInputs)
+
+  def test_build_baseline_inputs_zeros_out_media_and_rf(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    inputs = builder.build_baseline_inputs()
+
+    # Media should be zeroed if it exists
+    if self.meridian.model_context.media_tensors.media is not None:
+      self.assertIsNotNone(inputs.tensors.media)
+      backend_test_utils.assert_allclose(
+          inputs.tensors.media,
+          backend.zeros_like(self.meridian.model_context.media_tensors.media),
+      )
+    else:
+      self.assertIsNone(inputs.tensors.media)
+
+    # Reach should be zeroed if it exists
+    if self.meridian.model_context.rf_tensors.reach is not None:
+      self.assertIsNotNone(inputs.tensors.reach)
+      backend_test_utils.assert_allclose(
+          inputs.tensors.reach,
+          backend.zeros_like(self.meridian.model_context.rf_tensors.reach),
+      )
+    else:
+      self.assertIsNone(inputs.tensors.reach)
+
+    # Organic media should be zeroed if it exists
+    if (
+        self.meridian.model_context.organic_media_tensors.organic_media
+        is not None
+    ):
+      self.assertIsNotNone(inputs.tensors.organic_media)
+      backend_test_utils.assert_allclose(
+          inputs.tensors.organic_media,
+          backend.zeros_like(
+              self.meridian.model_context.organic_media_tensors.organic_media
+          ),
+      )
+    else:
+      self.assertIsNone(inputs.tensors.organic_media)
+
+    # Organic reach should be zeroed if it exists
+    if self.meridian.model_context.organic_rf_tensors.organic_reach is not None:
+      self.assertIsNotNone(inputs.tensors.organic_reach)
+      backend_test_utils.assert_allclose(
+          inputs.tensors.organic_reach,
+          backend.zeros_like(
+              self.meridian.model_context.organic_rf_tensors.organic_reach
+          ),
+      )
+    else:
+      self.assertIsNone(inputs.tensors.organic_reach)
+
+  def test_build_baseline_inputs_omits_frequency(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    inputs = builder.build_baseline_inputs()
+    self.assertIsNone(inputs.tensors.frequency)
+    self.assertIsNone(inputs.tensors.organic_frequency)
+
+  def test_build_baseline_inputs_computes_non_media_baseline(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    non_media_baseline_values = [1.0] * _N_NON_MEDIA_CHANNELS
+    inputs = builder.build_baseline_inputs(
+        non_media_baseline_values=non_media_baseline_values
+    )
+
+    # Assert to satisfy pytype
+    assert inputs.tensors.non_media_treatments is not None
+
+    # Compute expected baseline
+    expected_baseline_scaled = equations.ModelEquations(
+        self.meridian.model_context
+    ).compute_non_media_treatments_baseline(
+        non_media_baseline_values=non_media_baseline_values
+    )
+    expected_baseline_tensor = backend.broadcast_to(
+        backend.to_tensor(
+            expected_baseline_scaled,
+            dtype=backend.float_dtype,
+        )[backend.newaxis, backend.newaxis, :],
+        inputs.tensors.non_media_treatments.shape,
+    )
+
+    # Apply population scaling if needed (matching the implementation)
+    ctx = self.meridian.model_context
+    if ctx.model_spec.non_media_population_scaling_id is not None:
+      scaling_factors = backend.where(
+          ctx.model_spec.non_media_population_scaling_id,
+          ctx.population[:, backend.newaxis, backend.newaxis],
+          backend.ones_like(ctx.population)[
+              :, backend.newaxis, backend.newaxis
+          ],
+      )
+    else:
+      scaling_factors = backend.ones_like(ctx.population)[
+          :, backend.newaxis, backend.newaxis
+      ]
+    expected_baseline_tensor = expected_baseline_tensor * scaling_factors
+
+    backend_test_utils.assert_allclose(
+        inputs.tensors.non_media_treatments,
+        expected_baseline_tensor,
+    )
+
+  def test_build_baseline_inputs_raises_value_error_for_invalid_baseline_values(
+      self,
+  ):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+
+    # Test invalid types
+    with self.assertRaises(ValueError):
+      builder.build_baseline_inputs(
+          non_media_baseline_values=["invalid"]  # pytype: disable=wrong-arg-types
+      )
+
+    # Test invalid length
+    invalid_length_values = [1.0] * (_N_NON_MEDIA_CHANNELS + 1)
+    with self.assertRaises(ValueError):
+      builder.build_baseline_inputs(
+          non_media_baseline_values=invalid_length_values
+      )
+
+
 if __name__ == "__main__":
   absltest.main()
