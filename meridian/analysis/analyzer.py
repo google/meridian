@@ -3721,6 +3721,12 @@ class Analyzer:
         len(self.model_context.input_data.get_all_paid_channels()),
         3,
     ))
+    adjusted_data = tensors.DataTensors(
+        media=filled_data.media,
+        reach=reach,
+        frequency=frequency,
+        revenue_per_kpi=filled_data.revenue_per_kpi,
+    )
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:
         incremental_outcome[i, :, :] = backend.zeros(
@@ -3728,21 +3734,12 @@ class Analyzer:
             dtype=backend.float_dtype,
         )  # Last dimension = 3 for the mean, ci_lo and ci_hi.
         continue
-      # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-      scaled_data = tensors._scale_tensors_by_multiplier(
-          data=DataTensors(
-              media=filled_data.media,
-              reach=reach,
-              frequency=frequency,
-              revenue_per_kpi=filled_data.revenue_per_kpi,
-          ),
-          multiplier=multiplier,
-          by_reach=by_reach,
-      )
-      # pylint: enable=protected-access
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=scaled_data.filter_fields(constants.PAID_DATA),
+          new_data=adjusted_data.filter_fields(constants.PAID_DATA),
+          scaling_factor0=0.0,
+          scaling_factor1=multiplier,
+          by_reach=by_reach,
           inverse_transform_outcome=True,
           batch_size=batch_size,
           use_kpi=use_kpi,
