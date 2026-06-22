@@ -40,6 +40,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import optimizer
+
 from meridian.analysis import summary_text
 from meridian.analysis import tensors
 from meridian.analysis import test_utils as analysis_test_utils
@@ -156,7 +157,7 @@ def _create_budget_data(
   )
   data_vars = {
       c.SPEND: ([c.CHANNEL], spend),
-      c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
+      c.PCT_OF_SPEND: ([c.CHANNEL], spend / np.sum(spend)),
       c.INCREMENTAL_OUTCOME: ([c.CHANNEL, c.METRIC], inc_outcome),
       c.EFFECTIVENESS: ([c.CHANNEL, c.METRIC], effectiveness),
   }
@@ -201,11 +202,11 @@ def _create_budget_data(
   attributes = {
       c.START_DATE: '2021-01-25',
       c.END_DATE: '2021-12-27',
-      c.BUDGET: sum(spend),
-      c.PROFIT: sum(inc_outcome[:, 0]) - sum(spend),
-      c.TOTAL_INCREMENTAL_OUTCOME: sum(inc_outcome[:, 0]),
-      c.TOTAL_CPIK: sum(spend) / sum(inc_outcome[:, 0]),
-      c.TOTAL_ROI: sum(inc_outcome[:, 0]) / sum(spend),
+      c.BUDGET: np.sum(spend),
+      c.PROFIT: np.sum(inc_outcome[:, 0]) - np.sum(spend),
+      c.TOTAL_INCREMENTAL_OUTCOME: np.sum(inc_outcome[:, 0]),
+      c.TOTAL_CPIK: np.sum(spend) / np.sum(inc_outcome[:, 0]),
+      c.TOTAL_ROI: np.sum(inc_outcome[:, 0]) / np.sum(spend),
       c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL,
       c.USE_HISTORICAL_BUDGET: True,
   }
@@ -221,18 +222,27 @@ def _create_budget_data(
 
 
 def _verify_actual_vs_expected_budget_data(
-    actual_data: xr.Dataset, expected_data: xr.Dataset
-):
-  xr.testing.assert_allclose(actual_data, expected_data, atol=0.1, rtol=0.01)
-  np.testing.assert_allclose(actual_data.budget, expected_data.budget, atol=0.1)
-  np.testing.assert_allclose(actual_data.profit, expected_data.profit, atol=0.1)
+    actual_data: xr.Dataset,
+    expected_data: xr.Dataset,
+    *,
+    atol: float = 0.1,
+    rtol: float = 0.01,
+) -> None:
+  xr.testing.assert_allclose(actual_data, expected_data, atol=atol, rtol=rtol)
+  np.testing.assert_allclose(
+      actual_data.budget, expected_data.budget, atol=atol, rtol=rtol
+  )
+  np.testing.assert_allclose(
+      actual_data.profit, expected_data.profit, atol=atol, rtol=rtol
+  )
   np.testing.assert_allclose(
       actual_data.total_incremental_outcome,
       expected_data.total_incremental_outcome,
-      atol=0.1,
+      atol=atol,
+      rtol=rtol,
   )
   np.testing.assert_allclose(
-      actual_data.total_roi, expected_data.total_roi, atol=0.1
+      actual_data.total_roi, expected_data.total_roi, atol=atol, rtol=rtol
   )
   if c.FIXED_BUDGET in expected_data.attrs:
     np.testing.assert_equal(
@@ -426,6 +436,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             analyzer.Analyzer,
             'summary_metrics',
             return_value=analysis_test_utils.generate_paid_summary_metrics(),
+            autospec=True,
         )
     )
 
@@ -953,7 +964,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     with mock.patch.object(
         budget_optimizer._analyzer,
         'get_aggregated_spend',
-        return_value=mock.MagicMock(data=np.array([0, 0, 0, 0, 0])),
+        return_value=xr.DataArray(np.array([0, 0, 0, 0, 0])),
+        autospec=True,
     ):
       optimization_results = budget_optimizer.optimize(
           budget=1000, pct_of_spend=[0, 0.25, 0.25, 0.25, 0.25]
@@ -2596,6 +2608,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             budget_optimizer,
             'create_optimization_grid',
             side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
         )
     )
     # Set larger gtol to avoid timeouts.
@@ -2639,6 +2652,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             budget_optimizer_media_and_rf,
             'create_optimization_grid',
             side_effect=budget_optimizer_media_and_rf.create_optimization_grid,
+            autospec=True,
         )
     )
     grid = self.budget_optimizer_media_only.create_optimization_grid()
@@ -2677,6 +2691,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             budget_optimizer,
             'create_optimization_grid',
             side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
         )
     )
     create_optimization_grid_args = {
@@ -2728,6 +2743,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             budget_optimizer,
             'create_optimization_grid',
             side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
         )
     )
     # Set larger gtol to avoid timeouts.
@@ -2743,6 +2759,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             self.budget_optimizer_media_and_rf,
             'create_optimization_grid',
             side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
         )
     )
     # Set larger gtol to avoid timeouts.
@@ -3073,6 +3090,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             self.budget_optimizer_media_and_rf,
             'create_optimization_grid',
             return_value=mock_grid,
+            autospec=True,
         )
     )
 
@@ -3289,6 +3307,7 @@ class OptimizerPlotsTest(parameterized.TestCase):
             return_value=analysis_test_utils.generate_response_curve_data(
                 n_channels=3, spend_multiplier=spend_multiplier
             ),
+            autospec=True,
         )
     )
 
