@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-22
+
+*   Add batch_size to BudgetOptimizationSpec.
+
 ## [1.2.1] - 2026-05-04
 
 *   Add `saturation_spec` to `Hyperparameters` proto to support selective
