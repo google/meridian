@@ -1147,15 +1147,16 @@ class ContextTest(
     }
     # Create prior distribution with given parameters.
     distribution = prior_distribution.PriorDistribution(**custom_distributions)
+    model_spec = spec.ModelSpec(
+        prior=distribution,
+        media_prior_type=media_prior_type,
+        rf_prior_type=rf_prior_type,
+    )
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("module")
       context.ModelContext(
           input_data=self.input_data_with_media_and_rf,
-          model_spec=spec.ModelSpec(
-              prior=distribution,
-              media_prior_type=media_prior_type,
-              rf_prior_type=rf_prior_type,
-          ),
+          model_spec=model_spec,
       )
       self.assertLen(w, 1)
       self.assertEqual(

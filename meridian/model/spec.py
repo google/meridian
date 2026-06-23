@@ -319,6 +319,24 @@ class ModelSpec:
           f" {sorted(constants.NON_PAID_TREATMENT_PRIOR_TYPES)}."
       )
 
+    if constants.TREATMENT_PRIOR_TYPE_COEFFICIENT in (
+        self.effective_media_prior_type,
+        self.effective_rf_prior_type,
+        self.organic_media_prior_type,
+        self.organic_rf_prior_type,
+        self.non_media_treatments_prior_type,
+    ):
+      warnings.warn(
+          "Using coefficient priors"
+          f" (`{constants.TREATMENT_PRIOR_TYPE_COEFFICIENT}`) is not"
+          " recommended. Coefficient priors can lead to noisy estimates, lack"
+          " of channel parity, and are harder to interpret than ROI or"
+          " contribution priors. Consider using ROI priors"
+          f" (`{constants.TREATMENT_PRIOR_TYPE_ROI}`), mROI priors"
+          f" (`{constants.TREATMENT_PRIOR_TYPE_MROI}`), or contribution priors"
+          f" (`{constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION}`) instead."
+      )
+
     _validate_roi_calibration_period(
         array=self.roi_calibration_period,
         array_name="roi_calibration_period",

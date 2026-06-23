@@ -452,6 +452,26 @@ class ModelSpecTest(parameterized.TestCase):
       spec.ModelSpec(paid_media_prior_type="roi")
 
   @parameterized.named_parameters(
+      dict(testcase_name="media", media_prior_type="coefficient"),
+      dict(testcase_name="rf", rf_prior_type="coefficient"),
+      dict(
+          testcase_name="organic_media", organic_media_prior_type="coefficient"
+      ),
+      dict(testcase_name="organic_rf", organic_rf_prior_type="coefficient"),
+      dict(
+          testcase_name="non_media",
+          non_media_treatments_prior_type="coefficient",
+      ),
+  )
+  def test_init_warns_with_coefficient_prior_type(self, **kwargs):
+    """Tests UserWarning if coefficient prior type is used."""
+    warning_message = (
+        r"Using coefficient priors \(`coefficient`\) is not recommended\."
+    )
+    with self.assertWarnsRegex(UserWarning, warning_message):
+      spec.ModelSpec(**kwargs)
+
+  @parameterized.named_parameters(
       ("ndarray", np.array([2, 5, 8], dtype=int), [2, 5, 8]),
       ("tuple", (2, 5, 8), [2, 5, 8]),
       ("set", {2, 5, 8}, [2, 5, 8]),
