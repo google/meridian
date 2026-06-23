@@ -70,7 +70,7 @@ version from GitHub.
     ```
 
 We recommend to install Meridian in a fresh
-[virtual environment](https://virtualenv.pypa.io/en/latest/user_guide.html#quick-start)
+[virtual environment](https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/#create-and-use-virtual-environments)
 to make sure that correct versions of all the dependencies are installed, as
 defined in [pyproject.toml](https://github.com/google/meridian/blob/main/pyproject.toml).
 
