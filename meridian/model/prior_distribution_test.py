@@ -24,7 +24,6 @@ from meridian.backend import test_utils
 from meridian.model import prior_distribution
 import numpy as np
 
-
 _N_GEOS = 10
 _N_GEOS_NATIONAL = 1
 _N_MEDIA_CHANNELS = 6
@@ -1530,6 +1529,30 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           expected_result=True,
       ),
       dict(
+          testcase_name='same_independent_multivariate_distributions',
+          get_a=lambda: prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.Normal(0.0, 1.0),
+          ]),
+          get_b=lambda: prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.Normal(0.0, 1.0),
+          ]),
+          expected_result=True,
+      ),
+      dict(
+          testcase_name='different_independent_multivariate_distributions',
+          get_a=lambda: prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.Normal(0.0, 1.0),
+          ]),
+          get_b=lambda: prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.Normal(0.0, 2.0),
+          ]),
+          expected_result=False,
+      ),
+      dict(
           testcase_name='different_outer_complex_distributions',
           get_a=lambda: backend.tfd.BatchBroadcast(
               backend.tfd.HalfNormal(5.0), 3
@@ -1707,6 +1730,17 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
 
 
 class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
+
+  def test_parameter_properties(self):
+    properties = (
+        prior_distribution.IndependentMultivariateDistribution._parameter_properties(
+            np.float32
+        )
+    )
+    self.assertIn('distributions', properties)
+    self.assertIsInstance(
+        properties['distributions'], backend.util.BatchedComponentProperties
+    )
 
   def test_contains_deterministic_fail(self):
     distributions = [

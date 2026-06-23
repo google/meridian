@@ -29,7 +29,6 @@ from meridian import backend
 from meridian import constants
 import numpy as np
 
-
 __all__ = [
     'IndependentMultivariateDistribution',
     'PriorDistribution',
@@ -92,7 +91,7 @@ class PriorDistribution:
   | `contribution_m`      | `n_media_channels`         |
   | `contribution_rf`     | `n_rf_channels`            |
   | `contribution_om`     | `n_organic_media_channels` |
-  | `contribution_orf`    | `n_organic_f_channels`     |
+  | `contribution_orf`    | `n_organic_rf_channels`     |
   | `contribution_n`      | `n_non_media_channels`     |
 
   (σ) `n_geos` if `unique_sigma_for_each_geo`, otherwise this is `1`
@@ -535,6 +534,11 @@ class PriorDistribution:
         params[constants.DISTRIBUTION] = _unpack_distribution_params(
             params[constants.DISTRIBUTION]
         )
+      if constants.DISTRIBUTIONS in params:
+        params[constants.DISTRIBUTIONS] = [
+            _unpack_distribution_params(p)
+            for p in params[constants.DISTRIBUTIONS]
+        ]
       dist_type = params.pop(constants.DISTRIBUTION_TYPE)
       return dist_type(**params)
 
@@ -557,6 +561,10 @@ class PriorDistribution:
         params[constants.DISTRIBUTION] = _pack_distribution_params(
             dist.distribution
         )
+      if constants.DISTRIBUTIONS in params:
+        params[constants.DISTRIBUTIONS] = [
+            _pack_distribution_params(d) for d in params[constants.DISTRIBUTIONS]
+        ]
       return params
 
     for attribute, value in state.items():
@@ -1055,6 +1063,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
         parameters=parameters,
         name=name,
     )
+    self._parameters = parameters
 
   @property
   def distributions(self) -> Sequence[backend.tfd.Distribution]:
@@ -1098,6 +1107,14 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
 
   def _batch_shape(self):
     return backend.TensorShape(sum(self._distribution_batch_shapes))
+
+  @classmethod
+  def _parameter_properties(cls, dtype, num_classes=None):
+    return {
+        constants.DISTRIBUTIONS: backend.util.BatchedComponentProperties(
+            event_ndims=lambda self: [0 for _ in self.distributions]
+        )
+    }
 
   def _sample_n(self, n, seed=None):
     return backend.concatenate(
@@ -1206,7 +1223,21 @@ def distributions_are_equal(
     del a_params[constants.DISTRIBUTION]
     del b_params[constants.DISTRIBUTION]
 
+  if constants.DISTRIBUTIONS in a_params and constants.DISTRIBUTIONS in b_params:
+    a_dists = a_params[constants.DISTRIBUTIONS]
+    b_dists = b_params[constants.DISTRIBUTIONS]
+    if len(a_dists) != len(b_dists):
+      return False
+    for a_d, b_d in zip(a_dists, b_dists):
+      if not distributions_are_equal(a_d, b_d):
+        return False
+    del a_params[constants.DISTRIBUTIONS]
+    del b_params[constants.DISTRIBUTIONS]
+
   if constants.DISTRIBUTION in a_params or constants.DISTRIBUTION in b_params:
+    return False
+
+  if constants.DISTRIBUTIONS in a_params or constants.DISTRIBUTIONS in b_params:
     return False
 
   if a_params.keys() != b_params.keys():
@@ -1286,13 +1317,14 @@ def lognormal_dist_from_range(
   mass_percent = np.asarray(mass_percent)
 
   if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
-    raise ValueError("'low' and 'high' values must be non-negative and satisfy "
-                     "high > low.")
+    raise ValueError(
+        "'low' and 'high' values must be non-negative and satisfy high > low."
+    )
 
   if not ((0.0 < mass_percent).all() and (mass_percent < 1.0).all()):  # pytype: disable=attribute-error
     raise ValueError(
         "'mass_percent' values must be between 0 and 1, exclusive."
-        )
+    )
 
   normal = backend.tfd.Normal(0, 1)
   mass_lower = 0.5 - (mass_percent / 2)

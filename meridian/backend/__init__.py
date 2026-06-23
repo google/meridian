@@ -1060,6 +1060,7 @@ if _BACKEND == config.Backend.JAX:
   bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   mcmc = tfp_jax.mcmc
+  util = tfp_jax.util
   _convert_to_tensor = _jax_convert_to_tensor
 
   # Standardized Public API
@@ -1245,6 +1246,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   bijectors = tfp.bijectors
   experimental = tfp.experimental
   mcmc = tfp.mcmc
+  util = tfp.util
   _convert_to_tensor = _ops.convert_to_tensor
 
   # Standardized Public API
