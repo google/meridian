@@ -472,138 +472,6 @@ class Analyzer:
         .reset_index()
     )
 
-  def _get_scaled_data_tensors(
-      self,
-      new_data: DataTensors | None = None,
-      include_non_paid_channels: bool = True,
-  ) -> DataTensors:
-    """Get scaled tensors using given new data and original data.
-
-    This method returns a new `DataTensors` container with scaled
-    versions of
-    `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
-    `organic_frequency`, `non_media_treatments`, `controls` and
-    `revenue_per_kpi` tensors. For each tensor, if its value is provided in the
-    `new_data` argument, the provided tensors are used. Otherwise the original
-    tensors from the Meridian model are used. The tensors are then either scaled
-    by their corresponding transformers (`media`, `reach`, `organic_media`,
-    `organic_reach`, `non_media_treatments`, `controls`), or left as is
-    (`frequency`, `organic_frequency`, `revenue_per_kpi`). For example,
-
-    ```
-    _get_scaled_data_tensors(
-        new_data=DataTensors(media=new_media),
-    )
-    ```
-
-    returns a `DataTensors` container with `media` set to the scaled
-    version of
-    `new_media`, and all other tensors set to their original scaled values from
-    the Meridian model.
-
-    Args:
-      new_data: An optional `DataTensors` container with optional
-        `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, `controls`, and
-        `revenue_per_kpi`. If `None`, the original scaled tensors from the
-        Meridian object are used. If `new_data` is provided, the output contains
-        the scaled versions of the tensors in `new_data` and the original scaled
-        versions of all the remaining tensors. The new tensors' dimensions must
-        match the dimensions of the corresponding original tensors from
-        `meridian.input_data`.
-      include_non_paid_channels: Boolean. If `True`, organic media, organic RF
-        and non-media treatments data is included in the output.
-
-    Returns:
-      A DataTensors object containing the scaled `media`, `reach`,
-      `frequency`
-      `organic_media`, `organic_reach`, `organic_frequency`,
-      `non_media_treatments`, `controls` and `revenue_per_kpi` data tensors.
-    """
-    if new_data is None:
-      return DataTensors(
-          media=self.model_context.media_tensors.media_scaled,
-          reach=self.model_context.rf_tensors.reach_scaled,
-          frequency=self.model_context.rf_tensors.frequency,
-          organic_media=self.model_context.organic_media_tensors.organic_media_scaled,
-          organic_reach=self.model_context.organic_rf_tensors.organic_reach_scaled,
-          organic_frequency=self.model_context.organic_rf_tensors.organic_frequency,
-          non_media_treatments=self.model_context.non_media_treatments_normalized,
-          controls=self.model_context.controls_scaled,
-          revenue_per_kpi=self.model_context.revenue_per_kpi,
-      )
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    media_scaled = tensors._transformed_new_or_scaled(
-        new_variable=new_data.media,
-        transformer=self.model_context.media_tensors.media_transformer,
-        scaled_variable=self.model_context.media_tensors.media_scaled,
-    )
-
-    reach_scaled = tensors._transformed_new_or_scaled(
-        new_variable=new_data.reach,
-        transformer=self.model_context.rf_tensors.reach_transformer,
-        scaled_variable=self.model_context.rf_tensors.reach_scaled,
-    )
-
-    frequency = (
-        new_data.frequency
-        if new_data.frequency is not None
-        else self.model_context.rf_tensors.frequency
-    )
-
-    controls_scaled = tensors._transformed_new_or_scaled(
-        new_variable=new_data.controls,
-        transformer=self.model_context.controls_transformer,
-        scaled_variable=self.model_context.controls_scaled,
-    )
-    revenue_per_kpi = (
-        new_data.revenue_per_kpi
-        if new_data.revenue_per_kpi is not None
-        else self.model_context.revenue_per_kpi
-    )
-
-    if include_non_paid_channels:
-      organic_media_scaled = tensors._transformed_new_or_scaled(
-          new_variable=new_data.organic_media,
-          transformer=self.model_context.organic_media_tensors.organic_media_transformer,
-          scaled_variable=self.model_context.organic_media_tensors.organic_media_scaled,
-      )
-      organic_reach_scaled = tensors._transformed_new_or_scaled(
-          new_variable=new_data.organic_reach,
-          transformer=self.model_context.organic_rf_tensors.organic_reach_transformer,
-          scaled_variable=self.model_context.organic_rf_tensors.organic_reach_scaled,
-      )
-      organic_frequency = (
-          new_data.organic_frequency
-          if new_data.organic_frequency is not None
-          else self.model_context.organic_rf_tensors.organic_frequency
-      )
-      non_media_treatments_normalized = tensors._transformed_new_or_scaled(
-          new_variable=new_data.non_media_treatments,
-          transformer=self.model_context.non_media_transformer,
-          scaled_variable=self.model_context.non_media_treatments_normalized,
-      )
-      # pylint: enable=protected-access
-      return DataTensors(
-          media=media_scaled,
-          reach=reach_scaled,
-          frequency=frequency,
-          organic_media=organic_media_scaled,
-          organic_reach=organic_reach_scaled,
-          organic_frequency=organic_frequency,
-          non_media_treatments=non_media_treatments_normalized,
-          controls=controls_scaled,
-          revenue_per_kpi=revenue_per_kpi,
-      )
-    else:
-      return DataTensors(
-          media=media_scaled,
-          reach=reach_scaled,
-          frequency=frequency,
-          controls=controls_scaled,
-          revenue_per_kpi=revenue_per_kpi,
-      )
-
   def _get_causal_param_names(
       self,
       include_non_paid_channels: bool,
@@ -902,7 +770,9 @@ class Analyzer:
         DeprecationWarning,
         stacklevel=2,
     )
-    inputs = tensors.DataTensorsBuilder(self.model_context).build_scaled_inputs(
+    inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_unscaled_inputs(
         selected_geos=selected_geos, selected_times=selected_times
     )
     return self.filter_and_aggregate_by_indices(
@@ -1745,7 +1615,7 @@ class Analyzer:
     if spend_inc is not None and spend_inc.ndim == 3:
       inputs = tensors.DataTensorsBuilder(
           self.model_context
-      ).build_scaled_inputs(
+      ).build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -1870,7 +1740,7 @@ class Analyzer:
     if spend is not None and spend.ndim == 3:
       inputs = tensors.DataTensorsBuilder(
           self.model_context
-      ).build_scaled_inputs(
+      ).build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -2601,7 +2471,7 @@ class Analyzer:
     # TODO Add support for 1-dimensional spend.
     spend_inputs = tensors.DataTensorsBuilder(
         self.model_context
-    ).build_scaled_inputs(
+    ).build_unscaled_inputs(
         new_data=new_data,
         selected_geos=selected_geos,
         selected_times=selected_times,
@@ -2752,12 +2622,18 @@ class Analyzer:
     )
     if include_non_paid_channels:
       tensor_names_list += constants.NON_PAID_DATA
-    if new_data is None:
-      new_data = DataTensors()
-    data_tensors = new_data.validate_and_fill_missing_data(
+
+    inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_unscaled_inputs(
+        new_data=new_data,
         required_tensors_names=tensor_names_list,
-        model_context=self.model_context,
+        optimal_frequency=optimal_frequency,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
     )
+    data_tensors = inputs.tensors
+
     n_times = (
         data_tensors.get_modified_times(model_context=self.model_context)
         or self.model_context.n_times
@@ -2767,45 +2643,26 @@ class Analyzer:
       impressions_list.append(data_tensors.media[:, -n_times:, :])
 
     if self.model_context.n_rf_channels > 0:
-      if optimal_frequency is None:
-        new_frequency = data_tensors.frequency
-      else:
-        new_frequency = (
-            backend.ones_like(data_tensors.frequency) * optimal_frequency  # pytype: disable=unsupported-operands
-        )
       impressions_list.append(
-          data_tensors.reach[:, -n_times:, :] * new_frequency[:, -n_times:, :]
+          data_tensors.reach[:, -n_times:, :]
+          * data_tensors.frequency[:, -n_times:, :]
       )
 
     if include_non_paid_channels:
       if self.model_context.n_organic_media_channels > 0:
         impressions_list.append(data_tensors.organic_media[:, -n_times:, :])
       if self.model_context.n_organic_rf_channels > 0:
-        if optimal_frequency is None:
-          new_organic_frequency = data_tensors.organic_frequency
-        else:
-          new_organic_frequency = (
-              backend.ones_like(data_tensors.organic_frequency)  # pytype: disable=unsupported-operands
-              * optimal_frequency
-          )
         impressions_list.append(
             data_tensors.organic_reach[:, -n_times:, :]
-            * new_organic_frequency[:, -n_times:, :]
+            * data_tensors.organic_frequency[:, -n_times:, :]
         )
       if self.model_context.n_non_media_channels > 0:
         impressions_list.append(data_tensors.non_media_treatments)
 
-    impressions_inputs = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_scaled_inputs(
-        new_data=data_tensors,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
     return self.filter_and_aggregate_by_indices(
         tensor=backend.concatenate(impressions_list, axis=-1),
-        geo_indices=impressions_inputs.geo_indices,
-        time_indices=impressions_inputs.time_indices,
+        geo_indices=inputs.geo_indices,
+        time_indices=inputs.time_indices,
         aggregate_geos=aggregate_geos,
         aggregate_times=aggregate_times,
         flexible_time_dim=True,
@@ -3061,35 +2918,6 @@ class Analyzer:
         ],
         model_context=self.model_context,
     )
-    # TODO: Once treatment type filtering is added, remove adding
-    # dummy media and media spend to `roi()` and `summary_metrics()`. This is a
-    # hack to use `roi()` and `summary_metrics()` for RF only analysis.
-    has_media = self.model_context.n_media_channels > 0
-    n_media_times = (
-        filled_data.get_modified_times(model_context=self.model_context)
-        or self.model_context.n_media_times
-    )
-    n_times = (
-        filled_data.get_modified_times(model_context=self.model_context)
-        or self.model_context.n_times
-    )
-    dummy_media = backend.ones(
-        (
-            self.model_context.n_geos,
-            n_media_times,
-            self.model_context.n_media_channels,
-        ),
-        dtype=backend.float_dtype,
-    )
-    dummy_media_spend = backend.ones(
-        (
-            self.model_context.n_geos,
-            n_times,
-            self.model_context.n_media_channels,
-        ),
-        dtype=backend.float_dtype,
-    )
-
     max_freq = max_frequency or np.max(
         np.array(self.model_context.rf_tensors.frequency)
     )
@@ -3104,18 +2932,20 @@ class Analyzer:
     )
 
     for i, freq in enumerate(freq_grid):
-      new_frequency = backend.ones_like(filled_data.rf_impressions) * freq
-      new_reach = filled_data.rf_impressions / new_frequency
-      new_roi_data = DataTensors(
-          reach=new_reach,
-          frequency=new_frequency,
-          rf_spend=filled_data.rf_spend,
-          revenue_per_kpi=filled_data.revenue_per_kpi,
-          media=dummy_media if has_media else None,
-          media_spend=dummy_media_spend if has_media else None,
+      inputs = tensors.DataTensorsBuilder(
+          self.model_context
+      ).build_unscaled_inputs(
+          new_data=filled_data,
+          required_tensors_names=[
+              constants.RF_IMPRESSIONS,
+              constants.RF_SPEND,
+              constants.REVENUE_PER_KPI,
+          ],
+          optimal_frequency=freq,
+          insert_dummy_media=True,
       )
       metric_grid_temp = self.roi(
-          new_data=new_roi_data,
+          new_data=inputs.tensors,
           use_posterior=use_posterior,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -3134,22 +2964,14 @@ class Analyzer:
     )
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
-    optimal_frequency_values = backend.to_tensor(
-        optimal_frequency, dtype=backend.float_dtype
+    inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_unscaled_inputs(
+        new_data=filled_data,
+        optimal_frequency=optimal_frequency,
+        insert_dummy_media=True,
     )
-    optimal_frequency_tensor = (
-        backend.ones_like(filled_data.rf_impressions) * optimal_frequency_values
-    )
-    optimal_reach = filled_data.rf_impressions / optimal_frequency_tensor
-
-    new_summary_metrics_data = DataTensors(
-        reach=optimal_reach,
-        frequency=optimal_frequency_tensor,
-        rf_spend=filled_data.rf_spend,
-        revenue_per_kpi=filled_data.revenue_per_kpi,
-        media=dummy_media if has_media else None,
-        media_spend=dummy_media_spend if has_media else None,
-    )
+    new_summary_metrics_data = inputs.tensors
 
     # Compute the optimized metrics based on the optimal frequency.
     optimized_metrics_by_reach = self.summary_metrics(
@@ -3304,7 +3126,7 @@ class Analyzer:
       input_tensor = self.model_context.kpi * self.model_context.revenue_per_kpi
     predictive_accuracy_inputs = tensors.DataTensorsBuilder(
         self.model_context
-    ).build_scaled_inputs(
+    ).build_unscaled_inputs(
         selected_geos=selected_geos, selected_times=selected_times
     )
     actual = np.asarray(
@@ -3754,7 +3576,7 @@ class Analyzer:
     if spend is not None and spend.ndim == 3:
       spend_inputs = tensors.DataTensorsBuilder(
           self.model_context
-      ).build_scaled_inputs(
+      ).build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -4528,11 +4350,10 @@ class Analyzer:
     )
 
     builder = tensors.DataTensorsBuilder(self.model_context)
-    inputs = builder.build_scaled_inputs(
+    inputs = builder.build_unscaled_inputs(
         new_data=new_data,
         selected_geos=selected_geos,
         selected_times=selected_times,
-        include_non_paid_channels=False,  # We only need paid channels for spend
     )
     geo_indices = inputs.geo_indices
     time_indices = inputs.time_indices
