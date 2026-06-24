@@ -295,6 +295,7 @@ GAMMA_C = 'gamma_c'
 GAMMA_N = 'gamma_n'
 XI_C = 'xi_c'
 XI_N = 'xi_n'
+ALPHA_C = 'alpha_c'
 ALPHA_M = 'alpha_m'
 ALPHA_RF = 'alpha_rf'
 EC_M = 'ec_m'
@@ -438,7 +439,10 @@ NON_MEDIA_PARAMETERS = (
 )
 
 KNOTS_PARAMETERS = (KNOT_VALUES,)
-CONTROL_PARAMETERS = (GAMMA_C, XI_C)
+CONTROL_PARAMETERS = (
+    GAMMA_C,
+    XI_C,
+)
 SIGMA_PARAMETERS = (SIGMA,)
 GEO_PARAMETERS = (
     # TAU_G in InferenceData is derived from TAU_G_EXCL_BASELINE in the priors.
@@ -545,6 +549,7 @@ INFERENCE_DIMS = immutabledict.immutabledict(
         BETA_GORF: (GEO, ORGANIC_RF_CHANNEL),
         GAMMA_GC: (GEO, CONTROL_VARIABLE),
         GAMMA_GN: (GEO, NON_MEDIA_CHANNEL),
+        ALPHA_C: (CONTROL_VARIABLE,),
     }
     | {param: (CONTROL_VARIABLE,) for param in CONTROL_PARAMETERS}
     | {param: (NON_MEDIA_CHANNEL,) for param in NON_MEDIA_PARAMETERS}
