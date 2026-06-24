@@ -108,7 +108,7 @@ def _aggregate_spend(
   return np.einsum("gtm,tm->m", spend, factors)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class InputData:
   """A data container for advertising data in a format supported by Meridian.
 
