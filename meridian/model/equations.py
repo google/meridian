@@ -385,11 +385,12 @@ class ModelEquations:
   def calculate_beta_x(
       self,
       *,
-      is_non_media: bool,
       incremental_outcome_x: backend.Tensor,
       linear_predictor_counterfactual_difference: backend.Tensor,
       eta_x: backend.Tensor,
       beta_gx_dev: backend.Tensor,
+      normal_mask: backend.Tensor | None = None,
+      is_non_media: bool | None = None,
   ) -> backend.Tensor:
     """Calculates coefficient mean parameter for any treatment variable type.
 
@@ -399,11 +400,6 @@ class ModelEquations:
     treatments.
 
     Args:
-      is_non_media: Boolean indicating whether the treatment variable is a
-        non-media treatment. This argument is used to determine whether the
-        coefficient random effects are normal or log-normal. If `True`, then
-        random effects are assumed to be normal. Otherwise, the distribution is
-        inferred from `self._context.media_effects_dist`.
       incremental_outcome_x: The incremental outcome of the treatment variable,
         which depends on the parameter values of a particular prior or posterior
         draw. The "_x" indicates that this is a tensor with length equal to the
@@ -423,17 +419,47 @@ class ModelEquations:
         coefficients. For media variables, the "x" represents "m", "rf", "om",
         or "orf". For non-media treatments, this argument should be set to
         `gamma_gn_dev`, which is analogous to "beta_gx_dev".
+      normal_mask: A boolean tensor indicating which channels have normal random
+        effects (True) vs log-normal random effects (False).
+      is_non_media: Boolean indicating whether the treatment variable is a
+        non-media treatment.
 
     Returns:
       The coefficient mean parameter of the treatment variable, which has
       dimension equal to the number of treatment channels..
     """
-    if is_non_media:
-      random_effects_normal = True
-    else:
-      random_effects_normal = (
-          self._context.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-      )
+    if normal_mask is None:
+      if is_non_media is not None:
+        if is_non_media:
+          normal_mask = backend.ones_like(
+              incremental_outcome_x, dtype=backend.bool_
+          )
+        elif isinstance(self._context.media_effects_dist, str):
+          is_normal = (
+              self._context.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+          )
+          normal_mask = backend.broadcast_to(
+              backend.to_tensor(is_normal, dtype=backend.bool_),
+              [incremental_outcome_x.shape[-1]],
+          )
+        else:
+          n = incremental_outcome_x.shape[-1]
+          if n == self._context.n_media_channels:
+            normal_mask = self._context.media_effects_dist_normal_m
+          elif n == self._context.n_rf_channels:
+            normal_mask = self._context.media_effects_dist_normal_rf
+          elif n == self._context.n_organic_media_channels:
+            normal_mask = self._context.media_effects_dist_normal_om
+          elif n == self._context.n_organic_rf_channels:
+            normal_mask = self._context.media_effects_dist_normal_orf
+          else:
+            raise ValueError(
+                "Cannot infer `normal_mask` for `calculate_beta_x`. Please pass"
+                " `normal_mask` explicitly."
+            )
+      else:
+        raise ValueError("Must provide either `normal_mask` or `is_non_media`.")
+
     if self._context.revenue_per_kpi is None:
       revenue_per_kpi = backend.ones(
           [self._context.n_geos, self._context.n_times],
@@ -448,22 +474,58 @@ class ModelEquations:
         self._context.population,
         self._context.kpi_transformer.population_scaled_stdev,
     )
-    if random_effects_normal:
-      numerator_term_x = backend.einsum(
-          "...gx,...gx,...x->...x",
-          incremental_outcome_gx_over_beta_gx,
-          beta_gx_dev,
-          eta_x,
-      )
-      denominator_term_x = backend.einsum(
-          "...gx->...x", incremental_outcome_gx_over_beta_gx
-      )
-      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
-    # For log-normal random effects, beta_x and eta_x are not mean & std.
-    # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
-    denominator_term_x = backend.einsum(
+
+    # Normal branch calculations
+    numerator_term_x_normal = backend.einsum(
+        "...gx,...gx,...x->...x",
+        incremental_outcome_gx_over_beta_gx,
+        beta_gx_dev,
+        eta_x,
+    )
+    denominator_term_x_normal = backend.einsum(
+        "...gx->...x", incremental_outcome_gx_over_beta_gx
+    )
+    # Avoid division by zero in normal branch if it's not used.
+    safe_denominator_normal = backend.where(
+        normal_mask,
+        denominator_term_x_normal,
+        backend.ones_like(denominator_term_x_normal),
+    )
+    beta_normal = (
+        incremental_outcome_x - numerator_term_x_normal
+    ) / safe_denominator_normal
+
+    # Log-normal branch calculations
+    # Protect inputs to log to avoid NaNs in the unused branch.
+    safe_inc_outcome_log_normal = backend.where(
+        normal_mask,
+        backend.ones_like(incremental_outcome_x),
+        incremental_outcome_x,
+    )
+    safe_inc_outcome_log_normal = backend.where(
+        safe_inc_outcome_log_normal <= 0,
+        backend.ones_like(safe_inc_outcome_log_normal),
+        safe_inc_outcome_log_normal,
+    )
+
+    denominator_term_x_log_normal = backend.einsum(
         "...gx,...gx->...x",
         incremental_outcome_gx_over_beta_gx,
         backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
     )
-    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
+    safe_den_log_normal = backend.where(
+        normal_mask,
+        backend.ones_like(denominator_term_x_log_normal),
+        denominator_term_x_log_normal,
+    )
+    safe_den_log_normal = backend.where(
+        safe_den_log_normal <= 0,
+        backend.ones_like(safe_den_log_normal),
+        safe_den_log_normal,
+    )
+
+    beta_log_normal = backend.log(safe_inc_outcome_log_normal) - backend.log(
+        safe_den_log_normal
+    )
+
+    return backend.where(normal_mask, beta_normal, beta_log_normal)

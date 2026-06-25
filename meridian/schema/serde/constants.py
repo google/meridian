@@ -25,6 +25,8 @@ ADSTOCK_DECAY_SPEC = 'adstock_decay_spec'
 GLOBAL_ADSTOCK_DECAY = 'global_adstock_decay'
 ADSTOCK_DECAY_BY_CHANNEL = 'adstock_decay_by_channel'
 DEFAULT_DECAY = 'geometric'
+MEDIA_EFFECTS_DIST_BY_CHANNEL = 'media_effects_dist_by_channel'
+
 
 SATURATION_SPEC = 'saturation_spec'
 GLOBAL_SATURATION = 'global_saturation'

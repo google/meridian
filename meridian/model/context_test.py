@@ -512,6 +512,37 @@ class ContextTest(
         model_context.media_effects_dist, expected_media_effects_dist
     )
 
+  def test_media_effects_dist_property_mapping(self):
+    dist_map = {"ch_0": "normal", "ch_1": "log_normal", "ch_2": "log_normal"}
+    model_context = context.ModelContext(
+        input_data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self.input_data_samples._N_GEOS, n_media_channels=3
+        ),
+        model_spec=spec.ModelSpec(media_effects_dist=dist_map),
+    )
+    self.assertEqual(model_context.media_effects_dist, dist_map)
+    test_utils.assert_allequal(
+        model_context.media_effects_dist_normal_m, [True, False, False]
+    )
+    test_utils.assert_allequal(
+        model_context.media_effects_dist_log_normal_m, [False, True, True]
+    )
+
+  def test_media_effects_dist_invalid_channel_key_raises_error(self):
+    dist_map = {"ch_0": "normal", "bad_channel": "log_normal"}
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Unrecognized channel name 'bad_channel' in `media_effects_dist`"
+        " keys. Keys should contain only channel names from"
+        " ['ch_0', 'ch_1', 'ch_2'].",
+    ):
+      context.ModelContext(
+          input_data=data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+              n_geos=self.input_data_samples._N_GEOS, n_media_channels=3
+          ),
+          model_spec=spec.ModelSpec(media_effects_dist=dist_map),
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="geo_unique_sigma_for_each_geo_true",
@@ -960,60 +991,61 @@ class ContextTest(
   @parameterized.named_parameters(
       dict(
           testcase_name="roi_m",
-          dist_args=([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 0.9),
+          dist_args=([0.1, 0.2, 0.3], 0.9),
           dist_name=constants.ROI_M,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
           testcase_name="roi_rf",
           dist_args=(0.0, 0.9),
           dist_name=constants.ROI_RF,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
       ),
       dict(
           testcase_name="mroi_m",
           dist_args=(0.5, 0.9),
           dist_name=constants.MROI_M,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
       ),
       dict(
           testcase_name="mroi_rf",
-          dist_args=([0.0, 0.0, 0.0, 0.0], 0.9),
+          dist_args=([0.0, 0.0], 0.9),
           dist_name=constants.MROI_RF,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
       ),
       dict(
           testcase_name="contribution_m",
           dist_args=(0.0, 0.9),
           dist_name=constants.CONTRIBUTION_M,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
       ),
       dict(
           testcase_name="contribution_rf",
           dist_args=(0.0, 0.9),
           dist_name=constants.CONTRIBUTION_RF,
-          media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
       ),
   )
   def test_check_for_negative_support_paid_media_raises_error(
       self,
       dist_args: tuple[list[float] | float, float],
       dist_name: str,
-      media_prior_type: str,
+      prior_type: str,
   ):
     dist = backend.tfd.Normal(*dist_args, name=dist_name)
     prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Media priors must have non-negative support when"
-        ' `media_effects_dist`="log_normal". Found negative prior distribution'
-        f" support for {dist_name}.",
+        " `media_effects_dist` is log_normal for that channel. Found negative"
+        f" prior distribution support for {dist_name}.",
     ):
       context.ModelContext(
           input_data=self.input_data_with_media_and_rf,
           model_spec=spec.ModelSpec(
               media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
-              media_prior_type=media_prior_type,
+              media_prior_type=prior_type,
+              rf_prior_type=prior_type,
               prior=prior_dist,
           ),
       )
@@ -1043,8 +1075,8 @@ class ContextTest(
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Media priors must have non-negative support when"
-        ' `media_effects_dist`="log_normal". Found negative prior distribution'
-        f" support for {dist_name}.",
+        " `media_effects_dist` is log_normal for that channel. Found negative"
+        f" prior distribution support for {dist_name}.",
     ):
       context.ModelContext(
           input_data=self.input_data_non_media_and_organic,
@@ -1331,7 +1363,7 @@ class ContextTest(
 
   def test_custom_priors_okay_with_array_params(self):
     prior = prior_distribution.PriorDistribution(
-        roi_m=backend.tfd.LogNormal([1, 1], [1, 1])
+        roi_m=backend.tfd.LogNormal([1, 1, 1], [1, 1, 1])
     )
     data = self.input_data_non_revenue_no_revenue_per_kpi
     model_context = context.ModelContext(

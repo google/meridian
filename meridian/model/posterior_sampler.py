@@ -148,7 +148,6 @@ def _joint_dist_base_logic(
   non_media_treatments_normalized = (
       model_context.non_media_treatments_normalized
   )
-  media_effects_dist = model_context.media_effects_dist
   adstock_hill_media_fn = model_equations.adstock_hill_media
   adstock_hill_rf_fn = model_equations.adstock_hill_rf
   total_outcome = model_context.total_outcome
@@ -231,7 +230,7 @@ def _joint_dist_base_logic(
           )
       )
       beta_m = model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=model_context.media_effects_dist_normal_m,
           incremental_outcome_x=incremental_outcome_m,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=eta_m,
@@ -241,10 +240,10 @@ def _joint_dist_base_logic(
         yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
 
     beta_eta_combined = beta_m + eta_m * beta_gm_dev
-    beta_gm = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gm = backend.where(
+        model_context.media_effects_dist_normal_m,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_gm, name=constants.BETA_GM)
@@ -299,7 +298,7 @@ def _joint_dist_base_logic(
           )
       )
       beta_rf = model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=model_context.media_effects_dist_normal_rf,
           incremental_outcome_x=incremental_outcome_rf,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=eta_rf,
@@ -309,10 +308,10 @@ def _joint_dist_base_logic(
         yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
 
     beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-    beta_grf = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_grf = backend.where(
+        model_context.media_effects_dist_normal_rf,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_grf, name=constants.BETA_GRF)
@@ -348,7 +347,7 @@ def _joint_dist_base_logic(
       contribution_om = yield prior_broadcast.contribution_om
       incremental_outcome_om = contribution_om * total_outcome
       beta_om = model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=model_context.media_effects_dist_normal_om,
           incremental_outcome_x=incremental_outcome_om,
           linear_predictor_counterfactual_difference=organic_media_transformed,
           eta_x=eta_om,
@@ -360,10 +359,10 @@ def _joint_dist_base_logic(
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = beta_om + eta_om * beta_gom_dev
-    beta_gom = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gom = backend.where(
+        model_context.media_effects_dist_normal_om,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_gom, name=constants.BETA_GOM)
@@ -401,7 +400,7 @@ def _joint_dist_base_logic(
       contribution_orf = yield prior_broadcast.contribution_orf
       incremental_outcome_orf = contribution_orf * total_outcome
       beta_orf = model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=model_context.media_effects_dist_normal_orf,
           incremental_outcome_x=incremental_outcome_orf,
           linear_predictor_counterfactual_difference=organic_rf_transformed,
           eta_x=eta_orf,
@@ -413,10 +412,10 @@ def _joint_dist_base_logic(
       raise ValueError(f"Unsupported prior type: {prior_type}")
 
     beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
-    beta_gorf = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gorf = backend.where(
+        model_context.media_effects_dist_normal_orf,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_gorf, name=constants.BETA_GORF)
@@ -482,7 +481,9 @@ def _joint_dist_base_logic(
           non_media_treatments_normalized - baseline_scaled
       )
       gamma_n = model_equations.calculate_beta_x(
-          is_non_media=True,
+          normal_mask=backend.ones(
+              [n_non_media_channels], dtype=backend.bool_
+          ),
           incremental_outcome_x=incremental_outcome_n,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=xi_n,
