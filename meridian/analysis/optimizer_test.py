@@ -3105,6 +3105,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     with warnings.catch_warnings(record=True) as w_list:
       # Ensure only warnings in the analyzer module are not captured
       warnings.filterwarnings(action='ignore', module=analyzer.__name__)
+      warnings.filterwarnings(action='ignore', category=DeprecationWarning)
       self.budget_optimizer_media_and_rf.optimize(
           fixed_budget=False, target_roi=1e-6
       )
@@ -3123,6 +3124,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     with warnings.catch_warnings(record=True) as w_list:
       # Ensure only warnings in the analyzer module are not captured
       warnings.filterwarnings(action='ignore', module=analyzer.__name__)
+      warnings.filterwarnings(action='ignore', category=DeprecationWarning)
       self.budget_optimizer_media_and_rf.optimize(
           fixed_budget=False, target_mroi=1e-6
       )

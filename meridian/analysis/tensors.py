@@ -376,6 +376,9 @@ class DataTensors(backend.ExtensionType):
   ) -> int | None:
     """Returns `n_times` of any tensor where `n_times` has been modified.
 
+    WARNING: This method is deprecated and will be removed in a future version.
+    Use `DataTensorsBuilder.get_modified_times` instead.
+
     This method compares the time dimensions of the attributes in the
     `DataTensors` object with the corresponding tensors in the `model_context`
     object. If any of the time dimensions are different, then this method
@@ -394,24 +397,14 @@ class DataTensors(backend.ExtensionType):
       of the corresponding tensor in the `model_context` object. If all time
       dimensions are the same, returns `None`.
     """
-    model_context = _get_model_context(meridian, model_context)
-    for field in dataclasses.fields(self):
-      new_tensor = getattr(self, field.name)
-      if field.name == constants.RF_IMPRESSIONS:
-        old_tensor = getattr(model_context.rf_tensors, field.name)
-      else:
-        old_tensor = getattr(model_context.input_data, field.name)
-      # The time dimension is always the second dimension, except for when spend
-      # data is provided with only one dimension of (n_channels).
-      if (
-          new_tensor is not None
-          and old_tensor is not None
-          and new_tensor.ndim > 1
-          and old_tensor.ndim > 1
-          and new_tensor.shape[1] != old_tensor.shape[1]
-      ):
-        return new_tensor.shape[1]
-    return None
+    warnings.warn(
+        "DataTensors.get_modified_times is deprecated and will be removed in a"
+        " future version. Use DataTensorsBuilder.get_modified_times instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    ctx = _get_model_context(meridian, model_context)
+    return DataTensorsBuilder(ctx).get_modified_times(self)
 
   def filter_fields(self, fields: Sequence[str]) -> Self:
     """Returns a new DataTensors object with only the specified fields."""
@@ -423,12 +416,14 @@ class DataTensors(backend.ExtensionType):
   def validate_and_fill_missing_data(
       self,
       required_tensors_names: Sequence[str],
-      # TODO: Remove this argument.
       meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
       allow_modified_times: bool = True,
   ) -> Self:
     """Fills missing data tensors with their original values from the model.
+
+    WARNING: This method is deprecated and will be removed in a future version.
+    Use `DataTensorsBuilder.build_unscaled_inputs` instead.
 
     This method uses the collection of data tensors set in the DataTensor class
     and fills in the missing tensors with their original values from the
@@ -454,30 +449,19 @@ class DataTensors(backend.ExtensionType):
       A `DataTensors` container with the original values from the Meridian
       object filled in for the missing data tensors.
     """
-    model_context = _get_model_context(meridian, model_context)
-    self._validate_correct_variables_filled(
-        required_variables=required_tensors_names,
-        model_context=model_context,
+    warnings.warn(
+        "DataTensors.validate_and_fill_missing_data is deprecated and will be"
+        " removed in a future version. Use"
+        " DataTensorsBuilder.build_unscaled_inputs instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    self._validate_geo_dims(
-        required_fields=required_tensors_names, model_context=model_context
+    ctx = _get_model_context(meridian, model_context)
+    # pylint: disable=protected-access
+    return DataTensorsBuilder(ctx)._validate_and_fill_missing_data(
+        self, required_tensors_names, allow_modified_times
     )
-    self._validate_channel_dims(
-        required_fields=required_tensors_names, model_context=model_context
-    )
-    if allow_modified_times:
-      self._validate_time_dims_flexible_times(
-          required_fields=required_tensors_names, model_context=model_context
-      )
-    else:
-      self._validate_time_dims(
-          required_fields=required_tensors_names, model_context=model_context
-      )
-
-    return self._fill_default_values(
-        required_fields=required_tensors_names,
-        model_context=model_context,
-    )
+    # pylint: enable=protected-access
 
   def _validate_n_dims(self):
     """Raises an error if the tensors have the wrong number of dimensions."""
@@ -497,218 +481,6 @@ class DataTensors(backend.ExtensionType):
         _check_n_dims(tensor, field.name, 1)
       else:
         _check_n_dims(tensor, field.name, 3)
-
-  def _validate_correct_variables_filled(
-      self,
-      required_variables: Sequence[str],
-      model_context: context.ModelContext,
-  ) -> None:
-    """Validates that the correct variables are filled.
-
-    Args:
-      required_variables: A sequence of data tensors names that are required to
-        be filled in.
-      model_context: A `ModelContext` object to validate against.
-
-    Raises:
-      ValueError: If an attribute exists in the `DataTensors` object that is not
-        in the `model_context` object, it is not allowed to be used in analysis.
-      Warning: If an attribute exists in the `DataTensors` object that is not in
-        the `required_variables` list, it will be ignored.
-    """
-    for field in dataclasses.fields(self):
-      tensor = getattr(self, field.name)
-      if tensor is None:
-        continue
-      if field.name not in required_variables:
-        warnings.warn(
-            f"A `{field.name}` value was passed in the `new_data` argument. "
-            "This is not supported and will be ignored."
-        )
-      if field.name in required_variables:
-        if field.name == constants.RF_IMPRESSIONS:
-          if model_context.n_rf_channels == 0:
-            raise ValueError(
-                "New `rf_impressions` is not allowed because there are no R&F"
-                " channels in the Meridian model."
-            )
-        elif getattr(model_context.input_data, field.name) is None:
-          raise ValueError(
-              f"New `{field.name}` is not allowed because the input data to the"
-              f" Meridian model does not contain `{field.name}`."
-          )
-
-  def _validate_geo_dims(
-      self,
-      required_fields: Sequence[str],
-      model_context: context.ModelContext,
-  ) -> None:
-    """Validates the geo dimension of the specified data variables."""
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      if new_tensor is not None and new_tensor.shape[0] != model_context.n_geos:
-        # Skip spend and time data with only 1 dimension.
-        if new_tensor.ndim == 1:
-          continue
-        raise ValueError(
-            f"New `{var_name}` is expected to have {model_context.n_geos}"
-            f" geos. Found {new_tensor.shape[0]} geos."
-        )
-
-  def _validate_channel_dims(
-      self,
-      required_fields: Sequence[str],
-      model_context: context.ModelContext,
-  ) -> None:
-    """Validates the channel dimension of the specified data variables."""
-    for var_name in required_fields:
-      if var_name in [constants.REVENUE_PER_KPI, constants.TIME]:
-        continue
-      new_tensor = getattr(self, var_name)
-      if var_name == constants.RF_IMPRESSIONS:
-        old_tensor = getattr(model_context.rf_tensors, var_name)
-      else:
-        old_tensor = getattr(model_context.input_data, var_name)
-      if new_tensor is not None:
-        assert old_tensor is not None
-        if new_tensor.shape[-1] != old_tensor.shape[-1]:
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[-1]}"
-              f" channels. Found {new_tensor.shape[-1]} channels."
-          )
-
-  def _validate_time_dims(
-      self,
-      required_fields: Sequence[str],
-      model_context: context.ModelContext,
-  ):
-    """Validates the time dimension of the specified data variables."""
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      if var_name == constants.RF_IMPRESSIONS:
-        old_tensor = getattr(model_context.rf_tensors, var_name)
-      else:
-        old_tensor = getattr(model_context.input_data, var_name)
-
-      # Skip spend data with only 1 dimension of (n_channels).
-      if (
-          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
-          and new_tensor is not None
-          and new_tensor.ndim == 1
-      ):
-        continue
-
-      if new_tensor is not None:
-        assert old_tensor is not None
-        if (
-            var_name == constants.TIME
-            and new_tensor.shape[0] != old_tensor.shape[0]
-        ):
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[0]}"
-              f" time periods. Found {new_tensor.shape[0]} time periods."
-          )
-        elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
-              f" time periods. Found {new_tensor.shape[1]} time periods."
-          )
-
-  def _validate_time_dims_flexible_times(
-      self,
-      required_fields: Sequence[str],
-      model_context: context.ModelContext,
-  ):
-    """Validates the time dimension for the flexible times case."""
-    new_n_times = self.get_modified_times(model_context=model_context)
-    # If no times were modified, then there is nothing more to validate.
-    if new_n_times is None:
-      return
-
-    missing_params = []
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      if var_name == constants.RF_IMPRESSIONS:
-        old_tensor = getattr(model_context.rf_tensors, var_name)
-      else:
-        old_tensor = getattr(model_context.input_data, var_name)
-
-      if old_tensor is None:
-        continue
-
-      if new_tensor is None:
-        missing_params.append(var_name)
-      elif var_name == constants.TIME and new_tensor.shape[0] != new_n_times:
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is "
-            "modified, then all variables must be provided with the same "
-            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
-            "time periods, which does not match the modified number of time "
-            f"periods, {new_n_times}.",
-        )
-      elif (
-          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
-          and new_tensor.ndim == 1
-      ):
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is modified, "
-            "then spend variables must be provided at the geo and time "
-            "granularity with the same number of time periods as the other "
-            f"new data variables. Found `{var_name}` with only 1 dimension."
-        )
-      elif new_tensor.ndim > 1 and new_tensor.shape[1] != new_n_times:
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is "
-            "modified, then all variables must be provided with the same "
-            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
-            "time periods, which does not match the modified number of time "
-            f"periods, {new_n_times}.",
-        )
-
-    if missing_params:
-      raise ValueError(
-          "If the time dimension of a variable in `new_data` is modified,"
-          " then all variables must be provided in `new_data`."
-          f" The following variables are missing: `{missing_params}`."
-      )
-
-  def _fill_default_values(
-      self,
-      required_fields: Sequence[str],
-      model_context: context.ModelContext,
-  ) -> Self:
-    """Fills default values and returns a new DataTensors object."""
-    output = {}
-    for field in dataclasses.fields(self):
-      var_name = field.name
-      if var_name not in required_fields:
-        continue
-
-      if hasattr(model_context.media_tensors, var_name):
-        old_tensor = getattr(model_context.media_tensors, var_name)
-      elif hasattr(model_context.rf_tensors, var_name):
-        old_tensor = getattr(model_context.rf_tensors, var_name)
-      elif hasattr(model_context.organic_media_tensors, var_name):
-        old_tensor = getattr(model_context.organic_media_tensors, var_name)
-      elif hasattr(model_context.organic_rf_tensors, var_name):
-        old_tensor = getattr(model_context.organic_rf_tensors, var_name)
-      elif var_name == constants.NON_MEDIA_TREATMENTS:
-        old_tensor = model_context.non_media_treatments
-      elif var_name == constants.CONTROLS:
-        old_tensor = model_context.controls
-      elif var_name == constants.REVENUE_PER_KPI:
-        old_tensor = model_context.revenue_per_kpi
-      elif var_name == constants.TIME:
-        old_tensor = backend.to_tensor(
-            model_context.input_data.time.values.tolist(), dtype=backend.string
-        )
-      else:
-        continue
-
-      new_tensor = getattr(self, var_name)
-      output[var_name] = new_tensor if new_tensor is not None else old_tensor
-
-    return DataTensors(**output)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -787,7 +559,7 @@ def _scale_tensors_by_multiplier(
   incremented_data[constants.CONTROLS] = data.controls
   incremented_data[constants.REVENUE_PER_KPI] = data.revenue_per_kpi
 
-  return DataTensors(**incremented_data)
+  return dataclasses.replace(data, **incremented_data)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -802,6 +574,7 @@ class AnalyzerInputs(backend.ExtensionType):
 @dataclasses.dataclass(kw_only=True)
 class CounterfactualInputs(AnalyzerInputs):
   """Payload specifically for counterfactual scenarios."""
+
   non_media_baseline_normalized: Optional[backend.Tensor] = None
   media_selected_times_mask: Optional[tuple[bool, ...]] = None
 
@@ -816,6 +589,285 @@ class DataTensorsBuilder:
   def __init__(self, model_context: context.ModelContext):
     """Initializes the instance."""
     self.model_context = model_context
+
+  def get_modified_times(self, data: DataTensors) -> int | None:
+    """Returns `n_times` of any tensor where `n_times` has been modified.
+
+    This method compares the time dimensions of the attributes in the
+    `DataTensors` object with the corresponding tensors in the `model_context`
+    object. If any of the time dimensions are different, then this method
+    returns the modified number of time periods of the tensor in the
+    `DataTensors` object. If all time dimensions are the same, returns `None`.
+
+    Args:
+      data: A DataTensors object to check.
+
+    Returns:
+      The `n_times` of any tensor where `n_times` is different from the times
+      of the corresponding tensor in the `model_context` object. If all time
+      dimensions are the same, returns `None`.
+    """
+    for field in dataclasses.fields(data):
+      new_tensor = getattr(data, field.name)
+      if field.name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(self.model_context.rf_tensors, field.name)
+      else:
+        old_tensor = getattr(self.model_context.input_data, field.name)
+      # The time dimension is always the second dimension, except for when spend
+      # data is provided with only one dimension of (n_channels).
+      if (
+          new_tensor is not None
+          and old_tensor is not None
+          and new_tensor.ndim > 1
+          and old_tensor.ndim > 1
+          and new_tensor.shape[1] != old_tensor.shape[1]
+      ):
+        return new_tensor.shape[1]
+    return None
+
+  def _validate_and_fill_missing_data(
+      self,
+      data: DataTensors,
+      required_tensors_names: Sequence[str],
+      allow_modified_times: bool = True,
+  ) -> DataTensors:
+    """Fills missing data tensors with their original values from the model."""
+    self._validate_correct_variables_filled(
+        data=data,
+        required_variables=required_tensors_names,
+    )
+    self._validate_geo_dims(
+        data=data,
+        required_fields=required_tensors_names,
+    )
+    self._validate_channel_dims(
+        data=data,
+        required_fields=required_tensors_names,
+    )
+    if allow_modified_times:
+      self._validate_time_dims_flexible_times(
+          data=data,
+          required_fields=required_tensors_names,
+      )
+    else:
+      self._validate_time_dims(
+          data=data,
+          required_fields=required_tensors_names,
+      )
+
+    return self._fill_default_values(
+        data=data,
+        required_fields=required_tensors_names,
+    )
+
+  def _validate_correct_variables_filled(
+      self,
+      data: DataTensors,
+      required_variables: Sequence[str],
+  ) -> None:
+    """Validates that the correct variables are filled."""
+    for field in dataclasses.fields(data):
+      tensor = getattr(data, field.name)
+      if tensor is None:
+        continue
+      if field.name == "time":
+        continue
+      if field.name not in required_variables:
+        warnings.warn(
+            f"A `{field.name}` value was passed in the `new_data` argument. "
+            "This is not supported and will be ignored."
+        )
+      if field.name in required_variables:
+        if field.name == constants.RF_IMPRESSIONS:
+          if self.model_context.n_rf_channels == 0:
+            raise ValueError(
+                "New `rf_impressions` is not allowed because there are no R&F"
+                " channels in the Meridian model."
+            )
+        elif getattr(self.model_context.input_data, field.name) is None:
+          raise ValueError(
+              f"New `{field.name}` is not allowed because the input data to the"
+              f" Meridian model does not contain `{field.name}`."
+          )
+
+  def _validate_geo_dims(
+      self,
+      data: DataTensors,
+      required_fields: Sequence[str],
+  ) -> None:
+    """Validates the geo dimension of the specified data variables."""
+    for var_name in required_fields:
+      new_tensor = getattr(data, var_name)
+      if (
+          new_tensor is not None
+          and new_tensor.shape[0] != self.model_context.n_geos
+      ):
+        # Skip spend and time data with only 1 dimension.
+        if new_tensor.ndim == 1:
+          continue
+        raise ValueError(
+            f"New `{var_name}` is expected to have {self.model_context.n_geos}"
+            f" geos. Found {new_tensor.shape[0]} geos."
+        )
+
+  def _validate_channel_dims(
+      self,
+      data: DataTensors,
+      required_fields: Sequence[str],
+  ) -> None:
+    """Validates the channel dimension of the specified data variables."""
+    for var_name in required_fields:
+      if var_name in [constants.REVENUE_PER_KPI, constants.TIME]:
+        continue
+      new_tensor = getattr(data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(self.model_context.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(self.model_context.input_data, var_name)
+      if new_tensor is not None:
+        assert old_tensor is not None
+        if new_tensor.shape[-1] != old_tensor.shape[-1]:
+          raise ValueError(
+              f"New `{var_name}` is expected to have {old_tensor.shape[-1]}"
+              f" channels. Found {new_tensor.shape[-1]} channels."
+          )
+
+  def _validate_time_dims(
+      self,
+      data: DataTensors,
+      required_fields: Sequence[str],
+  ) -> None:
+    """Validates the time dimension of the specified data variables."""
+    for var_name in required_fields:
+      new_tensor = getattr(data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(self.model_context.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(self.model_context.input_data, var_name)
+
+      # Skip spend data with only 1 dimension of (n_channels).
+      if (
+          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
+          and new_tensor is not None
+          and new_tensor.ndim == 1
+      ):
+        continue
+
+      if new_tensor is not None:
+        assert old_tensor is not None
+        if (
+            var_name == constants.TIME
+            and new_tensor.shape[0] != old_tensor.shape[0]
+        ):
+          raise ValueError(
+              f"New `{var_name}` is expected to have {old_tensor.shape[0]}"
+              f" time periods. Found {new_tensor.shape[0]} time periods."
+          )
+        elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
+          raise ValueError(
+              f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
+              f" time periods. Found {new_tensor.shape[1]} time periods."
+          )
+
+  def _validate_time_dims_flexible_times(
+      self,
+      data: DataTensors,
+      required_fields: Sequence[str],
+  ) -> None:
+    """Validates the time dimension for the flexible times case."""
+    new_n_times = self.get_modified_times(data)
+    # If no times were modified, then there is nothing more to validate.
+    if new_n_times is None:
+      return
+
+    missing_params = []
+    for var_name in required_fields:
+      new_tensor = getattr(data, var_name)
+      if var_name == constants.RF_IMPRESSIONS:
+        old_tensor = getattr(self.model_context.rf_tensors, var_name)
+      else:
+        old_tensor = getattr(self.model_context.input_data, var_name)
+
+      if old_tensor is None:
+        continue
+
+      if new_tensor is None:
+        missing_params.append(var_name)
+      elif var_name == constants.TIME and new_tensor.shape[0] != new_n_times:
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is "
+            "modified, then all variables must be provided with the same "
+            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
+            "time periods, which does not match the modified number of time "
+            f"periods, {new_n_times}.",
+        )
+      elif (
+          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
+          and new_tensor.ndim == 1
+      ):
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is modified, "
+            "then spend variables must be provided at the geo and time "
+            "granularity with the same number of time periods as the other "
+            f"new data variables. Found `{var_name}` with only 1 dimension."
+        )
+      elif new_tensor.ndim > 1 and new_tensor.shape[1] != new_n_times:
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is "
+            "modified, then all variables must be provided with the same "
+            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
+            "time periods, which does not match the modified number of time "
+            f"periods, {new_n_times}.",
+        )
+
+    if missing_params:
+      raise ValueError(
+          "If the time dimension of a variable in `new_data` is modified,"
+          " then all variables must be provided in `new_data`."
+          f" The following variables are missing: `{missing_params}`."
+      )
+
+  def _fill_default_values(
+      self,
+      data: DataTensors,
+      required_fields: Sequence[str],
+  ) -> DataTensors:
+    """Fills default values and returns a new DataTensors object."""
+    output = {}
+    for field in dataclasses.fields(data):
+      var_name = field.name
+      if var_name == "time" and data.time is not None:
+        output["time"] = data.time
+        continue
+      if var_name not in required_fields:
+        continue
+
+      if hasattr(self.model_context.media_tensors, var_name):
+        old_tensor = getattr(self.model_context.media_tensors, var_name)
+      elif hasattr(self.model_context.rf_tensors, var_name):
+        old_tensor = getattr(self.model_context.rf_tensors, var_name)
+      elif hasattr(self.model_context.organic_media_tensors, var_name):
+        old_tensor = getattr(self.model_context.organic_media_tensors, var_name)
+      elif hasattr(self.model_context.organic_rf_tensors, var_name):
+        old_tensor = getattr(self.model_context.organic_rf_tensors, var_name)
+      elif var_name == constants.NON_MEDIA_TREATMENTS:
+        old_tensor = self.model_context.non_media_treatments
+      elif var_name == constants.CONTROLS:
+        old_tensor = self.model_context.controls
+      elif var_name == constants.REVENUE_PER_KPI:
+        old_tensor = self.model_context.revenue_per_kpi
+      elif var_name == constants.TIME:
+        old_tensor = backend.to_tensor(
+            self.model_context.input_data.time.values.tolist(),
+            dtype=backend.string,
+        )
+      else:
+        continue
+
+      new_tensor = getattr(data, var_name)
+      output[var_name] = new_tensor if new_tensor is not None else old_tensor
+
+    return DataTensors(**output)
 
   def _resolve_geo_indices(
       self, selected_geos: Sequence[str] | None
@@ -888,10 +940,7 @@ class DataTensorsBuilder:
       **kwargs,
   ) -> AnalyzerInputs:
     """Resolves indices and packages tensors into the specified payload class."""
-    n_times = (
-        tensors.get_modified_times(model_context=self.model_context)
-        or self.model_context.n_times
-    )
+    n_times = self.get_modified_times(tensors) or self.model_context.n_times
 
     geo_indices = self._resolve_geo_indices(selected_geos)
     if tensors.time is not None:
@@ -929,9 +978,9 @@ class DataTensorsBuilder:
       filled_data = new_data
 
     if required_tensors_names is not None:
-      filled_data = filled_data.validate_and_fill_missing_data(
+      filled_data = self._validate_and_fill_missing_data(
+          data=filled_data,
           required_tensors_names=required_tensors_names,
-          model_context=self.model_context,
       )
 
     if optimal_frequency is not None:
@@ -983,12 +1032,11 @@ class DataTensorsBuilder:
 
     if insert_dummy_media and self.model_context.n_media_channels > 0:
       n_media_times = (
-          filled_data.get_modified_times(model_context=self.model_context)
+          self.get_modified_times(filled_data)
           or self.model_context.n_media_times
       )
       n_times = (
-          filled_data.get_modified_times(model_context=self.model_context)
-          or self.model_context.n_times
+          self.get_modified_times(filled_data) or self.model_context.n_times
       )
 
       dummy_media = backend.ones(
@@ -1129,10 +1177,7 @@ class DataTensorsBuilder:
 
     times_modified = False
     if new_data is not None:
-      times_modified = (
-          new_data.get_modified_times(model_context=self.model_context)
-          is not None
-      )
+      times_modified = self.get_modified_times(new_data) is not None
 
     required_params = list(constants.PAID_DATA)
     if include_non_paid_channels:
@@ -1144,9 +1189,7 @@ class DataTensorsBuilder:
         new_data=new_data, required_tensors_names=required_params
     )
 
-    new_n_media_times = base_unscaled.get_modified_times(
-        model_context=self.model_context
-    )
+    new_n_media_times = self.get_modified_times(base_unscaled)
 
     if new_n_media_times is None:
       new_n_media_times = self.model_context.n_media_times
@@ -1164,11 +1207,21 @@ class DataTensorsBuilder:
           arg_name="media_selected_times",
           comparison_arg_name="the media tensors",
       )
+      media_times = self.model_context.input_data.media_time
     else:
+      new_time = (
+          np.asarray(base_unscaled.time).astype(str).tolist()
+          if base_unscaled.time is not None
+          else None
+      )
       _validate_flexible_selected_times(
           selected_times=selected_times,
           media_selected_times=media_selected_times,
           new_n_media_times=new_n_media_times,
+          new_time=new_time,
+      )
+      media_times = (
+          new_time[-new_n_media_times:] if new_time is not None else []
       )
 
     if media_selected_times is None:
@@ -1176,8 +1229,7 @@ class DataTensorsBuilder:
     else:
       if all(isinstance(time, str) for time in media_selected_times):
         resolved_media_selected_times = [
-            x in media_selected_times
-            for x in self.model_context.input_data.media_time
+            x in media_selected_times for x in media_times
         ]
       else:
         resolved_media_selected_times = [bool(x) for x in media_selected_times]

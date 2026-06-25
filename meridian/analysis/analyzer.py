@@ -15,6 +15,7 @@
 """Methods to compute analysis metrics of the model and the data."""
 
 from collections.abc import Iterator, Mapping, Sequence
+import dataclasses
 import functools
 import itertools
 from typing import Any
@@ -911,6 +912,11 @@ class Analyzer:
         selected_times=selected_times,
     )
     data_tensors = inputs.tensors
+    # TODO: Move `time` from DataTensors to AnalyzerInputs to
+    # avoid this XLA workaround.
+    # Strip time from tensors to avoid TF XLA compilation errors (XLA does
+    # not support string tensors).
+    data_tensors_jit = dataclasses.replace(data_tensors, time=None)
 
     param_list = (
         [
@@ -928,7 +934,7 @@ class Analyzer:
     ):
       outcome_means_temps.append(
           self._get_kpi_means(
-              data_tensors=data_tensors,
+              data_tensors=data_tensors_jit,
               dist_tensors=dist_tensors,
           )
       )
@@ -1405,8 +1411,12 @@ class Analyzer:
         is_baseline=False,
     )
 
-    data_tensors0 = inputs0.tensors
-    data_tensors1 = inputs1.tensors
+    # TODO: Move `time` from DataTensors to AnalyzerInputs to
+    # avoid this XLA workaround.
+    # Strip time from tensors to avoid TF XLA compilation errors (XLA does
+    # not support string tensors).
+    data_tensors0 = dataclasses.replace(inputs0.tensors, time=None)
+    data_tensors1 = dataclasses.replace(inputs1.tensors, time=None)
 
     # Calculate incremental outcome in batches.
     param_list = self._get_causal_param_names(
@@ -3519,6 +3529,7 @@ class Analyzer:
           media_spend=filled_data.media_spend,
           rf_spend=filled_data.rf_spend,
           revenue_per_kpi=filled_data.revenue_per_kpi,
+          time=filled_data.time,
       )
       frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(
           self.optimal_freq(
@@ -3548,6 +3559,7 @@ class Analyzer:
         reach=reach,
         frequency=frequency,
         revenue_per_kpi=filled_data.revenue_per_kpi,
+        time=filled_data.time,
     )
     for i, multiplier in enumerate(spend_multipliers):
       if multiplier == 0:

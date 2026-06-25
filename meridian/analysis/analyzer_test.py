@@ -4644,6 +4644,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("always")
+      warnings.filterwarnings("ignore", category=DeprecationWarning)
       self.analyzer.expected_vs_actual_data(split_by_holdout_id=True)
 
       self.assertLen(w, 1)
