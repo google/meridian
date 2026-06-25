@@ -87,9 +87,6 @@ class HyperparametersSerde(
   def serialize(self, obj: spec.ModelSpec) -> meridian_pb.Hyperparameters:
     """Serializes the given ModelSpec into a `Hyperparameters` proto."""
     hyperparameters_proto = meridian_pb.Hyperparameters(
-        media_effects_dist=media_effects_converter.to_proto(
-            obj.media_effects_dist
-        ),
         hill_before_adstock=obj.hill_before_adstock,
         unique_sigma_for_each_geo=obj.unique_sigma_for_each_geo,
         media_prior_type=paid_media_prior_type_converter.to_proto(
@@ -112,6 +109,15 @@ class HyperparametersSerde(
         ),
         enable_aks=obj.enable_aks,
     )
+    if isinstance(obj.media_effects_dist, str):
+      hyperparameters_proto.media_effects_dist = (
+          media_effects_converter.to_proto(obj.media_effects_dist)
+      )
+    elif isinstance(obj.media_effects_dist, Mapping):
+      for channel, dist in obj.media_effects_dist.items():
+        hyperparameters_proto.media_effects_dist_by_channel.channel_media_effects_dists[
+            channel
+        ] = media_effects_converter.to_proto(dist)
     if obj.max_lag is not None:
       hyperparameters_proto.max_lag = obj.max_lag
 
@@ -290,10 +296,24 @@ class HyperparametersSerde(
     else:
       saturation_spec = sc.DEFAULT_SATURATION
 
+    if (
+        serialized.HasField(sc.MEDIA_EFFECTS_DIST_BY_CHANNEL)
+        and serialized.media_effects_dist_by_channel.channel_media_effects_dists
+    ):
+      channel_dists = (
+          serialized.media_effects_dist_by_channel.channel_media_effects_dists
+      )
+      media_effects_dist = {
+          channel: media_effects_converter.from_proto(dist)
+          for channel, dist in channel_dists.items()
+      }
+    else:
+      media_effects_dist = media_effects_converter.from_proto(
+          serialized.media_effects_dist
+      )
+
     return spec.ModelSpec(
-        media_effects_dist=media_effects_converter.from_proto(
-            serialized.media_effects_dist
-        ),
+        media_effects_dist=media_effects_dist,
         hill_before_adstock=serialized.hill_before_adstock,
         max_lag=max_lag,
         unique_sigma_for_each_geo=serialized.unique_sigma_for_each_geo,

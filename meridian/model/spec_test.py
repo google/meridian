@@ -74,6 +74,34 @@ class ModelSpecTest(parameterized.TestCase):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(media_effects_dist=dist)
 
+  def test_spec_inits_valid_media_effects_mapping_works(self):
+    dist_map = {"ch1": "normal", "ch2": "log_normal"}
+    model_spec = spec.ModelSpec(media_effects_dist=dist_map)
+    self.assertEqual(model_spec.media_effects_dist, dist_map)
+
+  @parameterized.named_parameters(
+      (
+          "invalid_mapping_value",
+          {"ch1": "bad_dist"},
+          ValueError,
+          (
+              "The `media_effects_dist` for channel 'ch1' must be one of"
+              " ['log_normal', 'normal'], but got 'bad_dist'."
+          ),
+      ),
+      (
+          "invalid_type",
+          123,
+          ValueError,
+          "Unsupported type for `media_effects_dist` parameter: <class 'int'>.",
+      ),
+  )
+  def test_spec_inits_invalid_media_effects_mapping_or_type_fails(
+      self, dist, expected_error, error_message
+  ):
+    with self.assertRaisesWithLiteralMatch(expected_error, error_message):
+      spec.ModelSpec(media_effects_dist=dist)
+
   @parameterized.named_parameters(
       ("hill", constants.HILL),
       ("none", "none"),
