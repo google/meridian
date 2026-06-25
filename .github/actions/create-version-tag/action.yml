@@ -9,9 +9,9 @@ permissions:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Create and Push Tag
-      uses: actions/github-script@v6
+      uses: actions/github-script@v8
       with:
         script: |
           const newTag = '${{ inputs.new_version }}';

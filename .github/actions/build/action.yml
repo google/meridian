@@ -20,7 +20,7 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python_version }}
     - name: Install pypa/build
@@ -31,7 +31,7 @@ runs:
       run: python3 -m build
       working-directory: ${{ inputs.working_directory }}
     - name: Store the distribution packages
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact_name }}
         path: ${{ inputs.output_path }}
