@@ -381,7 +381,10 @@ stats-section {
   width: 90px;
   height: 90px;
   border-radius: 50%;
-  background: conic-gradient(#6ba4ff calc(var(--score) * 1%), $insights_bg_grey 0);
+  background: conic-gradient(
+    #6ba4ff calc(var(--score) * 1%),
+    $insights_bg_grey 0
+  );
   display: flex;
   justify-content: center;
   align-items: center;
@@ -559,3 +562,57 @@ chip.fail {
     }
   }
 }
+
+// copybara:strip_begin
+.channel-recommendation-card {
+  background-color: #fff;
+  color: #000;
+}
+
+.channel-recommendation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  table-layout: fixed;
+
+  th {
+    text-align: center;
+    font-weight: 500;
+    padding-bottom: 16px;
+    border-bottom: 1px solid $border_grey;
+
+    &:first-child {
+      text-align: left;
+      width: 220px;
+    }
+  }
+
+  td {
+    padding: 16px 0;
+    border-bottom: 1px solid #f1f3f4;
+    vertical-align: middle;
+    text-align: center;
+
+    &:first-child {
+      text-align: left;
+      font-weight: 500;
+    }
+
+    chip {
+      margin: 0 auto;
+    }
+  }
+}
+
+.calibrated-row-cell {
+  padding-right: 16px;
+}
+
+chip.calibrated-wide {
+  background-color: #f1f3f4;
+  color: #5f6368;
+  width: 100%;
+  justify-content: center;
+  box-sizing: border-box;
+}
+// copybara:strip_end

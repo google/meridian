@@ -957,9 +957,10 @@ class ReviewSummary:
   def _gen_model_health_card(self) -> str:
     """Generates the HTML model health card (as sanitized content str)."""
     html_template = self._template_env.get_template("summary.html.jinja")
+    cards = [self._create_health_card_html()]
     return html_template.render(
         title=summary_text.MODEL_HEALTH_CARD_TITLE,
-        cards=[self._create_health_card_html()],
+        cards=cards,
     )
 
   def _create_health_card_html(self) -> str:
