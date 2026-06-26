@@ -606,7 +606,6 @@ class InputDataBuilder(abc.ABC):
       A validated `InputData`.
     """
     self._validate_required_components()
-    self._validate_nas()
 
     # TODO: move logic from input_data to here: all channel names
     # should be unique across media channels, rf channels, organic media
@@ -617,7 +616,6 @@ class InputDataBuilder(abc.ABC):
 
     def _get_sorted(da: xr.DataArray | None, is_media_time: bool = False):
       """Naturally sorts the DataArray by geo and time/media time."""
-
       if da is None:
         return None
       if is_media_time:
@@ -753,58 +751,6 @@ class InputDataBuilder(abc.ABC):
       raise ValueError(
           'It is required to have at least one of media or reach + frequency.'
       )
-
-  def _validate_nas(self):
-    """Check for NAs in all of the DataArrays.
-
-    Since the DataArray components should already distinguish between media time
-    and time coords, there are no media times to infer so there should be no
-    NAs.
-    """
-    if self.kpi.isnull().any(axis=None):
-      raise ValueError('NA values found in the kpi data.')
-    if self.population.isnull().any(axis=None):
-      raise ValueError('NA values found in the population data.')
-    if self.controls is not None and self.controls.isnull().any(axis=None):
-      raise ValueError('NA values found in the controls data.')
-    if self.revenue_per_kpi is not None and self.revenue_per_kpi.isnull().any(
-        axis=None
-    ):
-      raise ValueError('NA values found in the revenue per kpi data.')
-    if self.media_spend is not None and self.media_spend.isnull().any(
-        axis=None
-    ):
-      raise ValueError('NA values found in the media spend data.')
-    if self.rf_spend is not None and self.rf_spend.isnull().any(axis=None):
-      raise ValueError('NA values found in the rf spend data.')
-    if (
-        self.non_media_treatments is not None
-        and self.non_media_treatments.isnull().any(axis=None)
-    ):
-      raise ValueError('NA values found in the non media treatments data.')
-
-    if self.media is not None and self.media.isnull().any(axis=None):
-      raise ValueError('NA values found in the media data.')
-
-    if self.reach is not None and self.reach.isnull().any(axis=None):
-      raise ValueError('NA values found in the reach data.')
-    if self.frequency is not None and self.frequency.isnull().any(axis=None):
-      raise ValueError('NA values found in the frequency data.')
-
-    if self.organic_media is not None and self.organic_media.isnull().any(
-        axis=None
-    ):
-      raise ValueError('NA values found in the organic media data.')
-
-    if self.organic_reach is not None and self.organic_reach.isnull().any(
-        axis=None
-    ):
-      raise ValueError('NA values found in the organic reach data.')
-    if (
-        self.organic_frequency is not None
-        and self.organic_frequency.isnull().any(axis=None)
-    ):
-      raise ValueError('NA values found in the organic frequency data.')
 
   def _validate_lagged_media(
       self, media_time_coords: Sequence[str], time_coords: Sequence[str]

@@ -14,9 +14,9 @@
 
 """Meridian Sampling EDA Engine."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
-from meridian import constants
+from meridian import constants  # pylint: disable=g-bad-import-order,g-import-not-at-top
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome

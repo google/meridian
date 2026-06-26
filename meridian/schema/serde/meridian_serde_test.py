@@ -977,21 +977,6 @@ class MeridianSerdeTest(parameterized.TestCase):
         coords={constants.GEO: _INPUT_DATA.population.coords[constants.GEO]},
         name=constants.POPULATION,
     )
-    media_spend_values = input_data.media_spend.values.copy()
-    media_spend_values[0, 0] = np.nan
-    input_data.media_spend = xr.DataArray(
-        media_spend_values,
-        dims=_INPUT_DATA.media_spend.dims,
-        coords={
-            constants.TIME: _INPUT_DATA.media_spend.coords[constants.TIME],
-            constants.GEO: _INPUT_DATA.media_spend.coords[constants.GEO],
-            constants.MEDIA_CHANNEL: pd.Index(
-                _INPUT_DATA.media_spend.coords[constants.MEDIA_CHANNEL].values,
-                dtype=pd.StringDtype(),
-            ),
-        },
-        name=constants.MEDIA_SPEND,
-    )
 
     meridian_model = model.Meridian(
         input_data=input_data,
