@@ -876,6 +876,13 @@ PPS_SET = MODEL_LEVEL_SET | frozenset([PriorPosteriorShiftCheckResult])
 ROI_SET = PPS_SET | frozenset([ROIConsistencyCheckResult])
 
 
+_CALIBRATION_CHECK_RESULTS = (
+    ImplausibleROICheckResult,
+    HighVarianceCheckResult,
+    PotentialBiasCheckResult,
+)
+
+
 # ==============================================================================
 # Review Summary
 # ==============================================================================

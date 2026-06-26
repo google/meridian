@@ -35,6 +35,7 @@ CheckType = typing.Type[checks.BaseCheck]
 ConfigInstance = configs.BaseConfig
 ChecksBattery = immutabledict.immutabledict[CheckType, ConfigInstance]
 
+
 _POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
     checks.BaselineCheck: configs.BaselineConfig(),
     checks.BayesianPPPCheck: configs.BayesianPPPConfig(),
@@ -288,6 +289,31 @@ class ModelReviewer:
           default_distribution.roi_rf,
       ):
         return True
+    return False
+
+  def _should_skip_calibration_checks(self, check_class: CheckType) -> bool:
+    """Checks if calibration checks should be skipped."""
+    if (
+        self._model_context.n_media_channels == 0
+        and self._model_context.n_rf_channels == 0
+    ):
+      return True
+    if self._inference_data is None:
+      return True
+    if not hasattr(self._inference_data, constants.POSTERIOR):
+      return True
+    if (
+        constants.MEDIA_CHANNEL not in self._inference_data.posterior.coords
+        and constants.RF_CHANNEL not in self._inference_data.posterior.coords
+    ):
+      return True
+
+    if (
+        check_class in _CALIBRATION_CHECKS
+        and self._model_context.input_data.revenue_per_kpi is None
+    ):
+      return True
+
     return False
 
   def _compute_health_score(self) -> float:
