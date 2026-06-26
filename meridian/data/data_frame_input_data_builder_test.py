@@ -2341,6 +2341,41 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     )
     self.assertIsNotNone(builder.non_media_treatments)
 
+  def test_build_with_na_media_spend_raises_error(self):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    )
+    builder.with_kpi(
+        self.BASIC_KPI_DF,
+        kpi_col="kpi",
+        time_col="time",
+        geo_col="geo",
+    )
+    builder.with_population(
+        self.BASIC_POPULATION_DF,
+        population_col="population",
+        geo_col="geo",
+    )
+
+    media_df = self.BASIC_MEDIA_DF.copy()
+    media_df["media_spend_1"] = media_df["media_spend_1"].astype(object)
+    media_df.loc[0, "media_spend_1"] = None
+
+    builder.with_media(
+        media_df,
+        media_cols=["media_1", "media_2"],
+        media_spend_cols=["media_spend_1", "media_spend_2"],
+        media_channels=["channel_1", "channel_2"],
+        time_col="media_time",
+        geo_col="geo",
+    )
+
+    with self.assertRaisesRegex(
+        ValueError,
+        expected_regex="NA values found in the media spend data.",
+    ):
+      builder.build()
+
 
 if __name__ == "__main__":
   absltest.main()

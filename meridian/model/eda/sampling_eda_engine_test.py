@@ -245,6 +245,5 @@ class SamplingEdaEngineTest(
           use_posterior=False
       )
 
-
 if __name__ == '__main__':
   absltest.main()

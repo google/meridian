@@ -47,6 +47,7 @@ class InputDataBuilderTest(parameterized.TestCase):
           constants.TIME: ['2024-01-01', '2024-01-02', '2024-01-03'],
       },
       dims=[constants.GEO, constants.TIME],
+      name=constants.KPI,
   )
   NA_REVENUE_PER_KPI_DA = xr.DataArray(
       [[1, None, 1], [2, 2, 2], [3, None, 3]],

@@ -23,12 +23,16 @@ import dataclasses
 import functools
 import warnings
 
+from meridian import backend
 from meridian import constants
 from meridian.data import arg_builder
 from meridian.data import time_coordinates as tc
 from meridian.data import validator
 import numpy as np
 import xarray as xr
+
+
+_NUMPY_OBJECT_DTYPE = np.dtype("O")
 
 
 __all__ = [
@@ -289,6 +293,8 @@ class InputData:
   non_media_treatments: xr.DataArray | None = None
 
   def __post_init__(self):
+    self._coerce_object_arrays_to_float()
+    self._validate_nas()
     self._convert_geos_to_strings()
     self._validate_kpi()
     self._validate_scenarios()
@@ -300,12 +306,77 @@ class InputData:
     self._validate_geos()
     self._validate_no_negative_values()
 
+  def _coerce_object_arrays_to_float(self):
+    """Coerces object-typed DataArrays to float."""
+    for field in dataclasses.fields(self):
+      array = getattr(self, field.name)
+      if isinstance(array, xr.DataArray) and array.dtype == _NUMPY_OBJECT_DTYPE:
+        try:
+          setattr(self, field.name, array.astype(backend.np_float_dtype))
+        except (ValueError, TypeError) as e:
+          raise ValueError(
+              f"Failed to convert array '{field.name}' from object to float. "
+              f"Please ensure all values are numeric. Error: {e}"
+          ) from e
+
   def _convert_geos_to_strings(self):
     """Converts geo coordinates to strings in all relevant DataArrays."""
     for field in dataclasses.fields(self):
       array = getattr(self, field.name)
       if isinstance(array, xr.DataArray) and constants.GEO in array.dims:
         array.coords[constants.GEO] = array.coords[constants.GEO].astype(str)
+
+  def _validate_nas(self):
+    """Check for NAs in all of the DataArrays.
+
+    Since the DataArray components should already distinguish between media time
+    and time coords, there are no media times to infer so there should be no
+    NAs.
+    """
+    if self.kpi.isnull().any(axis=None):
+      raise ValueError("NA values found in the kpi data.")
+    if self.population.isnull().any(axis=None):
+      raise ValueError("NA values found in the population data.")
+    if self.controls is not None and self.controls.isnull().any(axis=None):
+      raise ValueError("NA values found in the controls data.")
+    if self.revenue_per_kpi is not None and self.revenue_per_kpi.isnull().any(
+        axis=None
+    ):
+      raise ValueError("NA values found in the revenue per kpi data.")
+    if self.media_spend is not None and self.media_spend.isnull().any(
+        axis=None
+    ):
+      raise ValueError("NA values found in the media spend data.")
+    if self.rf_spend is not None and self.rf_spend.isnull().any(axis=None):
+      raise ValueError("NA values found in the rf spend data.")
+    if (
+        self.non_media_treatments is not None
+        and self.non_media_treatments.isnull().any(axis=None)
+    ):
+      raise ValueError("NA values found in the non media treatments data.")
+
+    if self.media is not None and self.media.isnull().any(axis=None):
+      raise ValueError("NA values found in the media data.")
+
+    if self.reach is not None and self.reach.isnull().any(axis=None):
+      raise ValueError("NA values found in the reach data.")
+    if self.frequency is not None and self.frequency.isnull().any(axis=None):
+      raise ValueError("NA values found in the frequency data.")
+
+    if self.organic_media is not None and self.organic_media.isnull().any(
+        axis=None
+    ):
+      raise ValueError("NA values found in the organic media data.")
+
+    if self.organic_reach is not None and self.organic_reach.isnull().any(
+        axis=None
+    ):
+      raise ValueError("NA values found in the organic reach data.")
+    if (
+        self.organic_frequency is not None
+        and self.organic_frequency.isnull().any(axis=None)
+    ):
+      raise ValueError("NA values found in the organic frequency data.")
 
   # TODO: Combine with Analyzer._impute_and_aggregate_spend
   @functools.cached_property
