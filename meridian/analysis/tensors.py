@@ -34,11 +34,12 @@ __all__ = (
     "DataTensors",
     "DataTensorsBuilder",
     "DistributionTensors",
+    "get_model_context",
 )
 
 
 # TODO: Remove this method.
-def _get_model_context(
+def get_model_context(
     meridian: Any | None,
     model_context: context.ModelContext | None,
 ) -> context.ModelContext:
@@ -403,7 +404,7 @@ class DataTensors(backend.ExtensionType):
         DeprecationWarning,
         stacklevel=2,
     )
-    ctx = _get_model_context(meridian, model_context)
+    ctx = get_model_context(meridian, model_context)
     return DataTensorsBuilder(ctx).get_modified_times(self)
 
   def filter_fields(self, fields: Sequence[str]) -> Self:
@@ -456,7 +457,7 @@ class DataTensors(backend.ExtensionType):
         DeprecationWarning,
         stacklevel=2,
     )
-    ctx = _get_model_context(meridian, model_context)
+    ctx = get_model_context(meridian, model_context)
     # pylint: disable=protected-access
     return DataTensorsBuilder(ctx)._validate_and_fill_missing_data(
         self, required_tensors_names, allow_modified_times

@@ -148,54 +148,6 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   return xr.Dataset(data_vars=xr_data, coords=xr_coords)
 
 
-# pylint: disable=protected-access
-# TODO: Move to DataTensorsBuilder.
-def _get_validated_selected_times(
-    selected_times: Sequence[str] | Sequence[bool] | None,
-    new_n_media_times: int | None,
-    filled_data: DataTensors,
-    model_context: context.ModelContext,
-) -> tuple[Sequence[bool] | None, Sequence[str]]:
-  """Validates selected times and converts string list to boolean list.
-
-  Args:
-    selected_times: Optional list containing either a subset of dates to include
-      or booleans.
-    new_n_media_times: The number of time periods in the new data, or None if
-      time is not modified.
-    filled_data: A `DataTensors` object containing the filled data.
-    model_context: The `ModelContext` object.
-
-  Returns:
-    A tuple containing `selected_times` (converted to boolean list if originally
-    strings) and `times` (the time coordinates).
-  """
-  if new_n_media_times is not None:
-    new_time = np.asarray(filled_data.time).astype(str).tolist()
-    tensors._validate_flexible_selected_times(
-        selected_times=selected_times,
-        media_selected_times=None,
-        new_n_media_times=new_n_media_times,
-        new_time=new_time,
-    )
-    times = new_time
-  else:
-    times = model_context.input_data.time.data
-    tensors._validate_selected_times(
-        selected_times=selected_times,
-        input_times=model_context.input_data.time,
-        n_times=model_context.n_times,
-        arg_name="selected_times",
-        comparison_arg_name="the input data",
-    )
-
-  if selected_times is not None and tensors._is_str_list(selected_times):
-    selected_times = [x in selected_times for x in times]
-
-  return selected_times, times  # pytype: disable=bad-return-type
-# pylint: enable=protected-access
-
-
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -210,9 +162,7 @@ class Analyzer:
     # Make the meridian object ready for methods in this analyzer that create
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
-    # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-    self._model_context = tensors._get_model_context(meridian, model_context)
-    # pylint: enable=protected-access
+    self._model_context = tensors.get_model_context(meridian, model_context)
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data
@@ -292,15 +242,14 @@ class Analyzer:
     data (lagged time periods are included).
 
     Args:
-      data_tensors: A `DataTensors` container with `media`,
-        `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, and `controls`. The
-        `media`, `reach`, `organic_media`, `organic_reach`, and
-        `non_media_treatments` tensors are expected to be scaled by their
-        corresponding transformers.
-      dist_tensors: A `DistributionTensors` container with the
-        distribution tensors for media, RF, organic media, organic RF, non-media
-        treatments, and controls (if available).
+      data_tensors: A `DataTensors` container with `media`, `reach`,
+        `frequency`, `organic_media`, `organic_reach`, `organic_frequency`,
+        `non_media_treatments`, and `controls`. The `media`, `reach`,
+        `organic_media`, `organic_reach`, and `non_media_treatments` tensors are
+        expected to be scaled by their corresponding transformers.
+      dist_tensors: A `DistributionTensors` container with the distribution
+        tensors for media, RF, organic media, organic RF, non-media treatments,
+        and controls (if available).
 
     Returns:
       Tensor representing computed kpi means.
@@ -535,12 +484,10 @@ class Analyzer:
     the desired order.
 
     Args:
-      data_tensors: A `DataTensors` container with `media`,
-        `reach`, `frequency`, `organic_media`, `organic_reach`, and
-        `organic_frequency`.
-      dist_tensors: A `DistributionTensors` container with the
-        distribution tensors for media, RF, organic media, and organic RF
-        channels.
+      data_tensors: A `DataTensors` container with `media`, `reach`,
+        `frequency`, `organic_media`, `organic_reach`, and `organic_frequency`.
+      dist_tensors: A `DistributionTensors` container with the distribution
+        tensors for media, RF, organic media, and organic RF channels.
       n_times_output: Optional number of time periods to output. Defaults to the
         corresponding argument defaults for `adstock_hill_media` and
         `adstock_hill_rf`.
@@ -830,8 +777,8 @@ class Analyzer:
       use_posterior: Boolean. If `True`, then the expected outcome posterior
         distribution is calculated. Otherwise, the prior distribution is
         calculated.
-      new_data: An optional `DataTensors` container with optional
-        new `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
+      new_data: An optional `DataTensors` container with optional new `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
         `organic_frequency`, `non_media_treatments`, `revenue_per_kpi`, and
         `controls`. If `None`, expected outcome is calculated conditional on the
         original values of the data tensors that the Meridian object was
@@ -894,23 +841,21 @@ class Analyzer:
     if new_data is None:
       new_data = DataTensors()
 
-    required_fields = (
-        constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
-    )
-    filled_tensors = new_data.validate_and_fill_missing_data(
-        required_tensors_names=required_fields,
-        model_context=self.model_context,
-        allow_modified_times=False,
-    )
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    if builder.get_modified_times(new_data) is not None:
+      raise ValueError(
+          "expected_outcome does not support modified time dimensions."
+      )
 
     # We always compute the expected outcome of all channels, including non-paid
     # channels.
-    inputs = tensors.DataTensorsBuilder(self.model_context).build_scaled_inputs(
-        new_data=filled_tensors,
+    inputs = builder.build_scaled_inputs(
+        new_data=new_data,
         include_non_paid_channels=True,
         selected_geos=selected_geos,
         selected_times=selected_times,
     )
+    filled_tensors = inputs.tensors
     data_tensors = inputs.tensors
     # TODO: Move `time` from DataTensors to AnalyzerInputs to
     # avoid this XLA workaround.
@@ -987,15 +932,15 @@ class Analyzer:
     """Computes incremental KPI distribution.
 
     Args:
-      data_tensors: A `DataTensors` container with `media`,
-        `reach`, `frequency`, `organic_media`, `organic_reach`,
-        `organic_frequency`, `non_media_treatments`, `controls`, and
-        `revenue_per_kpi`. The `media`, `reach`, `organic_media`,
-        `organic_reach`, `non_media_treatments` and `controls` tensors are
-        expected to be scaled by the corresponding transformers.
-      dist_tensors: A `DistributionTensors` container with the
-        distribution tensors for media, RF, organic media, organic RF and
-        non-media treatments channels.
+      data_tensors: A `DataTensors` container with `media`, `reach`,
+        `frequency`, `organic_media`, `organic_reach`, `organic_frequency`,
+        `non_media_treatments`, `controls`, and `revenue_per_kpi`. The `media`,
+        `reach`, `organic_media`, `organic_reach`, `non_media_treatments` and
+        `controls` tensors are expected to be scaled by the corresponding
+        transformers.
+      dist_tensors: A `DistributionTensors` container with the distribution
+        tensors for media, RF, organic media, organic RF and non-media
+        treatments channels.
       non_media_treatments_baseline_normalized: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float that will be used as
         baseline for the given channel. The values are expected to be scaled by
@@ -1267,16 +1212,16 @@ class Analyzer:
       use_posterior: Boolean. If `True`, then the incremental outcome posterior
         distribution is calculated. Otherwise, the prior distribution is
         calculated.
-      new_data: Optional `DataTensors` container with optional tensors:
-        `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
+      new_data: Optional `DataTensors` container with optional tensors: `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
         `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
         `None`, the incremental outcome is calculated using the `InputData`
         provided to the Meridian object. If `new_data` is provided, the
         incremental outcome is calculated using the new tensors in `new_data`
         and the original values of the remaining tensors. For example,
-        `incremental_outcome(new_data=DataTensors(media=new_media)`
-        computes the incremental outcome using `new_media` and the original
-        values of `reach`, `frequency`, `organic_media`, `organic_reach`,
+        `incremental_outcome(new_data=DataTensors(media=new_media)` computes the
+        incremental outcome using `new_media` and the original values of
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
         `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
         any of the tensors in `new_data` is provided with a different number of
         time periods than in `InputData`, then all tensors must be provided with
@@ -1432,9 +1377,6 @@ class Analyzer:
     incremental_outcome_kwargs = {
         "inverse_transform_outcome": inverse_transform_outcome,
         "use_kpi": use_kpi,
-        "non_media_treatments_baseline_normalized": (
-            inputs0.non_media_baseline_normalized
-        ),
     }
     for dist_tensors in self._yield_batched_distribution_tensors(
         param_list=param_list,
@@ -1444,6 +1386,7 @@ class Analyzer:
       batch_incremental_outcome = self._incremental_outcome_impl(
           data_tensors=data_tensors1,
           dist_tensors=dist_tensors,
+          non_media_treatments_baseline_normalized=inputs1.non_media_baseline_normalized,
           **dim_kwargs,
           **incremental_outcome_kwargs,
       )
@@ -1452,6 +1395,7 @@ class Analyzer:
         batch_incremental_outcome -= self._incremental_outcome_impl(
             data_tensors=data_tensors0,
             dist_tensors=dist_tensors,
+            non_media_treatments_baseline_normalized=inputs0.non_media_baseline_normalized,
             **dim_kwargs,
             **incremental_outcome_kwargs,
         )
@@ -1604,12 +1548,15 @@ class Analyzer:
     required_values = constants.PERFORMANCE_DATA
     if not new_data:
       new_data = DataTensors()
-    filled_data = new_data.validate_and_fill_missing_data(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    filled_data = builder.build_unscaled_inputs(
+        new_data=new_data,
         required_tensors_names=required_values,
-        model_context=self.model_context,
-    )
+    ).tensors
     numerator = self.incremental_outcome(
-        new_data=filled_data.filter_fields(constants.PAID_DATA),
+        new_data=filled_data.filter_fields(
+            list(constants.PAID_DATA) + [constants.TIME]
+        ),
         scaling_factor0=1,
         scaling_factor1=1 + incremental_increase,
         inverse_transform_outcome=True,
@@ -1623,9 +1570,7 @@ class Analyzer:
     )
     spend_inc = filled_data.total_spend() * incremental_increase
     if spend_inc is not None and spend_inc.ndim == 3:
-      inputs = tensors.DataTensorsBuilder(
-          self.model_context
-      ).build_unscaled_inputs(
+      inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -1736,21 +1681,22 @@ class Analyzer:
     required_values = constants.PERFORMANCE_DATA
     if not new_data:
       new_data = DataTensors()
-    filled_data = new_data.validate_and_fill_missing_data(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    filled_data = builder.build_unscaled_inputs(
+        new_data=new_data,
         required_tensors_names=required_values,
-        model_context=self.model_context,
-    )
+    ).tensors
     incremental_outcome = self.incremental_outcome(
-        new_data=filled_data.filter_fields(constants.PAID_DATA),
+        new_data=filled_data.filter_fields(
+            list(constants.PAID_DATA) + [constants.TIME]
+        ),
         **incremental_outcome_kwargs,
         **dim_kwargs,
     )
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
-      inputs = tensors.DataTensorsBuilder(
-          self.model_context
-      ).build_unscaled_inputs(
+      inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -2099,8 +2045,8 @@ class Analyzer:
       use_posterior: Boolean. If `True`, then the incremental outcome posterior
         distribution is calculated. Otherwise, the prior distribution is
         calculated.
-      new_data: Optional `DataTensors` container with optional tensors:
-        `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
+      new_data: Optional `DataTensors` container with optional tensors: `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
         `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
         `None`, the incremental outcome is calculated using the `InputData`
         provided to the Meridian object. If `new_data` is provided, the
@@ -2271,8 +2217,11 @@ class Analyzer:
     }
     batched_kwargs = {"batch_size": batch_size}
     new_data = new_data or DataTensors()
+    builder = tensors.DataTensorsBuilder(self.model_context)
     aggregated_impressions = self.get_aggregated_impressions(
-        new_data=new_data.filter_fields(constants.IMPRESSIONS_DATA),
+        new_data=new_data.filter_fields(
+            list(constants.IMPRESSIONS_DATA) + [constants.TIME]
+        ),
         optimal_frequency=optimal_frequency,
         include_non_paid_channels=include_non_paid_channels,
         **dim_kwargs,
@@ -2287,7 +2236,7 @@ class Analyzer:
 
     incremental_outcome_fields = list(
         constants.PAID_DATA + constants.NON_PAID_DATA
-    )
+    ) + [constants.TIME]
     incremental_outcome_prior = self.compute_incremental_outcome_aggregate(
         use_posterior=False,
         new_data=new_data.filter_fields(incremental_outcome_fields),
@@ -2353,24 +2302,23 @@ class Analyzer:
       xr_coords[constants.GEO] = geo_dims
     if not aggregate_times:
       # Get the time coordinates for flexible time dimensions.
-      modified_times = new_data.get_modified_times(
-          model_context=self.model_context
-      )
+      modified_times = builder.get_modified_times(new_data)
       if modified_times is None:
         times = self.model_context.input_data.time.data
       else:
         times = np.arange(modified_times)
 
-      # pylint: disable=protected-access  # TODO: Move to DataTensorsBuilder.
-      if selected_times is None:
-        time_dims = times
-      elif tensors._is_bool_list(selected_times):
-        indices = np.where(selected_times)
-        time_dims = times[indices]
+      time_indices = builder.build_unscaled_inputs(
+          new_data=new_data,
+          selected_times=selected_times,
+      ).time_indices
+
+      if time_indices is None:
+        time_coords = times
       else:
-        time_dims = selected_times
-      # pylint: enable=protected-access
-      xr_coords[constants.TIME] = time_dims
+        time_coords = times[np.asarray(time_indices)]
+
+      xr_coords[constants.TIME] = time_coords
     xr_dims_with_ci_and_distribution = xr_dims + (
         constants.METRIC,
         constants.DISTRIBUTION,
@@ -2408,10 +2356,10 @@ class Analyzer:
         # channels.
     ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
 
-    if new_data.get_modified_times(model_context=self.model_context) is None:
+    if builder.get_modified_times(new_data) is None:
       expected_outcome_fields = list(
           constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
-      )
+      ) + [constants.TIME]
       expected_outcome_prior = self.expected_outcome(
           use_posterior=False,
           new_data=new_data.filter_fields(expected_outcome_fields),
@@ -2468,20 +2416,18 @@ class Analyzer:
     # If non-paid channels are not included, return all metrics, paid and
     # non-paid.
     spend_list = []
-    new_spend_tensors = new_data.filter_fields(
-        constants.SPEND_DATA
-    ).validate_and_fill_missing_data(
+    new_spend_tensors = builder.build_unscaled_inputs(
+        new_data=new_data.filter_fields(
+            list(constants.SPEND_DATA) + [constants.TIME]
+        ),
         required_tensors_names=constants.SPEND_DATA,
-        model_context=self.model_context,
-    )
+    ).tensors
     if self.model_context.n_media_channels > 0:
       spend_list.append(new_spend_tensors.media_spend)
     if self.model_context.n_rf_channels > 0:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
-    spend_inputs = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_unscaled_inputs(
+    spend_inputs = builder.build_unscaled_inputs(
         new_data=new_data,
         selected_geos=selected_geos,
         selected_times=selected_times,
@@ -2596,8 +2542,8 @@ class Analyzer:
     """Computes aggregated impressions values in the data across all channels.
 
     Args:
-      new_data: An optional `DataTensors` object containing the new
-        `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,
+      new_data: An optional `DataTensors` object containing the new `media`,
+        `reach`, `frequency`, `organic_media`, `organic_reach`,
         `organic_frequency`, and `non_media_treatments` tensors. If `new_data`
         argument is used, then the aggregated impressions are computed using the
         values of the tensors passed in the `new_data` argument and the original
@@ -2633,9 +2579,8 @@ class Analyzer:
     if include_non_paid_channels:
       tensor_names_list += constants.NON_PAID_DATA
 
-    inputs = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_unscaled_inputs(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    inputs = builder.build_unscaled_inputs(
         new_data=new_data,
         required_tensors_names=tensor_names_list,
         optimal_frequency=optimal_frequency,
@@ -2645,8 +2590,7 @@ class Analyzer:
     data_tensors = inputs.tensors
 
     n_times = (
-        data_tensors.get_modified_times(model_context=self.model_context)
-        or self.model_context.n_times
+        builder.get_modified_times(data_tensors) or self.model_context.n_times
     )
     impressions_list = []
     if self.model_context.n_media_channels > 0:
@@ -2853,14 +2797,14 @@ class Analyzer:
     ROI numerator is KPI units.
 
     Args:
-      new_data: Optional `DataTensors` object containing
-        `rf_impressions`, `rf_spend`, and `revenue_per_kpi`. If provided, the
-        optimal frequency is calculated using the values of the tensors passed
-        in `new_data` and the original values of all the remaining tensors. If
-        `None`, the historical data used to initialize the Meridian object is
-        used. If any of the tensors in `new_data` is provided with a different
-        number of time periods than in `InputData`, then all tensors must be
-        provided with the same number of time periods.
+      new_data: Optional `DataTensors` object containing `rf_impressions`,
+        `rf_spend`, and `revenue_per_kpi`. If provided, the optimal frequency is
+        calculated using the values of the tensors passed in `new_data` and the
+        original values of all the remaining tensors. If `None`, the historical
+        data used to initialize the Meridian object is used. If any of the
+        tensors in `new_data` is provided with a different number of time
+        periods than in `InputData`, then all tensors must be provided with the
+        same number of time periods.
       max_frequency: Maximum frequency value used to calculate the frequency
         grid. If `None`, the maximum frequency value is calculated from the
         historic frequency (maximum value of Meridian.input_data, not
@@ -2920,13 +2864,16 @@ class Analyzer:
           f"sample_{dist_type}() must be called prior to calling this method."
       )
 
-    filled_data = new_data.validate_and_fill_missing_data(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    # Validate early and discard the result (it sets rf_impressions=None which
+    # we don't want yet).
+    builder.build_unscaled_inputs(
+        new_data=new_data,
         required_tensors_names=[
             constants.RF_IMPRESSIONS,
             constants.RF_SPEND,
             constants.REVENUE_PER_KPI,
         ],
-        model_context=self.model_context,
     )
     max_freq = max_frequency or np.max(
         np.array(self.model_context.rf_tensors.frequency)
@@ -2942,10 +2889,8 @@ class Analyzer:
     )
 
     for i, freq in enumerate(freq_grid):
-      inputs = tensors.DataTensorsBuilder(
-          self.model_context
-      ).build_unscaled_inputs(
-          new_data=filled_data,
+      inputs = builder.build_unscaled_inputs(
+          new_data=new_data,
           required_tensors_names=[
               constants.RF_IMPRESSIONS,
               constants.RF_SPEND,
@@ -2974,10 +2919,13 @@ class Analyzer:
     )
 
     optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
-    inputs = tensors.DataTensorsBuilder(
-        self.model_context
-    ).build_unscaled_inputs(
-        new_data=filled_data,
+    inputs = builder.build_unscaled_inputs(
+        new_data=new_data,
+        required_tensors_names=[
+            constants.RF_IMPRESSIONS,
+            constants.RF_SPEND,
+            constants.REVENUE_PER_KPI,
+        ],
         optimal_frequency=optimal_frequency,
         insert_dummy_media=True,
     )
@@ -3505,21 +3453,11 @@ class Analyzer:
       new_data = DataTensors()
     # TODO: Support flexible time without providing exact dates.
     required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
-    filled_data = new_data.validate_and_fill_missing_data(
+    builder = tensors.DataTensorsBuilder(self.model_context)
+    filled_data = builder.build_unscaled_inputs(
+        new_data=new_data,
         required_tensors_names=required_tensors_names,
-        model_context=self.model_context,
-        allow_modified_times=True,
-    )
-    new_n_media_times = filled_data.get_modified_times(
-        model_context=self.model_context
-    )
-
-    selected_times, _ = _get_validated_selected_times(
-        selected_times=selected_times,
-        new_n_media_times=new_n_media_times,
-        filled_data=filled_data,
-        model_context=self.model_context,
-    )
+    ).tensors
     dim_kwargs["selected_times"] = selected_times
 
     if self.model_context.n_rf_channels > 0 and use_optimal_frequency:
@@ -3570,7 +3508,9 @@ class Analyzer:
         continue
       inc_outcome_temp = self.incremental_outcome(
           use_posterior=use_posterior,
-          new_data=adjusted_data.filter_fields(constants.PAID_DATA),
+          new_data=adjusted_data.filter_fields(
+              list(constants.PAID_DATA) + [constants.TIME]
+          ),
           scaling_factor0=0.0,
           scaling_factor1=multiplier,
           by_reach=by_reach,
@@ -3586,9 +3526,7 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
-      spend_inputs = tensors.DataTensorsBuilder(
-          self.model_context
-      ).build_unscaled_inputs(
+      spend_inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
@@ -4318,15 +4256,14 @@ class Analyzer:
     """Gets the aggregated spend based on the selected geos and time.
 
     Args:
-      new_data: An optional `DataTensors` object containing the new
-        `media`, `media_spend`, `reach`, `frequency`, `rf_spend` tensors. If
-        `None`, the existing tensors from the Meridian object are used. If
-        `new_data` argument is used, then the aggregated spend is computed using
-        the values of the tensors passed in the `new_data` argument and the
-        original values of all the remaining tensors.  If any of the tensors in
-        `new_data` is provided with a different number of time periods than in
-        `InputData`, then all tensors must be provided with the same number of
-        time periods.
+      new_data: An optional `DataTensors` object containing the new `media`,
+        `media_spend`, `reach`, `frequency`, `rf_spend` tensors. If `None`, the
+        existing tensors from the Meridian object are used. If `new_data`
+        argument is used, then the aggregated spend is computed using the values
+        of the tensors passed in the `new_data` argument and the original values
+        of all the remaining tensors.  If any of the tensors in `new_data` is
+        provided with a different number of time periods than in `InputData`,
+        then all tensors must be provided with the same number of time periods.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
@@ -4356,17 +4293,14 @@ class Analyzer:
     required_tensors_names = constants.PAID_CHANNELS + constants.SPEND_DATA
     if not aggregate_times:
       required_tensors_names += (constants.TIME,)
-    raw_filled_data = new_data.validate_and_fill_missing_data(
-        required_tensors_names=required_tensors_names,
-        model_context=self.model_context,
-    )
-
     builder = tensors.DataTensorsBuilder(self.model_context)
     inputs = builder.build_unscaled_inputs(
         new_data=new_data,
+        required_tensors_names=required_tensors_names,
         selected_geos=selected_geos,
         selected_times=selected_times,
     )
+    raw_filled_data = inputs.tensors
     geo_indices = inputs.geo_indices
     time_indices = inputs.time_indices
 

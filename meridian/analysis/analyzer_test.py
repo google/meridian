@@ -4166,6 +4166,35 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         ],
     )
 
+  def test_summary_metrics_custom_times_preserved(self):
+    custom_dates = [
+        "2025-01-01",
+        "2025-01-08",
+        "2025-01-15",
+        "2025-01-22",
+        "2025-01-29",
+    ]
+    custom_time_tensor = backend.to_tensor(custom_dates)
+    new_data = tensors.DataTensors(
+        media=self.meridian.media_tensors.media[..., -5:, :],
+        media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],
+        reach=self.meridian.rf_tensors.reach[..., -5:, :],
+        frequency=self.meridian.rf_tensors.frequency[..., -5:, :],
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],
+        time=custom_time_tensor,
+    )
+    summary_metrics = self.analyzer.summary_metrics(
+        new_data=new_data,
+        aggregate_times=False,
+        include_non_paid_channels=False,
+    )
+    actual_times = [
+        t.decode("utf-8") if isinstance(t, bytes) else str(t)
+        for t in summary_metrics.time.values
+    ]
+    self.assertEqual(actual_times, ["0", "1", "2", "3", "4"])
+
   @parameterized.product(
       aggregate_geos=[False, True],
       aggregate_times=[False, True],

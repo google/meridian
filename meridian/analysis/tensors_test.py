@@ -583,28 +583,22 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
   def test_get_model_context_with_model_context(self):
     dummy_context = self.meridian_media_only.model_context
-    # pylint: disable=protected-access
-    result = tensors._get_model_context(
+    result = tensors.get_model_context(
         meridian=None, model_context=dummy_context
     )
-    # pylint: enable=protected-access
     self.assertEqual(result, dummy_context)
 
   def test_get_model_context_with_meridian(self):
     dummy_meridian = self.meridian_media_only
-    # pylint: disable=protected-access
     with self.assertWarnsRegex(DeprecationWarning, "meridian.*deprecated"):
-      result = tensors._get_model_context(
+      result = tensors.get_model_context(
           meridian=dummy_meridian, model_context=None
       )
-    # pylint: enable=protected-access
     self.assertEqual(result, dummy_meridian.model_context)
 
   def test_get_model_context_both_none(self):
-    # pylint: disable=protected-access
     with self.assertRaisesRegex(ValueError, "must be provided"):
-      tensors._get_model_context(meridian=None, model_context=None)
-    # pylint: enable=protected-access
+      tensors.get_model_context(meridian=None, model_context=None)
 
 
 class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
