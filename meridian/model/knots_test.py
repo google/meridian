@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from collections.abc import Collection
-from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants
@@ -694,8 +693,17 @@ class AKSTest(parameterized.TestCase):
     x = np.array([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     y = np.array([10, 2, 3, 4, 50, 6, 30, 4, 5, 6, 3, 4, 5, 6, 6])
     input_knots = np.array([1.0, 3, 15])
-
-    result = knots.AKS(mock.MagicMock()).aspline(
+    dummy_data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=2,
+            n_times=10,
+            n_media_times=10,
+            n_controls=2,
+            n_media_channels=1,
+        ),
+        "non_revenue",
+    )
+    result = knots.AKS(dummy_data).aspline(
         x, y, input_knots, np.array([-10, 50, 0])
     )
     np.testing.assert_allclose(
@@ -761,8 +769,18 @@ class AKSTest(parameterized.TestCase):
       ),
   )
   def test_aspline_invalid_args(self, x, y, expected_error):
+    dummy_data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=2,
+            n_times=10,
+            n_media_times=10,
+            n_controls=2,
+            n_media_channels=1,
+        ),
+        "non_revenue",
+    )
     with self.assertRaisesRegex(ValueError, expected_error):
-      knots.AKS(mock.MagicMock()).aspline(
+      knots.AKS(dummy_data).aspline(
           x, y, np.array([1.0, 3, 15]), np.array([-10, 50, 0])
       )
 
@@ -903,6 +921,274 @@ class AKSTest(parameterized.TestCase):
           min_internal_knots=10,
           max_internal_knots=10,
       )
+
+  def test_aks_user_provided_required_knots(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    required_knots = [10, 50, 100]
+    aks_result = aks_obj.automatic_knot_selection(
+        required_knots=required_knots,
+    )
+    actual_knots = aks_result.knots
+    for knot in required_knots:
+      self.assertIn(knot, actual_knots)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="standard",
+          required_knots=[10, 50, 100],
+      ),
+      dict(
+          testcase_name="single_knot",
+          required_knots=[50],
+      ),
+      dict(
+          testcase_name="many_knots",
+          required_knots=[10, 20, 30, 40, 50, 60],
+      ),
+      dict(
+          testcase_name="near_end",
+          required_knots=[113, 114],
+      ),
+      dict(
+          testcase_name="unsorted",
+          required_knots=[100, 10, 50],
+      ),
+  )
+  def test_aks_user_provided_required_knots_restrict_to_right(
+      self, required_knots
+  ):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    aks_result = aks_obj.automatic_knot_selection(
+        required_knots=required_knots,
+        restrict_to_right_of_required_knots=True,
+    )
+    actual_knots = aks_result.knots
+    max_req_knot = max(required_knots)
+    for knot in required_knots:
+      self.assertIn(knot, actual_knots)
+    for knot in actual_knots:
+      if knot not in required_knots:
+        self.assertGreater(knot, max_req_knot)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="none",
+          required_knots=None,
+      ),
+      dict(
+          testcase_name="empty",
+          required_knots=[],
+      ),
+  )
+  def test_aks_user_provided_required_knots_restrict_to_right_fails_with_no_knots(
+      self, required_knots
+  ):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`restrict_to_right_of_required_knots` can only be True if"
+        " `required_knots` are provided and not empty.",
+    ):
+      aks_obj.automatic_knot_selection(
+          required_knots=required_knots,
+          restrict_to_right_of_required_knots=True,
+      )
+
+  def test_aks_user_provided_required_knots_invalid_not_in_initial(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    required_knots = [116]  # 116 is not a valid initial knot
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The required knots are not legitimate knot locations.",
+    ):
+      aks_obj.automatic_knot_selection(required_knots=required_knots)
+
+  def test_aks_user_provided_required_knots_exceeds_max(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "The number of required knots exceeds `max_internal_knots`."
+    ):
+      aks_obj.automatic_knot_selection(
+          max_internal_knots=2,
+          required_knots=[1, 2, 3],
+      )
+
+  _REQUIRED_KNOTS_FEW = [1, 2, 4, 6, 80, 100, 102, 104]
+  _REQUIRED_KNOTS_MANY = [
+      1,
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      20,
+      24,
+      30,
+      36,
+      40,
+      48,
+      50,
+      52,
+      54,
+      57,
+      60,
+      62,
+      69,
+      70,
+      79,
+      80,
+      84,
+      89,
+      93,
+      98,
+      102,
+      107,
+  ]
+
+  @parameterized.named_parameters(
+      (
+          "low_penalty_few_knots",
+          np.array([1, 1.1], dtype=np.float64),
+          _REQUIRED_KNOTS_FEW,
+          True,
+      ),
+      (
+          "low_penalty_many_knots",
+          np.array([1, 1.1], dtype=np.float64),
+          _REQUIRED_KNOTS_MANY,
+          True,
+      ),
+      (
+          "high_penalty_few_knots",
+          np.array([999.9, 1000.0], dtype=np.float64),
+          _REQUIRED_KNOTS_FEW,
+          False,
+      ),
+      (
+          "high_penalty_many_knots",
+          np.array([999.9, 1000.0], dtype=np.float64),
+          _REQUIRED_KNOTS_MANY,
+          False,
+      ),
+  )
+  def test_aks_hybrid_base_penalty_behavior(
+      self, base_penalty, required_knots, adds_knots
+  ):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+
+    res = aks_obj.automatic_knot_selection(
+        base_penalty=base_penalty, required_knots=required_knots
+    ).knots
+
+    if adds_knots:
+      self.assertGreater(len(res), len(required_knots))
+      for knot in required_knots:
+        self.assertIn(knot, res)
+    else:
+      self.assertListEqual(res.tolist(), required_knots)
+
+  def test_aks_hybrid_moderate_base_penalty_behavior(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+
+    required_knots_underfit = [10, 20]
+    knot_locations_underfit = aks_obj.automatic_knot_selection(
+        required_knots=required_knots_underfit
+    ).knots
+    for knot in required_knots_underfit:
+      self.assertIn(knot, knot_locations_underfit)
+    added_to_underfit = len(knot_locations_underfit) - len(
+        required_knots_underfit
+    )
+
+    # A superset of the knots in the underfit case.
+    required_knots_saturated = list(range(10, 32))
+    knot_locations_saturated = aks_obj.automatic_knot_selection(
+        required_knots=required_knots_saturated
+    ).knots
+    for knot in required_knots_saturated:
+      self.assertIn(knot, knot_locations_saturated)
+    added_to_saturated = len(knot_locations_saturated) - len(
+        required_knots_saturated
+    )
+
+    # We expect at least as many knots to be added when there are few required
+    # knots than when there are more required knots. This is because few knots
+    # are likely to underfit the data, and thus more knots will be added to the
+    # model.
+    self.assertGreaterEqual(added_to_underfit, added_to_saturated)
 
 
 if __name__ == "__main__":
