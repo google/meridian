@@ -18,6 +18,7 @@ import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from meridian import backend
 from meridian import constants
 from meridian.data import input_data
 from meridian.data import test_utils
@@ -1671,6 +1672,56 @@ class InputDataTest(parameterized.TestCase):
     data.population = data.population.astype(int)
     self.assertNotEmpty(data.scaled_centered_kpi)
 
+  def test_construct_with_na_raises_error(self):
+    kpi_with_na = self.not_lagged_kpi.copy()
+    kpi_with_na.values[0, 0] = np.nan
+    with self.assertRaisesRegex(
+        ValueError,
+        expected_regex="NA values found in the kpi data.",
+    ):
+      input_data.InputData(
+          controls=self.not_lagged_controls,
+          kpi=kpi_with_na,
+          kpi_type=constants.NON_REVENUE,
+          revenue_per_kpi=self.revenue_per_kpi,
+          population=self.population,
+          media=self.not_lagged_media,
+          media_spend=self.media_spend,
+      )
+
+  def test_construct_with_coercible_object_dtype_succeeds(self):
+    kpi_object = self.not_lagged_kpi.copy().astype(object)
+    self.assertEqual(kpi_object.dtype, np.dtype("O"))
+
+    input_data_obj = input_data.InputData(
+        controls=self.not_lagged_controls,
+        kpi=kpi_object,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.not_lagged_media,
+        media_spend=self.media_spend,
+    )
+    self.assertEqual(input_data_obj.kpi.dtype, backend.np_float_dtype)
+
+  def test_construct_with_non_coercible_object_dtype_raises_error(self):
+    kpi_object = self.not_lagged_kpi.copy().astype(object)
+    kpi_object.values[0, 0] = "not_a_number"
+
+    with self.assertRaisesRegex(
+        ValueError,
+        expected_regex="Failed to convert array 'kpi' from object to float.",
+    ):
+      input_data.InputData(
+          controls=self.not_lagged_controls,
+          kpi=kpi_object,
+          kpi_type=constants.NON_REVENUE,
+          revenue_per_kpi=self.revenue_per_kpi,
+          population=self.population,
+          media=self.not_lagged_media,
+          media_spend=self.media_spend,
+      )
+
 
 class NonpaidInputDataTest(parameterized.TestCase):
   """Tests for non-paid InputData."""
@@ -2134,7 +2185,6 @@ class NonpaidInputDataTest(parameterized.TestCase):
               self.lagged_organic_frequency, constants.ORGANIC_FREQUENCY
           ),
       )
-
 
 if __name__ == "__main__":
   absltest.main()

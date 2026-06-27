@@ -7546,6 +7546,51 @@ class EDAEngineTest(
       self.assertAlmostEqual(outlier_df.iloc[0][constants.SPEND], 1000.0)
       self.assertAlmostEqual(outlier_df.iloc[0][constants.MEDIA_UNITS], 10.0)
 
+  def test_cost_per_media_unit_with_zero_units(self):
+    model_context = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        is_national=True,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context)
+
+    spend_arr = np.array([10.0, 50.0, 20.0], dtype=np.float64)
+    media_unit_arr = np.array([0.0, 5.0, 10.0], dtype=np.float64)
+    expected_cpi = np.array([np.nan, 10.0, 2.0])
+
+    shape = (3, 1)
+    spend_data = spend_arr.reshape(shape)
+    media_unit_data = media_unit_arr.reshape(shape)
+    spend_ds = _create_dataset_with_var_dim(
+        spend_data, var_name="media"
+    ).rename({"media_dim": constants.MEDIA_CHANNEL, "media": constants.SPEND})
+    media_unit_ds = _create_dataset_with_var_dim(
+        media_unit_data, var_name="media"
+    ).rename(
+        {"media_dim": constants.MEDIA_CHANNEL, "media": constants.MEDIA_UNITS}
+    )
+
+    self._mock_eda_engine_property("national_all_spend_ds", spend_ds)
+    self._mock_eda_engine_property(
+        "national_paid_raw_media_units_ds", media_unit_ds
+    )
+
+    outcome = engine.check_national_cost_per_media_unit()
+
+    self.assertLen(outcome.analysis_artifacts, 1)
+    (artifact,) = outcome.analysis_artifacts
+
+    stacked_spend_da_structure = eda_engine.stack_variables(
+        spend_ds, constants.CHANNEL
+    )
+    expected_cpi_da = xr.DataArray(
+        expected_cpi.reshape(stacked_spend_da_structure.shape),
+        coords=stacked_spend_da_structure.coords,
+        dims=stacked_spend_da_structure.dims,
+        name=eda_constants.COST_PER_MEDIA_UNIT,
+    )
+    xr.testing.assert_allclose(artifact.cost_per_media_unit_da, expected_cpi_da)
+
   def test_run_all_critical_checks_all_pass(self):
     model_context = context.ModelContext(
         model_spec=model_spec.ModelSpec(),
