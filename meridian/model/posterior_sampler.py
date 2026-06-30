@@ -14,7 +14,7 @@
 
 """Module for MCMC sampling of posterior distributions in a Meridian model."""
 
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 import functools
 from typing import Any, Optional, TYPE_CHECKING
 import warnings
@@ -97,6 +97,119 @@ def _get_tau_g(
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 
+def _sample_channel_group(
+    model_context: context.ModelContext,
+    model_equations: equations.ModelEquations,
+    prefix: str,
+    dev_name: str,
+    n_channels: int,
+    transform_fn: Callable[..., backend.Tensor],
+    transform_kwargs: dict[str, Any],
+    yield_deterministics: bool,
+    prior_denominator: Optional[backend.Tensor] = None,
+    total_outcome: Optional[backend.Tensor] = None,
+) -> Generator[
+    backend.Tensor | backend.tfd.Distribution,
+    Any,
+    tuple[backend.Tensor, backend.Tensor],
+]:
+  """Helper generator to sample and transform a group of channels."""
+  prior_broadcast = model_context.prior_broadcast
+  n_geos = model_context.n_geos
+  media_effects_dist = model_context.media_effects_dist
+
+  alpha = yield getattr(prior_broadcast, f"alpha_{prefix}")
+  ec = yield getattr(prior_broadcast, f"ec_{prefix}")
+  eta = yield getattr(prior_broadcast, f"eta_{prefix}")
+  slope = yield getattr(prior_broadcast, f"slope_{prefix}")
+
+  dev = yield backend.tfd.Sample(
+      backend.tfd.Normal(
+          loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+          scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+      ),
+      [n_geos, n_channels],
+      name=dev_name,
+  )
+
+  transformed = transform_fn(
+      alpha=alpha, ec=ec, slope=slope, **transform_kwargs
+  )
+
+  prior_type_attr_map = {
+      "m": "effective_media_prior_type",
+      "rf": "effective_rf_prior_type",
+      "om": "organic_media_prior_type",
+      "orf": "organic_rf_prior_type",
+  }
+  prior_type_attr = prior_type_attr_map[prefix]
+  prior_type = getattr(model_context.model_spec, prior_type_attr)
+
+  is_organic = prefix in ("om", "orf")
+
+  if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+    beta_prior = getattr(prior_broadcast, f"beta_{prefix}")
+    beta = yield beta_prior
+  else:
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+      param_prior = getattr(prior_broadcast, f"roi_{prefix}")
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
+      param_prior = getattr(prior_broadcast, f"mroi_{prefix}")
+    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+      param_prior = getattr(prior_broadcast, f"contribution_{prefix}")
+    else:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
+
+    treatment_parameter = yield param_prior
+
+    if is_organic:
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
+        incremental_outcome = treatment_parameter * total_outcome
+      else:
+        raise ValueError(f"Unsupported organic prior type: {prior_type}")
+      lp_diff = transformed
+    else:
+      incremental_outcome = treatment_parameter * prior_denominator
+      is_rf = prefix == "rf"
+      if is_rf:
+        lp_diff = model_equations.linear_predictor_counterfactual_difference_rf(
+            rf_transformed=transformed,
+            alpha_rf=alpha,
+            ec_rf=ec,
+            slope_rf=slope,
+        )
+      else:
+        lp_diff = (
+            model_equations.linear_predictor_counterfactual_difference_media(
+                media_transformed=transformed,
+                alpha_m=alpha,
+                ec_m=ec,
+                slope_m=slope,
+            )
+        )
+
+    beta = model_equations.calculate_beta_x(
+        is_non_media=False,
+        incremental_outcome_x=incremental_outcome,
+        linear_predictor_counterfactual_difference=lp_diff,
+        eta_x=eta,
+        beta_gx_dev=dev,
+    )
+    if yield_deterministics:
+      yield backend.tfd.Deterministic(beta, name=f"beta_{prefix}")
+
+  beta_eta_combined = beta + eta * dev
+  beta_g = (
+      beta_eta_combined
+      if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+      else backend.exp(beta_eta_combined)
+  )
+  if yield_deterministics:
+    yield backend.tfd.Deterministic(beta_g, name=f"beta_g{prefix}")
+
+  return transformed, beta_g
+
+
 def _joint_dist_base_logic(
     model_context: context.ModelContext,
     model_equations: equations.ModelEquations,
@@ -148,7 +261,6 @@ def _joint_dist_base_logic(
   non_media_treatments_normalized = (
       model_context.non_media_treatments_normalized
   )
-  media_effects_dist = model_context.media_effects_dist
   adstock_hill_media_fn = model_equations.adstock_hill_media
   adstock_hill_rf_fn = model_equations.adstock_hill_rf
   total_outcome = model_context.total_outcome
@@ -187,240 +299,80 @@ def _joint_dist_base_logic(
   beta_list = []
 
   if media_tensors.media is not None:
-    alpha_m = yield prior_broadcast.alpha_m
-    ec_m = yield prior_broadcast.ec_m
-    eta_m = yield prior_broadcast.eta_m
-    slope_m = yield prior_broadcast.slope_m
-    beta_gm_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(
-            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
-            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
-        ),
-        [n_geos, n_media_channels],
-        name=constants.BETA_GM_DEV,
+    media_transformed, beta_gm = yield from _sample_channel_group(
+        model_context=model_context,
+        model_equations=model_equations,
+        prefix="m",
+        dev_name=constants.BETA_GM_DEV,
+        n_channels=n_media_channels,
+        transform_fn=adstock_hill_media_fn,
+        transform_kwargs={
+            "media": media_tensors.media_scaled,
+            "decay_functions": model_context.adstock_decay_spec.media,
+            "saturation_spec": model_context.saturation_spec.media,
+        },
+        yield_deterministics=yield_deterministics,
+        prior_denominator=media_tensors.prior_denominator,
     )
-    media_transformed = adstock_hill_media_fn(
-        media=media_tensors.media_scaled,
-        alpha=alpha_m,
-        ec=ec_m,
-        slope=slope_m,
-        decay_functions=model_context.adstock_decay_spec.media,
-        saturation_spec=model_context.saturation_spec.media,
-    )
-    prior_type = model_context.model_spec.effective_media_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_m = yield prior_broadcast.beta_m
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_m = yield prior_broadcast.roi_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_m = yield prior_broadcast.mroi_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_m = yield prior_broadcast.contribution_m
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_m = (
-          treatment_parameter_m * media_tensors.prior_denominator
-      )
-      linear_predictor_counterfactual_difference = (
-          model_equations.linear_predictor_counterfactual_difference_media(
-              media_transformed=media_transformed,
-              alpha_m=alpha_m,
-              ec_m=ec_m,
-              slope_m=slope_m,
-          )
-      )
-      beta_m = model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_m,
-          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-          eta_x=eta_m,
-          beta_gx_dev=beta_gm_dev,
-      )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
-
-    beta_eta_combined = beta_m + eta_m * beta_gm_dev
-    beta_gm = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
-    )
-    if yield_deterministics:
-      yield backend.tfd.Deterministic(beta_gm, name=constants.BETA_GM)
-
     media_transformed_list.append(media_transformed)
     beta_list.append(beta_gm)
 
   if rf_tensors.reach is not None:
-    alpha_rf = yield prior_broadcast.alpha_rf
-    ec_rf = yield prior_broadcast.ec_rf
-    eta_rf = yield prior_broadcast.eta_rf
-    slope_rf = yield prior_broadcast.slope_rf
-    beta_grf_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(
-            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
-            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
-        ),
-        [n_geos, n_rf_channels],
-        name=constants.BETA_GRF_DEV,
+    rf_transformed, beta_grf = yield from _sample_channel_group(
+        model_context=model_context,
+        model_equations=model_equations,
+        prefix="rf",
+        dev_name=constants.BETA_GRF_DEV,
+        n_channels=n_rf_channels,
+        transform_fn=adstock_hill_rf_fn,
+        transform_kwargs={
+            "reach": rf_tensors.reach_scaled,
+            "frequency": rf_tensors.frequency,
+            "decay_functions": model_context.adstock_decay_spec.rf,
+            "saturation_spec": model_context.saturation_spec.rf,
+        },
+        yield_deterministics=yield_deterministics,
+        prior_denominator=rf_tensors.prior_denominator,
     )
-    rf_transformed = adstock_hill_rf_fn(
-        reach=rf_tensors.reach_scaled,
-        frequency=rf_tensors.frequency,
-        alpha=alpha_rf,
-        ec=ec_rf,
-        slope=slope_rf,
-        decay_functions=model_context.adstock_decay_spec.rf,
-        saturation_spec=model_context.saturation_spec.rf,
-    )
-
-    prior_type = model_context.model_spec.effective_rf_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_rf = yield prior_broadcast.beta_rf
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_rf = yield prior_broadcast.roi_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_rf = yield prior_broadcast.mroi_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_rf = yield prior_broadcast.contribution_rf
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_rf = (
-          treatment_parameter_rf * rf_tensors.prior_denominator
-      )
-      linear_predictor_counterfactual_difference = (
-          model_equations.linear_predictor_counterfactual_difference_rf(
-              rf_transformed=rf_transformed,
-              alpha_rf=alpha_rf,
-              ec_rf=ec_rf,
-              slope_rf=slope_rf,
-          )
-      )
-      beta_rf = model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_rf,
-          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-          eta_x=eta_rf,
-          beta_gx_dev=beta_grf_dev,
-      )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
-
-    beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-    beta_grf = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
-    )
-    if yield_deterministics:
-      yield backend.tfd.Deterministic(beta_grf, name=constants.BETA_GRF)
-
     media_transformed_list.append(rf_transformed)
     beta_list.append(beta_grf)
 
   if organic_media_tensors.organic_media is not None:
-    alpha_om = yield prior_broadcast.alpha_om
-    ec_om = yield prior_broadcast.ec_om
-    eta_om = yield prior_broadcast.eta_om
-    slope_om = yield prior_broadcast.slope_om
-    beta_gom_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(
-            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
-            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
-        ),
-        [n_geos, n_organic_media_channels],
-        name=constants.BETA_GOM_DEV,
+    organic_media_transformed, beta_gom = yield from _sample_channel_group(
+        model_context=model_context,
+        model_equations=model_equations,
+        prefix="om",
+        dev_name=constants.BETA_GOM_DEV,
+        n_channels=n_organic_media_channels,
+        transform_fn=adstock_hill_media_fn,
+        transform_kwargs={
+            "media": organic_media_tensors.organic_media_scaled,
+            "decay_functions": model_context.adstock_decay_spec.organic_media,
+            "saturation_spec": model_context.saturation_spec.organic_media,
+        },
+        yield_deterministics=yield_deterministics,
+        total_outcome=total_outcome,
     )
-    organic_media_transformed = adstock_hill_media_fn(
-        media=organic_media_tensors.organic_media_scaled,
-        alpha=alpha_om,
-        ec=ec_om,
-        slope=slope_om,
-        decay_functions=model_context.adstock_decay_spec.organic_media,
-        saturation_spec=model_context.saturation_spec.organic_media,
-    )
-    prior_type = model_context.model_spec.organic_media_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_om = yield prior_broadcast.beta_om
-    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-      contribution_om = yield prior_broadcast.contribution_om
-      incremental_outcome_om = contribution_om * total_outcome
-      beta_om = model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_om,
-          linear_predictor_counterfactual_difference=organic_media_transformed,
-          eta_x=eta_om,
-          beta_gx_dev=beta_gom_dev,
-      )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_om, name=constants.BETA_OM)
-    else:
-      raise ValueError(f"Unsupported prior type: {prior_type}")
-
-    beta_eta_combined = beta_om + eta_om * beta_gom_dev
-    beta_gom = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
-    )
-    if yield_deterministics:
-      yield backend.tfd.Deterministic(beta_gom, name=constants.BETA_GOM)
-
     media_transformed_list.append(organic_media_transformed)
     beta_list.append(beta_gom)
 
   if organic_rf_tensors.organic_reach is not None:
-    alpha_orf = yield prior_broadcast.alpha_orf
-    ec_orf = yield prior_broadcast.ec_orf
-    eta_orf = yield prior_broadcast.eta_orf
-    slope_orf = yield prior_broadcast.slope_orf
-    beta_gorf_dev = yield backend.tfd.Sample(
-        backend.tfd.Normal(
-            loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
-            scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
-        ),
-        [n_geos, n_organic_rf_channels],
-        name=constants.BETA_GORF_DEV,
+    organic_rf_transformed, beta_gorf = yield from _sample_channel_group(
+        model_context=model_context,
+        model_equations=model_equations,
+        prefix="orf",
+        dev_name=constants.BETA_GORF_DEV,
+        n_channels=n_organic_rf_channels,
+        transform_fn=adstock_hill_rf_fn,
+        transform_kwargs={
+            "reach": organic_rf_tensors.organic_reach_scaled,
+            "frequency": organic_rf_tensors.organic_frequency,
+            "decay_functions": model_context.adstock_decay_spec.organic_rf,
+            "saturation_spec": model_context.saturation_spec.organic_rf,
+        },
+        yield_deterministics=yield_deterministics,
+        total_outcome=total_outcome,
     )
-    organic_rf_transformed = adstock_hill_rf_fn(
-        reach=organic_rf_tensors.organic_reach_scaled,
-        frequency=organic_rf_tensors.organic_frequency,
-        alpha=alpha_orf,
-        ec=ec_orf,
-        slope=slope_orf,
-        decay_functions=model_context.adstock_decay_spec.organic_rf,
-        saturation_spec=model_context.saturation_spec.organic_rf,
-    )
-
-    prior_type = model_context.model_spec.organic_rf_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_orf = yield prior_broadcast.beta_orf
-    elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-      contribution_orf = yield prior_broadcast.contribution_orf
-      incremental_outcome_orf = contribution_orf * total_outcome
-      beta_orf = model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_orf,
-          linear_predictor_counterfactual_difference=organic_rf_transformed,
-          eta_x=eta_orf,
-          beta_gx_dev=beta_gorf_dev,
-      )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_orf, name=constants.BETA_ORF)
-    else:
-      raise ValueError(f"Unsupported prior type: {prior_type}")
-
-    beta_eta_combined = beta_orf + eta_orf * beta_gorf_dev
-    beta_gorf = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
-    )
-    if yield_deterministics:
-      yield backend.tfd.Deterministic(beta_gorf, name=constants.BETA_GORF)
-
     media_transformed_list.append(organic_rf_transformed)
     beta_list.append(beta_gorf)
 
