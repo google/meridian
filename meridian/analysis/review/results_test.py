@@ -507,6 +507,8 @@ Convergence Check:
         html_output,
     )
 
+    self.assertNotIn("Calibration score", html_output)
+
 
 class ImplausibleROICheckResultTest(parameterized.TestCase):
 
