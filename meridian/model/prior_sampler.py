@@ -179,7 +179,7 @@ class PriorDistributionSampler:
           slope_m=media_vars[constants.SLOPE_M],
       )
       beta_m_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=ctx.media_effects_dist_normal_m,
           incremental_outcome_x=incremental_outcome_m,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=media_vars[constants.ETA_M],
@@ -193,10 +193,10 @@ class PriorDistributionSampler:
         media_vars[constants.BETA_M][..., backend.newaxis, :]
         + media_vars[constants.ETA_M][..., backend.newaxis, :] * beta_gm_dev
     )
-    beta_gm_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gm_value = backend.where(
+        ctx.media_effects_dist_normal_m,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     media_vars[constants.BETA_GM] = backend.tfd.Deterministic(
         beta_gm_value, name=constants.BETA_GM
@@ -292,7 +292,7 @@ class PriorDistributionSampler:
           )
       )
       beta_rf_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=ctx.media_effects_dist_normal_rf,
           incremental_outcome_x=incremental_outcome_rf,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=rf_vars[constants.ETA_RF],
@@ -307,10 +307,10 @@ class PriorDistributionSampler:
         rf_vars[constants.BETA_RF][..., backend.newaxis, :]
         + rf_vars[constants.ETA_RF][..., backend.newaxis, :] * beta_grf_dev
     )
-    beta_grf_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_grf_value = backend.where(
+        ctx.media_effects_dist_normal_rf,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     rf_vars[constants.BETA_GRF] = backend.tfd.Deterministic(
         beta_grf_value, name=constants.BETA_GRF
@@ -385,7 +385,7 @@ class PriorDistributionSampler:
           saturation_spec=ctx.saturation_spec.organic_media,
       )
       beta_om_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=ctx.media_effects_dist_normal_om,
           incremental_outcome_x=incremental_outcome_om,
           linear_predictor_counterfactual_difference=organic_media_transformed,
           eta_x=organic_media_vars[constants.ETA_OM],
@@ -403,10 +403,10 @@ class PriorDistributionSampler:
         + organic_media_vars[constants.ETA_OM][..., backend.newaxis, :]
         * beta_gom_dev
     )
-    beta_gom_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gom_value = backend.where(
+        ctx.media_effects_dist_normal_om,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     organic_media_vars[constants.BETA_GOM] = backend.tfd.Deterministic(
         beta_gom_value, name=constants.BETA_GOM
@@ -482,7 +482,7 @@ class PriorDistributionSampler:
           saturation_spec=ctx.saturation_spec.organic_rf,
       )
       beta_orf_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
+          normal_mask=ctx.media_effects_dist_normal_orf,
           incremental_outcome_x=incremental_outcome_orf,
           linear_predictor_counterfactual_difference=organic_rf_transformed,
           eta_x=organic_rf_vars[constants.ETA_ORF],
@@ -500,10 +500,10 @@ class PriorDistributionSampler:
         + organic_rf_vars[constants.ETA_ORF][..., backend.newaxis, :]
         * beta_gorf_dev
     )
-    beta_gorf_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gorf_value = backend.where(
+        ctx.media_effects_dist_normal_orf,
+        beta_eta_combined,
+        backend.exp(beta_eta_combined),
     )
     organic_rf_vars[constants.BETA_GORF] = backend.tfd.Deterministic(
         beta_gorf_value, name=constants.BETA_GORF
@@ -567,7 +567,9 @@ class PriorDistributionSampler:
           ctx.non_media_treatments_normalized - baseline_scaled
       )
       gamma_n_value = self._model_equations.calculate_beta_x(
-          is_non_media=True,
+          normal_mask=backend.ones(
+              [ctx.n_non_media_channels], dtype=backend.bool_
+          ),
           incremental_outcome_x=incremental_outcome_n,
           linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
           eta_x=non_media_treatments_vars[constants.XI_N],

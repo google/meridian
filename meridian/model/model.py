@@ -432,7 +432,7 @@ class Meridian:
     return self._model_context.kpi_scaled
 
   @property
-  def media_effects_dist(self) -> str:
+  def media_effects_dist(self) -> str | Mapping[str, str]:
     return self._model_context.media_effects_dist
 
   @property
@@ -815,11 +815,13 @@ class Meridian:
   # TODO: Remove this method.
   def calculate_beta_x(
       self,
-      is_non_media: bool,
+      is_non_media: bool | None = None,
+      *,
       incremental_outcome_x: backend.Tensor,
       linear_predictor_counterfactual_difference: backend.Tensor,
       eta_x: backend.Tensor,
       beta_gx_dev: backend.Tensor,
+      normal_mask: backend.Tensor | None = None,
   ) -> backend.Tensor:
     """Calculates coefficient mean parameter for any treatment variable type.
 
@@ -830,10 +832,7 @@ class Meridian:
 
     Args:
       is_non_media: Boolean indicating whether the treatment variable is a
-        non-media treatment. This argument is used to determine whether the
-        coefficient random effects are normal or log-normal. If `True`, then
-        random effects are assumed to be normal. Otherwise, the distribution is
-        inferred from `self.media_effects_dist`.
+        non-media treatment.
       incremental_outcome_x: The incremental outcome of the treatment variable,
         which depends on the parameter values of a particular prior or posterior
         draw. The "_x" indicates that this is a tensor with length equal to the
@@ -853,6 +852,8 @@ class Meridian:
         coefficients. For media variables, the "x" represents "m", "rf", "om",
         or "orf". For non-media treatments, this argument should be set to
         `gamma_gn_dev`, which is analogous to "beta_gx_dev".
+      normal_mask: A boolean tensor indicating which channels have normal random
+        effects (True) vs log-normal random effects (False).
 
     Returns:
       The coefficient mean parameter of the treatment variable, which has
@@ -865,13 +866,16 @@ class Meridian:
         DeprecationWarning,
         stacklevel=2,
     )
-    return self.model_equations.calculate_beta_x(
+    kwargs = dict(
         is_non_media=is_non_media,
         incremental_outcome_x=incremental_outcome_x,
         linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
         eta_x=eta_x,
         beta_gx_dev=beta_gx_dev,
     )
+    if normal_mask is not None:
+      kwargs["normal_mask"] = normal_mask
+    return self.model_equations.calculate_beta_x(**kwargs)
 
   # TODO: Remove this method.
   def adstock_hill_media(

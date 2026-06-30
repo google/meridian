@@ -334,6 +334,13 @@ enum ComputationPrecision {
   FLOAT64 = 2;
 }
 
+// Specifies the media effects distribution for each channel.
+message MediaEffectsDistByChannel {
+  // A map where keys are channel names and values are the media effects
+  // distribution to use for that channel.
+  map<string, MediaEffectsDistribution> channel_media_effects_dists = 1;
+}
+
 // Specifies the adstock decay function for each channel.
 message AdstockDecayByChannel {
   // A map where keys are channel names and values are the adstock decay
@@ -539,6 +546,10 @@ message Hyperparameters {
   // If `None`, the minimum value is used as baseline for each non-media
   // treatments channel. This attribute is used as the default value for the
   // corresponding argument to `Analyzer` methods.
+  // Channel-specific media effects distributions. Defaults to 'log_normal' for
+  // channels not specified in the map.
+  MediaEffectsDistByChannel media_effects_dist_by_channel = 28;
+
   repeated NonMediaBaselineValue non_media_baseline_values = 25;
 }
 

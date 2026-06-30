@@ -15,9 +15,10 @@
 """Defines ModelContext class for Meridian."""
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import dataclasses
 import functools
+from typing import Any
 import warnings
 
 from meridian import backend
@@ -76,6 +77,7 @@ class ModelContext:
 
     self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
+    self._validate_media_effects_dist_keys()
 
     self._set_total_media_contribution_prior = False
     self._warn_setting_ignored_priors()
@@ -610,11 +612,122 @@ class ModelContext:
     return self.kpi_transformer.forward(self.kpi)
 
   @functools.cached_property
-  def media_effects_dist(self) -> str:
+  def media_effects_dist(self) -> str | Mapping[str, str]:
     if self.is_national:
       return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]  # pytype: disable=bad-return-type
     else:
       return self._model_spec.media_effects_dist
+
+  def _validate_media_effects_dist_keys(self):
+    spec_dist = self._model_spec.media_effects_dist
+    if isinstance(spec_dist, Mapping):
+      valid_channels = set(
+          self._input_data.get_all_adstock_hill_channels().tolist()
+      )
+      for channel in spec_dist:
+        if channel not in valid_channels:
+          raise ValueError(
+              f"Unrecognized channel name '{channel}' in `media_effects_dist`"
+              " keys. Keys should contain only channel names from"
+              f" {sorted(valid_channels)}."
+          )
+
+  def _get_media_effects_dist_mask(
+      self,
+      channels: np.ndarray | None,
+      builder_fn: Callable[[], Any],
+      target_dist: str,
+  ) -> backend.Tensor:
+    """Returns a boolean mask tensor indicating target distribution."""
+    if channels is None:
+      return backend.to_tensor([], dtype=backend.bool_)
+
+    if self.is_national:
+      is_target = target_dist == constants.MEDIA_EFFECTS_NORMAL
+      return backend.broadcast_to(
+          backend.to_tensor(is_target, dtype=backend.bool_),
+          [len(channels)],
+      )
+
+    spec_dist = self._model_spec.media_effects_dist
+    if isinstance(spec_dist, str):
+      is_target = spec_dist == target_dist
+      return backend.broadcast_to(
+          backend.to_tensor(is_target, dtype=backend.bool_),
+          [len(channels)],
+      )
+
+    # Otherwise it is a mapping.
+    builder = builder_fn().with_default_value(
+        constants.MEDIA_EFFECTS_LOG_NORMAL
+    )
+    dists = builder(**spec_dist)
+    is_target_list = [d == target_dist for d in dists]
+    return backend.to_tensor(is_target_list, dtype=backend.bool_)
+
+  @functools.cached_property
+  def media_effects_dist_normal_m(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.media_channel,
+        builder_fn=self._input_data.get_paid_media_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_normal_rf(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.rf_channel,
+        builder_fn=self._input_data.get_paid_rf_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_normal_om(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.organic_media_channel,
+        builder_fn=self._input_data.get_organic_media_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_normal_orf(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.organic_rf_channel,
+        builder_fn=self._input_data.get_organic_rf_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_log_normal_m(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.media_channel,
+        builder_fn=self._input_data.get_paid_media_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_log_normal_rf(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.rf_channel,
+        builder_fn=self._input_data.get_paid_rf_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_log_normal_om(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.organic_media_channel,
+        builder_fn=self._input_data.get_organic_media_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  @functools.cached_property
+  def media_effects_dist_log_normal_orf(self) -> backend.Tensor:
+    return self._get_media_effects_dist_mask(
+        channels=self._input_data.organic_rf_channel,
+        builder_fn=self._input_data.get_organic_rf_channels_argument_builder,
+        target_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
 
   @functools.cached_property
   def unique_sigma_for_each_geo(self) -> bool:
@@ -786,86 +899,109 @@ class ModelContext:
     Priors for ROI, mROI, and Contribution can only have negative support if the
     random effects follow a normal distribution. This check enforces that priors
     have non-negative support when random effects follow a log-normal
-    distribution. This check only applies to geo-level models with log-normal
-    random effects since national models do not have random effects.
+    distribution for that channel. This check only applies to geo-level models
+    with log-normal random effects since national models do not have random
+    effects.
     """
     prior = self._model_spec.prior
     if self.n_media_channels > 0:
       self._check_for_negative_support(
-          prior.roi_m,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_ROI,
+          dist=prior.roi_m,
+          log_normal_mask=self.media_effects_dist_log_normal_m,
+          should_check=(
+              self._model_spec.effective_media_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_ROI
+          ),
       )
       self._check_for_negative_support(
-          prior.mroi_m,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_MROI,
+          dist=prior.mroi_m,
+          log_normal_mask=self.media_effects_dist_log_normal_m,
+          should_check=(
+              self._model_spec.effective_media_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_MROI
+          ),
       )
       self._check_for_negative_support(
-          prior.contribution_m,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          dist=prior.contribution_m,
+          log_normal_mask=self.media_effects_dist_log_normal_m,
+          should_check=(
+              self._model_spec.effective_media_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          ),
       )
     if self.n_rf_channels > 0:
       self._check_for_negative_support(
-          prior.roi_rf,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_ROI,
+          dist=prior.roi_rf,
+          log_normal_mask=self.media_effects_dist_log_normal_rf,
+          should_check=(
+              self._model_spec.effective_rf_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_ROI
+          ),
       )
       self._check_for_negative_support(
-          prior.mroi_rf,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_MROI,
+          dist=prior.mroi_rf,
+          log_normal_mask=self.media_effects_dist_log_normal_rf,
+          should_check=(
+              self._model_spec.effective_rf_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_MROI
+          ),
       )
       self._check_for_negative_support(
-          prior.contribution_rf,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          dist=prior.contribution_rf,
+          log_normal_mask=self.media_effects_dist_log_normal_rf,
+          should_check=(
+              self._model_spec.effective_rf_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          ),
       )
     if self.n_organic_media_channels > 0:
       self._check_for_negative_support(
-          prior.contribution_om,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          dist=prior.contribution_om,
+          log_normal_mask=self.media_effects_dist_log_normal_om,
+          should_check=(
+              self._model_spec.organic_media_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          ),
       )
     if self.n_organic_rf_channels > 0:
       self._check_for_negative_support(
-          prior.contribution_orf,
-          self.media_effects_dist,
-          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          dist=prior.contribution_orf,
+          log_normal_mask=self.media_effects_dist_log_normal_orf,
+          should_check=(
+              self._model_spec.organic_rf_prior_type
+              == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION
+          ),
       )
 
   def _check_for_negative_support(
       self,
       dist: backend.tfd.Distribution,
-      media_effects_dist: str,
-      prior_type: str,
+      log_normal_mask: backend.Tensor,
+      should_check: bool,
   ) -> None:
     """Checks for negative support in prior distributions.
 
-    When `media_effects_dist` is `MEDIA_EFFECTS_LOG_NORMAL`, prior distributions
-    for media effects must be non-negative. This function raises a ValueError if
-    any part of the distribution's CDF is greater than 0 at 0, indicating some
-    probability mass below zero.
+    When `media_effects_dist` is `MEDIA_EFFECTS_LOG_NORMAL` for a channel, prior
+    distributions for media effects must be non-negative. This function raises a
+    ValueError if any part of the distribution's CDF is greater than 0 at 0 for
+    log-normal channels, indicating some probability mass below zero.
 
     Args:
       dist: The distribution to check.
-      media_effects_dist: The type of media effects distribution.
-      prior_type: The prior type that corresponds with current prior under test.
-
-    Raises:
-      ValueError: If the prior distribution has negative support when
-      `media_effects_dist` is `MEDIA_EFFECTS_LOG_NORMAL`.
+      log_normal_mask: A boolean tensor indicating which channels are
+        log-normal.
+      should_check: Whether to perform the check.
     """
-    if (
-        prior_type == self._model_spec.media_prior_type
-        and media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
-        and np.any(dist.cdf(0) > 0)
-    ):
+    if not should_check:
+      return
+
+    cdf_zero = dist.cdf(0)
+    cond = (cdf_zero > 0) & log_normal_mask
+    if bool(backend.reduce_any(cond)):
       raise ValueError(
           "Media priors must have non-negative support when"
-          f' `media_effects_dist`="{media_effects_dist}". Found negative prior'
-          f" distribution support for {dist.name}."
+          " `media_effects_dist` is log_normal for that channel. Found negative"
+          f" prior distribution support for {dist.name}."
       )
 
   @functools.cached_property
