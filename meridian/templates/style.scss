@@ -615,4 +615,29 @@ chip.calibrated-wide {
   justify-content: center;
   box-sizing: border-box;
 }
+
+.plots-section {
+  display: flex;
+  flex-direction: column;
+  row-gap: 40px;
+  padding: 32px;
+}
+
+.plot-container {
+  display: flex;
+  flex-direction: column;
+  row-gap: 16px;
+
+  .plot-title {
+    margin: 0;
+    font-family: 'Google Sans Display', 'Google Sans', sans-serif;
+    font-size: 20px;
+    font-weight: 500;
+    color: #202124;
+  }
+
+  warnings {
+    margin: 0 !important;
+  }
+}
 // copybara:strip_end

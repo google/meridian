@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
 import immutabledict
+from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
@@ -30,7 +31,6 @@ from meridian.data import input_data
 from meridian.model import context
 from meridian.model import prior_distribution
 from meridian.model import spec as model_spec_module
-
 import numpy as np
 import xarray as xr
 

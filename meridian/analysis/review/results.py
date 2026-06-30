@@ -15,18 +15,20 @@
 """Data structures for the Model Quality Checks results."""
 
 import abc
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import dataclasses
 import enum
 import functools
+import json
 import os
 from typing import Any
 
-import jinja2
 from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
 from meridian.templates import formatter
+import numpy as np
+import pandas as pd
 import xarray as xr
 
 
@@ -682,6 +684,8 @@ class ImplausibleROICheckResult(CheckResult):
   high_roi_channels: list[str]
   low_roi_channels: list[str]
   aggregate_details: Mapping[str, Any]
+  roi_upper_bound: float = configs.ImplausibleROIConfig.roi_upper_bound
+  roi_lower_bound: float = configs.ImplausibleROIConfig.roi_lower_bound
 
   @property
   def details(self) -> Mapping[str, Any]:
@@ -768,6 +772,9 @@ class HighVarianceCheckResult(CheckResult):
   case: HighVarianceAggregateCases
   channel_results: list[HighVarianceChannelResult]
   high_variance_channels: list[str]
+  prior_relative_hdi_width: float = (
+      constants.PRIOR_RELATIVE_HDI_WIDTH_FOR_80_PERCENT
+  )
 
   @property
   def details(self) -> Mapping[str, Any]:
@@ -850,6 +857,9 @@ class PotentialBiasCheckResult(CheckResult):
   channel_results: list[PotentialBiasChannelResult]
   low_correlation_channels: list[str]
   correlation_matrix: xr.DataArray
+  correlation_threshold: float = (
+      configs.PotentialBiasConfig.correlation_threshold
+  )
 
   @property
   def details(self) -> Mapping[str, Any]:
@@ -895,12 +905,6 @@ class ReviewSummary:
     summary_message: A summary message of all checks.
     results: A list of all check results.
     health_score: The health score of the model.
-  """
-
-  overall_status: Status
-  summary_message: str
-  results: list[CheckResult]
-  health_score: float
 
   def __repr__(self) -> str:
     report = []
