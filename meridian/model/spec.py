@@ -232,7 +232,9 @@ class ModelSpec:
   prior: prior_distribution.PriorDistribution = dataclasses.field(
       default_factory=prior_distribution.PriorDistribution,
   )
-  media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
+  media_effects_dist: str | Mapping[str, str] = (
+      constants.MEDIA_EFFECTS_LOG_NORMAL
+  )
   hill_before_adstock: bool = False
   max_lag: int = 8
   unique_sigma_for_each_geo: bool = False
@@ -258,10 +260,26 @@ class ModelSpec:
 
   def __post_init__(self):
     # Validate media_effects_dist.
-    if self.media_effects_dist not in constants.MEDIA_EFFECTS_DISTRIBUTIONS:
+    if isinstance(self.media_effects_dist, str):
+      if self.media_effects_dist not in constants.MEDIA_EFFECTS_DISTRIBUTIONS:
+        raise ValueError(
+            "The `media_effects_dist` parameter"
+            f" '{self.media_effects_dist}' must be one of"
+            f" {sorted(constants.MEDIA_EFFECTS_DISTRIBUTIONS)}."
+        )
+    elif isinstance(self.media_effects_dist, Mapping):
+      for channel, dist in self.media_effects_dist.items():
+        if dist not in constants.MEDIA_EFFECTS_DISTRIBUTIONS:
+          raise ValueError(
+              f"The `media_effects_dist` for channel '{channel}'"
+              " must be one of"
+              f" {sorted(constants.MEDIA_EFFECTS_DISTRIBUTIONS)},"
+              f" but got '{dist}'."
+          )
+    else:
       raise ValueError(
-          f"The `media_effects_dist` parameter '{self.media_effects_dist}' must"
-          f" be one of {sorted(constants.MEDIA_EFFECTS_DISTRIBUTIONS)}."
+          "Unsupported type for `media_effects_dist` parameter:"
+          f" {type(self.media_effects_dist)}."
       )
     # Support paid_media_prior_type for backwards compatibility.
     if self.paid_media_prior_type is not None:
