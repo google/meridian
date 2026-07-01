@@ -383,7 +383,7 @@ class InputData:
   def allocated_media_spend(self) -> xr.DataArray | None:
     """Returns the allocated media spend for each geo and time."""
     if self.media_spend is not None and len(self.media_spend.shape) == 1:
-      return self._allocate_spend(self.media_spend, self.media)
+      return self._allocate_spend(self.media_spend, self.media)  # pyrefly: ignore[bad-argument-type]
     else:
       return self.media_spend
 
@@ -391,7 +391,7 @@ class InputData:
   def allocated_rf_spend(self) -> xr.DataArray | None:
     """Returns the allocated RF spend for each geo and time."""
     if self.rf_spend is not None and len(self.rf_spend.shape) == 1:
-      return self._allocate_spend(self.rf_spend, self.reach * self.frequency)
+      return self._allocate_spend(self.rf_spend, self.reach * self.frequency)  # pyrefly: ignore[unsupported-operation]
     else:
       return self.rf_spend
 
@@ -400,7 +400,7 @@ class InputData:
   ) -> np.ndarray | None:
     """Aggregates media spend by channel over the calibration period."""
     return _aggregate_spend(
-        spend=self.allocated_media_spend, calibration_period=calibration_period
+        spend=self.allocated_media_spend, calibration_period=calibration_period  # pyrefly: ignore[bad-argument-type]
     )
 
   def aggregate_rf_spend(
@@ -408,7 +408,7 @@ class InputData:
   ) -> np.ndarray | None:
     """Aggregates RF spend by channel over the calibration period."""
     return _aggregate_spend(
-        spend=self.allocated_rf_spend,
+        spend=self.allocated_rf_spend,  # pyrefly: ignore[bad-argument-type]
         calibration_period=calibration_period,
     )
 
@@ -433,7 +433,7 @@ class InputData:
     if self.media is not None:
       return self.media[constants.MEDIA_TIME]
     else:
-      return self.reach[constants.MEDIA_TIME]
+      return self.reach[constants.MEDIA_TIME]  # pyrefly: ignore[unsupported-operation]
 
   @functools.cached_property
   def media_time_coordinates(self) -> tc.TimeCoordinates:
@@ -583,7 +583,7 @@ class InputData:
           name=constants.REVENUE_PER_KPI,
       )
       if not revenue_per_kpi.equals(
-          self.revenue_per_kpi
+          self.revenue_per_kpi  # pyrefly: ignore[bad-argument-type]
       ):  # Not equal to all ones.
         warnings.warn(
             "Revenue from the `kpi` data is used when `kpi_type`=`revenue`."
@@ -885,7 +885,7 @@ class InputData:
     for array in arrays_with_geos:
       self._check_unique_names(constants.GEO, array)
 
-    _check_coords_match(constants.GEO, arrays_with_geos)
+    _check_coords_match(constants.GEO, arrays_with_geos)  # pyrefly: ignore[bad-argument-type]
 
   def as_dataset(self) -> xr.Dataset:
     """Returns data as a single `xarray.Dataset` object."""
@@ -899,20 +899,20 @@ class InputData:
       data.append(self.revenue_per_kpi)
     if self.media is not None:
       data.append(self.media)
-      data.append(self.media_spend)
+      data.append(self.media_spend)  # pyrefly: ignore[bad-argument-type]
     if self.reach is not None:
       data.append(self.reach)
-      data.append(self.frequency)
-      data.append(self.rf_spend)
+      data.append(self.frequency)  # pyrefly: ignore[bad-argument-type]
+      data.append(self.rf_spend)  # pyrefly: ignore[bad-argument-type]
     if self.organic_media is not None:
       data.append(self.organic_media)
     if self.organic_reach is not None:
       data.append(self.organic_reach)
-      data.append(self.organic_frequency)
+      data.append(self.organic_frequency)  # pyrefly: ignore[bad-argument-type]
     if self.non_media_treatments is not None:
       data.append(self.non_media_treatments)
 
-    return xr.combine_by_coords(data)
+    return xr.combine_by_coords(data)  # pyrefly: ignore[bad-return]
 
   def get_n_top_largest_geos(self, num_geos: int) -> list[str]:
     """Finds the specified number of the largest geos by population.
@@ -980,7 +980,7 @@ class InputData:
       self,
   ) -> arg_builder.OrderedListArgumentBuilder:
     """Returns an argument builder for all *paid* channels."""
-    return arg_builder.OrderedListArgumentBuilder(self.get_all_paid_channels())
+    return arg_builder.OrderedListArgumentBuilder(self.get_all_paid_channels())  # pyrefly: ignore[bad-argument-type]
 
   def get_paid_media_channels_argument_builder(
       self,
@@ -988,7 +988,7 @@ class InputData:
     """Returns an argument builder for *paid* media channels *only*."""
     if self.media_channel is None:
       raise ValueError("There are no media channels in the input data.")
-    return arg_builder.OrderedListArgumentBuilder(self.media_channel.values)
+    return arg_builder.OrderedListArgumentBuilder(self.media_channel.values)  # pyrefly: ignore[bad-argument-type]
 
   def get_paid_rf_channels_argument_builder(
       self,
@@ -996,7 +996,7 @@ class InputData:
     """Returns an argument builder for *paid* RF channels *only*."""
     if self.rf_channel is None:
       raise ValueError("There are no RF channels in the input data.")
-    return arg_builder.OrderedListArgumentBuilder(self.rf_channel.values)
+    return arg_builder.OrderedListArgumentBuilder(self.rf_channel.values)  # pyrefly: ignore[bad-argument-type]
 
   def get_organic_media_channels_argument_builder(
       self
@@ -1005,7 +1005,7 @@ class InputData:
     if self.organic_media_channel is None:
       raise ValueError("There are no organic media channels in the input data.")
     return arg_builder.OrderedListArgumentBuilder(
-        self.organic_media_channel.values
+        self.organic_media_channel.values  # pyrefly: ignore[bad-argument-type]
         )
 
   def get_organic_rf_channels_argument_builder(
@@ -1015,7 +1015,7 @@ class InputData:
     if self.organic_rf_channel is None:
       raise ValueError("There are no organic RF channels in the input data.")
     return arg_builder.OrderedListArgumentBuilder(
-        self.organic_rf_channel.values
+        self.organic_rf_channel.values  # pyrefly: ignore[bad-argument-type]
         )
 
   def get_all_channels(self) -> np.ndarray:

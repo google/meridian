@@ -145,7 +145,7 @@ class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
   def function_registry(self) -> FunctionRegistry:
     return self._function_registry
 
-  def serialize(self, obj: eda_spec.EDASpec) -> eda_spec_pb.EDASpec:
+  def serialize(self, obj: eda_spec.EDASpec) -> eda_spec_pb.EDASpec:  # pyrefly: ignore[bad-override]
     """Serializes the given `EDASpec` object into an `EDASpec` proto."""
     proto = eda_spec_pb.EDASpec(
         aggregation_config=self._to_aggregation_config_proto(
@@ -162,7 +162,7 @@ class EDASpecSerde(serde.Serde[eda_spec_pb.EDASpec, eda_spec.EDASpec]):
     proto.function_registry.update(hashed_function_registry)
     return proto
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self,
       serialized: eda_spec_pb.EDASpec,
       serialized_version: str = "",

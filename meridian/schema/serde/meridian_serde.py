@@ -76,7 +76,7 @@ _file_open = open
 class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
   """Serializes and deserializes a Meridian model into an `MmmKernel` proto."""
 
-  def serialize(
+  def serialize(  # pyrefly: ignore[bad-override]
       self,
       obj: model.Meridian,
       model_id: str = '',
@@ -248,7 +248,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
 
     return model_convergence_proto
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self,
       serialized: kernel_pb.MmmKernel,
       serialized_version: str = '',
@@ -370,7 +370,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     if isinstance(
         ser_meridian, meridian_pb.MeridianModel
     ) and ser_meridian.HasField('eda_spec'):
-      meridian_kwargs['eda_spec'] = eda_spec_serde.EDASpecSerde(
+      meridian_kwargs['eda_spec'] = eda_spec_serde.EDASpecSerde(  # pyrefly: ignore[bad-assignment]
           eda_function_registry
           if eda_function_registry is not None
           else function_registry_utils.FunctionRegistry()
@@ -422,7 +422,7 @@ def save_meridian(
         eda_function_registry=eda_function_registry,
     )
     if file_path.endswith('.binpb'):
-      f.write(serialized_kernel.SerializeToString())
+      f.write(serialized_kernel.SerializeToString())  # pyrefly: ignore[bad-argument-type]
     elif file_path.endswith('.textproto') or file_path.endswith('.txtpb'):
       f.write(text_format.MessageToString(serialized_kernel))
     else:
@@ -463,10 +463,10 @@ def load_meridian(
 
   with _file_open(file_path, mode) as f:
     if file_path.endswith('.binpb'):
-      serialized_model = kernel_pb.MmmKernel.FromString(f.read())
+      serialized_model = kernel_pb.MmmKernel.FromString(f.read())  # pyrefly: ignore[bad-argument-type]
     elif file_path.endswith('.textproto') or file_path.endswith('.txtpb'):
       serialized_model = kernel_pb.MmmKernel()
-      text_format.Parse(f.read(), serialized_model)
+      text_format.Parse(f.read(), serialized_model)  # pyrefly: ignore[bad-specialization]
     else:
       raise ValueError(f'Unsupported file type: {file_path}')
   return MeridianSerde().deserialize(

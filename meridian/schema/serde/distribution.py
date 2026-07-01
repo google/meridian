@@ -69,7 +69,7 @@ class DistributionSerde(
   def function_registry(self) -> FunctionRegistry:
     return self._function_registry
 
-  def serialize(
+  def serialize(  # pyrefly: ignore[bad-override]
       self, obj: pd.PriorDistribution
   ) -> meridian_pb.PriorTfpDistributions:
     """Serializes the given Meridian priors container into a `MeridianPriorDistributions` proto."""
@@ -83,7 +83,7 @@ class DistributionSerde(
     proto.function_registry.update(self.function_registry.hashed_registry)
     return proto
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self,
       serialized: MeridianPriorDistributions,
       serialized_version: str = "",

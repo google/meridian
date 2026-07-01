@@ -397,7 +397,7 @@ class _InputDataSerializer:
       )
       if spend_data_array is not None and time in spend_data_array.time:
         media_variable.media_spend = float(spend_data_array.sel(
-            geo=geo, time=time, **{channel_dim_name: channel}
+            geo=geo, time=time, **{channel_dim_name: channel}  # pyrefly: ignore[bad-argument-type]
         ))
       media_variables.append(media_variable)
     return media_variables
@@ -439,7 +439,7 @@ class _InputDataSerializer:
       frequency_value = float(frequency_data_array.sel(
           geo=geo,
           media_time=time,
-          **{channel_dim_name: channel},
+          **{channel_dim_name: channel},  # pyrefly: ignore[bad-argument-type]
       ))
       rf_variable = marketing_pb.ReachFrequencyVariable(
           channel_name=channel,
@@ -448,7 +448,7 @@ class _InputDataSerializer:
       )
       if spend_data_array is not None and time in spend_data_array.time:
         rf_variable.spend = float(spend_data_array.sel(
-            geo=geo, time=time, **{channel_dim_name: channel}
+            geo=geo, time=time, **{channel_dim_name: channel}  # pyrefly: ignore[bad-argument-type]
         ))
       rf_variables.append(rf_variable)
     return rf_variables
@@ -643,10 +643,10 @@ class _InputDataSerializer:
     if channel_data is None:
       return None
 
-    coord_name = _COORD_NAME_MAP.get(channel_data.name)
+    coord_name = _COORD_NAME_MAP.get(channel_data.name)  # pyrefly: ignore[bad-argument-type]
     if coord_name:
       return marketing_pb.MarketingDataMetadata.ChannelDimension(
-          name=channel_data.name,
+          name=channel_data.name,  # pyrefly: ignore[bad-argument-type]
           channels=channel_data.coords[coord_name].values.tolist(),
       )
     else:
@@ -1305,13 +1305,13 @@ class MarketingDataSerde(
 ):
   """Serializes and deserializes an `InputData` container in Meridian."""
 
-  def serialize(
+  def serialize(  # pyrefly: ignore[bad-override]
       self, obj: meridian_input_data.InputData
   ) -> marketing_pb.MarketingData:
     """Serializes the given Meridian input data into a `MarketingData` proto."""
     return _InputDataSerializer(obj)()
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self, serialized: marketing_pb.MarketingData, serialized_version: str = ""
   ) -> meridian_input_data.InputData:
     """Deserializes the given `MarketingData` proto.

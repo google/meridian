@@ -44,7 +44,7 @@ class InferenceDataSerde(
   posterior containers.
   """
 
-  def serialize(self, obj: az.InferenceData) -> meridian_pb.InferenceData:
+  def serialize(self, obj: az.InferenceData) -> meridian_pb.InferenceData:  # pyrefly: ignore[bad-override]
     """Serializes the given Meridian inference data container into an `InferenceData` proto."""
     if hasattr(obj, _PRIOR_FIELD):
       prior_dataset_copy = _remove_created_at_attribute(obj.prior)  # pytype: disable=attribute-error
@@ -64,7 +64,7 @@ class InferenceDataSerde(
     for group in obj.groups():
       if group in (_PRIOR_FIELD, _POSTERIOR_FIELD):
         continue
-      aux_dataset_copy = _remove_created_at_attribute(obj.get(group))
+      aux_dataset_copy = _remove_created_at_attribute(obj.get(group))  # pyrefly: ignore[bad-argument-type]
       aux[group] = bytes(aux_dataset_copy.to_netcdf(format=_NETCDF_FORMAT))
 
     return meridian_pb.InferenceData(
@@ -73,7 +73,7 @@ class InferenceDataSerde(
         auxiliary_data=aux,
     )
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self, serialized: meridian_pb.InferenceData, serialized_version: str = ""
   ) -> az.InferenceData:
     """Deserializes the given `InferenceData` proto.

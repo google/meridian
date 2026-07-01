@@ -59,7 +59,7 @@ class InputDataTest(parameterized.TestCase):
         n_times=self.n_times,
         n_media_times=self.n_times,
         n_media_channels=self.n_media_channels,
-        explicit_time_index=pd.date_range(
+        explicit_time_index=pd.date_range(  # pyrefly: ignore[bad-argument-type]
             start="2022-01-01", periods=self.n_times, freq="W"
         ),
     )
@@ -97,7 +97,7 @@ class InputDataTest(parameterized.TestCase):
         n_geos=self.n_geos,
         n_times=self.n_times,
         n_controls=self.n_controls,
-        explicit_time_index=pd.date_range(
+        explicit_time_index=pd.date_range(  # pyrefly: ignore[bad-argument-type]
             start="2022-01-01", periods=self.n_times, freq="W"
         ),
     )
@@ -1505,14 +1505,14 @@ class InputDataTest(parameterized.TestCase):
         allocated_spend.dims,  # pytype: disable=attribute-error
         (constants.GEO, constants.TIME, constants.MEDIA_CHANNEL),
     )
-    self.assertLen(allocated_spend[constants.GEO], self.n_geos)
-    self.assertLen(allocated_spend[constants.TIME], self.n_times)
+    self.assertLen(allocated_spend[constants.GEO], self.n_geos)  # pyrefly: ignore[unsupported-operation]
+    self.assertLen(allocated_spend[constants.TIME], self.n_times)  # pyrefly: ignore[unsupported-operation]
     self.assertLen(
-        allocated_spend[constants.MEDIA_CHANNEL], self.n_media_channels
+        allocated_spend[constants.MEDIA_CHANNEL], self.n_media_channels  # pyrefly: ignore[unsupported-operation]
     )
     # Verify time coordinates match kpi time, not media_time
     np.testing.assert_array_equal(
-        allocated_spend[constants.TIME].values, self.lagged_kpi.time
+        allocated_spend[constants.TIME].values, self.lagged_kpi.time  # pyrefly: ignore[unsupported-operation]
     )
 
     # 2. Verify total spend conservation per channel
@@ -1558,7 +1558,7 @@ class InputDataTest(parameterized.TestCase):
     )
 
     # All channels had zero total units, expect all NaN allocation
-    self.assertTrue(np.isnan(allocated_spend).all())
+    self.assertTrue(np.isnan(allocated_spend).all())  # pyrefly: ignore[no-matching-overload]
 
   def test_get_aggregated_media_spend_no_cal(self):
     data = input_data.InputData(
@@ -1571,7 +1571,7 @@ class InputDataTest(parameterized.TestCase):
     )
     result = data.aggregate_media_spend(calibration_period=None)
     expected_sum = self.media_spend.values.sum(axis=(0, 1))
-    np.testing.assert_array_almost_equal(result, expected_sum)
+    np.testing.assert_array_almost_equal(result, expected_sum)  # pyrefly: ignore[bad-argument-type]
 
   def test_get_aggregated_media_spend_with_cal_mixed(self):
     n_spend_times = self.media_spend.shape[1]
@@ -1592,7 +1592,7 @@ class InputDataTest(parameterized.TestCase):
 
     factors = np.where(calibration_period.astype(bool), 1.0, 0.0)
     expected_sum = np.einsum("gtm,tm->m", self.media_spend.values, factors)
-    np.testing.assert_array_almost_equal(result, expected_sum)
+    np.testing.assert_array_almost_equal(result, expected_sum)  # pyrefly: ignore[bad-argument-type]
 
   def test_get_aggregated_rf_spend_no_cal(self):
     data = input_data.InputData(
@@ -1606,7 +1606,7 @@ class InputDataTest(parameterized.TestCase):
     )
     result = data.aggregate_rf_spend(calibration_period=None)
     expected_sum = self.rf_spend.values.sum(axis=(0, 1))
-    np.testing.assert_array_almost_equal(result, expected_sum)
+    np.testing.assert_array_almost_equal(result, expected_sum)  # pyrefly: ignore[bad-argument-type]
 
   def test_get_aggregated_rf_spend_with_cal_mixed(self):
     n_spend_times = self.rf_spend.shape[1]
@@ -1626,7 +1626,7 @@ class InputDataTest(parameterized.TestCase):
     result = data.aggregate_rf_spend(calibration_period=calibration_period)
     factors = np.where(calibration_period.astype(bool), 1.0, 0.0)
     expected_sum = np.einsum("gtm,tm->m", self.rf_spend.values, factors)
-    np.testing.assert_array_almost_equal(result, expected_sum)
+    np.testing.assert_array_almost_equal(result, expected_sum)  # pyrefly: ignore[bad-argument-type]
 
   def test_scaled_centered_kpi(self):
     tensor = test_utils.sample_input_data_from_dataset(

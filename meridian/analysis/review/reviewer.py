@@ -303,8 +303,8 @@ class ModelReviewer:
     if not hasattr(self._inference_data, constants.POSTERIOR):
       return True
     if (
-        constants.MEDIA_CHANNEL not in self._inference_data.posterior.coords
-        and constants.RF_CHANNEL not in self._inference_data.posterior.coords
+        constants.MEDIA_CHANNEL not in self._inference_data.posterior.coords  # pyrefly: ignore[missing-attribute]
+        and constants.RF_CHANNEL not in self._inference_data.posterior.coords  # pyrefly: ignore[missing-attribute]
     ):
       return True
 

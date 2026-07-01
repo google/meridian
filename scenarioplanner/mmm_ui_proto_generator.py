@@ -106,7 +106,7 @@ class MmmUiProtoGenerator:
       ] = _DATE_RANGE_GENERATORS,
   ):
     self._mmm = mmm
-    self._input_specs = specs
+    self._input_specs = specs  # pyrefly: ignore[invalid-type-var]
     self._model_id = model_id
     self._time_breakdown_generators = time_breakdown_generators
 
