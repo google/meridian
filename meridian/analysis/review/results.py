@@ -1004,8 +1004,8 @@ class ReviewSummary:
     if isinstance(result, PriorPosteriorShiftCheckResult) or isinstance(
         result, ROIConsistencyCheckResult
     ):
-      check_data[constants.TOTAL_CHANNELS] = len(result.channel_results)
-      check_data[constants.PASSED_CHANNELS] = sum(
+      check_data[constants.TOTAL_CHANNELS] = len(result.channel_results)  # pyrefly: ignore[unsupported-operation]
+      check_data[constants.PASSED_CHANNELS] = sum(  # pyrefly: ignore[unsupported-operation]
           1 for r in result.channel_results if r.case.status == Status.PASS
       )
 

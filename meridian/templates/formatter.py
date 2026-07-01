@@ -259,7 +259,7 @@ def create_card_html(
   """Creates a card's HTML snippet that includes given card and chart specs."""
   card_params = dataclasses.asdict(card_spec)
   card_params[c.CARD_CHARTS] = (
-      _create_charts_htmls(template_env, chart_specs) if chart_specs else None
+      _create_charts_htmls(template_env, chart_specs) if chart_specs else None  # pyrefly: ignore[bad-assignment]
   )
   if insights:
     insights_html = template_env.get_template('insights.html.jinja').render(
@@ -267,7 +267,7 @@ def create_card_html(
     )
     card_params[c.CARD_INSIGHTS] = insights_html
   card_params[c.CARD_STATS] = (
-      _create_stats_htmls(template_env, stats_specs) if stats_specs else None
+      _create_stats_htmls(template_env, stats_specs) if stats_specs else None  # pyrefly: ignore[bad-assignment]
   )
   return template_env.get_template('card.html.jinja').render(card_params)
 

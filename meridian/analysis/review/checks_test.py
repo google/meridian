@@ -779,7 +779,7 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
       if posterior_medians_media is None:
         posterior_medians_media = posterior_medians
       post_media_parts = []
-      for median in posterior_medians_media:
+      for median in posterior_medians_media:  # pyrefly: ignore[not-iterable]
         if median == 0.0:
           post_media_parts.append(post_samples_not_shifted)
         else:
@@ -791,7 +791,7 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
       if posterior_medians_rf is None:
         posterior_medians_rf = posterior_medians
       post_rf_parts = []
-      for median in posterior_medians_rf:
+      for median in posterior_medians_rf:  # pyrefly: ignore[not-iterable]
         if median == 0.0:
           post_rf_parts.append(post_samples_not_shifted)
         else:

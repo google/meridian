@@ -97,7 +97,7 @@ POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
             domain=[-1, 0, 1],
             range=[CORRELATION_RED, CORRELATION_WHITE, CORRELATION_BLUE],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),
+        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
     ),
 })
 POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
@@ -122,7 +122,7 @@ POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
                 CORRELATION_RED,
             ],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),
+        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
     ),
 })
 PRIOR_MEAN_ENCODINGS = immutabledict.immutabledict({

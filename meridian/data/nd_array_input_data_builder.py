@@ -466,7 +466,7 @@ class NDArrayInputDataBuilder(input_data_builder.InputDataBuilder):
           'No geo coordinates set. Assuming NATIONAL model and geos will be set'
           ' to the default value.'
       )
-      self.geos = [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME]
+      self.geos = [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME]  # pyrefly: ignore[bad-assignment]
 
   def _validate_shape(
       self,

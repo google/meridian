@@ -282,19 +282,19 @@ class FormatterTest(parameterized.TestCase):
     self.assertIsNotNone(error_elem)
     error_p = error_elem.find('p')
     self.assertIsNotNone(error_p)
-    self.assertIn('Chart Error', error_p.text)
+    self.assertIn('Chart Error', error_p.text)  # pyrefly: ignore[bad-argument-type]
 
     warning_elem = chart_elem.find('warnings')
     self.assertIsNotNone(warning_elem)
     warning_p = warning_elem.find('p')
     self.assertIsNotNone(warning_p)
-    self.assertIn('Chart Warning', warning_p.text)
+    self.assertIn('Chart Warning', warning_p.text)  # pyrefly: ignore[bad-argument-type]
 
     info_elem = chart_elem.find('infos')
     self.assertIsNotNone(info_elem)
     info_p = info_elem.find('p')
     self.assertIsNotNone(info_p)
-    self.assertIn('Chart Info', info_p.text)
+    self.assertIn('Chart Info', info_p.text)  # pyrefly: ignore[bad-argument-type]
 
   def test_create_card_html_table_findings(self):
     """Tests that errors, warnings, and infos render inside a table."""
@@ -324,19 +324,19 @@ class FormatterTest(parameterized.TestCase):
     self.assertIsNotNone(error_elem)
     error_p = error_elem.find('p')
     self.assertIsNotNone(error_p)
-    self.assertIn('Table Error', error_p.text)
+    self.assertIn('Table Error', error_p.text)  # pyrefly: ignore[bad-argument-type]
 
     warning_elem = table_elem.find('warnings')
     self.assertIsNotNone(warning_elem)
     warning_p = warning_elem.find('p')
     self.assertIsNotNone(warning_p)
-    self.assertIn('Table Warning', warning_p.text)
+    self.assertIn('Table Warning', warning_p.text)  # pyrefly: ignore[bad-argument-type]
 
     info_elem = table_elem.find('infos')
     self.assertIsNotNone(info_elem)
     info_p = info_elem.find('p')
     self.assertIsNotNone(info_p)
-    self.assertIn('Table Info', info_p.text)
+    self.assertIn('Table Info', info_p.text)  # pyrefly: ignore[bad-argument-type]
 
 
 if __name__ == '__main__':

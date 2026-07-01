@@ -71,19 +71,20 @@ class ProtoEnumConverter(Generic[EnumType, DefaultType]):
     proto_name = self.mapping.get(string_value)
     if proto_name:
       try:
-        return self.enum_message.Value(proto_name)
+        return self.enum_message.Value(proto_name)  # pyrefly: ignore[missing-attribute]
       except ValueError:
         warnings.warn(
             "Invalid %s value: %s. Resolving to %s."
             % (
-                self.enum_message.DESCRIPTOR.name,
+                self.enum_message.DESCRIPTOR.name,  # pyrefly: ignore[missing-attribute]
                 string_value,
-                self.enum_message.Name(self.enum_unspecified),
+                self.enum_message.Name(self.enum_unspecified),  # pyrefly: ignore[missing-attribute]
             )
         )
         return self.enum_unspecified
     else:
       raise ValueError(
+          # pyrefly: ignore[missing-attribute]
           f"Unmatched {self.enum_message.DESCRIPTOR.name} value:"
           f" {string_value}."
       )
@@ -106,15 +107,16 @@ class ProtoEnumConverter(Generic[EnumType, DefaultType]):
           "%s is unspecified. Resolving to default: %s."
           % (
               self.enum_display_name,
-              self.enum_message.Name(self.enum_unspecified),
+              self.enum_message.Name(self.enum_unspecified),  # pyrefly: ignore[missing-attribute]
           )
       )
       return self.default_when_unspecified
 
     try:
-      proto_name = self.enum_message.Name(proto_enum)
+      proto_name = self.enum_message.Name(proto_enum)  # pyrefly: ignore[missing-attribute]
     except ValueError as e:
       raise ValueError(
+          # pyrefly: ignore[missing-attribute]
           f"Invalid {self.enum_message.DESCRIPTOR.name} proto enum value:"
           f" {proto_enum}."
       ) from e

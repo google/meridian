@@ -1474,8 +1474,8 @@ class _JaxRNGHandler(_BaseRNGHandler):
       return _JaxRNGHandler(None)
 
     self._key, subkey_for_new_handler = random.split(self._key)
-    new_seed_tensor = random.stateless_randint(
-        key=subkey_for_new_handler,
+    new_seed_tensor = random.stateless_randint(  # pyrefly: ignore[missing-argument]
+        key=subkey_for_new_handler,  # pyrefly: ignore[unexpected-keyword]
         shape=(),
         minval=0,
         maxval=_MAX_INT32,

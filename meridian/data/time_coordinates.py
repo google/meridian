@@ -52,7 +52,7 @@ _TimeCoordinateValues: TypeAlias = (
 def _to_pandas_datetime_index(times: _TimeCoordinateValues) -> pd.DatetimeIndex:
   """Normalizes the given values into a pandas `DatetimeIndex`."""
   # Coerce into pandas `DatetimeIndex` in all possible cases.
-  return pd.to_datetime(times)
+  return pd.to_datetime(times)  # pyrefly: ignore[no-matching-overload]
 
 
 # TODO: Handle `None`.
@@ -182,12 +182,12 @@ class TimeCoordinates:
   @property
   def _timedelta_index(self) -> pd.TimedeltaIndex:
     """Returns the timedeltas between consecutive dates in `datetime_index`."""
-    return self.datetime_index.diff().dropna()
+    return self.datetime_index.diff().dropna()  # pyrefly: ignore[bad-return]
 
   @property
   def _interval_days(self) -> Sequence[int]:
     """Converts `_timedelta_index` to a sequence of days for easier compute."""
-    return self._timedelta_index.days.to_numpy()
+    return self._timedelta_index.days.to_numpy()  # pyrefly: ignore[missing-attribute]
 
   def _is_regular_time_index(self) -> bool:
     """Returns True if the time index is "regularly spaced"."""

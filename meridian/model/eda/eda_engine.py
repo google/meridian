@@ -612,7 +612,7 @@ class EDAEngine:
       return None
     controls_scaled_da = _data_array_like(
         da=self._input_data.controls,
-        values=self._model_context.controls_scaled,
+        values=self._model_context.controls_scaled,  # pyrefly: ignore[bad-argument-type]
     )
     controls_scaled_da.name = constants.CONTROLS_SCALED
     return controls_scaled_da
@@ -656,7 +656,7 @@ class EDAEngine:
       return None
     media_scaled_da = _data_array_like(
         da=self._input_data.media,
-        values=self._model_context.media_tensors.media_scaled,
+        values=self._model_context.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
     )
     media_scaled_da.name = constants.MEDIA_SCALED
     return self._truncate_media_time(media_scaled_da)
@@ -687,7 +687,7 @@ class EDAEngine:
       national_da.name = constants.NATIONAL_MEDIA_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
-          self._input_data.allocated_media_spend,
+          self._input_data.allocated_media_spend,  # pyrefly: ignore[bad-argument-type]
           constants.NATIONAL_MEDIA_SPEND,
           None,
       )
@@ -721,7 +721,7 @@ class EDAEngine:
     else:
       # Note that media is summable by assumption.
       national_da = self._aggregate_and_scale_geo_da(
-          self.media_raw_da,
+          self.media_raw_da,  # pyrefly: ignore[bad-argument-type]
           constants.NATIONAL_MEDIA_SCALED,
           transformers.MediaTransformer,
       )
@@ -745,7 +745,7 @@ class EDAEngine:
       return None
     organic_media_scaled_da = _data_array_like(
         da=self._input_data.organic_media,
-        values=self._model_context.organic_media_tensors.organic_media_scaled,
+        values=self._model_context.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
     )
     organic_media_scaled_da.name = constants.ORGANIC_MEDIA_SCALED
     return self._truncate_media_time(organic_media_scaled_da)
@@ -778,7 +778,7 @@ class EDAEngine:
     else:
       # Note that organic media is summable by assumption.
       national_da = self._aggregate_and_scale_geo_da(
-          self.organic_media_raw_da,
+          self.organic_media_raw_da,  # pyrefly: ignore[bad-argument-type]
           constants.NATIONAL_ORGANIC_MEDIA_SCALED,
           transformers.MediaTransformer,
       )
@@ -791,7 +791,7 @@ class EDAEngine:
       return None
     non_media_scaled_da = _data_array_like(
         da=self._input_data.non_media_treatments,
-        values=self._model_context.non_media_treatments_normalized,
+        values=self._model_context.non_media_treatments_normalized,  # pyrefly: ignore[bad-argument-type]
     )
     non_media_scaled_da.name = constants.NON_MEDIA_TREATMENTS_SCALED
     return non_media_scaled_da
@@ -844,7 +844,7 @@ class EDAEngine:
       national_da.name = constants.NATIONAL_RF_SPEND
     else:
       national_da = self._aggregate_and_scale_geo_da(
-          self._input_data.allocated_rf_spend,
+          self._input_data.allocated_rf_spend,  # pyrefly: ignore[bad-argument-type]
           constants.NATIONAL_RF_SPEND,
           None,
       )
@@ -856,7 +856,7 @@ class EDAEngine:
       return None
     return self._get_rf_data(
         self._input_data.reach,
-        self._input_data.frequency,
+        self._input_data.frequency,  # pyrefly: ignore[bad-argument-type]
         is_organic=False,
     )
 
@@ -936,7 +936,7 @@ class EDAEngine:
       return None
     return self._get_rf_data(
         self._input_data.organic_reach,
-        self._input_data.organic_frequency,
+        self._input_data.organic_frequency,  # pyrefly: ignore[bad-argument-type]
         is_organic=True,
     )
 
@@ -1205,7 +1205,7 @@ class EDAEngine:
       return None
     da = xr.concat(reach_das, dim=constants.RF_CHANNEL)
     da.name = constants.ALL_REACH_SCALED
-    return da
+    return da  # pyrefly: ignore[bad-return]
 
   @functools.cached_property
   def all_freq_da(self) -> xr.DataArray | None:
@@ -1231,7 +1231,7 @@ class EDAEngine:
       return None
     da = xr.concat(freq_das, dim=constants.RF_CHANNEL)
     da.name = constants.ALL_FREQUENCY
-    return da
+    return da  # pyrefly: ignore[bad-return]
 
   @functools.cached_property
   def national_all_reach_scaled_da(self) -> xr.DataArray | None:
@@ -1258,7 +1258,7 @@ class EDAEngine:
       return None
     da = xr.concat(national_reach_das, dim=constants.RF_CHANNEL)
     da.name = constants.NATIONAL_ALL_REACH_SCALED
-    return da
+    return da  # pyrefly: ignore[bad-return]
 
   @functools.cached_property
   def national_all_freq_da(self) -> xr.DataArray | None:
@@ -1285,7 +1285,7 @@ class EDAEngine:
       return None
     da = xr.concat(national_freq_das, dim=constants.RF_CHANNEL)
     da.name = constants.NATIONAL_ALL_FREQUENCY
-    return da
+    return da  # pyrefly: ignore[bad-return]
 
   @functools.cached_property
   def paid_raw_media_units_ds(self) -> xr.Dataset:
@@ -1327,7 +1327,7 @@ class EDAEngine:
             eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
         ),
     ]
-    return checks
+    return checks  # pyrefly: ignore[bad-return]
 
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
@@ -1359,11 +1359,11 @@ class EDAEngine:
       population = backend.ones([1], dtype=backend.float_dtype)
     if transformer_class is transformers.CenteringAndScalingTransformer:
       xarray_transformer = transformers.CenteringAndScalingTransformer(
-          tensor=da.values, population=population
+          tensor=da.values, population=population  # pyrefly: ignore[bad-argument-type]
       )
     elif transformer_class is transformers.MediaTransformer:
       xarray_transformer = transformers.MediaTransformer(
-          media=da.values, population=population
+          media=da.values, population=population  # pyrefly: ignore[bad-argument-type]
       )
     else:
       raise ValueError(
@@ -1478,7 +1478,7 @@ class EDAEngine:
       names = _RF_NAMES
 
     reach_scaled_da = _data_array_like(
-        da=reach_raw_da, values=scaled_reach_values
+        da=reach_raw_da, values=scaled_reach_values  # pyrefly: ignore[bad-argument-type]
     )
     reach_scaled_da.name = names.reach_scaled
     # Truncate the media time for reach and scaled reach.
