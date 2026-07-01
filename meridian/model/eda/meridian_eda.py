@@ -35,7 +35,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
@@ -2274,10 +2273,13 @@ def _get_plot_data_for_heatmap(
   # Maintain the original order of variables.
   plot_variables = [v for v in all_variables if v in selected_vars]
 
-  return df[
-      df[eda_constants.VARIABLE_1].isin(plot_variables)
-      & df[eda_constants.VARIABLE_2].isin(plot_variables)
-  ], plot_variables
+  return (
+      df[
+          df[eda_constants.VARIABLE_1].isin(plot_variables)
+          & df[eda_constants.VARIABLE_2].isin(plot_variables)
+      ],
+      plot_variables,
+  )
 
 
 def _format_explanation_for_html(explanation: str) -> str:
