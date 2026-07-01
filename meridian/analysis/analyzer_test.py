@@ -341,7 +341,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(
-              self.input_data_media_only.media_spend[..., :-1, :-1]
+              self.input_data_media_only.media_spend[..., :-1, :-1]  # pyrefly: ignore[unsupported-operation]
           ),
           flexible_time_dim=flexible_time_dim,
           has_media_dim=has_media_dim,
@@ -409,7 +409,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
-          selected_times=["random_time", False, True],
+          selected_times=["random_time", False, True],  # pyrefly: ignore[bad-argument-type]
       )
 
   # The purpose of this test is to prevent accidental logic change.
@@ -447,8 +447,8 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
     )
     outcome = self.analyzer_media_only.incremental_outcome(
         new_data=tensors.DataTensors(
-            media=self.meridian_media_only.media_tensors.media[..., -10:, :],
-            revenue_per_kpi=self.meridian_media_only.revenue_per_kpi[..., -10:],
+            media=self.meridian_media_only.media_tensors.media[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian_media_only.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
         ),
     )
     backend_test_utils.assert_allclose(
@@ -503,17 +503,17 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
 
   def test_marginal_roi_zero_media_spend_returns_inf(self):
     new_media_spend = backend.zeros_like(
-        self.meridian_media_only.media_tensors.media_spend,
+        self.meridian_media_only.media_tensors.media_spend,  # pyrefly: ignore[bad-argument-type]
         dtype=backend.float_dtype,
     )
     mroi = self.analyzer_media_only.marginal_roi(
         new_data=tensors.DataTensors(media_spend=new_media_spend)
     )
-    np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))
+    np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))  # pyrefly: ignore[no-matching-overload]
 
   def test_cpik_zero_media_spend_returns_zero(self):
     new_media_spend = backend.zeros_like(
-        self.meridian_media_only.media_tensors.media_spend,
+        self.meridian_media_only.media_tensors.media_spend,  # pyrefly: ignore[bad-argument-type]
         dtype=backend.float_dtype,
     )
     cpik = self.analyzer_media_only.cpik(
@@ -670,9 +670,9 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
     )
     outcome = self.analyzer_rf_only.incremental_outcome(
         new_data=tensors.DataTensors(
-            reach=self.meridian_rf_only.rf_tensors.reach[..., -10:, :],
-            frequency=self.meridian_rf_only.rf_tensors.frequency[..., -10:, :],
-            revenue_per_kpi=self.meridian_rf_only.revenue_per_kpi[..., -10:],
+            reach=self.meridian_rf_only.rf_tensors.reach[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian_rf_only.rf_tensors.frequency[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian_rf_only.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
         )
     )
     backend_test_utils.assert_allclose(
@@ -1175,13 +1175,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     default = self.analyzer.expected_outcome()
     outcome = self.analyzer.expected_outcome(
         new_data=tensors.DataTensors(
-            revenue_per_kpi=self.meridian.revenue_per_kpi * 2.0,
+            revenue_per_kpi=self.meridian.revenue_per_kpi * 2.0,  # pyrefly: ignore[bad-argument-type, unsupported-operation]
         ),
         use_kpi=False,
     )
     backend_test_utils.assert_allclose(
         outcome,
-        default * 2.0,
+        default * 2.0,  # pyrefly: ignore[unsupported-operation]
         rtol=1e-3,
         atol=1e-3,
     )
@@ -1201,7 +1201,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     with self.assertRaisesRegex(
         ValueError, rf"{factor_name} must be non-negative\."
     ):
-      self.analyzer.incremental_outcome(**kwargs)
+      self.analyzer.incremental_outcome(**kwargs)  # pyrefly: ignore[bad-argument-type]
 
   def test_incremental_outcome_scaling_factor1_less_than_scaling_factor0(self):
     with self.assertRaisesRegex(
@@ -1370,7 +1370,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         selected_times=selected_times,
         media_selected_times=media_selected_times,
     )
-    mean_inc_outcome = backend.reduce_mean(outcome, axis=(0, 1))
+    mean_inc_outcome = backend.reduce_mean(outcome, axis=(0, 1))  # pyrefly: ignore[bad-argument-type]
     self.assertFalse(np.all(np.array(mean_inc_outcome) == 0))
 
   @parameterized.product(
@@ -1411,7 +1411,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     if not aggregate_times:
       if selected_times is not None:
         if all(isinstance(time, bool) for time in selected_times):
-          n_times = sum(selected_times)
+          n_times = sum(selected_times)  # pyrefly: ignore[no-matching-overload]
         else:
           n_times = len(selected_times)
       else:
@@ -1474,7 +1474,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       backend_test_utils.assert_allclose(
           outcome,
           backend.concatenate(
-              [
+              [  # pyrefly: ignore[bad-argument-type]
                   backend.to_tensor(mock_incremental_outcome),
                   backend.to_tensor(incremental_outcome_with_totals),
               ],
@@ -1489,10 +1489,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     outcome = self.analyzer.incremental_outcome(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -10:, :],
-            reach=self.meridian.rf_tensors.reach[..., -10:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -10:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -10:],
+            media=self.meridian.media_tensors.media[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            reach=self.meridian.rf_tensors.reach[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
         ),
         include_non_paid_channels=False,
     )
@@ -1511,10 +1511,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     outcome = self.analyzer.incremental_outcome(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -15:, :],
-            reach=self.meridian.rf_tensors.reach[..., -15:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],
+            media=self.meridian.media_tensors.media[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            reach=self.meridian.rf_tensors.reach[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],  # pyrefly: ignore[unsupported-operation]
         ),
         aggregate_times=False,
         include_non_paid_channels=False,
@@ -1599,7 +1599,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     if not aggregate_times:
       if selected_times is not None:
         if all(isinstance(time, bool) for time in selected_times):
-          n_times = sum(selected_times)
+          n_times = sum(selected_times)  # pyrefly: ignore[no-matching-overload]
         else:
           n_times = len(selected_times)
       else:
@@ -1640,7 +1640,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         ],
     )
     tensor = backend.concatenate(
-        [
+        [  # pyrefly: ignore[bad-argument-type]
             backend.to_tensor(self.not_lagged_input_data.media),
             backend.to_tensor(self.not_lagged_input_data.reach),
             backend.to_tensor(self.not_lagged_input_data.non_media_treatments),
@@ -1788,7 +1788,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         " numbers are supported.",
     ):
       self.analyzer.incremental_outcome(
-          non_media_baseline_values=["min", "max", "max", 5.0],
+          non_media_baseline_values=["min", "max", "max", 5.0],  # pyrefly: ignore[bad-argument-type]
           include_non_paid_channels=True,
       )
 
@@ -2766,7 +2766,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
 
     actual_spend_3d = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,
+        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
         aggregate_times=True,
@@ -2775,7 +2775,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(actual_spend_3d.data, [6.6, 12.6])
 
     actual_spend_3d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,
+        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
         aggregate_times=False,
@@ -2790,7 +2790,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     channel_spend_1d = backend.to_tensor([6.6, 12.6])
     actual_spend_1d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,
+        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
         channel_spend=channel_spend_1d,
         channel_names=list(data.media_channel.values),
         aggregate_times=False,
@@ -3301,10 +3301,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_times = max_lag + n_new_times
     actual = self.analyzer.optimal_freq(
         new_data=tensors.DataTensors(
-            rf_impressions=self.meridian.rf_tensors.reach[..., -total_times:, :]
-            * self.meridian.rf_tensors.frequency[..., -total_times:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+            rf_impressions=self.meridian.rf_tensors.reach[..., -total_times:, :]  # pyrefly: ignore[unsupported-operation]
+            * self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
         ),
         freq_grid=[1.0, 2.0, 3.0],
         selected_times=[False] * max_lag + [True] * n_new_times,
@@ -3495,14 +3495,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_times = max_lag + n_new_times
     actual = self.analyzer.marginal_roi(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -total_times:, :],
-            media_spend=self.meridian.media_tensors.media_spend[
+            media=self.meridian.media_tensors.media[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
                 ..., -total_times:, :
             ],
-            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
         ),
         selected_times=[False] * max_lag + [True] * n_new_times,
     )
@@ -3547,7 +3547,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         self.meridian.total_spend
     )
     expected_roi = (
-        self.analyzer.incremental_outcome(include_non_paid_channels=False)
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
         / total_spend
     )
     backend_test_utils.assert_allclose(expected_roi, roi)
@@ -3558,14 +3558,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_times = max_lag + n_new_times
     actual = self.analyzer.roi(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -total_times:, :],
-            media_spend=self.meridian.media_tensors.media_spend[
+            media=self.meridian.media_tensors.media[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
                 ..., -total_times:, :
             ],
-            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
         ),
         selected_times=[False] * max_lag + [True] * n_new_times,
     )
@@ -3576,10 +3576,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   def test_roi_spend_1d_returns_correct_value(self):
     total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
-        self.meridian.media_tensors.media_spend
+        self.meridian.media_tensors.media_spend  # pyrefly: ignore[bad-argument-type]
     )
     total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
-        self.meridian.rf_tensors.rf_spend
+        self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
     )
 
     backend_test_utils.assert_allclose(
@@ -3588,14 +3588,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 media_spend=total_media_spend, rf_spend=total_rf_spend
             )
         ),
-        self.analyzer.incremental_outcome(include_non_paid_channels=False)
-        / backend.concatenate([total_media_spend, total_rf_spend], axis=-1),
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
+        / backend.concatenate([total_media_spend, total_rf_spend], axis=-1),  # pyrefly: ignore[bad-argument-type]
     )
 
   def test_roi_zero_media_returns_zero(self):
     new_data = tensors.DataTensors(
-        media=backend.zeros_like(self.meridian.media_tensors.media),
-        reach=backend.zeros_like(self.meridian.rf_tensors.reach),
+        media=backend.zeros_like(self.meridian.media_tensors.media),  # pyrefly: ignore[bad-argument-type]
+        reach=backend.zeros_like(self.meridian.rf_tensors.reach),  # pyrefly: ignore[bad-argument-type]
     )
 
     backend_test_utils.assert_allclose(
@@ -3610,10 +3610,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
   def test_roi_zero_media_spend_returns_inf(self):
     new_media_spend = backend.zeros_like(
-        self.meridian.media_tensors.media_spend, dtype=backend.float_dtype
+        self.meridian.media_tensors.media_spend, dtype=backend.float_dtype  # pyrefly: ignore[bad-argument-type]
     )
     new_rf_spend = backend.zeros_like(
-        self.meridian.rf_tensors.rf_spend, dtype=backend.float_dtype
+        self.meridian.rf_tensors.rf_spend, dtype=backend.float_dtype  # pyrefly: ignore[bad-argument-type]
     )
 
     roi = self.analyzer.roi(
@@ -3622,7 +3622,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))
+    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))  # pyrefly: ignore[no-matching-overload]
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -3656,7 +3656,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_spend = self.analyzer.filter_and_aggregate_geos_and_times(
         self.meridian.total_spend
     )
-    expected_cpik = total_spend / self.analyzer.incremental_outcome(
+    expected_cpik = total_spend / self.analyzer.incremental_outcome(  # pyrefly: ignore[unsupported-operation]
         use_kpi=True, include_non_paid_channels=False
     )
     backend_test_utils.assert_allclose(expected_cpik, cpik)
@@ -3667,14 +3667,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_times = max_lag + n_new_times
     actual = self.analyzer.cpik(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -total_times:, :],
-            media_spend=self.meridian.media_tensors.media_spend[
+            media=self.meridian.media_tensors.media[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
                 ..., -total_times:, :
             ],
-            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
+            reach=self.meridian.rf_tensors.reach[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
         ),
         selected_times=[False] * max_lag + [True] * n_new_times,
     )
@@ -4098,19 +4098,19 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_summary_metrics_new_times_data_returns_correct_variables(self):
     summary_metrics = self.analyzer.summary_metrics(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -15:, :],
-            media_spend=self.meridian.media_tensors.media_spend[..., -15:, :],
-            reach=self.meridian.rf_tensors.reach[..., -15:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -15:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],
-            organic_media=self.meridian.organic_media_tensors.organic_media[
+            media=self.meridian.media_tensors.media[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            media_spend=self.meridian.media_tensors.media_spend[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            reach=self.meridian.rf_tensors.reach[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],  # pyrefly: ignore[unsupported-operation]
+            organic_media=self.meridian.organic_media_tensors.organic_media[  # pyrefly: ignore[unsupported-operation]
                 ..., -15:, :
             ],
-            organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+            organic_reach=self.meridian.organic_rf_tensors.organic_reach[  # pyrefly: ignore[unsupported-operation]
                 ..., -15:, :
             ],
-            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
                 ..., -15:, :
             ],
         )
@@ -4134,19 +4134,19 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_summary_metrics_new_times_data_aggregate_times_false(self):
     summary_metrics = self.analyzer.summary_metrics(
         new_data=tensors.DataTensors(
-            media=self.meridian.media_tensors.media[..., -5:, :],
-            media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],
-            reach=self.meridian.rf_tensors.reach[..., -5:, :],
-            frequency=self.meridian.rf_tensors.frequency[..., -5:, :],
-            rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],
-            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],
-            organic_media=self.meridian.organic_media_tensors.organic_media[
+            media=self.meridian.media_tensors.media[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+            media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+            reach=self.meridian.rf_tensors.reach[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+            frequency=self.meridian.rf_tensors.frequency[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+            rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+            revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],  # pyrefly: ignore[unsupported-operation]
+            organic_media=self.meridian.organic_media_tensors.organic_media[  # pyrefly: ignore[unsupported-operation]
                 ..., -5:, :
             ],
-            organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+            organic_reach=self.meridian.organic_rf_tensors.organic_reach[  # pyrefly: ignore[unsupported-operation]
                 ..., -5:, :
             ],
-            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+            organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
                 ..., -5:, :
             ],
         ),
@@ -4176,12 +4176,12 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     ]
     custom_time_tensor = backend.to_tensor(custom_dates)
     new_data = tensors.DataTensors(
-        media=self.meridian.media_tensors.media[..., -5:, :],
-        media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],
-        reach=self.meridian.rf_tensors.reach[..., -5:, :],
-        frequency=self.meridian.rf_tensors.frequency[..., -5:, :],
-        rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],
-        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],
+        media=self.meridian.media_tensors.media[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian.media_tensors.media_spend[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=self.meridian.rf_tensors.reach[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian.rf_tensors.frequency[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -5:],  # pyrefly: ignore[unsupported-operation]
         time=custom_time_tensor,
     )
     summary_metrics = self.analyzer.summary_metrics(
@@ -4614,13 +4614,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     expected_actual_values = (
         meridian.kpi
         if self.input_data.revenue_per_kpi is None
-        else meridian.kpi * self.input_data.revenue_per_kpi
+        else meridian.kpi * self.input_data.revenue_per_kpi  # pyrefly: ignore[unsupported-operation]
     )  # shape (n_geos, n_times)
 
     axis_to_sum = tuple(
         ([0] if aggregate_geos else []) + ([1] if aggregate_times else [])
     )
-    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)
+    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)  # pyrefly: ignore[no-matching-overload]
 
     if aggregate_geos:
       self.assertNotIn(constants.GEO, ds.coords)
@@ -4732,27 +4732,27 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_response_curves_new_data_selected_times_wrong_time(self):
     n_new_times = 15
     new_data = tensors.DataTensors(
-        media=self.meridian.media_tensors.media[..., -n_new_times:, :],
-        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],
-        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],
-        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],
-        media_spend=self.meridian.media_tensors.media_spend[
+        media=self.meridian.media_tensors.media[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],
-        organic_media=self.meridian.organic_media_tensors.organic_media[
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        organic_media=self.meridian.organic_media_tensors.organic_media[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        non_media_treatments=self.meridian.non_media_treatments[
+        non_media_treatments=self.meridian.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        time=self.meridian.input_data.time.values[-n_new_times:],
+        time=self.meridian.input_data.time.values[-n_new_times:],  # pyrefly: ignore[bad-argument-type]
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -4775,27 +4775,27 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_response_curves_new_times(self, use_optimal_frequency):
     n_new_times = 15
     new_data = tensors.DataTensors(
-        media=self.meridian.media_tensors.media[..., -n_new_times:, :],
-        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],
-        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],
-        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],
-        media_spend=self.meridian.media_tensors.media_spend[
+        media=self.meridian.media_tensors.media[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],
-        organic_media=self.meridian.organic_media_tensors.organic_media[
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        organic_media=self.meridian.organic_media_tensors.organic_media[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        non_media_treatments=self.meridian.non_media_treatments[
+        non_media_treatments=self.meridian.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        time=self.meridian.input_data.time.values[-n_new_times:],
+        time=self.meridian.input_data.time.values[-n_new_times:],  # pyrefly: ignore[bad-argument-type]
     )
     response_curve_data = self.analyzer.response_curves(
         new_data=new_data,
@@ -4833,7 +4833,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     if use_optimal_frequency:
       opt_freq_data = tensors.DataTensors(
           media=new_data.media,
-          rf_impressions=new_data.reach * new_data.frequency,
+          rf_impressions=new_data.reach * new_data.frequency,  # pyrefly: ignore[unsupported-operation]
           media_spend=new_data.media_spend,
           rf_spend=new_data.rf_spend,
           revenue_per_kpi=new_data.revenue_per_kpi,
@@ -4845,11 +4845,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       optimal_frequency = self.analyzer.optimal_freq(
           new_data=opt_freq_data,
       ).optimal_frequency
-      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(
+      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type, unsupported-operation]
           optimal_frequency, dtype=backend.float_dtype
       )
       reach = backend.divide_no_nan(
-          new_data.reach * new_data.frequency, frequency
+          new_data.reach * new_data.frequency, frequency  # pyrefly: ignore[unsupported-operation]
       )
       inc_outcome_new_data = tensors.DataTensors(
           media=new_data.media,
@@ -4875,7 +4875,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         constants.INCREMENTAL_OUTCOME
     ].sel(spend_multiplier=1.0, metric="mean")
     backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),
+        np.mean(expected_inc_outcome, axis=(0, 1)),  # pyrefly: ignore[no-matching-overload]
         inc_outcome_multiplier_1.values,
         rtol=1e-3,
         atol=1e-3,
@@ -4893,24 +4893,24 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     ].tolist()
 
     new_data = tensors.DataTensors(
-        media=self.meridian.media_tensors.media[..., -total_times:, :],
-        media_spend=self.meridian.media_tensors.media_spend[
+        media=self.meridian.media_tensors.media[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
             ..., -total_times:, :
         ],
-        reach=self.meridian.rf_tensors.reach[..., -total_times:, :],
-        frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],
-        rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],
-        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],
-        organic_media=self.meridian.organic_media_tensors.organic_media[
+        reach=self.meridian.rf_tensors.reach[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
+        organic_media=self.meridian.organic_media_tensors.organic_media[  # pyrefly: ignore[unsupported-operation]
             ..., -total_times:, :
         ],
-        organic_reach=self.meridian.organic_rf_tensors.organic_reach[
+        organic_reach=self.meridian.organic_rf_tensors.organic_reach[  # pyrefly: ignore[unsupported-operation]
             ..., -total_times:, :
         ],
-        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[
+        organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
             ..., -total_times:, :
         ],
-        non_media_treatments=self.meridian.non_media_treatments[
+        non_media_treatments=self.meridian.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             ..., -total_times:, :
         ],
         time=new_data_times,
@@ -4928,9 +4928,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   )
   def test_response_curves_new_data_same_times(self, use_optimal_frequency):
     # Modify only the media tensor, keep other tensors the same.
-    new_media = self.meridian.media_tensors.media * 2
+    new_media = self.meridian.media_tensors.media * 2  # pyrefly: ignore[unsupported-operation]
     new_data = tensors.DataTensors(
-        media=new_media,
+        media=new_media,  # pyrefly: ignore[bad-argument-type]
     )
     response_curve_data = self.analyzer.response_curves(
         new_data=new_data,
@@ -4951,7 +4951,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     if use_optimal_frequency:
       opt_freq_data = tensors.DataTensors(
           media=new_data.media,
-          rf_impressions=self.meridian.rf_tensors.reach
+          rf_impressions=self.meridian.rf_tensors.reach  # pyrefly: ignore[unsupported-operation]
           * self.meridian.rf_tensors.frequency,
           media_spend=self.meridian.media_tensors.media_spend,
           rf_spend=self.meridian.rf_tensors.rf_spend,
@@ -4964,11 +4964,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       optimal_frequency = self.analyzer.optimal_freq(
           new_data=opt_freq_data,
       ).optimal_frequency
-      frequency = backend.ones_like(
-          self.meridian.rf_tensors.frequency
+      frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
+          self.meridian.rf_tensors.frequency  # pyrefly: ignore[bad-argument-type]
       ) * backend.to_tensor(optimal_frequency, dtype=backend.float_dtype)
       reach = backend.divide_no_nan(
-          self.meridian.rf_tensors.reach * self.meridian.rf_tensors.frequency,
+          self.meridian.rf_tensors.reach * self.meridian.rf_tensors.frequency,  # pyrefly: ignore[unsupported-operation]
           frequency,
       )
       inc_outcome_new_data = tensors.DataTensors(
@@ -4988,7 +4988,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         constants.INCREMENTAL_OUTCOME
     ].sel(spend_multiplier=1.0, metric="mean")
     backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),
+        np.mean(expected_inc_outcome, axis=(0, 1)),  # pyrefly: ignore[no-matching-overload]
         inc_outcome_multiplier_1.values,
         rtol=1e-3,
         atol=1e-3,
@@ -5275,7 +5275,7 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
         helper_sample_joint_dist_unpinned_as_posterior
     )
     mmm.sample_prior(n_draws, seed=self.get_next_rng_seed_or_key())
-    mmm.sample_joint_dist_unpinned_as_posterior(
+    mmm.sample_joint_dist_unpinned_as_posterior(  # pyrefly: ignore[missing-attribute]
         n_draws, seed=self.get_next_rng_seed_or_key()
     )
 
@@ -5337,7 +5337,7 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
         n_media_channels=2,
         explicit_media_channel_names=channel_names,
         constant_population_value=1.0,  # Key condition: Population=1
-        media_value_scales=media_scales,
+        media_value_scales=media_scales,  # pyrefly: ignore[bad-argument-type]
         revenue_per_kpi_value=1.0,
         seed=1,
     )
@@ -5360,7 +5360,7 @@ class AnalyzerDataShapeTest(backend_test_utils.MeridianTestCase):
         helper_sample_joint_dist_unpinned_as_posterior
     )
     mmm.sample_prior(n_draws, seed=self.get_next_rng_seed_or_key())
-    mmm.sample_joint_dist_unpinned_as_posterior(
+    mmm.sample_joint_dist_unpinned_as_posterior(  # pyrefly: ignore[missing-attribute]
         n_draws, seed=self.get_next_rng_seed_or_key()
     )
 
@@ -5436,10 +5436,10 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
         input_data.kpi.values * input_data.revenue_per_kpi.values  # pytype: disable=attribute-error
     )
 
-    total_spend_m = np.sum(input_data.media_spend.values, (0, 1))
-    total_spend_rf = np.sum(input_data.rf_spend.values, (0, 1))
-    n_m = len(input_data.media_channel)
-    n_rf = len(input_data.rf_channel)
+    total_spend_m = np.sum(input_data.media_spend.values, (0, 1))  # pyrefly: ignore[missing-attribute]
+    total_spend_rf = np.sum(input_data.rf_spend.values, (0, 1))  # pyrefly: ignore[missing-attribute]
+    n_m = len(input_data.media_channel)  # pyrefly: ignore[bad-argument-type]
+    n_rf = len(input_data.rf_channel)  # pyrefly: ignore[bad-argument-type]
     media_pcts = np.linspace(0.04, 0.06, n_m)
     input_data.media_spend *= media_pcts * total_outcome / total_spend_m
     rf_pcts = np.linspace(0.04, 0.06, n_rf)
@@ -5451,7 +5451,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
       roi_calibration_period = None
     else:
       n_media_times = len(input_data.media_time)
-      n_media_channels = len(input_data.media_channel)
+      n_media_channels = len(input_data.media_channel)  # pyrefly: ignore[bad-argument-type]
       roi_calibration_period = np.full([n_media_times, n_media_channels], False)
       for time in roi_calibration_times:
         roi_calibration_period[time, :] = True
@@ -5468,7 +5468,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
       rf_roi_calibration_period = None
     else:
       n_media_times = len(input_data.media_time)
-      n_rf_channels = len(input_data.rf_channel)
+      n_rf_channels = len(input_data.rf_channel)  # pyrefly: ignore[bad-argument-type]
       rf_roi_calibration_period = np.full([n_media_times, n_rf_channels], False)
       for time in rf_roi_calibration_times:
         rf_roi_calibration_period[time, :] = True
@@ -5495,7 +5495,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
 
     mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
     mmm.sample_prior(5, seed=self.get_next_rng_seed_or_key())
-    mmm.sample_joint_dist_unpinned_as_posterior(
+    mmm.sample_joint_dist_unpinned_as_posterior(  # pyrefly: ignore[missing-attribute]
         5, seed=self.get_next_rng_seed_or_key()
     )
     check_treatment_parameters(mmm, use_posterior=False)

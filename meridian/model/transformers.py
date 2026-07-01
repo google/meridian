@@ -99,12 +99,12 @@ class MediaTransformer(TensorTransformer):
   @backend.function(jit_compile=True)
   def forward(self, tensor: backend.Tensor) -> backend.Tensor:
     """Scales a given tensor using the stored scale factors."""
-    return tensor / self._scale_factors_gm[:, backend.newaxis, :]
+    return tensor / self._scale_factors_gm[:, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
 
   @backend.function(jit_compile=True)
   def inverse(self, tensor: backend.Tensor) -> backend.Tensor:
     """Scales a given tensor using the inversed stored scale factors."""
-    return tensor * self._scale_factors_gm[:, backend.newaxis, :]
+    return tensor * self._scale_factors_gm[:, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
 
 
 class CenteringAndScalingTransformer(TensorTransformer):
@@ -135,19 +135,19 @@ class CenteringAndScalingTransformer(TensorTransformer):
     """
     if population_scaling_id is not None:
       self._population_scaling_factors = backend.where(
-          population_scaling_id,
+          population_scaling_id,  # pyrefly: ignore[bad-argument-type]
           population[:, None],
           backend.ones_like(population)[:, None],
       )
       population_scaled_tensor = (
-          tensor / self._population_scaling_factors[:, None, :]
+          tensor / self._population_scaling_factors[:, None, :]  # pyrefly: ignore[unsupported-operation]
       )
       self._means = backend.reduce_mean(population_scaled_tensor, axis=(0, 1))
       self._stdevs = backend.reduce_std(population_scaled_tensor, axis=(0, 1))
     else:
       self._population_scaling_factors = None
-      self._means = backend.reduce_mean(tensor, axis=(0, 1))
-      self._stdevs = backend.reduce_std(tensor, axis=(0, 1))
+      self._means = backend.reduce_mean(tensor, axis=(0, 1))  # pyrefly: ignore[bad-argument-type]
+      self._stdevs = backend.reduce_std(tensor, axis=(0, 1))  # pyrefly: ignore[bad-argument-type]
 
   @backend.function(
       jit_compile=True, static_argnames="apply_population_scaling"
@@ -167,13 +167,13 @@ class CenteringAndScalingTransformer(TensorTransformer):
         apply_population_scaling
         and self._population_scaling_factors is not None
     ):
-      tensor /= self._population_scaling_factors[:, None, :]
-    return backend.divide_no_nan(tensor - self._means, self._stdevs)
+      tensor /= self._population_scaling_factors[:, None, :]  # pyrefly: ignore[unsupported-operation]
+    return backend.divide_no_nan(tensor - self._means, self._stdevs)  # pyrefly: ignore[unsupported-operation]
 
   @backend.function(jit_compile=True)
   def inverse(self, tensor: backend.Tensor) -> backend.Tensor:
     """Scales back a given tensor using the stored coefficients."""
-    scaled_tensor = tensor * self._stdevs + self._means
+    scaled_tensor = tensor * self._stdevs + self._means  # pyrefly: ignore[unsupported-operation]
     return (
         scaled_tensor * self._population_scaling_factors[:, None, :]
         if self._population_scaling_factors is not None
@@ -237,5 +237,5 @@ class KpiTransformer(TensorTransformer):
   def inverse(self, tensor: backend.Tensor) -> backend.Tensor:
     """Scales back a given tensor using the stored coefficients."""
     return (
-        tensor * self._population_scaled_stdev + self._population_scaled_mean
+        tensor * self._population_scaled_stdev + self._population_scaled_mean  # pyrefly: ignore[unsupported-operation]
     ) * self._population[:, backend.newaxis]

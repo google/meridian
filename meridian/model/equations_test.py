@@ -195,7 +195,7 @@ class ComputeAdstockHillsTest(
     ec = backend.ones(shape=(n_channels,))
     slope = backend.ones(shape=(n_channels,))
 
-    mock_output = media * 2.0
+    mock_output = media * 2.0  # pyrefly: ignore[unsupported-operation]
 
     if hill_before_adstock:
       self.enter_context(
@@ -372,7 +372,7 @@ class ComputeAdstockHillsTest(
             adstock_hill.AdstockTransformer,
             "forward",
             autospec=True,
-            return_value=reach * frequency,
+            return_value=reach * frequency,  # pyrefly: ignore[unsupported-operation]
         )
     )
     manager = mock.Mock()
@@ -796,7 +796,7 @@ class ComputeNonMediaTreatmentsBaselineTest(
     model_context_instance = context.ModelContext(data, model_spec)
     eqs = equations.ModelEquations(model_context=model_context_instance)
     non_media_treatments = eqs._context.non_media_treatments
-    expected_baseline = backend.reduce_min(non_media_treatments, axis=[0, 1])
+    expected_baseline = backend.reduce_min(non_media_treatments, axis=[0, 1])  # pyrefly: ignore[bad-argument-type]
     actual_baseline = eqs.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
 
@@ -808,10 +808,10 @@ class ComputeNonMediaTreatmentsBaselineTest(
     eqs = equations.ModelEquations(model_context=model_context_instance)
     non_media_treatments = eqs._context.non_media_treatments
     expected_baseline_min = backend.reduce_min(
-        non_media_treatments[..., 0], axis=[0, 1]
+        non_media_treatments[..., 0], axis=[0, 1]  # pyrefly: ignore[unsupported-operation]
     )
     expected_baseline_max = backend.reduce_max(
-        non_media_treatments[..., 1], axis=[0, 1]
+        non_media_treatments[..., 1], axis=[0, 1]  # pyrefly: ignore[unsupported-operation]
     )
     expected_baseline = backend.stack(
         [expected_baseline_min, expected_baseline_max], axis=-1
@@ -846,13 +846,13 @@ class ComputeNonMediaTreatmentsBaselineTest(
     non_media_treatments = eqs._context.non_media_treatments
     _, baseline_value_float = baseline_values
     expected_baseline_min = backend.reduce_min(
-        non_media_treatments[..., 0], axis=[0, 1]
+        non_media_treatments[..., 0], axis=[0, 1]  # pyrefly: ignore[unsupported-operation]
     )
     expected_baseline_float = backend.to_tensor(
         baseline_value_float, dtype=backend.float_dtype
     )
     expected_baseline = backend.stack(
-        [expected_baseline_min, expected_baseline_float], axis=-1
+        [expected_baseline_min, expected_baseline_float], axis=-1  # pyrefly: ignore[bad-argument-type]
     )
     test_utils.assert_allclose(
         expected_baseline, eqs.compute_non_media_treatments_baseline()
@@ -866,14 +866,14 @@ class ComputeNonMediaTreatmentsBaselineTest(
     baseline_values = ["min", 5.0]
     model_spec = spec.ModelSpec(
         non_media_baseline_values=baseline_values,
-        non_media_population_scaling_id=backend.to_tensor([True, False]),
+        non_media_population_scaling_id=backend.to_tensor([True, False]),  # pyrefly: ignore[bad-argument-type]
     )
     model_context_instance = context.ModelContext(data, model_spec)
     eqs = equations.ModelEquations(model_context=model_context_instance)
     non_media_treatments = eqs._context.non_media_treatments
     _, baseline_value_float = baseline_values
     expected_baseline_min = backend.reduce_min(
-        non_media_treatments[..., 0]
+        non_media_treatments[..., 0]  # pyrefly: ignore[unsupported-operation]
         / eqs._context.population[:, backend.newaxis],
         axis=[0, 1],
     )
@@ -881,7 +881,7 @@ class ComputeNonMediaTreatmentsBaselineTest(
         baseline_value_float, dtype=backend.float_dtype
     )
     expected_baseline = backend.stack(
-        [expected_baseline_min, expected_baseline_float], axis=-1
+        [expected_baseline_min, expected_baseline_float], axis=-1  # pyrefly: ignore[bad-argument-type]
     )
     actual_baseline = eqs.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)

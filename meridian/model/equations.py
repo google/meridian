@@ -117,12 +117,12 @@ class ModelEquations:
 
     if self._context.model_spec.hill_before_adstock:
       hill_out = hill_transformer.forward(media)
-      selected_media = backend.where(mask, hill_out, media)
+      selected_media = backend.where(mask, hill_out, media)  # pyrefly: ignore[bad-argument-type]
       return adstock_transformer.forward(selected_media)
 
     adstock_out = adstock_transformer.forward(media)
     hill_out = hill_transformer.forward(adstock_out)
-    return backend.where(mask, hill_out, adstock_out)
+    return backend.where(mask, hill_out, adstock_out)  # pyrefly: ignore[bad-argument-type]
 
   def adstock_hill_rf(
       self,
@@ -202,8 +202,8 @@ class ModelEquations:
           [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
       )
 
-    selected_frequency = backend.where(mask, adj_frequency, frequency)
-    rf_out = adstock_transformer.forward(reach * selected_frequency)
+    selected_frequency = backend.where(mask, adj_frequency, frequency)  # pyrefly: ignore[bad-argument-type]
+    rf_out = adstock_transformer.forward(reach * selected_frequency)  # pyrefly: ignore[unsupported-operation]
 
     return rf_out
 
@@ -336,7 +336,7 @@ class ModelEquations:
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
     return backend.absolute(
-        media_transformed - media_transformed_counterfactual
+        media_transformed - media_transformed_counterfactual  # pyrefly: ignore[unsupported-operation]
     )
 
   def linear_predictor_counterfactual_difference_rf(
@@ -372,7 +372,7 @@ class ModelEquations:
       return rf_transformed
     rf_transformed_counterfactual = self.adstock_hill_rf(
         reach=self._context.rf_tensors.prior_reach_scaled_counterfactual,
-        frequency=self._context.rf_tensors.frequency,
+        frequency=self._context.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=alpha_rf,
         ec=ec_rf,
         slope=slope_rf,
@@ -380,7 +380,7 @@ class ModelEquations:
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
-    return backend.absolute(rf_transformed - rf_transformed_counterfactual)
+    return backend.absolute(rf_transformed - rf_transformed_counterfactual)  # pyrefly: ignore[unsupported-operation]
 
   def calculate_beta_x(
       self,
@@ -458,12 +458,12 @@ class ModelEquations:
       denominator_term_x = backend.einsum(
           "...gx->...x", incremental_outcome_gx_over_beta_gx
       )
-      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
+      return (incremental_outcome_x - numerator_term_x) / denominator_term_x  # pyrefly: ignore[unsupported-operation]
     # For log-normal random effects, beta_x and eta_x are not mean & std.
     # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
     denominator_term_x = backend.einsum(
         "...gx,...gx->...x",
         incremental_outcome_gx_over_beta_gx,
-        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
+        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),  # pyrefly: ignore[unsupported-operation]
     )
-    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)
+    return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)  # pyrefly: ignore[bad-argument-type]

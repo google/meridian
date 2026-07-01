@@ -1003,7 +1003,7 @@ class SummarizerTest(parameterized.TestCase):
         card, 'card-insights/p', {'class': 'insights-text'}
     ).text
 
-    self.assertIn('Rf_Ch_1 and Ch_0 drove the most', insights_text)
+    self.assertIn('Rf_Ch_1 and Ch_0 drove the most', insights_text)  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.named_parameters(
       {
@@ -1108,16 +1108,16 @@ class SummarizerTest(parameterized.TestCase):
     script_texts = [script.text for script in card.findall('charts/script')]
 
     mock_spec_1_exists = any(
-        [mock_spec_1 in script_text for script_text in script_texts]
+        [mock_spec_1 in script_text for script_text in script_texts]  # pyrefly: ignore[not-iterable]
     )
     mock_spec_2_exists = any(
-        [mock_spec_2 in script_text for script_text in script_texts]
+        [mock_spec_2 in script_text for script_text in script_texts]  # pyrefly: ignore[not-iterable]
     )
     mock_spec_3_exists = any(
-        [mock_spec_3 in script_text for script_text in script_texts]
+        [mock_spec_3 in script_text for script_text in script_texts]  # pyrefly: ignore[not-iterable]
     )
     mock_spec_4_exists = any(
-        [mock_spec_4 in script_text for script_text in script_texts]
+        [mock_spec_4 in script_text for script_text in script_texts]  # pyrefly: ignore[not-iterable]
     )
     self.assertTrue(
         all([
@@ -1284,7 +1284,7 @@ class SummarizerTest(parameterized.TestCase):
     ).text
     self.assertIn(
         summary_text.RESPONSE_CURVES_INSIGHTS_FORMAT.format(outcome=c.REVENUE),
-        insights_text,
+        insights_text,  # pyrefly: ignore[bad-argument-type]
     )
 
   def test_select_optimal_rf_data_with_backend_tensors(self):

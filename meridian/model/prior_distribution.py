@@ -1184,7 +1184,7 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     broadcast_shape = backend.broadcast_dynamic_shape(
         value.shape, self.batch_shape_tensor()
     )
-    return backend.broadcast_to(value, broadcast_shape)
+    return backend.broadcast_to(value, broadcast_shape)  # pyrefly: ignore[bad-argument-type]
 
   def _get_distribution_batch_shapes(self) -> Sequence[int]:
     """Sequence of batch shapes of underlying distributions."""
@@ -1278,11 +1278,11 @@ def lognormal_dist_from_mean_std(
     A `backend.tfd.LogNormal` object with the input mean and standard deviation.
   """
 
-  mean = np.asarray(mean)
-  std = np.asarray(std)
+  mean = np.asarray(mean)  # pyrefly: ignore[bad-assignment]
+  std = np.asarray(std)  # pyrefly: ignore[bad-assignment]
 
-  mu = np.log(mean) - 0.5 * np.log((std / mean) ** 2 + 1)
-  sigma = np.sqrt(np.log((std / mean) ** 2 + 1))
+  mu = np.log(mean) - 0.5 * np.log((std / mean) ** 2 + 1)  # pyrefly: ignore[unsupported-operation]
+  sigma = np.sqrt(np.log((std / mean) ** 2 + 1))  # pyrefly: ignore[unsupported-operation]
 
   return backend.tfd.LogNormal(mu, sigma)
 
@@ -1316,9 +1316,9 @@ def lognormal_dist_from_range(
     A `backend.tfd.LogNormal` object with the input percentage mass falling
       within the given range.
   """
-  low = np.asarray(low)
-  high = np.asarray(high)
-  mass_percent = np.asarray(mass_percent)
+  low = np.asarray(low)  # pyrefly: ignore[bad-assignment]
+  high = np.asarray(high)  # pyrefly: ignore[bad-assignment]
+  mass_percent = np.asarray(mass_percent)  # pyrefly: ignore[bad-assignment]
 
   if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
     raise ValueError(
@@ -1331,10 +1331,10 @@ def lognormal_dist_from_range(
     )
 
   normal = backend.tfd.Normal(0, 1)
-  mass_lower = 0.5 - (mass_percent / 2)
-  mass_upper = 0.5 + (mass_percent / 2)
+  mass_lower = 0.5 - (mass_percent / 2)  # pyrefly: ignore[unsupported-operation]
+  mass_upper = 0.5 + (mass_percent / 2)  # pyrefly: ignore[unsupported-operation]
 
-  sigma = np.log(high / low) / (
+  sigma = np.log(high / low) / (  # pyrefly: ignore[unsupported-operation]
       normal.quantile(mass_upper) - normal.quantile(mass_lower)
   )
   mu = np.log(high) - normal.quantile(mass_upper) * sigma

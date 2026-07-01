@@ -53,7 +53,7 @@ class PriorDistributionSamplerTest(
     )
     meridian2.sample_prior(n_draws=self._N_DRAWS, seed=1)
     self.assertEqual(
-        meridian.inference_data.prior, meridian2.inference_data.prior
+        meridian.inference_data.prior, meridian2.inference_data.prior  # pyrefly: ignore[missing-attribute]
     )
 
   def test_sample_prior_different_seed(self):
@@ -71,7 +71,7 @@ class PriorDistributionSamplerTest(
     meridian2.sample_prior(n_draws=self._N_DRAWS, seed=2)
 
     self.assertNotEqual(
-        meridian.inference_data.prior, meridian2.inference_data.prior
+        meridian.inference_data.prior, meridian2.inference_data.prior  # pyrefly: ignore[missing-attribute]
     )
 
   def test_prior_distribution_sampler_uses_seed(self):
@@ -124,7 +124,7 @@ class PriorDistributionSamplerTest(
     rf_parameters = list(constants.RF_PARAMETER_NAMES)
     rf_parameters.remove(constants.BETA_GRF)
 
-    prior = meridian.inference_data.prior
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(prior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -190,7 +190,7 @@ class PriorDistributionSamplerTest(
     media_parameters = list(constants.MEDIA_PARAMETER_NAMES)
     media_parameters.remove(constants.BETA_GM)
 
-    prior = meridian.inference_data.prior
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(prior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -250,7 +250,7 @@ class PriorDistributionSamplerTest(
     media_parameters = list(constants.MEDIA_PARAMETER_NAMES)
     media_parameters.remove(constants.BETA_GM)
 
-    prior = meridian.inference_data.prior
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(prior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -276,7 +276,7 @@ class PriorDistributionSamplerTest(
     # Control parameters should not exist in the inference data priors.
     for attr in constants.CONTROL_PARAMETERS + constants.GEO_CONTROL_PARAMETERS:
       with self.assertRaises(AttributeError):
-        getattr(meridian.inference_data.prior, attr)
+        getattr(meridian.inference_data.prior, attr)  # pyrefly: ignore[missing-attribute]
 
   def test_sample_prior_rf_only_returns_correct_shape(self):
     self.enter_context(
@@ -308,7 +308,7 @@ class PriorDistributionSamplerTest(
     geo_control_shape = geo_shape + (self._N_CONTROLS,)
     geo_rf_channel_shape = geo_shape + (self._N_RF_CHANNELS,)
 
-    prior = meridian.inference_data.prior
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(prior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -710,7 +710,7 @@ class PriorDistributionSamplerTest(
     )
     meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
 
-    prior = meridian.inference_data.prior
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
 
     for var, shape in expected_vars_and_shapes.items():
       self.assertTrue(hasattr(prior, var))

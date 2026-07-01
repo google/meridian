@@ -64,11 +64,11 @@ def _find_left_knot_indices(
   # Handle edge cases for times at or after the last knot
   left_knot_indices[times >= knot_locations[-1]] = n_knots - 1
 
-  return left_knot_indices
+  return left_knot_indices  # pyrefly: ignore[bad-return]
 
 
 def l1_distance_weights(
-    n_times: int, knot_locations: np.ndarray[int, np.dtype[int]]
+    n_times: int, knot_locations: np.ndarray[int, np.dtype[int]]  # pyrefly: ignore[bad-specialization]
 ) -> np.ndarray:
   """Computes weights at knots for every time period.
 
@@ -101,17 +101,17 @@ def l1_distance_weights(
     raise ValueError('Number of knots must be greater than 1.')
   if len(knot_locations) != len(np.unique(knot_locations)):
     raise ValueError('`knot_locations` must be unique.')
-  if np.any(knot_locations < 0):
+  if np.any(knot_locations < 0):  # pyrefly: ignore[unsupported-operation]
     raise ValueError('knot_locations must be positive.')
-  if np.any(knot_locations >= n_times):
+  if np.any(knot_locations >= n_times):  # pyrefly: ignore[unsupported-operation]
     raise ValueError('knot_locations must be less than `n_times`.')
 
   times = np.arange(n_times)
-  time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])
+  time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])  # pyrefly: ignore[unsupported-operation]
 
   w = np.zeros(time_minus_knot.shape, dtype=backend.np_float_dtype)
   left_knot_indices = _find_left_knot_indices(
-      times=times, knot_locations=knot_locations
+      times=times, knot_locations=knot_locations  # pyrefly: ignore[bad-argument-type]
   )
 
   for t in times:
@@ -156,8 +156,8 @@ class KnotInfo:
   """
 
   n_knots: int
-  knot_locations: np.ndarray[int, np.dtype[int]]
-  weights: np.ndarray[int, np.dtype[float]]
+  knot_locations: np.ndarray[int, np.dtype[int]]  # pyrefly: ignore[bad-specialization]
+  weights: np.ndarray[int, np.dtype[float]]  # pyrefly: ignore[bad-specialization]
 
 
 def get_knot_info(
@@ -230,7 +230,7 @@ def get_knot_info(
       )
     n_knots = len(knots)
     # np.unique also sorts
-    knot_locations = np.unique(knots)
+    knot_locations = np.unique(knots)  # pyrefly: ignore[no-matching-overload]
   elif isinstance(knots, Collection):
     raise ValueError('Knots cannot be empty.')
   else:
@@ -243,12 +243,12 @@ def get_knot_info(
   else:
     weights = l1_distance_weights(n_times, knot_locations)
 
-  return KnotInfo(n_knots, knot_locations, weights)
+  return KnotInfo(n_knots, knot_locations, weights)  # pyrefly: ignore[bad-argument-type]
 
 
 @dataclasses.dataclass(frozen=True)
 class AKSResult:
-  knots: np.ndarray[int, np.dtype[int]]
+  knots: np.ndarray[int, np.dtype[int]]  # pyrefly: ignore[bad-specialization]
   model: linear_model.OLS
 
 
@@ -307,7 +307,7 @@ class AKS:
     penalty = geo_scaling_factor * base_penalty
 
     if required_knots is not None and len(required_knots) > 0:
-      required_knots_arr = np.unique(required_knots)
+      required_knots_arr = np.unique(required_knots)  # pyrefly: ignore[no-matching-overload]
       if not np.all(np.isin(required_knots_arr, knots)):
         raise ValueError(
             'The required knots are not legitimate knot locations.'
@@ -514,7 +514,7 @@ class AKS:
     ]
     par = np.ones(ncol, dtype=backend.np_float_dtype)
 
-    is_required = np.isin(knots, required_knots)
+    is_required = np.isin(knots, required_knots)  # pyrefly: ignore[bad-argument-type]
     # Setting weight to 1.0 penalizes the required knots according to
     # non-adpative ridge regression.
     w[is_required] = 1.0
@@ -522,9 +522,9 @@ class AKS:
     index_penalty = 0
     for _ in range(max_iterations):
       par = self._weighted_ridge_solver(
-          xx_rot, xy, self._DEGREE, penalty[index_penalty], w, old_par=par
+          xx_rot, xy, self._DEGREE, penalty[index_penalty], w, old_par=par  # pyrefly: ignore[bad-argument-type]
       )
-      par_diff = np.diff(par, n=self._DEGREE + 1)
+      par_diff = np.diff(par, n=self._DEGREE + 1)  # pyrefly: ignore[no-matching-overload]
 
       w = 1 / (par_diff**2 + epsilon**2)
       # Override the adaptive weight to 1.0 for required knots. This prevents
@@ -548,13 +548,13 @@ class AKS:
         coefs = np.zeros(ncol, dtype=backend.np_float_dtype)
         idx = np.concatenate([sel > 0.99, np.repeat(True, self._DEGREE + 1)])
         coefs[idx] = bs_model.params
-        par_ls[index_penalty] = coefs
+        par_ls[index_penalty] = coefs  # pyrefly: ignore[unsupported-operation]
 
         loglik[index_penalty] = np.sum(bs_model.resid**2 / sigma0sq) / 2
-        dim[index_penalty] = len(knots_sel[index_penalty]) + self._DEGREE + 1
-        aic[index_penalty] = 2 * dim[index_penalty] + 2 * loglik[index_penalty]
+        dim[index_penalty] = len(knots_sel[index_penalty]) + self._DEGREE + 1  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+        aic[index_penalty] = 2 * dim[index_penalty] + 2 * loglik[index_penalty]  # pyrefly: ignore[unsupported-operation]
         bic[index_penalty] = (
-            np.log(nrow) * dim[index_penalty] + 2 * loglik[index_penalty]
+            np.log(nrow) * dim[index_penalty] + 2 * loglik[index_penalty]  # pyrefly: ignore[unsupported-operation]
         )
         ebic[index_penalty] = bic[index_penalty] + 2 * np.log(
             backend.np_float_dtype(math.comb(ncol, design_mat.shape[1]))
@@ -564,7 +564,7 @@ class AKS:
         break
       old_sel = sel
 
-    sel_mat = np.round(np.stack(sel_ls, axis=-1), 1)
+    sel_mat = np.round(np.stack(sel_ls, axis=-1), 1)  # pyrefly: ignore[no-matching-overload]
     return {
         constants.SELECTION_COEFS: sel_ls,
         constants.KNOTS_SELECTED: knots_sel,

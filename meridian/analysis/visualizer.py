@@ -215,7 +215,7 @@ class ModelDiagnostics:
     # Check if the selected parameter is part of Meridian's model parameters.
     if (
         parameter
-        not in self._meridian.inference_data.posterior.data_vars.keys()
+        not in self._meridian.inference_data.posterior.data_vars.keys()  # pyrefly: ignore[missing-attribute]
     ):
       raise ValueError(
           f"The selected param '{parameter}' does not exist in Meridian's model"
@@ -223,7 +223,7 @@ class ModelDiagnostics:
       )
 
     if selected_times:
-      param_data = self._meridian.inference_data.posterior[parameter]
+      param_data = self._meridian.inference_data.posterior[parameter]  # pyrefly: ignore[missing-attribute]
       if not (hasattr(param_data, c.TIME)):
         raise ValueError(
             '`selected_times` can only be used if the parameter has a time'
@@ -236,8 +236,8 @@ class ModelDiagnostics:
             ' model.'
         )
 
-    prior_dat = self._meridian.inference_data.prior[parameter]
-    posterior_dat = self._meridian.inference_data.posterior[parameter]
+    prior_dat = self._meridian.inference_data.prior[parameter]  # pyrefly: ignore[missing-attribute]
+    posterior_dat = self._meridian.inference_data.posterior[parameter]  # pyrefly: ignore[missing-attribute]
     prior_df = (
         prior_dat.to_dataframe().reset_index().drop(columns=[c.CHAIN, c.DRAW])
     )
@@ -278,7 +278,7 @@ class ModelDiagnostics:
         upper=parameter_99_max * c.OUTLIER_CLIP_FACTOR
     )
     plot = (
-        alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
+        alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)  # pyrefly: ignore[bad-argument-type]
         .transform_density(
             parameter, groupby=groupby, as_=[parameter, 'density']
         )
@@ -529,7 +529,7 @@ class ModelFit:
                 tickCount=5,
                 labelPadding=c.PADDING_10,
                 labelExpr=formatter.compact_number_expr(),
-                **formatter.Y_AXIS_TITLE_CONFIG,
+                **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
             ),
         ),
         color=alt.Color('type:N', scale=alt.Scale(domain=domain, range=colors)),
@@ -841,7 +841,7 @@ class ReachAndFrequency:
             c.ROI,
             title=summary_text.ROI_LABEL,
             axis=alt.Axis(
-                **formatter.Y_AXIS_TITLE_CONFIG,
+                **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
             ),
         ),
         color=alt.Color('expected_roi:N', scale=color_scale, title=''),
@@ -1045,14 +1045,14 @@ class MediaEffects:
     input_data = model_context.input_data
     channels_to_exclude = itertools.chain(
         _get_channels_to_exclude(
-            input_data.media_channel, saturation_spec.media
+            input_data.media_channel, saturation_spec.media  # pyrefly: ignore[bad-argument-type]
         ),
-        _get_channels_to_exclude(input_data.rf_channel, saturation_spec.rf),
+        _get_channels_to_exclude(input_data.rf_channel, saturation_spec.rf),  # pyrefly: ignore[bad-argument-type]
         _get_channels_to_exclude(
-            input_data.organic_media_channel, saturation_spec.organic_media
+            input_data.organic_media_channel, saturation_spec.organic_media  # pyrefly: ignore[bad-argument-type]
         ),
         _get_channels_to_exclude(
-            input_data.organic_rf_channel, saturation_spec.organic_rf
+            input_data.organic_rf_channel, saturation_spec.organic_rf  # pyrefly: ignore[bad-argument-type]
         ),
     )
 
@@ -1145,7 +1145,7 @@ class MediaEffects:
                 title=summary_text.SPEND_LABEL,
                 axis=alt.Axis(
                     labelExpr=formatter.compact_number_expr(),
-                    **formatter.AXIS_CONFIG,
+                    **formatter.AXIS_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
             y=alt.Y(
@@ -1153,7 +1153,7 @@ class MediaEffects:
                 title=y_axis_label,
                 axis=alt.Axis(
                     labelExpr=formatter.compact_number_expr(),
-                    **formatter.Y_AXIS_TITLE_CONFIG,
+                    **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
             color=f'{c.CHANNEL}:N',
@@ -1838,7 +1838,7 @@ class MediaSummary:
                     tickCount=5,
                     labelPadding=c.PADDING_10,
                     labelExpr=formatter.compact_number_expr(),
-                    **formatter.Y_AXIS_TITLE_CONFIG,
+                    **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
                 scale=alt.Scale(domainMin=min_y, clamp=True),
             ),
@@ -2158,7 +2158,7 @@ class MediaSummary:
             y=alt.Y(
                 f'{c.PCT}:Q',
                 axis=alt.Axis(
-                    format='%', tickCount=2, **formatter.Y_AXIS_TITLE_CONFIG
+                    format='%', tickCount=2, **formatter.Y_AXIS_TITLE_CONFIG  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
             color=alt.Color(
@@ -2381,7 +2381,7 @@ class MediaSummary:
                 metric,
                 title=metric_title,
                 scale=axes_scale,
-                axis=alt.Axis(**formatter.Y_AXIS_TITLE_CONFIG),
+                axis=alt.Axis(**formatter.Y_AXIS_TITLE_CONFIG),  # pyrefly: ignore[bad-argument-type]
             ),
             color=alt.Color(
                 f'{c.CHANNEL}:N',
@@ -2436,7 +2436,7 @@ class MediaSummary:
             ),
             y=alt.Y(
                 f'{metric}:Q',
-                axis=alt.Axis(gridDash=[3, 2], **formatter.Y_AXIS_TITLE_CONFIG),
+                axis=alt.Axis(gridDash=[3, 2], **formatter.Y_AXIS_TITLE_CONFIG),  # pyrefly: ignore[bad-argument-type]
                 title=metric_label,
             ),
         )
@@ -2616,7 +2616,7 @@ class MediaSummary:
     }
     if not aggregate_times:
       total_media_criteria[c.TIME] = (
-          self._selected_times
+          self._selected_times  # pyrefly: ignore[unsupported-operation]
           or self.get_all_summary_metrics(aggregate_times=False).time
       )
 

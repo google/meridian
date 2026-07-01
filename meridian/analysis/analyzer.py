@@ -65,12 +65,12 @@ def get_central_tendency_and_ci(
     A numpy array or backend.Tensor containing the mean and credible intervals
     for the given data. Optionally, it also includes the median.
   """
-  mean = np.mean(data, axis=axis, keepdims=False)
-  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)
-  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)
+  mean = np.mean(data, axis=axis, keepdims=False)  # pyrefly: ignore[no-matching-overload]
+  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)  # pyrefly: ignore[no-matching-overload]
+  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)  # pyrefly: ignore[no-matching-overload]
 
   if include_median:
-    median = np.median(data, axis=axis, keepdims=False)
+    median = np.median(data, axis=axis, keepdims=False)  # pyrefly: ignore[no-matching-overload]
     return np.stack([mean, median, ci_lo, ci_hi], axis=-1)
   else:
     return np.stack([mean, ci_lo, ci_hi], axis=-1)
@@ -216,9 +216,9 @@ class Analyzer:
       )
 
     params = (
-        self.inference_data.posterior
+        self.inference_data.posterior  # pyrefly: ignore[missing-attribute]
         if use_posterior
-        else self.inference_data.prior
+        else self.inference_data.prior  # pyrefly: ignore[missing-attribute]
     )
     n_draws = params.draw.size
     batch_starting_indices = np.arange(n_draws, step=batch_size)
@@ -254,8 +254,8 @@ class Analyzer:
     Returns:
       Tensor representing computed kpi means.
     """
-    tau_gt = backend.expand_dims(dist_tensors.tau_g, -1) + backend.expand_dims(
-        dist_tensors.mu_t, -2
+    tau_gt = backend.expand_dims(dist_tensors.tau_g, -1) + backend.expand_dims(  # pyrefly: ignore[bad-argument-type]
+        dist_tensors.mu_t, -2  # pyrefly: ignore[bad-argument-type]
     )
     combined_media_transformed, combined_beta = (
         self._get_transformed_media_and_beta(
@@ -341,30 +341,30 @@ class Analyzer:
         self.model_context.n_media_times,
     )
     if channel_type == constants.MEDIA:
-      prior = self._inference_data.prior.alpha_m.values[0]
+      prior = self._inference_data.prior.alpha_m.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
-          self._inference_data.posterior.alpha_m.values,
+          self._inference_data.posterior.alpha_m.values,  # pyrefly: ignore[missing-attribute]
           (-1, self.model_context.n_media_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.media
     elif channel_type == constants.RF:
-      prior = self._inference_data.prior.alpha_rf.values[0]
+      prior = self._inference_data.prior.alpha_rf.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
-          self._inference_data.posterior.alpha_rf.values,
+          self._inference_data.posterior.alpha_rf.values,  # pyrefly: ignore[missing-attribute]
           (-1, self.model_context.n_rf_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.rf
     elif channel_type == constants.ORGANIC_MEDIA:
-      prior = self._inference_data.prior.alpha_om.values[0]
+      prior = self._inference_data.prior.alpha_om.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
-          self._inference_data.posterior.alpha_om.values,
+          self._inference_data.posterior.alpha_om.values,  # pyrefly: ignore[missing-attribute]
           (-1, self.model_context.n_organic_media_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.organic_media
     elif channel_type == constants.ORGANIC_RF:
-      prior = self._inference_data.prior.alpha_orf.values[0]
+      prior = self._inference_data.prior.alpha_orf.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
-          self._inference_data.posterior.alpha_orf.values,
+          self._inference_data.posterior.alpha_orf.values,  # pyrefly: ignore[missing-attribute]
           (-1, self.model_context.n_organic_rf_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.organic_rf
@@ -501,9 +501,9 @@ class Analyzer:
       combined_medias.append(
           self._model_equations.adstock_hill_media(
               media=data_tensors.media,
-              alpha=dist_tensors.alpha_m,
-              ec=dist_tensors.ec_m,
-              slope=dist_tensors.slope_m,
+              alpha=dist_tensors.alpha_m,  # pyrefly: ignore[bad-argument-type]
+              ec=dist_tensors.ec_m,  # pyrefly: ignore[bad-argument-type]
+              slope=dist_tensors.slope_m,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.media,
               saturation_spec=self.model_context.saturation_spec.media,
               n_times_output=n_times_output,
@@ -515,10 +515,10 @@ class Analyzer:
       combined_medias.append(
           self._model_equations.adstock_hill_rf(
               reach=data_tensors.reach,
-              frequency=data_tensors.frequency,
-              alpha=dist_tensors.alpha_rf,
-              ec=dist_tensors.ec_rf,
-              slope=dist_tensors.slope_rf,
+              frequency=data_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
+              alpha=dist_tensors.alpha_rf,  # pyrefly: ignore[bad-argument-type]
+              ec=dist_tensors.ec_rf,  # pyrefly: ignore[bad-argument-type]
+              slope=dist_tensors.slope_rf,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.rf,
               saturation_spec=self.model_context.saturation_spec.rf,
               n_times_output=n_times_output,
@@ -529,9 +529,9 @@ class Analyzer:
       combined_medias.append(
           self._model_equations.adstock_hill_media(
               media=data_tensors.organic_media,
-              alpha=dist_tensors.alpha_om,
-              ec=dist_tensors.ec_om,
-              slope=dist_tensors.slope_om,
+              alpha=dist_tensors.alpha_om,  # pyrefly: ignore[bad-argument-type]
+              ec=dist_tensors.ec_om,  # pyrefly: ignore[bad-argument-type]
+              slope=dist_tensors.slope_om,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.organic_media,
               saturation_spec=self.model_context.saturation_spec.organic_media,
               n_times_output=n_times_output,
@@ -542,10 +542,10 @@ class Analyzer:
       combined_medias.append(
           self._model_equations.adstock_hill_rf(
               reach=data_tensors.organic_reach,
-              frequency=data_tensors.organic_frequency,
-              alpha=dist_tensors.alpha_orf,
-              ec=dist_tensors.ec_orf,
-              slope=dist_tensors.slope_orf,
+              frequency=data_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
+              alpha=dist_tensors.alpha_orf,  # pyrefly: ignore[bad-argument-type]
+              ec=dist_tensors.ec_orf,  # pyrefly: ignore[bad-argument-type]
+              slope=dist_tensors.slope_orf,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.organic_rf,
               saturation_spec=self.model_context.saturation_spec.organic_rf,
               n_times_output=n_times_output,
@@ -985,7 +985,7 @@ class Analyzer:
     if data_tensors.non_media_treatments is not None:
       non_media_kpi = backend.einsum(
           "gtn,...gn->...gtn",
-          data_tensors.non_media_treatments
+          data_tensors.non_media_treatments  # pyrefly: ignore[unsupported-operation]
           - non_media_treatments_baseline_normalized,
           dist_tensors.gamma_gn,
       )
@@ -1106,7 +1106,7 @@ class Analyzer:
     Returns:
       Tensor containing the incremental outcome distribution.
     """
-    use_kpi = self._use_kpi(use_kpi)
+    use_kpi = self._use_kpi(use_kpi)  # pyrefly: ignore[bad-argument-type]
     if (
         data_tensors.non_media_treatments is not None
         and non_media_treatments_baseline_normalized is None
@@ -1391,7 +1391,7 @@ class Analyzer:
           **incremental_outcome_kwargs,
       )
       # Calculate incremental outcome under counterfactual scenario "Media_0".
-      if scaling_factor0 != 0 or not all(inputs0.media_selected_times_mask):
+      if scaling_factor0 != 0 or not all(inputs0.media_selected_times_mask):  # pyrefly: ignore[bad-argument-type]
         batch_incremental_outcome -= self._incremental_outcome_impl(
             data_tensors=data_tensors0,
             dist_tensors=dist_tensors,
@@ -1568,17 +1568,17 @@ class Analyzer:
         aggregate_times=True,
         **dim_kwargs,
     )
-    spend_inc = filled_data.total_spend() * incremental_increase
-    if spend_inc is not None and spend_inc.ndim == 3:
+    spend_inc = filled_data.total_spend() * incremental_increase  # pyrefly: ignore[unsupported-operation]
+    if spend_inc is not None and spend_inc.ndim == 3:  # pyrefly: ignore[missing-attribute]
       inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
           selected_times=selected_times,
       )
       return backend.divide(
-          numerator,
-          self.filter_and_aggregate_by_indices(
-              spend_inc,
+          numerator,  # pyrefly: ignore[bad-argument-type]
+          self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
+              spend_inc,  # pyrefly: ignore[bad-argument-type]
               geo_indices=inputs.geo_indices,
               time_indices=inputs.time_indices,
               aggregate_geos=aggregate_geos,
@@ -1596,7 +1596,7 @@ class Analyzer:
       raise ValueError(
           "aggregate_geos must be True if spend does not have a geo dimension."
       )
-    return backend.divide(numerator, spend_inc)
+    return backend.divide(numerator, spend_inc)  # pyrefly: ignore[bad-argument-type]
 
   def roi(
       self,
@@ -1702,8 +1702,8 @@ class Analyzer:
           selected_times=selected_times,
       )
       return backend.divide(
-          incremental_outcome,
-          self.filter_and_aggregate_by_indices(
+          incremental_outcome,  # pyrefly: ignore[bad-argument-type]
+          self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
               spend,
               geo_indices=inputs.geo_indices,
               time_indices=inputs.time_indices,
@@ -1723,7 +1723,7 @@ class Analyzer:
       raise ValueError(
           "aggregate_geos must be True if spend does not have a geo dimension."
       )
-    return backend.divide(incremental_outcome, spend)
+    return backend.divide(incremental_outcome, spend)  # pyrefly: ignore[bad-argument-type]
 
   def cpik(
       self,
@@ -1798,7 +1798,7 @@ class Analyzer:
         aggregate_geos=aggregate_geos,
         batch_size=batch_size,
     )
-    return backend.divide(1, roi)
+    return backend.divide(1, roi)  # pyrefly: ignore[bad-argument-type]
 
   def _mean_and_ci_by_eval_set(
       self,
@@ -1844,13 +1844,13 @@ class Analyzer:
           draws, confidence_level=confidence_level
       )
 
-    train_draws = np.where(
+    train_draws = np.where(  # pyrefly: ignore[no-matching-overload]
         self.model_context.model_spec.holdout_id, np.nan, draws
     )
-    test_draws = np.where(
+    test_draws = np.where(  # pyrefly: ignore[no-matching-overload]
         self.model_context.model_spec.holdout_id, draws, np.nan
     )
-    draws_by_evaluation_set = np.stack(
+    draws_by_evaluation_set = np.stack(  # pyrefly: ignore[no-matching-overload]
         [train_draws, test_draws, draws], axis=0
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, n_geos, n_times)
     draws_by_evaluation_set = self.filter_and_aggregate_by_indices(
@@ -1947,7 +1947,7 @@ class Analyzer:
         self.filter_and_aggregate_by_indices(
             m_context.kpi
             if use_kpi
-            else m_context.kpi * m_context.revenue_per_kpi,
+            else m_context.kpi * m_context.revenue_per_kpi,  # pyrefly: ignore[unsupported-operation]
             geo_indices=None,
             time_indices=None,
             aggregate_geos=aggregate_geos,
@@ -2090,11 +2090,11 @@ class Analyzer:
         **kwargs,
     )
     incremental_outcome_total = backend.reduce_sum(
-        incremental_outcome_m, axis=-1, keepdims=True
+        incremental_outcome_m, axis=-1, keepdims=True  # pyrefly: ignore[bad-argument-type]
     )
 
     return backend.concatenate(
-        [incremental_outcome_m, incremental_outcome_total],
+        [incremental_outcome_m, incremental_outcome_total],  # pyrefly: ignore[bad-argument-type]
         axis=-1,
     )
 
@@ -2227,9 +2227,9 @@ class Analyzer:
         **dim_kwargs,
     )
     impressions_with_total = backend.concatenate(
-        [
+        [  # pyrefly: ignore[bad-argument-type]
             aggregated_impressions,
-            backend.reduce_sum(aggregated_impressions, -1, keepdims=True),
+            backend.reduce_sum(aggregated_impressions, -1, keepdims=True),  # pyrefly: ignore[bad-argument-type]
         ],
         axis=-1,
     )
@@ -2299,7 +2299,7 @@ class Analyzer:
           if selected_geos is None
           else selected_geos
       )
-      xr_coords[constants.GEO] = geo_dims
+      xr_coords[constants.GEO] = geo_dims  # pyrefly: ignore[unsupported-operation]
     if not aggregate_times:
       # Get the time coordinates for flexible time dimensions.
       modified_times = builder.get_modified_times(new_data)
@@ -2318,7 +2318,7 @@ class Analyzer:
       else:
         time_coords = times[np.asarray(time_indices)]
 
-      xr_coords[constants.TIME] = time_coords
+      xr_coords[constants.TIME] = time_coords  # pyrefly: ignore[unsupported-operation]
     xr_dims_with_ci_and_distribution = xr_dims + (
         constants.METRIC,
         constants.DISTRIBUTION,
@@ -2338,7 +2338,7 @@ class Analyzer:
         posterior=incremental_outcome_posterior,
         metric_name=constants.INCREMENTAL_OUTCOME,
         xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
+        xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         include_median=True,
     )
@@ -2347,7 +2347,7 @@ class Analyzer:
         incremental_outcome_posterior=incremental_outcome_posterior,
         impressions_with_total=impressions_with_total,
         xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
+        xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         # Drop effectiveness metric values in the Dataset's data_vars for the
         # aggregated "All Paid Channels" channel dimension value. The
@@ -2364,14 +2364,14 @@ class Analyzer:
           use_posterior=False,
           new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
-          **dim_kwargs,
+          **dim_kwargs,  # pyrefly: ignore[bad-argument-type]
           **batched_kwargs,
       )
       expected_outcome_posterior = self.expected_outcome(
           use_posterior=True,
           new_data=new_data.filter_fields(expected_outcome_fields),
           use_kpi=use_kpi,
-          **dim_kwargs,
+          **dim_kwargs,  # pyrefly: ignore[bad-argument-type]
           **batched_kwargs,
       )
       pct_of_contribution = self._compute_pct_of_contribution(
@@ -2380,7 +2380,7 @@ class Analyzer:
           expected_outcome_prior=expected_outcome_prior,
           expected_outcome_posterior=expected_outcome_posterior,
           xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
       )
     else:
@@ -2441,9 +2441,9 @@ class Analyzer:
         flexible_time_dim=True,
     )
     spend_with_total = backend.concatenate(
-        [
+        [  # pyrefly: ignore[bad-argument-type]
             aggregated_spend,
-            backend.reduce_sum(aggregated_spend, -1, keepdims=True),
+            backend.reduce_sum(aggregated_spend, -1, keepdims=True),  # pyrefly: ignore[bad-argument-type]
         ],
         axis=-1,
     )
@@ -2451,7 +2451,7 @@ class Analyzer:
         spend_with_total=spend_with_total,
         impressions_with_total=impressions_with_total,
         xr_dims=xr_dims,
-        xr_coords=xr_coords,
+        xr_coords=xr_coords,  # pyrefly: ignore[bad-argument-type]
     )
 
     if not aggregate_times:
@@ -2475,7 +2475,7 @@ class Analyzer:
           incremental_outcome_prior=incremental_outcome_prior,
           incremental_outcome_posterior=incremental_outcome_posterior,
           xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
           spend_with_total=spend_with_total,
       )
@@ -2483,7 +2483,7 @@ class Analyzer:
           incremental_outcome_prior=incremental_outcome_mroi_prior,
           incremental_outcome_posterior=incremental_outcome_mroi_posterior,
           xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
           spend_with_total=spend_with_total * marginal_roi_incremental_increase,
           metric_name=constants.MROI,
@@ -2513,7 +2513,7 @@ class Analyzer:
           ),
           spend_with_total=spend_with_total,
           xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
       )
       return xr.merge(
@@ -2594,21 +2594,21 @@ class Analyzer:
     )
     impressions_list = []
     if self.model_context.n_media_channels > 0:
-      impressions_list.append(data_tensors.media[:, -n_times:, :])
+      impressions_list.append(data_tensors.media[:, -n_times:, :])  # pyrefly: ignore[unsupported-operation]
 
     if self.model_context.n_rf_channels > 0:
       impressions_list.append(
-          data_tensors.reach[:, -n_times:, :]
-          * data_tensors.frequency[:, -n_times:, :]
+          data_tensors.reach[:, -n_times:, :]  # pyrefly: ignore[unsupported-operation]
+          * data_tensors.frequency[:, -n_times:, :]  # pyrefly: ignore[unsupported-operation]
       )
 
     if include_non_paid_channels:
       if self.model_context.n_organic_media_channels > 0:
-        impressions_list.append(data_tensors.organic_media[:, -n_times:, :])
+        impressions_list.append(data_tensors.organic_media[:, -n_times:, :])  # pyrefly: ignore[unsupported-operation]
       if self.model_context.n_organic_rf_channels > 0:
         impressions_list.append(
-            data_tensors.organic_reach[:, -n_times:, :]
-            * data_tensors.organic_frequency[:, -n_times:, :]
+            data_tensors.organic_reach[:, -n_times:, :]  # pyrefly: ignore[unsupported-operation]
+            * data_tensors.organic_frequency[:, -n_times:, :]  # pyrefly: ignore[unsupported-operation]
         )
       if self.model_context.n_non_media_channels > 0:
         impressions_list.append(data_tensors.non_media_treatments)
@@ -2688,14 +2688,14 @@ class Analyzer:
           if selected_geos is None
           else selected_geos
       )
-      xr_coords[constants.GEO] = geo_dims
+      xr_coords[constants.GEO] = geo_dims  # pyrefly: ignore[unsupported-operation]
     if not aggregate_times:
       time_dims = (
           self.model_context.input_data.time.data
           if selected_times is None
           else selected_times
       )
-      xr_coords[constants.TIME] = time_dims
+      xr_coords[constants.TIME] = time_dims  # pyrefly: ignore[unsupported-operation]
     xr_dims_with_ci_and_distribution = xr_dims + (
         constants.METRIC,
         constants.DISTRIBUTION,
@@ -2719,7 +2719,7 @@ class Analyzer:
     )
 
     baseline_expected_outcome_prior = backend.expand_dims(
-        self._calculate_baseline_expected_outcome(
+        self._calculate_baseline_expected_outcome(  # pyrefly: ignore[bad-argument-type]
             use_posterior=False,
             use_kpi=use_kpi,
             non_media_baseline_values=non_media_baseline_values,
@@ -2728,7 +2728,7 @@ class Analyzer:
         axis=-1,
     )
     baseline_expected_outcome_posterior = backend.expand_dims(
-        self._calculate_baseline_expected_outcome(
+        self._calculate_baseline_expected_outcome(  # pyrefly: ignore[bad-argument-type]
             use_posterior=True,
             use_kpi=use_kpi,
             non_media_baseline_values=non_media_baseline_values,
@@ -2742,7 +2742,7 @@ class Analyzer:
         posterior=baseline_expected_outcome_posterior,
         metric_name=constants.BASELINE_OUTCOME,
         xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
+        xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         include_median=True,
     ).sel(channel=constants.BASELINE)
@@ -2753,7 +2753,7 @@ class Analyzer:
         expected_outcome_prior=expected_outcome_prior,
         expected_outcome_posterior=expected_outcome_posterior,
         xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
+        xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
     ).sel(channel=constants.BASELINE)
 
@@ -2879,16 +2879,16 @@ class Analyzer:
         np.array(self.model_context.rf_tensors.frequency)
     )
     if freq_grid is None:
-      freq_grid = np.arange(1, max_freq, 0.1)
+      freq_grid = np.arange(1, max_freq, 0.1)  # pyrefly: ignore[bad-assignment]
 
     # Create a frequency grid for shape (len(freq_grid), n_rf_channels, 4) where
     # the last argument is for the mean, median, lower and upper confidence
     # intervals.
     metric_grid = np.zeros(
-        (len(freq_grid), self.model_context.n_rf_channels, 4)
+        (len(freq_grid), self.model_context.n_rf_channels, 4)  # pyrefly: ignore[bad-argument-type]
     )
 
-    for i, freq in enumerate(freq_grid):
+    for i, freq in enumerate(freq_grid):  # pyrefly: ignore[bad-argument-type]
       inputs = builder.build_unscaled_inputs(
           new_data=new_data,
           required_tensors_names=[
@@ -2918,7 +2918,7 @@ class Analyzer:
         else []
     )
 
-    optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]
+    optimal_frequency = [freq_grid[i] for i in optimal_freq_idx]  # pyrefly: ignore[unsupported-operation]
     inputs = builder.build_unscaled_inputs(
         new_data=new_data,
         required_tensors_names=[
@@ -3081,7 +3081,7 @@ class Analyzer:
     if use_kpi:
       input_tensor = self.model_context.kpi
     else:
-      input_tensor = self.model_context.kpi * self.model_context.revenue_per_kpi
+      input_tensor = self.model_context.kpi * self.model_context.revenue_per_kpi  # pyrefly: ignore[unsupported-operation]
     predictive_accuracy_inputs = tensors.DataTensorsBuilder(
         self.model_context
     ).build_unscaled_inputs(
@@ -3096,7 +3096,7 @@ class Analyzer:
             aggregate_times=False,
         )
     )
-    expected = np.mean(
+    expected = np.mean(  # pyrefly: ignore[no-matching-overload]
         self.expected_outcome(
             batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
         ),
@@ -3230,7 +3230,7 @@ class Analyzer:
 
     rhat = backend.mcmc.potential_scale_reduction({
         k: _transpose_first_two_dims(v)
-        for k, v in self._inference_data.posterior.data_vars.items()
+        for k, v in self._inference_data.posterior.data_vars.items()  # pyrefly: ignore[missing-attribute]
     })
 
     return self._mask_hill_parameters_for_linear_channels(rhat)
@@ -3284,7 +3284,7 @@ class Analyzer:
 
     return {
         k: (
-            backend.where(mask_mapping[k], backend.to_tensor(np.nan), v)
+            backend.where(mask_mapping[k], backend.to_tensor(np.nan), v)  # pyrefly: ignore[bad-argument-type]
             if k in mask_mapping
             else v
         )
@@ -3348,9 +3348,9 @@ class Analyzer:
         continue
 
       if rhat[param].ndim == 2:
-        row_idx, col_idx = np.where(rhat[param] > bad_rhat_threshold)
+        row_idx, col_idx = np.where(rhat[param] > bad_rhat_threshold)  # pyrefly: ignore[unsupported-operation]
       elif rhat[param].ndim == 1:
-        row_idx = np.where(rhat[param] > bad_rhat_threshold)[0]
+        row_idx = np.where(rhat[param] > bad_rhat_threshold)[0]  # pyrefly: ignore[unsupported-operation]
         col_idx = []
       elif rhat[param].ndim == 0:
         row_idx = col_idx = []
@@ -3361,10 +3361,10 @@ class Analyzer:
           pd.Series({
               constants.PARAM: param,
               constants.N_PARAMS: np.prod(rhat[param].shape),
-              constants.AVG_RHAT: np.nanmean(rhat[param]),
-              constants.MAX_RHAT: np.nanmax(rhat[param]),
+              constants.AVG_RHAT: np.nanmean(rhat[param]),  # pyrefly: ignore[no-matching-overload]
+              constants.MAX_RHAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
               constants.PERCENT_BAD_RHAT: np.nanmean(
-                  rhat[param] > bad_rhat_threshold
+                  rhat[param] > bad_rhat_threshold  # pyrefly: ignore[unsupported-operation]
               ),
               constants.ROW_IDX_BAD_RHAT: row_idx,
               constants.COL_IDX_BAD_RHAT: col_idx,
@@ -3463,13 +3463,13 @@ class Analyzer:
     if self.model_context.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = DataTensors(
           media=filled_data.media,
-          rf_impressions=filled_data.reach * filled_data.frequency,
+          rf_impressions=filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
           media_spend=filled_data.media_spend,
           rf_spend=filled_data.rf_spend,
           revenue_per_kpi=filled_data.revenue_per_kpi,
           time=filled_data.time,
       )
-      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(
+      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type, unsupported-operation]
           self.optimal_freq(
               new_data=opt_freq_data,
               selected_geos=selected_geos,
@@ -3479,7 +3479,7 @@ class Analyzer:
           dtype=backend.float_dtype,
       )
       reach = backend.divide(
-          filled_data.reach * filled_data.frequency,
+          filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
           frequency,
       )
     else:
@@ -3625,7 +3625,7 @@ class Analyzer:
             adstock_channel_type,
             l_range,
             xr_dims,
-            xr_coords,
+            xr_coords,  # pyrefly: ignore[bad-argument-type]
             confidence_level,
         )
         if not adstock_df.empty:
@@ -3658,7 +3658,7 @@ class Analyzer:
     final_df[constants.IS_INT_TIME_UNIT] = final_df[constants.TIME_UNITS].apply(
         lambda x: x.is_integer()
     )
-    return final_df
+    return final_df  # pyrefly: ignore[bad-return]
 
   def _get_hill_curves_dataframe(
       self,
@@ -3774,12 +3774,12 @@ class Analyzer:
     # n_draws, n_geos, n_times, n_channels), and we want to plot the
     # dependency on time only.
     hill_vals_prior = adstock_hill.HillTransformer(
-        self._inference_data.prior[ec].values,
-        self._inference_data.prior[slope].values,
+        self._inference_data.prior[ec].values,  # pyrefly: ignore[missing-attribute]
+        self._inference_data.prior[slope].values,  # pyrefly: ignore[missing-attribute]
     ).forward(expanded_linspace)[:, :, 0, :, :]
     hill_vals_posterior = adstock_hill.HillTransformer(
-        self._inference_data.posterior[ec].values,
-        self._inference_data.posterior[slope].values,
+        self._inference_data.posterior[ec].values,  # pyrefly: ignore[missing-attribute]
+        self._inference_data.posterior[slope].values,  # pyrefly: ignore[missing-attribute]
     ).forward(expanded_linspace)[:, :, 0, :, :]
 
     hill_dataset = _central_tendency_and_ci_by_prior_and_posterior(
@@ -3787,7 +3787,7 @@ class Analyzer:
         hill_vals_posterior,
         constants.HILL_SATURATION_LEVEL,
         xr_dims,
-        xr_coords,
+        xr_coords,  # pyrefly: ignore[bad-argument-type]
         confidence_level,
     )
 
@@ -3936,13 +3936,13 @@ class Analyzer:
       frequency = self.model_context.rf_tensors.frequency
       if frequency is not None:
         reshaped_frequency = backend.reshape(
-            frequency,
+            frequency,  # pyrefly: ignore[bad-argument-type]
             (n_geos * n_media_times, self.model_context.n_rf_channels),
         )
         rf_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.RF,
             data_to_histogram=reshaped_frequency,
-            channel_names=self.model_context.input_data.rf_channel.values,
+            channel_names=self.model_context.input_data.rf_channel.values,  # pyrefly: ignore[bad-argument-type]
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(rf_hist_data))
@@ -3961,7 +3961,7 @@ class Analyzer:
         media_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.MEDIA,
             data_to_histogram=reshaped_scaled_media_units,
-            channel_names=self.model_context.input_data.media_channel.values,
+            channel_names=self.model_context.input_data.media_channel.values,  # pyrefly: ignore[bad-argument-type]
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(media_hist_data))
@@ -3984,7 +3984,7 @@ class Analyzer:
         organic_media_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.ORGANIC_MEDIA,
             data_to_histogram=reshaped_scaled_organic_media_units,
-            channel_names=self.model_context.input_data.organic_media_channel.values,
+            channel_names=self.model_context.input_data.organic_media_channel.values,  # pyrefly: ignore[bad-argument-type]
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(organic_media_hist_data))
@@ -3994,17 +3994,17 @@ class Analyzer:
       frequency = self.model_context.organic_rf_tensors.organic_frequency
       if frequency is not None:
         reshaped_frequency = backend.reshape(
-            frequency,
+            frequency,  # pyrefly: ignore[bad-argument-type]
             (n_geos * n_media_times, self.model_context.n_organic_rf_channels),
         )
         organic_rf_hist_data = self._get_channel_hill_histogram_dataframe(
             channel_type=constants.ORGANIC_RF,
             data_to_histogram=reshaped_frequency,
-            channel_names=self.model_context.input_data.organic_rf_channel.values,
+            channel_names=self.model_context.input_data.organic_rf_channel.values,  # pyrefly: ignore[bad-argument-type]
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(organic_rf_hist_data))
-    return pd.concat(df_list, ignore_index=True)
+    return pd.concat(df_list, ignore_index=True)  # pyrefly: ignore[bad-return]
 
   def hill_curves(
       self,
@@ -4079,8 +4079,8 @@ class Analyzer:
   ) -> xr.Dataset:
     # TODO: Support calibration_period_bool.
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=incremental_outcome_prior / spend_with_total,
-        posterior=incremental_outcome_posterior / spend_with_total,
+        prior=incremental_outcome_prior / spend_with_total,  # pyrefly: ignore[unsupported-operation]
+        posterior=incremental_outcome_posterior / spend_with_total,  # pyrefly: ignore[unsupported-operation]
         metric_name=metric_name,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4115,9 +4115,9 @@ class Analyzer:
       * `cpm` (spend for every 1,000 impressions)
     """
     pct_of_impressions = (
-        impressions_with_total / impressions_with_total[..., -1:] * 100
+        impressions_with_total / impressions_with_total[..., -1:] * 100  # pyrefly: ignore[unsupported-operation]
     )
-    pct_of_spend = spend_with_total / spend_with_total[..., -1:] * 100
+    pct_of_spend = spend_with_total / spend_with_total[..., -1:] * 100  # pyrefly: ignore[unsupported-operation]
 
     return xr.Dataset(
         data_vars={
@@ -4127,7 +4127,7 @@ class Analyzer:
             constants.PCT_OF_SPEND: (xr_dims, pct_of_spend),
             constants.CPM: (
                 xr_dims,
-                spend_with_total / impressions_with_total * 1000,
+                spend_with_total / impressions_with_total * 1000,  # pyrefly: ignore[unsupported-operation]
             ),
         },
         coords=xr_coords,
@@ -4143,8 +4143,8 @@ class Analyzer:
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=incremental_outcome_prior / impressions_with_total,
-        posterior=incremental_outcome_posterior / impressions_with_total,
+        prior=incremental_outcome_prior / impressions_with_total,  # pyrefly: ignore[unsupported-operation]
+        posterior=incremental_outcome_posterior / impressions_with_total,  # pyrefly: ignore[unsupported-operation]
         metric_name=constants.EFFECTIVENESS,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4162,8 +4162,8 @@ class Analyzer:
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=spend_with_total / incremental_kpi_prior,
-        posterior=spend_with_total / incremental_kpi_posterior,
+        prior=spend_with_total / incremental_kpi_prior,  # pyrefly: ignore[unsupported-operation]
+        posterior=spend_with_total / incremental_kpi_posterior,  # pyrefly: ignore[unsupported-operation]
         metric_name=constants.CPIK,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4183,20 +4183,20 @@ class Analyzer:
   ) -> xr.Dataset:
     """Computes the parts of `MediaSummary` related to mean expected outcome."""
     mean_expected_outcome_prior = backend.reduce_mean(
-        expected_outcome_prior, (0, 1)
+        expected_outcome_prior, (0, 1)  # pyrefly: ignore[bad-argument-type]
     )
     mean_expected_outcome_posterior = backend.reduce_mean(
-        expected_outcome_posterior, (0, 1)
+        expected_outcome_posterior, (0, 1)  # pyrefly: ignore[bad-argument-type]
     )
 
     return _central_tendency_and_ci_by_prior_and_posterior(
         prior=(
-            incremental_outcome_prior
+            incremental_outcome_prior  # pyrefly: ignore[unsupported-operation]
             / mean_expected_outcome_prior[..., None]
             * 100
         ),
         posterior=(
-            incremental_outcome_posterior
+            incremental_outcome_posterior  # pyrefly: ignore[unsupported-operation]
             / mean_expected_outcome_posterior[..., None]
             * 100
         ),
@@ -4335,8 +4335,8 @@ class Analyzer:
       aggregated_media_spend = empty_da
     else:
       aggregated_media_spend = self._impute_and_aggregate_spend(
-          media_execution_values=raw_filled_data.media,
-          channel_spend=raw_filled_data.media_spend,
+          media_execution_values=raw_filled_data.media,  # pyrefly: ignore[bad-argument-type]
+          channel_spend=raw_filled_data.media_spend,  # pyrefly: ignore[bad-argument-type]
           channel_names=list(
               self.model_context.input_data.media_channel.values
           ),
@@ -4360,10 +4360,10 @@ class Analyzer:
       )
       aggregated_rf_spend = empty_da
     else:
-      rf_execution_values = raw_filled_data.reach * raw_filled_data.frequency
+      rf_execution_values = raw_filled_data.reach * raw_filled_data.frequency  # pyrefly: ignore[unsupported-operation]
       aggregated_rf_spend = self._impute_and_aggregate_spend(
           media_execution_values=rf_execution_values,
-          channel_spend=raw_filled_data.rf_spend,
+          channel_spend=raw_filled_data.rf_spend,  # pyrefly: ignore[bad-argument-type]
           channel_names=list(self.model_context.input_data.rf_channel.values),
           geo_indices=geo_indices,
           time_indices=time_indices,
@@ -4446,10 +4446,10 @@ class Analyzer:
           flexible_time_dim=True,
       )
       imputed_cpmu = backend.divide(
-          channel_spend,
-          np.sum(media_exe_values, (0, 1)),
+          channel_spend,  # pyrefly: ignore[bad-argument-type]
+          np.sum(media_exe_values, (0, 1)),  # pyrefly: ignore[no-matching-overload]
       )
-      aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)
+      aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)  # pyrefly: ignore[unsupported-operation]
 
     if aggregate_times:
       dims = [constants.CHANNEL]
@@ -4527,4 +4527,4 @@ class Analyzer:
         use_kpi=use_kpi,
         batch_size=batch_size,
     )
-    return np.mean(baseline_draws < 0)
+    return np.mean(baseline_draws < 0)  # pyrefly: ignore[unsupported-operation]

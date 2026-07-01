@@ -147,7 +147,7 @@ def compute_decay_weights(
 
   is_binomial = [s == constants.BINOMIAL_DECAY for s in decay_functions]
   binomial_decay_mask = backend.reshape(
-      backend.to_tensor(is_binomial, dtype=backend.bool_),
+      backend.to_tensor(is_binomial, dtype=backend.bool_),  # pyrefly: ignore[bad-argument-type]
       (-1, 1),
   )
 
@@ -189,13 +189,13 @@ def _compute_single_decay_function_weights(
   Returns:
       A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
   """
-  expanded_alpha = backend.expand_dims(alpha, -1)
+  expanded_alpha = backend.expand_dims(alpha, -1)  # pyrefly: ignore[bad-argument-type]
 
   if decay_function == constants.GEOMETRIC_DECAY:
-    weights = expanded_alpha**l_range
+    weights = expanded_alpha**l_range  # pyrefly: ignore[unsupported-operation]
   elif decay_function == constants.BINOMIAL_DECAY:
     mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
-    weights = (1 - l_range / window_size) ** mapped_alpha_binomial
+    weights = (1 - l_range / window_size) ** mapped_alpha_binomial  # pyrefly: ignore[unsupported-operation]
   else:
     raise ValueError(f'Unsupported decay function: {decay_function}')
 
@@ -277,7 +277,7 @@ def _adstock(
         + (media.shape[-1],)
     )
     media = backend.concatenate(
-        [backend.zeros(pad_shape, dtype=backend.float_dtype), media], axis=-2
+        [backend.zeros(pad_shape, dtype=backend.float_dtype), media], axis=-2  # pyrefly: ignore[bad-argument-type]
     )
 
   # Adstock calculation.
@@ -290,7 +290,7 @@ def _adstock(
       normalize=True,
   )
   return backend.adstock_process(
-      media=media, weights=weights, n_times_output=n_times_output
+      media=media, weights=weights, n_times_output=n_times_output  # pyrefly: ignore[bad-argument-type]
   )
 
 
@@ -298,7 +298,7 @@ def _map_alpha_for_binomial_decay(x: backend.Tensor):
   # Map x -> 1/x - 1 to map [0, 1] to [0, +inf].
   # 0 -> +inf is a valid mapping and reflects the "no adstock" case.
 
-  return 1 / x - 1
+  return 1 / x - 1  # pyrefly: ignore[unsupported-operation]
 
 
 def _hill(
@@ -323,8 +323,8 @@ def _hill(
         '`media` contains a different number of channels than `slope` and `ec`.'
     )
 
-  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]
-  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
   return t1 / (t1 + t2)
 
 

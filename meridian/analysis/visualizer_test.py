@@ -87,10 +87,10 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     cls.model_context.input_data.kpi_type = c.REVENUE
     cls.model_context.input_data.revenue_per_kpi = None
     inference_data = az.InferenceData()
-    inference_data.prior = xr.open_dataset(
+    inference_data.prior = xr.open_dataset(  # pyrefly: ignore[missing-attribute]
         os.path.join(_TEST_DATA_DIR, "sample_prior_media_and_rf.nc")
     )
-    inference_data.posterior = xr.open_dataset(
+    inference_data.posterior = xr.open_dataset(  # pyrefly: ignore[missing-attribute]
         os.path.join(_TEST_DATA_DIR, "sample_posterior_media_and_rf.nc")
     )
     inference_data.groups = lambda: [
@@ -360,7 +360,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         list(plot.data.columns),
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
-    self.assertEqual(plot.data[c.TIME].nunique(), 3)
+    self.assertEqual(plot.data[c.TIME].nunique(), 3)  # pyrefly: ignore[bad-index, missing-attribute]
 
   def test_distribution_selected_time_dim(self):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(
@@ -371,7 +371,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         list(plot.data.columns),
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
-    self.assertEqual(plot.data[c.TIME].nunique(), 2)
+    self.assertEqual(plot.data[c.TIME].nunique(), 2)  # pyrefly: ignore[bad-index, missing-attribute]
 
   def test_plot_rhat_boxplot_pre_fitting_raises_exception(self):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)
@@ -657,7 +657,7 @@ class ModelFitTest(absltest.TestCase):
 
     self.assertContainsSubset([c.GEO], plot.data.columns.tolist())
     self.assertIsInstance(plot, alt.FacetChart)
-    self.assertListEqual(plot.facet.column["sort"], ["geo 1", "geo 3"])
+    self.assertListEqual(plot.facet.column["sort"], ["geo 1", "geo 3"])  # pyrefly: ignore[missing-attribute]
 
   def test_model_fit_geo_level_plots_n_largest_geos(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(
@@ -667,7 +667,7 @@ class ModelFitTest(absltest.TestCase):
     self.input_data_1.get_n_top_largest_geos.assert_called_with(3)
     self.assertContainsSubset([c.GEO], plot.data.columns.tolist())
     self.assertIsInstance(plot, alt.FacetChart)
-    self.assertListEqual(plot.facet.column["sort"], ["geo 0", "geo 1", "geo 2"])
+    self.assertListEqual(plot.facet.column["sort"], ["geo 0", "geo 1", "geo 2"])  # pyrefly: ignore[missing-attribute]
 
   def test_model_fit_plots_baseline(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_baseline=True)
@@ -2748,7 +2748,7 @@ class MediaSummaryTest(parameterized.TestCase):
   def test_media_summary_plot_spend_vs_contribution_correct_facet_config(self):
     plot = self.media_summary_revenue.plot_spend_vs_contribution()
     self.assertEqual(
-        plot.facet.column.to_dict(),
+        plot.facet.column.to_dict(),  # pyrefly: ignore[missing-attribute]
         {
             "field": c.CHANNEL,
             "type": "nominal",
@@ -2985,7 +2985,7 @@ class MediaEffectsInitTest(parameterized.TestCase):
         input_data=self.input_data,
     )
     self.inference_data = az.InferenceData()
-    self.inference_data.posterior = xr.Dataset()
+    self.inference_data.posterior = xr.Dataset()  # pyrefly: ignore[missing-attribute]
     self.inference_data.groups = lambda: [c.POSTERIOR]
     self.meridian.inference_data = self.inference_data
 

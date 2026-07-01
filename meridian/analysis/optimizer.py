@@ -690,7 +690,7 @@ class OptimizationResults:
         ticks=False,
         labelPadding=c.PADDING_10,
         domainColor=c.GREY_300,
-        **channel_axis_props,
+        **channel_axis_props,  # pyrefly: ignore[bad-argument-type]
     )
     quantitative_axis = alt.Axis(
         title=quantitative_axis_label,
@@ -699,10 +699,10 @@ class OptimizationResults:
         tickCount=5,
         labelPadding=c.PADDING_10,
         labelExpr=formatter.compact_number_expr(),
-        **quantitative_axis_title_props,
+        **quantitative_axis_title_props,  # pyrefly: ignore[bad-argument-type]
     )
 
-    base = base.encode(**{
+    base = base.encode(**{  # pyrefly: ignore[bad-argument-type]
         channel_axis_name: channel_encoding(
             f'{c.CHANNEL}:N',
             axis=channel_axis,
@@ -820,17 +820,17 @@ class OptimizationResults:
     )
 
     channel_axis = alt.Axis(
-        title=None, **formatter.AXIS_CONFIG, **channel_axis_props
+        title=None, **formatter.AXIS_CONFIG, **channel_axis_props  # pyrefly: ignore[bad-argument-type]
     )
     quantitative_axis = alt.Axis(
         title=quantitative_axis_label,
         domain=False,
         labelExpr=formatter.compact_number_expr(),
-        **formatter.AXIS_CONFIG,
-        **quantitative_axis_title_props,
+        **formatter.AXIS_CONFIG,  # pyrefly: ignore[bad-argument-type]
+        **quantitative_axis_title_props,  # pyrefly: ignore[bad-argument-type]
     )
 
-    base = base.encode(**{
+    base = base.encode(**{  # pyrefly: ignore[bad-argument-type]
         channel_axis_name: channel_encoding(
             f'{c.CHANNEL}:N',
             sort=None,
@@ -908,7 +908,7 @@ class OptimizationResults:
                 title='Spend',
                 axis=alt.Axis(
                     labelExpr=formatter.compact_number_expr(),
-                    **formatter.AXIS_CONFIG,
+                    **formatter.AXIS_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
             y=alt.Y(
@@ -916,8 +916,8 @@ class OptimizationResults:
                 title=title,
                 axis=alt.Axis(
                     labelExpr=formatter.compact_number_expr(),
-                    **formatter.AXIS_CONFIG,
-                    **formatter.Y_AXIS_TITLE_CONFIG,
+                    **formatter.AXIS_CONFIG,  # pyrefly: ignore[bad-argument-type]
+                    **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
             color=alt.Color(f'{c.CHANNEL}:N', legend=None),
@@ -1018,10 +1018,10 @@ class OptimizationResults:
     # response curve computation might take a significant amount of time.
     return self.analyzer.response_curves(
         new_data=self.new_data,
-        spend_multipliers=spend_multiplier,
+        spend_multipliers=spend_multiplier,  # pyrefly: ignore[bad-argument-type]
         use_posterior=self.optimization_grid.use_posterior,
         selected_geos=self.optimization_grid.selected_geos,
-        selected_times=selected_times,
+        selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         by_reach=True,
         use_kpi=not self.nonoptimized_data.attrs[c.IS_REVENUE_KPI],
         use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
@@ -1115,7 +1115,7 @@ class OptimizationResults:
     if c.METRIC in delta.dims:
       delta = delta.sel(metric=c.MEAN, drop=True)
     df = delta.to_dataframe().reset_index()
-    return pd.concat([
+    return pd.concat([  # pyrefly: ignore[bad-return]
         df[df[metric] < 0].sort_values([metric]),
         df[df[metric] >= 0].sort_values([metric], ascending=False),
     ]).reset_index(drop=True)
@@ -1134,7 +1134,7 @@ class OptimizationResults:
   def _gen_optimization_summary(self, currency: str) -> str:
     """Generates HTML optimization summary output (as sanitized content str)."""
     start_date = tc.normalize_date(self.optimized_data.start_date)
-    self.template_env.globals[c.START_DATE] = start_date.strftime(
+    self.template_env.globals[c.START_DATE] = start_date.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {start_date.day}, %Y'
     )
     interval_days = (
@@ -1146,7 +1146,7 @@ class OptimizationResults:
         f'%b {end_date_adjusted.day}, %Y'
     )
     self.template_env.globals[c.SELECTED_GEOS] = (
-        self.optimization_grid.selected_geos
+        self.optimization_grid.selected_geos  # pyrefly: ignore[unsupported-operation]
     )
 
     html_template = self.template_env.get_template('summary.html.jinja')
@@ -1676,7 +1676,7 @@ class BudgetOptimizer:
       )
     else:
       scenario = FlexibleBudgetScenario(
-          target_metric=c.MROI, target_value=target_mroi
+          target_metric=c.MROI, target_value=target_mroi  # pyrefly: ignore[bad-argument-type]
       )
     spend = optimization_grid.optimize(
         scenario=scenario,
@@ -1700,7 +1700,7 @@ class BudgetOptimizer:
         end_date=end_date,
         confidence_level=confidence_level,
         batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
+        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
     )
     nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
         new_data=new_data.filter_fields(c.PAID_DATA + (c.TIME,)),
@@ -1711,18 +1711,18 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         start_date=start_date,
         end_date=end_date,
-        optimal_frequency=optimization_grid.optimal_frequency,
+        optimal_frequency=optimization_grid.optimal_frequency,  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
+        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
     )
     constraints = {
         c.FIXED_BUDGET: fixed_budget,
     }
     if target_roi:
-      constraints[c.TARGET_ROI] = target_roi
+      constraints[c.TARGET_ROI] = target_roi  # pyrefly: ignore[unsupported-operation]
     elif target_mroi:
-      constraints[c.TARGET_MROI] = target_mroi
+      constraints[c.TARGET_MROI] = target_mroi  # pyrefly: ignore[unsupported-operation]
     optimized_data = self._create_budget_dataset(
         new_data=new_data.filter_fields(c.PAID_DATA + (c.TIME,)),
         use_posterior=use_posterior,
@@ -1732,11 +1732,11 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         start_date=start_date,
         end_date=end_date,
-        optimal_frequency=optimization_grid.optimal_frequency,
+        optimal_frequency=optimization_grid.optimal_frequency,  # pyrefly: ignore[bad-argument-type]
         attrs=constraints,
         confidence_level=confidence_level,
         batch_size=batch_size,
-        use_historical_budget=use_historical_budget,
+        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
     )
 
     if not fixed_budget:
@@ -1870,36 +1870,36 @@ class BudgetOptimizer:
 
     tensors_dict = {}
     if media is not None:
-      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media.shape[-1]))
+      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media.shape[-1]))  # pyrefly: ignore[bad-argument-type]
       tensors_dict[c.MEDIA] = self._allocate_tensor_by_population(media)
       tensors_dict[c.MEDIA_SPEND] = tensors_dict[c.MEDIA] * cpmu
     if media_spend is not None:
-      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media_spend.shape[-1]))
+      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media_spend.shape[-1]))  # pyrefly: ignore[bad-argument-type]
       tensors_dict[c.MEDIA_SPEND] = self._allocate_tensor_by_population(
           media_spend
       )
       tensors_dict[c.MEDIA] = tensors_dict[c.MEDIA_SPEND] / cpmu
     if rf_impressions is not None:
       shape = (n_geos, n_times, rf_impressions.shape[-1])
-      cprf = _expand_tensor(cprf, shape)
+      cprf = _expand_tensor(cprf, shape)  # pyrefly: ignore[bad-argument-type]
       allocated_impressions = self._allocate_tensor_by_population(
           rf_impressions
       )
       tensors_dict[c.RF_SPEND] = allocated_impressions * cprf
       if use_optimal_frequency:
         frequency = backend.ones_like(allocated_impressions)
-      tensors_dict[c.FREQUENCY] = _expand_tensor(frequency, shape)
+      tensors_dict[c.FREQUENCY] = _expand_tensor(frequency, shape)  # pyrefly: ignore[bad-argument-type]
       tensors_dict[c.REACH] = backend.divide_no_nan(
           allocated_impressions, tensors_dict[c.FREQUENCY]
       )
     if rf_spend is not None:
       shape = (n_geos, n_times, rf_spend.shape[-1])
-      cprf = _expand_tensor(cprf, shape)
+      cprf = _expand_tensor(cprf, shape)  # pyrefly: ignore[bad-argument-type]
       tensors_dict[c.RF_SPEND] = self._allocate_tensor_by_population(rf_spend)
       impressions = backend.divide_no_nan(tensors_dict[c.RF_SPEND], cprf)
       if use_optimal_frequency:
         frequency = backend.ones_like(impressions)
-      tensors_dict[c.FREQUENCY] = _expand_tensor(frequency, shape)
+      tensors_dict[c.FREQUENCY] = _expand_tensor(frequency, shape)  # pyrefly: ignore[bad-argument-type]
       tensors_dict[c.REACH] = backend.divide_no_nan(
           impressions, tensors_dict[c.FREQUENCY]
       )
@@ -2200,7 +2200,7 @@ class BudgetOptimizer:
         required_tensors_names=required_tensors,
         model_context=model_context,
     )
-    selected_times = _expand_selected_times(
+    selected_times = _expand_selected_times(  # pyrefly: ignore[bad-assignment]
         model_context=model_context,
         start_date=start_date,
         end_date=end_date,
@@ -2209,7 +2209,7 @@ class BudgetOptimizer:
     hist_spend = self._analyzer.get_aggregated_spend(
         new_data=filled_data.filter_fields(c.PAID_CHANNELS + c.SPEND_DATA),
         selected_geos=selected_geos,
-        selected_times=selected_times,
+        selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         include_media=model_context.n_media_channels > 0,
         include_rf=model_context.n_rf_channels > 0,
     ).data
@@ -2233,7 +2233,7 @@ class BudgetOptimizer:
     )
     if model_context.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = tensors.DataTensors(
-          rf_impressions=filled_data.reach * filled_data.frequency,
+          rf_impressions=filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
           rf_spend=filled_data.rf_spend,
           revenue_per_kpi=filled_data.revenue_per_kpi,
       )
@@ -2242,7 +2242,7 @@ class BudgetOptimizer:
               new_data=opt_freq_data,
               use_posterior=use_posterior,
               selected_geos=selected_geos,
-              selected_times=selected_times,
+              selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
               use_kpi=use_kpi,
               max_frequency=max_frequency,
           ).optimal_frequency,
@@ -2258,11 +2258,11 @@ class BudgetOptimizer:
         spend_bound_upper=optimization_upper_bound,
         step_size=step_size,
         selected_geos=selected_geos,
-        selected_times=selected_times,
+        selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         new_data=filled_data.filter_fields(c.PAID_DATA),
         use_posterior=use_posterior,
         use_kpi=use_kpi,
-        optimal_frequency=optimal_frequency,
+        optimal_frequency=optimal_frequency,  # pyrefly: ignore[bad-argument-type]
         batch_size=batch_size,
     )
     grid_dataset = self._create_grid_dataset(
@@ -2282,9 +2282,9 @@ class BudgetOptimizer:
         end_date=end_date,
         gtol=gtol,
         round_factor=round_factor,
-        optimal_frequency=optimal_frequency,
+        optimal_frequency=optimal_frequency,  # pyrefly: ignore[bad-argument-type]
         selected_geos=selected_geos,
-        selected_times=selected_times,
+        selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
     )
 
   def _create_grid_dataset(
@@ -2386,7 +2386,7 @@ class BudgetOptimizer:
     else:
       new_media = None
     if model_context.n_rf_channels > 0:
-      rf_impressions = filled_data.reach * filled_data.frequency
+      rf_impressions = filled_data.reach * filled_data.frequency  # pyrefly: ignore[unsupported-operation]
       new_rf_impressions = (
           backend.divide_no_nan(
               spend[-model_context.n_rf_channels :],
@@ -2437,14 +2437,14 @@ class BudgetOptimizer:
         new_data=new_data,
     )
     spend_tensor = backend.to_tensor(spend, dtype=backend.float_dtype)
-    hist_spend = backend.to_tensor(hist_spend, dtype=backend.float_dtype)
+    hist_spend = backend.to_tensor(hist_spend, dtype=backend.float_dtype)  # pyrefly: ignore[bad-assignment]
     new_media, new_reach, new_frequency = self._get_incremental_outcome_tensors(
         hist_spend,
-        spend_tensor,
+        spend_tensor,  # pyrefly: ignore[bad-argument-type]
         new_data=filled_data.filter_fields(c.PAID_CHANNELS),
         optimal_frequency=optimal_frequency,
     )
-    budget = np.sum(spend_tensor)
+    budget = np.sum(spend_tensor)  # pyrefly: ignore[no-matching-overload]
     inc_outcome_data = tensors.DataTensors(
         media=new_media,
         reach=new_reach,
@@ -2503,31 +2503,31 @@ class BudgetOptimizer:
     )
     effectiveness_with_mean_median_and_ci = (
         analyzer_module.get_central_tendency_and_ci(
-            data=backend.divide(incremental_outcome, aggregated_impressions),
+            data=backend.divide(incremental_outcome, aggregated_impressions),  # pyrefly: ignore[bad-argument-type]
             confidence_level=confidence_level,
             include_median=True,
         )
     )
 
     roi = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide(incremental_outcome, spend_tensor),
+        data=backend.divide(incremental_outcome, spend_tensor),  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         include_median=True,
     )
     marginal_roi = analyzer_module.get_central_tendency_and_ci(
         data=backend.divide(
-            mroi_numerator, spend_tensor * incremental_increase
+            mroi_numerator, spend_tensor * incremental_increase  # pyrefly: ignore[bad-argument-type, unsupported-operation]
         ),
         confidence_level=confidence_level,
         include_median=True,
     )
 
     cpik = analyzer_module.get_central_tendency_and_ci(
-        data=backend.divide(spend_tensor, incremental_outcome),
+        data=backend.divide(spend_tensor, incremental_outcome),  # pyrefly: ignore[bad-argument-type]
         confidence_level=confidence_level,
         include_median=True,
     )
-    total_inc_outcome = backend.reduce_sum(incremental_outcome, -1)
+    total_inc_outcome = backend.reduce_sum(incremental_outcome, -1)  # pyrefly: ignore[bad-argument-type]
     total_cpik = np.asarray(
         backend.nanmean(
             backend.divide(budget, total_inc_outcome),
@@ -2584,7 +2584,7 @@ class BudgetOptimizer:
             c.CHANNEL: model_context.input_data.get_all_paid_channels(),
             c.METRIC: [c.MEAN, c.MEDIAN, c.CI_LO, c.CI_HI],
         },
-        attrs=attributes | (attrs or {}),
+        attrs=attributes | (attrs or {}),  # pyrefly: ignore[unsupported-operation]
     )
 
   def _update_incremental_outcome_grid(
@@ -2638,7 +2638,7 @@ class BudgetOptimizer:
     model_context = self._analyzer.model_context
     if model_context.n_media_channels > 0:
       new_media = (
-          multipliers_grid[i, : model_context.n_media_channels]
+          multipliers_grid[i, : model_context.n_media_channels]  # pyrefly: ignore[unsupported-operation]
           * filled_data.media
       )
     else:
@@ -2649,10 +2649,10 @@ class BudgetOptimizer:
       new_reach = None
     elif optimal_frequency is not None:
       new_frequency = (
-          backend.ones_like(filled_data.frequency) * optimal_frequency
+          backend.ones_like(filled_data.frequency) * optimal_frequency  # pyrefly: ignore[bad-argument-type]
       )
       new_reach = backend.divide_no_nan(
-          multipliers_grid[i, -model_context.n_rf_channels :]
+          multipliers_grid[i, -model_context.n_rf_channels :]  # pyrefly: ignore[unsupported-operation]
           * filled_data.reach
           * filled_data.frequency,
           new_frequency,
@@ -2660,7 +2660,7 @@ class BudgetOptimizer:
     else:
       new_frequency = filled_data.frequency
       new_reach = (
-          multipliers_grid[i, -model_context.n_rf_channels :]
+          multipliers_grid[i, -model_context.n_rf_channels :]  # pyrefly: ignore[unsupported-operation]
           * filled_data.reach
       )
 
@@ -2674,7 +2674,7 @@ class BudgetOptimizer:
                 new_data=tensors.DataTensors(
                     media=new_media,
                     reach=new_reach,
-                    frequency=new_frequency,
+                    frequency=new_frequency,  # pyrefly: ignore[bad-argument-type]
                     revenue_per_kpi=filled_data.revenue_per_kpi,
                 ),
                 selected_geos=selected_geos,
@@ -2782,7 +2782,7 @@ class BudgetOptimizer:
       self._update_incremental_outcome_grid(
           i=i,
           incremental_outcome_grid=incremental_outcome_grid,
-          multipliers_grid=multipliers_grid,
+          multipliers_grid=multipliers_grid,  # pyrefly: ignore[bad-argument-type]
           selected_geos=selected_geos,
           selected_times=selected_times,
           filled_data=filled_data,
@@ -2919,7 +2919,7 @@ class BudgetOptimizer:
       )
 
     population = self._analyzer.model_context.input_data.population
-    normalized_population = population / backend.reduce_sum(population)
+    normalized_population = population / backend.reduce_sum(population)  # pyrefly: ignore[bad-argument-type]
     if tensor.ndim == 1:
       reshaped_population = normalized_population[:, backend.newaxis]
       reshaped_tensor = tensor[backend.newaxis, :]
@@ -3021,32 +3021,32 @@ def _validate_spend_constraints(
 
   def get_const_array(const: _SpendConstraint) -> np.ndarray:
     if isinstance(const, (float, int)):
-      const = np.array([const])
+      const = np.array([const])  # pyrefly: ignore[bad-assignment]
     else:
-      const = np.array(const)
-    return const
+      const = np.array(const)  # pyrefly: ignore[bad-assignment]
+    return const  # pyrefly: ignore[bad-return]
 
-  const_lower = get_const_array(const_lower)
-  const_upper = get_const_array(const_upper)
+  const_lower = get_const_array(const_lower)  # pyrefly: ignore[bad-assignment]
+  const_upper = get_const_array(const_upper)  # pyrefly: ignore[bad-assignment]
 
   if any(
-      len(const) not in (1, n_channels) for const in [const_lower, const_upper]
+      len(const) not in (1, n_channels) for const in [const_lower, const_upper]  # pyrefly: ignore[bad-argument-type]
   ):
     raise ValueError(
         'Spend constraints must be either a single constraint or be specified'
         ' for all channels.'
     )
 
-  for const in const_lower:
+  for const in const_lower:  # pyrefly: ignore[not-iterable]
     if not 0.0 <= const <= 1.0:
       raise ValueError(
           'The lower spend constraint must be between 0 and 1 inclusive.'
       )
-  for const in const_upper:
+  for const in const_upper:  # pyrefly: ignore[not-iterable]
     if const < 0:
       raise ValueError('The upper spend constraint must be positive.')
 
-  return (const_lower, const_upper)
+  return (const_lower, const_upper)  # pyrefly: ignore[bad-return]
 
 
 def _get_spend_bounds(
@@ -3204,7 +3204,7 @@ def _expand_tensor(tensor: backend.Tensor, required_shape: tuple[int, ...]):
     n_tile_dims = len(required_shape) - tensor.ndim
     repeats = list(required_shape[:n_tile_dims]) + [1] * tensor.ndim
     reshaped_tensor = backend.reshape(
-        tensor, [1] * n_tile_dims + list(tensor.shape)
+        tensor, [1] * n_tile_dims + list(tensor.shape)  # pyrefly: ignore[bad-argument-type]
     )
     return backend.tile(reshaped_tensor, repeats)
 

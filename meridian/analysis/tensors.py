@@ -204,7 +204,7 @@ def _validate_flexible_selected_times(
 
 
 @dataclasses.dataclass(kw_only=True)
-class DataTensors(backend.ExtensionType):
+class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance]
   """Container for data variable arguments of Analyzer methods.
 
   Attributes:
@@ -345,7 +345,7 @@ class DataTensors(backend.ExtensionType):
       if a is None or b is None:
         return False
       try:
-        if not bool(np.all(backend.to_tensor(backend.equal(a, b)))):
+        if not bool(np.all(backend.to_tensor(backend.equal(a, b)))):  # pyrefly: ignore[no-matching-overload]
           return False
       except (ValueError, TypeError):
         if a != b:
@@ -485,7 +485,7 @@ class DataTensors(backend.ExtensionType):
 
 
 @dataclasses.dataclass(kw_only=True)
-class DistributionTensors(backend.ExtensionType):
+class DistributionTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance]
   """Container for parameters distributions arguments of Analyzer methods."""
 
   alpha_m: Union[backend.Tensor, None] = None
@@ -531,26 +531,26 @@ def _scale_tensors_by_multiplier(
   """
   incremented_data = {}
   if data.media is not None:
-    incremented_data[constants.MEDIA] = data.media * multiplier
+    incremented_data[constants.MEDIA] = data.media * multiplier  # pyrefly: ignore[unsupported-operation]
   if data.reach is not None and data.frequency is not None:
     if by_reach:
-      incremented_data[constants.REACH] = data.reach * multiplier
+      incremented_data[constants.REACH] = data.reach * multiplier  # pyrefly: ignore[unsupported-operation]
       incremented_data[constants.FREQUENCY] = data.frequency
     else:
       incremented_data[constants.REACH] = data.reach
-      incremented_data[constants.FREQUENCY] = data.frequency * multiplier
+      incremented_data[constants.FREQUENCY] = data.frequency * multiplier  # pyrefly: ignore[unsupported-operation]
   if data.organic_media is not None:
-    incremented_data[constants.ORGANIC_MEDIA] = data.organic_media * multiplier
+    incremented_data[constants.ORGANIC_MEDIA] = data.organic_media * multiplier  # pyrefly: ignore[unsupported-operation]
   if data.organic_reach is not None and data.organic_frequency is not None:
     if by_reach:
       incremented_data[constants.ORGANIC_REACH] = (
-          data.organic_reach * multiplier
+          data.organic_reach * multiplier  # pyrefly: ignore[unsupported-operation]
       )
       incremented_data[constants.ORGANIC_FREQUENCY] = data.organic_frequency
     else:
       incremented_data[constants.ORGANIC_REACH] = data.organic_reach
       incremented_data[constants.ORGANIC_FREQUENCY] = (
-          data.organic_frequency * multiplier
+          data.organic_frequency * multiplier  # pyrefly: ignore[unsupported-operation]
       )
 
   # Include the original data that does not get scaled.
@@ -564,7 +564,7 @@ def _scale_tensors_by_multiplier(
 
 
 @dataclasses.dataclass(kw_only=True)
-class AnalyzerInputs(backend.ExtensionType):
+class AnalyzerInputs(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance]
   """Base payload containing DataTensors and resolved indices."""
 
   tensors: DataTensors
@@ -955,7 +955,7 @@ class DataTensorsBuilder:
     time_indices = self._resolve_time_indices(
         selected_times=selected_times,
         n_times=n_times,
-        input_times=input_times,
+        input_times=input_times,  # pyrefly: ignore[bad-argument-type]
     )
 
     return payload_cls(
@@ -1000,15 +1000,15 @@ class DataTensorsBuilder:
         elif (
             filled_data.reach is not None and filled_data.frequency is not None
         ):
-          impressions = filled_data.reach * filled_data.frequency
+          impressions = filled_data.reach * filled_data.frequency  # pyrefly: ignore[unsupported-operation]
         else:
           impressions = None
 
         if impressions is not None:
           new_frequency = (
-              backend.ones_like(impressions) * optimal_frequency_tensor
+              backend.ones_like(impressions) * optimal_frequency_tensor  # pyrefly: ignore[unsupported-operation]
           )
-          new_reach = impressions / new_frequency
+          new_reach = impressions / new_frequency  # pyrefly: ignore[unsupported-operation]
 
       if self.model_context.n_organic_rf_channels > 0:
         if (
@@ -1016,11 +1016,11 @@ class DataTensorsBuilder:
             and filled_data.organic_reach is not None
         ):
           new_organic_frequency = (
-              backend.ones_like(filled_data.organic_frequency)
+              backend.ones_like(filled_data.organic_frequency)  # pyrefly: ignore[unsupported-operation]
               * optimal_frequency_tensor
           )
           new_organic_reach = (
-              filled_data.organic_reach * filled_data.organic_frequency
+              filled_data.organic_reach * filled_data.organic_frequency  # pyrefly: ignore[unsupported-operation]
           ) / new_organic_frequency
 
       filled_data = dataclasses.replace(
@@ -1195,14 +1195,14 @@ class DataTensorsBuilder:
     if new_n_media_times is None:
       new_n_media_times = self.model_context.n_media_times
       _validate_selected_times(
-          selected_times=selected_times,
+          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
           input_times=self.model_context.input_data.time,
           n_times=self.model_context.n_times,
           arg_name="selected_times",
           comparison_arg_name="the input data",
       )
       _validate_selected_times(
-          selected_times=media_selected_times,
+          selected_times=media_selected_times,  # pyrefly: ignore[bad-argument-type]
           input_times=self.model_context.input_data.media_time,
           n_times=self.model_context.n_media_times,
           arg_name="media_selected_times",
@@ -1276,7 +1276,7 @@ class DataTensorsBuilder:
 
     incremented_unscaled = _scale_tensors_by_multiplier(
         data=base_unscaled,
-        multiplier=counterfactual,
+        multiplier=counterfactual,  # pyrefly: ignore[bad-argument-type]
         by_reach=by_reach,
     )
 

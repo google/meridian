@@ -240,7 +240,7 @@ class ContextTest(
             autospec=True,
             spec_set=True,
             return_value=knots_module.KnotInfo(
-                3, np.array([2, 5, 8]), np.eye(3)
+                3, np.array([2, 5, 8]), np.eye(3)  # pyrefly: ignore[bad-argument-type]
             ),
         )
     )
@@ -452,7 +452,7 @@ class ContextTest(
     if data.media_spend is not None and data.rf_spend is not None:
       test_utils.assert_allclose(
           backend.concatenate(
-              [
+              [  # pyrefly: ignore[bad-argument-type]
                   backend.to_tensor(
                       data.media_spend, dtype=backend.float_dtype
                   ),
@@ -773,8 +773,8 @@ class ContextTest(
   def test_population_scaled_controls_transformer_set(self):
     data = self.input_data_with_media_and_rf
     model_spec = spec.ModelSpec(
-        control_population_scaling_id=backend.to_tensor(
-            [True for _ in data.control_variable]
+        control_population_scaling_id=backend.to_tensor(  # pyrefly: ignore[bad-argument-type]
+            [True for _ in data.control_variable]  # pyrefly: ignore[not-iterable]
         )
     )
     model_context = context.ModelContext(input_data=data, model_spec=model_spec)
@@ -788,7 +788,7 @@ class ContextTest(
     )
     test_utils.assert_allequal(
         model_context.controls_transformer._population_scaling_factors.shape,  # pytype: disable=attribute-error
-        [len(data.geo), len(data.control_variable)],
+        [len(data.geo), len(data.control_variable)],  # pyrefly: ignore[bad-argument-type]
         err_msg=(
             "Shape of `controls_transformer._population_scaling_factors` does"
             " not match (`n_geos`, `n_controls`)."
@@ -798,8 +798,8 @@ class ContextTest(
   def test_population_scaled_non_media_transformer_set(self):
     data = self.input_data_non_media_and_organic
     model_spec = spec.ModelSpec(
-        non_media_population_scaling_id=backend.to_tensor(
-            [True for _ in data.non_media_channel]
+        non_media_population_scaling_id=backend.to_tensor(  # pyrefly: ignore[bad-argument-type]
+            [True for _ in data.non_media_channel]  # pyrefly: ignore[not-iterable]
         )
     )
     model_context = context.ModelContext(input_data=data, model_spec=model_spec)
@@ -838,7 +838,7 @@ class ContextTest(
     test_utils.assert_allclose(
         model_context.controls_transformer.inverse(model_context.controls_scaled),  # pytype: disable=attribute-error
         data.controls,
-        atol=atol,
+        atol=atol,  # pyrefly: ignore[bad-argument-type]
     )
     self.assertIsNotNone(model_context.non_media_transformer)
     # pytype: disable=attribute-error
@@ -853,7 +853,7 @@ class ContextTest(
     test_utils.assert_allclose(
         model_context.kpi_transformer.inverse(model_context.kpi_scaled),
         data.kpi,
-        atol=atol,
+        atol=atol,  # pyrefly: ignore[bad-argument-type]
     )
 
   @parameterized.named_parameters(
