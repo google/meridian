@@ -267,6 +267,7 @@ class AKS:
       min_internal_knots: int = 1,
       max_internal_knots: int | None = None,
       required_knots: Collection[int] | None = None,
+      excluded_knots: Collection[int] | None = None,
       restrict_to_right_of_required_knots: bool = False,
   ) -> AKSResult:
     """Calculates the optimal number of knots for Meridian model using Automatic knot selection with A-spline.
@@ -281,6 +282,10 @@ class AKS:
         value will be used.
       required_knots: An optional collection of user-defined knot locations that
         must be included in the final model.
+      excluded_knots: An optional collection of user-defined knot locations that
+        must not be included in the final model. If None, the second to the last
+        time point will be excluded to ensure that the algorithm has sufficient
+        degrees of freedom to function.
       restrict_to_right_of_required_knots: If True, candidate knots strictly to
         the left of the maximum required knot are removed from the candidate
         pool, leaving only the required knots and those to the right of them.
@@ -299,7 +304,16 @@ class AKS:
         np.repeat([range(n_times)], n_geos, axis=0), (n_geos * n_times,)
     )
 
-    knots = self._calculate_initial_knots(x)
+    excluded_knots_arr = None
+    if excluded_knots is not None and len(excluded_knots) > 0:
+      excluded_knots_arr = np.unique(excluded_knots)
+      if (
+          required_knots is not None
+          and len(np.intersect1d(required_knots, excluded_knots_arr)) > 0
+      ):
+        raise ValueError('The same knot cannot be both required and excluded.')
+
+    knots = self._calculate_initial_knots(x, excluded_knots_arr)
     max_internal_knots = self._calculate_and_validate_max_internal_knots(
         knots, min_internal_knots, max_internal_knots
     )
@@ -379,16 +393,17 @@ class AKS:
   def _calculate_initial_knots(
       self,
       x: np.ndarray,
+      excluded_knots: np.ndarray | None = None,
   ) -> np.ndarray:
     """Calculates initial knots based on unique x values.
 
     Args:
       x: A flattened array of indexed time coordinates, repeated n_geos times.
         e.g. [0, 1, 2, 3, ..., 0, 1, 2, 3, ...].
+      excluded_knots: Array of knots to exclude from initial knots.
 
     Returns:
-      A tuple containing:
-        - The calculated knots.
+      The calculated knots.
     """
     x_vals_unique = np.unique(x)
     min_x_data, max_x_data = x_vals_unique.min(), x_vals_unique.max()
@@ -396,11 +411,23 @@ class AKS:
         (x_vals_unique > min_x_data) & (x_vals_unique < max_x_data)
     ]
     knots = np.sort(np.unique(knots))
-    # Drop one knot from the set of all knots because the algorithm requires one
-    # fewer degree of freedom than the total number of knots to function.
-    # Dropping the final knot is a natural and practical choice because it
-    # often has minimal impact on the overall model fit.
-    return knots[:-1]
+    # If `excluded_knots` is None, drop one knot from the set of all knots
+    # because the algorithm requires one fewer degree of freedom than the total
+    # number of knots to function. Dropping the final knot is a natural and
+    # practical choice because it often has minimal impact on the overall model
+    # fit.
+    if excluded_knots is None:
+      excluded_knots = (
+          np.array([knots[-1]]) if len(knots) > 0 else np.array([], dtype=int)
+      )
+
+    if not np.all(np.isin(excluded_knots, knots)):
+      raise ValueError(
+          'The excluded knots are not legitimate knot locations.'
+      )
+    is_included = ~np.isin(knots, excluded_knots)
+    knots = knots[is_included]
+    return knots
 
   def _calculate_and_validate_max_internal_knots(
       self,
