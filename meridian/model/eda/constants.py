@@ -147,6 +147,9 @@ CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
 })
 
 
+# Prior calibration plotting constants
+
+
 ##### Report constants #####
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
 DISPLAY_LIMIT_MESSAGE = (

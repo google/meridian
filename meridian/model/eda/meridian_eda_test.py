@@ -34,6 +34,7 @@ from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 from meridian.model.eda import meridian_eda
 from meridian.model.eda import sampling_eda_engine
+
 import numpy as np
 import pandas as pd
 import xarray as xr
