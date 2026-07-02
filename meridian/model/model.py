@@ -1274,7 +1274,7 @@ class Meridian:
     if method is not ThinningMethod.SYSTEMATIC:
       raise ValueError(f"Unsupported posterior thinning method: {method}.")
 
-    posterior = self.inference_data.posterior
+    posterior = self.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     if posterior.attrs.get(constants.POSTERIOR_IS_THINNED):
       raise ValueError("Posterior has already been thinned.")
     if (
@@ -1338,7 +1338,7 @@ class Meridian:
           else int(seed)
       )
     thinned_posterior.attrs = attrs
-    self.inference_data.posterior = thinned_posterior
+    self.inference_data.posterior = thinned_posterior  # pyrefly: ignore[missing-attribute]
     return thinned_posterior
 
   def restore_full_posterior(self) -> xr.Dataset:
@@ -1348,9 +1348,9 @@ class Meridian:
           "No preserved full posterior is available. Call "
           "posterior_thinning(..., preserve_original=True) first."
       )
-    self.inference_data.posterior = self._full_posterior
+    self.inference_data.posterior = self._full_posterior  # pyrefly: ignore[missing-attribute]
     self._full_posterior = None
-    return self.inference_data.posterior
+    return self.inference_data.posterior  # pyrefly: ignore[missing-attribute]
 
 
 def save_mmm(mmm: Meridian, file_path: str):

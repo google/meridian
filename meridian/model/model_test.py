@@ -722,7 +722,7 @@ class ModelTest(
 
   def _meridian_with_posterior(self, posterior: xr.Dataset) -> model.Meridian:
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
-    meridian.inference_data.posterior = posterior
+    meridian.inference_data.posterior = posterior  # pyrefly: ignore[missing-attribute]
     return meridian
 
   def test_posterior_thinning_preserves_chains(self):
@@ -849,7 +849,7 @@ class ModelTest(
         },
     ))
     second_meridian = self._meridian_with_posterior(
-        first_meridian.inference_data.posterior.copy(deep=True)
+        first_meridian.inference_data.posterior.copy(deep=True)  # pyrefly: ignore[missing-attribute]
     )
 
     first = first_meridian.posterior_thinning(n_draws=5, seed=7)
@@ -1239,30 +1239,30 @@ class ModelPersistenceTest(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
-        media=meridian.media_tensors.media_scaled,
+        media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
         decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
-        reach=meridian.rf_tensors.reach_scaled,
-        frequency=meridian.rf_tensors.frequency,
+        reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
         decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
     transformed_organic_media = meridian.adstock_hill_media(
-        media=meridian.organic_media_tensors.organic_media_scaled,
+        media=meridian.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_OM],
         ec=par[constants.EC_OM],
         slope=par[constants.SLOPE_OM],
         decay_functions=meridian.adstock_decay_spec.organic_media,
     )[0, :, :, :]
     transformed_organic_reach = meridian.adstock_hill_rf(
-        reach=meridian.organic_rf_tensors.organic_reach_scaled,
-        frequency=meridian.organic_rf_tensors.organic_frequency,
+        reach=meridian.organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=meridian.organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_ORF],
         ec=par[constants.EC_ORF],
         slope=par[constants.SLOPE_ORF],

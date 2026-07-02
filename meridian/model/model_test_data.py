@@ -406,17 +406,17 @@ class WithInputDataSamples:
         + constants.RF_PARAMETER_NAMES
     }
     cls.test_posterior_states_media_and_rf = collections.namedtuple(
-        "StructTuple",
+        "StructTuple",  # pyrefly: ignore[bad-class-definition]
         constants.COMMON_PARAMETER_NAMES
         + constants.MEDIA_PARAMETER_NAMES
         + constants.RF_PARAMETER_NAMES,
     )(**posterior_params_to_tensors_media_and_rf)
     cls.test_posterior_states_media_only = collections.namedtuple(
-        "StructTuple",
+        "StructTuple",  # pyrefly: ignore[bad-class-definition]
         constants.COMMON_PARAMETER_NAMES + constants.MEDIA_PARAMETER_NAMES,
     )(**posterior_params_to_tensors_media_only)
     cls.test_posterior_states_media_only_no_controls = collections.namedtuple(
-        "StructTuple",
+        "StructTuple",  # pyrefly: ignore[bad-class-definition]
         (
             set(
                 constants.COMMON_PARAMETER_NAMES
@@ -428,7 +428,7 @@ class WithInputDataSamples:
         ),
     )(**posterior_params_to_tensors_media_only_no_controls)
     cls.test_posterior_states_rf_only = collections.namedtuple(
-        "StructTuple",
+        "StructTuple",  # pyrefly: ignore[bad-class-definition]
         constants.COMMON_PARAMETER_NAMES + constants.RF_PARAMETER_NAMES,
     )(**posterior_params_to_tensors_rf_only)
 

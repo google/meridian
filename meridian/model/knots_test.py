@@ -1060,7 +1060,7 @@ class AKSTest(parameterized.TestCase):
         ValueError,
         "The required knots are not legitimate knot locations.",
     ):
-      aks_obj.automatic_knot_selection(required_knots=required_knots)
+      aks_obj.automatic_knot_selection(required_knots=required_knots)  # pyrefly: ignore[bad-argument-type]
 
   def test_aks_user_provided_required_knots_exceeds_max(self):
     data = test_utils.sample_input_data_from_dataset(

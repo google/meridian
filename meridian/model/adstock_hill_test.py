@@ -152,9 +152,9 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       weights = adstock_hill.compute_decay_weights(
           alpha, l_range, _MAX_LAG + 1, decay_function, normalize=True
       )
-      test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)
+      test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)  # pyrefly: ignore[bad-argument-type]
       test_utils.assert_allclose(
-          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5
+          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5  # pyrefly: ignore[bad-argument-type, unsupported-operation]
       )
 
   @parameterized.named_parameters(
@@ -221,10 +221,10 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       )
 
       test_utils.assert_allclose(
-          backend.reduce_sum(weights, axis=1), [1.0] * len(alpha), rtol=1e-5
+          backend.reduce_sum(weights, axis=1), [1.0] * len(alpha), rtol=1e-5  # pyrefly: ignore[bad-argument-type]
       )
       test_utils.assert_allclose(
-          weights / backend.reduce_max(weights, axis=1, keepdims=True),
+          weights / backend.reduce_max(weights, axis=1, keepdims=True),  # pyrefly: ignore[bad-argument-type, unsupported-operation]
           expected_weights,
           rtol=1e-5,
       )
@@ -404,7 +404,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     ).forward(self._media)
     test_utils.assert_allclose(
         media_transformed,
-        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,
+        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,  # pyrefly: ignore[bad-argument-type]
         rtol=1e-4,
         atol=1e-4,
     )
@@ -419,7 +419,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     ).forward(self._media)
     test_utils.assert_allclose(
         media_transformed,
-        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,
+        backend.cumsum(self._media, axis=-2) / self._N_MEDIA_TIMES,  # pyrefly: ignore[bad-argument-type]
         rtol=1e-4,
         atol=1e-4,
     )
@@ -450,7 +450,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     # `term1` has dimensions (n_chains, n_draws, n_output_times, n_channels).
     term1 = 1 - self._alpha[:, :, None, :] ** n_nonzero_terms[:, None]
     # `term2` has dimensions (n_chains, n_draws, n_channels).
-    term2 = 1 - self._alpha ** (self._MAX_LAG + 1)
+    term2 = 1 - self._alpha ** (self._MAX_LAG + 1)  # pyrefly: ignore[unsupported-operation]
     # `result` has dimensions (n_chains, n_draws, n_output_times, n_channels).
     result = term1 / term2[:, :, None, :]
     # Broadcast `result` across geos.
