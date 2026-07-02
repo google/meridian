@@ -64,7 +64,7 @@ def _compute_tau_g(
     elsewhere.
   """
   rank = len(tau_g_excl_baseline.shape)
-  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else [1]
+  shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else [1]  # pyrefly: ignore[unsupported-operation]
   return backend.concatenate(
       [
           tau_g_excl_baseline[..., :baseline_geo_idx],
@@ -180,7 +180,7 @@ def _joint_dist_base_logic(
   # tau_g (..., G) -> (..., G, 1)
   # mu_t  (..., T) -> (..., 1, T)
   # result (..., G, T)
-  tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)
+  tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)  # pyrefly: ignore[bad-argument-type]
 
   # Accumulate media tensors in lists to avoid empty tensor shape/rank issues
   media_transformed_list = []
@@ -200,7 +200,7 @@ def _joint_dist_base_logic(
         name=constants.BETA_GM_DEV,
     )
     media_transformed = adstock_hill_media_fn(
-        media=media_tensors.media_scaled,
+        media=media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=alpha_m,
         ec=ec_m,
         slope=slope_m,
@@ -266,8 +266,8 @@ def _joint_dist_base_logic(
         name=constants.BETA_GRF_DEV,
     )
     rf_transformed = adstock_hill_rf_fn(
-        reach=rf_tensors.reach_scaled,
-        frequency=rf_tensors.frequency,
+        reach=rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=alpha_rf,
         ec=ec_rf,
         slope=slope_rf,
@@ -334,7 +334,7 @@ def _joint_dist_base_logic(
         name=constants.BETA_GOM_DEV,
     )
     organic_media_transformed = adstock_hill_media_fn(
-        media=organic_media_tensors.organic_media_scaled,
+        media=organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=alpha_om,
         ec=ec_om,
         slope=slope_om,
@@ -385,8 +385,8 @@ def _joint_dist_base_logic(
         name=constants.BETA_GORF_DEV,
     )
     organic_rf_transformed = adstock_hill_rf_fn(
-        reach=organic_rf_tensors.organic_reach_scaled,
-        frequency=organic_rf_tensors.organic_frequency,
+        reach=organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=alpha_orf,
         ec=ec_orf,
         slope=slope_orf,
@@ -512,10 +512,10 @@ def _joint_dist_base_logic(
   # sampled posterior parameter values.
   if holdout_id is not None:
     y_pred_holdout = backend.where(
-        holdout_id, backend.to_tensor(0.0, dtype=backend.float_dtype), y_pred
+        holdout_id, backend.to_tensor(0.0, dtype=backend.float_dtype), y_pred  # pyrefly: ignore[bad-argument-type]
     )
     test_sd = backend.cast(1.0 / np.sqrt(2.0 * np.pi), backend.float_dtype)
-    sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)
+    sigma_gt_holdout = backend.where(holdout_id, test_sd, sigma_gt)  # pyrefly: ignore[bad-argument-type]
     yield backend.tfd.Normal(y_pred_holdout, sigma_gt_holdout, name="y")
   else:
     yield backend.tfd.Normal(y_pred, sigma_gt, name="y")
@@ -618,9 +618,9 @@ class PosteriorMCMCSampler:
   ) -> backend.tfd.Distribution:
     if self._model_context.holdout_id is not None:
       y = backend.where(
-          self._model_context.holdout_id,
+          self._model_context.holdout_id,  # pyrefly: ignore[bad-argument-type]
           0.0,
-          self._model_context.kpi_scaled,
+          self._model_context.kpi_scaled,  # pyrefly: ignore[bad-argument-type]
       )
     else:
       y = self._model_context.kpi_scaled
@@ -666,7 +666,7 @@ class PosteriorMCMCSampler:
       sigma_val = latents_for_reconstruction[constants.SIGMA]
       if len(sigma_val.shape) == 3 and sigma_val.shape[-1] == 1:
         latents_for_reconstruction[constants.SIGMA] = backend.squeeze(
-            sigma_val, -1
+            sigma_val, -1  # pyrefly: ignore[bad-argument-type]
         )
 
     return latents_for_reconstruction
@@ -957,4 +957,4 @@ class PosteriorMCMCSampler:
         group="sample_stats",
     )
 
-    return az.concat(infdata_posterior, infdata_trace, infdata_sample_stats)
+    return az.concat(infdata_posterior, infdata_trace, infdata_sample_stats)  # pyrefly: ignore[no-matching-overload]

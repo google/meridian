@@ -51,9 +51,9 @@ def _roi_calibration_scaled_counterfactual(
     where media values are set to zero during the calibration period.
   """
   factors = backend.where(
-      calibration_period,
-      backend.to_tensor(0.0, dtype=backend.float_dtype),
-      backend.to_tensor(1.0, dtype=backend.float_dtype),
+      calibration_period,  # pyrefly: ignore[bad-argument-type]
+      backend.to_tensor(0.0, dtype=backend.float_dtype),  # pyrefly: ignore[bad-argument-type]
+      backend.to_tensor(1.0, dtype=backend.float_dtype),  # pyrefly: ignore[bad-argument-type]
   )
   return backend.einsum("gtm,tm->gtm", metric_scaled, factors)
 
@@ -137,19 +137,19 @@ def build_media_tensors(
       prior_media_scaled_counterfactual = (
           _roi_calibration_scaled_counterfactual(
               media_scaled,
-              calibration_period=calibration_period_tensor,
+              calibration_period=calibration_period_tensor,  # pyrefly: ignore[bad-argument-type]
           )
       )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
     prior_media_scaled_counterfactual = media_scaled * constants.MROI_FACTOR
-    prior_denominator = aggregated_media_spend * (constants.MROI_FACTOR - 1.0)
+    prior_denominator = aggregated_media_spend * (constants.MROI_FACTOR - 1.0)  # pyrefly: ignore[unsupported-operation]
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_media_scaled_counterfactual = None
     total_outcome = backend.to_tensor(
         input_data.get_total_outcome(), dtype=backend.float_dtype
     )
     prior_denominator = backend.repeat(
-        total_outcome, len(input_data.media_channel)
+        total_outcome, len(input_data.media_channel)  # pyrefly: ignore[bad-argument-type]
     )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
     prior_media_scaled_counterfactual = None
@@ -163,7 +163,7 @@ def build_media_tensors(
       media_transformer=media_transformer,
       media_scaled=media_scaled,
       prior_media_scaled_counterfactual=prior_media_scaled_counterfactual,
-      prior_denominator=prior_denominator,
+      prior_denominator=prior_denominator,  # pyrefly: ignore[bad-argument-type]
   )
 
 
@@ -263,7 +263,7 @@ def build_rf_tensors(
   reach = backend.to_tensor(input_data.reach, dtype=backend.float_dtype)
   frequency = backend.to_tensor(input_data.frequency, dtype=backend.float_dtype)
   rf_impressions = (
-      reach * frequency if reach is not None and frequency is not None else None
+      reach * frequency if reach is not None and frequency is not None else None  # pyrefly: ignore[unsupported-operation]
   )
   rf_spend = backend.to_tensor(input_data.rf_spend, dtype=backend.float_dtype)
   reach_transformer = transformers.MediaTransformer(
@@ -277,7 +277,7 @@ def build_rf_tensors(
         calibration_period, dtype=backend.bool_
     )
   aggregated_rf_spend = backend.to_tensor(
-      input_data.aggregate_rf_spend(calibration_period=calibration_period),
+      input_data.aggregate_rf_spend(calibration_period=calibration_period),  # pyrefly: ignore[bad-argument-type]
       dtype=backend.float_dtype,
   )
   # Set `prior_reach_scaled_counterfactual` and `prior_denominator` depending on
@@ -295,14 +295,14 @@ def build_rf_tensors(
       )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
     prior_reach_scaled_counterfactual = reach_scaled * constants.MROI_FACTOR
-    prior_denominator = aggregated_rf_spend * (constants.MROI_FACTOR - 1.0)
+    prior_denominator = aggregated_rf_spend * (constants.MROI_FACTOR - 1.0)  # pyrefly: ignore[unsupported-operation]
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
     prior_reach_scaled_counterfactual = None
     total_outcome = backend.to_tensor(
         input_data.get_total_outcome(), dtype=backend.float_dtype
     )
     prior_denominator = backend.repeat(
-        total_outcome, len(input_data.rf_channel)
+        total_outcome, len(input_data.rf_channel)  # pyrefly: ignore[bad-argument-type]
     )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
     prior_reach_scaled_counterfactual = None
@@ -318,7 +318,7 @@ def build_rf_tensors(
       reach_transformer=reach_transformer,
       reach_scaled=reach_scaled,
       prior_reach_scaled_counterfactual=prior_reach_scaled_counterfactual,
-      prior_denominator=prior_denominator,
+      prior_denominator=prior_denominator,  # pyrefly: ignore[bad-argument-type]
   )
 
 

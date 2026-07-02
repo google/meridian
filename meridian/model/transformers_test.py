@@ -100,7 +100,7 @@ class MediaTransformerTest(test_utils.MeridianTestCase):
     )
     if is_tf:
       tf = backend._ops
-      tf.compat.v1.disable_tensor_equality()
+      tf.compat.v1.disable_tensor_equality()  # pyrefly: ignore[missing-attribute]
 
     try:
       transformer = transformers.MediaTransformer(
@@ -131,7 +131,7 @@ class MediaTransformerTest(test_utils.MeridianTestCase):
     finally:
       if is_tf:
         tf = backend._ops
-        tf.compat.v1.enable_tensor_equality()
+        tf.compat.v1.enable_tensor_equality()  # pyrefly: ignore[missing-attribute]
 
   @parameterized.named_parameters(
       dict(testcase_name="all_zeros", channel_fill_value=0.0),
@@ -319,7 +319,7 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     )
     test_utils.assert_allclose(
         transformer.population_scaled_mean,
-        backend.reduce_mean(self._kpi1 / self._population[:, backend.newaxis]),
+        backend.reduce_mean(self._kpi1 / self._population[:, backend.newaxis]),  # pyrefly: ignore[unsupported-operation]
     )
 
   def test_population_scaled_stdev(self):
@@ -328,7 +328,7 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     )
     test_utils.assert_allclose(
         transformer.population_scaled_stdev,
-        backend.reduce_std(self._kpi1 / self._population[:, backend.newaxis]),
+        backend.reduce_std(self._kpi1 / self._population[:, backend.newaxis]),  # pyrefly: ignore[unsupported-operation]
     )
 
   def test_output_shape_and_range(self):

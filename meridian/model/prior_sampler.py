@@ -165,7 +165,7 @@ class PriorDistributionSampler:
           treatment_parameter_m * ctx.media_tensors.prior_denominator
       )
       media_transformed = self._model_equations.adstock_hill_media(
-          media=ctx.media_tensors.media_scaled,
+          media=ctx.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
           alpha=media_vars[constants.ALPHA_M],
           ec=media_vars[constants.EC_M],
           slope=media_vars[constants.SLOPE_M],
@@ -275,8 +275,8 @@ class PriorDistributionSampler:
           treatment_parameter_rf * ctx.rf_tensors.prior_denominator
       )
       rf_transformed = self._model_equations.adstock_hill_rf(
-          reach=ctx.rf_tensors.reach_scaled,
-          frequency=ctx.rf_tensors.frequency,
+          reach=ctx.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+          frequency=ctx.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
           alpha=rf_vars[constants.ALPHA_RF],
           ec=rf_vars[constants.EC_RF],
           slope=rf_vars[constants.SLOPE_RF],
@@ -377,7 +377,7 @@ class PriorDistributionSampler:
           organic_media_vars[constants.CONTRIBUTION_OM] * ctx.total_outcome
       )
       organic_media_transformed = self._model_equations.adstock_hill_media(
-          media=ctx.organic_media_tensors.organic_media_scaled,
+          media=ctx.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
           alpha=organic_media_vars[constants.ALPHA_OM],
           ec=organic_media_vars[constants.EC_OM],
           slope=organic_media_vars[constants.SLOPE_OM],
@@ -473,8 +473,8 @@ class PriorDistributionSampler:
           organic_rf_vars[constants.CONTRIBUTION_ORF] * ctx.total_outcome
       )
       organic_rf_transformed = self._model_equations.adstock_hill_rf(
-          reach=ctx.organic_rf_tensors.organic_reach_scaled,
-          frequency=ctx.organic_rf_tensors.organic_frequency,
+          reach=ctx.organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
+          frequency=ctx.organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
           alpha=organic_rf_vars[constants.ALPHA_ORF],
           ec=organic_rf_vars[constants.EC_ORF],
           slope=organic_rf_vars[constants.SLOPE_ORF],
@@ -696,7 +696,7 @@ class PriorDistributionSampler:
     )
 
     return (
-        base_vars
+        base_vars  # pyrefly: ignore[unsupported-operation]
         | media_vars
         | rf_vars
         | organic_media_vars

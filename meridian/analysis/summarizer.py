@@ -132,7 +132,7 @@ class Summarizer:
     )
 
     template_env = formatter.create_template_env()
-    template_env.globals[c.START_DATE] = start_date.strftime(
+    template_env.globals[c.START_DATE] = start_date.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {start_date.day}, %Y'
     )
 

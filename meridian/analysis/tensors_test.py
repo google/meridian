@@ -562,7 +562,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
   def test_validate_non_media_missing_new_param_flexible_times(self) -> None:
     new_data = tensors.DataTensors(
-        non_media_treatments=self.meridian_non_media.non_media_treatments[
+        non_media_treatments=self.meridian_non_media.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             :, :2, :
         ]
     )
@@ -717,9 +717,9 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     # Verify paid RF is scaled
     historical_reach = self.meridian.model_context.rf_tensors.reach
     historical_frequency = self.meridian.model_context.rf_tensors.frequency
-    historical_impressions = historical_reach * historical_frequency
+    historical_impressions = historical_reach * historical_frequency  # pyrefly: ignore[unsupported-operation]
 
-    expected_frequency = backend.ones_like(
+    expected_frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
         historical_impressions
     ) * backend.to_tensor(optimal_frequency, dtype=backend.float_dtype)
     expected_reach = historical_impressions / expected_frequency
@@ -761,7 +761,7 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     # Verify paid RF is scaled
     historical_reach = self.meridian.model_context.rf_tensors.reach
     historical_frequency = self.meridian.model_context.rf_tensors.frequency
-    historical_impressions = historical_reach * historical_frequency
+    historical_impressions = historical_reach * historical_frequency  # pyrefly: ignore[unsupported-operation]
     expected_frequency = (
         backend.ones_like(historical_impressions) * optimal_frequency
     )
@@ -781,10 +781,10 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     )
 
     expected_organic_frequency = (
-        backend.ones_like(historical_organic_frequency) * optimal_frequency
+        backend.ones_like(historical_organic_frequency) * optimal_frequency  # pyrefly: ignore[bad-argument-type]
     )
     expected_organic_reach = (
-        historical_organic_reach * historical_organic_frequency
+        historical_organic_reach * historical_organic_frequency  # pyrefly: ignore[unsupported-operation]
     ) / expected_organic_frequency
 
     backend_test_utils.assert_allclose(

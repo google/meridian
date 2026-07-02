@@ -329,7 +329,7 @@ class PosteriorMCMCSamplerTest(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
-        media=meridian.media_tensors.media_scaled,
+        media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
@@ -479,8 +479,8 @@ class PosteriorMCMCSamplerTest(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_reach = meridian.adstock_hill_rf(
-        reach=meridian.rf_tensors.reach_scaled,
-        frequency=meridian.rf_tensors.frequency,
+        reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
@@ -642,15 +642,15 @@ class PosteriorMCMCSamplerTest(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
     transformed_media = meridian.adstock_hill_media(
-        media=meridian.media_tensors.media_scaled,
+        media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
         decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
     transformed_reach = meridian.adstock_hill_rf(
-        reach=meridian.rf_tensors.reach_scaled,
-        frequency=meridian.rf_tensors.frequency,
+        reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+        frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],
         ec=par[constants.EC_RF],
         slope=par[constants.SLOPE_RF],
@@ -735,7 +735,7 @@ class PosteriorMCMCSamplerTest(
 
     # Convert the dictionary back to a NamedTuple to match TFP's typical output
     # structure
-    latents_tuple_class = collections.namedtuple(
+    latents_tuple_class = collections.namedtuple(  # pyrefly: ignore[bad-class-definition]
         "LatentsTuple", latents_only_states.keys()
     )
     latents_only_tuple = latents_tuple_class(**latents_only_states)
@@ -755,8 +755,8 @@ class PosteriorMCMCSamplerTest(
     )
 
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
@@ -773,7 +773,7 @@ class PosteriorMCMCSamplerTest(
     )
 
     # Verify that InferenceData DOES contain the deterministics
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
 
     self.assertIn(constants.BETA_GM, posterior)
     self.assertIn(constants.TAU_G, posterior)
@@ -798,8 +798,8 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
@@ -852,7 +852,7 @@ class PosteriorMCMCSamplerTest(
     rf_parameters = list(constants.RF_PARAMETER_NAMES)
     rf_parameters.remove(constants.BETA_GRF)
 
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(posterior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -895,7 +895,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.sample_stats, attr).shape,
+          getattr(meridian.inference_data.sample_stats, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -910,7 +910,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.trace, attr).shape,
+          getattr(meridian.inference_data.trace, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -932,7 +932,7 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
@@ -981,7 +981,7 @@ class PosteriorMCMCSamplerTest(
     media_parameters = list(constants.MEDIA_PARAMETER_NAMES)
     media_parameters.remove(constants.BETA_GM)
 
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(posterior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -1020,7 +1020,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.sample_stats, attr).shape,
+          getattr(meridian.inference_data.sample_stats, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -1035,7 +1035,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.trace, attr).shape,
+          getattr(meridian.inference_data.trace, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -1057,7 +1057,7 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_only_no_controls
     meridian = model.Meridian(
@@ -1096,7 +1096,7 @@ class PosteriorMCMCSamplerTest(
         constants.CONTROL_PARAMETERS + constants.GEO_CONTROL_PARAMETERS
     ):
       with self.assertRaises(AttributeError):
-        getattr(meridian.inference_data.posterior, param)
+        getattr(meridian.inference_data.posterior, param)  # pyrefly: ignore[missing-attribute]
 
   def test_sample_posterior_rf_only_returns_correct_shape(self):
     mock_sample_posterior = self.enter_context(
@@ -1113,7 +1113,7 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_rf_only
     meridian = model.Meridian(
@@ -1162,7 +1162,7 @@ class PosteriorMCMCSamplerTest(
     rf_parameters = list(constants.RF_PARAMETER_NAMES)
     rf_parameters.remove(constants.BETA_GRF)
 
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(posterior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -1199,7 +1199,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.sample_stats, attr).shape,
+          getattr(meridian.inference_data.sample_stats, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -1214,7 +1214,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.trace, attr).shape,
+          getattr(meridian.inference_data.trace, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               self._N_CHAINS,
               self._N_KEEP,
@@ -1236,8 +1236,8 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
@@ -1286,7 +1286,7 @@ class PosteriorMCMCSamplerTest(
     rf_parameters = list(constants.RF_PARAMETER_NAMES)
     rf_parameters.remove(constants.BETA_GRF)
 
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     shape_to_params = {
         knots_shape: [
             getattr(posterior, attr) for attr in constants.KNOTS_PARAMETERS
@@ -1329,7 +1329,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.sample_stats, attr).shape,
+          getattr(meridian.inference_data.sample_stats, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               n_total_chains,
               self._N_KEEP,
@@ -1344,7 +1344,7 @@ class PosteriorMCMCSamplerTest(
         constants.N_STEPS,
     ]:
       self.assertEqual(
-          getattr(meridian.inference_data.trace, attr).shape,
+          getattr(meridian.inference_data.trace, attr).shape,  # pyrefly: ignore[missing-attribute]
           (
               n_total_chains,
               self._N_KEEP,
@@ -1392,8 +1392,8 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
@@ -1434,7 +1434,7 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_only
     meridian = model.Meridian(
@@ -1652,8 +1652,8 @@ class PosteriorMCMCSamplerTest(
         )
     )
     model_spec = spec.ModelSpec(
-        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,
-        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,
+        roi_calibration_period=self._ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
+        rf_roi_calibration_period=self._RF_ROI_CALIBRATION_PERIOD,  # pyrefly: ignore[bad-argument-type]
     )
     input_data = self.short_input_data_with_media_and_rf
     meridian = model.Meridian(
@@ -1672,7 +1672,7 @@ class PosteriorMCMCSamplerTest(
         self._N_CHAINS, self._N_KEEP
     )
     posterior_dims = meridian.create_inference_data_dims()
-    posterior_samples = dict(meridian.inference_data.posterior)
+    posterior_samples = dict(meridian.inference_data.posterior)  # pyrefly: ignore[missing-attribute]
     for posterior in mismatched_posteriors:
       posterior_samples[posterior] = backend.zeros(
           mismatched_posteriors[posterior]
@@ -2093,7 +2093,7 @@ class PosteriorMCMCSamplerTest(
                 "States", ["all_states", "trace"]
             )(
                 all_states=collections.namedtuple(
-                    "L", latent_raw_samples.keys()
+                    "L", latent_raw_samples.keys()  # pyrefly: ignore[bad-class-definition]
                 )(**latent_raw_samples),
                 trace=mock_trace,
             ),
@@ -2117,7 +2117,7 @@ class PosteriorMCMCSamplerTest(
         n_chains=n_chains, n_adapt=1, n_burnin=n_burnin, n_keep=n_keep
     )
 
-    posterior = meridian.inference_data.posterior
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
     self.assertIn(
         constants.BETA_M, posterior, "Deterministics should be present."
     )

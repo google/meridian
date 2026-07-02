@@ -3611,7 +3611,7 @@ def generate_model_fit_data(
   expected = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4)))
   baseline = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4)))
   if not actual:
-    actual = abs(np.random.lognormal(10, 1, size=(n_geos, n_time)))
+    actual = abs(np.random.lognormal(10, 1, size=(n_geos, n_time)))  # pyrefly: ignore[bad-assignment]
 
   return xr.Dataset(
       data_vars={
@@ -3938,20 +3938,20 @@ def generate_optimal_frequency_data(
   }
 
   if use_roi:
-    data_vars[c.OPTIMIZED_ROI] = (
+    data_vars[c.OPTIMIZED_ROI] = (  # pyrefly: ignore[unsupported-operation]
         (c.RF_CHANNEL, c.METRIC),
         optimized_roi,
     )
-    data_vars[c.OPTIMIZED_MROI_BY_REACH] = (
+    data_vars[c.OPTIMIZED_MROI_BY_REACH] = (  # pyrefly: ignore[unsupported-operation]
         (c.RF_CHANNEL, c.METRIC),
         optimized_mroi_by_reach,
     )
-    data_vars[c.OPTIMIZED_MROI_BY_FREQUENCY] = (
+    data_vars[c.OPTIMIZED_MROI_BY_FREQUENCY] = (  # pyrefly: ignore[unsupported-operation]
         (c.RF_CHANNEL, c.METRIC),
         optimized_mroi_by_frequency,
     )
   else:
-    data_vars[c.OPTIMIZED_CPIK] = (
+    data_vars[c.OPTIMIZED_CPIK] = (  # pyrefly: ignore[unsupported-operation]
         (c.RF_CHANNEL, c.METRIC),
         optimized_cpik,
     )
