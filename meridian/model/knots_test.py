@@ -257,6 +257,80 @@ class GetKnotInfoTest(parameterized.TestCase):
     ):
       knots.get_knot_info(n_times=200, knots=knots_arg, is_national=is_national)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          is_national=False,
+          n_times=5,
+          expected_n_knots=5,
+          expected_knot_locations=[0, 1, 2, 3, 4],
+      ),
+      dict(
+          testcase_name="national",
+          is_national=True,
+          n_times=5,
+          expected_n_knots=1,
+          expected_knot_locations=[0],
+      ),
+  )
+  def test_get_knot_info_aks_returns_empty_falls_back_to_defaults(
+      self,
+      is_national,
+      n_times,
+      expected_n_knots,
+      expected_knot_locations,
+  ):
+    """Tests that if AKS returns empty knots, we fall back to default logic."""
+    mock_result = mock.create_autospec(knots.AKSResult, instance=True)
+    mock_result.knots = np.array([], dtype=int)
+    mock_aks = self.enter_context(
+        mock.patch.object(
+            knots.AKS, "automatic_knot_selection", autospec=True, spec_set=True
+        )
+    )
+    mock_aks.return_value = mock_result
+
+    info = knots.get_knot_info(
+        n_times=n_times,
+        knots=None,
+        enable_aks=True,
+        data=mock.create_autospec(
+            input_data.InputData, instance=True, spec_set=True
+        ),
+        is_national=is_national,
+    )
+
+    self.assertEqual(info.n_knots, expected_n_knots)
+    np.testing.assert_array_equal(info.knot_locations, expected_knot_locations)
+
+  def test_get_knot_info_aks_returns_knots_uses_them(self):
+    mock_result = mock.create_autospec(
+        knots.AKSResult,
+        instance=True,
+    )
+    mock_result.knots = np.array([2, 4], dtype=int)
+    mock_aks = self.enter_context(
+        mock.patch.object(
+            knots.AKS,
+            "automatic_knot_selection",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    mock_aks.return_value = mock_result
+
+    info = knots.get_knot_info(
+        n_times=10,
+        knots=None,
+        enable_aks=True,
+        data=mock.create_autospec(
+            input_data.InputData, instance=True, spec_set=True
+        ),
+    )
+
+    self.assertEqual(info.n_knots, 2)
+    np.testing.assert_array_equal(info.knot_locations, [2, 4])
+
 
 class AKSTest(parameterized.TestCase):
   """Tests for knots.AKS class."""
@@ -388,7 +462,23 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90],
+          expected_knots=[
+              0,
+              11,
+              14,
+              38,
+              39,
+              41,
+              43,
+              45,
+              48,
+              50,
+              55,
+              87,
+              89,
+              90,
+              116,
+          ],
       ),
       dict(
           testcase_name="national_geos",
@@ -403,6 +493,7 @@ class AKSTest(parameterized.TestCase):
               "non_revenue",
           ),
           expected_knots=[
+              0,
               1,
               2,
               3,
@@ -456,6 +547,7 @@ class AKSTest(parameterized.TestCase):
               103,
               104,
               114,
+              116,
           ],
       ),
       dict(
@@ -471,6 +563,7 @@ class AKSTest(parameterized.TestCase):
               "non_revenue",
           ),
           expected_knots=[
+              0,
               4,
               17,
               20,
@@ -489,6 +582,7 @@ class AKSTest(parameterized.TestCase):
               77,
               78,
               81,
+              116,
           ],
       ),
       dict(
@@ -503,7 +597,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[2, 7, 24, 25, 38, 39, 49, 114],
+          expected_knots=[0, 2, 7, 24, 25, 38, 39, 49, 114, 116],
       ),
       dict(
           testcase_name="50_times",
@@ -517,7 +611,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[1, 5, 13, 15, 16, 23, 27, 31, 32, 38, 42],
+          expected_knots=[0, 1, 5, 13, 15, 16, 23, 27, 31, 32, 38, 42, 49],
       ),
       dict(
           testcase_name="200_times",
@@ -532,6 +626,7 @@ class AKSTest(parameterized.TestCase):
               "non_revenue",
           ),
           expected_knots=[
+              0,
               4,
               10,
               12,
@@ -578,6 +673,7 @@ class AKSTest(parameterized.TestCase):
               195,
               196,
               197,
+              199,
           ],
       ),
       dict(
@@ -593,7 +689,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[17, 25],
+          expected_knots=[0, 17, 25, 49],
       ),
       dict(
           testcase_name="seasonal",
@@ -609,6 +705,7 @@ class AKSTest(parameterized.TestCase):
               "non_revenue",
           ),
           expected_knots=[
+              0,
               1,
               4,
               5,
@@ -628,6 +725,7 @@ class AKSTest(parameterized.TestCase):
               41,
               45,
               47,
+              49,
           ],
       ),
       dict(
@@ -643,7 +741,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[24, 25, 26],
+          expected_knots=[0, 24, 25, 26, 49],
       ),
       dict(
           testcase_name="minimal_initial_knots",
@@ -657,7 +755,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[3],
+          expected_knots=[0, 3, 14],
       ),
   )
   def test_aks(self, data: input_data.InputData, expected_knots: list[int]):
@@ -802,6 +900,7 @@ class AKSTest(parameterized.TestCase):
     self.assertListEqual(
         actual_knots.tolist(),
         [
+            0,
             2,
             7,
             8,
@@ -861,6 +960,7 @@ class AKSTest(parameterized.TestCase):
             110,
             113,
             114,
+            116,
         ],
     )
 
@@ -869,13 +969,13 @@ class AKSTest(parameterized.TestCase):
           testcase_name="min_equals_max",
           min_internal_knots=8,
           max_internal_knots=8,
-          expected_knots=[2, 7, 24, 25, 38, 39, 49, 114],
+          expected_knots=[0, 2, 7, 24, 25, 38, 39, 49, 114, 116],
       ),
       dict(
           testcase_name="min_lt_max_",
           min_internal_knots=2,
           max_internal_knots=15,
-          expected_knots=[2, 7, 24, 25, 38, 39, 49, 114],
+          expected_knots=[0, 2, 7, 24, 25, 38, 39, 49, 114, 116],
       ),
   )
   def test_aks_user_provided_min_max_internal_knots(
