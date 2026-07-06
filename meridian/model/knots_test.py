@@ -922,6 +922,136 @@ class AKSTest(parameterized.TestCase):
           max_internal_knots=10,
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="standard",
+          excluded_knots=[10, 50, 100],
+      ),
+      dict(
+          testcase_name="single_knot",
+          excluded_knots=[50],
+      ),
+      dict(
+          testcase_name="many_knots",
+          excluded_knots=[10, 20, 30, 40, 50, 60],
+      ),
+      dict(
+          testcase_name="near_end",
+          excluded_knots=[113, 114],
+      ),
+      dict(
+          testcase_name="unsorted",
+          excluded_knots=[100, 10, 50],
+      ),
+  )
+  def test_aks_user_provided_excluded_knots(self, excluded_knots):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    aks_result = aks_obj.automatic_knot_selection(
+        excluded_knots=excluded_knots,
+    )
+    actual_knots = aks_result.knots
+    for knot in excluded_knots:
+      self.assertNotIn(knot, actual_knots)
+
+  def test_calculate_initial_knots_keeps_last_knot(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=1,
+            n_times=10,
+            n_media_times=10,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    n_times = len(data.time)
+    x = np.repeat([range(n_times)], 1, axis=0).flatten()
+
+    # When excluded_knots is None, the second to last time point is excluded
+    initial_knots_none = aks_obj._calculate_initial_knots(
+        x, excluded_knots=None
+    )
+    self.assertNotIn(8, initial_knots_none)
+
+    # When excluded_knots is provided (not None), the last knot (8) is included
+    initial_knots_provided = aks_obj._calculate_initial_knots(
+        x, excluded_knots=np.array([2])
+    )
+    self.assertIn(8, initial_knots_provided)
+    self.assertNotIn(2, initial_knots_provided)
+
+  def test_aks_user_provided_excluded_knots_invalid_not_in_initial(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    excluded_knots = [116]  # 116 is not a valid initial knot
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The excluded knots are not legitimate knot locations.",
+    ):
+      aks_obj.automatic_knot_selection(excluded_knots=excluded_knots)
+
+  def test_aks_user_provided_excluded_knots_non_integer(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    excluded_knots = [1.5]  # 1.5 is a non-integer
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The excluded knots are not legitimate knot locations.",
+    ):
+      aks_obj.automatic_knot_selection(excluded_knots=excluded_knots)
+
+  def test_aks_user_provided_excluded_knots_overlap_with_required(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=50,
+            n_times=117,
+            n_media_times=117,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    required_knots = [10, 50, 100]
+    excluded_knots = [10]
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The same knot cannot be both required and excluded.",
+    ):
+      aks_obj.automatic_knot_selection(
+          required_knots=required_knots,
+          excluded_knots=excluded_knots,
+      )
+
   def test_aks_user_provided_required_knots(self):
     data = test_utils.sample_input_data_from_dataset(
         test_utils.random_dataset(
