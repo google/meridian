@@ -54,6 +54,7 @@ import xarray as xr
 import xarray.testing as xrt
 
 from google.protobuf import any_pb2
+from google.type import date_pb2
 from tensorflow.core.framework import types_pb2  # pylint: disable=g-direct-tensorflow-import
 
 _PRIOR_DATASET_CHAINS = 1
@@ -1011,6 +1012,109 @@ class MeridianSerdeTest(parameterized.TestCase):
         meridian_model.input_data.revenue_per_kpi,
         loaded_model.input_data.revenue_per_kpi,
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='monthly_cadence_leap_year',
+          freq='MS',
+          periods=12,
+          start_date='2024-01-01',
+          expected_first_interval=(
+              date_pb2.Date(year=2024, month=1, day=1),
+              date_pb2.Date(year=2024, month=2, day=1),
+          ),
+          expected_last_interval=(
+              date_pb2.Date(year=2024, month=12, day=1),
+              date_pb2.Date(year=2025, month=1, day=1),
+          ),
+      ),
+      dict(
+          testcase_name='quarterly_cadence_leap_year',
+          freq='QS',
+          periods=4,
+          start_date='2024-01-01',
+          expected_first_interval=(
+              date_pb2.Date(year=2024, month=1, day=1),
+              date_pb2.Date(year=2024, month=4, day=1),
+          ),
+          expected_last_interval=(
+              date_pb2.Date(year=2024, month=10, day=1),
+              date_pb2.Date(year=2025, month=1, day=1),
+          ),
+      ),
+  )
+  def test_save_meridian_with_calendar_cadence_coordinates(
+      self,
+      freq,
+      periods,
+      start_date,
+      expected_first_interval,
+      expected_last_interval,
+  ):
+    flags.FLAGS.mark_as_parsed()
+    file_path = os.path.join(
+        self.create_tempdir().full_path, f'serde_{freq}.binpb'
+    )
+
+    cadence_times = pd.date_range(
+        start=start_date, periods=periods, freq=freq
+    ).strftime(constants.DATE_FORMAT)
+
+    base_data = test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=5,
+        n_times=periods,
+        n_media_times=periods,
+        n_controls=2,
+        n_media_channels=3,
+        seed=1,
+    )
+    input_data = meridian_input_data.InputData(
+        kpi=base_data.kpi.assign_coords({constants.TIME: cadence_times}),
+        kpi_type=base_data.kpi_type,
+        revenue_per_kpi=base_data.revenue_per_kpi.assign_coords(
+            {constants.TIME: cadence_times}
+        ),
+        population=base_data.population,
+        controls=base_data.controls.assign_coords(
+            {constants.TIME: cadence_times}
+        ),
+        media=base_data.media.assign_coords(
+            {constants.MEDIA_TIME: cadence_times}
+        ),
+        media_spend=base_data.media_spend.assign_coords(
+            {constants.TIME: cadence_times}
+        ),
+    )
+
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=test_data.get_default_model_spec(),
+    )
+
+    serde.save_meridian(meridian_model, file_path)
+    self.assertTrue(os.path.exists(file_path))
+
+    loaded_model = serde.load_meridian(file_path)
+    xrt.assert_allclose(
+        meridian_model.input_data.time,
+        loaded_model.input_data.time,
+    )
+    xrt.assert_allclose(
+        meridian_model.input_data.media_time,
+        loaded_model.input_data.media_time,
+    )
+
+    marketing_proto = marketing_data._InputDataSerializer(
+        meridian_model.input_data
+    )()
+
+    first_interval = marketing_proto.marketing_data_points[0].date_interval
+    self.assertEqual(first_interval.start_date, expected_first_interval[0])
+    self.assertEqual(first_interval.end_date, expected_first_interval[1])
+
+    last_interval = marketing_proto.marketing_data_points[-1].date_interval
+    self.assertEqual(last_interval.start_date, expected_last_interval[0])
+    self.assertEqual(last_interval.end_date, expected_last_interval[1])
 
 
 if __name__ == '__main__':
