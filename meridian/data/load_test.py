@@ -1329,7 +1329,7 @@ class InputDataLoaderTest(parameterized.TestCase):
       else:  # number_of_warnings == 1:
         self.assertTrue(
             any(
-                issubclass(warning.category, UserWarning)
+                issubclass(warning.category, UserWarning)  # pyrefly: ignore[bad-argument-type]
                 and str(warning.message)
                 == 'The `population` argument is ignored in a nationally'
                 ' aggregated model. It will be reset to [1, 1, ..., 1]'
@@ -1337,7 +1337,7 @@ class InputDataLoaderTest(parameterized.TestCase):
             for warning in warning_list
         )
 
-    data = loader.load()
+    data = loader.load()  # pyrefly: ignore[bad-assignment]
 
     expected_df = pd.DataFrame(dict(test_utils.EXPECTED_NATIONAL_DATA_DICT))
     expected_kpi = expected_df.get(constants.KPI).tolist()
@@ -1350,23 +1350,23 @@ class InputDataLoaderTest(parameterized.TestCase):
         df_indexed[constants.POPULATION].groupby(constants.GEO).mean().tolist()
     )
 
-    expected_media = [expected_df.get(m) for m in loader.coord_to_columns.media]
+    expected_media = [expected_df.get(m) for m in loader.coord_to_columns.media]  # pyrefly: ignore[not-iterable]
     expected_media_spend = [
-        expected_df.get(s) for s in loader.coord_to_columns.media_spend
+        expected_df.get(s) for s in loader.coord_to_columns.media_spend  # pyrefly: ignore[not-iterable]
     ]
     expected_controls = [
-        expected_df.get(c) for c in loader.coord_to_columns.controls
+        expected_df.get(c) for c in loader.coord_to_columns.controls  # pyrefly: ignore[not-iterable]
     ]
 
-    self.assertTrue((data.kpi.values == expected_kpi).all())
-    self.assertTrue((data.population.values == expected_population).all())
+    self.assertTrue((data.kpi.values == expected_kpi).all())  # pyrefly: ignore[missing-attribute]
+    self.assertTrue((data.population.values == expected_population).all())  # pyrefly: ignore[missing-attribute]
 
-    self.assertIsNotNone(data.revenue_per_kpi)
+    self.assertIsNotNone(data.revenue_per_kpi)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (data.revenue_per_kpi.values == expected_revenue_per_kpi).all()  # pytype: disable=attribute-error
     )
 
-    self.assertIsNotNone(data.media)
+    self.assertIsNotNone(data.media)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
             np.sort(data.media.values, axis=None)  # pytype: disable=attribute-error
@@ -1374,7 +1374,7 @@ class InputDataLoaderTest(parameterized.TestCase):
         ).all()
     )
 
-    self.assertIsNotNone(data.media_spend)
+    self.assertIsNotNone(data.media_spend)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
             np.sort(data.media_spend.values, axis=None)  # pytype: disable=attribute-error
@@ -1382,7 +1382,7 @@ class InputDataLoaderTest(parameterized.TestCase):
         ).all()
     )
 
-    self.assertIsNotNone(data.controls)
+    self.assertIsNotNone(data.controls)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
             np.sort(data.controls.values, axis=None)  # pytype: disable=attribute-error

@@ -460,7 +460,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._mock_eda_engine.check_cost_per_media_unit.return_value = (
         eda_outcome.EDAOutcome(
             check_type=eda_outcome.EDACheckType.COST_PER_MEDIA_UNIT,
-            findings=cpmu_findings or [],
+            findings=cpmu_findings or [],  # pyrefly: ignore[bad-argument-type]
             analysis_artifacts=[],
         )
     )
@@ -469,17 +469,17 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
         eda_outcome.CriticalCheckEDAOutcomes(
             multicollinearity=eda_outcome.EDAOutcome(
                 check_type=eda_outcome.EDACheckType.MULTICOLLINEARITY,
-                findings=vif_findings or [],
+                findings=vif_findings or [],  # pyrefly: ignore[bad-argument-type]
                 analysis_artifacts=[],
             ),
             pairwise_correlation=eda_outcome.EDAOutcome(
                 check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
-                findings=pairwise_findings or [],
+                findings=pairwise_findings or [],  # pyrefly: ignore[bad-argument-type]
                 analysis_artifacts=[],
             ),
             kpi_invariability=eda_outcome.EDAOutcome(
                 check_type=eda_outcome.EDACheckType.KPI_INVARIABILITY,
-                findings=kpi_findings or [],
+                findings=kpi_findings or [],  # pyrefly: ignore[bad-argument-type]
                 analysis_artifacts=[],
             ),
         )
@@ -651,7 +651,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._mock_eda_engine.check_std.side_effect = (
         lambda: eda_outcome.EDAOutcome(
             check_type=eda_outcome.EDACheckType.STANDARD_DEVIATION,
-            findings=stdev_findings or [],
+            findings=stdev_findings or [],  # pyrefly: ignore[bad-argument-type]
             analysis_artifacts=[
                 national_stdev_artifact
                 if self._meridian.is_national
@@ -664,7 +664,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
         eda_outcome.EDAOutcome(
             check_type=eda_outcome.EDACheckType.POPULATION_CORRELATION,
             findings=[],
-            analysis_artifacts=pop_raw_media_artifacts or [],
+            analysis_artifacts=pop_raw_media_artifacts or [],  # pyrefly: ignore[bad-argument-type]
         )
     )
 
@@ -682,13 +682,13 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._mock_eda_engine.check_population_corr_scaled_treatment_control.return_value = eda_outcome.EDAOutcome(
         check_type=eda_outcome.EDACheckType.POPULATION_CORRELATION,
         findings=pop_treatment_findings,
-        analysis_artifacts=pop_treatment_artifacts or [],
+        analysis_artifacts=pop_treatment_artifacts or [],  # pyrefly: ignore[bad-argument-type]
     )
     self._mock_eda_engine.check_prior_probability.return_value = (
         eda_outcome.EDAOutcome(
             check_type=eda_outcome.EDACheckType.PRIOR_PROBABILITY,
             findings=[],
-            analysis_artifacts=prior_artifacts
+            analysis_artifacts=prior_artifacts  # pyrefly: ignore[bad-argument-type]
             or [_create_prior_artifact([1, 2])],
         )
     )
@@ -3176,7 +3176,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
         ]
     )
     self._get_output_eda_report_html_dom()
-    self._eda.plot_cost_per_media_unit_time_series.assert_called_with(
+    self._eda.plot_cost_per_media_unit_time_series.assert_called_with(  # pyrefly: ignore[missing-attribute]
         eda_constants.NATIONALIZE, [_MEDIA_CHANNEL_NAMES[0]]
     )  # type: ignore
 

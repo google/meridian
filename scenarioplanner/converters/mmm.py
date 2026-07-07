@@ -631,7 +631,7 @@ class MarketingData:
       A dict of channel names mapped to their total spend values, for the given
       date interval.
     """
-    date_interval = DateInterval(tc.normalize_date_interval(date_interval))
+    date_interval = DateInterval(tc.normalize_date_interval(date_interval))  # pyrefly: ignore[bad-assignment]
     channel_spends = {channel: 0.0 for channel in self.media_channels}
     for data_point in self._marketing_data_points:
       # The time coordinate for a marketing data point is the start date of its
@@ -660,7 +660,7 @@ class MarketingData:
       A dict of channel names mapped to their total spend values, for the given
       date interval.
     """
-    date_interval = DateInterval(tc.normalize_date_interval(date_interval))
+    date_interval = DateInterval(tc.normalize_date_interval(date_interval))  # pyrefly: ignore[bad-assignment]
     channel_spends = {channel: 0.0 for channel in self.rf_channels}
     for data_point in self._marketing_data_points:
       # The time coordinate for a marketing data point is the start date of its

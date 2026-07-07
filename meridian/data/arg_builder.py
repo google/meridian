@@ -104,4 +104,4 @@ class OrderedListArgumentBuilder(Generic[T]):
           'All coordinates must be present in the given keyword arguments: '
           f'Given: {kwargs.keys()} vs Expected: {self._ordered_coords}'
       )
-    return [kwargs.get(c, self._default_value) for c in self._ordered_coords]
+    return [kwargs.get(c, self._default_value) for c in self._ordered_coords]  # pyrefly: ignore[bad-return]

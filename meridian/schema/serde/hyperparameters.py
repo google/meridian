@@ -84,7 +84,7 @@ class HyperparametersSerde(
   using DistributionSerde.
   """
 
-  def serialize(self, obj: spec.ModelSpec) -> meridian_pb.Hyperparameters:
+  def serialize(self, obj: spec.ModelSpec) -> meridian_pb.Hyperparameters:  # pyrefly: ignore[bad-override]
     """Serializes the given ModelSpec into a `Hyperparameters` proto."""
     hyperparameters_proto = meridian_pb.Hyperparameters(
         media_effects_dist=media_effects_converter.to_proto(
@@ -175,7 +175,7 @@ class HyperparametersSerde(
 
     return hyperparameters_proto
 
-  def deserialize(
+  def deserialize(  # pyrefly: ignore[bad-override]
       self,
       serialized: meridian_pb.Hyperparameters,
       serialized_version: str = "",
@@ -295,7 +295,7 @@ class HyperparametersSerde(
             serialized.media_effects_dist
         ),
         hill_before_adstock=serialized.hill_before_adstock,
-        max_lag=max_lag,
+        max_lag=max_lag,  # pyrefly: ignore[bad-argument-type]
         unique_sigma_for_each_geo=serialized.unique_sigma_for_each_geo,
         media_prior_type=paid_media_prior_type_converter.from_proto(
             serialized.media_prior_type

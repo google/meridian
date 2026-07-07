@@ -217,7 +217,7 @@ class IncrementalOutcomeSpec(model_processor.Spec):
   include_non_paid_channels: bool = False
 
   def validate(self):
-    super().validate()
+    super().validate()  # pyrefly: ignore[missing-attribute]
     if (self.new_data is not None) and (self.new_data.time is None):
       raise ValueError("`time` must be provided in `new_data`.")
 
@@ -483,7 +483,7 @@ class MarketingProcessor(
     )
 
     return self._marketing_metrics_to_protos(
-        media_summary_metrics,
+        media_summary_metrics,  # pyrefly: ignore[bad-argument-type]
         non_media_summary_metrics,
         baseline_outcome,
         secondary_non_revenue_kpi_metrics,
@@ -668,7 +668,7 @@ class MarketingProcessor(
             marketing_analysis_spec,
             channel_name,
             start_date_str,
-            metrics if is_media_channel else non_media_metrics,
+            metrics if is_media_channel else non_media_metrics,  # pyrefly: ignore[bad-argument-type]
             secondary_non_revenue_kpi_metrics
             if is_media_channel
             else secondary_non_revenue_kpi_non_media_metrics,
@@ -859,7 +859,7 @@ class MarketingProcessor(
     baseline_analysis = non_media_analysis_pb2.NonMediaAnalysis(
         non_media_name=constants.BASELINE,
     )
-    baseline_outcome = outcome_pb2.Outcome(
+    baseline_outcome = outcome_pb2.Outcome(  # pyrefly: ignore[bad-assignment]
         contribution=contribution,
         # Baseline outcome is always revenue-based, unless `revenue_per_kpi`
         # is undefined.
@@ -872,7 +872,7 @@ class MarketingProcessor(
             else kpi_type_pb2.KpiType.REVENUE
         ),
     )
-    baseline_analysis.non_media_outcomes.append(baseline_outcome)
+    baseline_analysis.non_media_outcomes.append(baseline_outcome)  # pyrefly: ignore[bad-argument-type]
 
     return baseline_analysis
 
@@ -1090,7 +1090,7 @@ class MarketingProcessor(
           if selected_geos is None
           else selected_geos
       )
-      xr_coords[constants.GEO] = ([constants.GEO], geo_dims)
+      xr_coords[constants.GEO] = ([constants.GEO], geo_dims)  # pyrefly: ignore[unsupported-operation]
     if not aggregate_times:
       selected_times_str = resolver.resolve_to_enumerated_selected_times()
       if selected_times_str is not None:

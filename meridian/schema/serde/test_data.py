@@ -5045,7 +5045,7 @@ def _create_tfp_param(param_name, param_value, distribution):
 def distribution_fn(sample0):
   num_frames = sample0.shape[-1]
   mask = backend.one_hot(0, num_frames)[:, backend.newaxis]
-  probs = backend.roll(backend.one_hot(sample0, 3), shift=1, axis=-2)
+  probs = backend.roll(backend.one_hot(sample0, 3), shift=1, axis=-2)  # pyrefly: ignore[bad-argument-type]
   probs = probs * (1.0 - mask) + backend.to_tensor([0.5, 0.5, 0]) * mask
   return backend.tfd.Independent(
       backend.tfd.Categorical(probs=probs), reinterpreted_batch_ndims=1

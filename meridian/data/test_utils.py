@@ -826,7 +826,7 @@ def random_media_spend_nd_da(
         f'Shape {dims} not supported by the random_media_spend_nd_da function.'
     )
 
-  media_spend = abs(np.random.normal(1, 1, size=shape)) + nonzero_shift
+  media_spend = abs(np.random.normal(1, 1, size=shape)) + nonzero_shift  # pyrefly: ignore[no-matching-overload]
 
   return xr.DataArray(
       media_spend,
@@ -1243,7 +1243,7 @@ def random_rf_spend_nd_da(
         f'Shape {dims} not supported by the random_rf_spend_nd_da function.'
     )
 
-  rf_spend = abs(np.random.normal(1, 1, size=shape)) + nonzero_shift
+  rf_spend = abs(np.random.normal(1, 1, size=shape)) + nonzero_shift  # pyrefly: ignore[no-matching-overload]
 
   return xr.DataArray(
       rf_spend,
@@ -1400,7 +1400,7 @@ def random_dataset(
 
   if n_controls:
     controls = random_controls_da(
-        media=media if n_media_channels else reach,
+        media=media if n_media_channels else reach,  # pyrefly: ignore[bad-argument-type]
         n_geos=n_geos,
         n_times=n_times,
         n_controls=n_controls,
@@ -1412,7 +1412,7 @@ def random_dataset(
 
   if n_non_media_channels:
     non_media_treatments = random_non_media_treatments_da(
-        media=media if n_media_channels else reach,
+        media=media if n_media_channels else reach,  # pyrefly: ignore[bad-argument-type]
         n_geos=n_geos,
         n_times=n_times,
         n_non_media_channels=n_non_media_channels,
@@ -1460,7 +1460,7 @@ def random_dataset(
     organic_frequency = None
 
   kpi = random_kpi_da(
-      media=media if n_media_channels else reach,
+      media=media if n_media_channels else reach,  # pyrefly: ignore[bad-argument-type]
       controls=controls,
       n_geos=n_geos,
       n_times=n_times,
@@ -1485,14 +1485,14 @@ def random_dataset(
     if remove_media_time:
       media = media.rename({'media_time': 'time'})
     to_merge.append(media)
-    to_merge.append(media_spend)
+    to_merge.append(media_spend)  # pyrefly: ignore[bad-argument-type]
   if reach is not None:
     if remove_media_time:
       reach = reach.rename({'media_time': 'time'})
-      frequency = frequency.rename({'media_time': 'time'})
+      frequency = frequency.rename({'media_time': 'time'})  # pyrefly: ignore[missing-attribute]
     to_merge.append(reach)
-    to_merge.append(frequency)
-    to_merge.append(rf_spend)
+    to_merge.append(frequency)  # pyrefly: ignore[bad-argument-type]
+    to_merge.append(rf_spend)  # pyrefly: ignore[bad-argument-type]
   if non_media_treatments is not None:
     to_merge.append(non_media_treatments)
   if organic_media is not None:
@@ -1502,9 +1502,9 @@ def random_dataset(
   if organic_reach is not None:
     if remove_media_time:
       organic_reach = organic_reach.rename({'media_time': 'time'})
-      organic_frequency = organic_frequency.rename({'media_time': 'time'})
+      organic_frequency = organic_frequency.rename({'media_time': 'time'})  # pyrefly: ignore[missing-attribute]
     to_merge.append(organic_reach)
-    to_merge.append(organic_frequency)
+    to_merge.append(organic_frequency)  # pyrefly: ignore[bad-argument-type]
 
   return xr.merge(to_merge, join='outer', compat='no_conflicts')
 
@@ -1955,11 +1955,11 @@ def sample_input_data_for_aks_with_expected_knot_info() -> (
   )
   expected_knot_info = knots.KnotInfo(
       n_knots=13,
-      knot_locations=np.array(
+      knot_locations=np.array(  # pyrefly: ignore[bad-argument-type]
           [11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90]
       ),
-      weights=knots.l1_distance_weights(
-          117, np.array([11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90])
+      weights=knots.l1_distance_weights(  # pyrefly: ignore[bad-argument-type]
+          117, np.array([11, 14, 38, 39, 41, 43, 45, 48, 50, 55, 87, 89, 90])  # pyrefly: ignore[bad-argument-type]
       ),
   )
   return data, expected_knot_info

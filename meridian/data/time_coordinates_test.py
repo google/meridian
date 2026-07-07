@@ -105,7 +105,7 @@ class TimeCoordinatesTest(parameterized.TestCase):
         ValueError,
         "Time coordinates must be strictly monotonically increasing.",
     ):
-      time_coordinates.TimeCoordinates.from_dates(all_dates)
+      time_coordinates.TimeCoordinates.from_dates(all_dates)  # pyrefly: ignore[bad-argument-type]
 
   def test_property_interval_days_weekly(self):
     self.assertEqual(self.coordinates.interval_days, 7)
@@ -328,7 +328,7 @@ class TimeCoordinatesTest(parameterized.TestCase):
     dates = self.coordinates.get_selected_dates(
         selected_interval=selected_interval,
     )
-    expected_dates = [
+    expected_dates = [  # pyrefly: ignore[bad-assignment]
         dt.datetime.strptime(date, constants.DATE_FORMAT).date()
         for date in expected_dates
     ]

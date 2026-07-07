@@ -54,24 +54,24 @@ class InputDataBuilder(abc.ABC):
     # * etc...
 
     # Working dimensions and their coordinates.
-    self._time_coords: Sequence[str] = None
-    self._media_time_coords: Sequence[str] = None
-    self._geos: Sequence[str] = None
+    self._time_coords: Sequence[str] = None  # pyrefly: ignore[bad-assignment]
+    self._media_time_coords: Sequence[str] = None  # pyrefly: ignore[bad-assignment]
+    self._geos: Sequence[str] = None  # pyrefly: ignore[bad-assignment]
 
     # Working data arrays (components of the final `InputData` object)
-    self._kpi: xr.DataArray = None
-    self._controls: xr.DataArray = None
-    self._population: xr.DataArray = None
-    self._revenue_per_kpi: xr.DataArray = None
-    self._media: xr.DataArray = None
-    self._media_spend: xr.DataArray = None
-    self._reach: xr.DataArray = None
-    self._frequency: xr.DataArray = None
-    self._rf_spend: xr.DataArray = None
-    self._organic_media: xr.DataArray = None
-    self._organic_reach: xr.DataArray = None
-    self._organic_frequency: xr.DataArray = None
-    self._non_media_treatments: xr.DataArray = None
+    self._kpi: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._controls: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._population: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._revenue_per_kpi: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._media: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._media_spend: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._reach: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._frequency: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._rf_spend: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._organic_media: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._organic_reach: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._organic_frequency: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._non_media_treatments: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
 
   @property
   def time_coords(self) -> Sequence[str]:
@@ -697,7 +697,7 @@ class InputDataBuilder(abc.ABC):
     for da in da_list:
       if da is not None and set(
           da.coords[channel_dimension_name].values.tolist()
-      ) != set(da_list[0].coords[channel_dimension_name].values.tolist()):
+      ) != set(da_list[0].coords[channel_dimension_name].values.tolist()):  # pyrefly: ignore[missing-attribute]
         raise ValueError(
             f'{channel_dimension_name} coordinates must be the same between'
             f' {[da.name for da in da_list if da is not None]}.'

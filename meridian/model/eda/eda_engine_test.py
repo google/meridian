@@ -660,7 +660,7 @@ class EDAEngineTest(
     start = model_context.n_media_times - model_context.n_times
     test_utils.assert_allclose(
         media_da.values,
-        model_context.media_tensors.media_scaled[:, start:, :],
+        model_context.media_tensors.media_scaled[:, start:, :],  # pyrefly: ignore[unsupported-operation]
     )
 
   # --- Test cases for national_media_scaled_da ---
@@ -984,7 +984,7 @@ class EDAEngineTest(
     )
     test_utils.assert_allclose(
         organic_media_da.values,
-        organic_media_scaled[:, start:, :],
+        organic_media_scaled[:, start:, :],  # pyrefly: ignore[unsupported-operation]
     )
 
   # --- Test cases for national_organic_media_raw_da ---
@@ -1559,7 +1559,7 @@ class EDAEngineTest(
     )
     start = model_context.n_media_times - model_context.n_times
     test_utils.assert_allclose(
-        reach_da.values, model_context.rf_tensors.reach_scaled[:, start:, :]
+        reach_da.values, model_context.rf_tensors.reach_scaled[:, start:, :]  # pyrefly: ignore[unsupported-operation]
     )
 
   # --- Test cases for national_reach_scaled_da ---
@@ -1662,7 +1662,7 @@ class EDAEngineTest(
     start = model_context.n_media_times - model_context.n_times
     test_utils.assert_allclose(
         frequency_da.values,
-        model_context.rf_tensors.frequency[:, start:, :],
+        model_context.rf_tensors.frequency[:, start:, :],  # pyrefly: ignore[unsupported-operation]
     )
 
   # --- Test cases for national_frequency_da ---
@@ -1907,7 +1907,7 @@ class EDAEngineTest(
     mean_population = (
         1
         if model_context.is_national
-        else backend.reduce_mean(model_context.population)
+        else backend.reduce_mean(model_context.population)  # pyrefly: ignore[bad-argument-type]
     )
     expected_scale = mean_population * self.mock_scale_factor
     rf_impressions_raw_da = engine.rf_impressions_raw_da
@@ -2520,7 +2520,7 @@ class EDAEngineTest(
     mean_population = (
         1
         if model_context.is_national
-        else backend.reduce_mean(model_context.population)
+        else backend.reduce_mean(model_context.population)  # pyrefly: ignore[bad-argument-type]
     )
     expected_scale = mean_population * self.mock_scale_factor
     organic_rf_impressions_raw_da = engine.organic_rf_impressions_raw_da
@@ -7108,7 +7108,7 @@ class EDAEngineTest(
     (artifact,) = outcome.analysis_artifacts
     self.assertIsInstance(artifact, eda_outcome.KpiInvariabilityArtifact)
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
-    self.assertAlmostEqual(artifact.kpi_stdev, 0.0)
+    self.assertAlmostEqual(artifact.kpi_stdev, 0.0)  # pyrefly: ignore[no-matching-overload]
     test_utils.assert_allclose(
         artifact.kpi_da.values,
         kpi_data,
@@ -7160,7 +7160,7 @@ class EDAEngineTest(
     (artifact,) = outcome.analysis_artifacts
     self.assertIsInstance(artifact, eda_outcome.KpiInvariabilityArtifact)
     self.assertEqual(artifact.level, eda_outcome.AnalysisLevel.OVERALL)
-    self.assertGreater(artifact.kpi_stdev, eda_constants.STD_THRESHOLD)
+    self.assertGreater(artifact.kpi_stdev, eda_constants.STD_THRESHOLD)  # pyrefly: ignore[no-matching-overload]
     test_utils.assert_allclose(
         artifact.kpi_da.values,
         kpi_data,
@@ -7615,7 +7615,7 @@ class EDAEngineTest(
             eda_outcome.FindingCause.NONE,
         ),
     }
-    self._mock_critical_checks(mock_results)
+    self._mock_critical_checks(mock_results)  # pyrefly: ignore[bad-argument-type]
 
     outcomes = engine.run_all_critical_checks()
 
@@ -7669,7 +7669,7 @@ class EDAEngineTest(
             eda_outcome.FindingCause.NONE,
         ),
     }
-    self._mock_critical_checks(mock_results)
+    self._mock_critical_checks(mock_results)  # pyrefly: ignore[bad-argument-type]
 
     outcomes = engine.run_all_critical_checks()
 
@@ -7727,7 +7727,7 @@ class EDAEngineTest(
         "check_vif": ValueError("Test Error"),
         "check_pairwise_corr": TypeError("Another Error"),
     }
-    self._mock_critical_checks(mock_results)
+    self._mock_critical_checks(mock_results)  # pyrefly: ignore[bad-argument-type]
 
     outcomes = engine.run_all_critical_checks()
 
@@ -8363,7 +8363,7 @@ class EDAEngineTest(
     mock_model_context.n_non_media_channels = 0
     n_knots = 5
     mock_model_context.knot_info = knots.KnotInfo(
-        n_knots=n_knots, knot_locations=np.array([1]), weights=np.array([1])
+        n_knots=n_knots, knot_locations=np.array([1]), weights=np.array([1])  # pyrefly: ignore[bad-argument-type]
     )
     mock.seal(mock_model_context)
 

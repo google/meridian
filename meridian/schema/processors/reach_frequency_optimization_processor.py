@@ -257,7 +257,7 @@ class ReachFrequencyOptimizationProcessor(
       grid_min_freq = self._to_target_precision(spec.min_frequency)
       # If the max frequency is not set, use the model's max frequency.
       grid_max_freq = self._to_target_precision(
-          spec.max_frequency or np.max(self._meridian.rf_tensors.frequency)
+          spec.max_frequency or np.max(self._meridian.rf_tensors.frequency)  # pyrefly: ignore[no-matching-overload]
       )
       grid = [
           self._to_target_precision(f)
@@ -435,10 +435,10 @@ class ReachFrequencyOptimizationProcessor(
       cells = []
       for frequency in frequencies:
         new_frequency = (
-            backend.ones_like(self._meridian.rf_tensors.frequency) * frequency
+            backend.ones_like(self._meridian.rf_tensors.frequency) * frequency  # pyrefly: ignore[bad-argument-type]
         )
         new_reach = (
-            self._meridian.rf_tensors.frequency
+            self._meridian.rf_tensors.frequency  # pyrefly: ignore[unsupported-operation]
             * self._meridian.rf_tensors.reach
             / new_frequency
         )

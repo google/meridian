@@ -631,11 +631,11 @@ class DataFrameDataLoader(InputDataLoader):
       # But we can only detect this after we map each `media` and `media_spend`
       # column to its canonical channel name.
       media_channels = [
-          self.media_to_channel[c] for c in self.coord_to_columns.media
+          self.media_to_channel[c] for c in self.coord_to_columns.media  # pyrefly: ignore[not-iterable]
       ]
       media_spend_channels = [
           self.media_spend_to_channel[c]
-          for c in self.coord_to_columns.media_spend
+          for c in self.coord_to_columns.media_spend  # pyrefly: ignore[not-iterable]
       ]
       if media_channels != media_spend_channels:
         raise ValueError(
@@ -660,13 +660,13 @@ class DataFrameDataLoader(InputDataLoader):
 
       # Same channel ordering concerns as for `media` and `media_spend`.
       reach_channels = [
-          self.reach_to_channel[c] for c in self.coord_to_columns.reach
+          self.reach_to_channel[c] for c in self.coord_to_columns.reach  # pyrefly: ignore[not-iterable]
       ]
       frequency_channels = [
-          self.frequency_to_channel[c] for c in self.coord_to_columns.frequency
+          self.frequency_to_channel[c] for c in self.coord_to_columns.frequency  # pyrefly: ignore[not-iterable]
       ]
       rf_spend_channels = [
-          self.rf_spend_to_channel[c] for c in self.coord_to_columns.rf_spend
+          self.rf_spend_to_channel[c] for c in self.coord_to_columns.rf_spend  # pyrefly: ignore[not-iterable]
       ]
       if not (reach_channels == frequency_channels == rf_spend_channels):
         raise ValueError(
@@ -689,11 +689,11 @@ class DataFrameDataLoader(InputDataLoader):
       # Same channel ordering concerns as for `media` and `media_spend`.
       organic_reach_channels = [
           self.organic_reach_to_channel[c]
-          for c in self.coord_to_columns.organic_reach
+          for c in self.coord_to_columns.organic_reach  # pyrefly: ignore[not-iterable]
       ]
       organic_frequency_channels = [
           self.organic_frequency_to_channel[c]
-          for c in self.coord_to_columns.organic_frequency
+          for c in self.coord_to_columns.organic_frequency  # pyrefly: ignore[not-iterable]
       ]
       if organic_reach_channels != organic_frequency_channels:
         raise ValueError(
@@ -749,12 +749,12 @@ class DataFrameDataLoader(InputDataLoader):
       # Based on the invariant rule enforced in `__post_init__`, the columns
       # listed in `media` and `media_spend` are already validated to correspond
       # to the same channels, in user-given order.
-      media_execution_columns = list(self.coord_to_columns.media)
-      media_spend_columns = list(self.coord_to_columns.media_spend)
+      media_execution_columns = list(self.coord_to_columns.media)  # pyrefly: ignore[bad-argument-type]
+      media_spend_columns = list(self.coord_to_columns.media_spend)  # pyrefly: ignore[bad-argument-type]
       # So now we can use one of the channel mapper dicts to get the canonical
       # channel names for each column.
       media_channel_names = [
-          self.media_to_channel[c] for c in self.coord_to_columns.media
+          self.media_to_channel[c] for c in self.coord_to_columns.media  # pyrefly: ignore[not-iterable]
       ]
       builder.with_media(
           self.df,
@@ -773,13 +773,13 @@ class DataFrameDataLoader(InputDataLoader):
       # Based on the invariant rule enforced in `__post_init__`, the columns
       # listed in `reach`, `frequency`, and `rf_spend` are already validated
       # to correspond to the same channels, in user-given order.
-      reach_columns = list(self.coord_to_columns.reach)
-      frequency_columns = list(self.coord_to_columns.frequency)
-      rf_spend_columns = list(self.coord_to_columns.rf_spend)
+      reach_columns = list(self.coord_to_columns.reach)  # pyrefly: ignore[bad-argument-type]
+      frequency_columns = list(self.coord_to_columns.frequency)  # pyrefly: ignore[bad-argument-type]
+      rf_spend_columns = list(self.coord_to_columns.rf_spend)  # pyrefly: ignore[bad-argument-type]
       # So now we can use one of the channel mapper dicts to get the canonical
       # channel names for each column.
       rf_channel_names = [
-          self.reach_to_channel[c] for c in self.coord_to_columns.reach
+          self.reach_to_channel[c] for c in self.coord_to_columns.reach  # pyrefly: ignore[not-iterable]
       ]
       builder.with_reach(
           self.df,
@@ -807,13 +807,13 @@ class DataFrameDataLoader(InputDataLoader):
       # Based on the invariant rule enforced in `__post_init__`, the columns
       # listed in `organic_reach` and `organic_frequency` are already
       # validated to correspond to the same channels, in user-given order.
-      organic_reach_columns = list(self.coord_to_columns.organic_reach)
-      organic_frequency_columns = list(self.coord_to_columns.organic_frequency)
+      organic_reach_columns = list(self.coord_to_columns.organic_reach)  # pyrefly: ignore[bad-argument-type]
+      organic_frequency_columns = list(self.coord_to_columns.organic_frequency)  # pyrefly: ignore[bad-argument-type]
       # So now we can use one of the channel mapper dicts to get the canonical
       # channel names for each column.
       organic_rf_channel_names = [
           self.organic_reach_to_channel[c]
-          for c in self.coord_to_columns.organic_reach
+          for c in self.coord_to_columns.organic_reach  # pyrefly: ignore[not-iterable]
       ]
       builder.with_organic_reach(
           self.df,

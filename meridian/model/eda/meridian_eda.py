@@ -45,7 +45,7 @@ __all__ = [
     'BoxplotSortingConfig',
 ]
 
-Geos = int | Sequence[str] | Literal[eda_constants.NATIONALIZE]
+Geos = int | Sequence[str] | Literal[eda_constants.NATIONALIZE]  # pyrefly: ignore[invalid-literal]
 
 _BULLET_POINT_RE = re.compile(r'(?m)^\* ')
 
@@ -674,7 +674,7 @@ class MeridianEDA:
         national_data_source=self.eda_engine.national_treatments_without_non_media_scaled_ds,
         geo_data_source=self.eda_engine.treatments_without_non_media_scaled_ds,
         processing_function=lambda data: _process_stacked_ds(
-            eda_engine_module.stack_variables(data)
+            eda_engine_module.stack_variables(data)  # pyrefly: ignore[bad-argument-type]
         ),
         sorting_config=sorting_config,
     )
@@ -701,7 +701,7 @@ class MeridianEDA:
         national_data_source=self.eda_engine.national_controls_and_non_media_scaled_ds,
         geo_data_source=self.eda_engine.controls_and_non_media_scaled_ds,
         processing_function=lambda data: _process_stacked_ds(
-            eda_engine_module.stack_variables(data)
+            eda_engine_module.stack_variables(data)  # pyrefly: ignore[bad-argument-type]
         ),
         sorting_config=sorting_config,
     )
@@ -764,7 +764,7 @@ class MeridianEDA:
           else geo_data_source.sel(geo=geo_to_plot)
       )
 
-      processed_data = processing_function(data_to_process).sort_values(
+      processed_data = processing_function(data_to_process).sort_values(  # pyrefly: ignore[bad-argument-type]
           eda_constants.VALUE,
           ascending=ascending,
           key=abs if sort_abs else None,
@@ -1181,7 +1181,7 @@ class MeridianEDA:
         national_data_source=artifact.mean_prior_contribution_da,
         geo_data_source=artifact.mean_prior_contribution_da,
         processing_function=lambda data: _process_stacked_ds(
-            data.rename({constants.CHANNEL: eda_constants.VARIABLE})
+            data.rename({constants.CHANNEL: eda_constants.VARIABLE})  # pyrefly: ignore[bad-argument-type]
         ),
         n_channels=eda_constants.PRIOR_MEAN_BARCHART_LIMIT,
         bar_size=60,
@@ -1881,7 +1881,7 @@ class MeridianEDA:
         ).size,
         n_geos=n_geos,
     )
-    message_kwargs['additional_info'] = display_limit_message
+    message_kwargs['additional_info'] = display_limit_message  # pyrefly: ignore[unsupported-operation]
     final_message = message_template.format(**message_kwargs)
 
     return formatter.TableSpec(
@@ -2078,7 +2078,7 @@ def _plot_time_series(
                   title=y_axis_title,
                   titleColor=color,
                   minExtent=60,
-                  orient=y_axis_orient,
+                  orient=y_axis_orient,  # pyrefly: ignore[bad-argument-type]
                   offset=y_axis_offset,
               ),
               scale=alt.Scale(zero=False),

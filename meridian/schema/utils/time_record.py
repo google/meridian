@@ -64,8 +64,8 @@ def convert_times_to_date_intervals(
     ]
 
   interval_length = _compute_interval_length(
-      start_date=datetimes[0],
-      end_date=datetimes[1],
+      start_date=datetimes[0],  # pyrefly: ignore[bad-argument-type]
+      end_date=datetimes[1],  # pyrefly: ignore[bad-argument-type]
   )
   time_to_date_interval: MutableMapping[str, date_interval_pb2.DateInterval] = (
       {}
@@ -77,8 +77,8 @@ def convert_times_to_date_intervals(
     else:
       end_date = datetimes[i + 1]
       current_interval_length = _compute_interval_length(
-          start_date=start_date,
-          end_date=end_date,
+          start_date=start_date,  # pyrefly: ignore[bad-argument-type]
+          end_date=end_date,  # pyrefly: ignore[bad-argument-type]
       )
 
       if current_interval_length != interval_length:

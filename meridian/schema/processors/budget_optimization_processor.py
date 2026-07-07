@@ -389,9 +389,9 @@ class BudgetOptimizationProcessor(
       kwargs = build_scenario_kwargs(spec.scenario)
       constraints_kwargs = build_constraints_kwargs(
           spec.constraints,
-          self._trained_model.mmm.input_data.get_all_paid_channels(),
+          self._trained_model.mmm.input_data.get_all_paid_channels(),  # pyrefly: ignore[bad-argument-type]
       )
-      kwargs.update(constraints_kwargs)
+      kwargs.update(constraints_kwargs)  # pyrefly: ignore[no-matching-overload]
       if spec.new_data is not None and spec.new_data.time is not None:
         time_coords = tc.TimeCoordinates.from_dates(
             [s.decode() for s in np.asarray(spec.new_data.time)]
@@ -414,7 +414,7 @@ class BudgetOptimizationProcessor(
           use_optimal_frequency=spec.use_optimal_frequency,
           max_frequency=spec.max_frequency,
           batch_size=spec.batch_size,
-          **kwargs,
+          **kwargs,  # pyrefly: ignore[bad-argument-type]
       )
 
       output.results.append(
