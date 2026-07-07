@@ -100,7 +100,7 @@ started quickly with using Meridian:
 | [Pre-modeling][5]           | Prepare and analyze your data before modeling. |
 | [Modeling][6]               | Modeling guidance for model refinement and edge cases. |
 | [Post-modeling][7]          | Post-modeling guidance for model fit, visualizations, optimizations, refreshing the model, and debugging. |
-| [Scenario planning][8]      | Plan budget allocation with Meridian on Colab & Looker Studio interactively. |
+| [Scenario planning][8]      | Plan budget allocation with Meridian on Colab & Data Studio interactively. |
 | [Migrate from LMMM][9]      | Learn about the differences between Meridian and LightweightMMM as you consider migrating. |
 | [API Reference][10]         | API reference documentation for the Meridian package. |
 | [Reference list][11]        | White papers and other referenced material.    |
