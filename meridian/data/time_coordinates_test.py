@@ -428,6 +428,84 @@ class TimeCoordinatesTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, expected_error_message):
       self.coordinates.expand_selected_time_dims(start_date, end_date)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="weekly",
+          dates=[
+              dt.date(2024, 1, 1),
+              dt.date(2024, 1, 8),
+              dt.date(2024, 1, 15),
+          ],
+          expected_bounds=[
+              (dt.date(2024, 1, 1), dt.date(2024, 1, 8)),
+              (dt.date(2024, 1, 8), dt.date(2024, 1, 15)),
+              (dt.date(2024, 1, 15), dt.date(2024, 1, 22)),
+          ],
+      ),
+      dict(
+          testcase_name="monthly_leap_year",
+          dates=[
+              dt.date(2024, 1, 1),
+              dt.date(2024, 2, 1),
+              dt.date(2024, 3, 1),
+          ],
+          expected_bounds=[
+              (dt.date(2024, 1, 1), dt.date(2024, 2, 1)),
+              (dt.date(2024, 2, 1), dt.date(2024, 3, 1)),
+              (dt.date(2024, 3, 1), dt.date(2024, 4, 1)),
+          ],
+      ),
+      dict(
+          testcase_name="quarterly",
+          dates=[
+              dt.date(2024, 1, 1),
+              dt.date(2024, 4, 1),
+          ],
+          expected_bounds=[
+              (dt.date(2024, 1, 1), dt.date(2024, 4, 1)),
+              (dt.date(2024, 4, 1), dt.date(2024, 7, 1)),
+          ],
+      ),
+      dict(
+          testcase_name="yearly",
+          dates=[
+              dt.date(2023, 1, 1),
+              dt.date(2024, 1, 1),
+          ],
+          expected_bounds=[
+              (dt.date(2023, 1, 1), dt.date(2024, 1, 1)),
+              (dt.date(2024, 1, 1), dt.date(2025, 1, 1)),
+          ],
+      ),
+  )
+  def test_get_period_bounds_regular_cadences(self, dates, expected_bounds):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex(dates)
+    )
+    self.assertEqual(coords.get_period_bounds(), expected_bounds)
+
+  def test_get_period_bounds_fewer_than_two_points_raises(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([dt.date(2024, 1, 1), dt.date(2024, 1, 8)])
+    )
+    with self.assertRaisesRegex(
+        ValueError, "There must be at least 2 time points."
+    ):
+      coords.get_period_bounds(selected_interval=("2024-01-01", "2024-01-01"))
+
+  def test_get_period_bounds_irregular_raises(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 1, 3),
+            dt.date(2024, 1, 10),
+        ])
+    )
+    with self.assertRaisesRegex(
+        ValueError, "Time coordinates are not regularly spaced!"
+    ):
+      coords.get_period_bounds()
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -25,7 +25,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-
 __all__ = [
     "Date",
     "DateInterval",
@@ -234,6 +233,67 @@ class TimeCoordinates:
     if expanded is None:
       return self.all_dates
     return expanded
+
+  def get_period_bounds(
+      self,
+      selected_interval: DateInterval | None = None,
+  ) -> list[tuple[datetime.date, datetime.date]]:
+    """Returns contiguous `(start_date, end_date)` pairs for selected dates.
+
+    This method generates contiguous period intervals across the dataset. Each
+    returned tuple represents a period `[start_date, end_date)` spanning from a
+    given time coordinate up to the start of the next contiguous time
+    coordinate.
+
+    For the final time coordinate in the sequence, where no subsequent point
+    exists, this method uses the dataset's identified temporal cadence (e.g.,
+    monthly, quarterly, yearly, or fixed daily/weekly intervals) to step forward
+    by exactly one calendar period. This prevents date-truncation bugs that
+    arise when extrapolating calendar months or quarters using fixed timedelta
+    day additions.
+
+    Args:
+      selected_interval: Tuple of start and end times. If `None`, intervals are
+        generated for all dates in the coordinates.
+
+    Returns:
+      A list of `(start_date, end_date)` tuples as `datetime.date` objects.
+
+    Raises:
+      ValueError: If the time coordinates are not regularly spaced, or if fewer
+        than 2 time coordinates are selected.
+    """
+    if not self._is_regular_time_index():
+      raise ValueError("Time coordinates are not regularly spaced!")
+
+    selected_dates = self.get_selected_dates(selected_interval)
+    if len(selected_dates) < 2:
+      raise ValueError("There must be at least 2 time points.")
+
+    bounds: list[tuple[datetime.date, datetime.date]] = []
+    for i, start_date in enumerate(selected_dates):
+      if i < len(selected_dates) - 1:
+        # Contiguous boundary: period ends exactly when the next period begins.
+        end_date = selected_dates[i + 1]
+      else:
+        # Final period boundary: step forward by exactly one period according
+        # to the identified temporal cadence of the dataset.
+        if np.all(np.isin(self._interval_days, [28, 29, 30, 31])):
+          # Monthly cadence: step forward exactly 1 calendar month.
+          end_date = (pd.Timestamp(start_date) + pd.DateOffset(months=1)).date()
+        elif np.all(np.isin(self._interval_days, [90, 91, 92])):
+          # Quarterly cadence: step forward exactly 3 calendar months.
+          end_date = (pd.Timestamp(start_date) + pd.DateOffset(months=3)).date()
+        elif np.all(np.isin(self._interval_days, [365, 366])):
+          # Yearly cadence: step forward exactly 1 calendar year.
+          end_date = (pd.Timestamp(start_date) + pd.DateOffset(years=1)).date()
+        else:
+          # Daily, weekly, or other fixed-day cadences.
+          end_date = start_date + datetime.timedelta(days=self.interval_days)
+
+      bounds.append((start_date, end_date))
+
+    return bounds
 
   def expand_selected_time_dims(
       self,
