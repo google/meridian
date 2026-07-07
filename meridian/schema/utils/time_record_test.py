@@ -45,14 +45,37 @@ class TimeRecordTest(parameterized.TestCase):
           times=["2024-01-01", "01-08-2024", "15-01-2024"],
       )
 
-  def test_convert_times_to_date_interval_length_is_not_consistent(self):
+  def test_convert_times_to_date_intervals_irregular_times_raises(self):
     with self.assertRaisesRegex(
         ValueError,
-        "Interval length between selected times must be consistent.",
+        "Time coordinates are not regularly spaced!",
     ):
       time_record.convert_times_to_date_intervals(
           times=["2024-01-01", "2024-01-07", "2024-01-15"],
       )
+
+  def test_convert_times_to_date_intervals_monthly_cadence(self):
+    time_to_date_interval = time_record.convert_times_to_date_intervals(
+        times=["2024-01-01", "2024-02-01", "2024-03-01"],
+    )
+    expected_date_interval_1 = date_interval_pb2.DateInterval(
+        start_date=date_pb2.Date(year=2024, month=1, day=1),
+        end_date=date_pb2.Date(year=2024, month=2, day=1),
+    )
+    expected_date_interval_2 = date_interval_pb2.DateInterval(
+        start_date=date_pb2.Date(year=2024, month=2, day=1),
+        end_date=date_pb2.Date(year=2024, month=3, day=1),
+    )
+    expected_date_interval_3 = date_interval_pb2.DateInterval(
+        start_date=date_pb2.Date(year=2024, month=3, day=1),
+        end_date=date_pb2.Date(year=2024, month=4, day=1),
+    )
+    expected_time_to_date_interval = {
+        "2024-01-01": expected_date_interval_1,
+        "2024-02-01": expected_date_interval_2,
+        "2024-03-01": expected_date_interval_3,
+    }
+    self.assertEqual(time_to_date_interval, expected_time_to_date_interval)
 
   def test_convert_times_to_date_intervals_creates_date_intervals(self):
     time_to_date_interval = time_record.convert_times_to_date_intervals(
