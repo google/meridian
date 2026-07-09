@@ -135,6 +135,8 @@ class FormatterTest(parameterized.TestCase):
     self.assertIn(title, html_result)
     self.assertIn('<card>Card 1</card>', html_result)
     self.assertIn('<card>Card 2</card>', html_result)
+    self.assertIn('<svg version="1.1"', html_result)
+    self.assertIn('<g id="Art_layer">', html_result)
 
   def test_create_card_html_structure(self):
     template_env = formatter.create_template_env()

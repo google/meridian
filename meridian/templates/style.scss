@@ -45,17 +45,18 @@ body {
 }
 
 .header {
-  height: 40px;
+  height: 48px;
   margin-top: 26px;
   margin-left: 30px;
   display: grid;
-  grid-template-columns: 40px 1fr;
-  column-gap: 28px;
+  grid-template-columns: 48px 1fr;
+  column-gap: 24px;
+  align-items: center;
 }
 
 .logo {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
 }
 
 .title {
