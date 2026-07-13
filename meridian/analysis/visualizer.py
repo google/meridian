@@ -368,7 +368,13 @@ class ModelDiagnostics:
 
     boxplot = (
         alt.Chart(rhat, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
-        .mark_boxplot(median={'color': c.BLUE_300}, outliers={'filled': True})
+        .mark_boxplot(
+            size=14,
+            ticks={'size': 14},
+            extent=1.5,
+            median={'color': c.BLUE_300, 'stroke': c.BLUE_300},
+            outliers={'filled': True},
+        )
         .encode(
             x=alt.X(c.PARAMETER, axis=alt.Axis(labelAngle=-45)),
             y=alt.Y(c.RHAT, scale=alt.Scale(zero=False)),
