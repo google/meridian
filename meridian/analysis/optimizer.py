@@ -2682,6 +2682,7 @@ class BudgetOptimizer:
                 use_kpi=use_kpi,
                 include_non_paid_channels=False,
                 batch_size=batch_size,
+                validate_flag=False,
             )
         ),
         axis=(c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
@@ -2777,6 +2778,20 @@ class BudgetOptimizer:
     filled_data = new_data.validate_and_fill_missing_data(
         required_tensors_names=c.PAID_DATA,
         model_context=model_context,
+    )
+    if selected_times is not None and all(
+        isinstance(item, str) for item in selected_times
+    ):
+      target_times_set = tensors.normalize_times_set(selected_times)
+      time_arr = self._analyzer.model_context.input_data.time
+      selected_times = [
+          tensors.normalize_date_str(x) in target_times_set for x in time_arr
+      ]
+    builder = tensors.DataTensorsBuilder(self._analyzer.model_context)
+    builder.validate_counterfactual_inputs(
+        new_data=filled_data,
+        selected_times=selected_times,
+        include_non_paid_channels=False,
     )
     for i in range(n_grid_rows):
       self._update_incremental_outcome_grid(

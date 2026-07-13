@@ -1646,10 +1646,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=selected_geos,
-        selected_times=[start_date, end_date],
+        selected_times=[True, True] + [False] * (_N_TIMES - 2),
         use_kpi=False,
         batch_size=c.DEFAULT_BATCH_SIZE,
         include_non_paid_channels=False,
+        validate_flag=False,
     )
     # Using `assert_called_with` doesn't work with array comparison.
     _, mock_kwargs = mock_incremental_outcome.call_args
@@ -1734,10 +1735,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[start_date, end_date],
+        selected_times=[True, True] + [False] * (_N_TIMES - 2),
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
+        validate_flag=False,
     )
     self.assertEqual(optimization_grid.spend_step_size, 100)
     np.testing.assert_allclose(
@@ -1819,13 +1821,18 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[start_date, end_date],
+        selected_times=[True, True] + [False] * (_N_TIMES - 2),
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
+        validate_flag=False,
     )
     # Using `assert_called_with` doesn't work with array comparison.
     _, mock_kwargs = mock_incremental_outcome.call_args
+    self.assertEqual(
+        mock_kwargs['selected_times'],
+        [True, True] + [False] * (_N_TIMES - 2),
+    )
     np.testing.assert_allclose(  # pyrefly: ignore[no-matching-overload]
         mock_kwargs['new_data'].frequency,
         self.meridian_media_and_rf.rf_tensors.frequency,
@@ -1923,10 +1930,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[start_date, end_date],
+        selected_times=[True, True] + [False] * (_N_TIMES - 2),
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
+        validate_flag=False,
     )
     # Using `assert_called_with` doesn't work with array comparison.
     _, mock_kwargs = mock_incremental_outcome.call_args
@@ -2021,10 +2029,11 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[start_date, end_date],
+        selected_times=[True, True] + [False] * (_N_TIMES - 2),
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
+        validate_flag=False,
     )
     # Using `assert_called_with` doesn't work with array comparison.
     _, mock_kwargs = mock_incremental_outcome.call_args

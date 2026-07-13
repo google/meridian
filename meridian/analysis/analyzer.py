@@ -1158,6 +1158,8 @@ class Analyzer:
       by_reach: bool = True,
       include_non_paid_channels: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
+      *,
+      validate_flag: bool = True,
   ) -> backend.Tensor:
     """Calculates either the posterior or prior incremental outcome.
 
@@ -1288,15 +1290,11 @@ class Analyzer:
       batch_size: Integer representing the maximum draws per chain in each
         batch. The calculation is run in batches to avoid memory exhaustion. If
         a memory error occurs, try reducing `batch_size`. The calculation will
-        generally be faster with larger `batch_size` values.
+        be unchanged regardless of the value passed for `batch_size`.
+      validate_flag: Boolean indicating whether to perform validation checks.
 
     Returns:
-      Tensor of incremental outcome (either KPI or revenue, depending on
-      `use_kpi` argument) with dimensions `(n_chains, n_draws, n_geos,
-      n_times, n_channels)`. If `include_non_paid_channels=True`, then
-      `n_channel` is the total number of media, RF, organic media, and organic
-      RF and non-media channels. If `include_non_paid_channels=False`, then
-      `n_channels` is the total number of media and RF channels. The `n_geos`
+      A `Tensor` of shape `(n_chains, n_draws, ...)` where the `n_geos`
       and `n_times` dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     Raises:
@@ -1333,17 +1331,6 @@ class Analyzer:
       )
 
     builder = tensors.DataTensorsBuilder(self.model_context)
-    inputs0 = builder.build_counterfactual_inputs(
-        new_data=new_data,
-        scaling_factor=scaling_factor0,
-        non_media_baseline_values=non_media_baseline_values,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-        media_selected_times=media_selected_times,
-        by_reach=by_reach,
-        include_non_paid_channels=include_non_paid_channels,
-        is_baseline=True,
-    )
     inputs1 = builder.build_counterfactual_inputs(
         new_data=new_data,
         scaling_factor=scaling_factor1,
@@ -1354,13 +1341,32 @@ class Analyzer:
         by_reach=by_reach,
         include_non_paid_channels=include_non_paid_channels,
         is_baseline=False,
+        validate_flag=validate_flag,
     )
+    if scaling_factor0 != 0 or not all(
+        inputs1.media_selected_times_mask  # pyrefly: ignore[bad-argument-type]
+    ):
+      inputs0 = builder.build_counterfactual_inputs(
+          new_data=new_data,
+          scaling_factor=scaling_factor0,
+          non_media_baseline_values=non_media_baseline_values,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+          by_reach=by_reach,
+          include_non_paid_channels=include_non_paid_channels,
+          is_baseline=True,
+          validate_flag=validate_flag,
+      )
+      data_tensors0 = dataclasses.replace(inputs0.tensors, time=None)
+    else:
+      inputs0 = None
+      data_tensors0 = None
 
     # TODO: Move `time` from DataTensors to AnalyzerInputs to
     # avoid this XLA workaround.
     # Strip time from tensors to avoid TF XLA compilation errors (XLA does
     # not support string tensors).
-    data_tensors0 = dataclasses.replace(inputs0.tensors, time=None)
     data_tensors1 = dataclasses.replace(inputs1.tensors, time=None)
 
     # Calculate incremental outcome in batches.
@@ -1391,7 +1397,7 @@ class Analyzer:
           **incremental_outcome_kwargs,
       )
       # Calculate incremental outcome under counterfactual scenario "Media_0".
-      if scaling_factor0 != 0 or not all(inputs0.media_selected_times_mask):  # pyrefly: ignore[bad-argument-type]
+      if inputs0 is not None and data_tensors0 is not None:
         batch_incremental_outcome -= self._incremental_outcome_impl(
             data_tensors=data_tensors0,
             dist_tensors=dist_tensors,

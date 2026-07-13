@@ -14,7 +14,7 @@
 
 """Data structures and tensor preparation utilities for Meridian."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import dataclasses
 import numbers
 from typing import Any, Optional, Union
@@ -35,6 +35,8 @@ __all__ = (
     "DataTensorsBuilder",
     "DistributionTensors",
     "get_model_context",
+    "normalize_date_str",
+    "normalize_times_set",
 )
 
 
@@ -92,6 +94,29 @@ def _is_str_list(l: Sequence[Any]) -> bool:
   return all(isinstance(item, str) for item in l)
 
 
+def normalize_date_str(
+    time_val: str | np.datetime64 | xr.DataArray | Any,
+) -> str:
+  """Extracts the 'YYYY-MM-DD' prefix string from a date coordinate or string.
+
+  Args:
+    time_val: A date string, NumPy datetime scalar (`np.datetime64`), a 0-D
+      xarray `DataArray` coordinate scalar (which may wrap a date string,
+      datetime, or NumPy timestamp), or any other date coordinate scalar (e.g.
+      `pd.Timestamp`, `datetime.date`).
+
+  Returns:
+    The normalized 'YYYY-MM-DD' date string.
+  """
+  val = time_val.item() if hasattr(time_val, "item") else time_val
+  return str(val)[:10]
+
+
+def normalize_times_set(times: Iterable[Any]) -> set[str]:
+  """Returns a set of normalized 'YYYY-MM-DD' date strings from times."""
+  return {normalize_date_str(x) for x in times}
+
+
 def _validate_selected_times(
     selected_times: Sequence[str] | Sequence[bool],
     input_times: xr.DataArray,
@@ -102,18 +127,18 @@ def _validate_selected_times(
 ) -> None:
   """Raises an error if selected_times is invalid.
 
-  This checks that the `selected_times` argument is a list of strings or a list
-  of booleans. If it is a list of strings, then each string must match the name
-  of a time period coordinate in `input_times`. If it is a list of booleans,
-  then it must have the same number of elements as `n_times`.
-
   Args:
-    selected_times: Optional list of times to validate.
-    input_times: Time dimension coordinates from `InputData.time` or
-      `InputData.media_time`.
-    n_times: The number of time periods in the tensor.
-    arg_name: The name of the argument being validated.
-    comparison_arg_name: The name of the argument being compared to.
+    selected_times: Sequence of time names or booleans to resolve.
+    input_times: InputData time period coordinates.
+    n_times: InputData time periods count.
+    arg_name: Name of the `selected_times` argument.
+    comparison_arg_name: Name of arg to compare with.
+
+  Raises:
+    ValueError: A `ValueError` is raised when coordinates in `selected_times` do
+      not match time coordinates in `input_times` (either partially or entirely)
+      or more `selected_times` than `n_times` were provided when a boolean list
+      contains both true and false values.
   """
   if not selected_times:
     return
@@ -124,7 +149,9 @@ def _validate_selected_times(
           f"there are time period coordinates in {comparison_arg_name}."
       )
   elif _is_str_list(selected_times):
-    if any(time not in input_times for time in selected_times):
+    input_times_set = normalize_times_set(input_times)
+    selected_times_set = normalize_times_set(selected_times)
+    if not selected_times_set <= input_times_set:
       raise ValueError(
           f"`{arg_name}` must match the time dimension names from "
           "meridian.InputData."
@@ -902,6 +929,8 @@ class DataTensorsBuilder:
       selected_times: Sequence[str] | Sequence[bool] | None,
       n_times: int,
       input_times: xr.DataArray,
+      *,
+      validate_flag: bool = True,
   ) -> backend.Tensor | None:
     """Resolves selected times to their integer indices.
 
@@ -909,22 +938,27 @@ class DataTensorsBuilder:
       selected_times: Sequence of time names or booleans to resolve.
       n_times: The number of time periods.
       input_times: The input times to resolve against.
+      validate_flag: Whether to perform validation checks.
 
     Returns:
       A tensor of time indices, or None if selected_times is None.
     """
     if selected_times is None:
       return None
-    _validate_selected_times(
-        selected_times=selected_times,
-        input_times=input_times,
-        n_times=n_times,
-        arg_name="selected_times",
-        comparison_arg_name="`tensor`",
-    )
+    if validate_flag:
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=input_times,
+          n_times=n_times,
+          arg_name="selected_times",
+          comparison_arg_name="`tensor`",
+      )
     if _is_str_list(selected_times):
+      selected_times_set = normalize_times_set(selected_times)
       time_indices = [
-          i for i, x in enumerate(input_times) if x in selected_times
+          i
+          for i, x in enumerate(input_times)
+          if normalize_date_str(x) in selected_times_set
       ]
     elif _is_bool_list(selected_times):
       time_indices = [i for i, x in enumerate(selected_times) if x]
@@ -938,6 +972,8 @@ class DataTensorsBuilder:
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       payload_cls: type[AnalyzerInputs] = AnalyzerInputs,
+      *,
+      validate_flag: bool = True,
       **kwargs,
   ) -> AnalyzerInputs:
     """Resolves indices and packages tensors into the specified payload class."""
@@ -956,6 +992,7 @@ class DataTensorsBuilder:
         selected_times=selected_times,
         n_times=n_times,
         input_times=input_times,  # pyrefly: ignore[bad-argument-type]
+        validate_flag=validate_flag,
     )
 
     return payload_cls(
@@ -1138,41 +1175,27 @@ class DataTensorsBuilder:
         selected_times=selected_times,
     )
 
-  def build_counterfactual_inputs(
+  def validate_counterfactual_inputs(
       self,
       new_data: DataTensors | None = None,
-      *,
-      scaling_factor: float = 1.0,
       non_media_baseline_values: Sequence[float] | None = None,
-      selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
       media_selected_times: Sequence[str] | Sequence[bool] | None = None,
-      by_reach: bool = True,
       include_non_paid_channels: bool = True,
-      is_baseline: bool = False,
-  ) -> CounterfactualInputs:
-    """Builds counterfactual inputs for analyzer.
+  ) -> None:
+    """Performs validation checks on counterfactual input parameters without building tensors.
 
     Args:
       new_data: Optional `DataTensors` container.
-      scaling_factor: Float indicating the factor to scale tensors by.
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float which means that the
         fixed value will be used as baseline for the given channel.
-      selected_geos: Optional list containing a subset of geos to include.
       selected_times: Optional list containing either a subset of dates to
         include or booleans.
       media_selected_times: Optional list containing either a subset of dates to
         include or booleans.
-      by_reach: Boolean indicating whether to scale reach or frequency when rf
-        data is available.
       include_non_paid_channels: Boolean. If `True`, organic media, organic RF
-        and non-media treatments data is included in the output.
-      is_baseline: Boolean. If `True`, the non-media treatments are set to their
-        baseline values.
-
-    Returns:
-      A `CounterfactualInputs` object.
+        and non-media treatments data is included in the validation check.
     """
     _validate_non_media_baseline_values_numbers(non_media_baseline_values)
 
@@ -1193,7 +1216,6 @@ class DataTensorsBuilder:
     new_n_media_times = self.get_modified_times(base_unscaled)
 
     if new_n_media_times is None:
-      new_n_media_times = self.model_context.n_media_times
       _validate_selected_times(
           selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
           input_times=self.model_context.input_data.time,
@@ -1208,7 +1230,6 @@ class DataTensorsBuilder:
           arg_name="media_selected_times",
           comparison_arg_name="the media tensors",
       )
-      media_times = self.model_context.input_data.media_time
     else:
       new_time = (
           np.asarray(base_unscaled.time).astype(str).tolist()
@@ -1221,6 +1242,79 @@ class DataTensorsBuilder:
           new_n_media_times=new_n_media_times,
           new_time=new_time,
       )
+
+  def build_counterfactual_inputs(
+      self,
+      new_data: DataTensors | None = None,
+      *,
+      scaling_factor: float = 1.0,
+      non_media_baseline_values: Sequence[float] | None = None,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      by_reach: bool = True,
+      include_non_paid_channels: bool = True,
+      is_baseline: bool = False,
+      validate_flag: bool = True,
+  ) -> CounterfactualInputs:
+    """Builds counterfactual inputs for analyzer.
+
+    Args:
+      new_data: Optional `DataTensors` container.
+      scaling_factor: Float indicating the factor to scale tensors by.
+      non_media_baseline_values: Optional list of shape
+        `(n_non_media_channels,)`. Each element is a float which means that the
+        fixed value will be used as baseline for the given channel.
+      selected_geos: Optional list containing a subset of geos to include.
+      selected_times: Optional list containing either a subset of dates to
+        include or booleans.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans.
+      by_reach: Boolean indicating whether to scale reach or frequency when rf
+        data is available.
+      include_non_paid_channels: Boolean. If `True`, organic media, organic RF
+        and non-media treatments data is included in the output.
+      is_baseline: Boolean. If `True`, the non-media treatments are set to their
+        baseline values.
+      validate_flag: Whether to perform validation checks.
+
+    Returns:
+      A `CounterfactualInputs` object.
+    """
+    if validate_flag:
+      self.validate_counterfactual_inputs(
+          new_data=new_data,
+          non_media_baseline_values=non_media_baseline_values,
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+          include_non_paid_channels=include_non_paid_channels,
+      )
+
+    times_modified = False
+    if new_data is not None:
+      times_modified = self.get_modified_times(new_data) is not None
+
+    required_params = list(constants.PAID_DATA)
+    if include_non_paid_channels:
+      required_params += list(constants.NON_PAID_DATA)
+    if not times_modified:
+      required_params.append(constants.CONTROLS)
+
+    base_unscaled = self._build_unscaled_data_tensors(
+        new_data=new_data, required_tensors_names=required_params
+    )
+
+    new_n_media_times = self.get_modified_times(base_unscaled)
+
+    if new_n_media_times is None:
+      new_n_media_times = self.model_context.n_media_times
+      media_times = self.model_context.input_data.media_time
+    else:
+      new_time = (
+          np.asarray(base_unscaled.time).astype(str).tolist()
+          if base_unscaled.time is not None
+          else None
+      )
       media_times = (
           new_time[-new_n_media_times:] if new_time is not None else []
       )
@@ -1228,9 +1322,10 @@ class DataTensorsBuilder:
     if media_selected_times is None:
       resolved_media_selected_times = [True] * new_n_media_times
     else:
-      if all(isinstance(time, str) for time in media_selected_times):
+      if _is_str_list(media_selected_times):
+        media_selected_set = normalize_times_set(media_selected_times)
         resolved_media_selected_times = [
-            x in media_selected_times for x in media_times
+            normalize_date_str(x) in media_selected_set for x in media_times
         ]
       else:
         resolved_media_selected_times = [bool(x) for x in media_selected_times]
@@ -1247,11 +1342,10 @@ class DataTensorsBuilder:
             "non_media_transformer is missing in model_context despite "
             "non_media_treatments being present in data."
         )
-      non_media_treatments_baseline_scaled = (
-          equations.ModelEquations(self.model_context)
-          .compute_non_media_treatments_baseline(
-              non_media_baseline_values=non_media_baseline_values,
-          )
+      non_media_treatments_baseline_scaled = equations.ModelEquations(
+          self.model_context
+      ).compute_non_media_treatments_baseline(
+          non_media_baseline_values=non_media_baseline_values,
       )
       non_media_treatments_baseline_normalized = (
           self.model_context.non_media_transformer.forward(
@@ -1297,6 +1391,7 @@ class DataTensorsBuilder:
         payload_cls=CounterfactualInputs,
         non_media_baseline_normalized=non_media_baseline_normalized_tensor,
         media_selected_times_mask=media_selected_times_mask,
+        validate_flag=validate_flag,
     )
 
   def build_baseline_inputs(
