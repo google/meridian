@@ -517,6 +517,11 @@ chip.fail {
   color: $red_700;
 }
 
+chip.neutral {
+  background-color: #f1f3f4;
+  color: #5f6368;
+}
+
 /* Force white background and black text for Model Health Summary Card */
 .model-health-card {
   background-color: #fff !important;
@@ -544,6 +549,9 @@ chip.fail {
   }
   chip.fail {
     color: $red_700 !important;
+  }
+  chip.neutral {
+    color: #5f6368 !important;
   }
 
   // Preserve status banner colors

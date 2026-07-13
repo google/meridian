@@ -15,7 +15,8 @@
 """Data structures for the Model Quality Checks results."""
 
 import abc
-from collections.abc import Mapping
+import collections
+from collections.abc import Mapping, Sequence
 import dataclasses
 import enum
 import functools
@@ -895,7 +896,7 @@ class ReviewSummary:
     summary_message: A summary message of all checks.
     results: A list of all check results.
     health_score: The health score of the model.
-  """
+  """  # fmt: skip
 
   overall_status: Status
   summary_message: str

@@ -507,6 +507,8 @@ Convergence Check:
         html_output,
     )
 
+    self.assertNotIn("Calibration score", html_output)
+
 
 class ImplausibleROICheckResultTest(parameterized.TestCase):
 
@@ -596,38 +598,78 @@ class ImplausibleROICheckResultTest(parameterized.TestCase):
 
 class HighVarianceCheckResultTest(parameterized.TestCase):
 
-  def test_high_variance_check_result_pass(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="pass",
+          case=results.HighVarianceAggregateCases.PASS,
+          high_variance_channels=[],
+          expected_status=results.Status.PASS,
+          expected_recommendation="All channels have acceptable ROI variance.",
+      ),
+      dict(
+          testcase_name="review",
+          case=results.HighVarianceAggregateCases.REVIEW,
+          high_variance_channels=["channel1", "channel2"],
+          expected_status=results.Status.REVIEW,
+          expected_recommendation=(
+              "We've detected channel(s) `channel1`, `channel2` with highly"
+              " uncertain ROI estimates (wide posterior intervals)."
+              f" {review_constants.HIGH_VARIANCE_ROI_RECOMMENDATION}"
+          ),
+      ),
+  )
+  def test_high_variance_check_result(
+      self,
+      case,
+      high_variance_channels,
+      expected_status,
+      expected_recommendation,
+  ):
     result = results.HighVarianceCheckResult(
-        case=results.HighVarianceAggregateCases.PASS,
+        case=case,
         channel_results=[],
-        high_variance_channels=[],
+        high_variance_channels=high_variance_channels,
     )
-    self.assertEqual(result.case.status, results.Status.PASS)
-    self.assertEqual(
-        result.recommendation,
-        "All channels have acceptable ROI variance.",
-    )
-
-  def test_high_variance_check_result_review(self):
-    result = results.HighVarianceCheckResult(
-        case=results.HighVarianceAggregateCases.REVIEW,
-        channel_results=[],
-        high_variance_channels=["channel1", "channel2"],
-    )
-    self.assertEqual(result.case.status, results.Status.REVIEW)
-    self.assertEqual(
-        result.recommendation,
-        "We've detected channel(s) `channel1`, `channel2` with highly uncertain"
-        " ROI estimates (wide posterior intervals). "
-        f"{review_constants.HIGH_VARIANCE_ROI_RECOMMENDATION}",
-    )
+    self.assertEqual(result.case.status, expected_status)
+    self.assertEqual(result.recommendation, expected_recommendation)
 
 
 class PotentialBiasCheckResultTest(parameterized.TestCase):
 
-  def test_potential_bias_check_result_pass(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="pass",
+          case=results.PotentialBiasAggregateCases.PASS,
+          low_correlation_channels=[],
+          expected_status=results.Status.PASS,
+          expected_recommendation=(
+              "All channels have sufficient correlation with control variables."
+          ),
+          corr_value=0.5,
+      ),
+      dict(
+          testcase_name="review",
+          case=results.PotentialBiasAggregateCases.REVIEW,
+          low_correlation_channels=["channel1"],
+          expected_status=results.Status.REVIEW,
+          expected_recommendation=(
+              "We've detected channel(s) `channel1` with very low correlation"
+              " with all included control variables."
+              f" {review_constants.POTENTIAL_BIAS_RECOMMENDATION}"
+          ),
+          corr_value=0.0,
+      ),
+  )
+  def test_potential_bias_check_result(
+      self,
+      case,
+      low_correlation_channels,
+      expected_status,
+      expected_recommendation,
+      corr_value,
+  ):
     corr_matrix = xr.DataArray(
-        np.array([[[0.5]]]),
+        np.array([[[corr_value]]]),
         coords={
             constants.GEO: ["geo1"],
             constants.CHANNEL: ["channel1"],
@@ -640,47 +682,13 @@ class PotentialBiasCheckResultTest(parameterized.TestCase):
         ],
     )
     result = results.PotentialBiasCheckResult(
-        case=results.PotentialBiasAggregateCases.PASS,
+        case=case,
         channel_results=[],
-        low_correlation_channels=[],
+        low_correlation_channels=low_correlation_channels,
         correlation_matrix=corr_matrix,
     )
-    self.assertEqual(result.case.status, results.Status.PASS)
-    self.assertEqual(
-        result.recommendation,
-        "All channels have sufficient correlation with control variables.",
-    )
-    xr.testing.assert_equal(
-        result.details[review_constants.CORRELATION_MATRIX], corr_matrix
-    )
-
-  def test_potential_bias_check_result_review(self):
-    corr_matrix = xr.DataArray(
-        np.array([[[0.0]]]),
-        coords={
-            constants.GEO: ["geo1"],
-            constants.CHANNEL: ["channel1"],
-            constants.CONTROL_VARIABLE: ["control1"],
-        },
-        dims=[
-            constants.GEO,
-            constants.CHANNEL,
-            constants.CONTROL_VARIABLE,
-        ],
-    )
-    result = results.PotentialBiasCheckResult(
-        case=results.PotentialBiasAggregateCases.REVIEW,
-        channel_results=[],
-        low_correlation_channels=["channel1"],
-        correlation_matrix=corr_matrix,
-    )
-    self.assertEqual(result.case.status, results.Status.REVIEW)
-    self.assertEqual(
-        result.recommendation,
-        "We've detected channel(s) `channel1` with very low correlation with"
-        " all included control variables."
-        f" {review_constants.POTENTIAL_BIAS_RECOMMENDATION}",
-    )
+    self.assertEqual(result.case.status, expected_status)
+    self.assertEqual(result.recommendation, expected_recommendation)
     xr.testing.assert_equal(
         result.details[review_constants.CORRELATION_MATRIX], corr_matrix
     )
