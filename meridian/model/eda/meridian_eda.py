@@ -1952,14 +1952,8 @@ class MeridianEDA:
     [artifact] = self._dataset_level_prior_check_outcome.get_overall_artifacts()
     prior_probability = artifact.prior_negative_baseline_prob
 
-    prior_chart = formatter.ChartSpec(
-        id=eda_constants.PRIOR_CHART_ID,
-        chart_json=self.plot_prior_mean().to_json(),
-        infos=[
-            f'{eda_constants.PRIOR_PROBABILITY_REPORT_INFO}Prior Probability of'
-            f' negative baseline: {prior_probability}'
-        ],
-    )
+    prior_chart = self._generate_prior_mean_chart_spec(prior_probability)
+    chart_specs = [prior_chart]
 
     return (
         formatter.create_card_html(
@@ -1968,9 +1962,22 @@ class MeridianEDA:
                 id=eda_constants.PRIOR_SPECIFICATIONS_CARD_ID,
                 title=eda_constants.PRIOR_SPECIFICATIONS_CARD_TITLE,
             ),
-            chart_specs=[prior_chart],
+            chart_specs=chart_specs,
         ),
         _initialize_severity_counts(),
+    )
+
+  def _generate_prior_mean_chart_spec(
+      self, prior_probability: float
+  ) -> formatter.ChartSpec:
+    """Generates the ChartSpec for the default prior mean chart."""
+    return formatter.ChartSpec(
+        id=eda_constants.PRIOR_CHART_ID,
+        chart_json=self.plot_prior_mean().to_json(),
+        infos=[
+            f'{eda_constants.PRIOR_PROBABILITY_REPORT_INFO}Prior Probability of'
+            f' negative baseline: {prior_probability}'
+        ],
     )
 
   def _validate_and_get_geos_to_plot(self, geos: Geos) -> Sequence[str]:
