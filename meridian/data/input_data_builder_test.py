@@ -1650,7 +1650,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'organic_reach', da),
           da2=WRONG_ORGANIC_RF_CHANNELS_ORGANIC_FREQUENCY_DA,
           setter2=lambda builder, da: setattr(builder, 'organic_frequency', da),
-          components=['organic_frequency', 'organic_reach'],
       ),
       dict(
           testcase_name='organic_rf_channel_organic_reach',
@@ -1659,7 +1658,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'organic_frequency', da),
           da2=WRONG_ORGANIC_RF_CHANNELS_ORGANIC_REACH_DA,
           setter2=lambda builder, da: setattr(builder, 'organic_reach', da),
-          components=['organic_reach', 'organic_frequency'],
       ),
       dict(
           testcase_name='media_channel_media',
@@ -1668,7 +1666,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'media_spend', da),
           da2=WRONG_MEDIA_CHANNELS_MEDIA_DA,
           setter2=lambda builder, da: setattr(builder, 'media', da),
-          components=['media', 'media_spend'],
       ),
       dict(
           testcase_name='media_channel_media_spend',
@@ -1677,7 +1674,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'media', da),
           da2=WRONG_MEDIA_CHANNELS_MEDIA_SPEND_DA,
           setter2=lambda builder, da: setattr(builder, 'media_spend', da),
-          components=['media_spend', 'media'],
       ),
       dict(
           testcase_name='rf_channel_reach',
@@ -1686,7 +1682,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'rf_spend', da),
           da2=WRONG_RF_CHANNELS_REACH_DA,
           setter2=lambda builder, da: setattr(builder, 'reach', da),
-          components=['reach', 'rf_spend'],
       ),
       dict(
           testcase_name='rf_channel_frequency',
@@ -1695,7 +1690,6 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'rf_spend', da),
           da2=WRONG_RF_CHANNELS_FREQUENCY_DA,
           setter2=lambda builder, da: setattr(builder, 'frequency', da),
-          components=['frequency', 'rf_spend'],
       ),
       dict(
           testcase_name='rf_channel_rf_spend',
@@ -1704,15 +1698,14 @@ class InputDataBuilderTest(parameterized.TestCase):
           setter1=lambda builder, da: setattr(builder, 'reach', da),
           da2=WRONG_RF_CHANNELS_RF_SPEND_DA,
           setter2=lambda builder, da: setattr(builder, 'rf_spend', da),
-          components=['rf_spend', 'reach'],
       ),
   )
   def test_inconsistent_channels_raises_exception(
-      self, channel_name, da1, setter1, da2, setter2, components
+      self, channel_name, da1, setter1, da2, setter2
   ):
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
-        f'{channel_name} coordinates must be the same between {components}.',
+        f"`{channel_name}` coordinates of array `.*?` don't match.",
     ):
       builder = input_data_builder.InputDataBuilder(
           kpi_type=constants.NON_REVENUE

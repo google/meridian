@@ -694,14 +694,7 @@ class InputDataBuilder(abc.ABC):
   def _validate_channels_consistency(
       self, channel_dimension_name: str, da_list: list[xr.DataArray | None]
   ):
-    for da in da_list:
-      if da is not None and set(
-          da.coords[channel_dimension_name].values.tolist()
-      ) != set(da_list[0].coords[channel_dimension_name].values.tolist()):  # pyrefly: ignore[missing-attribute]
-        raise ValueError(
-            f'{channel_dimension_name} coordinates must be the same between'
-            f' {[da.name for da in da_list if da is not None]}.'
-        )
+    validator.check_coords_match(channel_dimension_name, da_list)
 
   def _validate_required_components(self):
     """Validates that all required data arrays are defined."""

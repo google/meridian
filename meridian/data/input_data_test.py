@@ -333,7 +333,9 @@ class InputDataTest(parameterized.TestCase):
           population=self.population,
           revenue_per_kpi=self.revenue_per_kpi,
           media=media,
-          media_spend=self.media_spend,
+          media_spend=self.media_spend.assign_coords(
+              media_channel=media.coords["media_channel"]
+          ),
       )
 
   def test_validate_rf_channels_duplicate_names(self):
@@ -366,8 +368,12 @@ class InputDataTest(parameterized.TestCase):
           media=self.not_lagged_media,
           media_spend=self.media_spend,
           reach=reach,
-          frequency=self.not_lagged_frequency,
-          rf_spend=self.rf_spend,
+          frequency=self.not_lagged_frequency.assign_coords(
+              rf_channel=reach.coords["rf_channel"]
+          ),
+          rf_spend=self.rf_spend.assign_coords(
+              rf_channel=reach.coords["rf_channel"]
+          ),
       )
 
   def test_validate_rf_channels_with_duplicate_media_channels(self):
@@ -402,7 +408,9 @@ class InputDataTest(parameterized.TestCase):
           revenue_per_kpi=self.revenue_per_kpi,
           population=self.population,
           media=media,
-          media_spend=self.media_spend,
+          media_spend=self.media_spend.assign_coords(
+              media_channel=media.coords["media_channel"]
+          ),
           reach=self.not_lagged_reach,
           frequency=self.not_lagged_frequency,
           rf_spend=self.rf_spend,
@@ -450,10 +458,16 @@ class InputDataTest(parameterized.TestCase):
           revenue_per_kpi=self.revenue_per_kpi,
           population=self.population,
           media=media,
-          media_spend=self.media_spend,
+          media_spend=self.media_spend.assign_coords(
+              media_channel=media.coords["media_channel"]
+          ),
           reach=reach,
-          frequency=self.not_lagged_frequency,
-          rf_spend=self.rf_spend,
+          frequency=self.not_lagged_frequency.assign_coords(
+              rf_channel=reach.coords["rf_channel"]
+          ),
+          rf_spend=self.rf_spend.assign_coords(
+              rf_channel=reach.coords["rf_channel"]
+          ),
       )
 
   def test_scenarios_kpi_type_revenue_revenue_per_kpi_set_to_ones(self):
@@ -1720,6 +1734,44 @@ class InputDataTest(parameterized.TestCase):
           population=self.population,
           media=self.not_lagged_media,
           media_spend=self.media_spend,
+      )
+
+  def test_channel_coordinates_order_mismatch(self):
+    media_reversed = self.not_lagged_media.assign_coords({
+        constants.MEDIA_CHANNEL: self.not_lagged_media.coords[
+            constants.MEDIA_CHANNEL
+        ].values[::-1]
+    })
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "`media_channel` coordinates of array `media_spend` don't match.",
+    ):
+      input_data.InputData(
+          kpi=self.not_lagged_kpi,
+          kpi_type=constants.REVENUE,
+          population=self.population,
+          media=media_reversed,
+          media_spend=self.media_spend,
+      )
+
+    reach_reversed = self.not_lagged_reach.assign_coords({
+        constants.RF_CHANNEL: self.not_lagged_reach.coords[
+            constants.RF_CHANNEL
+        ].values[::-1]
+    })
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "`rf_channel` coordinates of array `frequency` don't match.",
+    ):
+      input_data.InputData(
+          kpi=self.not_lagged_kpi,
+          kpi_type=constants.REVENUE,
+          population=self.population,
+          reach=reach_reversed,
+          frequency=self.not_lagged_frequency,
+          rf_spend=self.rf_spend,
       )
 
 

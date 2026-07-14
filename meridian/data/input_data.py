@@ -74,19 +74,6 @@ def _check_dim_match(dim: str, arrays: Sequence[xr.DataArray | None]):
     )
 
 
-def _check_coords_match(dim: str, arrays: Sequence[xr.DataArray]):
-  """Verifies that the coordinates of the appropriate arrays match."""
-  arrays = [arr for arr in arrays if arr is not None and dim in arr.coords]
-  if not arrays:
-    return
-  first_coords = arrays[0].coords[dim].values
-  for arr in arrays[1:]:
-    if not np.array_equal(arr.coords[dim].values, first_coords):
-      raise ValueError(
-          f"`{dim}` coordinates of array `{arr.name}` don't match."
-      )
-
-
 def _aggregate_spend(
     spend: xr.DataArray, calibration_period: np.ndarray | None
 ) -> np.ndarray | None:
@@ -751,16 +738,35 @@ class InputData:
         ],
     )
     _check_dim_match(constants.MEDIA_CHANNEL, [self.media, self.media_spend])
+    validator.check_coords_match(
+        constants.MEDIA_CHANNEL, [self.media, self.media_spend]
+    )
     _check_dim_match(
         constants.RF_CHANNEL, [self.reach, self.frequency, self.rf_spend]
     )
+    validator.check_coords_match(
+        constants.RF_CHANNEL, [self.reach, self.frequency, self.rf_spend]
+    )
     _check_dim_match(constants.ORGANIC_MEDIA_CHANNEL, [self.organic_media])
+    validator.check_coords_match(
+        constants.ORGANIC_MEDIA_CHANNEL, [self.organic_media]
+    )
     _check_dim_match(
         constants.ORGANIC_RF_CHANNEL,
         [self.organic_reach, self.organic_frequency],
     )
+    validator.check_coords_match(
+        constants.ORGANIC_RF_CHANNEL,
+        [self.organic_reach, self.organic_frequency],
+    )
     _check_dim_match(constants.NON_MEDIA_CHANNEL, [self.non_media_treatments])
+    validator.check_coords_match(
+        constants.NON_MEDIA_CHANNEL, [self.non_media_treatments]
+    )
     _check_dim_match(constants.CONTROL_VARIABLE, [self.controls])
+    validator.check_coords_match(
+        constants.CONTROL_VARIABLE, [self.controls]
+    )
 
   def _validate_media_channels(self):
     """Verifies Meridian media channel names invariants.
@@ -885,7 +891,7 @@ class InputData:
     for array in arrays_with_geos:
       self._check_unique_names(constants.GEO, array)
 
-    _check_coords_match(constants.GEO, arrays_with_geos)  # pyrefly: ignore[bad-argument-type]
+    validator.check_coords_match(constants.GEO, arrays_with_geos)
 
   def as_dataset(self) -> xr.Dataset:
     """Returns data as a single `xarray.Dataset` object."""

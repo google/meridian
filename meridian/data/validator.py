@@ -14,8 +14,11 @@
 
 """This module contains common validation functions for Meridian data."""
 
+from collections.abc import Sequence
 import datetime as dt
+
 from meridian import constants
+import numpy as np
 import xarray as xr
 
 
@@ -46,3 +49,17 @@ def validate_time_coord_format(array: xr.DataArray | None):
               f"Invalid {coord_name} label: {time.item()!r}. "
               f"Expected format: '{constants.DATE_FORMAT}'"
           ) from exc
+
+
+def check_coords_match(dim: str, arrays: Sequence[xr.DataArray | None]):
+  """Verifies that the coordinates of the appropriate arrays match."""
+  arrays = [arr for arr in arrays if arr is not None and dim in arr.coords]
+  if not arrays:
+    return
+  first_coords = arrays[0].coords[dim].values
+  for arr in arrays[1:]:
+    if not np.array_equal(arr.coords[dim].values, first_coords):
+      name = arr.name if arr.name is not None else "Unnamed"
+      raise ValueError(
+          f"`{dim}` coordinates of array `{name}` don't match."
+      )
