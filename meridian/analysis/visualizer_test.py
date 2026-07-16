@@ -775,6 +775,61 @@ class ModelFitTest(absltest.TestCase):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
     self.assertEqual(plot.config.axis.to_dict(), formatter.TEXT_CONFIG)
 
+  def test_model_fit_plots_knots(self):
+    with mock.patch.object(
+        self.model_fit_kpi_type_revenue._meridian.knot_info,
+        "knot_locations",
+        new=np.array([0, 2]),
+    ):
+      plot = self.model_fit_kpi_type_revenue.plot_model_fit(knots=True)
+      self.assertLen(plot.layer, 5)
+      rules_layer = plot.layer[4]
+      self.assertEqual(rules_layer.mark.type, "rule")
+      self.assertEqual(rules_layer.mark.color, c.GREEN_500)
+      self.assertEqual(rules_layer.mark.strokeWidth, 1.5)
+      self.assertListEqual(
+          rules_layer.data[c.TIME].tolist(),
+          ["2023-01-01", "2023-01-15"],
+      )
+
+  def test_model_fit_plots_knots_false(self):
+    with mock.patch.object(
+        self.model_fit_kpi_type_revenue._meridian.knot_info,
+        "knot_locations",
+        new=np.array([0, 2]),
+    ):
+      plot = self.model_fit_kpi_type_revenue.plot_model_fit(knots=False)
+      self.assertLen(plot.layer, 4)
+
+  def test_model_fit_plots_knots_selected_times(self):
+    with mock.patch.object(
+        self.model_fit_kpi_type_revenue._meridian.knot_info,
+        "knot_locations",
+        new=np.array([0, 2]),
+    ):
+      plot = self.model_fit_kpi_type_revenue.plot_model_fit(
+          selected_times=["2023-01-15"], knots=True
+      )
+      self.assertLen(plot.layer, 5)
+      rules_layer = plot.layer[4]
+      self.assertListEqual(rules_layer.data[c.TIME].tolist(), ["2023-01-15"])
+
+  def test_model_fit_plots_knots_show_geo_level(self):
+    with mock.patch.object(
+        self.model_fit_kpi_type_revenue._meridian.knot_info,
+        "knot_locations",
+        new=np.array([0, 2]),
+    ):
+      plot = self.model_fit_kpi_type_revenue.plot_model_fit(
+          n_top_largest_geos=3, show_geo_level=True, knots=True
+      )
+      self.assertIsInstance(plot, alt.FacetChart)
+      self.assertLen(plot.spec.layer, 5)
+      rules_layer = plot.spec.layer[4]
+      self.assertContainsSubset(
+          [c.GEO, c.TIME], rules_layer.data.columns.tolist()
+      )
+
 
 class ReachAndFrequencyTest(parameterized.TestCase):
 
