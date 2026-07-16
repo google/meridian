@@ -363,6 +363,31 @@ class ReviewerTest(parameterized.TestCase):
 
     self.assertAlmostEqual(summary.health_score, expected_score, places=1)
 
+  def test_health_score_empty_channel_results(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_baseline_result.negative_baseline_prob = 0.05
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_bayesian_ppp_result.bayesian_ppp = 0.5
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_gof_result.metrics = results.GoodnessOfFitMetrics(
+        r_squared=1.0, mape=0.1, wmape=0.1
+    )
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.PASS
+    )
+    self._mock_roi_consistency_result.channel_results = []
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+    self._mock_pps_result.no_shift_channels = []
+    self._mock_pps_result.channel_results = []
+
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+    )
+    summary = review.run()
+    self.assertAlmostEqual(summary.health_score, 100.0, places=1)
+
   def test_run_pass_with_roi_consistency_review(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
     self._mock_baseline_result.case = results.BaselineCases.PASS
@@ -430,6 +455,34 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_roi_consistency_check_cls.assert_called_once()
     self._mock_gof_check_cls.assert_called_once()
     self._mock_pps_check_cls.assert_called_once()
+
+  def test_run_with_custom_convergence_config(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.PASS
+    )
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+
+    custom_conv_config = configs.ConvergenceConfig(convergence_threshold=1.1)
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        convergence_check_config=custom_conv_config,
+    )
+    summary = review.run()
+
+    self.assertEqual(summary.overall_status, results.Status.PASS)
+    self._mock_convergence_check_cls.assert_called_once_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=review._analyzer,
+        config=custom_conv_config,
+        selected_geos=None,
+        selected_times=None,
+    )
 
   def test_run_pass_with_pps_review(self):
     self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
