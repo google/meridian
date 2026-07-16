@@ -2454,7 +2454,7 @@ class MediaSummary:
     if include_ci:
       error_bar = (
           alt.Chart(df)
-          .mark_errorbar(ticks=True, color=c.BLUE_300)
+          .mark_errorbar(ticks={'size': 12}, color=c.BLUE_300)
           .encode(
               alt.X(f'{c.CHANNEL}:N'),
               alt.Y(f'{c.CI_HI}:Q', title=metric_label),

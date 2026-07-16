@@ -915,7 +915,7 @@ class MeridianEDA:
 
       charts.append((
           alt.Chart(plot_data)
-          .mark_boxplot(ticks=True, size=40, extent=1.5)
+          .mark_boxplot(ticks={'size': 20}, size=40, extent=1.5)
           .encode(
               x=alt.X(
                   f'{eda_constants.VARIABLE}:N',
