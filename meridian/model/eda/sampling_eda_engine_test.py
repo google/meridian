@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import dataclasses
+import math
 from unittest import mock
 
 from absl.testing import absltest
