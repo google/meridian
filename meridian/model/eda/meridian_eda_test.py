@@ -2387,9 +2387,31 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
     np.testing.assert_allclose(actual_values, [-0.2, 0.5])
 
+  def test_plot_prior_mean_national_success(self):
+    self._meridian.is_national = True
+    artifact = _create_prior_artifact([0.5, -0.2])
+    mock_outcome = _create_eda_outcome(
+        check_type=eda_outcome.EDACheckType.PRIOR_PROBABILITY,
+        analysis_artifacts=[artifact],
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_prior_probability',
+            return_value=mock_outcome,
+        )
+    )
+
+    plot = self._eda.plot_prior_mean()
+
+    actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
+    np.testing.assert_allclose(actual_values, [-0.2, 0.5])
+
   # ============================================================================
   # Error Scenarios
   # ============================================================================
+
   def test_plot_error_invalid_geo(self):
     self._mock_eda_engine.kpi_scaled_da = xr.DataArray(
         np.zeros((_N_GEOS, _N_TIMES)),
@@ -2452,11 +2474,6 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._meridian.is_national = True
     with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
       getattr(self._eda, plotting_function_name)()
-
-  def test_plot_prior_mean_national_raises(self):
-    self._meridian.is_national = True
-    with self.assertRaises(eda_engine.GeoLevelCheckOnNationalModelError):
-      self._eda.plot_prior_mean()
 
   # ============================================================================
   # Report Generation and HTML Structure Tests
@@ -2960,6 +2977,20 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           ],
           prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
       ),
+      dict(
+          testcase_name='prior_specifications_card_national_clean',
+          is_national=True,
+          card_id=eda_constants.PRIOR_SPECIFICATIONS_CARD_ID,
+          card_title=eda_constants.PRIOR_SPECIFICATIONS_CARD_TITLE,
+          expected_ids=[
+              eda_constants.PRIOR_CHART_ID,
+          ],
+          missing_ids=[],
+          expected_text=[
+              'Negative baseline is equivalent to the treatment effects'
+          ],
+          prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+      ),
   )
   def test_card_structure_scenarios(
       self,
@@ -3244,22 +3275,6 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self.assertIsNone(
         card,
         'Population Scaling card should not be present in the report for'
-        ' national models.',
-    )
-
-  def test_prior_specifications_card_national_is_none(self):
-    self._stub_plotters()
-    self._meridian.is_national = True
-    self._stub_engine_checks()
-
-    dom = self._get_output_eda_report_html_dom()
-    card = dom.find(
-        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
-    )
-
-    self.assertIsNone(
-        card,
-        'Prior Specifications card should not be present in the report for'
         ' national models.',
     )
 

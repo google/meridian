@@ -1158,18 +1158,7 @@ class MeridianEDA:
 
     Returns:
       A bar chart showing the prior mean of contribution by channel.
-
-    Raises:
-      eda_engine_module.GeoLevelCheckOnNationalModelError: If the Meridian model
-      is national.
     """
-
-    if self._meridian.is_national:
-      raise eda_engine_module.GeoLevelCheckOnNationalModelError(
-          'Prior mean of contribution by channel is not supported for national'
-          ' models.'
-      )
-
     [artifact] = self._dataset_level_prior_check_outcome.get_overall_artifacts()
 
     return self._plot_barcharts(
@@ -1952,18 +1941,14 @@ class MeridianEDA:
 
   def _generate_prior_specifications_card(
       self,
-  ) -> tuple[str | None, dict[eda_outcome.EDASeverity, int]]:
+  ) -> tuple[str, dict[eda_outcome.EDASeverity, int]]:
     """Creates the HTML snippet for the Prior Specifications section.
 
     Returns:
       A tuple containing:
-        - A string of the HTML snippet for the Prior Specifications card, or
-          None if the model is national.
+        - A string of the HTML snippet for the Prior Specifications card.
         - A dictionary of severity counts for the card.
     """
-    if self._meridian.is_national:
-      return None, _initialize_severity_counts()
-
     [artifact] = self._dataset_level_prior_check_outcome.get_overall_artifacts()
     prior_probability = artifact.prior_negative_baseline_prob
 
