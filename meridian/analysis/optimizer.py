@@ -2986,7 +2986,7 @@ def get_round_factor(budget: float, gtol: float) -> int:
   Args:
     budget: Float number for total advertising budget.
     gtol: Float indicating the acceptable relative error for the budget used in
-      the grid setup. The budget will be rounded by `10*n`, where `n` is the
+      the grid setup. The budget will be rounded by `10^n`, where `n` is the
       smallest int such that `(budget - rounded_budget) <= (budget * gtol)`.
       `gtol` must be less than 1.
 
