@@ -49,6 +49,7 @@ import meridian
 from meridian import backend
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.analysis.review import results
 from meridian.common import errors
 from meridian.model import model
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
@@ -56,6 +57,7 @@ from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import distribution
 from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
+from meridian.schema.serde import health_summary as health_summary_serde
 from meridian.schema.serde import hyperparameters
 from meridian.schema.serde import inference_data
 from meridian.schema.serde import marketing_data
@@ -194,6 +196,14 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_proto.eda_spec.CopyFrom(
           eda_spec_serde.EDASpecSerde(eda_function_registry).serialize(
               mmm.eda_spec
+          )
+      )
+
+    health_summary = getattr(mmm, 'health_summary', None)
+    if isinstance(health_summary, results.ReviewSummary):
+      model_proto.review_summary.CopyFrom(
+          health_summary_serde.ReviewSummarySerde().serialize(
+              health_summary
           )
       )
 
@@ -381,6 +391,16 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       )
     else:
       warnings.warn('MeridianModel does not contain an EDA spec.')
+
+    if isinstance(
+        ser_meridian, meridian_pb.MeridianModel
+    ) and ser_meridian.HasField('review_summary'):
+      meridian_kwargs['health_summary'] = (
+          health_summary_serde.ReviewSummarySerde().deserialize(
+              ser_meridian.review_summary,
+              str(serialized_version),
+          )
+      )
 
     return model.Meridian(**meridian_kwargs)
 

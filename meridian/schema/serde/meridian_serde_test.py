@@ -25,6 +25,8 @@ from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.analysis.review import configs as review_configs
+from meridian.analysis.review import results as review_results
 from meridian.backend import config as backend_config
 from meridian.backend import test_utils as backend_test_utils
 from meridian.common import errors
@@ -507,6 +509,54 @@ class MeridianSerdeTest(parameterized.TestCase):
     unpacked_model = meridian_pb.MeridianModel()
     serialized_model.model.Unpack(unpacked_model)
     self.assertFalse(unpacked_model.HasField('eda_spec'))
+
+  def test_serialize_deserialize_with_health_summary(self):
+    # Construct a valid early-exit failed convergence health summary
+    convergence_fail = review_results.ConvergenceCheckResult(
+        case=review_results.ConvergenceCases.NOT_CONVERGED,
+        config=review_configs.ConvergenceConfig(
+            convergence_threshold=1.1,
+            not_fully_convergence_threshold=9.5,
+        ),
+        max_rhat=12.5,
+        max_parameter='beta_m',
+    )
+    health_summary = review_results.ReviewSummary(
+        overall_status=review_results.Status.FAIL,
+        summary_message='Convergence failed early.',
+        health_score=0.0,
+        results=[convergence_fail],
+    )
+
+    meridian_model = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=test_data.get_default_model_spec(),
+        inference_data=az.InferenceData(),
+        health_summary=health_summary,
+    )
+
+    serialized_model = self.serde.serialize(
+        meridian_model, 'model_id', semver.VersionInfo.parse('1.0.0')
+    )
+
+    deserialized_model = self.serde.deserialize(serialized_model)
+    self.assertIsNotNone(deserialized_model.health_summary)
+    self.assertEqual(
+        deserialized_model.health_summary.overall_status,
+        health_summary.overall_status,
+    )
+    self.assertEqual(
+        deserialized_model.health_summary.summary_message,
+        health_summary.summary_message,
+    )
+    self.assertEqual(
+        deserialized_model.health_summary.health_score,
+        health_summary.health_score,
+    )
+    self.assertEqual(
+        len(deserialized_model.health_summary.results),
+        len(health_summary.results),
+    )
 
   def test_deserialize_not_meridian_model(self):
     not_meridian_model_proto = marketing_pb.MarketingData()
