@@ -14,7 +14,7 @@
 
 """Data structures and tensor preparation utilities for Meridian."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import dataclasses
 import numbers
 from typing import Any, Optional, Union
@@ -22,6 +22,7 @@ import warnings
 
 from meridian import backend
 from meridian import constants
+from meridian.data import time_coordinates as tc
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
@@ -35,6 +36,8 @@ __all__ = (
     "DataTensorsBuilder",
     "DistributionTensors",
     "get_model_context",
+    "normalize_date_str",
+    "normalize_times_set",
 )
 
 
@@ -92,6 +95,41 @@ def _is_str_list(l: Sequence[Any]) -> bool:
   return all(isinstance(item, str) for item in l)
 
 
+def normalize_date_str(
+    time_val: tc.Date | xr.DataArray,
+) -> str:
+  """Extracts the 'YYYY-MM-DD' prefix string from a date coordinate or string.
+
+  Args:
+    time_val: A polymorphic `Date` (`tc.Date`), a 0-D xarray `DataArray`
+      coordinate scalar (which may wrap a date string, datetime, or NumPy
+      timestamp), or any other date coordinate scalar (e.g. `pd.Timestamp`).
+
+  Returns:
+    The normalized 'YYYY-MM-DD' date string.
+  """
+  val = time_val.item() if hasattr(time_val, "item") else time_val
+  if isinstance(val, str):
+    val = val[:10]
+  return tc.normalize_date(val).strftime(constants.DATE_FORMAT)
+
+
+def normalize_times_set(times: Iterable[Any]) -> set[str]:
+  """Returns a set of normalized 'YYYY-MM-DD' date strings from times."""
+  return {normalize_date_str(x) for x in times}
+
+
+def _is_normalized_subset(
+    subset: Sequence[Any],
+    superset: Sequence[Any],
+) -> bool:
+  """Returns True if normalized date strings in subset are in superset."""
+  try:
+    return normalize_times_set(subset) <= normalize_times_set(superset)
+  except (ValueError, TypeError):
+    return False
+
+
 def _validate_selected_times(
     selected_times: Sequence[str] | Sequence[bool],
     input_times: xr.DataArray,
@@ -102,18 +140,18 @@ def _validate_selected_times(
 ) -> None:
   """Raises an error if selected_times is invalid.
 
-  This checks that the `selected_times` argument is a list of strings or a list
-  of booleans. If it is a list of strings, then each string must match the name
-  of a time period coordinate in `input_times`. If it is a list of booleans,
-  then it must have the same number of elements as `n_times`.
-
   Args:
-    selected_times: Optional list of times to validate.
-    input_times: Time dimension coordinates from `InputData.time` or
-      `InputData.media_time`.
-    n_times: The number of time periods in the tensor.
-    arg_name: The name of the argument being validated.
-    comparison_arg_name: The name of the argument being compared to.
+    selected_times: Sequence of time names or booleans to resolve.
+    input_times: InputData time period coordinates.
+    n_times: InputData time periods count.
+    arg_name: Name of the `selected_times` argument.
+    comparison_arg_name: Name of arg to compare with.
+
+  Raises:
+    ValueError: A `ValueError` is raised when coordinates in `selected_times` do
+      not match time coordinates in `input_times` (either partially or entirely)
+      or more `selected_times` than `n_times` were provided when a boolean list
+      contains both true and false values.
   """
   if not selected_times:
     return
@@ -124,7 +162,7 @@ def _validate_selected_times(
           f"there are time period coordinates in {comparison_arg_name}."
       )
   elif _is_str_list(selected_times):
-    if any(time not in input_times for time in selected_times):
+    if not _is_normalized_subset(selected_times, input_times):
       raise ValueError(
           f"`{arg_name}` must match the time dimension names from "
           "meridian.InputData."
@@ -166,7 +204,7 @@ def _validate_flexible_selected_times(
       and not (
           _is_str_list(selected_times)
           and new_time is not None
-          and set(selected_times) <= set(new_time)
+          and _is_normalized_subset(selected_times, new_time)
       )
   ):
     raise ValueError(
@@ -188,7 +226,7 @@ def _validate_flexible_selected_times(
       and not (
           _is_str_list(media_selected_times)
           and new_time is not None
-          and set(media_selected_times) <= set(new_time)
+          and _is_normalized_subset(media_selected_times, new_time)
       )
   ):
     raise ValueError(
@@ -923,8 +961,11 @@ class DataTensorsBuilder:
         comparison_arg_name="`tensor`",
     )
     if _is_str_list(selected_times):
+      selected_times_set = normalize_times_set(selected_times)
       time_indices = [
-          i for i, x in enumerate(input_times) if x in selected_times
+          i
+          for i, x in enumerate(input_times)
+          if normalize_date_str(x) in selected_times_set
       ]
     elif _is_bool_list(selected_times):
       time_indices = [i for i, x in enumerate(selected_times) if x]
@@ -1228,9 +1269,10 @@ class DataTensorsBuilder:
     if media_selected_times is None:
       resolved_media_selected_times = [True] * new_n_media_times
     else:
-      if all(isinstance(time, str) for time in media_selected_times):
+      if _is_str_list(media_selected_times):
+        media_selected_set = normalize_times_set(media_selected_times)
         resolved_media_selected_times = [
-            x in media_selected_times for x in media_times
+            normalize_date_str(x) in media_selected_set for x in media_times
         ]
       else:
         resolved_media_selected_times = [bool(x) for x in media_selected_times]
@@ -1247,11 +1289,10 @@ class DataTensorsBuilder:
             "non_media_transformer is missing in model_context despite "
             "non_media_treatments being present in data."
         )
-      non_media_treatments_baseline_scaled = (
-          equations.ModelEquations(self.model_context)
-          .compute_non_media_treatments_baseline(
-              non_media_baseline_values=non_media_baseline_values,
-          )
+      non_media_treatments_baseline_scaled = equations.ModelEquations(
+          self.model_context
+      ).compute_non_media_treatments_baseline(
+          non_media_baseline_values=non_media_baseline_values,
       )
       non_media_treatments_baseline_normalized = (
           self.model_context.non_media_transformer.forward(

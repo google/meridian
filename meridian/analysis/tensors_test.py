@@ -999,6 +999,34 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
         ),
     )
 
+  def test_normalize_date_str_with_datetime64_and_strings(self):
+    self.assertEqual(
+        tensors.normalize_date_str("2021-01-25T12:34:56"), "2021-01-25"
+    )
+    self.assertEqual(
+        tensors.normalize_date_str(np.datetime64("2021-01-25")), "2021-01-25"
+    )
+
+  def test_normalize_times_set(self):
+    self.assertEqual(
+        tensors.normalize_times_set(
+            ["2021-01-25T12:34:56", np.datetime64("2021-01-25")]
+        ),
+        {"2021-01-25"},
+    )
+
+  def test_resolve_time_indices_date_normalization(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    input_times = self.input_data.time
+    target_date = tensors.normalize_date_str(input_times.values[2])
+    resolved = builder._resolve_time_indices(
+        selected_times=[f"{target_date}T00:00:00"],
+        n_times=len(input_times),
+        input_times=input_times,
+    )
+    assert resolved is not None
+    self.assertEqual(list(np.asarray(resolved)), [2])
+
 
 class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
 
