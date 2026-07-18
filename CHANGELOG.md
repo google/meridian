@@ -28,6 +28,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Fix `ValueError: Interval length between selected times must be consistent`
     when serializing models with calendar-monthly or quarterly time coordinates.
 *   Fix a silent attribution misalignment bug in `InputData` and `InputDataBuilder` by enforcing strict exact coordinate match ordering across channels.
+*   Fix backward-compatibility deserialization error for older legacy models
+    saved with Automatic Knot Selection (`enable_aks=True`).
 
 ## [1.7.0] - 2026-06-17
 

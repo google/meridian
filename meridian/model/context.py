@@ -537,6 +537,20 @@ class ModelContext:
         is_national=self.is_national,
     )
 
+  def _inject_legacy_knot_info_for_serde(self, legacy_knots: list[int]):
+    """Injects legacy knots by bypassing the AKS check in get_knot_info."""
+    legacy_knots_arr = np.array(legacy_knots, dtype=int)
+    n_knots = len(legacy_knots_arr)
+    if n_knots == 1:
+      weights = np.ones((1, self.n_times), dtype=backend.np_float_dtype)
+    else:
+      weights = knots.l1_distance_weights(self.n_times, legacy_knots_arr)
+    self.__dict__["knot_info"] = knots.KnotInfo(
+        n_knots=n_knots,
+        knot_locations=legacy_knots_arr,
+        weights=weights,
+    )
+
   @functools.cached_property
   def controls_transformer(
       self,

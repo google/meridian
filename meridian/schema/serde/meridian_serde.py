@@ -58,6 +58,7 @@ from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
 from meridian.schema.serde import hyperparameters
 from meridian.schema.serde import inference_data
+from meridian.schema.serde import legacy_aks
 from meridian.schema.serde import marketing_data
 from meridian.schema.serde import serde
 import semver
@@ -65,6 +66,8 @@ import semver
 from google.protobuf import any_pb2
 
 _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
+_LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.0')
+
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
 
@@ -361,7 +364,6 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     meridian_kwargs = dict(
         input_data=deserialized_marketing_data,
         model_spec=deserialized_model_spec,
-        inference_data=deserialized_inference_data,
     )
 
     # For backwards compatibility, only deserialize EDA spec if it exists in the
@@ -382,7 +384,24 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     else:
       warnings.warn('MeridianModel does not contain an EDA spec.')
 
-    return model.Meridian(**meridian_kwargs)
+    loaded_mmm = model.Meridian(**meridian_kwargs)
+    if (
+        serialized_version <= _LEGACY_AKS_CUTOFF_VERSION
+        and loaded_mmm.model_spec.enable_aks
+    ):
+      legacy_knots = legacy_aks.get_legacy_knots(deserialized_marketing_data)
+      loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
+          legacy_knots
+      )
+
+    loaded_mmm._inference_data = (  # pylint: disable=protected-access
+        deserialized_inference_data
+        if deserialized_inference_data
+        else az.InferenceData()
+    )
+    loaded_mmm._validate_injected_inference_data()  # pylint: disable=protected-access
+
+    return loaded_mmm
 
 
 def save_meridian(
