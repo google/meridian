@@ -2778,6 +2778,14 @@ class BudgetOptimizer:
         required_tensors_names=c.PAID_DATA,
         model_context=model_context,
     )
+    if selected_times is not None and all(
+        isinstance(item, str) for item in selected_times
+    ):
+      target_times_set = tensors.normalize_times_set(selected_times)
+      time_arr = self._analyzer.model_context.input_data.time
+      selected_times = [
+          tensors.normalize_date_str(x) in target_times_set for x in time_arr
+      ]
     for i in range(n_grid_rows):
       self._update_incremental_outcome_grid(
           i=i,
