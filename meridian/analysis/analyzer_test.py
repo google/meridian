@@ -460,6 +460,24 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         atol=1e-3,
     )
 
+  def test_incremental_outcome_skips_inputs0_generation_when_zero_scaling_all_times(
+      self,
+  ):
+    model.Meridian.inference_data = mock.PropertyMock(
+        return_value=self.inference_data_media_only
+    )
+    with mock.patch.object(
+        tensors.DataTensorsBuilder,
+        "build_counterfactual_inputs",
+        wraps=tensors.DataTensorsBuilder(
+            self.meridian_media_only.model_context
+        ).build_counterfactual_inputs,
+    ) as mock_build:
+      _ = self.analyzer_media_only.incremental_outcome(
+          scaling_factor0=0.0,
+      )
+      self.assertEqual(mock_build.call_count, 1)
+
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
       dict(
@@ -1767,6 +1785,27 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=2e-2,
         atol=1e-2,
     )
+
+  def test_incremental_outcome_non_media_scaling_factor0_calls_baseline(self):
+    with mock.patch.object(
+        tensors.DataTensorsBuilder,
+        "build_counterfactual_inputs",
+        wraps=tensors.DataTensorsBuilder(
+            self.analyzer.model_context
+        ).build_counterfactual_inputs,
+    ) as mock_build:
+      self.analyzer.incremental_outcome(
+          use_posterior=True,
+          include_non_paid_channels=True,
+          scaling_factor0=0.5,
+          scaling_factor1=1.0,
+          non_media_baseline_values=[45.2, 1.03, 0.24, 7.77],
+      )
+      self.assertEqual(mock_build.call_count, 2)
+      _, kwargs1 = mock_build.call_args_list[0]
+      _, kwargs0 = mock_build.call_args_list[1]
+      self.assertFalse(kwargs1["is_baseline"])
+      self.assertTrue(kwargs0["is_baseline"])
 
   def test_incremental_outcome_wrong_baseline_types_shape_raises_exception(
       self,
