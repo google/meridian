@@ -1179,6 +1179,62 @@ class DataTensorsBuilder:
         selected_times=selected_times,
     )
 
+  def _resolve_and_validate_counterfactual_inputs(
+      self,
+      new_data: DataTensors | None = None,
+      non_media_baseline_values: Sequence[float] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      include_non_paid_channels: bool = True,
+  ) -> tuple[DataTensors, int | None]:
+    """Resolves unscaled tensors, gets modified times, and performs validation checks."""
+    _validate_non_media_baseline_values_numbers(non_media_baseline_values)
+
+    times_modified = False
+    if new_data is not None:
+      times_modified = self.get_modified_times(new_data) is not None
+
+    required_params = list(constants.PAID_DATA)
+    if include_non_paid_channels:
+      required_params += list(constants.NON_PAID_DATA)
+    if not times_modified:
+      required_params.append(constants.CONTROLS)
+
+    base_unscaled = self._build_unscaled_data_tensors(
+        new_data=new_data, required_tensors_names=required_params
+    )
+
+    new_n_media_times = self.get_modified_times(base_unscaled)
+
+    if new_n_media_times is None:
+      _validate_selected_times(
+          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+          input_times=self.model_context.input_data.time,
+          n_times=self.model_context.n_times,
+          arg_name="selected_times",
+          comparison_arg_name="the input data",
+      )
+      _validate_selected_times(
+          selected_times=media_selected_times,  # pyrefly: ignore[bad-argument-type]
+          input_times=self.model_context.input_data.media_time,
+          n_times=self.model_context.n_media_times,
+          arg_name="media_selected_times",
+          comparison_arg_name="the media tensors",
+      )
+    else:
+      new_time = (
+          np.asarray(base_unscaled.time).astype(str).tolist()
+          if base_unscaled.time is not None
+          else None
+      )
+      _validate_flexible_selected_times(
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+          new_n_media_times=new_n_media_times,
+          new_time=new_time,
+      )
+    return base_unscaled, new_n_media_times
+
   def build_counterfactual_inputs(
       self,
       new_data: DataTensors | None = None,
@@ -1215,52 +1271,24 @@ class DataTensorsBuilder:
     Returns:
       A `CounterfactualInputs` object.
     """
-    _validate_non_media_baseline_values_numbers(non_media_baseline_values)
-
-    times_modified = False
-    if new_data is not None:
-      times_modified = self.get_modified_times(new_data) is not None
-
-    required_params = list(constants.PAID_DATA)
-    if include_non_paid_channels:
-      required_params += list(constants.NON_PAID_DATA)
-    if not times_modified:
-      required_params.append(constants.CONTROLS)
-
-    base_unscaled = self._build_unscaled_data_tensors(
-        new_data=new_data, required_tensors_names=required_params
+    base_unscaled, new_n_media_times = (
+        self._resolve_and_validate_counterfactual_inputs(
+            new_data=new_data,
+            non_media_baseline_values=non_media_baseline_values,
+            selected_times=selected_times,
+            media_selected_times=media_selected_times,
+            include_non_paid_channels=include_non_paid_channels,
+        )
     )
-
-    new_n_media_times = self.get_modified_times(base_unscaled)
 
     if new_n_media_times is None:
       new_n_media_times = self.model_context.n_media_times
-      _validate_selected_times(
-          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
-          input_times=self.model_context.input_data.time,
-          n_times=self.model_context.n_times,
-          arg_name="selected_times",
-          comparison_arg_name="the input data",
-      )
-      _validate_selected_times(
-          selected_times=media_selected_times,  # pyrefly: ignore[bad-argument-type]
-          input_times=self.model_context.input_data.media_time,
-          n_times=self.model_context.n_media_times,
-          arg_name="media_selected_times",
-          comparison_arg_name="the media tensors",
-      )
       media_times = self.model_context.input_data.media_time
     else:
       new_time = (
           np.asarray(base_unscaled.time).astype(str).tolist()
           if base_unscaled.time is not None
           else None
-      )
-      _validate_flexible_selected_times(
-          selected_times=selected_times,
-          media_selected_times=media_selected_times,
-          new_n_media_times=new_n_media_times,
-          new_time=new_time,
       )
       media_times = (
           new_time[-new_n_media_times:] if new_time is not None else []

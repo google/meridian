@@ -999,6 +999,11 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
         ),
     )
 
+  def test_build_counterfactual_inputs_raises_on_invalid_times(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    with self.assertRaises(ValueError):
+      builder.build_counterfactual_inputs(selected_times=["1999-01-01"])
+
   def test_normalize_date_str_with_datetime64_and_strings(self):
     self.assertEqual(
         tensors.normalize_date_str("2021-01-25T12:34:56"), "2021-01-25"
