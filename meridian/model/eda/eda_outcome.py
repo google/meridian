@@ -14,10 +14,11 @@
 
 """Meridian EDA Outcome."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import dataclasses
 import enum
 import typing
+from meridian.model.eda import constants as eda_constants
 import pandas as pd
 import xarray as xr
 
