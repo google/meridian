@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Constants specific to MeridianEDA."""
+
 import textwrap
 from typing import Literal
 import altair as alt
@@ -77,10 +78,6 @@ PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     ],
     type='linear',
 )
-POPULATION_CORRELATION_LEGEND_CONFIGS = immutabledict.immutabledict({
-    'title': CORRELATION_LEGEND_TITLE,
-    'orient': 'bottom',
-})
 POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
     'x': alt.X(
         f'{VARIABLE}:N',
@@ -97,7 +94,7 @@ POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
             domain=[-1, 0, 1],
             range=[CORRELATION_RED, CORRELATION_WHITE, CORRELATION_BLUE],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
+        legend=alt.Legend(title=CORRELATION_LEGEND_TITLE, orient='bottom'),
     ),
 })
 POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
@@ -122,7 +119,7 @@ POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
                 CORRELATION_RED,
             ],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
+        legend=alt.Legend(title=CORRELATION_LEGEND_TITLE, orient='bottom'),
     ),
 })
 PRIOR_MEAN_ENCODINGS = immutabledict.immutabledict({
@@ -389,3 +386,16 @@ CATEGORY_TO_MESSAGE_BY_STATUS = immutabledict.immutabledict({
         True: '',  # currently there are no findings for this card
     }),
 })
+
+EXPERIMENT_ADJUSTMENTS_PLOT_TITLE_TEMPLATE = 'Experiment Adjustments: {ch_name}'
+EXPERIMENT_SOURCE_TYPE_TO_LABEL_SUFFIX = immutabledict.immutabledict({
+    calibration_base.SourceType.MERIDIAN_GEOX: ' (Meridian GeoX)',
+})
+MEAN_ROI_PLUS_MINUS_SE = 'Mean ROI ± SE'
+EXPERIMENT_LABEL_PREFIX = 'Experiment'
+STAGE = 'stage'
+POINT_ESTIMATE = 'point_estimate'
+STANDARD_ERROR = 'standard_error'
+CI_LOWER = 'ci_lower'
+CI_UPPER = 'ci_upper'
+LABEL_TEXT = 'label_text'
