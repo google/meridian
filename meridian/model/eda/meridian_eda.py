@@ -21,7 +21,7 @@ import dataclasses
 import functools
 import os
 import re
-from typing import Literal, TYPE_CHECKING
+from typing import Literal, TypeVar, TYPE_CHECKING
 
 import altair as alt
 from meridian import constants
