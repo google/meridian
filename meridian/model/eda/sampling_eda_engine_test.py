@@ -15,6 +15,7 @@
 from collections.abc import Sequence
 import dataclasses
 import math
+import types
 from unittest import mock
 
 from absl.testing import absltest

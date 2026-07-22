@@ -16,12 +16,15 @@
 
 from typing import TYPE_CHECKING  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
+from meridian import backend  # pylint: disable=g-bad-import-order,g-import-not-at-top
 from meridian import constants  # pylint: disable=g-bad-import-order,g-import-not-at-top
+from meridian.model import prior_distribution  # pylint: disable=g-bad-import-order,g-import-not-at-top
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
+from scipy import stats  # pylint: disable=g-bad-import-order,g-import-not-at-top
 import xarray as xr
 
 if TYPE_CHECKING:
