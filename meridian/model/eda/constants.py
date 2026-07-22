@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Constants specific to MeridianEDA."""
+
 import textwrap
 from typing import Literal
 import altair as alt
@@ -77,10 +78,6 @@ PAIRWISE_CORR_COLOR_SCALE = alt.Scale(
     ],
     type='linear',
 )
-POPULATION_CORRELATION_LEGEND_CONFIGS = immutabledict.immutabledict({
-    'title': CORRELATION_LEGEND_TITLE,
-    'orient': 'bottom',
-})
 POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
     'x': alt.X(
         f'{VARIABLE}:N',
@@ -97,7 +94,7 @@ POPULATION_RAW_MEDIA_CORRELATION_ENCODINGS = immutabledict.immutabledict({
             domain=[-1, 0, 1],
             range=[CORRELATION_RED, CORRELATION_WHITE, CORRELATION_BLUE],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
+        legend=alt.Legend(title=CORRELATION_LEGEND_TITLE, orient='bottom'),
     ),
 })
 POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
@@ -122,7 +119,7 @@ POPULATION_TREATMENT_CORRELATION_ENCODINGS = immutabledict.immutabledict({
                 CORRELATION_RED,
             ],
         ),
-        legend=alt.Legend(**POPULATION_CORRELATION_LEGEND_CONFIGS),  # pyrefly: ignore[bad-argument-type]
+        legend=alt.Legend(title=CORRELATION_LEGEND_TITLE, orient='bottom'),
     ),
 })
 PRIOR_MEAN_ENCODINGS = immutabledict.immutabledict({
