@@ -16,7 +16,9 @@
 
 from typing import TYPE_CHECKING  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
+from meridian import backend  # pylint: disable=g-bad-import-order,g-import-not-at-top
 from meridian import constants  # pylint: disable=g-bad-import-order,g-import-not-at-top
+from meridian.model import prior_distribution  # pylint: disable=g-bad-import-order,g-import-not-at-top
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
