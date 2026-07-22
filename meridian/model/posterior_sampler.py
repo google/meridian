@@ -45,6 +45,114 @@ class MCMCOOMError(Exception):
   """The Markov Chain Monte Carlo (MCMC) sampling exceeds memory limits."""
 
 
+# Name of the likelihood node yielded by the joint distribution coroutine.
+_LIKELIHOOD_NODE_NAME = "y"
+
+
+def _flatten_chain_and_draw_dims(
+    latents: Mapping[str, backend.Tensor],
+) -> tuple[dict[str, backend.Tensor], int, int]:
+  """Merges the leading (chain, draw) axes of each latent into one axis.
+
+  A single flat batch axis lets the reconstruction loop honor its batch size
+  exactly, rather than only in multiples of the chain count.
+
+  Args:
+    latents: Latent samples keyed by parameter name, each shaped `[n_chains,
+      n_draws, ...]`.
+
+  Returns:
+    A `(flattened, n_chains, n_draws)` tuple, where `flattened` maps each
+    parameter name to a tensor shaped `[n_chains * n_draws, ...]`.
+
+  Raises:
+    ValueError: If `latents` is empty.
+  """
+  if not latents:
+    raise ValueError("Cannot reconstruct posteriors from empty latents.")
+  reference = next(iter(latents.values()))
+  n_chains, n_draws = int(reference.shape[0]), int(reference.shape[1])
+  flattened = {
+      name: backend.reshape(
+          value, (n_chains * n_draws,) + tuple(value.shape[2:])
+      )
+      for name, value in latents.items()
+  }
+  return flattened, n_chains, n_draws
+
+
+def _build_reconstruction_values(
+    joint_dist: backend.tfd.Distribution,
+    latent_chunk: Mapping[str, backend.Tensor],
+    pinned_likelihood: backend.Tensor,
+) -> tuple[backend.Tensor | None, ...] | Mapping[str, backend.Tensor]:
+  """Arranges one batch of latents into the structure `sample(value=)` expects.
+
+  `JointDistributionCoroutineAutoBatched` models yield their nodes as a
+  namedtuple, so values must be supplied positionally in node order. Each
+  node receives:
+
+    * its latent sample, if the node is a sampled latent variable;
+    * the observed KPI tensor, for the likelihood node — pinning it skips an
+      otherwise-discarded likelihood sample and makes reconstruction a
+      deterministic function of the latents; or
+    * `None`, for deterministic nodes, which instructs TFP to compute them
+      from the values above.
+
+  Args:
+    joint_dist: The full (unpinned) joint distribution.
+    latent_chunk: One batch of flattened latent samples, keyed by node name.
+    pinned_likelihood: The observed KPI, broadcast to the batch shape.
+
+  Returns:
+    A tuple of values in node order, or the latent mapping unchanged for
+    distributions with dict-valued (non-namedtuple) structure.
+  """
+  structure = joint_dist.dtype
+  if not hasattr(structure, "_fields"):
+    # Dict-structured distributions accept a partial mapping of values.
+    return dict(latent_chunk)
+
+  values = []
+  for node_name in structure._fields:  # `_fields` is public namedtuple API.
+    if node_name in latent_chunk:
+      values.append(latent_chunk[node_name])
+    elif node_name == _LIKELIHOOD_NODE_NAME:
+      values.append(pinned_likelihood)
+    else:
+      values.append(None)
+  return tuple(values)
+
+
+class _HostResultAccumulator:
+  """Accumulates per-batch device results into preallocated host arrays.
+
+  Output shapes and dtypes are only known once the first batch has been
+  computed, so each variable's buffer is allocated lazily on first write.
+  Host memory is capped at the final output size plus one in-flight batch,
+  and device memory never holds more than one batch of results.
+  """
+
+  def __init__(self, total_size: int):
+    self._total_size = total_size
+    self._buffers: dict[str, np.ndarray] = {}
+
+  def write(self, name: str, chunk: np.ndarray, start: int) -> None:
+    """Writes `chunk` into rows `[start, start + len(chunk))` of `name`."""
+    if name not in self._buffers:
+      self._buffers[name] = np.empty(
+          (self._total_size,) + chunk.shape[1:], dtype=chunk.dtype
+      )
+    self._buffers[name][start : start + chunk.shape[0]] = chunk
+
+  def to_arrays(self, leading_shape: tuple[int, ...]) -> dict[str, np.ndarray]:
+    """Returns all buffers with the flat axis reshaped to `leading_shape`."""
+    return {
+        name: buffer.reshape(leading_shape + buffer.shape[1:])
+        for name, buffer in self._buffers.items()
+    }
+
+
 def _compute_tau_g(
     tau_g_excl_baseline: backend.Tensor, baseline_geo_idx: int
 ) -> backend.Tensor:
@@ -675,42 +783,72 @@ class PosteriorMCMCSampler:
       self,
       latents: Mapping[str, backend.Tensor],
       rng_handler: backend.RNGHandler,
-  ) -> Mapping[str, backend.Tensor]:
-    """Reconstructs deterministic state variables from latent samples.
+      *,
+      batch_size: int,
+  ) -> Mapping[str, np.ndarray]:
+    """Reconstructs deterministic model variables from latent samples.
 
-    This runs the full model logic forward using the sampled latents to compute
-    all deterministic variables (e.g. ROI, budgets) required for the final
-    InferenceData.
+    Deterministic variables (e.g. `beta_m`, `mu_t`, `gamma_gc`) are pure,
+    draw-wise functions of the latent samples, so reconstruction is an
+    embarrassingly parallel map over the (chain, draw) axes. To bound peak
+    device memory, the map is evaluated in batches of at most `batch_size`
+    draws, and each batch's results are copied to host memory before the
+    next batch runs. Peak device memory is therefore O(`batch_size`) and
+    independent of the total number of posterior draws.
 
     Args:
-      latents: A dictionary mapping latent variable names to sampled tensors.
-      rng_handler: Random number generator handler.
+      latents: Latent samples keyed by parameter name, each shaped `[n_chains,
+        n_draws, ...]`. Must already be normalized by
+        `_prepare_latents_for_reconstruction`.
+      rng_handler: Source of per-batch seeds. The TFP sampling API requires a
+        seed, but it does not affect the output: every stochastic node is
+        pinned, so reconstruction is deterministic given `latents`.
+      batch_size: Maximum number of draws (flattened across chains) to evaluate
+        per forward pass.
 
     Returns:
-      A dictionary containing the full state (latents + deterministics).
+      Deterministic variables keyed by parameter name, as host (NumPy)
+      arrays shaped `[n_chains, n_draws, ...]`. Latents and the likelihood
+      node are excluded; `_prepare_mcmc_states` merges latents separately.
+
+    Raises:
+      ValueError: If `batch_size` is not a positive integer.
     """
-    # Create a mutable copy to avoid modifying the input
-    latents_for_reconstruction = dict(latents)
+    if batch_size < 1:
+      raise ValueError(
+          "`reconstruction_batch_size` must be a positive integer, got"
+          f" {batch_size}."
+      )
 
-    full_dist_unpinned = self._get_joint_dist_unpinned()
+    joint_dist = self._get_joint_dist_unpinned()
+    flat_latents, n_chains, n_draws = _flatten_chain_and_draw_dims(latents)
+    n_total_draws = n_chains * n_draws
+    observed_kpi = self._model_context.kpi_scaled
 
-    # JointDistributionCoroutineAutoBatched typically yields a StructTuple.
-    # To pass values to `sample(value=...)`, we must construct a matching
-    # structure (tuple) corresponding to the distribution's yielded order.
-    # We inspect the distribution's dtype fields to determine this order.
-    if hasattr(full_dist_unpinned.dtype, "_fields"):
-      fields = full_dist_unpinned.dtype._fields
-      # Map known latents to the positional order; use None for deterministics
-      # that need to be computed.
-      ordered_state = [latents_for_reconstruction.get(f, None) for f in fields]
-      values = tuple(ordered_state)
-    else:
-      # Fallback for distributions that support dictionary-based inputs.
-      values = latents_for_reconstruction
+    results = _HostResultAccumulator(total_size=n_total_draws)
+    for start in range(0, n_total_draws, batch_size):
+      stop = min(start + batch_size, n_total_draws)
+      latent_chunk = {
+          name: value[start:stop] for name, value in flat_latents.items()
+      }
+      pinned_likelihood = backend.broadcast_to(
+          observed_kpi, (stop - start,) + tuple(observed_kpi.shape)
+      )
+      values = _build_reconstruction_values(
+          joint_dist, latent_chunk, pinned_likelihood
+      )
+      sampled = joint_dist.sample(
+          value=values, seed=rng_handler.get_next_seed()
+      )
+      sampled_by_name = (
+          sampled._asdict() if hasattr(sampled, "_asdict") else dict(sampled)
+      )
+      for name, tensor in sampled_by_name.items():
+        if name in flat_latents or name == _LIKELIHOOD_NODE_NAME:
+          continue  # Latents pass through unchanged; likelihood is unused.
+        results.write(name, np.asarray(tensor), start=start)
 
-    return full_dist_unpinned.sample(
-        value=values, seed=rng_handler.get_next_seed()
-    )._asdict()
+    return results.to_arrays(leading_shape=(n_chains, n_draws))
 
   def _prepare_mcmc_states(
       self,
@@ -741,7 +879,7 @@ class PosteriorMCMCSampler:
     for k, v in reconstructed.items():
       if (
           k not in constants.UNSAVED_PARAMETERS
-          and k != "y"
+          and k != _LIKELIHOOD_NODE_NAME
           and k not in mcmc_states
       ):
         mcmc_states[k] = v
@@ -762,6 +900,7 @@ class PosteriorMCMCSampler:
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
       **pins,
   ) -> az.InferenceData:
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
@@ -813,6 +952,9 @@ class PosteriorMCMCSampler:
         will be treated as stateless seeds; or a Python `int` or `None`, which
         will be converted into a stateless seed. See [tfp.random.sanitize_seed]
         (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
+      reconstruction_batch_size: Maximum number of combined chain-and-draw
+        samples to reconstruct in a single forward pass. Limits device OOMs
+        caused by wide vectorized models.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
@@ -821,12 +963,19 @@ class PosteriorMCMCSampler:
       metrics, and sampling statistics.
 
     Throws:
-      MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
-        a list of integers as `n_chains` to sample chains serially. For more
-        information, see
+      MCMCOOMError: If the model is out of memory. Try reducing `n_keep`, pass
+        a list of integers as `n_chains` to sample chains serially, or lower
+        `reconstruction_batch_size` to reduce forward pass memory footprint.
+        For more information, see
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
+    if reconstruction_batch_size < 1:
+      raise ValueError(
+          "`reconstruction_batch_size` must be a positive integer, got"
+          f" {reconstruction_batch_size}."
+      )
+
     # Initialize the backend-agnostic RNG handler. This handles differences
     # between JAX (explicit PRNG keys) and TF (stateless/stateful seeds)
     # internally, including auto-generating a seed if `None` is provided.
@@ -881,13 +1030,26 @@ class PosteriorMCMCSampler:
         for k in states[0].keys()
     }
 
+    del mcmc, states  # Free NUTS state buffers before the first batch runs.
     latents_for_reconstruction = self._prepare_latents_for_reconstruction(
         all_latents
     )
     # Reconstruct full state (including deterministics) using the Full Graph.
-    reconstructed_items = self._reconstruct_posteriors(
-        latents_for_reconstruction, rng_handler
-    )
+    try:
+      reconstructed_items = self._reconstruct_posteriors(
+          latents_for_reconstruction,
+          rng_handler,
+          batch_size=reconstruction_batch_size,
+      )
+    except backend.errors.ResourceExhaustedError as error:
+      raise MCMCOOMError(
+          "ERROR: Out of memory while reconstructing deterministic"
+          " parameters. Reconstruction peak memory scales with"
+          " `reconstruction_batch_size` (currently"
+          f" {reconstruction_batch_size}, minimum 1). Reduce it and re-run;"
+          " NUTS results are unaffected. See"
+          " https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error"
+      ) from error
     mcmc_states = self._prepare_mcmc_states(all_latents, reconstructed_items)
 
     # Create Arviz InferenceData for posterior draws.
