@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import collections
+from typing import cast
 from unittest import mock
 
 from absl.testing import absltest
@@ -2167,6 +2168,160 @@ class PosteriorMCMCSamplerInitTest(
         "Either `meridian` or `model_context` must be provided.",
     ):
       posterior_sampler.PosteriorMCMCSampler()
+
+
+class ReconstructionBatchingTest(
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+    self.n_chains = 2
+    self.n_keep = 10
+    self.n_burnin = 5
+    self.n_total = self.n_chains * self.n_keep
+
+    # Needs to match what is present in test_posterior_states_media_only
+    mock_states = collections.namedtuple(
+        "StatesAndTrace", ["all_states", "trace"]
+    )(
+        all_states=self.test_posterior_states_media_only,
+        trace=self.test_trace,
+    )
+    self.patch_nuts = mock.patch.object(
+        backend,
+        "xla_windowed_adaptive_nuts",
+        autospec=True,
+        return_value=mock_states,
+    )
+    self.mock_nuts = self.patch_nuts.start()
+
+  def tearDown(self):
+    self.patch_nuts.stop()
+    super().tearDown()
+
+  @parameterized.parameters(
+      {"batch_size": 1},
+      {"batch_size": 7},
+      {"batch_size": 40},  # n_total
+      {"batch_size": 53},  # n_total + 13
+  )
+  def test_equivalence_with_chunking(self, batch_size):
+    # Single-shot reference run
+    self.meridian._inference_data = az.InferenceData()
+    self.meridian.sample_posterior(
+        n_chains=self.n_chains,
+        n_adapt=0,
+        n_burnin=self.n_burnin,
+        n_keep=self.n_keep,
+        reconstruction_batch_size=self.n_total + 100,  # Single shot
+    )
+    posterior_ref = self.meridian.inference_data.posterior
+
+    # Chunked run
+    meridian_chunked = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+    meridian_chunked.sample_posterior(
+        n_chains=self.n_chains,
+        n_adapt=0,
+        n_burnin=self.n_burnin,
+        n_keep=self.n_keep,
+        reconstruction_batch_size=batch_size,
+    )
+    posterior_chunked = meridian_chunked.inference_data.posterior
+
+    self.assertEqual(
+        set(posterior_ref.data_vars), set(posterior_chunked.data_vars)
+    )
+    for var_name in posterior_ref.data_vars:
+      np.testing.assert_allclose(
+          posterior_chunked[var_name].values,
+          posterior_ref[var_name].values,
+          err_msg=f"Mismatch for {var_name}",
+      )
+
+  def test_fail_fast_reconstruction_batch_size(self):
+    with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+      self.meridian.sample_posterior(
+          n_chains=2,
+          n_adapt=0,
+          n_burnin=0,
+          n_keep=2,
+          reconstruction_batch_size=0,
+      )
+    self.mock_nuts.assert_not_called()
+
+  def test_oom_translation(self):
+    err = (
+        MemoryError("OOM")
+        if backend.errors.ResourceExhaustedError is MemoryError
+        else backend.errors.ResourceExhaustedError(None, None, "OOM")  # type: ignore
+    )
+    with mock.patch.object(
+        posterior_sampler.PosteriorMCMCSampler,
+        "_reconstruct_posteriors",
+        side_effect=err,
+    ):
+      with self.assertRaisesRegex(
+          posterior_sampler.MCMCOOMError,
+          "Reconstruction peak memory scales with `reconstruction_batch_size`",
+      ):
+        self.meridian.sample_posterior(
+            n_chains=2,
+            n_adapt=0,
+            n_burnin=self.n_burnin,
+            n_keep=self.n_keep,
+            reconstruction_batch_size=10,
+        )
+
+  def test_flatten_chain_and_draw_dims(self):
+    latents = {
+        "a": backend.zeros([2, 5, 3]),
+        "b": backend.ones([2, 5]),
+    }
+    flat, c, d = posterior_sampler._flatten_chain_and_draw_dims(latents)
+    self.assertEqual(c, 2)
+    self.assertEqual(d, 5)
+    self.assertEqual(flat["a"].shape, (10, 3))
+    self.assertEqual(flat["b"].shape, (10,))
+
+    with self.assertRaisesRegex(ValueError, "empty latents"):
+      posterior_sampler._flatten_chain_and_draw_dims({})
+
+  def test_build_reconstruction_values(self):
+    class MockDist:
+      dtype = collections.namedtuple("Structure", ["node1", "node2", "y"])(
+          None, None, None
+      )
+
+    values = posterior_sampler._build_reconstruction_values(
+        MockDist(),
+        {"node1": cast(backend.Tensor, np.array(1.0))},
+        cast(backend.Tensor, np.array(2.0)),
+    )
+    self.assertEqual(values, (np.array(1.0), None, np.array(2.0)))
+
+  def test_host_result_accumulator(self):
+    acc = posterior_sampler._HostResultAccumulator(total_size=10)
+    acc.write("a", np.ones((4, 2)), start=0)
+    acc.write("a", np.ones((6, 2)) * 2, start=4)
+    arrays = acc.to_arrays(leading_shape=(2, 5))
+    self.assertEqual(arrays["a"].shape, (2, 5, 2))
+    self.assertEqual(arrays["a"][0, 0, 0], 1.0)
+    self.assertEqual(arrays["a"][1, 4, 1], 2.0)
 
 
 if __name__ == "__main__":
