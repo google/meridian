@@ -444,6 +444,7 @@ class ModelFit:
       show_geo_level: bool = False,
       include_baseline: bool = True,
       include_ci: bool = True,
+      knots: bool = False,
   ) -> alt.Chart:
     """Plots the expected versus actual outcome over time.
 
@@ -465,6 +466,7 @@ class ModelFit:
         any media execution.
       include_ci: If `True`, shows the credible intervals for the expected
         outcome.
+      knots: If `True`, plots vertical lines at periods that have knots.
 
     Returns:
       An Altair plot showing the model fit.
@@ -582,6 +584,28 @@ class ModelFit:
           ),
       )
       plot = (plot + confidence_band).resolve_scale(color=c.INDEPENDENT)
+
+    if knots and len(self._meridian.knot_info.knot_locations) >= 2:
+      selected_knots = self._meridian.knot_info.knot_locations
+      time_at_knots = self.model_fit_data.time.values[selected_knots]
+      if selected_times:
+        selected_times_set = set(selected_times)
+        time_at_knots = [t for t in time_at_knots if t in selected_times_set]
+      if len(time_at_knots) > 0:
+        if show_geo_level:
+          geos = model_fit_df[c.GEO].unique()
+          knots_df = pd.DataFrame(
+              list(itertools.product(geos, time_at_knots)),
+              columns=[c.GEO, c.TIME],
+          )
+        else:
+          knots_df = pd.DataFrame({c.TIME: time_at_knots})
+        rules = (
+            alt.Chart(knots_df)
+            .mark_rule(color=c.GREEN_500, strokeWidth=1.5)
+            .encode(x=f'{c.TIME}:T')
+        )
+        plot = plot + rules
 
     if show_geo_level:
       plot = plot.facet(column=alt.Column(f'{c.GEO}:O', sort=selected_geos))
