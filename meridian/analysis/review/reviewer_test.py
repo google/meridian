@@ -31,6 +31,7 @@ from meridian.data import input_data
 from meridian.model import context
 from meridian.model import prior_distribution
 from meridian.model import spec as model_spec_module
+
 import numpy as np
 import xarray as xr
 
@@ -1015,7 +1016,6 @@ class ReviewerTest(parameterized.TestCase):
             'ROIConsistencyCheckResult': 'PASS',
         },
     )
-
 
 if __name__ == '__main__':
   absltest.main()
