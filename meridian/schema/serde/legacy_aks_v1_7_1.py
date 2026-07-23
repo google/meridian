@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Auxiliary functions for knots calculations."""
+"""Legacy AKS logic for backwards compatibility."""
 
-from collections.abc import Collection, Sequence
+# ==============================================================================
+# This file contains a snapshot of the legacy Automatic Knot Selection (AKS)
+# classes from `meridian/model/knots.py`.
+# It is used exclusively to deserialize older models (versions <= 1.7.1) that
+# utilized the older AKS algorithm.
+# Do NOT update this algorithm to match newer implementations in `knots.py`.
+# ==============================================================================
+from collections.abc import Collection
 import copy
 import dataclasses
 import math
@@ -24,124 +31,10 @@ from typing import Any
 from meridian import backend
 from meridian import constants
 from meridian.data import input_data
+from meridian.model.knots import l1_distance_weights
 import numpy as np
 from scipy import interpolate
 from statsmodels.regression import linear_model
-
-
-__all__ = [
-    'KnotInfo',
-    'get_knot_info',
-    'l1_distance_weights',
-]
-
-
-def _find_left_knot_indices(
-    *,
-    times: np.ndarray,
-    knot_locations: np.ndarray,
-) -> Sequence[int]:
-  """Return the index of the left neighboring knot for each time point.
-
-  Args:
-    times: Times `0, 1, 2,..., (n_times-1)`.
-    knot_locations: The location of knots within `0, 1, 2,..., (n_times-1)`.
-
-  Returns:
-    A list of indices of the left neighboring knot for each time point. The
-    length of the list is equal to the length of `times`.
-    - If a time point is at or before the first knot, the index is 0.
-    - If a time point is at or after the last knot, the index is `n_knots - 1`.
-    - Otherwise, it's the index of the knot just to the left.
-  """
-  n_knots = len(knot_locations)
-  # Find indices such that knot_locations[i-1] < times <= knot_locations[i]
-  insert_indices = np.searchsorted(knot_locations, times, side='right')
-  left_knot_indices = insert_indices - 1
-
-  # Handle edge cases for times before the first knot
-  left_knot_indices[times < knot_locations[0]] = 0
-  # Handle edge cases for times at or after the last knot
-  left_knot_indices[times >= knot_locations[-1]] = n_knots - 1
-
-  return left_knot_indices  # pyrefly: ignore[bad-return]
-
-
-def l1_distance_weights(
-    n_times: int, knot_locations: np.ndarray[int, np.dtype[int]]  # pyrefly: ignore[bad-specialization]
-) -> np.ndarray:
-  """Computes weights at knots for every time period.
-
-  The two neighboring knots inform the weight estimate of a particular time
-  period. The amount each of the two neighboring knots inform the weight at a
-  time period depends on how close (L1 distance) they are to the time period. If
-  a time point coincides with a knot location, then 100% weight is given to that
-  knot. If a time point lies outside the range of knots, then 100% weight is
-  given to the nearest endpoint knot.
-
-  This function computes an `(n_knots, n_times)` array of weights that are used
-  to model trend and seasonality. For a given time, the array contains two
-  non-zero weights. The weights are inversely proportional to the L1 distance
-  from the given time to the neighboring knots. The two weights are normalized
-  such that they sum to 1.
-
-  Args:
-    n_times: The number of time points.
-    knot_locations: The location of knots within `0, 1, 2,..., (n_times-1)`.
-
-  Returns:
-    A weight array with dimensions `(n_knots, n_times)` with values summing up
-    to 1 for each time period when summing over knots.
-  """
-  if knot_locations.ndim != 1:
-    raise ValueError('`knot_locations` must be one-dimensional.')
-  if not np.all(knot_locations == np.sort(knot_locations)):
-    raise ValueError('`knot_locations` must be sorted.')
-  if len(knot_locations) <= 1:
-    raise ValueError('Number of knots must be greater than 1.')
-  if len(knot_locations) != len(np.unique(knot_locations)):
-    raise ValueError('`knot_locations` must be unique.')
-  if np.any(knot_locations < 0):  # pyrefly: ignore[unsupported-operation]
-    raise ValueError('knot_locations must be positive.')
-  if np.any(knot_locations >= n_times):  # pyrefly: ignore[unsupported-operation]
-    raise ValueError('knot_locations must be less than `n_times`.')
-
-  times = np.arange(n_times)
-  time_minus_knot = abs(knot_locations[:, np.newaxis] - times[np.newaxis, :])  # pyrefly: ignore[unsupported-operation]
-
-  w = np.zeros(time_minus_knot.shape, dtype=backend.np_float_dtype)
-  left_knot_indices = _find_left_knot_indices(
-      times=times, knot_locations=knot_locations  # pyrefly: ignore[bad-argument-type]
-  )
-
-  for t in times:
-    left_idx = left_knot_indices[t]
-    current_time = times[t]
-
-    if current_time in knot_locations:
-      # If time is exactly at a knot, give all weight to that knot.
-      knot_idx = np.where(knot_locations == current_time)[0][0]
-      w[knot_idx, t] = 1.0
-    elif current_time < knot_locations[0] or current_time > knot_locations[-1]:
-      # Outside the knot range, assign full weight to the closest endpoint knot.
-      w[left_idx, t] = 1.0
-    else:
-      # Time is between left_idx and left_idx + 1.
-      left_dist = time_minus_knot[left_idx, t]
-      right_dist = time_minus_knot[left_idx + 1, t]
-      total_dist = left_dist + right_dist
-
-      # Assign weight inversely proportional to distance.
-      # The closer knot gets more weight.
-      w[left_idx, t] = right_dist / total_dist
-      w[left_idx + 1, t] = left_dist / total_dist
-
-  return w
-
-
-def _get_equally_spaced_knot_locations(n_times, n_knots):
-  """Equally spaced knot locations starting at the endpoints."""
-  return np.linspace(0, n_times - 1, n_knots, dtype=int)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -453,9 +346,7 @@ class AKS:
       )
 
     if not np.all(np.isin(excluded_knots, knots)):
-      raise ValueError(
-          'The excluded knots are not legitimate knot locations.'
-      )
+      raise ValueError('The excluded knots are not legitimate knot locations.')
     is_included = ~np.isin(knots, excluded_knots)
     knots = knots[is_included]
     return knots
@@ -878,3 +769,24 @@ class AKS:
       old_par = par
 
     return par
+
+
+def _get_equally_spaced_knot_locations(n_times, n_knots):
+  """Equally spaced knot locations starting at the endpoints."""
+  return np.linspace(0, n_times - 1, n_knots, dtype=int)
+
+
+def get_legacy_knots(
+    data: input_data.InputData, is_national: bool
+) -> list[int]:
+  """Run the legacy AKS algorithm against the provided data."""
+  aks = AKS(data)
+  selected_knots = aks.automatic_knot_selection().knots
+  knots = selected_knots if selected_knots.size > 0 else None
+  if isinstance(knots, Collection) and len(knots) > 0:
+    return knots.tolist()
+  else:
+    n_times = len(data.time)
+    n_knots = 1 if is_national else n_times
+    knot_locations = _get_equally_spaced_knot_locations(n_times, n_knots)
+    return knot_locations.tolist()
