@@ -1102,6 +1102,10 @@ if _BACKEND == config.Backend.JAX:
   ones_like = _ops.ones_like
   rank = _ops.ndim
   reduce_any = _ops.any
+  searchsorted = _ops.searchsorted
+  minimum = _ops.minimum
+  maximum = _ops.maximum
+  floor = _ops.floor
   reduce_max = _ops.max
   reduce_mean = _ops.mean
   reduce_min = _ops.min
@@ -1288,6 +1292,10 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   ones_like = _ops.ones_like
   rank = _ops.rank
   reduce_any = _ops.reduce_any
+  searchsorted = _ops.searchsorted
+  minimum = _ops.minimum
+  maximum = _ops.maximum
+  floor = _ops.floor
   reduce_max = _ops.reduce_max
   reduce_mean = _ops.reduce_mean
   reduce_min = _ops.reduce_min
