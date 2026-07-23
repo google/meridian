@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+* Fix AKS fallback behavior to correctly generate a single common intercept for non-national models when no internal knots are selected.
+
 ## [1.7.1] - 2026-07-20
 
 *   Enable `MeridianEDA._generate_prior_specifications_card` and
@@ -32,7 +34,6 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Fix a silent attribution misalignment bug in `InputData` and `InputDataBuilder` by enforcing strict exact coordinate match ordering across channels.
 *   Fix backward-compatibility deserialization error for older legacy models
     saved with Automatic Knot Selection (`enable_aks=True`).
-
 ## [1.7.0] - 2026-06-17
 
 *   Fix serialization error in serde when saving models with
