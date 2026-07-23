@@ -233,6 +233,7 @@ MEDIA_EFFECTS_DIST = 'media_effects_dist'
 HILL_BEFORE_ADSTOCK = 'hill_before_adstock'
 ADSTOCK_MEMORY_OPTIMIZED = 'adstock_memory_optimized'
 MAX_LAG = 'max_lag'
+DEFAULT_MAX_LAG_WEEKS = 8
 UNIQUE_SIGMA_FOR_EACH_GEO = 'unique_sigma_for_each_geo'
 ROI_CALIBRATION_PERIOD = 'roi_calibration_period'
 RF_ROI_CALIBRATION_PERIOD = 'rf_roi_calibration_period'

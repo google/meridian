@@ -234,7 +234,7 @@ class ModelSpec:
   )
   media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
   hill_before_adstock: bool = False
-  max_lag: int = 8
+  max_lag: int = constants.DEFAULT_MAX_LAG_WEEKS
   unique_sigma_for_each_geo: bool = False
   media_prior_type: str | None = None
   rf_prior_type: str | None = None
