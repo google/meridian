@@ -551,7 +551,7 @@ class AKS:
         ],
         axis=1,
     )
-    sigma0sq = linear_model.OLS(y, xmat).fit().mse_resid ** 2
+    sigma0sq = linear_model.OLS(y, xmat).fit().mse_resid
     model, x_sel, knots_sel, sel_ls, par_ls, aic, bic, ebic, dim, loglik = (
         [None] * len(penalty) for _ in range(10)
     )

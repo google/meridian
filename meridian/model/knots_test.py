@@ -410,36 +410,23 @@ class AKSTest(parameterized.TestCase):
               6,
               15,
               16,
-              19,
               20,
               21,
-              24,
-              25,
               27,
               28,
               30,
-              33,
-              35,
               38,
               39,
               42,
               43,
               44,
-              47,
               53,
               54,
-              59,
-              60,
               64,
               65,
               66,
               67,
               68,
-              72,
-              73,
-              74,
-              78,
-              79,
               81,
               83,
               85,
@@ -447,14 +434,10 @@ class AKSTest(parameterized.TestCase):
               89,
               90,
               91,
-              93,
               95,
               96,
               98,
               99,
-              102,
-              103,
-              104,
               114,
           ],
       ),
@@ -593,7 +576,7 @@ class AKSTest(parameterized.TestCase):
               ),
               "non_revenue",
           ),
-          expected_knots=[17, 25],
+          expected_knots=[8, 17, 20, 24, 25, 27],
       ),
       dict(
           testcase_name="seasonal",
@@ -740,14 +723,16 @@ class AKSTest(parameterized.TestCase):
         np.array([[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]]),
     )
     np.testing.assert_allclose(
-        result[constants.AIC], np.array([6.07028377, 6.07028377, 10.06504776])
+        result[constants.AIC],
+        np.array([17.88544385, 17.88544385, 21.0]),
     )
     np.testing.assert_allclose(
-        result[constants.BIC], np.array([8.194435, 8.194435, 13.60529853])
+        result[constants.BIC],
+        np.array([20.00959446, 20.00959446, 24.54025101]),
     )
     np.testing.assert_allclose(
         result[constants.EBIC],
-        np.array([12.79960525, 12.79960525, 13.60529853]),
+        np.array([24.61476471, 24.61476471, 24.54025101]),
     )
 
   @parameterized.named_parameters(
