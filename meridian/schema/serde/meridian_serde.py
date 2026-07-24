@@ -66,7 +66,7 @@ import semver
 from google.protobuf import any_pb2
 
 _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
-_LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.0')
+_LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.1')
 
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
