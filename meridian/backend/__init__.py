@@ -1088,6 +1088,7 @@ if _BACKEND == config.Backend.JAX:
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
   get_seed_data = _jax_get_seed_data
+  is_finite = _ops.isfinite
   is_nan = _ops.isnan
   log = _ops.log
   make_ndarray = _jax_make_ndarray
@@ -1274,6 +1275,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
   get_seed_data = _tf_get_seed_data
+  is_finite = _ops.math.is_finite
   is_nan = _ops.math.is_nan
   log = _ops.math.log
   make_ndarray = _ops.make_ndarray
