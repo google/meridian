@@ -120,7 +120,7 @@ class ConvergenceCheck(
     elif (
         self._config.convergence_threshold
         <= max_rhat
-        < self._config.not_fully_convergence_threshold
+        < self._config.not_fully_converged_threshold
     ):
       case = results.ConvergenceCases.NOT_FULLY_CONVERGED
 
@@ -1130,4 +1130,3 @@ class PotentialBiasCheck(
         low_correlation_channels=low_correlation_channels,
         correlation_matrix=correlation_matrix,
     )
-
