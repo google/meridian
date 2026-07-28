@@ -201,12 +201,12 @@ class DistributionSerde(
     match value:
       case float() | np.floating():
         return meridian_pb.TfpParameterValue(scalar_value=float(value))
-      case int() | np.integer():
-        return meridian_pb.TfpParameterValue(int_value=int(value))
       # TODO: case bool() has to be before int() because bool is a
       # subtype of int.
       case bool() | np.bool():
         return meridian_pb.TfpParameterValue(bool_value=bool(value))
+      case int() | np.integer():
+        return meridian_pb.TfpParameterValue(int_value=int(value))
       case str():
         return meridian_pb.TfpParameterValue(string_value=value)
       case None:
