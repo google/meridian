@@ -26,6 +26,7 @@ import arviz as az
 import joblib
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import configs
 from meridian.analysis.review import results
 from meridian.analysis.review import reviewer
 from meridian.common import errors
@@ -1165,11 +1166,22 @@ class Meridian:
     )
     self.inference_data.extend(posterior_inference_data, join="right")
 
-  def review(self) -> results.ReviewSummary:
+  def review(
+      self,
+      *,
+      convergence_check_config: configs.ConvergenceConfig | None = None,
+      post_convergence_checks: reviewer.ChecksBattery | None = None,
+  ) -> results.ReviewSummary:
     """Runs the model health checks and stores the results in `health_summary`.
 
     This method should be called after the model has been fitted, i.e., after
     `sample_posterior` has been executed to populate `self.inference_data`.
+
+    Args:
+      convergence_check_config: Optional configuration for the convergence
+        check.
+      post_convergence_checks: Optional battery of post-convergence checks to
+        run.
 
     Returns:
       A `ReviewSummary` object containing the results of the health checks.
@@ -1179,7 +1191,10 @@ class Meridian:
           "The model must be fitted before calling review()."
       )
     model_reviewer = reviewer.ModelReviewer(
-        model_context=self.model_context, inference_data=self.inference_data
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        convergence_check_config=convergence_check_config,
+        post_convergence_checks=post_convergence_checks,
     )
     self._health_summary = model_reviewer.run()
     return self._health_summary
@@ -1199,6 +1214,8 @@ class Meridian:
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
+      convergence_check_config: configs.ConvergenceConfig | None = None,
+      post_convergence_checks: reviewer.ChecksBattery | None = None,
       **pins,
   ) -> None:
     """Runs MCMC sampling and then the model health checks."""
@@ -1217,7 +1234,10 @@ class Meridian:
         seed=seed,
         **pins,
     )
-    self.review()
+    self.review(
+        convergence_check_config=convergence_check_config,
+        post_convergence_checks=post_convergence_checks,
+    )
 
   def posterior_thinning(
       self,

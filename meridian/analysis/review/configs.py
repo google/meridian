@@ -44,7 +44,90 @@ class ConvergenceConfig(BaseConfig):
 
 
 @dataclasses.dataclass(frozen=True)
-class ROIConsistencyConfig(BaseConfig):
+class ChannelCheckConfig(BaseConfig):
+  """Base configuration class for channel-level health checks.
+
+  If both `failing_channels_threshold` and `failing_channels_ratio_threshold`
+  are set, the check passes if EITHER condition is satisfied (or both).
+
+  Attributes:
+    failing_channels_threshold: Absolute threshold for the number of failing
+      channels allowed before triggering a review status. If None, absolute
+      count tolerance is not applied. If both failing_channels_threshold and
+      failing_channels_ratio_threshold are specified, the check passes if EITHER
+      condition is satisfied (or both).
+    failing_channels_ratio_threshold: The maximum ratio (between 0.0 and 1.0) of
+      failing channels allowed before triggering a review status. If None, ratio
+      tolerance is not applied. If both failing_channels_threshold and
+      failing_channels_ratio_threshold are specified, the check passes if EITHER
+      condition is satisfied (or both).
+  """
+
+  failing_channels_threshold: int | None = None
+  failing_channels_ratio_threshold: float | None = None
+
+  def __post_init__(self):
+    if (
+        self.failing_channels_threshold is not None
+        and self.failing_channels_threshold < 0
+    ):
+      raise ValueError(
+          "failing_channels_threshold must be non-negative, got"
+          f" {self.failing_channels_threshold}."
+      )
+    if self.failing_channels_ratio_threshold is not None and not (
+        0.0 <= self.failing_channels_ratio_threshold <= 1.0
+    ):
+      raise ValueError(
+          "failing_channels_ratio_threshold must be between 0.0 and 1.0, got"
+          f" {self.failing_channels_ratio_threshold}."
+      )
+
+  def is_failing_channels_within_threshold(
+      self, n_failing: int, n_total: int
+  ) -> bool:
+    """Checks if the number and ratio of failing channels are within threshold.
+
+    If both thresholds are specified, the check passes if EITHER condition is
+    satisfied (or both). If no threshold is set, returns True only when
+    n_failing == 0.
+
+    Args:
+      n_failing: The number of failing channels.
+      n_total: The total number of channels evaluated.
+
+    Returns:
+      True if the failing channels are within the tolerance threshold(s), False
+      otherwise.
+    """
+    if n_failing == 0:
+      return True
+    if n_total <= 0:
+      return False
+
+    abs_pass = (
+        n_failing <= self.failing_channels_threshold
+        if self.failing_channels_threshold is not None
+        else None
+    )
+    rel_pass = (
+        (n_failing / n_total) <= self.failing_channels_ratio_threshold
+        if self.failing_channels_ratio_threshold is not None
+        else None
+    )
+
+    if abs_pass is not None and rel_pass is not None:
+      return abs_pass or rel_pass
+    elif abs_pass is not None:
+      return abs_pass
+    elif rel_pass is not None:
+      return rel_pass
+    else:
+      return False
+
+
+@dataclasses.dataclass(frozen=True)
+class ROIConsistencyConfig(ChannelCheckConfig):
   """Configuration for the ROI Consistency Check.
 
   This check verifies if the posterior mean of the ROI falls within a
@@ -93,11 +176,18 @@ class BayesianPPPConfig(BaseConfig):
 
 @dataclasses.dataclass(frozen=True)
 class GoodnessOfFitConfig(BaseConfig):
-  """An empty config for the Goodness of Fit Check."""
+  """Configuration for the Goodness of Fit Check.
+
+  Attributes:
+    r_squared_threshold: The threshold for R-squared. If R-squared is less than
+      or equal to this threshold, a review is issued.
+  """
+
+  r_squared_threshold: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True)
-class PriorPosteriorShiftConfig(BaseConfig):
+class PriorPosteriorShiftConfig(ChannelCheckConfig):
   """Configuration for the Prior-Posterior Shift Check.
 
   Attributes:
