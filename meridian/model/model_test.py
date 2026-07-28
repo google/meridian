@@ -26,6 +26,7 @@ from meridian.analysis.review import results
 from meridian.analysis.review import reviewer
 from meridian.backend import config as backend_config
 from meridian.backend import test_utils
+from meridian.common import errors
 from meridian.data import test_utils as data_test_utils
 from meridian.model import equations
 from meridian.model import model
@@ -654,7 +655,7 @@ class ModelTest(
   def test_review_called_before_fitting_raises_error(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
     with self.assertRaisesWithLiteralMatch(
-        model.NotFittedModelError,
+        errors.NotFittedModelError,
         "The model must be fitted before calling review().",
     ):
       meridian.review()
@@ -861,7 +862,7 @@ class ModelTest(
   def test_posterior_thinning_requires_posterior(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
 
-    with self.assertRaises(model.NotFittedModelError):
+    with self.assertRaises(errors.NotFittedModelError):
       meridian.posterior_thinning(sampling_rate=0.1)
 
   @parameterized.named_parameters(
