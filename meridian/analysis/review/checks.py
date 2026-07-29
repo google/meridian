@@ -303,7 +303,10 @@ class GoodnessOfFitCheck(
             geo_granularity=geo_granularity,
             suffix=suffix,
         )
-        if metrics_dict[f"{review_constants.R_SQUARED}{suffix}"] <= 0:
+        if (
+            metrics_dict[f"{review_constants.R_SQUARED}{suffix}"]
+            <= self._config.r_squared_threshold
+        ):
           case = results.GoodnessOfFitCases.REVIEW
       return results.GoodnessOfFitCheckResult(
           case=case,
@@ -345,7 +348,10 @@ class GoodnessOfFitCheck(
           geo_granularity=geo_granularity,
           suffix=review_constants.ALL_SUFFIX,
       )
-      if metrics_dict[review_constants.R_SQUARED] <= 0:
+      if (
+          metrics_dict[review_constants.R_SQUARED]
+          <= self._config.r_squared_threshold
+      ):
         case = results.GoodnessOfFitCases.REVIEW
       return results.GoodnessOfFitCheckResult(
           case=case,
@@ -562,6 +568,7 @@ def _compute_channel_results(
 
 def _compute_aggregate_result(
     channel_data: _ROIConsistencyChannelData,
+    config: configs.ROIConsistencyConfig,
 ) -> results.ROIConsistencyCheckResult:
   """Returns the aggregate result for the ROI Consistency Check."""
   channel_results = _compute_channel_results(channel_data=channel_data)
@@ -606,9 +613,18 @@ def _compute_aggregate_result(
   if (
       aggregate_details[review_constants.QUANTILE_NOT_DEFINED_MSG]
       or aggregate_details[review_constants.INF_CHANNELS_MSG]
-      or aggregate_details[review_constants.LOW_HIGH_CHANNELS_MSG]
   ):
     aggregate_case = results.ROIConsistencyAggregateCases.REVIEW
+  elif aggregate_details[review_constants.LOW_HIGH_CHANNELS_MSG]:
+    n_failing = (
+        channel_data.low_roi_channels.size + channel_data.high_roi_channels.size
+    )
+    if not config.is_failing_channels_within_threshold(
+        n_failing=n_failing, n_total=channel_data.all_channels.size
+    ):
+      aggregate_case = results.ROIConsistencyAggregateCases.REVIEW
+    else:
+      aggregate_case = results.ROIConsistencyAggregateCases.PASS
   else:
     aggregate_case = results.ROIConsistencyAggregateCases.PASS
 
@@ -645,7 +661,9 @@ class ROIConsistencyCheck(
         prior_upper_quantile=self._config.prior_upper_quantile,
     )
 
-    return _compute_aggregate_result(channel_data=channel_data)
+    return _compute_aggregate_result(
+        channel_data=channel_data, config=self._config
+    )
 
 
 # ==============================================================================
@@ -803,7 +821,9 @@ class PriorPosteriorShiftCheck(
       channel_results.extend(results_part)
       no_shift_channels.extend(channels_part)
 
-    if no_shift_channels:
+    if not self._config.is_failing_channels_within_threshold(
+        n_failing=len(no_shift_channels), n_total=len(channel_results)
+    ):
       agg_case = results.PriorPosteriorShiftAggregateCases.REVIEW
     else:
       agg_case = results.PriorPosteriorShiftAggregateCases.PASS
@@ -917,7 +937,6 @@ class ImplausibleROICheck(
       )
 
     if high_roi_channels or low_roi_channels:
-      agg_case = results.ImplausibleROIAggregateCases.REVIEW
       msg_parts = []
       if high_roi_channels:
         msg_parts.append(
@@ -934,8 +953,12 @@ class ImplausibleROICheck(
       )
       aggregate_details = {"implausible_roi_msg": implausible_roi_msg}
     else:
-      agg_case = results.ImplausibleROIAggregateCases.PASS
       aggregate_details = {"implausible_roi_msg": ""}
+
+    if high_roi_channels or low_roi_channels:
+      agg_case = results.ImplausibleROIAggregateCases.REVIEW
+    else:
+      agg_case = results.ImplausibleROIAggregateCases.PASS
 
     return results.ImplausibleROICheckResult(
         case=agg_case,
@@ -1020,12 +1043,13 @@ class HighVarianceCheck(
           )
       )
 
+    if high_variance_channels:
+      agg_case = results.HighVarianceAggregateCases.REVIEW
+    else:
+      agg_case = results.HighVarianceAggregateCases.PASS
+
     return results.HighVarianceCheckResult(
-        case=(
-            results.HighVarianceAggregateCases.REVIEW
-            if high_variance_channels
-            else results.HighVarianceAggregateCases.PASS
-        ),
+        case=agg_case,
         channel_results=channel_results,
         high_variance_channels=high_variance_channels,
     )
@@ -1120,14 +1144,14 @@ class PotentialBiasCheck(
         dims=[constants.GEO, constants.CHANNEL, constants.CONTROL_VARIABLE],
     )
 
+    if low_correlation_channels:
+      agg_case = results.PotentialBiasAggregateCases.REVIEW
+    else:
+      agg_case = results.PotentialBiasAggregateCases.PASS
+
     return results.PotentialBiasCheckResult(
-        case=(
-            results.PotentialBiasAggregateCases.REVIEW
-            if low_correlation_channels
-            else results.PotentialBiasAggregateCases.PASS
-        ),
+        case=agg_case,
         channel_results=channel_results,
         low_correlation_channels=low_correlation_channels,
         correlation_matrix=correlation_matrix,
     )
-

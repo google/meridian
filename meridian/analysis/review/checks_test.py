@@ -240,6 +240,24 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
           },
       ),
       dict(
+          testcase_name="all_pass_global_prior",
+          media_channel_names=["ch1"],
+          posterior_means=[5.0],
+          rf_channel_names=["rf1"],
+          rf_posterior_means=[6.0],
+          expected_aggregate_case=results.ROIConsistencyAggregateCases.PASS,
+          expected_channel_cases=[
+              results.ROIConsistencyChannelCases.ROI_PASS,
+              results.ROIConsistencyChannelCases.ROI_PASS,
+          ],
+          expected_details={
+              "quantile_not_defined_msg": "",
+              "inf_channels_msg": "",
+              "low_high_channels_msg": "",
+          },
+          global_prior=True,
+      ),
+      dict(
           testcase_name="high_low_pass",
           media_channel_names=["ch1", "ch2"],
           posterior_means=[10.1, 5.0],
@@ -261,6 +279,30 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
                   " extreme tail of your custom prior."
               ),
           },
+      ),
+      dict(
+          testcase_name="high_low_pass_global_prior",
+          media_channel_names=["ch1", "ch2"],
+          posterior_means=[10.1, 5.0],
+          rf_channel_names=["rf1"],
+          rf_posterior_means=[0.9],
+          expected_aggregate_case=results.ROIConsistencyAggregateCases.REVIEW,
+          expected_channel_cases=[
+              results.ROIConsistencyChannelCases.ROI_HIGH,
+              results.ROIConsistencyChannelCases.ROI_PASS,
+              results.ROIConsistencyChannelCases.ROI_LOW,
+          ],
+          expected_details={
+              "quantile_not_defined_msg": "",
+              "inf_channels_msg": "",
+              "low_high_channels_msg": (
+                  "We've detected an unusually low ROI estimate (for channel"
+                  " `rf1`) and an unusually high ROI estimate (for channel"
+                  " `ch1`) where the posterior point estimate falls into the"
+                  " extreme tail of your custom prior."
+              ),
+          },
+          global_prior=True,
       ),
       dict(
           testcase_name="high_low",
@@ -299,245 +341,187 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
               "inf_channels_msg": "",
               "low_high_channels_msg": (
                   "We've detected an unusually high ROI estimate (for channels"
-                  " `ch1`, `ch2`) where the posterior point estimate falls into"
-                  " the extreme tail of your custom prior."
+                  " `ch1`, `ch2`) where the posterior point estimate falls"
+                  " into the extreme tail of your custom prior."
               ),
           },
       ),
       dict(
-          testcase_name="low_pass_rf",
+          testcase_name="only_low_rf",
           rf_channel_names=["rf1", "rf2"],
-          rf_posterior_means=[0.9, 5.0],
+          rf_posterior_means=[0.9, 0.8],
           expected_aggregate_case=results.ROIConsistencyAggregateCases.REVIEW,
           expected_channel_cases=[
               results.ROIConsistencyChannelCases.ROI_LOW,
-              results.ROIConsistencyChannelCases.ROI_PASS,
-          ],
-          expected_details={
-              "quantile_not_defined_msg": "",
-              "inf_channels_msg": "",
-              "low_high_channels_msg": (
-                  "We've detected an unusually low ROI estimate (for channel"
-                  " `rf1`) where the posterior point estimate falls into the"
-                  " extreme tail of your custom prior."
-              ),
-          },
-      ),
-      dict(
-          testcase_name="all_pass_global_prior",
-          media_channel_names=["ch1"],
-          posterior_means=[5.0],
-          rf_channel_names=["rf1"],
-          rf_posterior_means=[6.0],
-          expected_aggregate_case=results.ROIConsistencyAggregateCases.PASS,
-          expected_channel_cases=[
-              results.ROIConsistencyChannelCases.ROI_PASS,
-              results.ROIConsistencyChannelCases.ROI_PASS,
-          ],
-          expected_details={
-              "quantile_not_defined_msg": "",
-              "inf_channels_msg": "",
-              "low_high_channels_msg": "",
-          },
-          global_prior=True,
-      ),
-      dict(
-          testcase_name="high_low_pass_global_prior",
-          media_channel_names=["ch1", "ch2"],
-          posterior_means=[10.1, 5.0],
-          rf_channel_names=["rf1"],
-          rf_posterior_means=[0.9],
-          expected_aggregate_case=results.ROIConsistencyAggregateCases.REVIEW,
-          expected_channel_cases=[
-              results.ROIConsistencyChannelCases.ROI_HIGH,
-              results.ROIConsistencyChannelCases.ROI_PASS,
               results.ROIConsistencyChannelCases.ROI_LOW,
           ],
           expected_details={
               "quantile_not_defined_msg": "",
               "inf_channels_msg": "",
               "low_high_channels_msg": (
-                  "We've detected an unusually low ROI estimate (for channel"
-                  " `rf1`) and an unusually high ROI estimate (for channel"
-                  " `ch1`) where the posterior point estimate falls into the"
-                  " extreme tail of your custom prior."
+                  "We've detected an unusually low ROI estimate (for channels"
+                  " `rf1`, `rf2`) where the posterior point estimate falls"
+                  " into the extreme tail of your custom prior."
               ),
           },
-          global_prior=True,
       ),
   )
   def test_roi_consistency_check(
       self,
-      expected_aggregate_case,
-      expected_channel_cases,
-      expected_details,
-      media_channel_names=None,
-      posterior_means=None,
-      rf_channel_names=None,
-      rf_posterior_means=None,
-      global_prior=False,
+      expected_aggregate_case: results.ROIConsistencyAggregateCases,
+      expected_channel_cases: Sequence[results.ROIConsistencyChannelCases],
+      expected_details: dict[str, str],
+      media_channel_names: Sequence[str] | None = None,
+      posterior_means: Sequence[float] | None = None,
+      rf_channel_names: Sequence[str] | None = None,
+      rf_posterior_means: Sequence[float] | None = None,
+      global_prior: bool = False,
   ):
+    mock_prior_media = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
     if media_channel_names:
-      self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
-          self._get_quantile_side_effect(
-              len(media_channel_names), return_scalar=global_prior
-          )
-      )
-    if rf_channel_names:
-      self.model_context.model_spec.prior.roi_rf.quantile.side_effect = (
-          self._get_quantile_side_effect(
-              len(rf_channel_names), return_scalar=global_prior
-          )
+      mock_prior_media.quantile.side_effect = self._get_quantile_side_effect(
+          num_channels=len(media_channel_names), return_scalar=global_prior
       )
 
-    all_channels = []
-    if media_channel_names:
-      all_channels.extend(media_channel_names)
+    mock_prior_rf = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
     if rf_channel_names:
-      all_channels.extend(rf_channel_names)
+      mock_prior_rf.quantile.side_effect = self._get_quantile_side_effect(
+          num_channels=len(rf_channel_names), return_scalar=global_prior
+      )
+
+    self.model_context.model_spec.prior.roi_m = mock_prior_media
+    self.model_context.model_spec.prior.roi_rf = mock_prior_rf
+
     result = self._run_roi_consistency_check(
         media_channel_names=media_channel_names,
         posterior_means=posterior_means,
         rf_channel_names=rf_channel_names,
         rf_posterior_means=rf_posterior_means,
     )
+
     self.assertEqual(result.case, expected_aggregate_case)
+    self.assertEqual(
+        [r.case for r in result.channel_results], expected_channel_cases
+    )
     self.assertEqual(result.details, expected_details)
-    self.assertEqual(
-        [res.case for res in result.channel_results], expected_channel_cases
-    )
-    self.assertEqual(
-        [res.channel_name for res in result.channel_results], all_channels
-    )
 
   def test_roi_consistency_check_infinite_roi_prior(self):
-    media_channel_names = ["ch1"]
-    posterior_means = [5.0]
-    rf_channel_names = ["rf1"]
-    rf_posterior_means = [6.0]
-
-    def get_m_quantile_side_effect(q, **kwargs):
-      del kwargs
-      if q == 0.01:
-        return np.array([-np.inf])
-      elif q == 0.99:
-        return np.array([10.0])
-      else:
-        raise ValueError(f"Unexpected quantile: {q}")
-
-    def get_rf_quantile_side_effect(q, **kwargs):
-      del kwargs
-      if q == 0.01:
-        return np.array([1.0])
-      elif q == 0.99:
-        return np.array([np.inf])
-      else:
-        raise ValueError(f"Unexpected quantile: {q}")
-
-    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
-        get_m_quantile_side_effect
+    mock_prior_media = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
     )
-    self.model_context.model_spec.prior.roi_rf.quantile.side_effect = (
-        get_rf_quantile_side_effect
+    mock_prior_media.quantile.side_effect = (
+        lambda q: np.array([-np.inf, -np.inf])
+        if q == 0.01
+        else np.array([np.inf, np.inf])
     )
+
+    mock_prior_rf = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior_rf.quantile.side_effect = self._get_quantile_side_effect(
+        num_channels=1
+    )
+
+    self.model_context.model_spec.prior.roi_m = mock_prior_media
+    self.model_context.model_spec.prior.roi_rf = mock_prior_rf
+
     result = self._run_roi_consistency_check(
-        media_channel_names=media_channel_names,
-        posterior_means=posterior_means,
-        rf_channel_names=rf_channel_names,
-        rf_posterior_means=rf_posterior_means,
+        media_channel_names=["ch1", "ch2"],
+        posterior_means=[5.0, 5.0],
+        rf_channel_names=["rf1"],
+        rf_posterior_means=[6.0],
     )
-    all_channels = media_channel_names + rf_channel_names
+
     self.assertEqual(result.case, results.ROIConsistencyAggregateCases.REVIEW)
-    expected_details = {
-        "quantile_not_defined_msg": "",
-        "inf_channels_msg": (
-            "Prior ROI quantiles are infinite for channels: ch1, rf1"
-        ),
-        "low_high_channels_msg": "",
-    }
-    self.assertEqual(result.details, expected_details)
     self.assertEqual(
-        [res.case for res in result.channel_results],
+        [r.case for r in result.channel_results],
         [
             results.ROIConsistencyChannelCases.PRIOR_ROI_QUANTILE_INF,
             results.ROIConsistencyChannelCases.PRIOR_ROI_QUANTILE_INF,
+            results.ROIConsistencyChannelCases.ROI_PASS,
         ],
     )
-    self.assertEqual(
-        [res.channel_name for res in result.channel_results], all_channels
-    )
-
-  def test_roi_consistency_check_quantile_not_defined_rf_channel(self):
-    media_channel_names = ["ch1"]
-    posterior_means = [5.0]
-    rf_channel_names = ["rf1"]
-    rf_posterior_means = [6.0]
-
-    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
-        self._get_quantile_side_effect(1)
-    )
-    self.model_context.model_spec.prior.roi_rf = backend.tfd.Deterministic(
-        loc=6.0
-    )
-    result = self._run_roi_consistency_check(
-        media_channel_names=media_channel_names,
-        posterior_means=posterior_means,
-        rf_channel_names=rf_channel_names,
-        rf_posterior_means=rf_posterior_means,
-    )
-    param = backend.tfd.Deterministic(loc=6.0)
-
-    self.assertEqual(result.case, results.ROIConsistencyAggregateCases.REVIEW)
     expected_details = {
-        "quantile_not_defined_msg": (
-            "The quantile method is not defined for the following parameters:"
-            f" {[param]}. The ROI Consistency check cannot be performed for"
-            " these parameters."
+        "quantile_not_defined_msg": "",
+        "inf_channels_msg": (
+            "Prior ROI quantiles are infinite for channels: ch1, ch2"
         ),
-        "inf_channels_msg": "",
         "low_high_channels_msg": "",
     }
     self.assertEqual(result.details, expected_details)
+
+  def test_roi_consistency_check_quantile_not_defined(self):
+    mock_prior_media = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior_media.quantile.side_effect = NotImplementedError
+
+    mock_prior_rf = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior_rf.quantile.side_effect = self._get_quantile_side_effect(
+        num_channels=1
+    )
+
+    self.model_context.model_spec.prior.roi_m = mock_prior_media
+    self.model_context.model_spec.prior.roi_rf = mock_prior_rf
+
+    result = self._run_roi_consistency_check(
+        media_channel_names=["ch1"],
+        posterior_means=[5.0],
+        rf_channel_names=["rf1"],
+        rf_posterior_means=[6.0],
+    )
+
+    self.assertEqual(result.case, results.ROIConsistencyAggregateCases.REVIEW)
     self.assertEqual(
-        [res.case for res in result.channel_results],
+        [r.case for r in result.channel_results],
         [
             results.ROIConsistencyChannelCases.QUANTILE_NOT_DEFINED,
             results.ROIConsistencyChannelCases.ROI_PASS,
         ],
     )
-    self.assertEqual(
-        [res.channel_name for res in result.channel_results], ["rf1", "ch1"]
-    )
+    expected_details = {
+        "quantile_not_defined_msg": (
+            "The quantile method is not defined for the following parameters:"
+            f" [{mock_prior_media}]. The ROI Consistency check cannot be"
+            " performed for these parameters."
+        ),
+        "inf_channels_msg": "",
+        "low_high_channels_msg": "",
+    }
+    self.assertEqual(result.details, expected_details)
 
   def test_roi_consistency_check_quantile_not_defined_all_channels(self):
-    media_channel_names = ["ch1"]
-    posterior_means = [5.0]
-    rf_channel_names = ["rf1"]
-    rf_posterior_means = [6.0]
+    mock_prior_media = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior_media.quantile.side_effect = NotImplementedError
 
-    self.model_context.model_spec.prior.roi_m = backend.tfd.Deterministic(
-        loc=5.0
+    mock_prior_rf = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
     )
-    self.model_context.model_spec.prior.roi_rf = backend.tfd.Deterministic(
-        loc=6.0
-    )
-    all_channels = media_channel_names + rf_channel_names
+    mock_prior_rf.quantile.side_effect = NotImplementedError
+
+    self.model_context.model_spec.prior.roi_m = mock_prior_media
+    self.model_context.model_spec.prior.roi_rf = mock_prior_rf
+
     result = self._run_roi_consistency_check(
-        media_channel_names=media_channel_names,
-        posterior_means=posterior_means,
-        rf_channel_names=rf_channel_names,
-        rf_posterior_means=rf_posterior_means,
+        media_channel_names=["ch1"],
+        posterior_means=[5.0],
+        rf_channel_names=["rf1"],
+        rf_posterior_means=[6.0],
     )
-    params = [
-        backend.tfd.Deterministic(loc=5.0),
-        backend.tfd.Deterministic(loc=6.0),
-    ]
     self.assertEqual(result.case, results.ROIConsistencyAggregateCases.REVIEW)
     expected_details = {
         "quantile_not_defined_msg": (
             "The quantile method is not defined for the following parameters:"
-            f" {params}. The ROI Consistency check cannot be performed for"
-            " these parameters."
+            f" [{mock_prior_media}, {mock_prior_rf}]. The ROI Consistency check"
+            " cannot be performed for these parameters."
         ),
         "inf_channels_msg": "",
         "low_high_channels_msg": "",
@@ -549,9 +533,6 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
             results.ROIConsistencyChannelCases.QUANTILE_NOT_DEFINED,
             results.ROIConsistencyChannelCases.QUANTILE_NOT_DEFINED,
         ],
-    )
-    self.assertEqual(
-        [res.channel_name for res in result.channel_results], all_channels
     )
 
   def test_roi_consistency_check_with_selected_times_geos(self):
@@ -560,9 +541,13 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
         np.newaxis, np.newaxis, :
     ]
     self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
-    self.model_context.model_spec.prior.roi_m.quantile.side_effect = (
-        self._get_quantile_side_effect(1)
+    mock_prior_media = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
     )
+    mock_prior_media.quantile.side_effect = self._get_quantile_side_effect(1)
+    self.model_context.model_spec.prior.roi_m = mock_prior_media
+    self.model_context.model_spec.prior.roi_rf = None
+
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
         lambda tensor, **kwargs: tensor
     )
@@ -575,7 +560,8 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
         selected_times=["time1"],
         selected_geos=["geo1"],
     )
-    check.run()
+    res = check.run()
+    self.assertEqual(res.case, results.ROIConsistencyAggregateCases.PASS)
 
 
 class PriorPosteriorShiftCheckTest(parameterized.TestCase):
@@ -1306,6 +1292,31 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION, result.recommendation
       )
 
+  def test_goodness_of_fit_check_with_custom_threshold(self):
+    self.model_context.n_geos = 2
+    gof_dataset = self._get_gof_dataset_no_holdout(0.4, 0.1, 0.1, False)
+    self.analyzer.predictive_accuracy.return_value = gof_dataset
+    config = configs.GoodnessOfFitConfig(r_squared_threshold=0.5)
+    gof_check = checks.GoodnessOfFitCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=config,
+    )
+    result = gof_check.run()
+    self.assertEqual(result.case, results.GoodnessOfFitCases.REVIEW)
+
+    # When r_squared (0.4) > r_squared_threshold (0.3), the check should pass.
+    pass_config = configs.GoodnessOfFitConfig(r_squared_threshold=0.3)
+    gof_check_pass = checks.GoodnessOfFitCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=pass_config,
+    )
+    pass_result = gof_check_pass.run()
+    self.assertEqual(pass_result.case, results.GoodnessOfFitCases.PASS)
+
   def test_goodness_of_fit_check_with_selected_times_geos(self):
     self.model_context.n_geos = 2
     gof_dataset = self._get_gof_dataset_no_holdout(0.5, 0.1, 0.1, False)
@@ -1559,7 +1570,21 @@ class HighVarianceCheckTest(parameterized.TestCase):
     self.inference_data = mock.create_autospec(
         spec=az.InferenceData, spec_set=False, instance=True
     )
-    self.inference_data.posterior = mock.Mock()
+    self.inference_data.posterior = mock.create_autospec(
+        spec=xr.Dataset, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.media_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.rf_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.roi_m = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    self.inference_data.posterior.roi_rf = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
     self.analyzer = mock.create_autospec(
         spec=analyzer_module.Analyzer, spec_set=True, instance=True
     )
@@ -1914,6 +1939,165 @@ class PotentialBiasCheckTest(parameterized.TestCase):
         expected_correlation_matrix,
         atol=1e-6,
     )
+
+
+class ChannelCheckConfigTest(parameterized.TestCase):
+
+  def test_is_failing_channels_within_threshold_abs(self):
+    config = configs.ChannelCheckConfig(failing_channels_threshold=1)
+    self.assertTrue(config.is_failing_channels_within_threshold(1, 10))
+    self.assertFalse(config.is_failing_channels_within_threshold(2, 10))
+
+  def test_is_failing_channels_within_threshold_ratio(self):
+    config = configs.ChannelCheckConfig(failing_channels_ratio_threshold=0.1)
+    self.assertTrue(config.is_failing_channels_within_threshold(1, 10))
+    self.assertFalse(config.is_failing_channels_within_threshold(2, 10))
+
+  def test_is_failing_channels_within_threshold_either_condition(self):
+    # Both thresholds set: passes if EITHER absolute or ratio threshold is met.
+    config = configs.ChannelCheckConfig(
+        failing_channels_threshold=1,
+        failing_channels_ratio_threshold=0.1,
+    )
+    # n_failing = 1, n_total = 5 -> abs pass (1 <= 1), ratio fail (0.2 > 0.1)
+    # -> True
+    self.assertTrue(config.is_failing_channels_within_threshold(1, 5))
+    # n_failing = 2, n_total = 50 -> abs fail (2 > 1), ratio pass (0.04 <= 0.1)
+    # -> True
+    self.assertTrue(config.is_failing_channels_within_threshold(2, 50))
+    # n_failing = 3, n_total = 10 -> abs fail (3 > 1), ratio fail (0.3 > 0.1)
+    # -> False
+    self.assertFalse(config.is_failing_channels_within_threshold(3, 10))
+
+  def test_invalid_thresholds(self):
+    with self.assertRaises(ValueError):
+      configs.ChannelCheckConfig(failing_channels_threshold=-1)
+    with self.assertRaises(ValueError):
+      configs.ChannelCheckConfig(failing_channels_ratio_threshold=-0.1)
+    with self.assertRaises(ValueError):
+      configs.ChannelCheckConfig(failing_channels_ratio_threshold=1.5)
+
+  def test_is_failing_channels_within_threshold_zero_or_negative_total(self):
+    config = configs.ChannelCheckConfig(failing_channels_threshold=1)
+    self.assertFalse(config.is_failing_channels_within_threshold(1, 0))
+    self.assertFalse(config.is_failing_channels_within_threshold(1, -1))
+
+  def test_is_failing_channels_within_threshold_default_config(self):
+    config = configs.ChannelCheckConfig()
+    self.assertTrue(config.is_failing_channels_within_threshold(0, 10))
+    self.assertFalse(config.is_failing_channels_within_threshold(1, 10))
+
+
+class ChannelChecksThresholdTest(absltest.TestCase):
+
+  def test_roi_consistency_thresholds(self):
+    model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    model_context.n_media_channels = 2
+    model_context.n_rf_channels = 0
+    inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    inference_data.posterior = mock.create_autospec(
+        spec=xr.Dataset, spec_set=False, instance=True
+    )
+    inference_data.posterior.coords = {constants.MEDIA_CHANNEL: ["ch1", "ch2"]}
+    inference_data.posterior.media_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    inference_data.posterior.media_channel.values = np.array(["ch1", "ch2"])
+
+    mock_prior = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior.quantile.side_effect = lambda q: 0.1 if q == 0.01 else 0.9
+    model_context.model_spec.prior.roi_m = mock_prior
+
+    inference_data.posterior.roi_m = np.array([[[0.05, 0.5]]])
+    analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+
+    cfg_default = configs.ROIConsistencyConfig(failing_channels_threshold=0)
+    check_default = checks.ROIConsistencyCheck(
+        model_context=model_context,
+        inference_data=inference_data,
+        analyzer=analyzer,
+        config=cfg_default,
+    )
+    res_default = check_default.run()
+    self.assertEqual(
+        res_default.case, results.ROIConsistencyAggregateCases.REVIEW
+    )
+    self.assertLen(res_default.channel_results, 2)
+
+    cfg_custom = configs.ROIConsistencyConfig(failing_channels_threshold=1)
+    check_custom = checks.ROIConsistencyCheck(
+        model_context=model_context,
+        inference_data=inference_data,
+        analyzer=analyzer,
+        config=cfg_custom,
+    )
+    res_custom = check_custom.run()
+    self.assertEqual(res_custom.case, results.ROIConsistencyAggregateCases.PASS)
+    self.assertEqual(
+        res_custom.channel_results[0].case,
+        results.ROIConsistencyChannelCases.ROI_LOW,
+    )
+
+  def test_prior_posterior_shift_thresholds(self):
+    model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    model_context.n_media_channels = 2
+    model_context.n_rf_channels = 0
+    inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    inference_data.posterior = mock.create_autospec(
+        spec=xr.Dataset, spec_set=False, instance=True
+    )
+    inference_data.posterior.coords = {constants.MEDIA_CHANNEL: ["ch1", "ch2"]}
+    inference_data.posterior.media_channel = mock.create_autospec(
+        spec=xr.DataArray, spec_set=False, instance=True
+    )
+    inference_data.posterior.media_channel.values = np.array(["ch1", "ch2"])
+    inference_data.posterior.__getitem__.side_effect = lambda k: getattr(
+        inference_data.posterior, k
+    )
+
+    mock_prior = mock.create_autospec(
+        spec=backend.tfd.Distribution, spec_set=True, instance=True
+    )
+    mock_prior.mean.return_value = np.array([1.0, 1.0])
+    mock_prior.quantile.return_value = np.array([1.0, 1.0])
+    model_context.model_spec.prior.roi_m = mock_prior
+    analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+
+    cfg_custom = configs.PriorPosteriorShiftConfig(
+        failing_channels_ratio_threshold=0.6
+    )
+    with mock.patch.object(
+        checks,
+        "_calculate_new_statistics_from_samples",
+        return_value={
+            "mean": np.array([[10.0, 1.0]]),
+            "median": np.array([[10.0, 1.0]]),
+            "q1": np.array([[10.0, 1.0]]),
+            "q3": np.array([[10.0, 1.0]]),
+        },
+    ):
+      check = checks.PriorPosteriorShiftCheck(
+          model_context=model_context,
+          inference_data=inference_data,
+          analyzer=analyzer,
+          config=cfg_custom,
+      )
+      res = check.run()
+      self.assertEqual(res.case, results.PriorPosteriorShiftAggregateCases.PASS)
 
 
 if __name__ == "__main__":

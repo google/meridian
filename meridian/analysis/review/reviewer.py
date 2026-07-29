@@ -35,7 +35,7 @@ import numpy as np
 
 CheckType = typing.Type[checks.BaseCheck]
 ConfigInstance = configs.BaseConfig
-ChecksBattery = immutabledict.immutabledict[CheckType, ConfigInstance]
+ChecksBattery = typing.Mapping[CheckType, ConfigInstance]
 
 
 _POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
@@ -94,7 +94,17 @@ def _get_gof_score(
 def _get_pps_score(
     prior_posterior_shift_check_result: results.PriorPosteriorShiftCheckResult,
 ) -> float:
-  """Returns the score of the Prior-Posterior Shift check."""
+  """Returns the score of the Prior-Posterior Shift check.
+
+  Returns a perfect score (100.0) if `channel_results` is empty (e.g. when no
+  media or RF channels are present) to prevent a `ZeroDivisionError`.
+
+  Args:
+    prior_posterior_shift_check_result: Result of the Prior-Posterior Shift
+      check.
+  """
+  if not prior_posterior_shift_check_result.channel_results:
+    return 100.0
   prior_posterior_shift_ratio = len(
       prior_posterior_shift_check_result.no_shift_channels
   ) / len(prior_posterior_shift_check_result.channel_results)
@@ -108,7 +118,16 @@ def _get_pps_score(
 def _get_roi_consistency_score(
     roi_consistency_check_result: results.ROIConsistencyCheckResult,
 ) -> float:
-  """Returns the score of the ROI Consistency check."""
+  """Returns the score of the ROI Consistency check.
+
+  Returns a perfect score (100.0) if `channel_results` is empty (e.g. when no
+  media or RF channels are present) to prevent a `ZeroDivisionError`.
+
+  Args:
+    roi_consistency_check_result: Result of the ROI Consistency check.
+  """
+  if not roi_consistency_check_result.channel_results:
+    return 100.0
   roi_consistency_failure_ratio = sum(
       1
       for r in roi_consistency_check_result.channel_results
@@ -202,6 +221,7 @@ class ModelReviewer:
       meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
       inference_data: az.InferenceData | None = None,
+      convergence_check_config: configs.ConvergenceConfig | None = None,
       post_convergence_checks: ChecksBattery | None = None,
   ):
     if meridian is not None:
@@ -221,6 +241,11 @@ class ModelReviewer:
 
     self._model_context = model_context
     self._inference_data = inference_data
+    self._convergence_check_config = (
+        convergence_check_config
+        if convergence_check_config is not None
+        else configs.ConvergenceConfig()
+    )
     self._post_convergence_checks = (
         post_convergence_checks
         if post_convergence_checks is not None
@@ -362,7 +387,9 @@ class ModelReviewer:
   ) -> results.ReviewSummary:
     """Executes all checks and generates the final summary."""
     self._results = {}
-    self._run_and_handle(checks.ConvergenceCheck, configs.ConvergenceConfig())
+    self._run_and_handle(
+        checks.ConvergenceCheck, self._convergence_check_config
+    )
 
     # Stop if the model did not converge.
     if (
