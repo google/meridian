@@ -1251,7 +1251,9 @@ def distributions_are_equal(
     if isinstance(
         a_params[key], (backend.Tensor, np.ndarray, float, int)
     ) and isinstance(b_params[key], (backend.Tensor, np.ndarray, float, int)):
-      if not backend.allclose(a_params[key], b_params[key]):
+      a_val = backend.cast(a_params[key], backend.float_dtype)
+      b_val = backend.cast(b_params[key], backend.float_dtype)
+      if not backend.allclose(a_val, b_val):
         return False
     else:
       if np.any(a_params[key] != b_params[key]):
