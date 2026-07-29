@@ -1247,12 +1247,19 @@ def distributions_are_equal(
   if a_params.keys() != b_params.keys():
     return False
 
+  def _maybe_cast_to_float(val):
+    dtype = getattr(val, 'dtype', type(val))
+    if 'int' in backend.standardize_dtype(dtype):
+      return backend.to_tensor(val, dtype=backend.float_dtype)
+    return val
+
   for key in a_params.keys():
     if isinstance(
         a_params[key], (backend.Tensor, np.ndarray, float, int)
     ) and isinstance(b_params[key], (backend.Tensor, np.ndarray, float, int)):
-      a_val = backend.cast(a_params[key], backend.float_dtype)
-      b_val = backend.cast(b_params[key], backend.float_dtype)
+      a_val = _maybe_cast_to_float(a_params[key])
+      b_val = _maybe_cast_to_float(b_params[key])
+
       if not backend.allclose(a_val, b_val):
         return False
     else:
