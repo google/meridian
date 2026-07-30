@@ -37,6 +37,7 @@ from collections.abc import Mapping
 import dataclasses
 
 import google.auth
+import google.auth.credentials
 from googleapiclient import discovery
 import numpy as np
 import pandas as pd
