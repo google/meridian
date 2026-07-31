@@ -190,7 +190,7 @@ def _create_vif_finding(
       eda_constants.VARIABLE: [_MEDIA_CHANNEL_NAMES[0]],
   }
 
-  if severity is Severity.ERROR:
+  if severity is Severity.FAIL:
     index_cols = [eda_constants.VARIABLE]
     cols = base_cols
   else:
@@ -2561,7 +2561,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           is_national=True,
           card_id=eda_constants.SUMMARY_CARD_ID,
           card_title=eda_constants.SUMMARY_CARD_TITLE,
-          vif_findings=[_create_vif_finding(Severity.ERROR)],
+          vif_findings=[_create_vif_finding(Severity.FAIL)],
           expected_ids=[eda_constants.SUMMARY_TABLE_ID],
           missing_ids=[],
           expected_text=[
@@ -2577,19 +2577,19 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.SUMMARY_CARD_TITLE,
           cpmu_findings=[
               _create_cpmu_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
               )
           ],
           kpi_findings=[
               _create_generic_finding(
-                  Severity.ERROR,
+                  Severity.FAIL,
                   Cause.VARIABILITY,
                   mock.create_autospec(
                       eda_outcome.KpiInvariabilityArtifact,
                       instance=True,
                   ),
-                  'KPI ERROR Explanation',
+                  'KPI FAIL Explanation',
               ),
           ],
           expected_ids=[eda_constants.SUMMARY_TABLE_ID],
@@ -2663,11 +2663,11 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.SPEND_AND_MEDIA_UNIT_CARD_TITLE,
           cpmu_findings=[
               _create_cpmu_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.INCONSISTENT_DATA,
               ),
               _create_cpmu_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
               ),
           ],
@@ -2680,18 +2680,18 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           missing_ids=[],
           expected_text=[
               'Please review the patterns for spend',
-              'CPMU ATTENTION INCONSISTENT_DATA',
-              'CPMU ATTENTION OUTLIER',
+              'CPMU REVIEW INCONSISTENT_DATA',
+              'CPMU REVIEW OUTLIER',
           ],
       ),
       dict(
-          testcase_name='spend_media_unit_card_inconsistency_attention',
+          testcase_name='spend_media_unit_card_inconsistency_review',
           is_national=False,
           card_id=eda_constants.SPEND_AND_MEDIA_UNIT_CARD_ID,
           card_title=eda_constants.SPEND_AND_MEDIA_UNIT_CARD_TITLE,
           cpmu_findings=[
               _create_cpmu_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.INCONSISTENT_DATA,
               ),
           ],
@@ -2703,17 +2703,17 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           missing_ids=[eda_constants.COST_PER_MEDIA_UNIT_OUTLIER_TABLE_ID],
           expected_text=[
               'Please review the patterns for spend',
-              'CPMU ATTENTION INCONSISTENT_DATA',
+              'CPMU REVIEW INCONSISTENT_DATA',
           ],
       ),
       dict(
-          testcase_name='spend_media_unit_card_outlier_attention',
+          testcase_name='spend_media_unit_card_outlier_review',
           is_national=False,
           card_id=eda_constants.SPEND_AND_MEDIA_UNIT_CARD_ID,
           card_title=eda_constants.SPEND_AND_MEDIA_UNIT_CARD_TITLE,
           cpmu_findings=[
               _create_cpmu_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
               ),
           ],
@@ -2725,7 +2725,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           missing_ids=[eda_constants.INCONSISTENT_DATA_TABLE_ID],
           expected_text=[
               'Please review the patterns for spend',
-              'CPMU ATTENTION OUTLIER',
+              'CPMU REVIEW OUTLIER',
           ],
       ),
       dict(
@@ -2771,24 +2771,24 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.RESPONSE_VARIABLES_CARD_TITLE,
           kpi_findings=[
               _create_generic_finding(
-                  Severity.ERROR,
+                  Severity.FAIL,
                   Cause.VARIABILITY,
                   mock.create_autospec(
                       eda_outcome.KpiInvariabilityArtifact,
                       instance=True,
                       spec_set=True,
                   ),
-                  'KPI ERROR Explanation',
+                  'KPI FAIL Explanation',
               ),
           ],
           stdev_findings=[
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.VARIABILITY,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
@@ -2802,9 +2802,9 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           ],
           missing_ids=[],
           expected_text=[
-              'KPI ERROR Explanation',
-              'treatment_control_scaled ATTENTION VARIABILITY',
-              'treatment_control_scaled ATTENTION OUTLIER',
+              'KPI FAIL Explanation',
+              'treatment_control_scaled REVIEW VARIABILITY',
+              'treatment_control_scaled REVIEW OUTLIER',
           ],
       ),
       dict(
@@ -2814,17 +2814,17 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.RESPONSE_VARIABLES_CARD_TITLE,
           stdev_findings=[
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.VARIABILITY,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.VARIABILITY,
                   constants.KPI_SCALED,
               ),
@@ -2838,9 +2838,9 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           ],
           missing_ids=[],
           expected_text=[
-              'kpi_scaled ATTENTION VARIABILITY',
-              'treatment_control_scaled ATTENTION VARIABILITY',
-              'treatment_control_scaled ATTENTION OUTLIER',
+              'kpi_scaled REVIEW VARIABILITY',
+              'treatment_control_scaled REVIEW VARIABILITY',
+              'treatment_control_scaled REVIEW OUTLIER',
           ],
       ),
       dict(
@@ -2852,12 +2852,12 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.RESPONSE_VARIABLES_CARD_TITLE,
           stdev_findings=[
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.VARIABILITY,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
               _create_stdev_finding(
-                  Severity.ATTENTION,
+                  Severity.REVIEW,
                   Cause.OUTLIER,
                   constants.TREATMENT_CONTROL_SCALED,
               ),
@@ -2871,8 +2871,8 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           ],
           missing_ids=[],
           expected_text=[
-              'treatment_control_scaled ATTENTION VARIABILITY',
-              'treatment_control_scaled ATTENTION OUTLIER',
+              'treatment_control_scaled REVIEW VARIABILITY',
+              'treatment_control_scaled REVIEW OUTLIER',
           ],
       ),
       dict(
@@ -2899,24 +2899,24 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE,
           expected_ids=[eda_constants.PAIRWISE_CORRELATION_CHART_ID],
           missing_ids=[
-              eda_constants.EXTREME_VIF_ERROR_TABLE_ID,
-              eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID,
+              eda_constants.EXTREME_VIF_FAIL_TABLE_ID,
+              eda_constants.EXTREME_VIF_REVIEW_TABLE_ID,
               eda_constants.R_SQUARED_TIME_TABLE_ID,
               eda_constants.R_SQUARED_GEO_TABLE_ID,
           ],
           expected_text=['Please review the computed pairwise correlations.'],
       ),
       dict(
-          testcase_name='relationship_among_variables_card_national_with_error',
+          testcase_name='relationship_among_variables_card_national_with_fail',
           is_national=True,
           card_id=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID,
           card_title=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE,
-          vif_findings=[_create_vif_finding(Severity.ERROR)],
+          vif_findings=[_create_vif_finding(Severity.FAIL)],
           expected_ids=[
               eda_constants.PAIRWISE_CORRELATION_CHART_ID,
-              eda_constants.EXTREME_VIF_ERROR_TABLE_ID,
+              eda_constants.EXTREME_VIF_FAIL_TABLE_ID,
           ],
-          missing_ids=[eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID],
+          missing_ids=[eda_constants.EXTREME_VIF_REVIEW_TABLE_ID],
           expected_text=['Some variables have extreme multicollinearity'],
       ),
       dict(
@@ -2926,7 +2926,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
           card_title=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE,
           vif_findings=[
               _create_vif_finding(
-                  Severity.ERROR,
+                  Severity.FAIL,
                   finding_cause=Cause.NONE,
               )
           ],  # ignores irrelevant findings
@@ -2936,8 +2936,8 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
               eda_constants.R_SQUARED_GEO_TABLE_ID,
           ],
           missing_ids=[
-              eda_constants.EXTREME_VIF_ERROR_TABLE_ID,
-              eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID,
+              eda_constants.EXTREME_VIF_FAIL_TABLE_ID,
+              eda_constants.EXTREME_VIF_REVIEW_TABLE_ID,
           ],
           expected_text=[
               'Please review the computed pairwise correlations.',
@@ -2947,19 +2947,19 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
       ),
       dict(
           testcase_name=(
-              'relationship_among_variables_card_geo_with_attention_and_error'
+              'relationship_among_variables_card_geo_with_review_and_fail'
           ),
           is_national=False,
           card_id=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID,
           card_title=eda_constants.RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE,
           vif_findings=[
-              _create_vif_finding(Severity.ERROR),
-              _create_vif_finding(Severity.ATTENTION),
+              _create_vif_finding(Severity.FAIL),
+              _create_vif_finding(Severity.REVIEW),
           ],
           expected_ids=[
               eda_constants.PAIRWISE_CORRELATION_CHART_ID,
-              eda_constants.EXTREME_VIF_ERROR_TABLE_ID,
-              eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID,
+              eda_constants.EXTREME_VIF_FAIL_TABLE_ID,
+              eda_constants.EXTREME_VIF_REVIEW_TABLE_ID,
               eda_constants.R_SQUARED_TIME_TABLE_ID,
               eda_constants.R_SQUARED_GEO_TABLE_ID,
           ],
@@ -3138,7 +3138,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     )
     finding = _create_generic_finding(
         finding_cause=finding_cause,
-        severity=Severity.ATTENTION,
+        severity=Severity.REVIEW,
         associated_artifact=artifact,
         explanation=f'{finding_cause.name} finding',
     )
@@ -3166,10 +3166,10 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._meridian.is_national = False
     self._stub_engine_checks(
         vif_findings=[
-            _create_vif_finding(Severity.ERROR),
-            _create_vif_finding(Severity.ATTENTION),
+            _create_vif_finding(Severity.FAIL),
+            _create_vif_finding(Severity.REVIEW),
         ],
-        pairwise_findings=[_create_pairwise_finding(Severity.ERROR)],
+        pairwise_findings=[_create_pairwise_finding(Severity.FAIL)],
     )
 
     dom = self._get_output_eda_report_html_dom()
@@ -3178,18 +3178,18 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     )
     self.assertIsNotNone(card)
 
-    with self.subTest(name='error_table_pairwise_join'):
+    with self.subTest(name='fail_table_pairwise_join'):
       table = card.find(
-          f".//*[@id='{eda_constants.EXTREME_VIF_ERROR_TABLE_ID}']"
+          f".//*[@id='{eda_constants.EXTREME_VIF_FAIL_TABLE_ID}']"
       )
       self.assertIsNotNone(table)
       text = ''.join(table.itertext())
       self.assertIn('ch_0', text)
       self.assertIn('ch_1', text)
 
-    with self.subTest(name='attention_table_filtering'):
+    with self.subTest(name='review_table_filtering'):
       table = card.find(
-          f".//*[@id='{eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID}']"
+          f".//*[@id='{eda_constants.EXTREME_VIF_REVIEW_TABLE_ID}']"
       )
       self.assertIsNotNone(table)
       text = ''.join(table.itertext())
@@ -3207,7 +3207,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self._stub_engine_checks(
         cpmu_findings=[
             _create_cpmu_finding(
-                Severity.ATTENTION,
+                Severity.REVIEW,
                 Cause.OUTLIER,
             )
         ]
@@ -3243,7 +3243,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
 
     finding = _create_generic_finding(
         finding_cause=Cause.OUTLIER,
-        severity=Severity.ATTENTION,
+        severity=Severity.REVIEW,
         associated_artifact=mock_artifact,
         explanation='CPMU Outlier Found',
     )
@@ -3314,7 +3314,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
   def test_spend_media_unit_card_severity_aggregation(self):
     self._stub_plotters()
     finding_cpmu = _create_cpmu_finding(
-        severity=eda_outcome.EDASeverity.ATTENTION,
+        severity=eda_outcome.EDASeverity.REVIEW,
         finding_cause=eda_outcome.FindingCause.OUTLIER,
     )
     self._stub_engine_checks(cpmu_findings=[finding_cpmu])
@@ -3342,7 +3342,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
   def test_cpmu_finding_newline_replacement(self):
     self._stub_plotters()
     finding_cpmu = _create_cpmu_finding(
-        severity=eda_outcome.EDASeverity.ATTENTION,
+        severity=eda_outcome.EDASeverity.REVIEW,
         finding_cause=eda_outcome.FindingCause.OUTLIER,
     )
     finding_cpmu_with_newline = eda_outcome.EDAFinding(

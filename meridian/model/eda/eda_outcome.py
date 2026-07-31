@@ -46,13 +46,12 @@ __all__ = (
 @enum.unique
 class EDASeverity(enum.Enum):
   """Enumeration for the severity of an EDA check's finding."""
-  # TODO: Change severity to INFO/REVIEW/FAIL.
   # For the non-critical findings.
   INFO = enum.auto()
-  # For the non-critical findings that require user attention.
-  ATTENTION = enum.auto()
+  # For the non-critical findings that require review.
+  REVIEW = enum.auto()
   # For unacceptable, model-blocking data errors.
-  ERROR = enum.auto()
+  FAIL = enum.auto()
 
 
 @enum.unique

@@ -23,7 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-*   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to `>= 2.21.0, < 2.22` to address CVE-2026-2492.
+*   Change `EDASeverity` outcome statuses from `INFO`/`ATTENTION`/`ERROR` to
+    `INFO`/`REVIEW`/`FAIL` for consistency across the library.
+*   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to
+    `>= 2.21.0, < 2.22` to address CVE-2026-2492.
 
 ## [1.7.1] - 2026-07-20
 

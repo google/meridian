@@ -73,11 +73,11 @@ class PairwiseCorrSpec:
 
   Attributes:
     overall_threshold: The threshold for overall pairwise correlation. Exceeding
-      this threshold triggers an ERROR.
+      this threshold triggers a FAIL.
     geo_threshold: The threshold for geo-level pairwise correlation. Exceeding
-      this threshold triggers an ATTENTION.
+      this threshold triggers a REVIEW.
     national_threshold: The threshold for national pairwise correlation.
-      Exceeding this threshold triggers an ERROR.
+      Exceeding this threshold triggers a FAIL.
   """
 
   overall_threshold: float = eda_constants.OVERALL_PAIRWISE_CORR_THRESHOLD
@@ -91,9 +91,9 @@ class StandardDeviationSpec:
 
   Attributes:
     geo_std_threshold: The threshold for geo-level standard deviation. Falling
-      below this threshold triggers an ATTENTION.
+      below this threshold triggers a REVIEW.
     national_std_threshold: The threshold for national standard deviation.
-      Falling below this threshold triggers an ATTENTION.
+      Falling below this threshold triggers a REVIEW.
   """
 
   geo_std_threshold: float = eda_constants.STD_THRESHOLD
@@ -106,11 +106,11 @@ class VIFSpec:
 
   Attributes:
     geo_threshold: The threshold for geo-level VIF. Exceeding this threshold
-      triggers an ATTENTION.
+      triggers a REVIEW.
     overall_threshold: The threshold for overall VIF. Exceeding this threshold
-      triggers an ERROR.
+      triggers a FAIL.
     national_threshold: The threshold for national VIF. Exceeding this threshold
-      triggers an ERROR.
+      triggers a FAIL.
     std_threshold: The threshold for standard deviation. Used to determine if a
       variable is a constant.
   """

@@ -4556,7 +4556,7 @@ class EDAEngineTest(
 
     (finding,) = outcome.findings
     with self.subTest("finding_details"):
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.FAIL)
       self.assertIn(
           "perfect pairwise correlation across all times and geos",
           finding.explanation,
@@ -4621,7 +4621,7 @@ class EDAEngineTest(
 
     (finding,) = outcome.findings
     with self.subTest("finding_details"):
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
       self.assertIn(
           "perfect pairwise correlation in certain geo(s)",
           finding.explanation,
@@ -4645,10 +4645,10 @@ class EDAEngineTest(
 
   def test_check_geo_pairwise_corr_returns_error_and_attention(self):
     # data shape: (2, 3, 3) -> (n_geos, n_times, n_vars)
-    # media_1 and media_2 are perfectly correlated overall -> ERROR
+    # media_1 and media_2 are perfectly correlated overall -> FAIL
     # In geo0, media_1, media_2, and media_3 are identical, so all pairwise
     # correlations are 1.0; in geo1, media_1 and media_2 are perfectly
-    # correlated, but the others are not. -> ATTENTION for geo-level.
+    # correlated, but the others are not. -> REVIEW for geo-level.
     data = np.array(
         [
             [[1, 1, 1], [2, 2, 2], [3, 3, 3]],  # geo0
@@ -4676,13 +4676,13 @@ class EDAEngineTest(
         )
     }
 
-    error_findings = findings_by_severity[eda_outcome.EDASeverity.ERROR]
+    error_findings = findings_by_severity[eda_outcome.EDASeverity.FAIL]
     with self.subTest("error_finding"):
       self.assertLen(error_findings, 1)
       (error_finding,) = error_findings
       self.assertIn("('media_1', 'media_2')", error_finding.explanation)
 
-    attention_findings = findings_by_severity[eda_outcome.EDASeverity.ATTENTION]
+    attention_findings = findings_by_severity[eda_outcome.EDASeverity.REVIEW]
     with self.subTest("attention_finding"):
       self.assertLen(attention_findings, 1)
       (attention_finding,) = attention_findings
@@ -4810,7 +4810,7 @@ class EDAEngineTest(
     self.assertLen(outcome.analysis_artifacts, 2)
 
     (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.FAIL)
     self.assertIn(
         "perfect pairwise correlation across all times and geos",
         finding.explanation,
@@ -4867,7 +4867,7 @@ class EDAEngineTest(
     self.assertLen(outcome.analysis_artifacts, 2)
 
     (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
     self.assertIn(
         "perfect pairwise correlation in certain geo(s)",
         finding.explanation,
@@ -5156,7 +5156,7 @@ class EDAEngineTest(
                   geo_threshold=0.8,
               )
           ),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
       ),
       dict(
           testcase_name="custom_overall_error",
@@ -5165,7 +5165,7 @@ class EDAEngineTest(
                   overall_threshold=0.8,
               )
           ),
-          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_severity=eda_outcome.EDASeverity.FAIL,
       ),
       dict(
           testcase_name="custom_threshold_not_met",
@@ -5243,7 +5243,7 @@ class EDAEngineTest(
     self.assertLen(outcome.analysis_artifacts, 1)
 
     (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.FAIL)
     self.assertIn(
         "perfect pairwise correlation across all times",
         finding.explanation,
@@ -5340,7 +5340,7 @@ class EDAEngineTest(
                   national_threshold=0.8,
               )
           ),
-          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_severity=eda_outcome.EDASeverity.FAIL,
       ),
       dict(
           testcase_name="custom_threshold_not_met",
@@ -5577,7 +5577,7 @@ class EDAEngineTest(
     self.assertEqual(
         kpi_finding.finding_cause, eda_outcome.FindingCause.OUTLIER
     )
-    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.REVIEW)
     self.assertIn("There are outliers", kpi_finding.explanation)
     self.assertEqual(kpi_finding.associated_artifact, kpi_artifact)
 
@@ -5769,7 +5769,7 @@ class EDAEngineTest(
       ]
       self.assertLen(variability_findings, 1)
       (finding,) = variability_findings
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
       self.assertIn(expected_std_message_substr, finding.explanation)
 
     if expected_outlier_message_substr:
@@ -5780,7 +5780,7 @@ class EDAEngineTest(
       ]
       self.assertLen(outlier_findings, 1)
       (finding,) = outlier_findings
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
       self.assertIn(expected_outlier_message_substr, finding.explanation)
 
   def test_check_geo_std_handles_missing_rf_data(self):
@@ -5951,7 +5951,7 @@ class EDAEngineTest(
     self.assertEqual(
         kpi_finding.finding_cause, eda_outcome.FindingCause.OUTLIER
     )
-    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertEqual(kpi_finding.severity, eda_outcome.EDASeverity.REVIEW)
     self.assertIn("There are outliers", kpi_finding.explanation)
     self.assertEqual(kpi_finding.associated_artifact, kpi_artifact)
 
@@ -6021,7 +6021,7 @@ class EDAEngineTest(
     )
     self.assertLen(outcome.findings, 1)
     (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
     self.assertIn(
         "The standard deviation of the scaled KPI drops",
         finding.explanation,
@@ -6174,7 +6174,7 @@ class EDAEngineTest(
       ]
       self.assertLen(variability_findings, 1)
       (finding,) = variability_findings
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
       self.assertIn(expected_std_message_substr, finding.explanation)
 
     if expected_outlier_message_substr:
@@ -6185,7 +6185,7 @@ class EDAEngineTest(
       ]
       self.assertLen(outlier_findings, 1)
       (finding,) = outlier_findings
-      self.assertEqual(finding.severity, eda_outcome.EDASeverity.ATTENTION)
+      self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
       self.assertIn(expected_outlier_message_substr, finding.explanation)
 
   def test_check_national_std_handles_missing_rf_data(self):
@@ -6248,7 +6248,7 @@ class EDAEngineTest(
       dict(
           testcase_name="attention",
           data=_get_geo_high_vif_da(),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF > 5) in"
               " certain geo(s)."
@@ -6257,7 +6257,7 @@ class EDAEngineTest(
       dict(
           testcase_name="error",
           data=_get_overall_high_vif_da(),
-          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_severity=eda_outcome.EDASeverity.FAIL,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF > 10) across"
               " all times and geos. Note that a common cause of"
@@ -6376,8 +6376,8 @@ class EDAEngineTest(
     )
 
   def test_check_geo_vif_returns_error_and_attention(self):
-    # var_1 and var_2 are perfectly collinear -> ERROR
-    # var_3 and var_4 are perfectly collinear in geo0 only -> ATTENTION
+    # var_1 and var_2 are perfectly collinear -> FAIL
+    # var_3 and var_4 are perfectly collinear in geo0 only -> REVIEW
     v1 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
     v2 = v1
     v3 = _RNG.random((_N_GEOS_VIF, _N_TIMES_VIF))
@@ -6418,14 +6418,14 @@ class EDAEngineTest(
         )
     }
 
-    error_findings = findings_by_severity[eda_outcome.EDASeverity.ERROR]
+    error_findings = findings_by_severity[eda_outcome.EDASeverity.FAIL]
     with self.subTest("error_finding"):
       self.assertLen(error_findings, 1)
       (error_finding,) = error_findings
       self.assertIn("var_1", error_finding.explanation)
       self.assertIn("var_2", error_finding.explanation)
 
-    attention_findings = findings_by_severity[eda_outcome.EDASeverity.ATTENTION]
+    attention_findings = findings_by_severity[eda_outcome.EDASeverity.REVIEW]
     with self.subTest("attention_finding"):
       self.assertLen(attention_findings, 1)
       (attention_finding,) = attention_findings
@@ -6577,7 +6577,7 @@ class EDAEngineTest(
       dict(
           testcase_name="error",
           data=_get_overall_high_vif_da(geo_level=False),
-          expected_severity=eda_outcome.EDASeverity.ERROR,
+          expected_severity=eda_outcome.EDASeverity.FAIL,
           expected_explanation=(
               "Some variables have extreme multicollinearity (VIF > 10)"
               " across all times. Note that a common cause of"
@@ -6882,11 +6882,11 @@ class EDAEngineTest(
       self.assertLen(kpi_artifact.outlier_df, 1)
 
     with self.subTest("findings"):
-      # 2 ATTENTION findings: one for 0 std, one for outliers.
+      # 2 REVIEW findings: one for 0 std, one for outliers.
       self.assertLen(outcome.findings, 2)
       self.assertEqual(
           [finding.severity for finding in outcome.findings],
-          [eda_outcome.EDASeverity.ATTENTION] * 2,
+          [eda_outcome.EDASeverity.REVIEW] * 2,
       )
 
   @parameterized.named_parameters(
@@ -7097,7 +7097,7 @@ class EDAEngineTest(
     )
     self.assertLen(outcome.findings, 1)
     (finding,) = outcome.findings
-    self.assertEqual(finding.severity, eda_outcome.EDASeverity.ERROR)
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.FAIL)
     expected_geo_text = "geos and " if not is_national else ""
     self.assertIn(
         f"`{constants.KPI_SCALED}` is constant across all"
@@ -7192,7 +7192,7 @@ class EDAEngineTest(
               [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
           ).reshape((1, 10, 1)),
           media_unit_data=np.full((1, 10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=True,
@@ -7203,7 +7203,7 @@ class EDAEngineTest(
           media_unit_data=np.array(
               [0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
           ).reshape((1, 10, 1)),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=True,
@@ -7214,7 +7214,7 @@ class EDAEngineTest(
               [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 100.0]
           ).reshape((1, 10, 1)),
           media_unit_data=np.full((1, 10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=True,
           expected_outlier_df_empty=False,
@@ -7225,7 +7225,7 @@ class EDAEngineTest(
               [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 100.0]
           ).reshape((1, 10, 1)),
           media_unit_data=np.full((1, 10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=2,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=False,
@@ -7301,7 +7301,7 @@ class EDAEngineTest(
               [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
           ).reshape((10, 1)),
           media_unit_data=np.full((10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=True,
@@ -7312,7 +7312,7 @@ class EDAEngineTest(
           media_unit_data=np.array(
               [0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
           ).reshape((10, 1)),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=True,
@@ -7323,7 +7323,7 @@ class EDAEngineTest(
               [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 100.0]
           ).reshape((10, 1)),
           media_unit_data=np.full((10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=1,
           expected_inconsistency_df_empty=True,
           expected_outlier_df_empty=False,
@@ -7334,7 +7334,7 @@ class EDAEngineTest(
               [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 100.0]
           ).reshape((10, 1)),
           media_unit_data=np.full((10, 1), 10.0),
-          expected_severity=eda_outcome.EDASeverity.ATTENTION,
+          expected_severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings_count=2,
           expected_inconsistency_df_empty=False,
           expected_outlier_df_empty=False,
@@ -7655,12 +7655,12 @@ class EDAEngineTest(
     mock_results = {
         "check_overall_kpi_invariability": _create_eda_outcome(
             eda_outcome.EDACheckType.KPI_INVARIABILITY,
-            eda_outcome.EDASeverity.ERROR,
+            eda_outcome.EDASeverity.FAIL,
             eda_outcome.FindingCause.VARIABILITY,
         ),
         "check_vif": _create_eda_outcome(
             eda_outcome.EDACheckType.MULTICOLLINEARITY,
-            eda_outcome.EDASeverity.ATTENTION,
+            eda_outcome.EDASeverity.REVIEW,
             eda_outcome.FindingCause.MULTICOLLINEARITY,
         ),
         "check_pairwise_corr": _create_eda_outcome(
@@ -7680,7 +7680,7 @@ class EDAEngineTest(
       (finding,) = outcomes.kpi_invariability.findings
       self.assertEqual(
           finding.severity,
-          eda_outcome.EDASeverity.ERROR,
+          eda_outcome.EDASeverity.FAIL,
       )
       self.assertEqual(
           finding.finding_cause,
@@ -7692,7 +7692,7 @@ class EDAEngineTest(
       (finding,) = outcomes.multicollinearity.findings
       self.assertEqual(
           finding.severity,
-          eda_outcome.EDASeverity.ATTENTION,
+          eda_outcome.EDASeverity.REVIEW,
       )
       self.assertEqual(
           finding.finding_cause,
@@ -7761,7 +7761,7 @@ class EDAEngineTest(
       self.assertIsNone(finding.associated_artifact)
       self.assertEqual(
           finding.severity,
-          eda_outcome.EDASeverity.ERROR,
+          eda_outcome.EDASeverity.FAIL,
       )
       self.assertIn(
           "An error occurred during running check_vif: ValueError('Test"
@@ -7778,7 +7778,7 @@ class EDAEngineTest(
       (finding,) = outcomes.pairwise_correlation.findings
       self.assertEqual(
           finding.severity,
-          eda_outcome.EDASeverity.ERROR,
+          eda_outcome.EDASeverity.FAIL,
       )
       self.assertEqual(
           finding.finding_cause, eda_outcome.FindingCause.RUNTIME_ERROR

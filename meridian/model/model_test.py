@@ -492,17 +492,17 @@ class ModelTest(
 
   def test_run_model_fitting_guardrail_error_message(self):
     finding_corr_1 = eda_outcome.EDAFinding(
-        severity=eda_outcome.EDASeverity.ERROR,
+        severity=eda_outcome.EDASeverity.FAIL,
         explanation="Error explanation for PAIRWISE_CORR 1.",
         finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
     finding_corr_2 = eda_outcome.EDAFinding(
-        severity=eda_outcome.EDASeverity.ERROR,
+        severity=eda_outcome.EDASeverity.FAIL,
         explanation="Error explanation for PAIRWISE_CORR 2.",
         finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
     finding_vif_1 = eda_outcome.EDAFinding(
-        severity=eda_outcome.EDASeverity.ERROR,
+        severity=eda_outcome.EDASeverity.FAIL,
         explanation="Error explanation for MULTICOLLINEARITY 1.",
         finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
     )
