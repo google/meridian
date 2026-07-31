@@ -35,9 +35,9 @@ dependencies = [
   "pandas >= 2.2.2, < 3",
   "scipy >= 1.13.1, < 2",
   "statsmodels >= 0.14.5",
-  "tensorflow >= 2.19.0, < 2.21",
+  "tensorflow >= 2.21.0, < 2.22",
   "tfp-nightly == 0.26.0.dev20260130",
-  "tf-keras >= 2.18, < 2.21",
+  "tf-keras >= 2.21.0, < 2.22",
   "xarray",
 ]
 # `version` is automatically set by flit to use `meridian.__version__`
@@ -67,7 +67,7 @@ colab = [
 # GPU deps
 # Installed through `pip install -e .[and-cuda]`
 and-cuda = [
-  "tensorflow[and-cuda] >= 2.19.0, < 2.21",
+  "tensorflow[and-cuda] >= 2.21.0, < 2.22",
 ]
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`

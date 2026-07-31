@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to `>= 2.21.0, < 2.22` to address CVE-2026-2492.
+
 ## [1.7.1] - 2026-07-20
 
 *   Enable `MeridianEDA._generate_prior_specifications_card` and
