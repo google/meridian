@@ -290,11 +290,13 @@ charts {
       font-size: 13px;
       line-height: 20px;
 
+      &.fail,
       &.error {
         background-color: $error_red;
         color: $text_red;
       }
 
+      &.review,
       &.attention {
         background-color: $warning_yellow;
         color: $text_yellow;

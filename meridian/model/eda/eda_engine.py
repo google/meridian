@@ -493,7 +493,7 @@ def _check_cost_per_media_unit(
   if not cost_media_unit_inconsistency_df.empty:
     findings.append(
         eda_outcome.EDAFinding(
-            severity=eda_outcome.EDASeverity.ATTENTION,
+            severity=eda_outcome.EDASeverity.REVIEW,
             explanation=(
                 'There are instances of inconsistent spend and media units.'
                 ' This occurs when spend is zero but media units are positive,'
@@ -508,7 +508,7 @@ def _check_cost_per_media_unit(
   if not outlier_df.empty:
     findings.append(
         eda_outcome.EDAFinding(
-            severity=eda_outcome.EDASeverity.ATTENTION,
+            severity=eda_outcome.EDASeverity.REVIEW,
             explanation=(
                 'There are outliers in cost per media unit across time.'
                 ' Please check for any possible data input error.'
@@ -1625,7 +1625,7 @@ class EDAEngine:
       var_pairs = overall_extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ERROR,
+              severity=eda_outcome.EDASeverity.FAIL,
               explanation=(
                   'Some variables have perfect pairwise correlation across all'
                   ' times and geos. For each pair of perfectly-correlated'
@@ -1650,7 +1650,7 @@ class EDAEngine:
     is_in_overall = geo_extreme_corr_var_pairs_df.index.droplevel(
         constants.GEO
     ).isin(overall_pairs_index)
-    geo_df_for_attention = geo_extreme_corr_var_pairs_df[~is_in_overall]
+    geo_df_for_review = geo_extreme_corr_var_pairs_df[~is_in_overall]
     geo_artifact = eda_outcome.PairwiseCorrArtifact(
         level=eda_outcome.AnalysisLevel.GEO,
         corr_matrix=geo_corr_mat,
@@ -1658,10 +1658,10 @@ class EDAEngine:
         extreme_corr_threshold=spec.geo_threshold,
     )
 
-    if not geo_df_for_attention.empty:
+    if not geo_df_for_review.empty:
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ATTENTION,
+              severity=eda_outcome.EDASeverity.REVIEW,
               explanation=(
                   'Some variables have perfect pairwise correlation in certain'
                   ' geo(s). Consider checking your data, and/or combining these'
@@ -1719,7 +1719,7 @@ class EDAEngine:
       var_pairs = extreme_corr_var_pairs_df.index.to_list()
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ERROR,
+              severity=eda_outcome.EDASeverity.FAIL,
               explanation=(
                   'Some variables have perfect pairwise correlation across all'
                   ' times. For each pair of perfectly-correlated'
@@ -1786,7 +1786,7 @@ class EDAEngine:
     ).any():
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ATTENTION,
+              severity=eda_outcome.EDASeverity.REVIEW,
               explanation=zero_std_message,
               finding_cause=eda_outcome.FindingCause.VARIABILITY,
               associated_artifact=artifact,
@@ -1796,7 +1796,7 @@ class EDAEngine:
     if not outlier_df.empty:
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ATTENTION,
+              severity=eda_outcome.EDASeverity.REVIEW,
               explanation=outlier_message,
               finding_cause=eda_outcome.FindingCause.OUTLIER,
               associated_artifact=artifact,
@@ -2080,8 +2080,8 @@ class EDAEngine:
       )
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ERROR,
-              explanation=eda_constants.MULTICOLLINEARITY_ERROR.format(
+              severity=eda_outcome.EDASeverity.FAIL,
+              explanation=eda_constants.MULTICOLLINEARITY_FAIL.format(
                   threshold=overall_threshold,
                   aggregation='times and geos',
                   additional_info=high_vif_vars_message,
@@ -2098,14 +2098,14 @@ class EDAEngine:
     is_in_overall = extreme_geo_vif_df.index.get_level_values(
         eda_constants.VARIABLE
     ).isin(overall_vars_index)
-    geo_df_for_attention = extreme_geo_vif_df[~is_in_overall]
+    geo_df_for_review = extreme_geo_vif_df[~is_in_overall]
 
-    if not geo_df_for_attention.empty:
+    if not geo_df_for_review.empty:
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ATTENTION,
+              severity=eda_outcome.EDASeverity.REVIEW,
               explanation=(
-                  eda_constants.MULTICOLLINEARITY_ATTENTION.format(
+                  eda_constants.MULTICOLLINEARITY_REVIEW.format(
                       threshold=geo_threshold, additional_info=''
                   )
               ),
@@ -2173,8 +2173,8 @@ class EDAEngine:
       )
       findings.append(
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ERROR,
-              explanation=eda_constants.MULTICOLLINEARITY_ERROR.format(
+              severity=eda_outcome.EDASeverity.FAIL,
+              explanation=eda_constants.MULTICOLLINEARITY_FAIL.format(
                   threshold=national_threshold,
                   aggregation='times',
                   additional_info=high_vif_vars_message,
@@ -2234,7 +2234,7 @@ class EDAEngine:
 
     if not self.kpi_has_variability:
       eda_finding = eda_outcome.EDAFinding(
-          severity=eda_outcome.EDASeverity.ERROR,
+          severity=eda_outcome.EDASeverity.FAIL,
           explanation=(
               f'`{kpi}` is constant across all {geo_text}times, indicating no'
               ' signal in the data. Please fix this data error.'
@@ -2314,7 +2314,7 @@ class EDAEngine:
   def run_all_critical_checks(self) -> eda_outcome.CriticalCheckEDAOutcomes:
     """Runs all critical EDA checks.
 
-    Critical checks are those that can result in EDASeverity.ERROR findings.
+    Critical checks are those that can result in EDASeverity.FAIL findings.
 
     Returns:
       A CriticalCheckEDAOutcomes object containing the results of all critical
@@ -2326,7 +2326,7 @@ class EDAEngine:
         outcomes[check_type] = check()
       except Exception as e:  # pylint: disable=broad-except
         error_finding = eda_outcome.EDAFinding(
-            severity=eda_outcome.EDASeverity.ERROR,
+            severity=eda_outcome.EDASeverity.FAIL,
             explanation=(
                 f'An error occurred during running {check.__name__}: {e!r}'
             ),
