@@ -31,7 +31,7 @@ class ConvergenceConfig(BaseConfig):
   Attributes:
     convergence_threshold: The threshold for the R-hat statistic to determine if
       the model has converged. R-hat values below this are considered converged.
-    not_fully_convergence_threshold: The threshold for the R-hat statistic to
+    not_fully_converged_threshold: The threshold for the R-hat statistic to
       determine if the model is not fully converged but potentially acceptable.
       R-hat values between `convergence_threshold` and this value are considered
       not fully converged. R-hat values above this threshold are considered not
@@ -39,8 +39,7 @@ class ConvergenceConfig(BaseConfig):
   """
 
   convergence_threshold: float = 1.2
-  # TODO: Rename to not_fully_converged_threshold.
-  not_fully_convergence_threshold: float = 10.0
+  not_fully_converged_threshold: float = 10.0
 
 
 @dataclasses.dataclass(frozen=True)
