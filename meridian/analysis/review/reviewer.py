@@ -207,6 +207,9 @@ class ModelReviewer:
   The reviewer first runs a convergence check. If the model has converged, it
   proceeds to run a battery of post-convergence checks.
 
+  An optional `Analyzer` instance can be passed during initialization
+  for dependency injection.
+
   The battery of post-convergence checks includes:
     - BaselineCheck
     - BayesianPPPCheck
@@ -217,13 +220,30 @@ class ModelReviewer:
 
   def __init__(
       self,
-      # TODO: Remove.
+      # TODO: Remove deprecated meridian parameter.
       meridian: Any | None = None,
       model_context: context.ModelContext | None = None,
       inference_data: az.InferenceData | None = None,
+      analyzer: analyzer_module.Analyzer | None = None,
       convergence_check_config: configs.ConvergenceConfig | None = None,
       post_convergence_checks: ChecksBattery | None = None,
   ):
+    """Initializes the ModelReviewer.
+
+    Args:
+      meridian: Media mix model with the raw data from the model fitting.
+        Deprecated.
+      model_context: ModelContext from the model fitting.
+      inference_data: InferenceData from the model fitting.
+      analyzer: Optional Analyzer instance. If provided without model_context or
+        inference_data, they will be derived from the analyzer.
+      convergence_check_config: Optional configuration for the convergence
+        check.
+      post_convergence_checks: Optional mapping of check classes to their
+        configurations.
+    """
+    # TODO: Throw a deprecation warning for meridian.
+
     if meridian is not None:
       warnings.warn(
           "The `meridian` argument is deprecated. "
@@ -233,10 +253,17 @@ class ModelReviewer:
       )
       model_context = meridian.model_context
       inference_data = meridian.inference_data
+
+    if analyzer is not None:
+      if model_context is None:
+        model_context = analyzer.model_context
+      if inference_data is None:
+        inference_data = analyzer.inference_data
+
     if model_context is None or inference_data is None:
       raise ValueError(
-          "ModelReviewer requires either (model_context AND inference_data) "
-          "or the deprecated (meridian) object."
+          "ModelReviewer requires either (model_context AND inference_data), "
+          "an analyzer, or the deprecated (meridian) object."
       )
 
     self._model_context = model_context
@@ -252,9 +279,13 @@ class ModelReviewer:
         else _POST_CONVERGENCE_CHECKS
     )
     self._results: MutableMapping[CheckType, results.CheckResult] = {}
-    self._analyzer = analyzer_module.Analyzer(
-        model_context=self._model_context, inference_data=self._inference_data
-    )
+    if analyzer is not None:
+      self._analyzer = analyzer
+    else:
+      self._analyzer = analyzer_module.Analyzer(
+          model_context=self._model_context,
+          inference_data=self._inference_data,
+      )
 
   def _run_and_handle(
       self,

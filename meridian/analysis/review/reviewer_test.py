@@ -40,7 +40,7 @@ class ReviewerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.enter_context(
+    self._mock_analyzer_cls = self.enter_context(
         mock.patch.object(analyzer_module, 'Analyzer', autospec=True)
     )
     self._model_context = mock.create_autospec(
@@ -244,6 +244,125 @@ class ReviewerTest(parameterized.TestCase):
     )
     patcher_health.start()
     self.addCleanup(patcher_health.stop)
+
+  def test_init_default_analyzer(self):
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+    )
+    self._mock_analyzer_cls.assert_called_once_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+    )
+    self.assertEqual(review._analyzer, self._mock_analyzer_cls.return_value)
+    self.assertEqual(review._model_context, self._model_context)
+    self.assertEqual(review._inference_data, self._inference_data)
+
+  def test_init_custom_analyzer_injection(self):
+    mock_custom_analyzer = mock.MagicMock()
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+    )
+    self._mock_analyzer_cls.assert_not_called()
+    self.assertEqual(review._analyzer, mock_custom_analyzer)
+    self.assertEqual(review._model_context, self._model_context)
+    self.assertEqual(review._inference_data, self._inference_data)
+
+    self._mock_convergence_result.case = results.ConvergenceCases.CONVERGED
+    self._mock_baseline_result.case = results.BaselineCases.PASS
+    self._mock_bayesian_ppp_result.case = results.BayesianPPPCases.PASS
+    self._mock_roi_consistency_result.case = (
+        results.ROIConsistencyAggregateCases.PASS
+    )
+    self._mock_gof_result.case = results.GoodnessOfFitCases.PASS
+    self._mock_pps_result.case = results.PriorPosteriorShiftAggregateCases.PASS
+
+    review.run()
+
+    self._mock_convergence_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_baseline_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_bayesian_ppp_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_roi_consistency_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_gof_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self._mock_pps_check_cls.assert_called_with(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        analyzer=mock_custom_analyzer,
+        config=mock.ANY,
+        selected_geos=None,
+        selected_times=None,
+    )
+
+  def test_init_context_derivation_from_analyzer(self):
+    mock_custom_analyzer = mock.MagicMock()
+    mock_custom_analyzer.model_context = self._model_context
+    mock_custom_analyzer.inference_data = self._inference_data
+
+    review = reviewer.ModelReviewer(analyzer=mock_custom_analyzer)
+
+    self._mock_analyzer_cls.assert_not_called()
+    self.assertEqual(review._analyzer, mock_custom_analyzer)
+    self.assertEqual(review._model_context, self._model_context)
+    self.assertEqual(review._inference_data, self._inference_data)
+
+  def test_init_missing_arguments_raises_error(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r'ModelReviewer requires either \(model_context AND inference_data\), '
+        r'an analyzer, or the deprecated \(meridian\) object.',
+    ):
+      reviewer.ModelReviewer()
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'ModelReviewer requires either \(model_context AND inference_data\), '
+        r'an analyzer, or the deprecated \(meridian\) object.',
+    ):
+      reviewer.ModelReviewer(model_context=self._model_context)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'ModelReviewer requires either \(model_context AND inference_data\), '
+        r'an analyzer, or the deprecated \(meridian\) object.',
+    ):
+      reviewer.ModelReviewer(inference_data=self._inference_data)
 
   @parameterized.named_parameters(
       dict(
