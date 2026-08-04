@@ -28,6 +28,7 @@ from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
 from meridian.model import context
+from meridian.model import prior_distribution
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
@@ -83,6 +84,43 @@ class BaseCheck(abc.ABC, Generic[ConfigType, ResultType]):
     subclass.
     """
     raise NotImplementedError()
+
+  @classmethod
+  def is_relevant(
+      cls,
+      model_context: context.ModelContext,
+      inference_data: az.InferenceData | None = None,
+  ) -> bool:
+    """Checks if the check is relevant for the given model context."""
+    del model_context, inference_data
+    return True
+
+
+class BaseROICheck(BaseCheck[ConfigType, ResultType]):
+  """Base class for quality checks that rely on ROI priors and posterior estimates."""
+
+  @classmethod
+  def _uses_roi_priors(cls, model_context: context.ModelContext) -> bool:
+    """Checks if the model uses ROI priors."""
+    return (
+        model_context.n_media_channels > 0
+        and model_context.model_spec.effective_media_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_ROI
+    ) or (
+        model_context.n_rf_channels > 0
+        and model_context.model_spec.effective_rf_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+
+  @classmethod
+  @override
+  def is_relevant(
+      cls,
+      model_context: context.ModelContext,
+      inference_data: az.InferenceData | None = None,
+  ) -> bool:
+    """Checks if the check is relevant for the given model context."""
+    return cls._uses_roi_priors(model_context)
 
 
 # ==============================================================================
@@ -636,9 +674,48 @@ def _compute_aggregate_result(
 
 
 class ROIConsistencyCheck(
-    BaseCheck[configs.ROIConsistencyConfig, results.ROIConsistencyCheckResult]
+    BaseROICheck[
+        configs.ROIConsistencyConfig, results.ROIConsistencyCheckResult
+    ]
 ):
   """Checks if ROI posterior mean is in tails of ROI prior."""
+
+  @classmethod
+  def _has_custom_roi_priors(cls, model_context: context.ModelContext) -> bool:
+    """Checks if the model uses custom ROI priors."""
+    default_distribution = prior_distribution.PriorDistribution()
+    if (
+        model_context.n_media_channels > 0
+        and model_context.model_spec.effective_media_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_ROI
+    ):
+      if not prior_distribution.distributions_are_equal(
+          model_context.model_spec.prior.roi_m, default_distribution.roi_m
+      ):
+        return True
+    if (
+        model_context.n_rf_channels > 0
+        and model_context.model_spec.effective_rf_prior_type
+        == constants.TREATMENT_PRIOR_TYPE_ROI
+    ):
+      if not prior_distribution.distributions_are_equal(
+          model_context.model_spec.prior.roi_rf,
+          default_distribution.roi_rf,
+      ):
+        return True
+    return False
+
+  @classmethod
+  @override
+  def is_relevant(
+      cls,
+      model_context: context.ModelContext,
+      inference_data: az.InferenceData | None = None,
+  ) -> bool:
+    """Checks if the check is relevant for the given model context."""
+    if not super().is_relevant(model_context, inference_data):
+      return False
+    return cls._has_custom_roi_priors(model_context)
 
   def run(self) -> results.ROIConsistencyCheckResult:
     prior_rois = []
@@ -724,7 +801,7 @@ def _get_shifted_mask(
 
 
 class PriorPosteriorShiftCheck(
-    BaseCheck[
+    BaseROICheck[
         configs.PriorPosteriorShiftConfig,
         results.PriorPosteriorShiftCheckResult,
     ]
@@ -870,7 +947,9 @@ def _calculate_spend_share(model_context: context.ModelContext) -> np.ndarray:
 
 
 class ImplausibleROICheck(
-    BaseCheck[configs.ImplausibleROIConfig, results.ImplausibleROICheckResult]
+    BaseROICheck[
+        configs.ImplausibleROIConfig, results.ImplausibleROICheckResult
+    ]
 ):
   """A check for paid channels with implausible posterior ROI estimates."""
 
@@ -973,7 +1052,7 @@ class ImplausibleROICheck(
 # Check: High Variance ROI
 # ==============================================================================
 class HighVarianceCheck(
-    BaseCheck[configs.HighVarianceConfig, results.HighVarianceCheckResult]
+    BaseROICheck[configs.HighVarianceConfig, results.HighVarianceCheckResult]
 ):
   """A check for paid channels with high variance in posterior ROI."""
 

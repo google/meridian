@@ -59,20 +59,6 @@ class ReviewerTest(parameterized.TestCase):
     self._inference_data = mock.create_autospec(
         az.InferenceData, spec_set=True, instance=True
     )
-    self.enter_context(
-        mock.patch.object(
-            reviewer.ModelReviewer,
-            '_uses_roi_priors',
-            side_effect=lambda: self._model_context.is_roi_prior,
-        )
-    )
-    self.enter_context(
-        mock.patch.object(
-            reviewer.ModelReviewer,
-            '_has_custom_roi_priors',
-            side_effect=lambda: self._model_context.is_custom_roi_prior,
-        )
-    )
 
     convergence_check_cls_patcher = mock.patch(
         'meridian.analysis.review.checks.ConvergenceCheck'
@@ -203,6 +189,16 @@ class ReviewerTest(parameterized.TestCase):
     ]
     self._mock_pps_check.run.return_value = self._mock_pps_result
     self._mock_pps_check_cls.__name__ = 'PriorPosteriorShiftCheck'
+    self._mock_convergence_check_cls.is_relevant.return_value = True
+    self._mock_baseline_check_cls.is_relevant.return_value = True
+    self._mock_bayesian_ppp_check_cls.is_relevant.return_value = True
+    self._mock_gof_check_cls.is_relevant.return_value = True
+    self._mock_pps_check_cls.is_relevant.side_effect = (
+        lambda model_context, inf_data=None: model_context.is_roi_prior
+    )
+    self._mock_roi_consistency_check_cls.is_relevant.side_effect = (
+        lambda model_context, inf_data=None: model_context.is_custom_roi_prior
+    )
 
     patcher = mock.patch.object(
         reviewer,

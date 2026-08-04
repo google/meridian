@@ -29,7 +29,6 @@ from meridian.analysis.review import constants as review_constants
 
 from meridian.analysis.review import results
 from meridian.model import context
-from meridian.model import prior_distribution
 
 import numpy as np
 
@@ -282,41 +281,11 @@ class ModelReviewer:
     )  # pytype: disable=not-instantiable
     self._results[check_class] = instance.run()
 
-  def _uses_roi_priors(self):
-    """Checks if the model uses ROI priors."""
-    return (
-        self._model_context.n_media_channels > 0
-        and self._model_context.model_spec.effective_media_prior_type
-        == constants.TREATMENT_PRIOR_TYPE_ROI
-    ) or (
-        self._model_context.n_rf_channels > 0
-        and self._model_context.model_spec.effective_rf_prior_type
-        == constants.TREATMENT_PRIOR_TYPE_ROI
-    )
-
-  def _has_custom_roi_priors(self):
-    """Checks if the model uses custom ROI priors."""
-    default_distribution = prior_distribution.PriorDistribution()
-    if (
-        self._model_context.n_media_channels > 0
-        and self._model_context.model_spec.effective_media_prior_type
-        == constants.TREATMENT_PRIOR_TYPE_ROI
-    ):
-      if not prior_distribution.distributions_are_equal(
-          self._model_context.model_spec.prior.roi_m, default_distribution.roi_m
-      ):
-        return True
-    if (
-        self._model_context.n_rf_channels > 0
-        and self._model_context.model_spec.effective_rf_prior_type
-        == constants.TREATMENT_PRIOR_TYPE_ROI
-    ):
-      if not prior_distribution.distributions_are_equal(
-          self._model_context.model_spec.prior.roi_rf,
-          default_distribution.roi_rf,
-      ):
-        return True
-    return False
+  def _is_relevant(self, check_class: CheckType) -> bool:
+    """Checks if a check class is relevant for this model."""
+    if not check_class.is_relevant(self._model_context, self._inference_data):
+      return False
+    return True
 
   def _should_skip_calibration_checks(self, check_class: CheckType) -> bool:
     """Checks if calibration checks should be skipped."""
@@ -408,17 +377,7 @@ class ModelReviewer:
 
     # Run all other checks in sequence.
     for check_class, config in self._post_convergence_checks.items():
-      if (
-          check_class == checks.PriorPosteriorShiftCheck
-          and not self._uses_roi_priors()
-      ):
-        # Skip the Prior-Posterior Shift check if no ROI priors are used.
-        continue
-      if (
-          check_class == checks.ROIConsistencyCheck
-          and not self._has_custom_roi_priors()
-      ):
-        # Skip the ROI Consistency check if no custom ROI priors are provided.
+      if not self._is_relevant(check_class):
         continue
       self._run_and_handle(
           check_class,

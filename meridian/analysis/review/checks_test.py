@@ -563,6 +563,24 @@ class ROIConsistencyCheckTest(parameterized.TestCase):
     res = check.run()
     self.assertEqual(res.case, results.ROIConsistencyAggregateCases.PASS)
 
+  def test_is_relevant_true_when_custom_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    self.assertTrue(checks.ROIConsistencyCheck.is_relevant(self.model_context))
+
+  def test_is_relevant_false_when_non_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.model_context.n_rf_channels = 0
+    self.model_context.model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.assertFalse(checks.ROIConsistencyCheck.is_relevant(self.model_context))
+
 
 class PriorPosteriorShiftCheckTest(parameterized.TestCase):
 
@@ -831,6 +849,28 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
         results.PriorPosteriorShiftChannelCases.SHIFT,
     )
     self.assertEqual(result.channel_results[0].channel_name, "ch1")
+
+  def test_is_relevant_true_when_using_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    self.assertTrue(
+        checks.PriorPosteriorShiftCheck.is_relevant(self.model_context)
+    )
+
+  def test_is_relevant_false_when_using_non_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.model_context.n_rf_channels = 0
+    self.model_context.model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.assertFalse(
+        checks.PriorPosteriorShiftCheck.is_relevant(self.model_context)
+    )
 
 
 class BaselineCheckTest(parameterized.TestCase):
@@ -1555,6 +1595,24 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.assertEmpty(result.high_roi_channels)
     self.assertEmpty(result.low_roi_channels)
 
+  def test_is_relevant_true_when_using_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    self.assertTrue(checks.ImplausibleROICheck.is_relevant(self.model_context))
+
+  def test_is_relevant_false_when_using_non_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.model_context.n_rf_channels = 0
+    self.model_context.model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.assertFalse(checks.ImplausibleROICheck.is_relevant(self.model_context))
+
 
 class HighVarianceCheckTest(parameterized.TestCase):
 
@@ -1772,6 +1830,24 @@ class HighVarianceCheckTest(parameterized.TestCase):
         result.channel_results[0].relative_width_ratio,
         expected_relative_width_ratio,
     )
+
+  def test_is_relevant_true_when_using_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    self.assertTrue(checks.HighVarianceCheck.is_relevant(self.model_context))
+
+  def test_is_relevant_false_when_using_non_roi_priors(self):
+    self.model_context.n_media_channels = 1
+    self.model_context.model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.model_context.n_rf_channels = 0
+    self.model_context.model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self.assertFalse(checks.HighVarianceCheck.is_relevant(self.model_context))
 
 
 class PotentialBiasCheckTest(parameterized.TestCase):
