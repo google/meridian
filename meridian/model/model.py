@@ -1083,6 +1083,7 @@ class Meridian:
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
       **pins,
   ):
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
@@ -1136,13 +1137,17 @@ class Meridian:
         will be treated as stateless seeds; or a Python `int` or `None`, which
         will be treated as stateful seeds. See [tfp.random.sanitize_seed]
         (https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed).
+      reconstruction_batch_size: Maximum number of combined chain-and-draw
+        samples to reconstruct in a single forward pass. Limits device OOMs
+        caused by wide vectorized models.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
     Throws:
-      MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
-        a list of integers as `n_chains` to sample chains serially. For more
-        information, see
+      MCMCOOMError: If the model is out of memory. Try reducing `n_keep`, pass
+        a list of integers as `n_chains` to sample chains serially, or lower
+        `reconstruction_batch_size` to reduce forward pass memory footprint.
+        For more information, see
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
@@ -1161,6 +1166,7 @@ class Meridian:
         unrolled_leapfrog_steps=unrolled_leapfrog_steps,
         parallel_iterations=parallel_iterations,
         seed=seed,
+        reconstruction_batch_size=reconstruction_batch_size,
         **pins,
     )
     self.inference_data.extend(posterior_inference_data, join="right")
@@ -1199,6 +1205,7 @@ class Meridian:
       unrolled_leapfrog_steps: int = 1,
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
       **pins,
   ) -> None:
     """Runs MCMC sampling and then the model health checks."""
@@ -1215,6 +1222,7 @@ class Meridian:
         unrolled_leapfrog_steps=unrolled_leapfrog_steps,
         parallel_iterations=parallel_iterations,
         seed=seed,
+        reconstruction_batch_size=reconstruction_batch_size,
         **pins,
     )
     self.review()

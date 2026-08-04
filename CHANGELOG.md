@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Implement `reconstruction_batch_size` to chunk posterior reconstruction evaluations, fixing peak resource exhausted memory crashes on wide modeling pipelines.
 *   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to `>= 2.21.0, < 2.22` to address CVE-2026-2492.
 
 ## [1.7.1] - 2026-07-20

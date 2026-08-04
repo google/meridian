@@ -716,6 +716,7 @@ class ModelTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=None,
+        reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
         test=kwarg,
     )
     mock_review.assert_called_once_with(meridian)

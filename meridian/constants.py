@@ -776,6 +776,8 @@ DEFAULT_CONFIDENCE_LEVEL = 0.9
 
 # Default number of max draws per chain in Analyzer.expected_outcome()
 DEFAULT_BATCH_SIZE = 100
+# Draws per reconstruction chunk; mirrors the Analyzer batching convention.
+DEFAULT_RECONSTRUCTION_BATCH_SIZE = 100
 
 
 # Optimization constants.
@@ -834,4 +836,3 @@ POSTERIOR_THINNING_SEED = 'posterior_thinning_seed'
 # Calibration constants.
 IS_CALIBRATED = 'is_calibrated'
 CALIBRATION_OUTPUTS = 'calibration_outputs'
-
