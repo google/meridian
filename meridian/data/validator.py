@@ -56,10 +56,10 @@ def check_coords_match(dim: str, arrays: Sequence[xr.DataArray | None]):
   arrays = [arr for arr in arrays if arr is not None and dim in arr.coords]
   if not arrays:
     return
-  first_coords = arrays[0].coords[dim].values
+  first_coords = arrays[0].coords[dim].values  # pyrefly: ignore[missing-attribute]
   for arr in arrays[1:]:
-    if not np.array_equal(arr.coords[dim].values, first_coords):
-      name = arr.name if arr.name is not None else "Unnamed"
+    if not np.array_equal(arr.coords[dim].values, first_coords):  # pyrefly: ignore[missing-attribute]
+      name = arr.name if arr.name is not None else "Unnamed"  # pyrefly: ignore[missing-attribute]
       raise ValueError(
           f"`{dim}` coordinates of array `{name}` don't match."
       )

@@ -544,11 +544,11 @@ class ModelContext:
     if n_knots == 1:
       weights = np.ones((1, self.n_times), dtype=backend.np_float_dtype)
     else:
-      weights = knots.l1_distance_weights(self.n_times, legacy_knots_arr)
+      weights = knots.l1_distance_weights(self.n_times, legacy_knots_arr)  # pyrefly: ignore[bad-argument-type]
     self.__dict__["knot_info"] = knots.KnotInfo(
         n_knots=n_knots,
-        knot_locations=legacy_knots_arr,
-        weights=weights,
+        knot_locations=legacy_knots_arr,  # pyrefly: ignore[bad-argument-type]
+        weights=weights,  # pyrefly: ignore[bad-argument-type]
     )
 
   @functools.cached_property

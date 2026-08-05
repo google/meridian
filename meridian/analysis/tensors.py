@@ -111,7 +111,7 @@ def normalize_date_str(
   val = time_val.item() if hasattr(time_val, "item") else time_val
   if isinstance(val, str):
     val = val[:10]
-  return tc.normalize_date(val).strftime(constants.DATE_FORMAT)
+  return tc.normalize_date(val).strftime(constants.DATE_FORMAT)  # pyrefly: ignore[bad-argument-type]
 
 
 def normalize_times_set(times: Iterable[Any]) -> set[str]:
@@ -162,7 +162,7 @@ def _validate_selected_times(
           f"there are time period coordinates in {comparison_arg_name}."
       )
   elif _is_str_list(selected_times):
-    if not _is_normalized_subset(selected_times, input_times):
+    if not _is_normalized_subset(selected_times, input_times):  # pyrefly: ignore[bad-argument-type]
       raise ValueError(
           f"`{arg_name}` must match the time dimension names from "
           "meridian.InputData."

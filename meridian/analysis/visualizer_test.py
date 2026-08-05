@@ -288,7 +288,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution()
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.MEDIA_CHANNEL, c.ROI_M, c.DISTRIBUTION],
     )
     self.assertIsInstance(plot, alt.FacetChart)
@@ -302,7 +302,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.CONTROL_VARIABLE, c.GAMMA_C, c.DISTRIBUTION],
     )
     self.assertIsInstance(plot, alt.FacetChart)
@@ -315,7 +315,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [
             c.GEO,
             c.MEDIA_CHANNEL,
@@ -332,7 +332,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(c.TAU_G)
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.GEO, c.TAU_G, c.DISTRIBUTION],
     )
     self.input_data.get_n_top_largest_geos.assert_called_with(3)
@@ -343,7 +343,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [
             c.GEO,
             c.MEDIA_CHANNEL,
@@ -357,7 +357,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(c.MU_T)
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
     self.assertEqual(plot.data[c.TIME].nunique(), 3)  # pyrefly: ignore[bad-index, missing-attribute]
@@ -368,7 +368,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     )
 
     self.assertEqual(
-        list(plot.data.columns),
+        list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
     self.assertEqual(plot.data[c.TIME].nunique(), 2)  # pyrefly: ignore[bad-index, missing-attribute]

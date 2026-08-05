@@ -2227,7 +2227,7 @@ class ReconstructionBatchingTest(
         n_keep=self.n_keep,
         reconstruction_batch_size=self.n_total + 100,  # Single shot
     )
-    posterior_ref = self.meridian.inference_data.posterior
+    posterior_ref = self.meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
 
     # Chunked run
     meridian_chunked = model.Meridian(
@@ -2241,7 +2241,7 @@ class ReconstructionBatchingTest(
         n_keep=self.n_keep,
         reconstruction_batch_size=batch_size,
     )
-    posterior_chunked = meridian_chunked.inference_data.posterior
+    posterior_chunked = meridian_chunked.inference_data.posterior  # pyrefly: ignore[missing-attribute]
 
     self.assertEqual(
         set(posterior_ref.data_vars), set(posterior_chunked.data_vars)

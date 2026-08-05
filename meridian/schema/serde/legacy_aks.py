@@ -107,12 +107,12 @@ class AKS:
     )
 
     excluded_knots_arr = (
-        np.unique(excluded_knots)
+        np.unique(excluded_knots)  # pyrefly: ignore[no-matching-overload]
         if excluded_knots is not None and len(excluded_knots) > 0
         else None
     )
     required_knots_arr = (
-        np.unique(required_knots)
+        np.unique(required_knots)  # pyrefly: ignore[no-matching-overload]
         if required_knots is not None and len(required_knots) > 0
         else None
     )

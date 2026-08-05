@@ -1860,7 +1860,7 @@ class Analyzer:
         [train_draws, test_draws, draws], axis=0
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, n_geos, n_times)
     draws_by_evaluation_set = self.filter_and_aggregate_by_indices(
-        draws_by_evaluation_set,
+        draws_by_evaluation_set,  # pyrefly: ignore[bad-argument-type]
         geo_indices=None,
         time_indices=None,
         aggregate_geos=aggregate_geos,

@@ -1012,7 +1012,7 @@ class AKSTest(parameterized.TestCase):
         ValueError,
         "The excluded knots are not legitimate knot locations.",
     ):
-      aks_obj.automatic_knot_selection(excluded_knots=excluded_knots)
+      aks_obj.automatic_knot_selection(excluded_knots=excluded_knots)  # pyrefly: ignore[bad-argument-type]
 
   def test_aks_user_provided_excluded_knots_overlap_with_required(self):
     data = test_utils.sample_input_data_from_dataset(

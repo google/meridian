@@ -74,7 +74,7 @@ def _flatten_chain_and_draw_dims(
   n_chains, n_draws = int(reference.shape[0]), int(reference.shape[1])
   flattened = {
       name: backend.reshape(
-          value, (n_chains * n_draws,) + tuple(value.shape[2:])
+          value, (n_chains * n_draws,) + tuple(value.shape[2:])  # pyrefly: ignore[bad-argument-type]
       )
       for name, value in latents.items()
   }
@@ -832,7 +832,7 @@ class PosteriorMCMCSampler:
           name: value[start:stop] for name, value in flat_latents.items()
       }
       pinned_likelihood = backend.broadcast_to(
-          observed_kpi, (stop - start,) + tuple(observed_kpi.shape)
+          observed_kpi, (stop - start,) + tuple(observed_kpi.shape)  # pyrefly: ignore[bad-argument-type]
       )
       values = _build_reconstruction_values(
           joint_dist, latent_chunk, pinned_likelihood
