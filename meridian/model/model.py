@@ -52,8 +52,6 @@ __all__ = [
     "MCMCOOMError",
     "Meridian",
     "ModelFittingError",
-    # TODO: Migrate to a direct call to common/errors.py.
-    "NotFittedModelError",
     "save_mmm",
     "load_mmm",
 ]
@@ -72,7 +70,6 @@ class ModelFittingError(Exception):
 
 MCMCSamplingError = posterior_sampler.MCMCSamplingError
 MCMCOOMError = posterior_sampler.MCMCOOMError
-NotFittedModelError = errors.NotFittedModelError
 
 
 def _is_valid_results_subset(
@@ -1181,7 +1178,7 @@ class Meridian:
       A `ReviewSummary` object containing the results of the health checks.
     """
     if not hasattr(self.inference_data, constants.POSTERIOR):
-      raise NotFittedModelError(
+      raise errors.NotFittedModelError(
           "The model must be fitted before calling review()."
       )
     model_reviewer = reviewer.ModelReviewer(
@@ -1272,7 +1269,7 @@ class Meridian:
       ValueError: If arguments are invalid.
     """
     if not hasattr(self.inference_data, constants.POSTERIOR):
-      raise NotFittedModelError(
+      raise errors.NotFittedModelError(
           "sample_posterior() must be called before posterior_thinning()."
       )
     if (sampling_rate is None) == (n_draws is None):
