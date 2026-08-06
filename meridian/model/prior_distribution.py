@@ -512,6 +512,18 @@ class PriorDistribution:
   )
 
   def __post_init__(self):
+    if backend.float_dtype == np.float64:
+      for field in dataclasses.fields(self):
+        dist = getattr(self, field.name)
+        if dist is None:
+          continue
+        dist_dtype = getattr(dist, 'dtype', None)
+        if dist_dtype is not None and dist_dtype != np.float64:
+          raise ValueError(
+              f"Parameter '{field.name}' is expected to have dtype"
+              f' {backend.float_dtype}, but got {dist_dtype}.'
+          )
+
     for param, bounds in _parameter_space_bounds.items():
       prevent_deterministic_prior_at_bounds = (
           _prevent_deterministic_prior_at_bounds[param]
