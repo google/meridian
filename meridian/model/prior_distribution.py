@@ -512,6 +512,21 @@ class PriorDistribution:
   )
 
   def __post_init__(self):
+    expected_dtype = backend.standardize_dtype(backend.float_dtype)
+    if expected_dtype == 'float64':
+      for field in dataclasses.fields(self):
+        dist = getattr(self, field.name)
+        if hasattr(dist, 'dtype'):
+          try:
+            dist_dtype = backend.standardize_dtype(dist.dtype)
+          except (TypeError, ValueError, AttributeError):
+            continue
+          if dist_dtype == 'float32':
+            raise ValueError(
+                f"The distribution for parameter '{field.name}' has dtype"
+                f' {dist_dtype}, which does not match the expected backend'
+                f' float dtype {expected_dtype}.'
+            )
     for param, bounds in _parameter_space_bounds.items():
       prevent_deterministic_prior_at_bounds = (
           _prevent_deterministic_prior_at_bounds[param]
@@ -1287,8 +1302,8 @@ def lognormal_dist_from_mean_std(
     A `backend.tfd.LogNormal` object with the input mean and standard deviation.
   """
 
-  mean = np.asarray(mean)  # pyrefly: ignore[bad-assignment]
-  std = np.asarray(std)  # pyrefly: ignore[bad-assignment]
+  mean = np.asarray(mean, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
+  std = np.asarray(std, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
 
   mu = np.log(mean) - 0.5 * np.log((std / mean) ** 2 + 1)  # pyrefly: ignore[unsupported-operation]
   sigma = np.sqrt(np.log((std / mean) ** 2 + 1))  # pyrefly: ignore[unsupported-operation]
@@ -1325,9 +1340,9 @@ def lognormal_dist_from_range(
     A `backend.tfd.LogNormal` object with the input percentage mass falling
       within the given range.
   """
-  low = np.asarray(low)  # pyrefly: ignore[bad-assignment]
-  high = np.asarray(high)  # pyrefly: ignore[bad-assignment]
-  mass_percent = np.asarray(mass_percent)  # pyrefly: ignore[bad-assignment]
+  low = np.asarray(low, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
+  high = np.asarray(high, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
+  mass_percent = np.asarray(mass_percent, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
 
   if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
     raise ValueError(
@@ -1339,7 +1354,9 @@ def lognormal_dist_from_range(
         "'mass_percent' values must be between 0 and 1, exclusive."
     )
 
-  normal = backend.tfd.Normal(0, 1)
+  normal = backend.tfd.Normal(
+      backend.np_float_dtype(0), backend.np_float_dtype(1)
+  )
   mass_lower = 0.5 - (mass_percent / 2)  # pyrefly: ignore[unsupported-operation]
   mass_upper = 0.5 + (mass_percent / 2)  # pyrefly: ignore[unsupported-operation]
 
