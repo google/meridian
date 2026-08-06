@@ -316,11 +316,9 @@ class GoodnessOfFitCheck(
     )
     gof_df = gof_ds.to_dataframe().reset_index()
 
-    geo_granularity = (
-        constants.NATIONAL if self._model_context.n_geos == 1 else constants.GEO
-    )
-
-    gof_metrics = gof_df[gof_df[constants.GEO_GRANULARITY] == geo_granularity]
+    gof_metrics = gof_df[
+        gof_df[constants.GEO_GRANULARITY] == constants.NATIONAL
+    ]
     is_holdout = constants.EVALUATION_SET_VAR in gof_df.columns
 
     metrics_dict = {}
@@ -338,7 +336,7 @@ class GoodnessOfFitCheck(
         _set_metrics_from_gof_dataframe(
             metrics=metrics_dict,
             gof_df=set_metrics,
-            geo_granularity=geo_granularity,
+            geo_granularity=constants.NATIONAL,
             suffix=suffix,
         )
         if (
@@ -383,7 +381,7 @@ class GoodnessOfFitCheck(
       _set_metrics_from_gof_dataframe(
           metrics=metrics_dict,
           gof_df=gof_metrics,
-          geo_granularity=geo_granularity,
+          geo_granularity=constants.NATIONAL,
           suffix=review_constants.ALL_SUFFIX,
       )
       if (

@@ -1085,25 +1085,17 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       r_squared_test: float,
       mape_test: float,
       wmape_test: float,
-      is_national: bool = False,
   ) -> xr.Dataset:
     dims = (
         constants.METRIC,
         constants.EVALUATION_SET_VAR,
         constants.GEO_GRANULARITY,
     )
-    if is_national:
-      data = np.array([
-          [[1.0, r_squared_all], [1.0, r_squared_train], [1.0, r_squared_test]],
-          [[1.0, mape_all], [1.0, mape_train], [1.0, mape_test]],
-          [[1.0, wmape_all], [1.0, wmape_train], [1.0, wmape_test]],
-      ])
-    else:
-      data = np.array([
-          [[r_squared_all, 1.0], [r_squared_train, 1.0], [r_squared_test, 1.0]],
-          [[mape_all, 1.0], [mape_train, 1.0], [mape_test, 1.0]],
-          [[wmape_all, 1.0], [wmape_train, 1.0], [wmape_test, 1.0]],
-      ])
+    data = np.array([
+        [[1.0, r_squared_all], [1.0, r_squared_train], [1.0, r_squared_test]],
+        [[1.0, mape_all], [1.0, mape_train], [1.0, mape_test]],
+        [[1.0, wmape_all], [1.0, wmape_train], [1.0, wmape_test]],
+    ])
     coords = {
         constants.METRIC: [
             constants.R_SQUARED,
@@ -1127,24 +1119,16 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       r_squared: float,
       mape: float,
       wmape: float,
-      is_national: bool = False,
   ) -> xr.Dataset:
     dims = (
         constants.METRIC,
         constants.GEO_GRANULARITY,
     )
-    if is_national:
-      data = np.array([
-          [1.0, r_squared],
-          [1.0, mape],
-          [1.0, wmape],
-      ])
-    else:
-      data = np.array([
-          [r_squared, 1.0],
-          [mape, 1.0],
-          [wmape, 1.0],
-      ])
+    data = np.array([
+        [1.0, r_squared],
+        [1.0, mape],
+        [1.0, wmape],
+    ])
     coords = {
         constants.METRIC: [
             constants.R_SQUARED,
@@ -1166,7 +1150,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
           expected_case=results.GoodnessOfFitCases.PASS,
       ),
       dict(
@@ -1176,7 +1159,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
       dict(
@@ -1186,7 +1168,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared_test=0.4,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
       dict(
@@ -1196,27 +1177,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared_test=-0.1,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
-          expected_case=results.GoodnessOfFitCases.REVIEW,
-      ),
-      dict(
-          testcase_name="pass_national",
-          r_squared_all=0.5,
-          r_squared_train=0.6,
-          r_squared_test=0.4,
-          mape=0.1,
-          wmape=0.1,
-          is_national=True,
-          expected_case=results.GoodnessOfFitCases.PASS,
-      ),
-      dict(
-          testcase_name="review_negative_test_national",
-          r_squared_all=0.5,
-          r_squared_train=0.6,
-          r_squared_test=-0.1,
-          mape=0.1,
-          wmape=0.1,
-          is_national=True,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
   )
@@ -1227,10 +1187,9 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
       r_squared_test,
       mape,
       wmape,
-      is_national,
       expected_case,
   ):
-    self.model_context.n_geos = 1 if is_national else 2
+    self.model_context.n_geos = 2
     gof_dataset = self._get_gof_dataset(
         r_squared_all=r_squared_all,
         mape_all=mape,
@@ -1241,7 +1200,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
         r_squared_test=r_squared_test,
         mape_test=mape,
         wmape_test=wmape,
-        is_national=is_national,
     )
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
@@ -1275,7 +1233,6 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared=0.5,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
           expected_case=results.GoodnessOfFitCases.PASS,
       ),
       dict(
@@ -1283,32 +1240,15 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
           r_squared=-0.1,
           mape=0.1,
           wmape=0.1,
-          is_national=False,
-          expected_case=results.GoodnessOfFitCases.REVIEW,
-      ),
-      dict(
-          testcase_name="pass_national_no_holdout",
-          r_squared=0.5,
-          mape=0.1,
-          wmape=0.1,
-          is_national=True,
-          expected_case=results.GoodnessOfFitCases.PASS,
-      ),
-      dict(
-          testcase_name="review_negative_national_no_holdout",
-          r_squared=-0.1,
-          mape=0.1,
-          wmape=0.1,
-          is_national=True,
           expected_case=results.GoodnessOfFitCases.REVIEW,
       ),
   )
   def test_goodness_of_fit_check_no_holdout(
-      self, r_squared, mape, wmape, is_national, expected_case
+      self, r_squared, mape, wmape, expected_case
   ):
-    self.model_context.n_geos = 1 if is_national else 2
+    self.model_context.n_geos = 2
     gof_dataset = self._get_gof_dataset_no_holdout(
-        r_squared, mape, wmape, is_national
+        r_squared, mape, wmape
     )
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
@@ -1334,7 +1274,7 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
 
   def test_goodness_of_fit_check_with_custom_threshold(self):
     self.model_context.n_geos = 2
-    gof_dataset = self._get_gof_dataset_no_holdout(0.4, 0.1, 0.1, False)
+    gof_dataset = self._get_gof_dataset_no_holdout(0.4, 0.1, 0.1)
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig(r_squared_threshold=0.5)
     gof_check = checks.GoodnessOfFitCheck(
@@ -1359,7 +1299,7 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
 
   def test_goodness_of_fit_check_with_selected_times_geos(self):
     self.model_context.n_geos = 2
-    gof_dataset = self._get_gof_dataset_no_holdout(0.5, 0.1, 0.1, False)
+    gof_dataset = self._get_gof_dataset_no_holdout(0.5, 0.1, 0.1)
     self.analyzer.predictive_accuracy.return_value = gof_dataset
     config = configs.GoodnessOfFitConfig()
     check = checks.GoodnessOfFitCheck(
