@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from absl.testing import absltest
 import bidict
 from meridian import constants as c
@@ -76,6 +77,31 @@ class ProtoEnumConverterTest(absltest.TestCase):
           _MediaEffectsDist.MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED
       )
     self.assertEqual(proto_name, self.converter.default_when_unspecified)
+
+  def test_from_proto_returns_none_without_warning_when_default_is_none(self):
+    converter_with_none_default = proto_enum_converter.ProtoEnumConverter(
+        enum_display_name="Paid media prior type",
+        enum_message=meridian_pb.PaidMediaPriorType,
+        mapping=bidict.bidict({
+            c.TREATMENT_PRIOR_TYPE_ROI: "ROI",
+            c.TREATMENT_PRIOR_TYPE_CONTRIBUTION: "CONTRIBUTION",
+        }),
+        enum_unspecified=meridian_pb.PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED,
+        default_when_unspecified=None,
+    )
+    with warnings.catch_warnings(record=True) as recorded_warnings:
+      warnings.simplefilter("always")
+      result = converter_with_none_default.from_proto(
+          meridian_pb.PaidMediaPriorType.PAID_MEDIA_PRIOR_TYPE_UNSPECIFIED
+      )
+      self.assertIsNone(result)
+      self.assertEmpty(recorded_warnings)
+
+  def test_to_proto_returns_unspecified_for_none(self):
+    self.assertEqual(
+        self.converter.to_proto(None),
+        _MediaEffectsDist.MEDIA_EFFECTS_DISTRIBUTION_UNSPECIFIED,
+    )
 
   def test_from_proto_raises_error_for_invalid_proto(self):
     with self.assertRaisesRegex(

@@ -103,13 +103,14 @@ class ProtoEnumConverter(Generic[EnumType, DefaultType]):
       ValueError when given proto enum is not found in the mapping.
     """
     if proto_enum == self.enum_unspecified:
-      warnings.warn(
-          "%s is unspecified. Resolving to default: %s."
-          % (
-              self.enum_display_name,
-              self.enum_message.Name(self.enum_unspecified),  # pyrefly: ignore[missing-attribute]
-          )
-      )
+      if self.default_when_unspecified is not None:
+        warnings.warn(
+            "%s is unspecified. Resolving to default: %s."
+            % (
+                self.enum_display_name,
+                self.enum_message.Name(self.enum_unspecified),  # pyrefly: ignore[missing-attribute]
+            )
+        )
       return self.default_when_unspecified
 
     try:
