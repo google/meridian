@@ -49,7 +49,7 @@ class ComputationPrecision(enum.IntEnum):
   FLOAT64 = 2
 
 
-_DEFAULT_BACKEND = Backend.TENSORFLOW
+_DEFAULT_BACKEND = Backend.JAX
 
 
 def _initialize_backend() -> Backend:
