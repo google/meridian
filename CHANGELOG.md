@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+### Breaking Changes
+*   Rename `max_rhat` attribute to `max_r_hat` in `ConvergenceCheckResult` and related `constants`, `analyzer` methods, and dictionary keys, improving naming consistency with proto schemas.
+
 *   Implement `reconstruction_batch_size` to chunk posterior reconstruction evaluations, fixing peak resource exhausted memory crashes on wide modeling pipelines.
 *   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to `>= 2.21.0, < 2.22` to address CVE-2026-2492.
 *   Fix `AttributeError: 'Dataset' object has no attribute 'roi_m'` when

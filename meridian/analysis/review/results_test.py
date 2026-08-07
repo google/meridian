@@ -34,7 +34,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
     result = results.ConvergenceCheckResult(
         case=results.ConvergenceCases.CONVERGED,
         config=config,
-        max_rhat=1.0,
+        max_r_hat=1.0,
         max_parameter="mock_var",
     )
     self.assertEqual(result.case.status, results.Status.PASS)
@@ -49,7 +49,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
     result = results.ConvergenceCheckResult(
         case=results.ConvergenceCases.NOT_FULLY_CONVERGED,
         config=config,
-        max_rhat=3.0,
+        max_r_hat=3.0,
         max_parameter="mock_var",
     )
     self.assertEqual(result.case.status, results.Status.FAIL)
@@ -65,7 +65,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
     result = results.ConvergenceCheckResult(
         case=results.ConvergenceCases.NOT_CONVERGED,
         config=config,
-        max_rhat=11.0,
+        max_r_hat=11.0,
         max_parameter="mock_var",
     )
     self.assertEqual(result.case.status, results.Status.FAIL)
@@ -381,7 +381,7 @@ class ReviewSummaryTest(parameterized.TestCase):
     mock_result = results.ConvergenceCheckResult(
         case=results.ConvergenceCases.CONVERGED,
         config=configs.ConvergenceConfig(),
-        max_rhat=1.0,
+        max_r_hat=1.0,
         max_parameter="mock_var",
     )
     summary = results.ReviewSummary(

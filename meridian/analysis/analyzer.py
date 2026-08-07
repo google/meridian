@@ -3324,7 +3324,7 @@ class Analyzer:
 
       *   `n_params`: The number of respective parameters in the model.
       *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `max_rhat`: The maximum R-hat value for the respective parameter.
+      *   `max_r_hat`: The maximum R-hat value for the respective parameter.
       *   `percent_bad_rhat`: The percentage of R-hat values for the respective
           parameter that are greater than `bad_rhat_threshold`.
       *   `row_idx_bad_rhat`: The row indices of the R-hat values that are
@@ -3368,7 +3368,7 @@ class Analyzer:
               constants.PARAM: param,
               constants.N_PARAMS: np.prod(rhat[param].shape),
               constants.AVG_RHAT: np.nanmean(rhat[param]),  # pyrefly: ignore[no-matching-overload]
-              constants.MAX_RHAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
+              constants.MAX_R_HAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
               constants.PERCENT_BAD_RHAT: np.nanmean(
                   rhat[param] > bad_rhat_threshold  # pyrefly: ignore[unsupported-operation]
               ),
