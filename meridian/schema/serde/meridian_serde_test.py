@@ -1208,6 +1208,98 @@ class MeridianSerdeTest(parameterized.TestCase):
           (1, deserialized_model.model_context.n_times),
       )
 
+  def test_deserialization_of_legacy_aks_v1_7_1_model(self):
+    mock_version = '1.7.1'  # legacy v2
+
+    meridian_model = meridian_pb.MeridianModel(
+        model_version=mock_version,
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        eda_spec=eda_spec_pb2.EDASpec(),
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+        model=any_model,
+    )
+
+    mock_hyperparameters_model_spec = spec.ModelSpec(
+        enable_aks=True, knots=None
+    )
+    mock_prior_distributions = prior_distribution.PriorDistribution()
+    with (
+        mock.patch.object(
+            hyperparameters.HyperparametersSerde,
+            'deserialize',
+            return_value=mock_hyperparameters_model_spec,
+        ),
+        mock.patch.object(
+            distribution.DistributionSerde,
+            'deserialize',
+            return_value=mock_prior_distributions,
+        ),
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v1_7_1.get_legacy_knots',
+            return_value=[0, 1],
+        ) as mock_get_legacy_knots,
+    ):
+      deserialized_model = self.serde.deserialize(mmm_kernel)
+      mock_get_legacy_knots.assert_called_once()
+      self.assertIn('knot_info', deserialized_model.model_context.__dict__)
+      np.testing.assert_array_equal(
+          deserialized_model.model_context.knot_info.knot_locations, [0, 1]
+      )
+
+  def test_deserialization_of_legacy_aks_v1_7_1_model_single_knot(self):
+    mock_version = '1.7.1'  # legacy v2
+
+    meridian_model = meridian_pb.MeridianModel(
+        model_version=mock_version,
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        eda_spec=eda_spec_pb2.EDASpec(),
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+        model=any_model,
+    )
+
+    mock_hyperparameters_model_spec = spec.ModelSpec(
+        enable_aks=True, knots=None
+    )
+    mock_prior_distributions = prior_distribution.PriorDistribution()
+    with (
+        mock.patch.object(
+            hyperparameters.HyperparametersSerde,
+            'deserialize',
+            return_value=mock_hyperparameters_model_spec,
+        ),
+        mock.patch.object(
+            distribution.DistributionSerde,
+            'deserialize',
+            return_value=mock_prior_distributions,
+        ),
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v1_7_1.get_legacy_knots',
+            return_value=[0],
+        ) as mock_get_legacy_knots,
+    ):
+      deserialized_model = self.serde.deserialize(mmm_kernel)
+      mock_get_legacy_knots.assert_called_once()
+      self.assertIn('knot_info', deserialized_model.model_context.__dict__)
+      np.testing.assert_array_equal(
+          deserialized_model.model_context.knot_info.knot_locations, [0]
+      )
+      self.assertEqual(
+          deserialized_model.model_context.knot_info.weights.shape,
+          (1, deserialized_model.model_context.n_times),
+      )
+
   def test_deserialization_of_legacy_aks_model_fitted(self):
     mock_version = '1.6.0'  # Older than 1.7.0
 

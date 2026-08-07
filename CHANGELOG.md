@@ -28,6 +28,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Fix `AttributeError: 'Dataset' object has no attribute 'roi_m'` when
     running `ModelReviewer` on models configured with non-ROI priors
     (`media_prior_type='coefficient'` or `'contribution'`).
+*   Fix AKS fallback behavior to correctly generate a single common intercept for non-national models when no internal knots are selected.
+*   Add backward-compatible deserialization support in serde (`legacy_aks_v1_7_1.py`) for models saved with Automatic Knot Selection (`enable_aks=True`) under v1.7.1.
 
 ## [1.7.1] - 2026-07-20
 
