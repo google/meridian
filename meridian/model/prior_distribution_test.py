@@ -44,22 +44,45 @@ _INDEPENDENT_TEST_CASES = dict(
     ],
     distributions=[
         (
-            lambda: backend.tfd.Uniform(0.0, 1.0),
-            lambda: backend.tfd.Uniform(1.0, 2.0),
-            lambda: backend.tfd.Uniform(2.0, 3.0),
+            lambda: backend.tfd.Uniform(
+                backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+            ),
+            lambda: backend.tfd.Uniform(
+                backend.np_float_dtype(1.0), backend.np_float_dtype(2.0)
+            ),
+            lambda: backend.tfd.Uniform(
+                backend.np_float_dtype(2.0), backend.np_float_dtype(3.0)
+            ),
         ),
         (
-            lambda: backend.tfd.Uniform([0.0, 1.0], [1.0, 2.0]),
-            lambda: backend.tfd.Uniform(2.0, 3.0),
+            lambda: backend.tfd.Uniform(
+                np.array([0.0, 1.0], dtype=backend.np_float_dtype),
+                np.array([1.0, 2.0], dtype=backend.np_float_dtype),
+            ),
+            lambda: backend.tfd.Uniform(
+                backend.np_float_dtype(2.0), backend.np_float_dtype(3.0)
+            ),
         ),
         (
-            lambda: backend.tfd.HalfNormal(1),
-            lambda: backend.tfd.Gamma(2, 2),
-            lambda: backend.tfd.TruncatedNormal(0, 1, 1, 2),
+            lambda: backend.tfd.HalfNormal(backend.np_float_dtype(1)),
+            lambda: backend.tfd.Gamma(
+                backend.np_float_dtype(2), backend.np_float_dtype(2)
+            ),
+            lambda: backend.tfd.TruncatedNormal(
+                backend.np_float_dtype(0),
+                backend.np_float_dtype(1),
+                backend.np_float_dtype(1),
+                backend.np_float_dtype(2),
+            ),
         ),
         (
-            lambda: backend.tfd.HalfNormal(1),
-            lambda: backend.tfd.TruncatedNormal([0, 0], [1, 1], [1, 2], [2, 3]),
+            lambda: backend.tfd.HalfNormal(backend.np_float_dtype(1)),
+            lambda: backend.tfd.TruncatedNormal(
+                np.array([0, 0], dtype=backend.np_float_dtype),
+                np.array([1, 1], dtype=backend.np_float_dtype),
+                np.array([1, 2], dtype=backend.np_float_dtype),
+                np.array([2, 3], dtype=backend.np_float_dtype),
+            ),
         ),
     ],
     expected_distribution_batch_shapes=[[1, 1, 1], [2, 1], [1, 1, 1], [1, 2]],
@@ -156,47 +179,143 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     super().setUp()
 
     self.sample_distributions = {
-        c.KNOT_VALUES: backend.tfd.Normal(0.0, 5.0, name=c.KNOT_VALUES),
-        c.TAU_G_EXCL_BASELINE: backend.tfd.Normal(
-            0.0, 5.0, name=c.TAU_G_EXCL_BASELINE
+        c.KNOT_VALUES: backend.tfd.Normal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(5.0),
+            name=c.KNOT_VALUES,
         ),
-        c.BETA_M: backend.tfd.HalfNormal(5.0, name=c.BETA_M),
-        c.BETA_RF: backend.tfd.HalfNormal(5.0, name=c.BETA_RF),
-        c.BETA_OM: backend.tfd.HalfNormal(5.0, name=c.BETA_OM),
-        c.BETA_ORF: backend.tfd.HalfNormal(5.0, name=c.BETA_ORF),
-        c.ETA_M: backend.tfd.HalfNormal(1.0, name=c.ETA_M),
-        c.ETA_RF: backend.tfd.HalfNormal(1.0, name=c.ETA_RF),
-        c.ETA_OM: backend.tfd.HalfNormal(1.0, name=c.ETA_OM),
-        c.ETA_ORF: backend.tfd.HalfNormal(1.0, name=c.ETA_ORF),
-        c.GAMMA_C: backend.tfd.Normal(0.0, 5.0, name=c.GAMMA_C),
-        c.GAMMA_N: backend.tfd.Normal(0.0, 5.0, name=c.GAMMA_N),
-        c.XI_C: backend.tfd.HalfNormal(5.0, name=c.XI_C),
-        c.XI_N: backend.tfd.HalfNormal(5.0, name=c.XI_N),
-        c.ALPHA_M: backend.tfd.Uniform(0.0, 1.0, name=c.ALPHA_M),
-        c.ALPHA_RF: backend.tfd.Uniform(0.0, 1.0, name=c.ALPHA_RF),
-        c.ALPHA_OM: backend.tfd.Uniform(0.0, 1.0, name=c.ALPHA_OM),
-        c.ALPHA_ORF: backend.tfd.Uniform(0.0, 1.0, name=c.ALPHA_ORF),
-        c.EC_M: backend.tfd.TruncatedNormal(0.8, 0.8, 0.1, 10, name=c.EC_M),
+        c.TAU_G_EXCL_BASELINE: backend.tfd.Normal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(5.0),
+            name=c.TAU_G_EXCL_BASELINE,
+        ),
+        c.BETA_M: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.BETA_M
+        ),
+        c.BETA_RF: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.BETA_RF
+        ),
+        c.BETA_OM: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.BETA_OM
+        ),
+        c.BETA_ORF: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.BETA_ORF
+        ),
+        c.ETA_M: backend.tfd.HalfNormal(
+            backend.np_float_dtype(1.0), name=c.ETA_M
+        ),
+        c.ETA_RF: backend.tfd.HalfNormal(
+            backend.np_float_dtype(1.0), name=c.ETA_RF
+        ),
+        c.ETA_OM: backend.tfd.HalfNormal(
+            backend.np_float_dtype(1.0), name=c.ETA_OM
+        ),
+        c.ETA_ORF: backend.tfd.HalfNormal(
+            backend.np_float_dtype(1.0), name=c.ETA_ORF
+        ),
+        c.GAMMA_C: backend.tfd.Normal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(5.0),
+            name=c.GAMMA_C,
+        ),
+        c.GAMMA_N: backend.tfd.Normal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(5.0),
+            name=c.GAMMA_N,
+        ),
+        c.XI_C: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.XI_C
+        ),
+        c.XI_N: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.XI_N
+        ),
+        c.ALPHA_M: backend.tfd.Uniform(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(1.0),
+            name=c.ALPHA_M,
+        ),
+        c.ALPHA_RF: backend.tfd.Uniform(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(1.0),
+            name=c.ALPHA_RF,
+        ),
+        c.ALPHA_OM: backend.tfd.Uniform(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(1.0),
+            name=c.ALPHA_OM,
+        ),
+        c.ALPHA_ORF: backend.tfd.Uniform(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(1.0),
+            name=c.ALPHA_ORF,
+        ),
+        c.EC_M: backend.tfd.TruncatedNormal(
+            backend.np_float_dtype(0.8),
+            backend.np_float_dtype(0.8),
+            backend.np_float_dtype(0.1),
+            backend.np_float_dtype(10.0),
+            name=c.EC_M,
+        ),
         c.EC_RF: backend.tfd.TransformedDistribution(
-            backend.tfd.LogNormal(0.7, 0.4),
+            backend.tfd.LogNormal(
+                backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+            ),
             backend.bijectors.Shift(backend.np_float_dtype(0.1)),
             name=c.EC_RF,
         ),
-        c.EC_OM: backend.tfd.TruncatedNormal(0.8, 0.8, 0.1, 10, name=c.EC_OM),
+        c.EC_OM: backend.tfd.TruncatedNormal(
+            backend.np_float_dtype(0.8),
+            backend.np_float_dtype(0.8),
+            backend.np_float_dtype(0.1),
+            backend.np_float_dtype(10.0),
+            name=c.EC_OM,
+        ),
         c.EC_ORF: backend.tfd.TransformedDistribution(
-            backend.tfd.LogNormal(0.7, 0.4),
+            backend.tfd.LogNormal(
+                backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+            ),
             backend.bijectors.Shift(backend.np_float_dtype(0.1)),
             name=c.EC_ORF,
         ),
-        c.SLOPE_M: backend.tfd.Deterministic(1.0, name=c.SLOPE_M),
-        c.SLOPE_RF: backend.tfd.LogNormal(0.7, 0.4, name=c.SLOPE_RF),
-        c.SLOPE_OM: backend.tfd.Deterministic(1.0, name=c.SLOPE_OM),
-        c.SLOPE_ORF: backend.tfd.LogNormal(0.7, 0.4, name=c.SLOPE_ORF),
-        c.SIGMA: backend.tfd.HalfNormal(5.0, name=c.SIGMA),
-        c.ROI_M: backend.tfd.LogNormal(0.2, 0.9, name=c.ROI_M),
-        c.ROI_RF: backend.tfd.LogNormal(0.2, 0.9, name=c.ROI_RF),
-        c.MROI_M: backend.tfd.LogNormal(0.0, 0.5, name=c.MROI_M),
-        c.MROI_RF: backend.tfd.LogNormal(0.0, 0.5, name=c.MROI_RF),
+        c.SLOPE_M: backend.tfd.Deterministic(
+            backend.np_float_dtype(1.0), name=c.SLOPE_M
+        ),
+        c.SLOPE_RF: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.7),
+            backend.np_float_dtype(0.4),
+            name=c.SLOPE_RF,
+        ),
+        c.SLOPE_OM: backend.tfd.Deterministic(
+            backend.np_float_dtype(1.0), name=c.SLOPE_OM
+        ),
+        c.SLOPE_ORF: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.7),
+            backend.np_float_dtype(0.4),
+            name=c.SLOPE_ORF,
+        ),
+        c.SIGMA: backend.tfd.HalfNormal(
+            backend.np_float_dtype(5.0), name=c.SIGMA
+        ),
+        c.ROI_M: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.2),
+            backend.np_float_dtype(0.9),
+            name=c.ROI_M,
+        ),
+        c.ROI_RF: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.2),
+            backend.np_float_dtype(0.9),
+            name=c.ROI_RF,
+        ),
+        c.MROI_M: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(0.5),
+            name=c.MROI_M,
+        ),
+        c.MROI_RF: backend.tfd.LogNormal(
+            backend.np_float_dtype(0.0),
+            backend.np_float_dtype(0.5),
+            name=c.MROI_RF,
+        ),
     }
     self.sample_broadcast = prior_distribution.PriorDistribution().broadcast(
         n_geos=_N_GEOS,
@@ -540,7 +659,9 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     # other parameters as scalars.
     distribution = prior_distribution.PriorDistribution(
         beta_m=backend.tfd.BatchBroadcast(
-            backend.tfd.HalfNormal(5.0), _N_MEDIA_CHANNELS, name=c.BETA_M
+            backend.tfd.HalfNormal(backend.np_float_dtype(5.0)),
+            _N_MEDIA_CHANNELS,
+            name=c.BETA_M,
         )
     )
 
@@ -644,23 +765,37 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       dict(
           testcase_name='scalar_deterministic',
           get_slope_m=lambda: backend.tfd.Deterministic(
-              0.7, 0.4, name=c.SLOPE_M
+              backend.np_float_dtype(0.7),
+              backend.np_float_dtype(0.4),
+              name=c.SLOPE_M,
           ),
       ),
       dict(
           testcase_name='scalar_non_deterministic',
-          get_slope_m=lambda: backend.tfd.LogNormal(1.0, 0.4, name=c.SLOPE_M),
+          get_slope_m=lambda: backend.tfd.LogNormal(
+              backend.np_float_dtype(1.0),
+              backend.np_float_dtype(0.4),
+              name=c.SLOPE_M,
+          ),
       ),
       dict(
           testcase_name='list_deterministic',
           get_slope_m=lambda: backend.tfd.Deterministic(
-              [1.0, 1.1, 1.2, 1.3, 1.4, 1.5], 0.9, name=c.SLOPE_M
+              np.array(
+                  [1.0, 1.1, 1.2, 1.3, 1.4, 1.5], dtype=backend.np_float_dtype
+              ),
+              backend.np_float_dtype(0.9),
+              name=c.SLOPE_M,
           ),
       ),
       dict(
           testcase_name='list_non_deterministic',
           get_slope_m=lambda: backend.tfd.LogNormal(
-              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 0.9, name=c.SLOPE_M
+              np.array(
+                  [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=backend.np_float_dtype
+              ),
+              backend.np_float_dtype(0.9),
+              name=c.SLOPE_M,
           ),
       ),
   )
@@ -702,7 +837,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='roi_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               roi_m=backend.tfd.LogNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ROI_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ROI_M,
               )
           ),
       ),
@@ -710,7 +849,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='alpha_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_m=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.ALPHA_M,
               )
           ),
       ),
@@ -718,7 +861,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='ec_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_m=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.EC_M,
               )
           ),
       ),
@@ -726,7 +873,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='slope_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_m=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.SLOPE_M,
               )
           ),
       ),
@@ -734,7 +885,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='eta_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_m=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ETA_M,
               )
           ),
       ),
@@ -742,7 +897,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='beta_m',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_m=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_M
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.BETA_M,
               )
           ),
       ),
@@ -779,7 +938,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='roi_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               roi_rf=backend.tfd.LogNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ROI_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ROI_RF,
               )
           ),
       ),
@@ -787,7 +950,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='alpha_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_rf=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.ALPHA_RF,
               )
           ),
       ),
@@ -795,7 +962,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='ec_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_rf=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.EC_RF,
               )
           ),
       ),
@@ -803,7 +974,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='slope_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_rf=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.SLOPE_RF,
               )
           ),
       ),
@@ -811,7 +986,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='eta_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_rf=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ETA_RF,
               )
           ),
       ),
@@ -819,7 +998,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='beta_rf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_rf=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_RF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.BETA_RF,
               )
           ),
       ),
@@ -855,7 +1038,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='alpha_om',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_om=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_OM
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.ALPHA_OM,
               )
           ),
       ),
@@ -863,7 +1050,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='ec_om',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_om=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_OM
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.EC_OM,
               )
           ),
       ),
@@ -871,7 +1062,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='slope_om',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_om=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_OM
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.SLOPE_OM,
               )
           ),
       ),
@@ -879,7 +1074,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='eta_om',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_om=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_OM
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ETA_OM,
               )
           ),
       ),
@@ -887,7 +1086,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='beta_om',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_om=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_OM
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.BETA_OM,
               )
           ),
       ),
@@ -924,7 +1127,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='alpha_orf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               alpha_orf=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.ALPHA_ORF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.ALPHA_ORF,
               )
           ),
       ),
@@ -932,7 +1139,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='ec_orf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               ec_orf=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.EC_ORF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.EC_ORF,
               )
           ),
       ),
@@ -940,7 +1151,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='slope_orf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               slope_orf=backend.tfd.Deterministic(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.SLOPE_ORF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.SLOPE_ORF,
               )
           ),
       ),
@@ -948,7 +1163,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='eta_orf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               eta_orf=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.ETA_ORF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.ETA_ORF,
               )
           ),
       ),
@@ -956,7 +1175,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='beta_orf',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               beta_orf=backend.tfd.HalfNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.BETA_ORF
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.BETA_ORF,
               )
           ),
       ),
@@ -993,7 +1216,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='gamma_c',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               gamma_c=backend.tfd.LogNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.GAMMA_C
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.GAMMA_C,
               )
           ),
       ),
@@ -1001,7 +1228,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='xi_c',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               xi_c=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.XI_C
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.XI_C,
               )
           ),
       ),
@@ -1038,7 +1269,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='gamma_n',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               gamma_n=backend.tfd.LogNormal(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 0.9, name=c.GAMMA_N
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(0.9),
+                  name=c.GAMMA_N,
               )
           ),
       ),
@@ -1046,7 +1281,11 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           testcase_name='xi_n',
           get_distribution=lambda: prior_distribution.PriorDistribution(
               xi_n=backend.tfd.Uniform(
-                  [0.1, 0.2, 0.3, 0.4, 0.5], 1.0, name=c.XI_N
+                  np.array(
+                      [0.1, 0.2, 0.3, 0.4, 0.5], dtype=backend.np_float_dtype
+                  ),
+                  backend.np_float_dtype(1.0),
+                  name=c.XI_N,
               )
           ),
       ),
@@ -1082,27 +1321,51 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       dict(
           testcase_name='with_deteremenistic_0',
           get_tau_g_excl_baseline=lambda: backend.tfd.Deterministic(
-              0, name='tau_g_excl_baseline'
+              backend.np_float_dtype(0.0), name='tau_g_excl_baseline'
           ),
-          get_eta_m=lambda: backend.tfd.Deterministic(0, name=c.ETA_M),
-          get_eta_rf=lambda: backend.tfd.Deterministic(0, name=c.ETA_RF),
-          get_eta_om=lambda: backend.tfd.Deterministic(0, name=c.ETA_OM),
-          get_eta_orf=lambda: backend.tfd.Deterministic(0, name=c.ETA_ORF),
-          get_xi_c=lambda: backend.tfd.Deterministic(0, name=c.XI_C),
-          get_xi_n=lambda: backend.tfd.Deterministic(0, name=c.XI_N),
+          get_eta_m=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.ETA_M
+          ),
+          get_eta_rf=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.ETA_RF
+          ),
+          get_eta_om=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.ETA_OM
+          ),
+          get_eta_orf=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.ETA_ORF
+          ),
+          get_xi_c=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.XI_C
+          ),
+          get_xi_n=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0), name=c.XI_N
+          ),
           number_of_warnings=0,
       ),
       dict(
           testcase_name='with_deteremenistic_1',
           get_tau_g_excl_baseline=lambda: backend.tfd.Deterministic(
-              1, name='tau_g_excl_baseline'
+              backend.np_float_dtype(1.0), name='tau_g_excl_baseline'
           ),
-          get_eta_m=lambda: backend.tfd.Deterministic(1, name=c.ETA_M),
-          get_eta_rf=lambda: backend.tfd.Deterministic(1, name=c.ETA_RF),
-          get_eta_om=lambda: backend.tfd.Deterministic(1, name=c.ETA_OM),
-          get_eta_orf=lambda: backend.tfd.Deterministic(1, name=c.ETA_ORF),
-          get_xi_c=lambda: backend.tfd.Deterministic(1, name=c.XI_C),
-          get_xi_n=lambda: backend.tfd.Deterministic(1, name=c.XI_N),
+          get_eta_m=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.ETA_M
+          ),
+          get_eta_rf=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.ETA_RF
+          ),
+          get_eta_om=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.ETA_OM
+          ),
+          get_eta_orf=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.ETA_ORF
+          ),
+          get_xi_c=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.XI_C
+          ),
+          get_xi_n=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1.0), name=c.XI_N
+          ),
           number_of_warnings=7,
       ),
       dict(
@@ -1487,8 +1750,21 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
         total_spend=np.array([1, 2, 3]),
         name='name',
     )
+    p_mean = c.P_MEAN
+    p_sd = c.P_SD
+    kpi = 1.0
+    total_spend = np.array([1, 2, 3])
+    roi_mean = p_mean * kpi / np.sum(total_spend)
+    roi_sd = p_sd * kpi / np.sqrt(np.sum(np.power(total_spend, 2)))
+    lognormal_sigma = backend.cast(
+        np.sqrt(np.log(roi_sd**2 / roi_mean**2 + 1)), dtype=backend.float_dtype
+    )
+    lognormal_mu = backend.cast(
+        np.log(roi_mean * np.exp(-(lognormal_sigma**2) / 2)),
+        dtype=backend.float_dtype,
+    )
     expected_distribution = backend.tfd.LogNormal(
-        -2.956268548965454, 0.7045827507972717, name='name'
+        lognormal_mu, lognormal_sigma, name='name'
     )
 
     self.assert_distribution_params_are_equal(
@@ -1605,32 +1881,43 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       (
           'alpha_m_can_be_negative',
           'alpha_m',
-          lambda: backend.tfd.Uniform(-1, 1),
+          lambda: backend.tfd.Uniform(
+              backend.np_float_dtype(-1), backend.np_float_dtype(1)
+          ),
       ),
       (
           'alpha_m_can_exceed_one',
           'alpha_m',
-          lambda: backend.tfd.Uniform(0, 2),
+          lambda: backend.tfd.Uniform(
+              backend.np_float_dtype(0), backend.np_float_dtype(2)
+          ),
       ),
       (
           'alpha_m_deterministic_negative_one',
           'alpha_m',
-          lambda: backend.tfd.Deterministic(-1),
+          lambda: backend.tfd.Deterministic(backend.np_float_dtype(-1)),
       ),
       (
           'alpha_m_deterministic_two',
           'alpha_m',
-          lambda: backend.tfd.Deterministic(2),
+          lambda: backend.tfd.Deterministic(backend.np_float_dtype(2)),
       ),
       (
           'eta_m_can_be_negative',
           'eta_m',
-          lambda: backend.tfd.Normal(0, 1),
+          lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0), backend.np_float_dtype(1)
+          ),
       ),
       (
           'eta_m_can_be_negative_truncated_normal',
           'eta_m',
-          lambda: backend.tfd.TruncatedNormal(0, 1, -1, 1),
+          lambda: backend.tfd.TruncatedNormal(
+              backend.np_float_dtype(0),
+              backend.np_float_dtype(1),
+              backend.np_float_dtype(-1),
+              backend.np_float_dtype(1),
+          ),
       ),
   )
   def test_validate_support_raises_value_error(
@@ -1646,31 +1933,31 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       dict(
           testcase_name='alpha_m_deterministic_prior_at_one',
           param_name='alpha_m',
-          deterministic_value=1,
+          deterministic_value=1.0,
           expect_error=True,
       ),
       dict(
           testcase_name='ec_m_deterministic_prior_at_zero',
           param_name='ec_m',
-          deterministic_value=0,
+          deterministic_value=0.0,
           expect_error=True,
       ),
       dict(
           testcase_name='slope_m_deterministic_prior_at_zero',
           param_name='slope_m',
-          deterministic_value=0,
+          deterministic_value=0.0,
           expect_error=True,
       ),
       dict(
           testcase_name='alpha_m_deterministic_prior_at_zero',
           param_name='alpha_m',
-          deterministic_value=0,
+          deterministic_value=0.0,
           expect_error=False,
       ),
       dict(
           testcase_name='eta_m_deterministic_prior_at_zero',
           param_name='eta_m',
-          deterministic_value=0,
+          deterministic_value=0.0,
           expect_error=False,
       ),
   )
@@ -1685,14 +1972,18 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           ValueError,
           f'{param_name} was assigned a point mass',
       ):
-        prior_distribution.PriorDistribution(
-            **{param_name: backend.tfd.Deterministic(deterministic_value)}
-        )
+        prior_distribution.PriorDistribution(**{
+            param_name: backend.tfd.Deterministic(
+                backend.np_float_dtype(deterministic_value)
+            )
+        })
     else:
       try:
-        prior_distribution.PriorDistribution(
-            **{param_name: backend.tfd.Deterministic(deterministic_value)}
-        )
+        prior_distribution.PriorDistribution(**{
+            param_name: backend.tfd.Deterministic(
+                backend.np_float_dtype(deterministic_value)
+            )
+        })
       except ValueError:
         self.fail(
             f'Assigning Deterministic({deterministic_value}) prior to'
@@ -1709,8 +2000,18 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     # 2) `tfd.TruncatedNormal(50, 0.5, 49, 100).quantile(1)` return inf
     try:
       prior_distribution.PriorDistribution(
-          eta_m=backend.tfd.TruncatedNormal(50, 0.5, 1, 51),
-          eta_rf=backend.tfd.TruncatedNormal(50, 0.5, 49, 100),
+          eta_m=backend.tfd.TruncatedNormal(
+              backend.np_float_dtype(50),
+              backend.np_float_dtype(0.5),
+              backend.np_float_dtype(1),
+              backend.np_float_dtype(51),
+          ),
+          eta_rf=backend.tfd.TruncatedNormal(
+              backend.np_float_dtype(50),
+              backend.np_float_dtype(0.5),
+              backend.np_float_dtype(49),
+              backend.np_float_dtype(100),
+          ),
       )
     except ValueError:
       self.fail(
@@ -1719,14 +2020,120 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       )
 
   def test_quantile_not_implemented_raises_warning(self):
+
+    class _NoQuantileDistribution(backend.tfd.Normal):
+
+      def _quantile(self, value):
+        raise NotImplementedError('Quantile is not implemented.')
+
     with self.assertWarnsRegex(
         UserWarning,
         'The prior distribution for alpha_m does not have a `quantile` method',
     ):
-      # Note that `backend.tfd.Categorical.quantile` raises a
-      # `NotImplementedError`.
-      dist = backend.tfd.Categorical(probs=[0.5, 0.5])
+      dist = _NoQuantileDistribution(
+          backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+      )
       prior_distribution.PriorDistribution(alpha_m=dist)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='mismatched_scalar_normal',
+          param_name=c.KNOT_VALUES,
+          get_mismatched_dist=lambda: backend.tfd.Normal(
+              np.float32(0.0), np.float32(1.0)
+          ),
+      ),
+      dict(
+          testcase_name='mismatched_scalar_lognormal',
+          param_name=c.ROI_M,
+          get_mismatched_dist=lambda: backend.tfd.LogNormal(
+              np.float32(0.2), np.float32(0.9)
+          ),
+      ),
+      dict(
+          testcase_name='mismatched_scalar_half_normal',
+          param_name=c.BETA_M,
+          get_mismatched_dist=lambda: backend.tfd.HalfNormal(np.float32(1.0)),
+      ),
+      dict(
+          testcase_name='mismatched_scalar_uniform',
+          param_name=c.ALPHA_M,
+          get_mismatched_dist=lambda: backend.tfd.Uniform(
+              np.float32(0.0), np.float32(1.0)
+          ),
+      ),
+      dict(
+          testcase_name='mismatched_scalar_deterministic',
+          param_name=c.SLOPE_M,
+          get_mismatched_dist=lambda: backend.tfd.Deterministic(
+              np.float32(1.0)
+          ),
+      ),
+      dict(
+          testcase_name='mismatched_array_half_normal',
+          param_name=c.BETA_M,
+          get_mismatched_dist=lambda: backend.tfd.HalfNormal(
+              np.array([0.2, 0.2], dtype=np.float32)
+          ),
+      ),
+      dict(
+          testcase_name='mismatched_array_uniform',
+          param_name=c.ALPHA_M,
+          get_mismatched_dist=lambda: backend.tfd.Uniform(
+              np.array([0.1, 0.2], dtype=np.float32),
+              np.array([0.8, 0.9], dtype=np.float32),
+          ),
+      ),
+  )
+  def test_prior_distribution_dtype_mismatch_raises_value_error(
+      self,
+      param_name: str,
+      get_mismatched_dist: Callable[[], backend.tfd.Distribution],
+  ):
+    expected_dtype = backend.standardize_dtype(backend.float_dtype)
+    if expected_dtype != 'float64':
+      self.skipTest('Dtype mismatch validation runs in 64-bit environment.')
+
+    mismatched_dist = get_mismatched_dist()
+    with self.assertRaisesRegex(
+        ValueError,
+        f"The distribution for parameter '{param_name}' has dtype"
+        r' float32, which does not match the expected backend'
+        r' float dtype float64',
+    ):
+      prior_distribution.PriorDistribution(**{param_name: mismatched_dist})
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='matching_scalar_normal',
+          param_name=c.KNOT_VALUES,
+          get_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+          ),
+      ),
+      dict(
+          testcase_name='matching_scalar_lognormal',
+          param_name=c.ROI_M,
+          get_dist=lambda: backend.tfd.LogNormal(
+              backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+          ),
+      ),
+      dict(
+          testcase_name='matching_array_half_normal',
+          param_name=c.BETA_M,
+          get_dist=lambda: backend.tfd.HalfNormal(
+              np.array([0.2, 0.2], dtype=backend.np_float_dtype)
+          ),
+      ),
+  )
+  def test_prior_distribution_matching_dtype_succeeds(
+      self,
+      param_name: str,
+      get_dist: Callable[[], backend.tfd.Distribution],
+  ):
+    dist = get_dist()
+    priors = prior_distribution.PriorDistribution(**{param_name: dist})
+    self.assertEqual(getattr(priors, param_name), dist)
 
 
 class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
@@ -1812,9 +2219,14 @@ class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
       sample_kwargs: dict[str, Any],
       expected_shape: tuple[int, ...],
   ):
-    distribution = prior_distribution.IndependentMultivariateDistribution(
-        [backend.tfd.Normal(-10, 1), backend.tfd.Normal(10, 1)]
-    )
+    distribution = prior_distribution.IndependentMultivariateDistribution([
+        backend.tfd.Normal(
+            backend.np_float_dtype(-10), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Normal(
+            backend.np_float_dtype(10), backend.np_float_dtype(1)
+        ),
+    ])
     sample = self.sample(distribution, **sample_kwargs)
     self.assertEqual(sample.shape, expected_shape)
 
