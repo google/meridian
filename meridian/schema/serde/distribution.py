@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import inspect
 import types
-from typing import Any, Sequence, TypeVar
+from typing import Any, Sequence
 import warnings
 
 from meridian import backend
@@ -318,7 +318,7 @@ class DistributionSerde(
     match param_value.WhichOneof("value_type"):
       # Handle built-in types.
       case "scalar_value":
-        return param_value.scalar_value
+        return backend.np_float_dtype(param_value.scalar_value)
       case "int_value":
         return param_value.int_value
       case "bool_value":
@@ -341,7 +341,10 @@ class DistributionSerde(
 
       # Handle custom types.
       case "tensor_value":
-        return backend.to_tensor(backend.make_ndarray(param_value.tensor_value))
+        arr = backend.make_ndarray(param_value.tensor_value)
+        if np.issubdtype(arr.dtype, np.floating):
+          arr = arr.astype(backend.np_float_dtype)
+        return backend.to_tensor(arr)
       case "distribution_value":
         return self._from_distribution_proto(param_value.distribution_value)
       case "bijector_value":
@@ -455,7 +458,7 @@ def _from_legacy_distribution_proto(
           _show_warning("low", "TruncatedNormal")
         low = _deserialize_sequence(dist_proto.truncated_normal.lows)
       else:
-        low = dist_proto.truncated_normal.low
+        low = backend.np_float_dtype(dist_proto.truncated_normal.low)
 
       if (
           hasattr(dist_proto.truncated_normal, "highs")
@@ -465,7 +468,7 @@ def _from_legacy_distribution_proto(
           _show_warning("high", "TruncatedNormal")
         high = _deserialize_sequence(dist_proto.truncated_normal.highs)
       else:
-        high = dist_proto.truncated_normal.high
+        high = backend.np_float_dtype(dist_proto.truncated_normal.high)
       return backend.tfd.TruncatedNormal(
           name=dist_proto.name,
           loc=_deserialize_sequence(dist_proto.truncated_normal.locs),
@@ -479,14 +482,14 @@ def _from_legacy_distribution_proto(
           _show_warning("low", "Uniform")
         low = _deserialize_sequence(dist_proto.uniform.lows)
       else:
-        low = dist_proto.uniform.low
+        low = backend.np_float_dtype(dist_proto.uniform.low)
 
       if hasattr(dist_proto.uniform, "highs") and dist_proto.uniform.highs:
         if dist_proto.uniform.high:
           _show_warning("high", "Uniform")
         high = _deserialize_sequence(dist_proto.uniform.highs)
       else:
-        high = dist_proto.uniform.high
+        high = backend.np_float_dtype(dist_proto.uniform.high)
 
       return backend.tfd.Uniform(
           name=dist_proto.name,
@@ -522,12 +525,22 @@ def _from_shape_proto(
   return backend.TensorShape([dim.size for dim in shape_proto.dim])
 
 
-T = TypeVar("T")
+def _cast_if_numeric(value: Any) -> Any:
+  """Casts numeric float/int scalars to the backend floating-point dtype."""
+  if isinstance(value, (float, int)):
+    return backend.np_float_dtype(value)
+  return value
 
 
-def _deserialize_sequence(args: Sequence[T]) -> T | Sequence[T] | None:
+def _deserialize_sequence(args: Sequence[Any]) -> Any:
+  """Unpacks a repeated proto field into a scalar or list with backend dtype."""
   if not args:
     return None
-  return args[0] if len(args) == 1 else list(args)
+
+  cast_values = [_cast_if_numeric(val) for val in args]
+  if len(cast_values) == 1:
+    return cast_values[0]
+  return cast_values
+
 
 # copybara: strip_end
