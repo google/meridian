@@ -31,6 +31,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Fix AKS fallback behavior to correctly generate a single common intercept for non-national models when no internal knots are selected.
 *   Add backward-compatible deserialization support in serde (`legacy_aks_v1_7_1.py`) for models saved with Automatic Knot Selection (`enable_aks=True`) under v1.7.1.
 *   Add validation for prior distribution dtypes to match 64-bit JAX backend precision.
+*   Fix spurious `UserWarning: Paid media prior type is unspecified` during
+    model deserialization by suppressing warnings in `ProtoEnumConverter` when
+    `default_when_unspecified` is `None`.
 
 ## [1.7.1] - 2026-07-20
 
