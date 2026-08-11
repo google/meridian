@@ -912,7 +912,20 @@ class MeridianEDA:
                   for channel_type in present_categories
               ],
           )
-
+      color_legend = alt.Legend(
+          title=None, orient='bottom', symbolType='square'
+      )
+      if color_scale is not None:
+        color_encoding = alt.Color(
+            f'{color_variable}:N',
+            scale=color_scale,
+            legend=color_legend,
+        )
+      else:
+        color_encoding = alt.Color(
+            f'{color_variable}:N',
+            legend=color_legend,
+        )
       charts.append((
           alt.Chart(plot_data)
           .mark_boxplot(ticks={'size': 20}, size=40, extent=1.5)
@@ -928,13 +941,7 @@ class MeridianEDA:
                   title=y_axis_title,
                   scale=alt.Scale(zero=True),
               ),
-              color=alt.Color(
-                  f'{color_variable}:N',
-                  scale=color_scale,
-                  legend=alt.Legend(
-                      title=None, orient='bottom', symbolType='square'
-                  ),
-              ),
+              color=color_encoding,
           )
           .properties(title=title, width=600, height=250)
       ))
