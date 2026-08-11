@@ -1142,6 +1142,7 @@ def random_frequency_da(
       abs(np.random.normal(3, 5, size=(n_geos, n_media_times, n_rf_channels)))
       + nonzero_shift
   )
+  frequency = np.maximum(frequency, 1.0)
 
   channels = (
       explicit_rf_channel_names

@@ -292,6 +292,19 @@ class InputData:
     self._validate_times()
     self._validate_geos()
     self._validate_no_negative_values()
+    self._validate_frequencies()
+
+  def _validate_frequencies(self) -> None:
+    """Validates that frequency values are at least 1."""
+    for field, loggable_field in [
+        (constants.FREQUENCY, "Frequency"),
+        (constants.ORGANIC_FREQUENCY, "Organic Frequency"),
+    ]:
+      da = getattr(self, field)
+      if da is not None and (da.values < 1).any():
+        raise ValueError(
+            f"{loggable_field} values must be at least 1."
+        )
 
   def _coerce_object_arrays_to_float(self):
     """Coerces object-typed DataArrays to float."""
@@ -619,9 +632,7 @@ class InputData:
         constants.MEDIA_SPEND: "Media Spend",
         constants.RF_SPEND: "RF Spend",
         constants.REACH: "Reach",
-        constants.FREQUENCY: "Frequency",
         constants.ORGANIC_REACH: "Organic Reach",
-        constants.ORGANIC_FREQUENCY: "Organic Frequency",
         constants.REVENUE_PER_KPI: "Revenue per KPI",
         constants.KPI: "KPI",
     }
