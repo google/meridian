@@ -2515,10 +2515,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           create_optimization_grid_args={'start_date': None},
           optimize_args={'start_date': '2021-02-01'},
           warning_regex=(
-              'Given optimization grid was created with `start_date` = None'
-              ' and `end_date` = None, but optimization was called with'
-              ' `start_date` = 2021-02-01 and `end_date` ='
-              ' None\\. A new grid will be created\\.'
+              'Given optimization grid was created with `start_date` ='
+              ' 2021-01-25 and `end_date` = 2021-12-27, but optimization was'
+              ' called with `start_date` = 2021-02-01 and `end_date` ='
+              ' 2021-12-27\\. A new grid will be created\\.'
           ),
       ),
       dict(
@@ -2526,10 +2526,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           create_optimization_grid_args={'end_date': None},
           optimize_args={'end_date': '2021-02-01'},
           warning_regex=(
-              'Given optimization grid was created with `start_date` = None and'
-              ' `end_date` = None, but optimization was called with'
-              ' `start_date` = None and `end_date` = 2021-02-01\\. A new grid'
-              ' will be created\\.'
+              'Given optimization grid was created with `start_date` ='
+              ' 2021-01-25 and `end_date` = 2021-12-27, but optimization was'
+              ' called with `start_date` = 2021-01-25 and `end_date` ='
+              ' 2021-02-01\\. A new grid will be created\\.'
           ),
       ),
       dict(
@@ -2795,6 +2795,154 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimization_grid=grid,
         start_date='2021-05-17',
         end_date='2021-06-14',
+        gtol=gtol,
+    )
+
+    # Only called once in the test itself.
+    mock_create_optimization_grid.assert_called_once()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='grid_none_dates_optimize_first_last_dates',
+          grid_start_date=None,
+          grid_end_date=None,
+          optimize_start_date='2021-01-25',
+          optimize_end_date='2021-12-27',
+      ),
+      dict(
+          testcase_name='grid_first_last_dates_optimize_none_dates',
+          grid_start_date='2021-01-25',
+          grid_end_date='2021-12-27',
+          optimize_start_date=None,
+          optimize_end_date=None,
+      ),
+      dict(
+          testcase_name='grid_first_date_optimize_none_start_date',
+          grid_start_date='2021-01-25',
+          grid_end_date='2021-06-14',
+          optimize_start_date=None,
+          optimize_end_date='2021-06-14',
+      ),
+      dict(
+          testcase_name='grid_none_start_date_optimize_first_date',
+          grid_start_date=None,
+          grid_end_date='2021-06-14',
+          optimize_start_date='2021-01-25',
+          optimize_end_date='2021-06-14',
+      ),
+      dict(
+          testcase_name='grid_last_date_optimize_none_end_date',
+          grid_start_date='2021-05-17',
+          grid_end_date='2021-12-27',
+          optimize_start_date='2021-05-17',
+          optimize_end_date=None,
+      ),
+      dict(
+          testcase_name='grid_none_end_date_optimize_last_date',
+          grid_start_date='2021-05-17',
+          grid_end_date=None,
+          optimize_start_date='2021-05-17',
+          optimize_end_date='2021-12-27',
+      ),
+  )
+  def test_optimize_with_first_last_dates_or_none_reuses_grid(
+      self,
+      grid_start_date,
+      grid_end_date,
+      optimize_start_date,
+      optimize_end_date,
+  ):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(
+        start_date=grid_start_date,
+        end_date=grid_end_date,
+        gtol=gtol,
+    )
+    budget_optimizer.optimize(
+        optimization_grid=grid,
+        start_date=optimize_start_date,
+        end_date=optimize_end_date,
+        gtol=gtol,
+    )
+
+    # Only called once in the test itself.
+    mock_create_optimization_grid.assert_called_once()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='grid_none_dates_optimize_first_last_dates',
+          grid_start_date=None,
+          grid_end_date=None,
+          optimize_start_date='2025-03-31',
+          optimize_end_date='2025-04-28',
+      ),
+      dict(
+          testcase_name='grid_first_last_dates_optimize_none_dates',
+          grid_start_date='2025-03-31',
+          grid_end_date='2025-04-28',
+          optimize_start_date=None,
+          optimize_end_date=None,
+      ),
+  )
+  def test_optimize_with_first_last_dates_or_none_new_data_reuses_grid(
+      self,
+      grid_start_date,
+      grid_end_date,
+      optimize_start_date,
+      optimize_end_date,
+  ):
+    new_times = [
+        '2025-03-31',
+        '2025-04-07',
+        '2025-04-14',
+        '2025-04-21',
+        '2025-04-28',
+    ]
+    new_data = tensors.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=self.meridian_media_and_rf.rf_tensors.reach[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian_media_and_rf.rf_tensors.frequency[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
+            ..., -5:, :
+        ],
+        rf_spend=self.meridian_media_and_rf.rf_tensors.rf_spend[..., -5:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian_media_and_rf.revenue_per_kpi[..., -5:],  # pyrefly: ignore[unsupported-operation]
+        time=new_times,
+    )
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(
+        new_data=new_data,
+        start_date=grid_start_date,
+        end_date=grid_end_date,
+        gtol=gtol,
+    )
+    budget_optimizer.optimize(
+        new_data=new_data,
+        optimization_grid=grid,
+        start_date=optimize_start_date,
+        end_date=optimize_end_date,
         gtol=gtol,
     )
 
