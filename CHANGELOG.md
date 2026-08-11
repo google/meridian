@@ -35,6 +35,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     model deserialization by suppressing warnings in `ProtoEnumConverter` when
     `default_when_unspecified` is `None`.
 *   Fix OLS residual variance calculation (use `mse_resid` rather than `mse_resid ** 2`) in Automatic Knot Selection.
+*   Fix docstring for `get_round_factor` to accurately describe budget rounding by powers of ten ($10^n$).
 
 ## [1.7.1] - 2026-07-20
 
