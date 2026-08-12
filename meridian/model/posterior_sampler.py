@@ -981,7 +981,7 @@ class PosteriorMCMCSampler:
     # internally, including auto-generating a seed if `None` is provided.
     rng_handler = backend.RNGHandler(seed)
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
-    total_chains = np.sum(n_chains_list)
+    total_chains = int(np.sum(n_chains_list))
 
     # Clear joint distribution cache prior to sampling to ensure fresh state.
     self._joint_dist = None
