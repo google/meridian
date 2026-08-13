@@ -3848,6 +3848,29 @@ class OptimizerPlotsTest(parameterized.TestCase):
     )
     self.assertEqual(plot.title.text, summary_text.SPEND_DELTA_CHART_TITLE)
 
+  def test_plot_spend_delta_with_currency_code(self):
+    with mock.patch.object(
+        self.optimization_results.analyzer.model_context.input_data,
+        'currency_code',
+        'EUR',
+    ):
+      plot = self.optimization_results.plot_spend_delta()
+      encoding = plot.layer[0].encoding.to_dict()
+      self.assertEqual(encoding['y']['axis']['title'], '€')
+
+  def test_plot_spend_delta_currency_deprecation_warning(self):
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter('always')
+      self.optimization_results.plot_spend_delta(currency='$')
+      deprecation_warns = [
+          w for w in warns if issubclass(w.category, DeprecationWarning)
+      ]
+      self.assertLen(deprecation_warns, 1)
+      self.assertIn(
+          'Passing `currency` explicitly is deprecated',
+          str(deprecation_warns[0].message),
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name='vertical',
@@ -4273,7 +4296,7 @@ class OptimizerOutputTest(parameterized.TestCase):
   def _get_output_summary_html_dom(
       self,
       optimization_results: optimizer.OptimizationResults,
-      currency: str = c.DEFAULT_CURRENCY,
+      currency: str | None = None,
   ) -> ET.Element:
     outfile_path = tempfile.mkdtemp() + '/optimization'
     outfile_name = 'optimization.html'
@@ -4627,6 +4650,61 @@ class OptimizerOutputTest(parameterized.TestCase):
       stat = analysis_test_utils.get_child_element(optimized_cpik, 'stat').text
       self.assertIsNotNone(stat)
       self.assertEqual(stat.strip(), '€0.72')
+
+  def test_output_scenario_plan_card_stats_text_with_currency_code(self):
+    with mock.patch.object(
+        self.optimization_results.analyzer.model_context.input_data,
+        'currency_code',
+        'EUR',
+    ):
+      summary_html_dom = self._get_output_summary_html_dom(
+          self.optimization_results
+      )
+      card = analysis_test_utils.get_child_element(
+          summary_html_dom,
+          'body/cards/card',
+          attribs={'id': summary_text.SCENARIO_PLAN_CARD_ID},
+      )
+      stats_section = analysis_test_utils.get_child_element(
+          card, 'stats-section'
+      )
+      stats = stats_section.findall('stats')
+      self.assertLen(stats, 6)
+      non_optimized_budget, optimized_budget, _, _, _, _ = stats
+
+      with self.subTest('non_optimized_budget'):
+        stat = analysis_test_utils.get_child_element(
+            non_optimized_budget, 'stat'
+        ).text
+        self.assertIsNotNone(stat)
+        self.assertEqual(stat.strip(), '€600')
+
+      with self.subTest('optimized_budget'):
+        stat = analysis_test_utils.get_child_element(
+            optimized_budget, 'stat'
+        ).text
+        self.assertIsNotNone(stat)
+        self.assertEqual(stat.strip(), '€600')
+        delta = analysis_test_utils.get_child_element(
+            optimized_budget, 'delta'
+        ).text
+        self.assertIsNotNone(delta)
+        self.assertEqual(delta.strip(), '€0')
+
+  def test_output_optimization_summary_currency_deprecation_warning(self):
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter('always')
+      _ = self._get_output_summary_html_dom(
+          self.optimization_results, currency='$'
+      )
+      deprecation_warns = [
+          w for w in warns if issubclass(w.category, DeprecationWarning)
+      ]
+      self.assertLen(deprecation_warns, 1)
+      self.assertIn(
+          'Passing `currency` explicitly is deprecated',
+          str(deprecation_warns[0].message),
+      )
 
   def test_output_budget_allocation_card_text(self):
     summary_html_dom = self._get_output_summary_html_dom(

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -1938,6 +1939,29 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertTrue(
         all(currency in pct for pct in df[summary_text.INC_OUTCOME_COL])
     )
+
+  def test_media_summary_summary_table_format_monetary_with_currency_code(self):
+    with mock.patch.object(
+        self.meridian_revenue.input_data, "currency_code", "EUR"
+    ):
+      df = self.media_summary_revenue.summary_table()
+      self.assertTrue(all("€" in dollar for dollar in df[c.SPEND]))
+      self.assertTrue(
+          all("€" in pct for pct in df[summary_text.INC_OUTCOME_COL])
+      )
+
+  def test_media_summary_summary_table_currency_deprecation_warning(self):
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter("always")
+      _ = self.media_summary_revenue.summary_table(currency="$")
+      deprecation_warns = [
+          w for w in warns if issubclass(w.category, DeprecationWarning)
+      ]
+      self.assertLen(deprecation_warns, 1)
+      self.assertIn(
+          "Passing `currency` explicitly is deprecated",
+          str(deprecation_warns[0].message),
+      )
 
   def test_media_summary_summary_table_format_credible_interval(self):
     df = self.media_summary_revenue.summary_table()

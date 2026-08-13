@@ -29,6 +29,7 @@ from meridian import constants as c
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis import summary_text
 from meridian.analysis import tensors
+from meridian.common import currency as currency_module
 from meridian.common import errors as common_errors
 from meridian.data import time_coordinates as tc
 from meridian.model import context
@@ -586,9 +587,30 @@ class OptimizationResults:
       self,
       filename: str,
       filepath: str,
-      currency: str = c.DEFAULT_CURRENCY,
+      currency: str | None = None,
   ):
-    """Generates and saves the HTML optimization summary output."""
+    """Generates and saves the HTML optimization summary output.
+
+    Args:
+      filename: The filename for the output summary.
+      filepath: The directory path to save the output summary.
+      currency: (Deprecated) The currency symbol to use for formatting monetary
+        values. If None, defaults to resolving from the model's
+        `input_data.currency_code` (falling back to
+        `constants.DEFAULT_CURRENCY_SYMBOL`).
+    """
+    if currency is None:
+      currency_code = getattr(
+          self.analyzer.model_context.input_data, 'currency_code', None
+      )
+      currency = currency_module.get_currency_symbol(currency_code)
+    else:
+      warnings.warn(
+          'Passing `currency` explicitly is deprecated and will be removed in a'
+          ' future version. Specify `currency_code` on `InputData` instead.',
+          DeprecationWarning,
+          stacklevel=2,
+      )
     os.makedirs(filepath, exist_ok=True)
     with open(os.path.join(filepath, filename), 'w') as f:
       f.write(self._gen_optimization_summary(currency))
@@ -780,20 +802,35 @@ class OptimizationResults:
   # TODO: Add Scuba tests for horizontal plots.
   def plot_spend_delta(
       self,
-      currency: str = c.DEFAULT_CURRENCY,
+      currency: str | None = None,
       *,
       is_vertical: bool = True,
   ) -> alt.Chart:
     """Plots a bar chart showing the optimized change in spend per channel.
 
     Args:
-      currency: The currency symbol to use for the quantitative axis.
+      currency: (Deprecated) The currency symbol to use for the quantitative
+        axis. If None, defaults to resolving from the model's
+        `input_data.currency_code` (falling back to
+        `constants.DEFAULT_CURRENCY_SYMBOL`).
       is_vertical: If `True`, the plot has a vertical orientation. If `False`,
         it has a horizontal orientation. Defaults to `True`.
 
     Returns:
       An Altair bar chart showing the optimized change in spend per channel.
     """
+    if currency is None:
+      currency_code = getattr(
+          self.analyzer.model_context.input_data, 'currency_code', None
+      )
+      currency = currency_module.get_currency_symbol(currency_code)
+    else:
+      warnings.warn(
+          'Passing `currency` explicitly is deprecated and will be removed in a'
+          ' future version. Specify `currency_code` on `InputData` instead.',
+          DeprecationWarning,
+          stacklevel=2,
+      )
     df = self._get_delta_data(c.SPEND)
     quantitative_axis_label = currency
 

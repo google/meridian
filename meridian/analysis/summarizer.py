@@ -23,6 +23,7 @@ from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
 from meridian.analysis import visualizer
+from meridian.common import currency as currency_module
 from meridian.data import time_coordinates as tc
 from meridian.model import model
 from meridian.templates import formatter
@@ -69,6 +70,8 @@ class Summarizer:
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
     )._use_kpi(use_kpi)
+    currency_code = getattr(meridian.input_data, 'currency_code', None)
+    self._currency = currency_module.get_currency_symbol(currency_code)
 
   @functools.cached_property
   def _model_fit(self):
@@ -438,6 +441,7 @@ class Summarizer:
         lead_mroi_channel_value=mroi_df[c.MROI][0],
         lead_cpik_channel=cpik_df[c.CHANNEL][0].title(),
         lead_cpik_ratio=cpik_df[c.CPIK][0],
+        currency=self._currency,
     )
     return formatter.create_card_html(
         template_env,

@@ -694,6 +694,10 @@ class _InputDataSerializer:
 
     metadata.kpi_type = self._input_data.kpi_type
 
+    currency_code = getattr(self._input_data, "currency_code", None)
+    if isinstance(currency_code, str):
+      metadata.currency_code = currency_code
+
     return metadata
 
   def _make_kpi_proto(self, geo: str, time: str) -> marketing_pb.Kpi:
@@ -1297,6 +1301,11 @@ class _InputDataDeserializer:
         organic_reach=self._extract_organic_reach(),
         organic_frequency=self._extract_organic_frequency(),
         non_media_treatments=self._extract_non_media_treatments(),
+        currency_code=(
+            self._serialized.metadata.currency_code
+            if self._serialized.metadata.currency_code
+            else None
+        ),
     )
 
 

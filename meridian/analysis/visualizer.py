@@ -23,6 +23,7 @@ import altair as alt
 from meridian import constants as c
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis import summary_text
+from meridian.common import currency as currency_module
 from meridian.common import errors
 from meridian.model import model
 from meridian.templates import formatter
@@ -1618,7 +1619,7 @@ class MediaSummary:
       include_prior: bool = True,
       include_posterior: bool = True,
       include_non_paid_channels: bool = False,
-      currency: str = c.DEFAULT_CURRENCY,
+      currency: str | None = None,
   ) -> pd.DataFrame:
     """Returns a formatted dataframe table of the summary metrics.
 
@@ -1635,11 +1636,25 @@ class MediaSummary:
         reported. If `False`, only the paid channels (media, reach and
         frequency) are included but the summary contains also the metrics
         dependent on spend. Default: `False`.
-      currency: The currency to use for the monetary values. Default: `'$'`.
+      currency: (Deprecated) The currency to use for the monetary values. If
+        `None`, defaults to resolving the currency symbol from the model's
+        `input_data.currency_code` (falling back to
+        `constants.DEFAULT_CURRENCY_SYMBOL`).
 
     Returns:
       pandas.DataFrame of formatted summary metrics.
     """
+    if currency is None:
+      currency_code = getattr(self._meridian.input_data, 'currency_code', None)
+      currency = currency_module.get_currency_symbol(currency_code)
+    else:
+      warnings.warn(
+          'Passing `currency` explicitly is deprecated and will be removed in a'
+          ' future version. Specify `currency_code` on `InputData` instead.',
+          DeprecationWarning,
+          stacklevel=2,
+      )
+
     if not (include_posterior or include_prior):
       raise ValueError(
           'At least one of `include_posterior` or `include_prior` must be True.'
