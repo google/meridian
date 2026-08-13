@@ -165,15 +165,14 @@ class ConvergenceCheckResult(CheckResult):
 
   case: ConvergenceCases
   config: configs.ConvergenceConfig
-  # TODO: Rename to max_r_hat.
-  max_rhat: float
+  max_r_hat: float
   max_parameter: str
 
   @property
   def details(self) -> Mapping[str, Any]:
     """The check result details."""
     return {
-        constants.RHAT: self.max_rhat,
+        constants.RHAT: self.max_r_hat,
         constants.PARAMETER: self.max_parameter,
         constants.CONVERGENCE_THRESHOLD: self.config.convergence_threshold,
     }
