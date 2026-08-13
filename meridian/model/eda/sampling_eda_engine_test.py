@@ -26,6 +26,7 @@ from meridian.analysis import analyzer as analyzer_module
 from meridian.backend import test_utils
 from meridian.model import context
 from meridian.model import model_test_data
+from meridian.model import prior_distribution
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec as eda_spec_module
