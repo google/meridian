@@ -204,6 +204,7 @@ class Meridian:
       health_summary: (
           results.ReviewSummary | None
       ) = None,  # for deserializer use only
+      legacy_knots_for_serde: list[int] | None = None,
   ):
     self._inference_data = (
         inference_data if inference_data else az.InferenceData()
@@ -211,6 +212,7 @@ class Meridian:
     self._model_context = context.ModelContext(
         input_data=input_data,
         model_spec=model_spec if model_spec else spec.ModelSpec(),
+        legacy_knots_for_serde=legacy_knots_for_serde,
     )
     self._model_equations = equations.ModelEquations(self._model_context)
     self._computation_backend = backend.computation_backend().name

@@ -363,10 +363,9 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         deserialized_hyperparameters, prior=deserialized_prior_distributions
     )
 
-    meridian_kwargs = dict(
-        input_data=deserialized_marketing_data,
-        model_spec=deserialized_model_spec,
-    )
+    meridian_kwargs = {}
+    meridian_kwargs['input_data'] = deserialized_marketing_data
+    meridian_kwargs['model_spec'] = deserialized_model_spec
 
     # For backwards compatibility, only deserialize EDA spec if it exists in the
     # serialized model. Otherwise, warn the user and create a model with default
@@ -386,20 +385,42 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     else:
       warnings.warn('MeridianModel does not contain an EDA spec.')
 
-    loaded_mmm = model.Meridian(**meridian_kwargs)
-    if loaded_mmm.model_spec.enable_aks:
+    if deserialized_model_spec.enable_aks:
+      is_national = len(deserialized_marketing_data.geo) == 1
+
+      file_knot_size = None
+      if deserialized_inference_data is not None:
+        if 'prior' in deserialized_inference_data:
+          if 'knots' in deserialized_inference_data['prior'].coords:
+            file_knot_size = deserialized_inference_data['prior'].coords['knots'].size
+        elif 'posterior' in deserialized_inference_data:
+          if 'knots' in deserialized_inference_data['posterior'].coords:
+            file_knot_size = deserialized_inference_data['posterior'].coords['knots'].size
+
       if serialized_version <= _LEGACY_AKS_CUTOFF_VERSION:
-        legacy_knots = legacy_aks.get_legacy_knots(deserialized_marketing_data)
-        loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
-            legacy_knots
-        )
+        try:
+          legacy_knots = legacy_aks.get_legacy_knots(deserialized_marketing_data)
+          if file_knot_size is None or file_knot_size == len(legacy_knots):
+            meridian_kwargs['legacy_knots_for_serde'] = legacy_knots
+        except Exception as e:  # pylint: disable=broad-exception-caught
+          warnings.warn(
+              f'Failed to calculate legacy knots: {e}. Falling back to current'
+              ' AKS.'
+          )
       elif serialized_version <= _LEGACY_AKS_V1_7_1_CUTOFF_VERSION:
-        legacy_knots = legacy_aks_v1_7_1.get_legacy_knots(
-            deserialized_marketing_data, loaded_mmm.is_national
-        )
-        loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
-            legacy_knots
-        )
+        try:
+          legacy_knots = legacy_aks_v1_7_1.get_legacy_knots(
+              deserialized_marketing_data, is_national
+          )
+          if file_knot_size is None or file_knot_size == len(legacy_knots):
+            meridian_kwargs['legacy_knots_for_serde'] = legacy_knots
+        except Exception as e:  # pylint: disable=broad-exception-caught
+          warnings.warn(
+              f'Failed to calculate legacy knots: {e}. Falling back to current'
+              ' AKS.'
+          )
+
+    loaded_mmm = model.Meridian(**meridian_kwargs)
 
     loaded_mmm._inference_data = (  # pylint: disable=protected-access
         deserialized_inference_data

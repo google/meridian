@@ -1389,7 +1389,7 @@ class MeridianSerdeTest(parameterized.TestCase):
         n_geos=2,
         n_controls=2,
         n_knots=5,
-        n_times=2,
+        n_times=5,
         n_media_channels=2,
     )
 
@@ -1412,6 +1412,14 @@ class MeridianSerdeTest(parameterized.TestCase):
         mock.patch(
             'meridian.schema.serde.legacy_aks.get_legacy_knots',
             return_value=[0, 1],
+        ),
+        mock.patch(
+            'meridian.model.knots.get_knot_info',
+            return_value=context.knots.KnotInfo(
+                n_knots=2,
+                knot_locations=np.array([0, 1]),
+                weights=np.ones((2, 2)),
+            ),
         ),
     ):
       with self.assertRaisesRegex(

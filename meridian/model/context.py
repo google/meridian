@@ -70,9 +70,13 @@ class ModelContext:
       self,
       input_data: data.InputData,
       model_spec: spec.ModelSpec,
+      legacy_knots_for_serde: list[int] | None = None,
   ):
     self._input_data = input_data
     self._model_spec = model_spec
+
+    if legacy_knots_for_serde is not None:
+      self._inject_legacy_knot_info_for_serde(legacy_knots_for_serde)
 
     self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
