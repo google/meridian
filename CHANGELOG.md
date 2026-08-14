@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-14
+
 *   Implement `reconstruction_batch_size` to chunk posterior reconstruction evaluations, fixing peak resource exhausted memory crashes on wide modeling pipelines.
 *   Update `tensorflow`, `tf-keras`, and `tensorflow[and-cuda]` dependencies to `>= 2.21.0, < 2.22` to address CVE-2026-2492.
 *   Fix `AttributeError: 'Dataset' object has no attribute 'roi_m'` when
@@ -538,4 +540,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.6.2]: https://github.com/google/meridian/releases/tag/v1.6.2
 [1.7.0]: https://github.com/google/meridian/releases/tag/v1.7.0
 [1.7.1]: https://github.com/google/meridian/releases/tag/v1.7.1
-[Unreleased]: https://github.com/google/meridian/compare/v1.7.1...HEAD
+[1.8.0]: https://github.com/google/meridian/releases/tag/v1.8.0
+[Unreleased]: https://github.com/google/meridian/compare/v1.8.0...HEAD
