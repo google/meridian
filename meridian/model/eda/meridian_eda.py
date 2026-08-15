@@ -1960,7 +1960,9 @@ class MeridianEDA:
     prior_probability = artifact.prior_negative_baseline_prob
 
     prior_chart = self._generate_prior_mean_chart_spec(prior_probability)
-    chart_specs = [prior_chart]
+    chart_specs: list[formatter.ChartSpec | formatter.TableSpec] = [prior_chart]
+
+    card_severity_counts = _initialize_severity_counts()
 
     return (
         formatter.create_card_html(
@@ -1971,7 +1973,7 @@ class MeridianEDA:
             ),
             chart_specs=chart_specs,
         ),
-        _initialize_severity_counts(),
+        card_severity_counts,
     )
 
   def _generate_prior_mean_chart_spec(

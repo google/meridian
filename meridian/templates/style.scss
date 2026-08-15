@@ -137,6 +137,18 @@ card {
     margin-right: -69px;
   }
 
+  errors + errors,
+  errors + warnings,
+  errors + infos,
+  warnings + errors,
+  warnings + warnings,
+  warnings + infos,
+  infos + errors,
+  infos + warnings,
+  infos + infos {
+    margin-top: 0;
+  }
+
   errors {
     background: $error_red;
   }

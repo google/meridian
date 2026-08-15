@@ -3213,9 +3213,9 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
         ]
     )
     self._get_output_eda_report_html_dom()
-    self._eda.plot_cost_per_media_unit_time_series.assert_called_with(  # pyrefly: ignore[missing-attribute]
-        eda_constants.NATIONALIZE, [_MEDIA_CHANNEL_NAMES[0]]
-    )  # type: ignore
+    getattr(
+        self._eda, 'plot_cost_per_media_unit_time_series'
+    ).assert_called_with(eda_constants.NATIONALIZE, [_MEDIA_CHANNEL_NAMES[0]])
 
   def test_display_limit_message_keywords_with_six_rows(self):
     self._stub_plotters()
@@ -3678,7 +3678,6 @@ class MeridianEdaTest(backend_test_utils.MeridianTestCase):
       self.assertEqual(
           expected_y_title, actual_chart.encoding.y.to_dict().get('title')
       )
-
 
 if __name__ == '__main__':
   absltest.main()
