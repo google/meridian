@@ -3701,6 +3701,19 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     xr.testing.assert_allclose(actual, expected)
 
+  def test_optimal_freq_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    freq_grid = [1.0, 2.0, 3.0]
+    opt_dates = self.analyzer.optimal_freq(
+        media_selected_times=media_times[-10:],
+        freq_grid=freq_grid,
+    )
+    opt_bools = self.analyzer.optimal_freq(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+        freq_grid=freq_grid,
+    )
+    xr.testing.assert_allclose(opt_dates, opt_bools)
+
   @parameterized.product(
       use_posterior=[False, True],
       selected_geos=[None, ["geo_1", "geo_3"]],
@@ -3897,6 +3910,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     backend_test_utils.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
 
+  def test_marginal_roi_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    mroi_dates = self.analyzer.marginal_roi(
+        media_selected_times=media_times[-10:],
+    )
+    mroi_bools = self.analyzer.marginal_roi(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+    )
+    backend_test_utils.assert_allclose(mroi_dates, mroi_bools)
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -4010,6 +4033,152 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))  # pyrefly: ignore[no-matching-overload]
 
+  def test_roi_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    roi_dates = self.analyzer.roi(
+        media_selected_times=media_times[-10:],
+    )
+    roi_bools = self.analyzer.roi(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+    )
+    backend_test_utils.assert_allclose(roi_dates, roi_bools)
+
+  def test_get_media_times_for_unscaled_inputs(self):
+    media_times = list(self.input_data.media_time.values)
+    times = list(self.input_data.time.values)
+    n_times = self.analyzer.model_context.n_times
+    n_media_times = self.analyzer.model_context.n_media_times
+
+    # None cases
+    self.assertIsNone(
+        self.analyzer._get_media_times_for_unscaled_inputs(None, None)
+    )
+
+    # Boolean list with n_media_times elements
+    bools_media = [False] * (n_media_times - 5) + [True] * 5
+    res = self.analyzer._get_media_times_for_unscaled_inputs(
+        media_selected_times=bools_media
+    )
+    self.assertEqual(res, [False] * (n_times - 5) + [True] * 5)
+
+    # Boolean list with n_times elements
+    bools_times = [False] * (n_times - 3) + [True] * 3
+    res = self.analyzer._get_media_times_for_unscaled_inputs(
+        media_selected_times=bools_times
+    )
+    self.assertEqual(res, bools_times)
+
+    # String list
+    res = self.analyzer._get_media_times_for_unscaled_inputs(
+        media_selected_times=media_times
+    )
+    self.assertEqual(res, media_times)
+
+    # selected_times fallback when media_selected_times is None
+    res = self.analyzer._get_media_times_for_unscaled_inputs(
+        selected_times=times[:5]
+    )
+    self.assertEqual(res, times[:5])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_times_only",
+          selected_times=["2021-04-19"],
+          media_selected_times=None,
+          expected_arg_str="`selected_times`",
+      ),
+      dict(
+          testcase_name="media_selected_times_only",
+          selected_times=None,
+          media_selected_times=["2021-04-19"],
+          expected_arg_str="`media_selected_times`",
+      ),
+      dict(
+          testcase_name="both_times",
+          selected_times=["2021-04-19"],
+          media_selected_times=["2021-04-19"],
+          expected_arg_str="`selected_times` and `media_selected_times`",
+      ),
+  )
+  def test_validate_geo_and_time_granularity_media_spend_no_time_dim(
+      self,
+      selected_times: Sequence[str] | None,
+      media_selected_times: Sequence[str] | None,
+      expected_arg_str: str,
+  ):
+    with mock.patch.object(
+        type(self.analyzer.model_context.input_data),
+        "media_spend_has_time_dimension",
+        new=mock.PropertyMock(return_value=False),
+    ):
+      expected_message = (
+          rf"^{expected_arg_str} is not allowed because Meridian `media_spend`"
+          r" data does not have a time dimension\.$"
+      )
+      with self.assertRaisesRegex(ValueError, expected_message):
+        self.analyzer._validate_geo_and_time_granularity(
+            selected_times=selected_times,
+            media_selected_times=media_selected_times,
+        )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_times_only",
+          selected_times=["2021-04-19"],
+          media_selected_times=None,
+          expected_arg_str="`selected_times`",
+      ),
+      dict(
+          testcase_name="media_selected_times_only",
+          selected_times=None,
+          media_selected_times=["2021-04-19"],
+          expected_arg_str="`media_selected_times`",
+      ),
+      dict(
+          testcase_name="both_times",
+          selected_times=["2021-04-19"],
+          media_selected_times=["2021-04-19"],
+          expected_arg_str="`selected_times` and `media_selected_times`",
+      ),
+  )
+  def test_validate_geo_and_time_granularity_rf_spend_no_time_dim(
+      self,
+      selected_times: Sequence[str] | None,
+      media_selected_times: Sequence[str] | None,
+      expected_arg_str: str,
+  ):
+    with mock.patch.object(
+        type(self.analyzer.model_context.input_data),
+        "media_spend_has_time_dimension",
+        new=mock.PropertyMock(return_value=True),
+    ), mock.patch.object(
+        type(self.analyzer.model_context.input_data),
+        "rf_spend_has_time_dimension",
+        new=mock.PropertyMock(return_value=False),
+    ):
+      expected_message = (
+          rf"^{expected_arg_str} is not allowed because Meridian `rf_spend`"
+          r" data does not have a time dimension\.$"
+      )
+      with self.assertRaisesRegex(ValueError, expected_message):
+        self.analyzer._validate_geo_and_time_granularity(
+            selected_times=selected_times,
+            media_selected_times=media_selected_times,
+        )
+
+  def test_roi_raises_when_media_spend_has_no_time_dim(self):
+    with mock.patch.object(
+        type(self.analyzer.model_context.input_data),
+        "media_spend_has_time_dimension",
+        new=mock.PropertyMock(return_value=False),
+    ):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"^`media_selected_times` is not allowed because Meridian"
+          r" `media_spend` data does not have a time dimension\.$",
+      ):
+        self.analyzer.roi(media_selected_times=["2021-04-19"])
+
   @parameterized.product(
       use_posterior=[False, True],
       aggregate_geos=[False, True],
@@ -4068,6 +4237,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         selected_times=list(self.input_data.time.values)[-n_new_times:]
     )
     backend_test_utils.assert_allclose(actual, expected)
+
+  def test_cpik_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    cpik_dates = self.analyzer.cpik(
+        media_selected_times=media_times[-10:],
+    )
+    cpik_bools = self.analyzer.cpik(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+    )
+    backend_test_utils.assert_allclose(cpik_dates, cpik_bools)
 
   def test_media_summary_warns_if_time_not_aggregated(self):
     with self.assertWarnsRegex(
@@ -4637,6 +4816,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         for t in summary_metrics.time.values
     ]
     self.assertEqual(actual_times, ["0", "1", "2", "3", "4"])
+
+  def test_summary_metrics_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    metrics_dates = self.analyzer.summary_metrics(
+        media_selected_times=media_times[-10:],
+    )
+    metrics_bools = self.analyzer.summary_metrics(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+    )
+    xr.testing.assert_allclose(metrics_dates, metrics_bools)
 
   @parameterized.product(
       aggregate_geos=[False, True],
@@ -5364,6 +5553,18 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     expected = self.analyzer.response_curves(selected_times=selected_times_str)
     xr.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
+
+  def test_response_curves_media_selected_times(self):
+    media_times = list(self.input_data.media_time.values)
+    rc_dates = self.analyzer.response_curves(
+        media_selected_times=media_times[-10:],
+        spend_multipliers=[0.0, 1.0, 2.0],
+    )
+    rc_bools = self.analyzer.response_curves(
+        media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True] * 10,
+        spend_multipliers=[0.0, 1.0, 2.0],
+    )
+    xr.testing.assert_allclose(rc_dates, rc_bools)
 
   @parameterized.named_parameters(
       dict(testcase_name="historical_frequency", use_optimal_frequency=False),
