@@ -834,6 +834,141 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         inference_data=cls.inference_data,
     )
 
+  def test_get_kpi_means_parity_with_private_method(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    inputs = builder.build_scaled_inputs(include_non_paid_channels=True)
+    data_tensors = dataclasses.replace(inputs.tensors, time=None)
+
+    param_list = (
+        [
+            constants.MU_T,
+            constants.TAU_G,
+        ]
+        + (
+            [constants.GAMMA_GC]
+            if self.meridian.model_context.n_controls
+            else []
+        )
+        + self.analyzer._get_causal_param_names(include_non_paid_channels=True)
+    )
+
+    dist_tensors = next(
+        self.analyzer._yield_batched_distribution_tensors(
+            param_list=param_list,
+            use_posterior=True,
+            batch_size=2,
+        )
+    )
+
+    public_result = self.analyzer.get_kpi_means(data_tensors, dist_tensors)
+    private_result = self.analyzer._get_kpi_means(data_tensors, dist_tensors)
+
+    backend_test_utils.assert_allequal(public_result, private_result)
+
+  def test_get_kpi_means_math_media_only(self):
+    tau_g = backend.to_tensor([[1.0, 1.5], [2.0, 2.5]])
+    mu_t = backend.to_tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+    media = backend.to_tensor([
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+        [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+    ])
+    beta_gm = backend.to_tensor(
+        [[[0.5, 0.6], [0.7, 0.8]], [[0.9, 1.0], [1.1, 1.2]]]
+    )
+
+    data_tensors = tensors.DataTensors(media=media)
+    dist_tensors = tensors.DistributionTensors(
+        tau_g=tau_g,
+        mu_t=mu_t,
+        beta_gm=beta_gm,
+        alpha_m=backend.zeros((2, 2)),
+        ec_m=backend.zeros((2, 2)),
+        slope_m=backend.zeros((2, 2)),
+    )
+
+    with mock.patch.object(
+        self.analyzer._model_equations,
+        "adstock_hill_media",
+        side_effect=lambda media, **kwargs: media,
+    ):
+      with mock.patch.object(
+          type(self.analyzer.model_context),
+          "controls",
+          new_callable=mock.PropertyMock,
+      ) as mock_controls:
+        mock_controls.return_value = None
+
+        actual = self.analyzer.get_kpi_means(data_tensors, dist_tensors)
+
+    tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)  # pyrefly: ignore[bad-argument-type]
+    media_expanded = backend.expand_dims(media, 0)  # pyrefly: ignore[bad-argument-type]
+    beta_expanded = backend.expand_dims(beta_gm, 2)  # pyrefly: ignore[bad-argument-type]
+    media_term = backend.reduce_sum(media_expanded * beta_expanded, axis=-1)
+    expected = tau_gt + media_term
+
+    backend_test_utils.assert_allclose(actual, expected)
+
+  def test_get_kpi_means_math_full_graph(self):
+    tau_g = backend.to_tensor([[1.0, 1.5], [2.0, 2.5]])
+    mu_t = backend.to_tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+    media = backend.to_tensor([
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+        [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+    ])
+    beta_gm = backend.to_tensor(
+        [[[0.5, 0.6], [0.7, 0.8]], [[0.9, 1.0], [1.1, 1.2]]]
+    )
+
+    controls = backend.ones((2, 3, 2))
+    gamma_gc = backend.ones((2, 2, 2)) * 0.5
+    non_media_treatments = backend.ones((2, 3, 1)) * 2.0
+    gamma_gn = backend.ones((2, 2, 1)) * 0.2
+
+    data_tensors = tensors.DataTensors(
+        media=media,
+        controls=controls,
+        non_media_treatments=non_media_treatments,
+    )
+    dist_tensors = tensors.DistributionTensors(
+        tau_g=tau_g,
+        mu_t=mu_t,
+        beta_gm=beta_gm,
+        gamma_gc=gamma_gc,
+        gamma_gn=gamma_gn,
+        alpha_m=backend.zeros((2, 2)),
+        ec_m=backend.zeros((2, 2)),
+        slope_m=backend.zeros((2, 2)),
+    )
+
+    with mock.patch.object(
+        self.analyzer._model_equations,
+        "adstock_hill_media",
+        side_effect=lambda media, **kwargs: media,
+    ):
+      with mock.patch.object(
+          type(self.analyzer.model_context),
+          "controls",
+          new_callable=mock.PropertyMock,
+      ) as mock_controls:
+        mock_controls.return_value = backend.ones((2, 3, 2))
+
+        actual = self.analyzer.get_kpi_means(data_tensors, dist_tensors)
+
+    tau_gt = backend.expand_dims(tau_g, -1) + backend.expand_dims(mu_t, -2)  # pyrefly: ignore[bad-argument-type]
+    media_expanded = backend.expand_dims(media, 0)  # pyrefly: ignore[bad-argument-type]
+    beta_expanded = backend.expand_dims(beta_gm, 2)  # pyrefly: ignore[bad-argument-type]
+    media_term = backend.reduce_sum(media_expanded * beta_expanded, axis=-1)
+    base_kpi_means = tau_gt + media_term
+
+    controls_term = backend.einsum("...gtc,...gc->...gt", controls, gamma_gc)
+    non_media_term = backend.einsum(
+        "...gtm,...gm->...gt", non_media_treatments, gamma_gn
+    )
+
+    expected = base_kpi_means + controls_term + non_media_term
+
+    backend_test_utils.assert_allclose(actual, expected)
+
   def test_init_populates_cached_properties(self):
     with mock.patch.object(
         context.ModelContext,
@@ -1437,6 +1572,176 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       expected_shape += (n_times,)
     expected_shape += (_N_MEDIA_CHANNELS + _N_RF_CHANNELS,)
     self.assertEqual(outcome.shape, expected_shape)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="no_aggregation",
+          aggregate_geos=False,
+          aggregate_times=False,
+          expected_dims=(
+              constants.CHAIN,
+              constants.DRAW,
+              constants.GEO,
+              constants.TIME,
+              constants.CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="aggregate_times",
+          aggregate_geos=False,
+          aggregate_times=True,
+          expected_dims=(
+              constants.CHAIN,
+              constants.DRAW,
+              constants.GEO,
+              constants.CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="aggregate_geos",
+          aggregate_geos=True,
+          aggregate_times=False,
+          expected_dims=(
+              constants.CHAIN,
+              constants.DRAW,
+              constants.TIME,
+              constants.CHANNEL,
+          ),
+      ),
+      dict(
+          testcase_name="aggregate_both",
+          aggregate_geos=True,
+          aggregate_times=True,
+          expected_dims=(
+              constants.CHAIN,
+              constants.DRAW,
+              constants.CHANNEL,
+          ),
+      ),
+  )
+  def test_incremental_outcome_xr_shapes(
+      self,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      expected_dims: tuple[str, ...],
+  ):
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=False,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+    )
+
+    self.assertIsInstance(outcome_xr, xr.DataArray)
+    self.assertEqual(outcome_xr.dims, expected_dims)
+
+    # Verify values match incremental_outcome.
+    outcome_tensor = self.analyzer.incremental_outcome(
+        include_non_paid_channels=False,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+    )
+    np.testing.assert_allclose(outcome_xr.values, np.asarray(outcome_tensor))
+
+  def test_incremental_outcome_xr_selected_dims(self):
+    geo_values = self.input_data.geo.values.tolist()
+    time_values = self.input_data.time.values.tolist()
+
+    selected_geos = [geo_values[0], geo_values[2]]
+    selected_times = [time_values[0], time_values[1]]
+
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=False,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+
+    with self.subTest(name="geo"):
+      self.assertEqual(list(outcome_xr.geo.values), selected_geos)
+    with self.subTest(name="time"):
+      self.assertEqual(list(outcome_xr.time.values), selected_times)
+
+  def test_incremental_outcome_xr_include_non_paid_channels(self):
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=True,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+
+    self.assertIsInstance(outcome_xr, xr.DataArray)
+    expected_dims = (
+        constants.CHAIN,
+        constants.DRAW,
+        constants.GEO,
+        constants.TIME,
+        constants.CHANNEL,
+    )
+    self.assertEqual(outcome_xr.dims, expected_dims)
+
+    expected_channels = (
+        self.analyzer.model_context.input_data.get_all_channels()
+    )
+    np.testing.assert_array_equal(outcome_xr.channel.values, expected_channels)
+
+  def test_incremental_outcome_xr_no_aggregation(self):
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=False,
+        use_posterior=False,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+
+    self.assertEqual(
+        outcome_xr.geo.values.tolist(),
+        self.analyzer.model_context.input_data.geo.values.tolist(),
+    )
+    self.assertEqual(
+        outcome_xr.time.values.tolist(),
+        self.analyzer.model_context.input_data.time.values.tolist(),
+    )
+
+  def test_incremental_outcome_xr_selected_times_boolean_mask(self):
+    time_values = self.input_data.time.values.tolist()
+    selected_times = (np.arange(len(time_values)) % 2 == 0).tolist()
+
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=False,
+        selected_times=selected_times,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+
+    expected_times = self.input_data.time.values[selected_times].tolist()
+    self.assertEqual(list(outcome_xr.time.values), expected_times)
+
+  def test_incremental_outcome_xr_time_coord_fallback_failure(self):
+    # Mock incremental_outcome to return a tensor with a different time size.
+    mock_inc = self.enter_context(
+        mock.patch.object(
+            self.analyzer, "incremental_outcome", autospec=True, spec_set=True
+        )
+    )
+    # Original shape is (n_chains, n_draws, n_geos, n_times, n_channels)
+    # We return a shape with different n_times.
+    shape = (
+        _N_CHAINS,
+        _N_DRAWS,
+        _N_GEOS,
+        _N_TIMES + 1,
+        _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+    )
+    mock_inc.return_value = np.zeros(shape)
+
+    outcome_xr = self.analyzer.incremental_outcome_xr(
+        include_non_paid_channels=False,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+
+    # Coordinate for time should be default (integers) because fallback failed
+    # and no selected_times were provided.
+    self.assertEqual(list(outcome_xr.time.values), list(range(shape[3])))
 
   # The purpose of this test is to prevent accidental logic change.
   @parameterized.named_parameters(
@@ -2429,14 +2734,45 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     with self.assertRaisesRegex(
         ValueError,
         r"`non_media_treatments_baseline_normalized` must be passed to"
-        r" `_get_incremental_kpi` when `non_media_treatments` data is"
+        r" `get_incremental_kpi` when `non_media_treatments` data is"
         r" present\.",
     ):
-      self.analyzer._get_incremental_kpi(
+      self.analyzer.get_incremental_kpi(
           data_tensors=tensors.DataTensors(
               non_media_treatments=self.meridian.non_media_treatments
           ),
           dist_tensors=tensors.DistributionTensors(),
+      )
+
+  def test_calculate_raw_incremental_kpi_pass_through(self):
+    mock_data_tensors = mock.create_autospec(
+        analyzer.DataTensors, spec_set=True, instance=True
+    )
+    mock_dist_tensors = mock.create_autospec(
+        analyzer.DistributionTensors, spec_set=True, instance=True
+    )
+    baseline = [1.0, 2.0]
+    expected_result = mock.create_autospec(
+        backend.Tensor, spec_set=True, instance=True
+    )
+
+    with mock.patch.object(
+        self.analyzer,
+        "get_incremental_kpi",
+        return_value=expected_result,
+        autospec=True,
+    ) as mock_get_incremental_kpi:
+      result = self.analyzer.get_incremental_kpi(
+          data_tensors=mock_data_tensors,
+          dist_tensors=mock_dist_tensors,
+          non_media_treatments_baseline_normalized=baseline,
+      )
+
+      self.assertIs(result, expected_result)
+      mock_get_incremental_kpi.assert_called_once_with(
+          data_tensors=mock_data_tensors,
+          dist_tensors=mock_dist_tensors,
+          non_media_treatments_baseline_normalized=baseline,
       )
 
   @mock.patch.object(analyzer.np, "histogram", autospec=True, spec_set=True)
@@ -5048,6 +5384,44 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     self.assertEqual(response_curve_data.sizes[constants.METRIC], 3)
     self.assertEqual(response_curve_data.sizes[constants.SPEND_MULTIPLIER], 11)
+
+  def test_yield_batched_distribution_tensors_invalid_batch_size_raises_error(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError, "batch_size must be a positive integer. Got 0."
+    ):
+      list(
+          self.analyzer.yield_batched_distribution_tensors(
+              ["alpha_m"], batch_size=0
+          )
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_posterior",
+          use_posterior=True,
+          batch_size=4,
+          expected_shapes=[(2, 4, 3), (2, 4, 3), (2, 2, 3)],
+      ),
+      dict(
+          testcase_name="use_prior",
+          use_posterior=False,
+          batch_size=5,
+          expected_shapes=[(1, 5, 3), (1, 5, 3)],
+      ),
+  )
+  def test_yield_batched_distribution_tensors(
+      self, use_posterior, batch_size, expected_shapes
+  ):
+    batches = list(
+        self.analyzer.yield_batched_distribution_tensors(
+            ["alpha_m"], use_posterior=use_posterior, batch_size=batch_size
+        )
+    )
+    self.assertLen(batches, len(expected_shapes))
+    shapes = [batch.alpha_m.shape for batch in batches]  # pytype: disable=attribute-error
+    self.assertEqual(shapes, expected_shapes)
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):

@@ -230,6 +230,33 @@ class Analyzer:
           for k in param_list
       })
 
+  def yield_batched_distribution_tensors(
+      self,
+      param_list: Sequence[str],
+      *,
+      use_posterior: bool = True,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> Iterator[DistributionTensors]:
+    """Yields batched DistributionTensors for the given parameters.
+
+    Preconditions:
+      The model must be fitted (i.e. posterior/prior groups must exist in the
+      inference data). This is typically checked by the calling methods.
+
+    Args:
+      param_list: Sequence of parameter names to include in the batch.
+      use_posterior: Whether to use posterior or prior parameters.
+      batch_size: The batch size. Must be a positive integer.
+
+    Yields:
+      DistributionTensors containing the sliced parameters for the batch.
+    """
+    yield from self._yield_batched_distribution_tensors(
+        param_list=param_list,
+        use_posterior=use_posterior,
+        batch_size=batch_size,
+    )
+
   @backend.function(jit_compile=True)
   def _get_kpi_means(
       self,
@@ -280,6 +307,14 @@ class Analyzer:
           dist_tensors.gamma_gn,
       )
     return result
+
+  def get_kpi_means(
+      self,
+      data_tensors: DataTensors,
+      dist_tensors: DistributionTensors,
+  ) -> backend.Tensor:
+    """Computes batched KPI means."""
+    return self._get_kpi_means(data_tensors, dist_tensors)
 
   def _use_kpi(self, use_kpi: bool = False) -> bool:
     """Checks if KPI analysis should be used.
@@ -921,9 +956,7 @@ class Analyzer:
           "use_kpi=False is only supported when inverse_transform_outcome=True."
       )
 
-  # TODO: Make this method public when this feature is ready for
-  # open source.
-  def _get_incremental_kpi(
+  def get_incremental_kpi(
       self,
       data_tensors: DataTensors,
       dist_tensors: DistributionTensors,
@@ -958,8 +991,7 @@ class Analyzer:
     ):
       raise ValueError(
           "`non_media_treatments_baseline_normalized` must be passed to"
-          " `_get_incremental_kpi` when `non_media_treatments` data is"
-          " present."
+          " `get_incremental_kpi` when `non_media_treatments` data is present."
       )
     n_media_times = self.model_context.n_media_times
     if data_tensors.media is not None:
@@ -1117,7 +1149,7 @@ class Analyzer:
           " present."
       )
 
-    transformed_outcome = self._get_incremental_kpi(
+    transformed_outcome = self.get_incremental_kpi(
         data_tensors=data_tensors,
         dist_tensors=dist_tensors,
         non_media_treatments_baseline_normalized=non_media_treatments_baseline_normalized,
@@ -1407,6 +1439,164 @@ class Analyzer:
         )
       incremental_outcome_temps.append(batch_incremental_outcome)
     return backend.concatenate(incremental_outcome_temps, axis=1)
+
+  def incremental_outcome_xr(
+      self,
+      use_posterior: bool = True,
+      *,
+      new_data: DataTensors | None = None,
+      non_media_baseline_values: Sequence[float] | None = None,
+      scaling_factor0: float = 0.0,
+      scaling_factor1: float = 1.0,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      aggregate_geos: bool = False,
+      aggregate_times: bool = False,
+      inverse_transform_outcome: bool = True,
+      use_kpi: bool = False,
+      by_reach: bool = True,
+      include_non_paid_channels: bool = True,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> xr.DataArray:
+    """Calculates the incremental outcome as an xarray.DataArray.
+
+    This is a sister method to `incremental_outcome` that returns an
+    `xarray.DataArray` instead of a `backend.Tensor`. This allows users to
+    easily combine results from different models by leveraging xarray's
+    automatic alignment by coordinates.
+
+    Args:
+      use_posterior: If `True`, then the incremental outcome posterior
+        distribution is calculated. Otherwise, the prior distribution is
+        calculated.
+      new_data: Optional `DataTensors` container.
+      non_media_baseline_values: Optional sequence of baseline values.
+      scaling_factor0: Scaling factor for counterfactual scenario 0.
+      scaling_factor1: Scaling factor for counterfactual scenario 1.
+      selected_geos: Optional sequence containing a subset of geos to include.
+      selected_times: Optional sequence containing either a subset of dates to
+        include or booleans.
+      media_selected_times: Optional sequence containing either a subset of
+        dates to include or booleans.
+      aggregate_geos: If `True`, then incremental outcome is summed over all
+        regions. Defaults to `False` in this method to preserve dimensions.
+      aggregate_times: If `True`, then incremental outcome is summed over all
+        time periods. Defaults to `False` in this method to preserve dimensions.
+      inverse_transform_outcome: Whether to inverse transform the outcome.
+      use_kpi: Whether to use KPI instead of revenue.
+      by_reach: Whether to calculate by reach.
+      include_non_paid_channels: Whether to include non-paid channels.
+      batch_size: Maximum draws per chain in each batch.
+
+    Returns:
+      An `xarray.DataArray` of incremental outcome with labeled dimensions and
+      coordinates.
+    """
+    outcome_tensor = self.incremental_outcome(
+        use_posterior=use_posterior,
+        new_data=new_data,
+        non_media_baseline_values=non_media_baseline_values,
+        scaling_factor0=scaling_factor0,
+        scaling_factor1=scaling_factor1,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        media_selected_times=media_selected_times,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        inverse_transform_outcome=inverse_transform_outcome,
+        use_kpi=use_kpi,
+        by_reach=by_reach,
+        include_non_paid_channels=include_non_paid_channels,
+        batch_size=batch_size,
+    )
+
+    def _get_dims() -> list[str]:
+      return [
+          constants.CHAIN,
+          constants.DRAW,
+          *([constants.GEO] if not aggregate_geos else []),
+          *([constants.TIME] if not aggregate_times else []),
+          constants.CHANNEL,
+      ]
+
+    def _get_coords(dims: Sequence[str]) -> dict[str, Any]:
+      """Returns a dictionary of coordinates for the xarray.DataArray.
+
+      Args:
+        dims: The dimensions of the xarray.DataArray.
+
+      Returns:
+        A dictionary of coordinates for the xarray.DataArray.
+      """
+      params = (
+          self.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+          if use_posterior
+          else self.inference_data.prior  # pyrefly: ignore[missing-attribute]
+      )
+      n_draws = params.draw.size
+      n_chains = params.chain.size
+
+      coords = self.model_context.create_inference_data_coords(
+          n_chains, n_draws
+      )
+
+      channels = (
+          self.model_context.input_data.get_all_channels()
+          if include_non_paid_channels
+          else self.model_context.input_data.get_all_paid_channels()
+      )
+
+      geo_coords = {}
+      if constants.GEO in dims:
+        if selected_geos is not None:
+          geo_coords[constants.GEO] = self.model_context.input_data.geo.values[
+              np.isin(
+                  self.model_context.input_data.geo.values,
+                  selected_geos,
+              )
+          ]
+        else:
+          geo_coords[constants.GEO] = coords[constants.GEO]
+
+      time_coords = {}
+      if constants.TIME in dims:
+        time_idx = dims.index(constants.TIME)
+        time_dim_size = outcome_tensor.shape[time_idx]
+
+        if selected_times is None:
+          # Fallback to original times if size matches.
+          # TODO: Support `new_data.time` properly.
+          if time_dim_size == len(coords[constants.TIME]):
+            time_coords[constants.TIME] = np.asarray(coords[constants.TIME])
+        elif all(isinstance(t, str) for t in selected_times):
+          filtered_times = self.model_context.input_data.time.values[
+              np.isin(self.model_context.input_data.time.values, selected_times)
+          ]
+          if len(filtered_times) == time_dim_size:
+            time_coords[constants.TIME] = filtered_times
+        elif len(coords[constants.TIME]) == len(selected_times):
+          # Boolean mask
+          time_coords[constants.TIME] = np.array(coords[constants.TIME])[
+              np.array(selected_times)
+          ]
+
+      return {
+          constants.CHAIN: coords[constants.CHAIN],
+          constants.DRAW: coords[constants.DRAW],
+          constants.CHANNEL: channels,
+          **geo_coords,
+          **time_coords,
+      }
+
+    dims = _get_dims()
+    coords_dict = _get_coords(dims)
+
+    return xr.DataArray(
+        data=np.asarray(outcome_tensor),
+        dims=dims,
+        coords=coords_dict,
+    )
 
   def _validate_geo_and_time_granularity(
       self,

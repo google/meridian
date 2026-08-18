@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Collection, Mapping, Sequence
+import types
 from typing import Any
 from unittest import mock
 import warnings
@@ -1884,6 +1885,277 @@ class InferenceDataTest(
       self.assertDictEqual(actual_coords_len, expected_coords_len)
     with self.subTest("dims"):
       self.assertEqual(dims[constants.SIGMA], ["chain", "draw", constants.GEO])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="paid_media",
+          channel_type=constants.MEDIA,
+          tensor_attr="media_tensors",
+          transformer_attr="media_transformer",
+      ),
+      dict(
+          testcase_name="organic_media",
+          channel_type=constants.ORGANIC_MEDIA,
+          tensor_attr="organic_media_tensors",
+          transformer_attr="organic_media_transformer",
+      ),
+      dict(
+          testcase_name="paid_rf",
+          channel_type=constants.RF,
+          tensor_attr="rf_tensors",
+          transformer_attr="reach_transformer",
+      ),
+      dict(
+          testcase_name="organic_rf",
+          channel_type=constants.ORGANIC_RF,
+          tensor_attr="organic_rf_tensors",
+          transformer_attr="organic_reach_transformer",
+      ),
+  )
+  def test_get_media_scaling_factor_success(
+      self, channel_type: str, tensor_attr: str, transformer_attr: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        n_organic_rf_channels=1,
+        n_non_media_channels=1,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    channel_attr = f"{channel_type}_channel"
+    channel_data = getattr(data, channel_attr)
+    self.assertIsNotNone(channel_data)
+    assert channel_data is not None
+    channel_name = channel_data.values[0]
+
+    scaling_factor = model_context.get_media_scaling_factor(channel_name)
+
+    tensors = getattr(model_context, tensor_attr)
+    transformer = getattr(tensors, transformer_attr)
+    self.assertIsNotNone(transformer)
+    expected = (
+        model_context.population * transformer.population_scaled_median_m[0]
+    )
+
+    test_utils.assert_allclose(scaling_factor, expected)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="non_media",
+          channel_type="non_media",
+          error_msg="Cannot return a scaling factor for non-media treatment",
+      ),
+      dict(
+          testcase_name="control",
+          channel_type="control",
+          error_msg="Cannot return a scaling factor for control variable",
+      ),
+      dict(
+          testcase_name="unknown",
+          channel_type="unknown",
+          error_msg="not found in any model inputs",
+      ),
+  )
+  def test_get_media_scaling_factor_failure(
+      self, channel_type: str, error_msg: str
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        n_organic_rf_channels=1,
+        n_non_media_channels=1,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    if channel_type == "non_media":
+      self.assertIsNotNone(data.non_media_channel)
+      assert data.non_media_channel is not None
+      channel_name = data.non_media_channel.values[0]
+    elif channel_type == "control":
+      self.assertIsNotNone(data.control_variable)
+      assert data.control_variable is not None
+      channel_name = data.control_variable.values[0]
+    else:
+      channel_name = "unknown_channel"
+
+    with self.assertRaises(ValueError) as cm:
+      model_context.get_media_scaling_factor(channel_name)
+    self.assertIn(error_msg, str(cm.exception))
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media",
+          channel_type=constants.MEDIA,
+          expected_prefix="m",
+          expected_is_rf=False,
+      ),
+      dict(
+          testcase_name="rf",
+          channel_type=constants.RF,
+          expected_prefix="rf",
+          expected_is_rf=True,
+      ),
+      dict(
+          testcase_name="organic_media",
+          channel_type=constants.ORGANIC_MEDIA,
+          expected_prefix="om",
+          expected_is_rf=False,
+      ),
+      dict(
+          testcase_name="organic_rf",
+          channel_type=constants.ORGANIC_RF,
+          expected_prefix="orf",
+          expected_is_rf=True,
+      ),
+  )
+  def test_get_channel_parameters_success(
+      self, channel_type: str, expected_prefix: str, expected_is_rf: bool
+  ):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=2,
+        n_rf_channels=2,
+        n_organic_media_channels=2,
+        n_organic_rf_channels=2,
+        n_non_media_channels=1,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    channel_attr = f"{channel_type}_channel"
+    channel_data = getattr(data, channel_attr)
+    self.assertIsNotNone(channel_data)
+    assert channel_data is not None
+    channel_name = channel_data.values[1]
+
+    params = model_context.get_channel_parameters(channel_name)
+
+    self.assertEqual(params.index, 1)
+    self.assertEqual(params.prefix, expected_prefix)
+    self.assertEqual(params.is_rf, expected_is_rf)
+
+    expected_decay_spec = getattr(
+        model_context.adstock_decay_spec, channel_type
+    )
+    self.assertEqual(params.decay_spec, expected_decay_spec)
+
+  def test_get_channel_parameters_missing_channel_failure(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+
+    with self.assertRaises(ValueError) as cm:
+      model_context.get_channel_parameters("not_a_channel")
+    self.assertEqual(
+        str(cm.exception), "Channel 'not_a_channel' not found in the model."
+    )
+
+  def test_get_channel_parameters_sequence_decay(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=2,
+    )
+    self.assertIsNotNone(data.media_channel)
+    assert data.media_channel is not None
+    channel_0 = data.media_channel.values[0]
+    channel_1 = data.media_channel.values[1]
+
+    decay_spec = {
+        channel_0: "geometric",
+        channel_1: "binomial",
+    }
+    model_spec = spec.ModelSpec(adstock_decay_spec=decay_spec)
+    model_context = context.ModelContext(input_data=data, model_spec=model_spec)
+
+    params_0 = model_context.get_channel_parameters(channel_0)
+    self.assertEqual(params_0.index, 0)
+    self.assertEqual(params_0.prefix, "m")
+    self.assertEqual(params_0.decay_spec, "geometric")
+    self.assertFalse(params_0.is_rf)
+
+    params_1 = model_context.get_channel_parameters(channel_1)
+    self.assertEqual(params_1.index, 1)
+    self.assertEqual(params_1.prefix, "m")
+    self.assertEqual(params_1.decay_spec, "binomial")
+    self.assertFalse(params_1.is_rf)
+
+  def test_get_channel_parameter_tensor_success(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=3,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+    self.assertIsNotNone(data.media_channel)
+    assert data.media_channel is not None
+    channel_1 = data.media_channel.values[1]
+
+    dummy_dist_tensors = types.SimpleNamespace(
+        alpha_m=backend.to_tensor([[[0.1, 0.2, 0.3]]])
+    )
+
+    tensor = model_context.get_channel_parameter_tensor(
+        dist_tensors=dummy_dist_tensors,
+        param_base_name="alpha",
+        channel_name=channel_1,
+    )
+
+    expected = backend.to_tensor([[0.2]])
+    test_utils.assert_allclose(tensor, expected)
+
+  def test_get_channel_parameter_tensor_missing_channel(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=1,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+    dummy_dist_tensors = types.SimpleNamespace(
+        alpha_m=backend.to_tensor([[[0.1]]])
+    )
+
+    with self.assertRaises(ValueError) as cm:
+      model_context.get_channel_parameter_tensor(
+          dist_tensors=dummy_dist_tensors,
+          param_base_name="alpha",
+          channel_name="not_a_channel",
+      )
+    self.assertEqual(
+        str(cm.exception), "Channel 'not_a_channel' not found in the model."
+    )
+
+  def test_get_channel_parameter_tensor_beta_g_success(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_media_channels=3,
+    )
+    model_context = context.ModelContext(
+        input_data=data, model_spec=spec.ModelSpec()
+    )
+    self.assertIsNotNone(data.media_channel)
+    assert data.media_channel is not None
+    channel_1 = data.media_channel.values[1]
+
+    dummy_dist_tensors = types.SimpleNamespace(
+        beta_gm=backend.to_tensor([[[0.1, 0.2, 0.3]]])
+    )
+
+    tensor = model_context.get_channel_parameter_tensor(
+        dist_tensors=dummy_dist_tensors,
+        param_base_name=constants.BETA_G,
+        channel_name=channel_1,
+    )
+
+    expected = backend.to_tensor([[0.2]])
+    test_utils.assert_allclose(tensor, expected)
 
 
 if __name__ == "__main__":

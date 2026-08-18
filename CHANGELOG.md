@@ -23,6 +23,14 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add channel-level inspection methods (`get_media_scaling_factor`,
+    `get_channel_parameters`, `get_channel_parameter_tensor`) and
+    `ChannelParameters` dataclass to `ModelContext`.
+*   Add public methods to `Analyzer`: `incremental_outcome_xr` for calculating
+    incremental outcomes as labeled `xarray.DataArray` objects,
+    `get_incremental_kpi`, `yield_batched_distribution_tensors`, and
+    `get_kpi_means`.
+
 ## [1.8.0] - 2026-08-14
 
 *   Implement `reconstruction_batch_size` to chunk posterior reconstruction evaluations, fixing peak resource exhausted memory crashes on wide modeling pipelines.

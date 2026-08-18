@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import dataclasses
 import functools
+from typing import Any
 import warnings
 
 from meridian import backend
@@ -33,9 +34,31 @@ from meridian.model import transformers
 import numpy as np
 
 __all__ = [
+    "ChannelParameters",
     "ModelContext",
     "SaturationSpec",
 ]
+
+
+@dataclasses.dataclass(frozen=True)
+class ChannelParameters:
+  """Parameters for a specific channel.
+
+  Attributes:
+    index: The index of the channel within its type.
+    prefix: The distribution prefix (e.g., 'm', 'rf', 'om', 'orf').
+    decay_spec: The model's decay spec for this channel.
+    is_rf: Whether the channel is a Reach & Frequency (RF) channel.
+  """
+
+  index: int
+  prefix: str
+  decay_spec: str
+  is_rf: bool
+
+
+def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
+  return decay_spec[index] if not isinstance(decay_spec, str) else decay_spec
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1170,3 +1193,156 @@ class ModelContext:
     if expanded is None:
       return None
     return [date.strftime(constants.DATE_FORMAT) for date in expanded]
+
+  def get_media_scaling_factor(
+      self, channel_name: str
+  ) -> backend.Tensor:
+    """Retrieves the population-scaled median used to scale a channel's volume.
+
+    For Reach & Frequency (RF) channels, this returns the scaling factor applied
+    to the 'reach' component, as 'frequency' is not transformed.
+
+    Args:
+      channel_name: The string name of the paid or organic channel.
+
+    Returns:
+      A tensor of shape (n_geos,) representing the scaling factor.
+
+    Raises:
+      ValueError: If the channel is not found, or the transformer is
+        uninitialized.
+    """
+    input_data = self.input_data
+
+    if (
+        input_data.non_media_channel is not None
+        and channel_name in input_data.non_media_channel.values
+    ):
+      raise ValueError(
+          "Cannot return a scaling factor for non-media treatment"
+          f" '{channel_name}'."
+      )
+
+    if (
+        input_data.control_variable is not None
+        and channel_name in input_data.control_variable.values
+    ):
+      raise ValueError(
+          "Cannot return a scaling factor for control variable"
+          f" '{channel_name}'."
+      )
+
+    configs = [
+        (
+            input_data.media_channel,
+            self.media_tensors.media_transformer,
+            "media",
+        ),
+        (
+            input_data.rf_channel,
+            self.rf_tensors.reach_transformer,
+            "RF",
+        ),
+        (
+            input_data.organic_media_channel,
+            self.organic_media_tensors.organic_media_transformer,
+            "organic media",
+        ),
+        (
+            input_data.organic_rf_channel,
+            self.organic_rf_tensors.organic_reach_transformer,
+            "organic RF",
+        ),
+    ]
+
+    for channel_data, transformer, channel_type_name in configs:
+      if channel_data is None or channel_name not in channel_data.values:
+        continue
+
+      if transformer is None:
+        raise ValueError(
+            f"Transformer for {channel_type_name} channel '{channel_name}'"
+            " is missing."
+        )
+      (indices,) = np.where(channel_data.values == channel_name)
+      idx = indices[0]
+      return transformer.scale_factors_gm[:, idx]
+
+    raise ValueError(f"Channel '{channel_name}' not found in any model inputs.")
+
+  def get_channel_parameters(
+      self, channel_name: str
+  ) -> ChannelParameters:
+    """Maps channel names to index, prefix, decay spec, and is_rf.
+
+    Args:
+      channel_name: Name of the channel.
+
+    Returns:
+      A ChannelParameters object containing the channel's metadata.
+
+    Raises:
+      ValueError: If the channel is not found.
+    """
+    input_data = self.input_data
+    decay_spec = self.adstock_decay_spec
+
+    configs = [
+        (input_data.media_channel, "m", decay_spec.media, False),
+        (input_data.rf_channel, "rf", decay_spec.rf, True),
+        (
+            input_data.organic_media_channel,
+            "om",
+            decay_spec.organic_media,
+            False,
+        ),
+        (input_data.organic_rf_channel, "orf", decay_spec.organic_rf, True),
+    ]
+
+    for channel_data, prefix, channel_decay_spec, is_rf in configs:
+      if channel_data is not None and channel_name in channel_data.values:
+        index = list(channel_data.values).index(channel_name)
+        return ChannelParameters(
+            index=index,
+            prefix=prefix,
+            decay_spec=_get_decay(channel_decay_spec, index),
+            is_rf=is_rf,
+        )
+
+    raise ValueError(f"Channel '{channel_name}' not found in the model.")
+
+  def get_channel_parameter_tensor(
+      self,
+      dist_tensors: Any,
+      *,
+      param_base_name: str,
+      channel_name: str,
+  ) -> backend.Tensor:
+    """Safely extracts a channel's parameter tensor (e.g., 'alpha', 'beta_g').
+
+    Args:
+      dist_tensors: An object containing batched distribution tensors (e.g.,
+        DistributionTensors).
+      param_base_name: The base name of the parameter (e.g., 'alpha', 'ec',
+        'beta_g').
+      channel_name: The name of the channel.
+
+    Returns:
+      The sliced parameter tensor for the specific channel.
+
+    Raises:
+      ValueError: If the parameter or channel is not found.
+    """
+    params = self.get_channel_parameters(channel_name)
+    if param_base_name == constants.BETA_G:
+      full_param_name = f"{param_base_name}{params.prefix}"
+    else:
+      full_param_name = f"{param_base_name}_{params.prefix}"
+    try:
+      tensor_block = getattr(dist_tensors, full_param_name)
+    except AttributeError:
+      raise ValueError(
+          f"Parameter '{full_param_name}' not found in the distribution"
+          " tensors."
+      ) from None
+    return tensor_block[..., params.index]
