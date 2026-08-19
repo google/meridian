@@ -206,12 +206,16 @@ class PriorPosteriorShiftConfig(ChannelCheckConfig):
   Attributes:
     n_bootstraps: Number of bootstrap samples to use for calculating posterior
       statistics.
+    n_samples_per_bootstrap: Number of posterior samples to draw with
+      replacement for each bootstrap iteration. If None, uses all available
+      posterior samples.
     alpha: Significance level for detecting a shift between prior and posterior
       distributions.
     seed: Random seed for reproducibility of bootstrap sampling.
   """
 
   n_bootstraps: int = 1000
+  n_samples_per_bootstrap: int | None = None
   alpha: float = 0.05
   seed: int = 42
 
