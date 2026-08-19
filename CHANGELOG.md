@@ -30,6 +30,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     incremental outcomes as labeled `xarray.DataArray` objects,
     `get_incremental_kpi`, `yield_batched_distribution_tensors`, and
     `get_kpi_means`.
+*   Add `WeeklyOptimizationGrid` to pre-compute weekly incremental outcomes over
+    spend multiplier grids for budget optimization.
 
 ## [1.8.0] - 2026-08-14
 
