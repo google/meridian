@@ -1602,6 +1602,7 @@ class Analyzer:
       self,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -1612,6 +1613,9 @@ class Analyzer:
       selected_times: Optional. Contains a subset of times to include or
         booleans with length `input_data.n_times`. By default, all time periods
         are included.
+      media_selected_times: Optional. Contains a subset of media times to
+        include or booleans with length `input_data.n_media_times`. By default,
+        all time periods are included.
       aggregate_geos: If `True`, then expected revenue is summed over all
         regions.
 
@@ -1642,13 +1646,22 @@ class Analyzer:
             " Meridian `rf_spend` data does not have a geo dimension."
         )
 
-    if selected_times is not None:
+    if selected_times is not None or media_selected_times is not None:
+      arg_str = (
+          "`selected_times`"
+          if media_selected_times is None
+          else (
+              "`media_selected_times`"
+              if selected_times is None
+              else "`selected_times` and `media_selected_times`"
+          )
+      )
       if (
           self.model_context.media_tensors.media_spend is not None
           and not self.model_context.input_data.media_spend_has_time_dimension
       ):
         raise ValueError(
-            "`selected_times` is not allowed because Meridian `media_spend`"
+            f"{arg_str} is not allowed because Meridian `media_spend`"
             " data does not have a time dimension."
         )
       if (
@@ -1656,9 +1669,48 @@ class Analyzer:
           and not self.model_context.input_data.rf_spend_has_time_dimension
       ):
         raise ValueError(
-            "`selected_times` is not allowed because Meridian `rf_spend` data"
+            f"{arg_str} is not allowed because Meridian `rf_spend` data"
             " does not have a time dimension."
         )
+
+  def _get_media_times_for_unscaled_inputs(
+      self,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+  ) -> Sequence[str] | Sequence[bool] | None:
+    """Returns spend times mapped to the evaluation (n_times) window."""
+    spend_times = (
+        media_selected_times
+        if media_selected_times is not None
+        else selected_times
+    )
+    if spend_times is None:
+      return None
+
+    if tensors._is_bool_list(spend_times):
+      if (
+          len(spend_times) == self.model_context.n_media_times
+          and self.model_context.n_media_times > self.model_context.n_times
+      ):
+        return spend_times[-self.model_context.n_times :]
+      return spend_times
+
+    if tensors._is_str_list(spend_times):
+      input_time_set = tensors.normalize_times_set(
+          self.model_context.input_data.time
+      )
+      filtered_times: list[str] = [
+          str(t)
+          for t in spend_times
+          if isinstance(t, str)
+          and tensors.normalize_date_str(t) in input_time_set
+      ]
+      if filtered_times:
+        return filtered_times
+      else:
+        return [False] * self.model_context.n_times
+
+    return spend_times
 
   def marginal_roi(
       self,
@@ -1667,6 +1719,7 @@ class Analyzer:
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       by_reach: bool = True,
       use_kpi: bool = False,
@@ -1717,6 +1770,10 @@ class Analyzer:
         include or booleans with length equal to the number of time periods in
         the `new_data` args, if provided. By default, all time periods are
         included.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        the `new_data` args, if provided. By default, all time periods are
+        included.
       aggregate_geos: If `True`, the expected revenue is summed over all of the
         regions.
       by_reach: Used for a channel with reach and frequency. If `True`, returns
@@ -1737,6 +1794,7 @@ class Analyzer:
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
+        "media_selected_times": media_selected_times,
         "aggregate_geos": aggregate_geos,
     }
     use_kpi = self._use_kpi(use_kpi)
@@ -1766,10 +1824,14 @@ class Analyzer:
     )
     spend_inc = filled_data.total_spend() * incremental_increase  # pyrefly: ignore[unsupported-operation]
     if spend_inc is not None and spend_inc.ndim == 3:  # pyrefly: ignore[missing-attribute]
+      spend_times = self._get_media_times_for_unscaled_inputs(
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+      )
       inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
-          selected_times=selected_times,
+          selected_times=spend_times,
       )
       return backend.divide(
           numerator,  # pyrefly: ignore[bad-argument-type]
@@ -1800,6 +1862,7 @@ class Analyzer:
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
@@ -1845,6 +1908,10 @@ class Analyzer:
         include or booleans with length equal to the number of time periods in
         the `new_data` args, if provided. By default, all time periods are
         included.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        the `new_data` args, if provided. By default, all time periods are
+        included.
       aggregate_geos: Boolean. If `True`, the expected revenue is summed over
         all of the regions.
       use_kpi: If `False`, then revenue is used to calculate the ROI numerator.
@@ -1863,6 +1930,7 @@ class Analyzer:
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
+        "media_selected_times": media_selected_times,
         "aggregate_geos": aggregate_geos,
     }
     incremental_outcome_kwargs = {
@@ -1892,10 +1960,14 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
+      spend_times = self._get_media_times_for_unscaled_inputs(
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+      )
       inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
-          selected_times=selected_times,
+          selected_times=spend_times,
       )
       return backend.divide(
           incremental_outcome,  # pyrefly: ignore[bad-argument-type]
@@ -1927,6 +1999,7 @@ class Analyzer:
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> backend.Tensor:
@@ -1973,6 +2046,10 @@ class Analyzer:
         include or booleans with length equal to the number of time periods in
         the `new_data` args, if provided. By default, all time periods are
         included.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        the `new_data` args, if provided. By default, all time periods are
+        included.
       aggregate_geos: Boolean. If `True`, the expected KPI is summed over all of
         the regions.
       batch_size: Integer representing the maximum draws per chain in each
@@ -1991,6 +2068,7 @@ class Analyzer:
         new_data=new_data,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        media_selected_times=media_selected_times,
         aggregate_geos=aggregate_geos,
         batch_size=batch_size,
     )
@@ -2268,8 +2346,8 @@ class Analyzer:
         `model_spec.non_media_baseline_values` is used, which defaults to the
         minimum value for each non_media treatment channel.
       **kwargs: kwargs to pass to `incremental_outcome`, which could contain
-        selected_geos, selected_times, aggregate_geos, aggregate_times,
-        batch_size.
+        selected_geos, selected_times, media_selected_times, aggregate_geos,
+        aggregate_times, batch_size.
 
     Returns:
       A Tensor with the same dimensions as `incremental_outcome` except the size
@@ -2301,6 +2379,7 @@ class Analyzer:
       marginal_roi_incremental_increase: float = 0.01,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       optimal_frequency: Sequence[float] | None = None,
@@ -2360,6 +2439,10 @@ class Analyzer:
         include or booleans with length equal to the number of time periods in
         the tensors in the `new_data` argument, if provided. By default, all
         time periods are included.
+      media_selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        the tensors in the `new_data` argument, if provided. By default, all
+        time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -2411,6 +2494,10 @@ class Analyzer:
         "aggregate_geos": aggregate_geos,
         "aggregate_times": aggregate_times,
     }
+    incremental_kwargs = {
+        **dim_kwargs,
+        "media_selected_times": media_selected_times,
+    }
     batched_kwargs = {"batch_size": batch_size}
     new_data = new_data or DataTensors()
     builder = tensors.DataTensorsBuilder(self.model_context)
@@ -2439,7 +2526,7 @@ class Analyzer:
         use_kpi=use_kpi,
         include_non_paid_channels=include_non_paid_channels,
         non_media_baseline_values=non_media_baseline_values,
-        **dim_kwargs,
+        **incremental_kwargs,
         **batched_kwargs,
     )
     incremental_outcome_posterior = self.compute_incremental_outcome_aggregate(
@@ -2448,7 +2535,7 @@ class Analyzer:
         use_kpi=use_kpi,
         include_non_paid_channels=include_non_paid_channels,
         non_media_baseline_values=non_media_baseline_values,
-        **dim_kwargs,
+        **incremental_kwargs,
         **batched_kwargs,
     )
     incremental_outcome_mroi_prior = self.compute_incremental_outcome_aggregate(
@@ -2460,7 +2547,7 @@ class Analyzer:
         scaling_factor1=1 + marginal_roi_incremental_increase,
         include_non_paid_channels=include_non_paid_channels,
         non_media_baseline_values=non_media_baseline_values,
-        **dim_kwargs,
+        **incremental_kwargs,
         **batched_kwargs,
     )
     incremental_outcome_mroi_posterior = (
@@ -2473,7 +2560,7 @@ class Analyzer:
             scaling_factor1=1 + marginal_roi_incremental_increase,
             include_non_paid_channels=include_non_paid_channels,
             non_media_baseline_values=non_media_baseline_values,
-            **dim_kwargs,
+            **incremental_kwargs,
             **batched_kwargs,
         )
     )
@@ -2623,10 +2710,14 @@ class Analyzer:
     if self.model_context.n_rf_channels > 0:
       spend_list.append(new_spend_tensors.rf_spend)
     # TODO Add support for 1-dimensional spend.
+    spend_times = self._get_media_times_for_unscaled_inputs(
+        selected_times=selected_times,
+        media_selected_times=media_selected_times,
+    )
     spend_inputs = builder.build_unscaled_inputs(
         new_data=new_data,
         selected_geos=selected_geos,
-        selected_times=selected_times,
+        selected_times=spend_times,
     )
     aggregated_spend = self.filter_and_aggregate_by_indices(
         tensor=backend.concatenate(spend_list, axis=-1),
@@ -2696,7 +2787,7 @@ class Analyzer:
               new_data=new_data.filter_fields(incremental_outcome_fields),
               use_kpi=True,
               include_non_paid_channels=False,
-              **dim_kwargs,
+              **incremental_kwargs,
               **batched_kwargs,
           ),
           incremental_kpi_posterior=self.compute_incremental_outcome_aggregate(
@@ -2704,7 +2795,7 @@ class Analyzer:
               new_data=new_data.filter_fields(incremental_outcome_fields),
               use_kpi=True,
               include_non_paid_channels=False,
-              **dim_kwargs,
+              **incremental_kwargs,
               **batched_kwargs,
           ),
           spend_with_total=spend_with_total,
@@ -2970,6 +3061,7 @@ class Analyzer:
       use_kpi: bool = False,
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3016,6 +3108,10 @@ class Analyzer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
       selected_times: Optional list containing either a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        `new_data` if time is modified in `new_data`, or `input_data.n_times`
+        otherwise. By default, all time periods are included.
+      media_selected_times: Optional list containing either a subset of dates to
         include or booleans with length equal to the number of time periods in
         `new_data` if time is modified in `new_data`, or `input_data.n_times`
         otherwise. By default, all time periods are included.
@@ -3088,9 +3184,9 @@ class Analyzer:
       inputs = builder.build_unscaled_inputs(
           new_data=new_data,
           required_tensors_names=[
-              constants.RF_IMPRESSIONS,
-              constants.RF_SPEND,
-              constants.REVENUE_PER_KPI,
+            constants.RF_IMPRESSIONS,
+            constants.RF_SPEND,
+            constants.REVENUE_PER_KPI,
           ],
           optimal_frequency=freq,
           insert_dummy_media=True,
@@ -3100,6 +3196,7 @@ class Analyzer:
           use_posterior=use_posterior,
           selected_geos=selected_geos,
           selected_times=selected_times,
+          media_selected_times=media_selected_times,
           aggregate_geos=True,
           use_kpi=use_kpi,
       )[..., -self.model_context.n_rf_channels :]
@@ -3133,6 +3230,7 @@ class Analyzer:
         marginal_roi_by_reach=True,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        media_selected_times=media_selected_times,
         use_kpi=use_kpi,
     ).sel({
         constants.CHANNEL: rf_channel_values,
@@ -3143,6 +3241,7 @@ class Analyzer:
         marginal_roi_by_reach=False,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        media_selected_times=media_selected_times,
         use_kpi=use_kpi,
     ).sel({
         constants.CHANNEL: rf_channel_values,
@@ -3574,7 +3673,8 @@ class Analyzer:
       spend_multipliers: list[float] | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
+      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
       by_reach: bool = True,
       use_optimal_frequency: bool = False,
       use_kpi: bool = False,
@@ -3612,11 +3712,20 @@ class Analyzer:
         generated. If `False`, prior response curves are generated.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing a subset of dates to include. If
-        `new_data` is provided with modified time periods, then `selected_times`
-        must be a subset of `new_data.times`. Otherwise, `selected_times` must
-        be a subset of `self._model_context.input_data.time`. By default, all
-        time periods are included.
+      selected_times: Optional list containing a subset of dates to include or
+        booleans with length equal to the number of time periods in the
+        `new_data` args, if provided. If `new_data` is provided with modified
+        time periods, then `selected_times` must be a subset of
+        `new_data.times`. Otherwise, `selected_times` must be a subset of
+        `self._model_context.input_data.time`. By default, all time periods are
+        included.
+      media_selected_times: Optional list containing a subset of dates to
+        include or booleans with length equal to the number of time periods in
+        the `new_data` args, if provided. If `new_data` is provided with
+        modified time periods, then `media_selected_times` can select any subset
+        of time periods in `new_data`. If `new_data` is not provided,
+        `media_selected_times` selects from `InputData.time`. Defaults to
+        include all time periods.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
         the response curve by reach. If `False`, plots the response curve by
         frequency.
@@ -3642,6 +3751,7 @@ class Analyzer:
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
+        "media_selected_times": media_selected_times,
         "aggregate_geos": True,
         "aggregate_times": True,
     }
@@ -3654,7 +3764,6 @@ class Analyzer:
         new_data=new_data,
         required_tensors_names=required_tensors_names,
     ).tensors
-    dim_kwargs["selected_times"] = selected_times
 
     if self.model_context.n_rf_channels > 0 and use_optimal_frequency:
       opt_freq_data = DataTensors(
@@ -3670,6 +3779,7 @@ class Analyzer:
               new_data=opt_freq_data,
               selected_geos=selected_geos,
               selected_times=selected_times,
+              media_selected_times=media_selected_times,
               use_kpi=use_kpi,
           ).optimal_frequency,
           dtype=backend.float_dtype,
@@ -3722,10 +3832,14 @@ class Analyzer:
 
     spend = filled_data.total_spend()
     if spend is not None and spend.ndim == 3:
+      spend_times = self._get_media_times_for_unscaled_inputs(
+          selected_times=selected_times,
+          media_selected_times=media_selected_times,
+      )
       spend_inputs = builder.build_unscaled_inputs(
           new_data=filled_data,
           selected_geos=selected_geos,
-          selected_times=selected_times,
+          selected_times=spend_times,
       )
       spend = self.filter_and_aggregate_by_indices(
           tensor=spend,
