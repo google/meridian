@@ -260,12 +260,6 @@ class InputDataTest(parameterized.TestCase):
           kpi_type=constants.REVENUE,
       ),
       dict(
-          testcase_name="frequency",
-          field=constants.FREQUENCY,
-          name="Frequency",
-          kpi_type=constants.REVENUE,
-      ),
-      dict(
           testcase_name="kpi",
           field=constants.KPI,
           name="KPI",
@@ -278,6 +272,7 @@ class InputDataTest(parameterized.TestCase):
           kpi_type=constants.NON_REVENUE,
       ),
   )
+
   def test_validate_no_negative_values(
       self, field: str, name: str, kpi_type: str
   ):
@@ -299,6 +294,24 @@ class InputDataTest(parameterized.TestCase):
           media=self.lagged_media,
           reach=maybe_flip(self.lagged_reach, constants.REACH),
           frequency=maybe_flip(self.lagged_frequency, constants.FREQUENCY),
+      )
+
+  def test_validate_frequency_threshold(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        expected_regex="Frequency values must be at least 1.",
+    ):
+      frequency = self.not_lagged_frequency.copy(deep=True)
+      frequency.values[0, 0, 0] = 0.5
+      input_data.InputData(
+          controls=self.not_lagged_controls,
+          kpi=self.not_lagged_kpi,
+          kpi_type=constants.NON_REVENUE,
+          population=self.population,
+          revenue_per_kpi=self.revenue_per_kpi,
+          reach=self.not_lagged_reach,
+          frequency=frequency,
+          rf_spend=self.rf_spend,
       )
 
   def test_validate_media_channels_duplicate_names(self):
@@ -2177,21 +2190,9 @@ class NonpaidInputDataTest(parameterized.TestCase):
           kpi_type=constants.NON_REVENUE,
       ),
       dict(
-          testcase_name="frequency",
-          field=constants.FREQUENCY,
-          name="Frequency",
-          kpi_type=constants.NON_REVENUE,
-      ),
-      dict(
           testcase_name="organic_reach",
           field=constants.ORGANIC_REACH,
           name="Organic Reach",
-          kpi_type=constants.NON_REVENUE,
-      ),
-      dict(
-          testcase_name="organic_frequency",
-          field=constants.ORGANIC_FREQUENCY,
-          name="Organic Frequency",
           kpi_type=constants.NON_REVENUE,
       ),
       dict(
