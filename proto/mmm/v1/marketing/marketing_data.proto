@@ -224,6 +224,9 @@ message MarketingDataMetadata {
 
   // Non-media treatment variable names.
   repeated string non_media_treatment_names = 6;
+
+  // The currency code (ISO 4217, e.g. "USD", "EUR").
+  string currency_code = 7;
 }
 
 // A collection of marketing data points for different combinations of geo
