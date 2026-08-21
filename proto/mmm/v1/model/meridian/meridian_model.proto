@@ -231,6 +231,7 @@ message PriorDistributions {
   Distribution eta_orf = 21;
   Distribution gamma_n = 22;
   Distribution xi_n = 23;
+  Distribution alpha_c = 37;
   Distribution alpha_om = 24;
   Distribution alpha_orf = 25;
   Distribution ec_om = 26;
@@ -285,6 +286,7 @@ message PriorTfpDistributions {
   TfpDistribution eta_orf = 21;
   TfpDistribution gamma_n = 22;
   TfpDistribution xi_n = 23;
+  TfpDistribution alpha_c = 38;
   TfpDistribution alpha_om = 24;
   TfpDistribution alpha_orf = 25;
   TfpDistribution ec_om = 26;
