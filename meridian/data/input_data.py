@@ -25,6 +25,7 @@ import warnings
 
 from meridian import backend
 from meridian import constants
+from meridian.common import currency
 from meridian.data import arg_builder
 from meridian.data import time_coordinates as tc
 from meridian.data import validator
@@ -262,6 +263,10 @@ class InputData:
       considered to be intervenable and hence are treatment variables under the
       causal model. Some examples include running a promotion, the price of a
       product and a change in a product's packaging and/or design.
+    currency_code: An optional ISO 4217 currency code string (e.g., 'USD',
+      'EUR', 'JPY') indicating the currency denomination of all monetary values
+      in this dataset (spend, revenue, budgets). If None, the currency is
+      unspecified and reporting defaults to '$'. Default: None.
   """
 
   kpi: xr.DataArray
@@ -278,6 +283,7 @@ class InputData:
   organic_reach: xr.DataArray | None = None
   organic_frequency: xr.DataArray | None = None
   non_media_treatments: xr.DataArray | None = None
+  currency_code: str | None = None
 
   def __post_init__(self):
     self._coerce_object_arrays_to_float()
@@ -292,6 +298,22 @@ class InputData:
     self._validate_times()
     self._validate_geos()
     self._validate_no_negative_values()
+    self._validate_currency_code()
+
+  def _validate_currency_code(self):
+    """Validates that currency_code is a string and a recognized ISO 4217 code."""
+    if self.currency_code is not None:
+      if not isinstance(self.currency_code, str):
+        raise TypeError(
+            "currency_code must be a string or None, got"
+            f" {type(self.currency_code)}"
+        )
+      if not currency.is_valid_currency_code(self.currency_code):
+        warnings.warn(
+            f'currency_code "{self.currency_code}" is not a recognized'
+            " ISO 4217 currency code. Currency symbol resolution may not"
+            " work correctly."
+        )
 
   def _coerce_object_arrays_to_float(self):
     """Coerces object-typed DataArrays to float."""

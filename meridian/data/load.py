@@ -59,6 +59,7 @@ class XrDatasetDataLoader(InputDataLoader):
       `revenue_per_kpi` exists, ROI calibration is used and the analysis is run
       on revenue. When `revenue_per_kpi` doesn't exist for the same `kpi_type`,
       custom ROI calibration is used and the analysis is run on KPI.
+    currency_code: An optional ISO 4217 currency code (e.g., `'USD'`, `'EUR'`).
 
   Example:
 
@@ -69,12 +70,14 @@ class XrDatasetDataLoader(InputDataLoader):
   """
 
   dataset: xr.Dataset
+  currency_code: str | None = None
 
   def __init__(
       self,
       dataset: xr.Dataset,
       kpi_type: str,
       name_mapping: Mapping[str, str] | None = None,
+      currency_code: str | None = None,
   ):
     """Constructor.
 
@@ -169,8 +172,11 @@ class XrDatasetDataLoader(InputDataLoader):
         `organic_frequency`). Mapping must be provided if the names in the
         `input` dataset are different from the required ones, otherwise errors
         are thrown.
+      currency_code: An optional ISO 4217 currency code (e.g., `'USD'`,
+        `'EUR'`).
     """
     self.kpi_type = kpi_type
+    self.currency_code = currency_code
     if name_mapping is None:
       self.dataset = dataset
     else:
@@ -318,6 +324,8 @@ class XrDatasetDataLoader(InputDataLoader):
       builder.organic_reach = self.dataset.organic_reach
     if constants.ORGANIC_FREQUENCY in self.dataset.data_vars.keys():
       builder.organic_frequency = self.dataset.organic_frequency
+    if self.currency_code is not None:
+      builder.currency_code = self.currency_code
     return builder.build()
 
 
@@ -569,6 +577,8 @@ class DataFrameDataLoader(InputDataLoader):
           'organic_frequency_newsletter': 'newsletter',
       }
       ```
+
+    currency_code: An optional ISO 4217 currency code (e.g., `'USD'`, `'EUR'`).
   """  # pyformat: disable
 
   df: pd.DataFrame
@@ -581,6 +591,7 @@ class DataFrameDataLoader(InputDataLoader):
   rf_spend_to_channel: Mapping[str, str] | None = None
   organic_reach_to_channel: Mapping[str, str] | None = None
   organic_frequency_to_channel: Mapping[str, str] | None = None
+  currency_code: str | None = None
 
   def __post_init__(self):
     # If [key] in the following dict exists as an attribute in
@@ -824,6 +835,9 @@ class DataFrameDataLoader(InputDataLoader):
           self.coord_to_columns.geo,
       )
 
+    if self.currency_code is not None:
+      builder.currency_code = self.currency_code
+
     return builder.build()
 
 
@@ -866,6 +880,7 @@ class CsvDataLoader(InputDataLoader):
       rf_spend_to_channel: Mapping[str, str] | None = None,
       organic_reach_to_channel: Mapping[str, str] | None = None,
       organic_frequency_to_channel: Mapping[str, str] | None = None,
+      currency_code: str | None = None,
   ):
     """Constructor.
 
@@ -984,6 +999,9 @@ class CsvDataLoader(InputDataLoader):
         }
         ```
 
+      currency_code: An optional ISO 4217 currency code (e.g., `'USD'`,
+        `'EUR'`).
+
     Note: In a national model, `geo` and `population` are optional. If
     `population` is provided, it is reset to a default value of `1.0`.
 
@@ -1004,6 +1022,7 @@ class CsvDataLoader(InputDataLoader):
         rf_spend_to_channel=rf_spend_to_channel,
         organic_reach_to_channel=organic_reach_to_channel,
         organic_frequency_to_channel=organic_frequency_to_channel,
+        currency_code=currency_code,
     )
 
   def load(self) -> input_data.InputData:

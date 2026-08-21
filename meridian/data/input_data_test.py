@@ -2238,5 +2238,59 @@ class NonpaidInputDataTest(parameterized.TestCase):
           ),
       )
 
+  def test_currency_code_default_is_none(self):
+    data = input_data.InputData(
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+    )
+    self.assertIsNone(data.currency_code)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="usd", currency_code="USD"),
+      dict(testcase_name="eur", currency_code="EUR"),
+      dict(testcase_name="jpy", currency_code="JPY"),
+  )
+  def test_currency_code_valid(self, currency_code: str):
+    data = input_data.InputData(
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        currency_code=currency_code,
+    )
+    self.assertEqual(data.currency_code, currency_code)
+
+  def test_currency_code_invalid_type_raises_type_error(self):
+    with self.assertRaises(TypeError):
+      input_data.InputData(
+          kpi=self.kpi,
+          kpi_type=constants.NON_REVENUE,
+          population=self.population,
+          media=self.lagged_media,
+          media_spend=self.media_spend,
+          currency_code=123,  # pyrefly: ignore[bad-argument-type]
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="too_short", currency_code="US"),
+      dict(testcase_name="too_long", currency_code="USDT"),
+      dict(testcase_name="unrecognized", currency_code="FOO"),
+  )
+  def test_currency_code_unrecognized_emits_warning(self, currency_code: str):
+    with self.assertWarns(UserWarning):
+      input_data.InputData(
+          kpi=self.kpi,
+          kpi_type=constants.NON_REVENUE,
+          population=self.population,
+          media=self.lagged_media,
+          media_spend=self.media_spend,
+          currency_code=currency_code,
+      )
+
+
 if __name__ == "__main__":
   absltest.main()

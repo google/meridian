@@ -72,6 +72,21 @@ class InputDataBuilder(abc.ABC):
     self._organic_reach: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
     self._organic_frequency: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
     self._non_media_treatments: xr.DataArray = None  # pyrefly: ignore[bad-assignment]
+    self._currency_code: str | None = None
+
+  @property
+  def currency_code(self) -> str | None:
+    return self._currency_code
+
+  @currency_code.setter
+  def currency_code(self, currency_code: str | None):
+    """Sets the ISO 4217 currency code for all monetary values.
+
+    Args:
+      currency_code: An optional ISO 4217 currency code string (e.g., 'USD',
+        'EUR', 'JPY').
+    """
+    self._currency_code = currency_code
 
   @property
   def time_coords(self) -> Sequence[str]:
@@ -638,6 +653,7 @@ class InputDataBuilder(abc.ABC):
         organic_media=_get_sorted(self.organic_media, True),
         organic_reach=_get_sorted(self.organic_reach, True),
         organic_frequency=_get_sorted(self.organic_frequency, True),
+        currency_code=self._currency_code,
     )
 
   def _normalize_coords(
