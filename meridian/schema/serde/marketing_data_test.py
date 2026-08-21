@@ -22,6 +22,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
+from meridian.data import input_data as input_data_module
 from meridian.model import media
 from meridian.model import model
 from meridian.model import spec
@@ -29,6 +30,7 @@ from mmm.v1.marketing import marketing_data_pb2 as marketing_pb
 from meridian.schema.serde import marketing_data
 from meridian.schema.serde import test_data
 import numpy as np
+import xarray as xr
 import xarray.testing as xrt
 
 from tensorflow.python.util.protobuf import compare
@@ -1140,6 +1142,71 @@ class MarketingDataTest(parameterized.TestCase):
     actual = deserialized_data.population.values
     np.testing.assert_allclose(actual, expected_population)
     self.assertEqual(actual.dtype, expected_population.dtype)
+
+  def test_serialize_deserialize_currency_code(self):
+    input_data = mock.create_autospec(
+        input_data_module.InputData,
+        spec_set=False,
+        instance=True,
+        kpi_type=c.NON_REVENUE,
+        geo=xr.DataArray(np.array(['national_geo'])),
+        time=xr.DataArray(np.array(test_data._TIME_STRS)),
+        media_time=xr.DataArray(np.array(test_data._TIME_STRS)),
+        population=xr.DataArray(
+            coords={c.GEO: ['national_geo']},
+            data=np.array([1.0]),
+            name=c.POPULATION,
+        ),
+        media=xr.DataArray(
+            coords={
+                c.GEO: ['national_geo'],
+                c.MEDIA_TIME: test_data._TIME_STRS,
+                c.MEDIA_CHANNEL: test_data._MEDIA_CHANNEL_PAID,
+            },
+            data=np.array([[[41, 42], [43, 44]]]),
+            name=c.MEDIA,
+        ),
+        media_spend=xr.DataArray(
+            coords={
+                c.GEO: ['national_geo'],
+                c.TIME: test_data._TIME_STRS,
+                c.MEDIA_CHANNEL: test_data._MEDIA_CHANNEL_PAID,
+            },
+            data=np.array([[[141, 142], [143, 144]]]),
+            name=c.MEDIA_SPEND,
+        ),
+        media_spend_has_geo_dimension=True,
+        media_spend_has_time_dimension=True,
+        reach=None,
+        frequency=None,
+        rf_spend=None,
+        organic_media=None,
+        organic_reach=None,
+        organic_frequency=None,
+        non_media_treatments=None,
+        controls=None,
+        kpi=xr.DataArray(
+            coords={
+                c.GEO: ['national_geo'],
+                c.TIME: test_data._TIME_STRS,
+            },
+            data=np.array([[1, 2]]),
+            name=c.KPI,
+        ),
+        revenue_per_kpi=xr.DataArray(
+            coords={
+                c.GEO: ['national_geo'],
+                c.TIME: test_data._TIME_STRS,
+            },
+            data=np.array([[11, 12]]),
+            name=c.REVENUE_PER_KPI,
+        ),
+        currency_code='EUR',
+    )
+    serialized = self.serde.serialize(input_data)
+    self.assertEqual(serialized.metadata.currency_code, 'EUR')
+    deserialized = self.serde.deserialize(serialized)
+    self.assertEqual(deserialized.currency_code, 'EUR')
 
 
 if __name__ == '__main__':

@@ -1821,6 +1821,26 @@ class InputDataLoaderTest(parameterized.TestCase):
       self.assertIsNone(data.frequency)
       self.assertIsNone(data.rf_spend)
 
+  def test_csv_data_loader_currency_code(self):
+    csv_file = os.path.join(
+        os.path.dirname(__file__),
+        _UNIT_TEST_DATA_DIR_NAME,
+        'sample_data_media_and_rf.csv',
+    )
+    loader = load.CsvDataLoader(
+        csv_path=csv_file,
+        coord_to_columns=self._correct_coord_to_columns_media_and_rf,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel=self._correct_media_to_channel,
+        media_spend_to_channel=self._correct_media_spend_to_channel,
+        reach_to_channel=self._correct_reach_to_channel,
+        frequency_to_channel=self._correct_frequency_to_channel,
+        rf_spend_to_channel=self._correct_rf_spend_to_channel,
+        currency_code='EUR',
+    )
+    data = loader.load()
+    self.assertEqual(data.currency_code, 'EUR')
+
   @parameterized.named_parameters(
       dict(
           testcase_name='with_population_with_geo',

@@ -2589,6 +2589,14 @@ class InputDataBuilderTest(parameterized.TestCase):
     ):
       builder.time_coords = ['2024-01-01', '2024-01-02', '2025-03-07']
 
+  def test_currency_code_setter_and_build(self):
+    builder = input_data_builder.InputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    )
+    self.assertIsNone(builder.currency_code)
+    builder.currency_code = 'EUR'
+    self.assertEqual(builder.currency_code, 'EUR')
+
 
 if __name__ == '__main__':
   absltest.main()

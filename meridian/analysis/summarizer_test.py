@@ -63,12 +63,14 @@ class SummarizerTest(parameterized.TestCase):
     )
     self.mock_meridian_revenue.input_data.kpi_type = c.REVENUE
     self.mock_meridian_revenue.input_data.revenue_per_kpi = self.revenue_per_kpi
+    self.mock_meridian_revenue.input_data.currency_code = None
 
     self.mock_meridian_kpi = mock.create_autospec(
         model.Meridian, instance=True, input_data=self.input_data_2
     )
     self.mock_meridian_kpi.input_data.kpi_type = c.NON_REVENUE
     self.mock_meridian_kpi.input_data.revenue_per_kpi = None
+    self.mock_meridian_kpi.input_data.currency_code = None
 
     self.analyzer = self.enter_context(
         mock.patch.object(
@@ -1177,6 +1179,26 @@ class SummarizerTest(parameterized.TestCase):
         f'For every KPI unit, you spent ${low_cpik:.2f}',
         insights_text,
     )
+
+  def test_performance_breakdown_card_insights_with_currency_code(self):
+    self.mock_meridian_revenue.input_data.currency_code = 'EUR'
+    summarizer_eur = summarizer.Summarizer(self.mock_meridian_revenue)
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer_eur,
+    )
+
+    card = test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.PERFORMANCE_BREAKDOWN_CARD_ID},
+    )
+    insights_text = test_utils.get_child_element(
+        card, 'card-insights/p', {'class': 'insights-text'}
+    ).text
+    self.assertIsNotNone(insights_text)
+
+    self.assertIn('€', insights_text)
+    self.assertNotIn('$', insights_text)
 
   def test_response_curves_card_plotters_called(self):
     mock_spec_1 = 'response_curves'
