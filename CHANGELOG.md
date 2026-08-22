@@ -32,6 +32,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     `get_kpi_means`.
 *   Add `WeeklyOptimizationGrid` to pre-compute weekly incremental outcomes over
     spend multiplier grids for budget optimization.
+*   Add `currency_code` as an optional ISO 4217 model specification attribute
+    on `InputData` and `InputDataBuilder`, with automatic symbol resolution for
+    reporting and optimization visualizations.
 
 ## [1.8.0] - 2026-08-14
 
