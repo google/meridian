@@ -31,7 +31,7 @@ from meridian.data import input_data
 from meridian.model import context
 from meridian.model import prior_distribution
 from meridian.model import spec as model_spec_module
-
+# TODO: Remove for GeoX release.
 import numpy as np
 import xarray as xr
 
