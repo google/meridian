@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.analysis.review import configs
 from meridian.analysis.review import results
 from meridian.analysis.review import reviewer
 from meridian.backend import config as backend_config
@@ -680,6 +681,42 @@ class ModelTest(
     mock_model_reviewer.assert_called_once_with(
         model_context=meridian.model_context,
         inference_data=meridian.inference_data,
+        convergence_check_config=None,
+        post_convergence_checks=None,
+    )
+    mock_review_run.assert_called_once()
+    self.assertIs(meridian.health_summary, expected_results)
+
+  @mock.patch.object(reviewer, "ModelReviewer", autospec=True, spec_set=True)
+  def test_review_method_with_custom_checks(self, mock_model_reviewer):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian._inference_data = az.convert_to_inference_data(
+        {"dummy": [1.0]}, group=constants.POSTERIOR
+    )
+
+    mock_review_run = mock_model_reviewer.return_value.run
+    expected_results = results.ReviewSummary(
+        overall_status=results.Status.PASS,
+        summary_message="summary",
+        results=[],
+        health_score=0.0,
+    )
+    mock_review_run.return_value = expected_results
+
+    custom_conv = configs.ConvergenceConfig(convergence_threshold=1.1)
+    custom_checks: reviewer.ChecksBattery = {
+        reviewer.checks.BaselineCheck: configs.BaselineConfig()
+    }
+    meridian.review(
+        convergence_check_config=custom_conv,
+        post_convergence_checks=custom_checks,
+    )
+
+    mock_model_reviewer.assert_called_once_with(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+        convergence_check_config=custom_conv,
+        post_convergence_checks=custom_checks,
     )
     mock_review_run.assert_called_once()
     self.assertIs(meridian.health_summary, expected_results)
@@ -719,7 +756,39 @@ class ModelTest(
         reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
         test=kwarg,
     )
-    mock_review.assert_called_once_with(meridian)
+    mock_review.assert_called_once_with(
+        meridian,
+        convergence_check_config=None,
+        post_convergence_checks=None,
+    )
+
+  def test_sample_posterior_and_review_method_with_custom_checks(self):
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(model.Meridian, "sample_posterior", autospec=True)
+    )
+    mock_review = self.enter_context(
+        mock.patch.object(model.Meridian, "review", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    custom_conv = configs.ConvergenceConfig(convergence_threshold=1.1)
+    custom_checks: reviewer.ChecksBattery = {
+        reviewer.checks.BaselineCheck: configs.BaselineConfig()
+    }
+    meridian.sample_posterior_and_review(
+        n_chains=1,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=1,
+        convergence_check_config=custom_conv,
+        post_convergence_checks=custom_checks,
+    )
+
+    mock_sample_posterior.assert_called_once()
+    mock_review.assert_called_once_with(
+        meridian,
+        convergence_check_config=custom_conv,
+        post_convergence_checks=custom_checks,
+    )
 
   def _meridian_with_posterior(self, posterior: xr.Dataset) -> model.Meridian:
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
