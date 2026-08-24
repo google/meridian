@@ -83,12 +83,12 @@ PERFORMANCE_BREAKDOWN_CARD_ID = 'performance-breakdown'
 PERFORMANCE_BREAKDOWN_CARD_TITLE = 'Return on investment'
 PERFORMANCE_BREAKDOWN_INSIGHTS_FORMAT = """Your return on investment (ROI) helps
 you understand how your marketing activities impacted your business objectives.
-{lead_roi_channel} drove the highest ROI at {lead_roi_ratio:.1f}. For every $1
-you spent on {lead_roi_channel}, you saw ${lead_roi_ratio:.2f} in revenue.
+{lead_roi_channel} drove the highest ROI at {lead_roi_ratio:.1f}. For every {currency}1
+you spent on {lead_roi_channel}, you saw {currency}{lead_roi_ratio:.2f} in revenue.
 {lead_effectiveness_channel} had the highest effectiveness, which is your
 incremental outcome per media unit. {lead_mroi_channel} had the highest marginal
 ROI at {lead_mroi_channel_value:.2f}. {lead_cpik_channel} drove the lowest CPIK
-at ${lead_cpik_ratio:.2f}. For every KPI unit, you spent ${lead_cpik_ratio:.2f}.
+at {currency}{lead_cpik_ratio:.2f}. For every KPI unit, you spent {currency}{lead_cpik_ratio:.2f}.
 """
 
 ROI_EFFECTIVENESS_CHART_ID = 'roi-effectiveness-chart'
