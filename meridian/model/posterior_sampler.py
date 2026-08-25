@@ -1054,7 +1054,7 @@ class PosteriorMCMCSampler:
 
     # Create Arviz InferenceData for posterior draws.
     posterior_coords = self._model_context.create_inference_data_coords(
-        total_chains, n_keep
+        total_chains, n_keep  # pyrefly: ignore[bad-argument-type]
     )
     posterior_dims = self._model_context.create_inference_data_dims()
     infdata_posterior = az.convert_to_inference_data(
