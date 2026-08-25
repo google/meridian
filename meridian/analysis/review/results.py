@@ -27,7 +27,11 @@ import jinja2
 from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
+
+# TODO: Remove for GeoX release.
 from meridian.templates import formatter
+
+# TODO: Remove for GeoX release.
 import xarray as xr
 
 
@@ -901,6 +905,9 @@ _CALIBRATION_CHECK_RESULTS = (
     HighVarianceCheckResult,
     PotentialBiasCheckResult,
 )
+
+
+# TODO: Remove for GeoX release.
 
 
 # ==============================================================================
