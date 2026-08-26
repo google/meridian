@@ -2592,15 +2592,17 @@ class Analyzer:
             "Effectiveness is not reported because it does not have a clear"
             " interpretation by time period."
         )
-        return xr.merge(
+        merged = xr.merge(
             [
                 incremental_outcome,
                 pct_of_contribution,
             ],
             compat="no_conflicts",
         )
+        merged.attrs[constants.USE_KPI] = use_kpi
+        return merged
       else:
-        return xr.merge(
+        merged = xr.merge(
             [
                 incremental_outcome,
                 pct_of_contribution,
@@ -2608,6 +2610,8 @@ class Analyzer:
             ],
             compat="no_conflicts",
         )
+        merged.attrs[constants.USE_KPI] = use_kpi
+        return merged
 
     # If non-paid channels are not included, return all metrics, paid and
     # non-paid.
@@ -2658,7 +2662,7 @@ class Analyzer:
           "ROI, mROI, Effectiveness, and CPIK are not reported because they "
           "do not have a clear interpretation by time period."
       )
-      return xr.merge(
+      merged = xr.merge(
           [
               spend_data,
               incremental_outcome,
@@ -2666,6 +2670,8 @@ class Analyzer:
           ],
           compat="no_conflicts",
       )
+      merged.attrs[constants.USE_KPI] = use_kpi
+      return merged
     else:
       roi = self._compute_roi_aggregate(
           incremental_outcome_prior=incremental_outcome_prior,
@@ -2712,7 +2718,7 @@ class Analyzer:
           xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
       )
-      return xr.merge(
+      merged = xr.merge(
           [
               spend_data,
               incremental_outcome,
@@ -2724,6 +2730,8 @@ class Analyzer:
           ],
           compat="no_conflicts",
       )
+      merged.attrs[constants.USE_KPI] = use_kpi
+      return merged
 
   def get_aggregated_impressions(
       self,
