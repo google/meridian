@@ -755,6 +755,15 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     grid = weekly_grid_zero.to_optimization_grid()
     self.assertIsNotNone(grid)
 
+    spend_grid = grid.spend_grid.values
+    outcome_grid = grid.incremental_outcome_grid.values
+
+    valid_mask_zero_spend = ~np.isnan(spend_grid[:, 0])
+    self.assertTrue(np.any(valid_mask_zero_spend))
+    self.assertTrue(np.any(np.isnan(spend_grid[:, 0])))
+    np.testing.assert_array_equal(outcome_grid[valid_mask_zero_spend, 0], 0.0)
+    np.testing.assert_array_equal(np.isnan(outcome_grid), np.isnan(spend_grid))
+
   def test_to_optimization_grid_custom_budget_and_constraints(self):
     weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
         self.budget_optimizer_media_only._analyzer,

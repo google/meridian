@@ -789,12 +789,12 @@ class WeeklyOptimizationGrid:
     for i, (channel, channel_spend) in enumerate(
         zip(self.channels, nonoptimized_spend)
     ):
-      if channel_spend == 0:
-        incremental_outcome_grid[:, i] = 0.0
-        continue
-
       spend_column = spend_grid[:, i]
       valid_mask = ~np.isnan(spend_column)
+      if channel_spend == 0:
+        incremental_outcome_grid[valid_mask, i] = 0.0
+        continue
+
       multipliers = spend_column[valid_mask] / channel_spend
 
       channel_grid = self.incremental_outcome.sel({c.CHANNEL: channel}).dropna(
