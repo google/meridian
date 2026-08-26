@@ -16,6 +16,9 @@
 
 import immutabledict
 
+# TODO: Remove for GeoX release.
+
+
 RHAT = "rhat"
 PARAMETER = "parameter"
 CONVERGENCE_THRESHOLD = "convergence_threshold"
@@ -96,3 +99,5 @@ POTENTIAL_BIAS_RECOMMENDATION = (
     " We recommend checking if important controls are missing or calibrating"
     " these channels using an incrementality experiment to address this."
 )
+
+# TODO: Remove for GeoX release.
