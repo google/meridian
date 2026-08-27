@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: Remove copybara strip for release.
 from absl.testing import absltest
 from absl.testing import parameterized
+
+# TODO: Remove copybara strip for release.
 from meridian import constants
 from meridian.model import prior_distribution
 from meridian.model import spec
+
+# TODO: Remove copybara strip for release.
 import numpy as np
 
 
@@ -563,6 +568,8 @@ class ModelSpecTest(parameterized.TestCase):
         ValueError, r"'max_lag' must be a non-negative integer\."
     ):
       spec.ModelSpec(max_lag=max_lag)  # pyrefly: ignore[bad-argument-type]
+
+  # TODO: Remove copybara strip for release.
 
 
 if __name__ == "__main__":
