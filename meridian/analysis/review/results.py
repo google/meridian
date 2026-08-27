@@ -27,7 +27,6 @@ import jinja2
 from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
-
 # TODO: Remove for GeoX release.
 from meridian.templates import formatter
 
