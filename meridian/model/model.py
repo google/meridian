@@ -1048,7 +1048,7 @@ class Meridian:
       error_findings = [
           finding
           for finding in outcome.findings
-          if finding.severity == eda_outcome.EDASeverity.ERROR
+          if finding.severity == eda_outcome.EDASeverity.FAIL
       ]
       if error_findings:
         error_findings_by_type[outcome.check_type].extend(

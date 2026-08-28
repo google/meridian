@@ -1194,19 +1194,19 @@ class MeridianEDA:
         category,
         metrics,
     ) in card_severity_counts.items():
-      n_errors = metrics[eda_outcome.EDASeverity.ERROR]
-      n_attentions = metrics[eda_outcome.EDASeverity.ATTENTION]
+      n_fails = metrics[eda_outcome.EDASeverity.FAIL]
+      n_reviews = metrics[eda_outcome.EDASeverity.REVIEW]
       finding_tags = []
-      if n_errors > 0:
+      if n_fails > 0:
         finding_tags.append(
             formatter.create_finding_html(
-                self._template_env, f'{n_errors} fail(s)', 'error'
+                self._template_env, f'{n_fails} fail(s)', 'fail'
             )
         )
-      if n_attentions > 0:
+      if n_reviews > 0:
         finding_tags.append(
             formatter.create_finding_html(
-                self._template_env, f'{n_attentions} review(s)', 'attention'
+                self._template_env, f'{n_reviews} review(s)', 'review'
             )
         )
       finding_tag = (
@@ -1220,7 +1220,7 @@ class MeridianEDA:
           eda_constants.FINDING: finding_tag,
           eda_constants.RECOMMENDED_NEXT_STEP: (
               eda_constants.CATEGORY_TO_MESSAGE_BY_STATUS[category][
-                  bool(n_errors or n_attentions)
+                  bool(n_fails or n_reviews)
               ]
           ),
       })
@@ -1340,12 +1340,12 @@ class MeridianEDA:
     inconsistency_finding = _get_finding(
         self._dataset_level_cost_per_media_unit_check_outcome,
         eda_outcome.FindingCause.INCONSISTENT_DATA,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
     )
     outlier_finding = _get_finding(
         self._dataset_level_cost_per_media_unit_check_outcome,
         eda_outcome.FindingCause.OUTLIER,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
     )
 
     outlier_table_spec, outlier_channels = (
@@ -1370,10 +1370,10 @@ class MeridianEDA:
       )
     if inconsistency_table_spec:
       callouts.append(inconsistency_table_spec)
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
     if outlier_table_spec:
       callouts.append(outlier_table_spec)
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
 
     return callouts, card_severity_counts
 
@@ -1512,12 +1512,12 @@ class MeridianEDA:
     kpi_error_finding = _get_finding(
         self._overall_kpi_invariability_check_outcome,
         eda_outcome.FindingCause.VARIABILITY,
-        eda_outcome.EDASeverity.ERROR,
+        eda_outcome.EDASeverity.FAIL,
     )
     kpi_attention_finding = _get_finding(
         self._dataset_level_stdev_check_outcome,
         eda_outcome.FindingCause.VARIABILITY,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
         constants.NATIONAL_KPI_SCALED
         if self._meridian.is_national
         else constants.KPI_SCALED,
@@ -1530,13 +1530,13 @@ class MeridianEDA:
     treatment_control_variability_finding = _get_finding(
         self._dataset_level_stdev_check_outcome,
         eda_outcome.FindingCause.VARIABILITY,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
         treatment_control_var,
     )
     treatment_control_outlier_finding = _get_finding(
         self._dataset_level_stdev_check_outcome,
         eda_outcome.FindingCause.OUTLIER,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
         treatment_control_var,
     )
 
@@ -1567,18 +1567,18 @@ class MeridianEDA:
     )
     if variability_callout:
       callouts.append(variability_callout)
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
 
     outlier_callout = self._create_stdev_callout(
         treatment_control_outlier_finding
     )
     if outlier_callout:
       callouts.append(outlier_callout)
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
     if kpi_error_finding:
-      card_severity_counts[eda_outcome.EDASeverity.ERROR] += 1
+      card_severity_counts[eda_outcome.EDASeverity.FAIL] += 1
     if kpi_attention_finding and not kpi_error_finding:
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
     return callouts, card_severity_counts
 
   def _create_stdev_callout(
@@ -1786,12 +1786,12 @@ class MeridianEDA:
     error_finding = _get_finding(
         vif_outcome,
         eda_outcome.FindingCause.MULTICOLLINEARITY,
-        eda_outcome.EDASeverity.ERROR,
+        eda_outcome.EDASeverity.FAIL,
     )
     attention_finding = _get_finding(
         vif_outcome,
         eda_outcome.FindingCause.MULTICOLLINEARITY,
-        eda_outcome.EDASeverity.ATTENTION,
+        eda_outcome.EDASeverity.REVIEW,
     )
 
     error_callout = self._create_vif_callout(
@@ -1800,7 +1800,7 @@ class MeridianEDA:
     )
     if error_callout:
       callouts.append(error_callout)
-      card_severity_counts[eda_outcome.EDASeverity.ERROR] += 1
+      card_severity_counts[eda_outcome.EDASeverity.FAIL] += 1
 
     attention_callout = self._create_vif_callout(
         attention_finding,
@@ -1808,7 +1808,7 @@ class MeridianEDA:
     )
     if attention_callout:
       callouts.append(attention_callout)
-      card_severity_counts[eda_outcome.EDASeverity.ATTENTION] += 1
+      card_severity_counts[eda_outcome.EDASeverity.REVIEW] += 1
 
     return callouts, card_severity_counts
 
@@ -1827,7 +1827,7 @@ class MeridianEDA:
     extreme_vif_df = finding.associated_artifact.outlier_df
     vif_spec = self.eda_engine.spec.vif_spec
 
-    if severity == eda_outcome.EDASeverity.ERROR:
+    if severity == eda_outcome.EDASeverity.FAIL:
       failed_variables.update(extreme_vif_df.index)
       threshold = (
           vif_spec.national_threshold
@@ -1839,24 +1839,24 @@ class MeridianEDA:
           if self._meridian.is_national
           else eda_constants.TIME_AND_GEO_AGGREGATION
       )
-      message_template = eda_constants.MULTICOLLINEARITY_ERROR
+      message_template = eda_constants.MULTICOLLINEARITY_FAIL
       message_kwargs = {'threshold': threshold, 'aggregation': aggregation}
-      table_id = eda_constants.EXTREME_VIF_ERROR_TABLE_ID
+      table_id = eda_constants.EXTREME_VIF_FAIL_TABLE_ID
       df_to_process = extreme_vif_df
     else:
       current_vars = extreme_vif_df.index.get_level_values(
           eda_constants.VARIABLE
       )
       df_to_process = extreme_vif_df[~current_vars.isin(failed_variables)]
-      message_template = eda_constants.MULTICOLLINEARITY_ATTENTION
+      message_template = eda_constants.MULTICOLLINEARITY_REVIEW
       message_kwargs = {'threshold': vif_spec.geo_threshold}
-      table_id = eda_constants.EXTREME_VIF_ATTENTION_TABLE_ID
+      table_id = eda_constants.EXTREME_VIF_REVIEW_TABLE_ID
 
     display_table = self._combine_extreme_vif_with_extreme_corr_pairs(
         df_to_process, severity
     )
 
-    if severity == eda_outcome.EDASeverity.ERROR:
+    if severity == eda_outcome.EDASeverity.FAIL:
       n_geos = None
     else:
       n_geos = display_table.index.unique(level=constants.GEO).size
@@ -1888,12 +1888,12 @@ class MeridianEDA:
         row_values=formatted_table.values.tolist(),
         errors=(
             [final_message]
-            if severity == eda_outcome.EDASeverity.ERROR
+            if severity == eda_outcome.EDASeverity.FAIL
             else None
         ),
         warnings=(
             [final_message]
-            if severity == eda_outcome.EDASeverity.ATTENTION
+            if severity == eda_outcome.EDASeverity.REVIEW
             else None
         ),
     )
@@ -2201,8 +2201,8 @@ def _create_display_limit_message(
 def _initialize_severity_counts() -> dict[eda_outcome.EDASeverity, int]:
   """Initializes a dictionary of severity counts."""
   return {
-      eda_outcome.EDASeverity.ATTENTION: 0,
-      eda_outcome.EDASeverity.ERROR: 0,
+      eda_outcome.EDASeverity.REVIEW: 0,
+      eda_outcome.EDASeverity.FAIL: 0,
   }
 
 

@@ -23,10 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Update EDA outcome severity documentation in README_internal.md.
+
 ## [1.3.0] - 2026-08-13
 
 *   Add `currency_code` to `MarketingDataMetadata` proto.
-
 ## [1.2.2] - 2026-06-22
 
 *   Add batch_size to BudgetOptimizationSpec.

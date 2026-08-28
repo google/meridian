@@ -181,8 +181,8 @@ POPULATION_TREATMENT_CHART_ID = 'population-treatment-chart'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_ID = 'relationship-among-variables'
 RELATIONSHIP_BETWEEN_VARIABLES_CARD_TITLE = 'Relationship Among the Variables'
 PAIRWISE_CORRELATION_CHART_ID = 'pairwise-correlation-chart'
-EXTREME_VIF_ERROR_TABLE_ID = 'extreme-vif-error-table'
-EXTREME_VIF_ATTENTION_TABLE_ID = 'extreme-vif-attention-table'
+EXTREME_VIF_FAIL_TABLE_ID = 'extreme-vif-fail-table'
+EXTREME_VIF_REVIEW_TABLE_ID = 'extreme-vif-review-table'
 R_SQUARED_TIME_TABLE_ID = 'r-squared-time-table'
 R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 # category 5
@@ -273,7 +273,7 @@ PAIRWISE_CORRELATION_CHECK_INFO = (
     ' and convergence issues. Consider combining the variables if'
     ' high correlation exists.'
 )
-MULTICOLLINEARITY_ERROR = (
+MULTICOLLINEARITY_FAIL = (
     'Some variables have extreme multicollinearity (VIF'
     ' > {threshold}) across all {aggregation}. Note that'
     ' a common cause of multicollinearity is perfect pairwise'
@@ -281,7 +281,7 @@ MULTICOLLINEARITY_ERROR = (
     ' variable that is a linear combination of other variables.'
     ' Otherwise, consider combining variables.{additional_info}'
 )
-MULTICOLLINEARITY_ATTENTION = (
+MULTICOLLINEARITY_REVIEW = (
     'Some variables have extreme multicollinearity (VIF >'
     ' {threshold}) in certain geo(s). Note that a common'
     ' cause of multicollinearity is perfect pairwise'
@@ -357,7 +357,7 @@ https://developers.google.com/meridian/docs/pre-modeling/amount-data-needed.""")
 
 # The boolean keys indicate whether findings were detected (True) or
 # not (False), and the values are the corresponding message that should be
-# displayed. Example, if there were errors or reviews in the spend and media
+# displayed. Example, if there were fails or reviews in the spend and media
 # unit card (True), then we want to display the finding message,
 # otherwise (False) we display the info message.
 CATEGORY_TO_MESSAGE_BY_STATUS = immutabledict.immutabledict({

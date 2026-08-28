@@ -77,7 +77,7 @@ class EdaOutcomeTest(test_utils.MeridianTestCase):
       check_type=eda_outcome.EDACheckType.PAIRWISE_CORRELATION,
       findings=[
           eda_outcome.EDAFinding(
-              severity=eda_outcome.EDASeverity.ATTENTION,
+              severity=eda_outcome.EDASeverity.REVIEW,
               explanation='explanation for geo',
               finding_cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
               associated_artifact=_GEO_ARTIFACT,
@@ -140,7 +140,7 @@ class EdaOutcomeTest(test_utils.MeridianTestCase):
           testcase_name='single_finding',
           outcome=_GEO_OUTCOME,
           cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
-          severity=eda_outcome.EDASeverity.ATTENTION,
+          severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings=_GEO_OUTCOME.findings,
       ),
       dict(
@@ -154,7 +154,7 @@ class EdaOutcomeTest(test_utils.MeridianTestCase):
           testcase_name='no_findings',
           outcome=_NATIONAL_OUTCOME,
           cause=eda_outcome.FindingCause.MULTICOLLINEARITY,
-          severity=eda_outcome.EDASeverity.ATTENTION,
+          severity=eda_outcome.EDASeverity.REVIEW,
           expected_findings=[],
       ),
   )

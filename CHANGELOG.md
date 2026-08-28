@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Change `EDASeverity` outcome statuses from `INFO`/`ATTENTION`/`ERROR` to
+    `INFO`/`REVIEW`/`FAIL` for consistency across the library.
 *   Attach the use_kpi attribute to the summary metrics dataset.
 *   Add channel-level inspection methods (`get_media_scaling_factor`,
     `get_channel_parameters`, `get_channel_parameter_tensor`) and
