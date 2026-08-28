@@ -507,6 +507,63 @@ class ModelSpecTest(parameterized.TestCase):
     ):
       spec.ModelSpec(knots=3.5)  # pytype: disable=wrong-arg-types
 
+  @parameterized.named_parameters(
+      ("geometric", constants.GEOMETRIC_DECAY),
+      ("binomial", constants.BINOMIAL_DECAY),
+      (
+          "mapping",
+          {
+              "ch1": constants.GEOMETRIC_DECAY,
+              "ch2": constants.BINOMIAL_DECAY,
+          },
+      ),
+  )
+  def test_spec_inits_valid_adstock_decay_spec_works(self, decay_spec):
+    model_spec = spec.ModelSpec(adstock_decay_spec=decay_spec)
+    self.assertEqual(model_spec.adstock_decay_spec, decay_spec)
+
+  @parameterized.named_parameters(
+      (
+          "string",
+          "invalid",
+          (
+              "The `adstock_decay_spec` parameter 'invalid' must be one of"
+              " ['binomial', 'geometric']."
+          ),
+      ),
+      (
+          "mapping",
+          {"ch1": "invalid"},
+          (
+              "The `adstock_decay_spec` for channel 'ch1' must be one of"
+              " ['binomial', 'geometric'], but got 'invalid'."
+          ),
+      ),
+  )
+  def test_spec_inits_invalid_adstock_decay_spec_fails(
+      self, adstock_decay_spec, error_message
+  ):
+    with self.assertRaisesWithLiteralMatch(ValueError, error_message):
+      spec.ModelSpec(adstock_decay_spec=adstock_decay_spec)
+
+  def test_spec_inits_unsupported_adstock_decay_spec_type_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Unsupported type for `adstock_decay_spec` parameter: <class 'int'>",
+    ):
+      spec.ModelSpec(adstock_decay_spec=123)  # pyrefly: ignore[bad-argument-type]
+
+  @parameterized.named_parameters(
+      ("negative", -1),
+      ("boolean", True),
+      ("float", 3.5),
+  )
+  def test_spec_inits_invalid_max_lag_fails(self, max_lag):
+    with self.assertRaisesRegex(
+        ValueError, r"'max_lag' must be a non-negative integer\."
+    ):
+      spec.ModelSpec(max_lag=max_lag)  # pyrefly: ignore[bad-argument-type]
+
 
 if __name__ == "__main__":
   absltest.main()

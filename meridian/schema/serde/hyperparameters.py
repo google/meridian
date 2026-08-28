@@ -208,7 +208,11 @@ class HyperparametersSerde(
       else:
         knots = list(serialized.knots)
 
-    max_lag = serialized.max_lag if serialized.HasField(c.MAX_LAG) else None
+    max_lag = (
+        serialized.max_lag
+        if serialized.HasField(c.MAX_LAG)
+        else c.DEFAULT_MAX_LAG
+    )
 
     roi_calibration_period = (
         backend.make_ndarray(serialized.roi_calibration_period)
@@ -295,7 +299,7 @@ class HyperparametersSerde(
             serialized.media_effects_dist
         ),
         hill_before_adstock=serialized.hill_before_adstock,
-        max_lag=max_lag,  # pyrefly: ignore[bad-argument-type]
+        max_lag=max_lag,
         unique_sigma_for_each_geo=serialized.unique_sigma_for_each_geo,
         media_prior_type=paid_media_prior_type_converter.from_proto(
             serialized.media_prior_type

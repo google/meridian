@@ -372,6 +372,35 @@ class ModelSpec:
           f"Unsupported type for `knots` parameter: {type(self.knots)}."
       )
 
+    if (
+        not isinstance(self.max_lag, int)
+        or isinstance(self.max_lag, bool)
+        or self.max_lag < 0
+    ):
+      raise ValueError(
+          f"'max_lag' must be a non-negative integer. Got: {self.max_lag}."
+      )
+
+    valid_decays = set(constants.ADSTOCK_DECAY_FUNCTIONS)
+    if isinstance(self.adstock_decay_spec, str):
+      if self.adstock_decay_spec not in valid_decays:
+        raise ValueError(
+            f"The `adstock_decay_spec` parameter {self.adstock_decay_spec!r}"
+            f" must be one of {sorted(valid_decays)}."
+        )
+    elif isinstance(self.adstock_decay_spec, Mapping):
+      for channel, decay in self.adstock_decay_spec.items():
+        if decay not in valid_decays:
+          raise ValueError(
+              f"The `adstock_decay_spec` for channel {channel!r} must be"
+              f" one of {sorted(valid_decays)}, but got {decay!r}."
+          )
+    else:
+      raise ValueError(
+          "Unsupported type for `adstock_decay_spec` parameter:"
+          f" {type(self.adstock_decay_spec)}."
+      )
+
     valid_saturations = {e.value for e in SaturationType}
     if isinstance(self.saturation_spec, str):
       if self.saturation_spec not in valid_saturations:
