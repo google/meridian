@@ -20,6 +20,8 @@ from typing import Any
 
 from absl.testing import absltest
 from absl.testing import parameterized
+
+# TODO: Remove for GeoX release.
 from meridian import constants
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants

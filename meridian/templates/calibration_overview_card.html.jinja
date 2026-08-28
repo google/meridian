@@ -1,0 +1,48 @@
+{#
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+#}
+<card id="calibration-overview" class="calibration-overview-card">
+  <card-title>
+    Calibration overview
+  </card-title>
+
+  <infos>
+    <infos-icon>
+      <img src="https://www.gstatic.com/images/icons/material/system/svg/info_outline_24px.svg"
+            alt="info icon" />
+    </infos-icon>
+    <p class="info-text">{{ overview_description | safe }}</p>
+  </infos>
+
+  <div class="plots-section">
+    {% for ch in plotted_channels %}
+      <div class="plot-container">
+        <h3 class="plot-title">{{ ch.channel_name }} calibration</h3>
+        <div id="calibration-overview-chart-{{ ch.chart_id }}"></div>
+      </div>
+    {% endfor %}
+  </div>
+</card>
+
+<script type="text/javascript">
+  (() => {
+    {% for ch in plotted_channels %}
+      {% if ch.chart_json %}
+        const spec_{{ ch.chart_id }} = JSON.parse({{ ch.chart_json|tojson }});
+        vegaEmbed('#calibration-overview-chart-{{ ch.chart_id }}', spec_{{ ch.chart_id }}).catch(console.error);
+      {% endif %}
+    {% endfor %}
+  })();
+</script>
