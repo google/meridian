@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Attach the use_kpi attribute to the summary metrics dataset.
 *   Add channel-level inspection methods (`get_media_scaling_factor`,
     `get_channel_parameters`, `get_channel_parameter_tensor`) and
     `ChannelParameters` dataclass to `ModelContext`.

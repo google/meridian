@@ -2592,138 +2592,131 @@ class Analyzer:
             "Effectiveness is not reported because it does not have a clear"
             " interpretation by time period."
         )
-        return xr.merge(
-            [
-                incremental_outcome,
-                pct_of_contribution,
-            ],
-            compat="no_conflicts",
-        )
+        datasets = [
+            incremental_outcome,
+            pct_of_contribution,
+        ]
       else:
-        return xr.merge(
-            [
-                incremental_outcome,
-                pct_of_contribution,
-                effectiveness,
-            ],
-            compat="no_conflicts",
-        )
-
-    # If non-paid channels are not included, return all metrics, paid and
-    # non-paid.
-    spend_list = []
-    new_spend_tensors = builder.build_unscaled_inputs(
-        new_data=new_data.filter_fields(
-            list(constants.SPEND_DATA) + [constants.TIME]
-        ),
-        required_tensors_names=constants.SPEND_DATA,
-    ).tensors
-    if self.model_context.n_media_channels > 0:
-      spend_list.append(new_spend_tensors.media_spend)
-    if self.model_context.n_rf_channels > 0:
-      spend_list.append(new_spend_tensors.rf_spend)
-    # TODO Add support for 1-dimensional spend.
-    spend_inputs = builder.build_unscaled_inputs(
-        new_data=new_data,
-        selected_geos=selected_geos,
-        selected_times=selected_times,
-    )
-    aggregated_spend = self.filter_and_aggregate_by_indices(
-        tensor=backend.concatenate(spend_list, axis=-1),
-        geo_indices=spend_inputs.geo_indices,
-        time_indices=spend_inputs.time_indices,
-        aggregate_geos=aggregate_geos,
-        aggregate_times=aggregate_times,
-        flexible_time_dim=True,
-    )
-    spend_with_total = backend.concatenate(
-        [  # pyrefly: ignore[bad-argument-type]
-            aggregated_spend,
-            backend.reduce_sum(aggregated_spend, -1, keepdims=True),  # pyrefly: ignore[bad-argument-type]
-        ],
-        axis=-1,
-    )
-    spend_data = self._compute_spend_data_aggregate(
-        spend_with_total=spend_with_total,
-        impressions_with_total=impressions_with_total,
-        xr_dims=xr_dims,
-        xr_coords=xr_coords,  # pyrefly: ignore[bad-argument-type]
-    )
-
-    if not aggregate_times:
-      # Outcome metrics should not be normalized by weekly media metrics, which
-      # do not have a clear interpretation due to lagged effects. Therefore, NaN
-      # values are returned for certain metrics if aggregate_times=False.
-      warnings.warn(
-          "ROI, mROI, Effectiveness, and CPIK are not reported because they "
-          "do not have a clear interpretation by time period."
-      )
-      return xr.merge(
-          [
-              spend_data,
-              incremental_outcome,
-              pct_of_contribution,
-          ],
-          compat="no_conflicts",
-      )
+        datasets = [
+            incremental_outcome,
+            pct_of_contribution,
+            effectiveness,
+        ]
     else:
-      roi = self._compute_roi_aggregate(
-          incremental_outcome_prior=incremental_outcome_prior,
-          incremental_outcome_posterior=incremental_outcome_posterior,
-          xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
-          confidence_level=confidence_level,
-          spend_with_total=spend_with_total,
-      )
-      mroi = self._compute_roi_aggregate(
-          incremental_outcome_prior=incremental_outcome_mroi_prior,
-          incremental_outcome_posterior=incremental_outcome_mroi_posterior,
-          xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
-          confidence_level=confidence_level,
-          spend_with_total=spend_with_total * marginal_roi_incremental_increase,
-          metric_name=constants.MROI,
-          # Drop mROI metric values in the Dataset's data_vars for the
-          # aggregated "All Paid Channels" channel dimension value.
-          # "Marginal ROI" calculation must arbitrarily assume how the
-          # "next dollar" of spend is allocated across "All Paid Channels" in
-          # this case, which may cause confusion in Meridian model and does not
-          # have much practical usefulness, anyway.
-      ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
-      cpik = self._compute_cpik_aggregate(
-          incremental_kpi_prior=self.compute_incremental_outcome_aggregate(
-              use_posterior=False,
-              new_data=new_data.filter_fields(incremental_outcome_fields),
-              use_kpi=True,
-              include_non_paid_channels=False,
-              **dim_kwargs,
-              **batched_kwargs,
+      # If non-paid channels are not included, return all metrics, paid and
+      # non-paid.
+      spend_list = []
+      new_spend_tensors = builder.build_unscaled_inputs(
+          new_data=new_data.filter_fields(
+              list(constants.SPEND_DATA) + [constants.TIME]
           ),
-          incremental_kpi_posterior=self.compute_incremental_outcome_aggregate(
-              use_posterior=True,
-              new_data=new_data.filter_fields(incremental_outcome_fields),
-              use_kpi=True,
-              include_non_paid_channels=False,
-              **dim_kwargs,
-              **batched_kwargs,
-          ),
-          spend_with_total=spend_with_total,
-          xr_dims=xr_dims_with_ci_and_distribution,
-          xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
-          confidence_level=confidence_level,
+          required_tensors_names=constants.SPEND_DATA,
+      ).tensors
+      if self.model_context.n_media_channels > 0:
+        spend_list.append(new_spend_tensors.media_spend)
+      if self.model_context.n_rf_channels > 0:
+        spend_list.append(new_spend_tensors.rf_spend)
+      # TODO Add support for 1-dimensional spend.
+      spend_inputs = builder.build_unscaled_inputs(
+          new_data=new_data,
+          selected_geos=selected_geos,
+          selected_times=selected_times,
       )
-      return xr.merge(
-          [
-              spend_data,
-              incremental_outcome,
-              pct_of_contribution,
-              roi,
-              effectiveness,
-              mroi,
-              cpik,
+      aggregated_spend = self.filter_and_aggregate_by_indices(
+          tensor=backend.concatenate(spend_list, axis=-1),
+          geo_indices=spend_inputs.geo_indices,
+          time_indices=spend_inputs.time_indices,
+          aggregate_geos=aggregate_geos,
+          aggregate_times=aggregate_times,
+          flexible_time_dim=True,
+      )
+      spend_with_total = backend.concatenate(
+          [  # pyrefly: ignore[bad-argument-type]
+              aggregated_spend,
+              backend.reduce_sum(aggregated_spend, -1, keepdims=True),  # pyrefly: ignore[bad-argument-type]
           ],
-          compat="no_conflicts",
+          axis=-1,
       )
+      spend_data = self._compute_spend_data_aggregate(
+          spend_with_total=spend_with_total,
+          impressions_with_total=impressions_with_total,
+          xr_dims=xr_dims,
+          xr_coords=xr_coords,  # pyrefly: ignore[bad-argument-type]
+      )
+
+      if not aggregate_times:
+        # Outcome metrics should not be normalized by weekly media metrics,
+        # which do not have a clear interpretation due to lagged effects.
+        # Therefore, NaN values are returned for certain metrics if
+        # aggregate_times=False.
+        warnings.warn(
+            "ROI, mROI, Effectiveness, and CPIK are not reported because they "
+            "do not have a clear interpretation by time period."
+        )
+        datasets = [
+            spend_data,
+            incremental_outcome,
+            pct_of_contribution,
+        ]
+      else:
+        roi = self._compute_roi_aggregate(
+            incremental_outcome_prior=incremental_outcome_prior,
+            incremental_outcome_posterior=incremental_outcome_posterior,
+            xr_dims=xr_dims_with_ci_and_distribution,
+            xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
+            confidence_level=confidence_level,
+            spend_with_total=spend_with_total,
+        )
+        mroi = self._compute_roi_aggregate(
+            incremental_outcome_prior=incremental_outcome_mroi_prior,
+            incremental_outcome_posterior=incremental_outcome_mroi_posterior,
+            xr_dims=xr_dims_with_ci_and_distribution,
+            xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
+            confidence_level=confidence_level,
+            spend_with_total=spend_with_total * marginal_roi_incremental_increase,
+            metric_name=constants.MROI,
+            # Drop mROI metric values in the Dataset's data_vars for the
+            # aggregated "All Paid Channels" channel dimension value.
+            # "Marginal ROI" calculation must arbitrarily assume how the
+            # "next dollar" of spend is allocated across "All Paid Channels" in
+            # this case, which may cause confusion in Meridian model and does
+            # not have much practical usefulness, anyway.
+        ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
+        cpik = self._compute_cpik_aggregate(
+            incremental_kpi_prior=self.compute_incremental_outcome_aggregate(
+                use_posterior=False,
+                new_data=new_data.filter_fields(incremental_outcome_fields),
+                use_kpi=True,
+                include_non_paid_channels=False,
+                **dim_kwargs,
+                **batched_kwargs,
+            ),
+            incremental_kpi_posterior=self.compute_incremental_outcome_aggregate(
+                use_posterior=True,
+                new_data=new_data.filter_fields(incremental_outcome_fields),
+                use_kpi=True,
+                include_non_paid_channels=False,
+                **dim_kwargs,
+                **batched_kwargs,
+            ),
+            spend_with_total=spend_with_total,
+            xr_dims=xr_dims_with_ci_and_distribution,
+            xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
+            confidence_level=confidence_level,
+        )
+        datasets = [
+            spend_data,
+            incremental_outcome,
+            pct_of_contribution,
+            roi,
+            effectiveness,
+            mroi,
+            cpik,
+        ]
+
+    merged = xr.merge(datasets, compat="no_conflicts")
+    merged.attrs[constants.USE_KPI] = use_kpi
+    return merged
 
   def get_aggregated_impressions(
       self,

@@ -4101,6 +4101,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.CPIK,
         ],
     )
+    self.assertFalse(media_summary.attrs[constants.USE_KPI])
     backend_test_utils.assert_allclose(
         media_summary.impressions, analysis_test_utils.SAMPLE_IMPRESSIONS
     )
@@ -4185,6 +4186,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.CPIK,
         ],
     )
+    self.assertTrue(media_summary.attrs[constants.USE_KPI])
 
     backend_test_utils.assert_allclose(
         media_summary.incremental_outcome,
@@ -4209,6 +4211,61 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         analysis_test_utils.SAMPLE_MROI_KPI,
         atol=1e-3,
         rtol=1e-3,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="use_kpi_default_false",
+          use_kpi=False,
+          include_non_paid_channels=False,
+          aggregate_times=True,
+          expected_use_kpi=False,
+      ),
+      dict(
+          testcase_name="use_kpi_true",
+          use_kpi=True,
+          include_non_paid_channels=False,
+          aggregate_times=True,
+          expected_use_kpi=True,
+      ),
+      dict(
+          testcase_name="non_paid_channels_aggregate_times_true",
+          use_kpi=True,
+          include_non_paid_channels=True,
+          aggregate_times=True,
+          expected_use_kpi=True,
+      ),
+      dict(
+          testcase_name="non_paid_channels_aggregate_times_false",
+          use_kpi=False,
+          include_non_paid_channels=True,
+          aggregate_times=False,
+          expected_use_kpi=False,
+      ),
+      dict(
+          testcase_name="paid_channels_aggregate_times_false",
+          use_kpi=True,
+          include_non_paid_channels=False,
+          aggregate_times=False,
+          expected_use_kpi=True,
+      ),
+  )
+  def test_summary_metrics_sets_use_kpi_attribute(
+      self,
+      use_kpi: bool,
+      include_non_paid_channels: bool,
+      aggregate_times: bool,
+      expected_use_kpi: bool,
+  ):
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", category=UserWarning)
+      media_summary = self.analyzer.summary_metrics(
+          use_kpi=use_kpi,
+          include_non_paid_channels=include_non_paid_channels,
+          aggregate_times=aggregate_times,
+      )
+    self.assertEqual(
+        media_summary.attrs.get(constants.USE_KPI), expected_use_kpi
     )
 
   def test_media_summary_with_new_data_returns_correct_values(self):
