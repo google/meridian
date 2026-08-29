@@ -992,23 +992,6 @@ class ModelTest(
     self.assertEqual(prior_group.sizes[constants.CHAIN], 1)
     self.assertEqual(prior_group.sizes[constants.DRAW], n_draws)
 
-  def test_populate_cached_properties_activates_cache(self):
-    meridian = model.Meridian(input_data=self.input_data_with_media_only)
-
-    # Verify cached properties are not in __dict__ initially
-    self.assertNotIn("prior_sampler_callable", meridian.__dict__)
-    self.assertNotIn("posterior_sampler_callable", meridian.__dict__)
-
-    with mock.patch.object(
-        meridian.model_context, "populate_cached_properties", autospec=True
-    ) as mock_context_populate:
-      meridian.populate_cached_properties()
-      mock_context_populate.assert_called_once()
-
-    # Verify cached properties are now frozen/populated in __dict__
-    self.assertIn("prior_sampler_callable", meridian.__dict__)
-    self.assertIn("posterior_sampler_callable", meridian.__dict__)
-
 
 class ModelPersistenceTest(
     test_utils.MeridianTestCase,

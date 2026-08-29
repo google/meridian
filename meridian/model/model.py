@@ -970,26 +970,6 @@ class Meridian:
         n_times_output=n_times_output,
     )
 
-  def populate_cached_properties(self):
-    """Eagerly activates all cached properties.
-
-    This is useful for creating a `tf.function` computation graph with this
-    Meridian object as part of a captured closure. Within the computation graph,
-    internal state mutations are problematic, and so this method freezes the
-    object's states before the computation graph is created.
-    """
-    self._model_context.populate_cached_properties()
-    cls = self.__class__
-    # "Freeze" all @cached_property attributes by simply accessing them (with
-    # `getattr()`).
-    cached_properties = [
-        attr
-        for attr in dir(self)
-        if isinstance(getattr(cls, attr, cls), functools.cached_property)
-    ]
-    for attr in cached_properties:
-      _ = getattr(self, attr)
-
   # TODO: Remove this method.
   def create_inference_data_coords(
       self, n_chains: int, n_draws: int

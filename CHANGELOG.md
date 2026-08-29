@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   **Breaking change**: Removed `Meridian.populate_cached_properties()`. Use `ModelContext.populate_cached_properties()` directly.
 *   Change `EDASeverity` outcome statuses from `INFO`/`ATTENTION`/`ERROR` to
     `INFO`/`REVIEW`/`FAIL` for consistency across the library.
 *   Attach the use_kpi attribute to the summary metrics dataset.
