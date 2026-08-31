@@ -278,7 +278,7 @@ class ModelReviewer:
         config=config,
         selected_geos=selected_geos,
         selected_times=selected_times,
-    )  # pytype: disable=not-instantiable
+    )  # pyrefly: ignore[abstract-instance]
     self._results[check_class] = instance.run()
 
   def _is_relevant(self, check_class: CheckType) -> bool:

@@ -100,12 +100,7 @@ limitations under the License.
             </div>
           </td>
           <td>
-            The overall calibration score is {{ "%.1f"|format(calibration_score) }}/100.
-            {% if recommended_channels_text %}
-              We recommend incrementality experiments to improve prior accuracy for {{ recommended_channels_text }}.
-            {% else %}
-              No channels require calibration.
-            {% endif %}
+            {{ calibration_recommendation_text }}
           </td>
         </tr>
         {% endif %}

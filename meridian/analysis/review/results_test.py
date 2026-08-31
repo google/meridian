@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Mapping, Sequence
 import json
 import os
 from typing import Any
@@ -380,6 +381,151 @@ class PriorPosteriorShiftCheckResultTest(parameterized.TestCase):
         channel_results=[],
     )
     self.assertEqual(result.recommendation, expected_recommendation)
+
+
+def _mock_check_results(
+    high_roi_channels: Sequence[str] = (),
+    low_roi_channels: Sequence[str] = (),
+    high_variance_channels: Sequence[str] = (),
+    low_correlation_channels: Sequence[str] = (),
+    include_passing_checks: bool = False,
+    high_roi_mean: float = 30.0,
+    high_roi_spend_share: float = 0.5,
+    relative_width_ratio: float = 2.0,
+    max_abs_correlation: float = 0.05,
+) -> list[results.CheckResult]:
+  res = []
+  if high_roi_channels or low_roi_channels:
+    channel_results = [
+        results.ImplausibleROIChannelResult(
+            case=results.ImplausibleROIChannelCases.ROI_HIGH,
+            channel_name=ch,
+            spend_share=high_roi_spend_share,
+            roi_mean=high_roi_mean,
+            spend_weighted_roi=high_roi_spend_share * high_roi_mean,
+        )
+        for ch in high_roi_channels
+    ] + [
+        results.ImplausibleROIChannelResult(
+            case=results.ImplausibleROIChannelCases.ROI_LOW,
+            channel_name=ch,
+            spend_share=0.5,
+            roi_mean=0.1,
+            spend_weighted_roi=0.05,
+        )
+        for ch in low_roi_channels
+    ]
+    res.append(
+        results.ImplausibleROICheckResult(
+            case=results.ImplausibleROIAggregateCases.REVIEW,
+            channel_results=channel_results,
+            high_roi_channels=list(high_roi_channels),
+            low_roi_channels=list(low_roi_channels),
+            aggregate_details={},
+        )
+    )
+  elif include_passing_checks:
+    res.append(
+        results.ImplausibleROICheckResult(
+            case=results.ImplausibleROIAggregateCases.PASS,
+            channel_results=[],
+            high_roi_channels=[],
+            low_roi_channels=[],
+            aggregate_details={},
+        )
+    )
+  if high_variance_channels:
+    channel_results = [
+        results.HighVarianceChannelResult(
+            channel_name=ch,
+            case=results.HighVarianceChannelCases.HIGH_VARIANCE,
+            spend_share=0.5,
+            relative_width_ratio=relative_width_ratio,
+        )
+        for ch in high_variance_channels
+    ]
+    res.append(
+        results.HighVarianceCheckResult(
+            case=results.HighVarianceAggregateCases.REVIEW,
+            channel_results=channel_results,
+            high_variance_channels=list(high_variance_channels),
+        )
+    )
+  elif include_passing_checks:
+    res.append(
+        results.HighVarianceCheckResult(
+            case=results.HighVarianceAggregateCases.PASS,
+            channel_results=[],
+            high_variance_channels=[],
+        )
+    )
+  if low_correlation_channels:
+    channel_results = [
+        results.PotentialBiasChannelResult(
+            channel_name=ch,
+            case=results.PotentialBiasChannelCases.LOW_CORRELATION,
+            max_abs_correlation=max_abs_correlation,
+        )
+        for ch in low_correlation_channels
+    ]
+    res.append(
+        results.PotentialBiasCheckResult(
+            case=results.PotentialBiasAggregateCases.REVIEW,
+            channel_results=channel_results,
+            low_correlation_channels=list(low_correlation_channels),
+            correlation_matrix=xr.DataArray(),
+        )
+    )
+  elif include_passing_checks:
+    res.append(
+        results.PotentialBiasCheckResult(
+            case=results.PotentialBiasAggregateCases.PASS,
+            channel_results=[],
+            low_correlation_channels=[],
+            correlation_matrix=xr.DataArray(),
+        )
+    )
+  return res
+
+
+def _create_test_summary(
+    overall_status: results.Status = results.Status.PASS,
+    summary_message: str = "Passed",
+    results_list: Sequence[results.CheckResult] | None = None,
+    health_score: float = 90.0,
+    channel_calibration_status: Mapping[str, bool] | None = None,
+    channel_scores: Mapping[str, float] | None = None,
+    calibrated_channel_names: Sequence[str] | None = None,
+    include_passing_checks: bool = False,
+    **kwargs: Any,
+) -> results.ReviewSummary:
+  if results_list is None:
+    results_list = (
+        _mock_check_results(include_passing_checks=True)
+        if include_passing_checks
+        else ()
+    )
+  if channel_calibration_status is None and channel_scores is not None:
+    channel_calibration_status = {
+        ch: (ch in (calibrated_channel_names or ())) for ch in channel_scores
+    }
+  status_dict = dict(channel_calibration_status or {})
+  if calibrated_channel_names is None and status_dict:
+    calibrated_channel_names = [
+        ch for ch, is_cal in status_dict.items() if is_cal
+    ]
+  summary = results.ReviewSummary(
+      overall_status=overall_status,
+      summary_message=summary_message,
+      results=list(results_list),
+      health_score=health_score,
+      channel_calibration_status=status_dict,
+      calibrated_channel_names=list(calibrated_channel_names or ()),
+      **kwargs,
+  )
+  if channel_scores is not None:
+    summary.channel_calibration_scores = dict(channel_scores)
+  return summary
 
 
 class ReviewSummaryTest(parameterized.TestCase):

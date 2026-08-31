@@ -16,7 +16,7 @@
 
 import abc
 import collections
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import dataclasses
 import enum
 import functools

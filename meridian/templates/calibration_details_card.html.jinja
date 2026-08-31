@@ -18,15 +18,15 @@ limitations under the License.
     Calibration details
   </card-title>
 
-  <div class="plots-section">
-    <infos>
-      <infos-icon>
-        <img src="https://www.gstatic.com/images/icons/material/system/svg/info_outline_24px.svg"
-              alt="info icon" />
-      </infos-icon>
-      <p class="info-text">{{ details_description | safe }}</p>
-    </infos>
+  <infos>
+    <infos-icon>
+      <img src="https://www.gstatic.com/images/icons/material/system/svg/info_outline_24px.svg"
+            alt="info icon" />
+    </infos-icon>
+    <p class="info-text">{{ details_description | safe }}</p>
+  </infos>
 
+  <div class="plots-section">
     {% for ch in plotted_channels %}
       <div class="plot-container">
         <div id="calibration-details-chart-{{ ch.chart_id }}"></div>
