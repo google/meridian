@@ -507,7 +507,7 @@ def _create_test_summary(
     )
   if channel_calibration_status is None and channel_scores is not None:
     channel_calibration_status = {
-        ch: (ch in (calibrated_channel_names or ())) for ch in channel_scores
+        ch: ch in (calibrated_channel_names or ()) for ch in channel_scores
     }
   status_dict = dict(channel_calibration_status or {})
   if calibrated_channel_names is None and status_dict:
