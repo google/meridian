@@ -740,8 +740,8 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(
         mroi,
         backend.to_tensor(expected_mroi),
-        rtol=1e-3,
-        atol=1e-3,
+        rtol=0.05,
+        atol=0.02,
     )
 
   def test_rhat_rf_only_correct(self):

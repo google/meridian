@@ -77,14 +77,21 @@ def _initialize_backend() -> Backend:
 _TRUTHY_JAX_X64_VALUES = ("1", "true")
 
 
+def _configure_jax_precision() -> None:
+  """Configures JAX 64-bit precision based on the MERIDIAN_ENABLE_JAX_X64 env var."""
+  _enable_jax_x64_str = os.environ.get("MERIDIAN_ENABLE_JAX_X64", "true")
+  import jax  # pylint: disable=g-import-not-at-top,unused-import # pytype: disable=import-error
+
+  if _enable_jax_x64_str.lower() in _TRUTHY_JAX_X64_VALUES:
+    jax.config.update("jax_enable_x64", True)
+  else:
+    jax.config.update("jax_enable_x64", False)
+
+
 _BACKEND = _initialize_backend()
 
 if _BACKEND == Backend.JAX:
-  _enable_jax_x64_str = os.environ.get("MERIDIAN_ENABLE_JAX_X64", "false")
-  if _enable_jax_x64_str.lower() in _TRUTHY_JAX_X64_VALUES:
-    import jax  # pylint: disable=g-import-not-at-top,unused-import # pytype: disable=import-error
-
-    jax.config.update("jax_enable_x64", True)
+  _configure_jax_precision()
 
 
 def set_backend(backend: Union[Backend, str]) -> None:
@@ -123,6 +130,8 @@ def set_backend(backend: Union[Backend, str]) -> None:
     raise ValueError("Backend must be a Backend enum member or a string.")
 
   _BACKEND = backend_enum
+  if _BACKEND == Backend.JAX:
+    _configure_jax_precision()
 
 
 def get_backend() -> Backend:

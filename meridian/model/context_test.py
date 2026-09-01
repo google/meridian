@@ -38,6 +38,14 @@ _MEDIA_CHANNEL_NAMES = ("ch_0", "ch_1", "ch_2")
 _RF_CHANNEL_NAMES = ("rf_ch_0", "rf_ch_1", "rf_ch_2")
 
 
+def _cast_dist_arg(arg: Any) -> Any:
+  if isinstance(arg, (list, tuple)):
+    return np.array(arg, dtype=backend.np_float_dtype)
+  if isinstance(arg, (int, float)):
+    return backend.np_float_dtype(arg)
+  return arg
+
+
 class ContextTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -1002,7 +1010,8 @@ class ContextTest(
       dist_name: str,
       media_prior_type: str,
   ):
-    dist = backend.tfd.Normal(*dist_args, name=dist_name)
+    processed_args = [_cast_dist_arg(arg) for arg in dist_args]
+    dist = backend.tfd.Normal(*processed_args, name=dist_name)
     prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -1039,7 +1048,8 @@ class ContextTest(
       dist_name: str,
       media_prior_type: str,
   ):
-    dist = backend.tfd.Normal(*dist_args, name=dist_name)
+    processed_args = [_cast_dist_arg(arg) for arg in dist_args]
+    dist = backend.tfd.Normal(*processed_args, name=dist_name)
     prior_dist = prior_distribution.PriorDistribution(**{dist_name: dist})
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -1143,7 +1153,9 @@ class ContextTest(
       wrong_prior_type: str,
   ):
     custom_distributions = {
-        name: backend.tfd.LogNormal(**kwargs)
+        name: backend.tfd.LogNormal(
+            **{k: _cast_dist_arg(v) for k, v in kwargs.items()}
+        )
         for name, kwargs in custom_dist_kwargs.items()
     }
     # Create prior distribution with given parameters.
@@ -1332,7 +1344,10 @@ class ContextTest(
 
   def test_custom_priors_okay_with_array_params(self):
     prior = prior_distribution.PriorDistribution(
-        roi_m=backend.tfd.LogNormal([1, 1], [1, 1])
+        roi_m=backend.tfd.LogNormal(
+            np.array([1, 1], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+        )
     )
     data = self.input_data_non_revenue_no_revenue_per_kpi
     model_context = context.ModelContext(

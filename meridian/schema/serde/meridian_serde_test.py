@@ -431,6 +431,11 @@ class MeridianSerdeTest(parameterized.TestCase):
             * (_POSTERIOR_DATASET_CHAINS * _POSTERIOR_DATASET_DRAWS),
         ),
     )
+    rhat_dtype = (
+        types_pb2.DT_DOUBLE
+        if backend.standardize_dtype(backend.float_dtype) == 'float64'
+        else types_pb2.DT_FLOAT
+    )
     expected_proto = meridian_pb.ModelConvergence(
         convergence=True,
         mcmc_sampling_trace=expected_sampling_trace,
@@ -440,7 +445,7 @@ class MeridianSerdeTest(parameterized.TestCase):
                     name=constants.ALPHA_M,
                     tensor=test_data.make_tensor_proto(
                         dims=[1, 2, 3],
-                        dtype=types_pb2.DT_FLOAT,
+                        dtype=rhat_dtype,
                         tensor_content=np.array(
                             self._r_hats[constants.ALPHA_M]
                         ).tobytes(),
@@ -450,7 +455,7 @@ class MeridianSerdeTest(parameterized.TestCase):
                     name=constants.BETA_GRF,
                     tensor=test_data.make_tensor_proto(
                         dims=[4, 5],
-                        dtype=types_pb2.DT_FLOAT,
+                        dtype=rhat_dtype,
                         tensor_content=np.array(
                             self._r_hats[constants.BETA_GRF]
                         ).tobytes(),
@@ -460,7 +465,7 @@ class MeridianSerdeTest(parameterized.TestCase):
                     name=constants.TAU_G,
                     tensor=test_data.make_tensor_proto(
                         dims=[6],
-                        dtype=types_pb2.DT_FLOAT,
+                        dtype=rhat_dtype,
                         tensor_content=np.array(
                             self._r_hats[constants.TAU_G]
                         ).tobytes(),

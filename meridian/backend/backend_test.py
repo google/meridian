@@ -184,6 +184,14 @@ class BackendJaxX64Test(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
+          testcase_name="default_unset",
+          env_value=None,
+          expected_x64=True,
+          expected_float_dtype=jnp.float64,
+          expected_np_float_dtype=np.float64,
+          expected_default_float="float64",
+      ),
+      dict(
           testcase_name="enabled_1",
           env_value="1",
           expected_x64=True,
@@ -240,7 +248,11 @@ class BackendJaxX64Test(parameterized.TestCase):
       expected_np_float_dtype,
       expected_default_float,
   ):
-    os.environ["MERIDIAN_ENABLE_JAX_X64"] = env_value
+    if env_value is None:
+      if "MERIDIAN_ENABLE_JAX_X64" in os.environ:
+        del os.environ["MERIDIAN_ENABLE_JAX_X64"]
+    else:
+      os.environ["MERIDIAN_ENABLE_JAX_X64"] = env_value
     os.environ["MERIDIAN_BACKEND"] = "JAX"
 
     with warnings.catch_warnings():
@@ -303,6 +315,9 @@ class BackendTest(parameterized.TestCase):
       yield
     finally:
       jax.config.update("jax_enable_x64", original)
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        importlib.reload(backend)
 
   def setUp(self):
     super().setUp()
@@ -411,7 +426,29 @@ class BackendTest(parameterized.TestCase):
       dict(testcase_name="only_none", types=[None, None], expected="int64"),
   )
   def test_result_type(self, types, expected):
+    if expected == "float32":
+      expected = backend._DEFAULT_FLOAT
     self.assertEqual(backend.result_type(*types), expected)
+
+  def test_result_type_tensorflow(self):
+    self._set_backend_for_test(_TF)
+    self.assertEqual(backend.result_type(float), "float32")
+    self.assertEqual(backend.result_type(int, float), "float32")
+    self.assertEqual(backend.result_type(int), "int64")
+
+  def test_result_type_jax_default_float64(self):
+    self._set_backend_for_test(_JAX)
+    self.assertEqual(backend.result_type(float), "float64")
+    self.assertEqual(backend.result_type(int, float), "float64")
+    self.assertEqual(backend.result_type(int), "int64")
+
+  def test_result_type_jax_x64_disabled(self):
+    self._set_backend_for_test(_JAX)
+    with self._set_jax_x64(False):
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        importlib.reload(backend)
+      self.assertEqual(backend.result_type(float), "float32")
 
   @parameterized.named_parameters(
       ("tensorflow", _TF),
@@ -425,11 +462,10 @@ class BackendTest(parameterized.TestCase):
 
     if backend_name == _JAX:
       self.assertIsInstance(list_tensor, jax.Array)
-      self.assertEqual(list_tensor.dtype, jnp.float32)
+      self.assertEqual(list_tensor.dtype, jnp.float64)
 
       tensor_f64 = backend.to_tensor(py_list, dtype=jnp.float64)
-      # JAX will downcast to float32 by default.
-      self.assertEqual(tensor_f64.dtype, jnp.float32)
+      self.assertEqual(tensor_f64.dtype, jnp.float64)
     else:
       self.assertIsInstance(list_tensor, tf.Tensor)
       self.assertEqual(list_tensor.dtype, tf.float32)
@@ -449,8 +485,8 @@ class BackendTest(parameterized.TestCase):
 
     if backend_name == _JAX:
       self.assertIsInstance(np_tensor, jax.Array)
-      # JAX downcasts float64 NumPy arrays to float32 by default
-      self.assertEqual(np_tensor.dtype, jnp.float32)
+      # JAX preserves float64 NumPy arrays when x64 is enabled by default.
+      self.assertEqual(np_tensor.dtype, jnp.float64)
     else:
       self.assertIsInstance(np_tensor, tf.Tensor)
       self.assertEqual(np_tensor.dtype, tf.float64)
@@ -535,9 +571,9 @@ class BackendTest(parameterized.TestCase):
     tensor = backend.to_tensor(f64_data)
 
     if backend_name == _JAX:
-      # JAX backend defaults to float32
+      # JAX backend defaults to float64
       self.assertEqual(tensor.dtype, backend.float_dtype)
-      test_utils.assert_allclose(tensor, f64_data.astype(np.float32))
+      test_utils.assert_allclose(tensor, f64_data)
     else:
       self.assertEqual(tensor.dtype, tf.float64)
       test_utils.assert_allclose(tensor, f64_data)
@@ -580,7 +616,7 @@ class BackendTest(parameterized.TestCase):
             x for x in w if "Casting to float32" in str(x.message)
         ]
         self.assertNotEmpty(relevant_warnings)
-        self.assertEqual(tensor.dtype, backend.float_dtype)
+        self.assertEqual(tensor.dtype, jnp.float32)
 
   def test_to_tensor_defers_to_jax_default_when_x64_enabled_for_jax(self):
     """Tests no warning is issued when x64 is enabled."""
@@ -635,7 +671,7 @@ class BackendTest(parameterized.TestCase):
             x for x in w if "Casting to float32" in str(x.message)
         ]
         self.assertNotEmpty(relevant_warnings)
-        self.assertEqual(tensor.dtype, backend.float_dtype)
+        self.assertEqual(tensor.dtype, jnp.float32)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
   def test_to_tensor_supports_pandas_series(self, backend_name):
@@ -649,7 +685,7 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(tensor, backend.Tensor)
     if backend_name == _JAX:
       self.assertEqual(tensor.dtype, backend.float_dtype)
-      test_utils.assert_allclose(tensor, pd_data.values.astype(np.float32))
+      test_utils.assert_allclose(tensor, pd_data.values)
     else:
       self.assertEqual(tensor.dtype, tf.float64)
       test_utils.assert_allclose(tensor, pd_data.values)
@@ -666,7 +702,7 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(tensor, backend.Tensor)
     if backend_name == _JAX:
       self.assertEqual(tensor.dtype, backend.float_dtype)
-      test_utils.assert_allclose(tensor, xr_data.values.astype(np.float32))
+      test_utils.assert_allclose(tensor, xr_data.values)
     else:
       self.assertEqual(tensor.dtype, tf.float64)
       test_utils.assert_allclose(tensor, xr_data.values)
@@ -818,16 +854,16 @@ class BackendTest(parameterized.TestCase):
           expected=np.array([0, 1, 2], dtype=np.int16),
       ),
       dict(
-          testcase_name="with_float_input_defaults_to_float32",
+          testcase_name="with_float_input_defaults_to_float",
           args=[5.0],
           kwargs={},
-          expected=np.arange(5.0, dtype=backend.np_float_dtype),
+          expected=np.arange(5.0),
       ),
       dict(
           testcase_name="explicit_dtype_tf",
           args=[3],
           kwargs={"dtype": tf.float32},
-          expected=np.array([0.0, 1.0, 2.0], dtype=backend.np_float_dtype),
+          expected=np.array([0.0, 1.0, 2.0], dtype=np.float32),
       ),
   ]
 
@@ -842,12 +878,8 @@ class BackendTest(parameterized.TestCase):
     kwargs = test_case["kwargs"]
     expected = test_case["expected"]
 
-    # JAX disables 64-bit precision by default and will silently downcast.
-    if backend_name == _JAX:
-      if expected.dtype == np.int64:
-        expected = expected.astype(np.int32)
-      elif expected.dtype == np.float64:
-        expected = expected.astype(np.float32)
+    if "dtype" not in kwargs and any(isinstance(a, float) for a in args):
+      expected = expected.astype(backend.np_float_dtype)
 
     result = backend.arange(*args, **kwargs)
 

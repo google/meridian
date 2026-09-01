@@ -5038,9 +5038,21 @@ class OptimizerKPITest(parameterized.TestCase):
     )
     custom_model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=backend.tfd.Normal(0.0, 5.0, name=c.KNOT_VALUES),
-            roi_m=backend.tfd.LogNormal(0.2, 0.8, name=c.ROI_M),
-            roi_rf=backend.tfd.LogNormal(0.2, 0.8, name=c.ROI_RF),
+            knot_values=backend.tfd.Normal(
+                backend.np_float_dtype(0.0),
+                backend.np_float_dtype(5.0),
+                name=c.KNOT_VALUES,
+            ),
+            roi_m=backend.tfd.LogNormal(
+                backend.np_float_dtype(0.2),
+                backend.np_float_dtype(0.8),
+                name=c.ROI_M,
+            ),
+            roi_rf=backend.tfd.LogNormal(
+                backend.np_float_dtype(0.2),
+                backend.np_float_dtype(0.8),
+                name=c.ROI_RF,
+            ),
         )
     )
     self.inference_data_media_and_rf_kpi = az.InferenceData(

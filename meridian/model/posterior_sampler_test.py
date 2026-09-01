@@ -67,21 +67,22 @@ class PosteriorMCMCSamplerTest(
       test_utils.assert_seed_not_allequal(seed1, seed2)
 
   def test_get_joint_dist_zeros(self):
+    zero = backend.np_float_dtype(0.0)
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=backend.tfd.Deterministic(0),
-            tau_g_excl_baseline=backend.tfd.Deterministic(0),
-            beta_m=backend.tfd.Deterministic(0),
-            beta_rf=backend.tfd.Deterministic(0),
-            eta_m=backend.tfd.Deterministic(0),
-            eta_rf=backend.tfd.Deterministic(0),
-            gamma_c=backend.tfd.Deterministic(0),
-            xi_c=backend.tfd.Deterministic(0),
-            alpha_m=backend.tfd.Deterministic(0),
-            alpha_rf=backend.tfd.Deterministic(0),
-            sigma=backend.tfd.Deterministic(0),
-            roi_m=backend.tfd.Deterministic(0),
-            roi_rf=backend.tfd.Deterministic(0),
+            knot_values=backend.tfd.Deterministic(zero),
+            tau_g_excl_baseline=backend.tfd.Deterministic(zero),
+            beta_m=backend.tfd.Deterministic(zero),
+            beta_rf=backend.tfd.Deterministic(zero),
+            eta_m=backend.tfd.Deterministic(zero),
+            eta_rf=backend.tfd.Deterministic(zero),
+            gamma_c=backend.tfd.Deterministic(zero),
+            xi_c=backend.tfd.Deterministic(zero),
+            alpha_m=backend.tfd.Deterministic(zero),
+            alpha_rf=backend.tfd.Deterministic(zero),
+            sigma=backend.tfd.Deterministic(zero),
+            roi_m=backend.tfd.Deterministic(zero),
+            roi_rf=backend.tfd.Deterministic(zero),
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )
@@ -101,21 +102,22 @@ class PosteriorMCMCSamplerTest(
     )
 
   def test_get_joint_dist_zeros_no_controls_data(self):
+    zero = backend.np_float_dtype(0.0)
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
-            knot_values=backend.tfd.Deterministic(0),
-            tau_g_excl_baseline=backend.tfd.Deterministic(0),
-            beta_m=backend.tfd.Deterministic(0),
-            beta_rf=backend.tfd.Deterministic(0),
-            eta_m=backend.tfd.Deterministic(0),
-            eta_rf=backend.tfd.Deterministic(0),
-            gamma_c=backend.tfd.Deterministic(0),
-            xi_c=backend.tfd.Deterministic(0),
-            alpha_m=backend.tfd.Deterministic(0),
-            alpha_rf=backend.tfd.Deterministic(0),
-            sigma=backend.tfd.Deterministic(0),
-            roi_m=backend.tfd.Deterministic(0),
-            roi_rf=backend.tfd.Deterministic(0),
+            knot_values=backend.tfd.Deterministic(zero),
+            tau_g_excl_baseline=backend.tfd.Deterministic(zero),
+            beta_m=backend.tfd.Deterministic(zero),
+            beta_rf=backend.tfd.Deterministic(zero),
+            eta_m=backend.tfd.Deterministic(zero),
+            eta_rf=backend.tfd.Deterministic(zero),
+            gamma_c=backend.tfd.Deterministic(zero),
+            xi_c=backend.tfd.Deterministic(zero),
+            alpha_m=backend.tfd.Deterministic(zero),
+            alpha_rf=backend.tfd.Deterministic(zero),
+            sigma=backend.tfd.Deterministic(zero),
+            roi_m=backend.tfd.Deterministic(zero),
+            roi_rf=backend.tfd.Deterministic(zero),
         ),
         media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
     )

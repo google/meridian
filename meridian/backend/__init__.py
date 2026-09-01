@@ -702,7 +702,7 @@ def _jax_convert_to_tensor(data, dtype=None):
     return data
 
   # If the user provides float64 data but does not request a specific dtype,
-  # and JAX 64-bit mode is disabled (default), JAX would implicitly truncate.
+  # and JAX 64-bit mode is disabled, JAX would implicitly truncate.
   # We cast to float32 and warn the user to prevent silent mismatches.
   if dtype is None:
     is_float64_input = hasattr(data, "dtype") and data.dtype == np.float64

@@ -17,6 +17,7 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
 from meridian.data import test_utils
@@ -38,9 +39,10 @@ def _create_prior_distribution_log_entry(
 ) -> tuple[str, str]:
   """Returns a loggable representation of a TensorFlow Distribution."""
   key = f"prior.{field_name}"
+  default_float = backend.standardize_dtype(backend.float_dtype)
   value = (
       f'tfp.distributions.{dist}("{field_name}", batch_shape=[],'
-      " event_shape=[], dtype=float32)"
+      f" event_shape=[], dtype={default_float})"
   )
   return key, value
 

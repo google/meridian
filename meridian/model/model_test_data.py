@@ -41,7 +41,9 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> backend.Tensor:
     A tensor in the same format as returned by the _xla_windowed_adaptive_nuts()
     function.
   """
-  tensor = backend.to_tensor(array)
+  tensor = backend.to_tensor(
+      array, dtype=backend.float_dtype if array.dtype.kind == "f" else None
+  )
   perm = [1, 0] + [i for i in range(2, len(tensor.shape))]
   transposed_tensor = backend.transpose(tensor, perm=perm)
 
@@ -50,10 +52,11 @@ def _convert_with_swap(array: xr.DataArray, n_burnin: int) -> backend.Tensor:
   if array.dtype == bool:
     pad_value = False
   else:
-    pad_value = 0.0 if array.dtype.kind == "f" else 0
+    pad_value = backend.np_float_dtype(0.0) if array.dtype.kind == "f" else 0
 
   burnin = backend.fill(
-      [n_burnin] + list(transposed_tensor.shape[1:]), pad_value
+      [n_burnin] + list(transposed_tensor.shape[1:]),
+      pad_value,
   )
   return backend.concatenate(
       [burnin, transposed_tensor],
