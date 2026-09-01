@@ -135,41 +135,41 @@ class ConvergenceCheck(
     rhats = self._analyzer.get_rhat()
     with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=RuntimeWarning)
-      max_rhats = {k: np.nanmax(v) for k, v in rhats.items()}  # pyrefly: ignore[no-matching-overload]
+      max_r_hats = {k: np.nanmax(v) for k, v in rhats.items()}  # pyrefly: ignore[no-matching-overload]
 
     valid_rhat_items = [
-        item for item in max_rhats.items() if not np.isnan(item[1])
+        item for item in max_r_hats.items() if not np.isnan(item[1])
     ]
     if not valid_rhat_items:
       return results.ConvergenceCheckResult(
           case=results.ConvergenceCases.CONVERGED,
           config=self._config,
-          max_rhat=np.nan,
+          max_r_hat=np.nan,
           max_parameter=np.nan,  # pyrefly: ignore[bad-argument-type]
       )
 
-    max_parameter, max_rhat = max(max_rhats.items(), key=lambda item: item[1])
+    max_parameter, max_r_hat = max(max_r_hats.items(), key=lambda item: item[1])
 
     # Case 1: Converged.
-    if max_rhat < self._config.convergence_threshold:
+    if max_r_hat < self._config.convergence_threshold:
       case = results.ConvergenceCases.CONVERGED
 
     # Case 2: Not fully converged, but potentially acceptable.
     elif (
         self._config.convergence_threshold
-        <= max_rhat
+        <= max_r_hat
         < self._config.not_fully_converged_threshold
     ):
       case = results.ConvergenceCases.NOT_FULLY_CONVERGED
 
     # Case 3: Not converged and unacceptable.
-    else:  # max_rhat >= divergence_threshold
+    else:  # max_r_hat >= divergence_threshold
       case = results.ConvergenceCases.NOT_CONVERGED
 
     return results.ConvergenceCheckResult(
         case=case,
         config=self._config,
-        max_rhat=max_rhat,
+        max_r_hat=max_r_hat,
         max_parameter=max_parameter,
     )
 

@@ -703,11 +703,18 @@ USE_POSTERIOR = 'use_posterior'
 # R-hat summary metrics.
 PARAM = 'param'
 N_PARAMS = 'n_params'
-AVG_RHAT = 'avg_rhat'
-MAX_RHAT = 'max_rhat'
-PERCENT_BAD_RHAT = 'percent_bad_rhat'
-ROW_IDX_BAD_RHAT = 'row_idx_bad_rhat'
-COL_IDX_BAD_RHAT = 'col_idx_bad_rhat'
+AVG_R_HAT = 'avg_r_hat'
+MAX_R_HAT = 'max_r_hat'
+PERCENT_BAD_R_HAT = 'percent_bad_r_hat'
+ROW_IDX_BAD_R_HAT = 'row_idx_bad_r_hat'
+COL_IDX_BAD_R_HAT = 'col_idx_bad_r_hat'
+
+# Backward compatibility aliases for Meridian < 2.0.
+AVG_RHAT = AVG_R_HAT
+MAX_RHAT = MAX_R_HAT
+PERCENT_BAD_RHAT = PERCENT_BAD_R_HAT
+ROW_IDX_BAD_RHAT = ROW_IDX_BAD_R_HAT
+COL_IDX_BAD_RHAT = COL_IDX_BAD_R_HAT
 
 
 # Analyzer Parameters.

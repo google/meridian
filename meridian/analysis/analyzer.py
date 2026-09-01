@@ -148,6 +148,36 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   return xr.Dataset(data_vars=xr_data, coords=xr_coords)
 
 
+class RhatSummaryDataFrame(pd.DataFrame):
+  """A DataFrame supporting backward compatibility for legacy R-hat column names."""
+
+  _LEGACY_COLUMN_MAP = {
+      "avg_rhat": constants.AVG_R_HAT,
+      "max_rhat": constants.MAX_R_HAT,
+      "percent_bad_rhat": constants.PERCENT_BAD_R_HAT,
+      "row_idx_bad_rhat": constants.ROW_IDX_BAD_R_HAT,
+      "col_idx_bad_rhat": constants.COL_IDX_BAD_R_HAT,
+  }
+
+  @property
+  def _constructor(self):
+    return RhatSummaryDataFrame
+
+  def __getitem__(self, key):
+    if (
+        isinstance(key, str)
+        and key in self._LEGACY_COLUMN_MAP
+        and key not in self.columns
+    ):
+      key = self._LEGACY_COLUMN_MAP[key]
+    elif isinstance(key, list):
+      key = [
+          self._LEGACY_COLUMN_MAP.get(k, k) if k not in self.columns else k
+          for k in key
+      ]
+    return super().__getitem__(key)
+
+
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -3506,13 +3536,13 @@ class Analyzer:
       A DataFrame with the following columns:
 
       *   `n_params`: The number of respective parameters in the model.
-      *   `avg_rhat`: The average R-hat value for the respective parameter.
-      *   `max_rhat`: The maximum R-hat value for the respective parameter.
-      *   `percent_bad_rhat`: The percentage of R-hat values for the respective
+      *   `avg_r_hat`: The average R-hat value for the respective parameter.
+      *   `max_r_hat`: The maximum R-hat value for the respective parameter.
+      *   `percent_bad_r_hat`: The percentage of R-hat values for the respective
           parameter that are greater than `bad_rhat_threshold`.
-      *   `row_idx_bad_rhat`: The row indices of the R-hat values that are
+      *   `row_idx_bad_r_hat`: The row indices of the R-hat values that are
           greater than `bad_rhat_threshold`.
-      *   `col_idx_bad_rhat`: The column indices of the R-hat values that are
+      *   `col_idx_bad_r_hat`: The column indices of the R-hat values that are
           greater than `bad_rhat_threshold`.
 
     Raises:
@@ -3550,16 +3580,16 @@ class Analyzer:
           pd.Series({
               constants.PARAM: param,
               constants.N_PARAMS: np.prod(rhat[param].shape),
-              constants.AVG_RHAT: np.nanmean(rhat[param]),  # pyrefly: ignore[no-matching-overload]
-              constants.MAX_RHAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
-              constants.PERCENT_BAD_RHAT: np.nanmean(
+              constants.AVG_R_HAT: np.nanmean(rhat[param]),  # pyrefly: ignore[no-matching-overload]
+              constants.MAX_R_HAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
+              constants.PERCENT_BAD_R_HAT: np.nanmean(
                   rhat[param] > bad_rhat_threshold  # pyrefly: ignore[unsupported-operation]
               ),
-              constants.ROW_IDX_BAD_RHAT: row_idx,
-              constants.COL_IDX_BAD_RHAT: col_idx,
+              constants.ROW_IDX_BAD_R_HAT: row_idx,
+              constants.COL_IDX_BAD_R_HAT: col_idx,
           })
       )
-    return pd.DataFrame(rhat_summary)
+    return RhatSummaryDataFrame(rhat_summary)
 
   def response_curves(
       self,

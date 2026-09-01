@@ -217,6 +217,17 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
           set(rhat_summary.param),
           expected_param_names,
       )
+    with self.subTest("test_backward_compatible_columns"):
+      np.testing.assert_array_equal(
+          rhat_summary["max_rhat"], rhat_summary[constants.MAX_R_HAT]
+      )
+      np.testing.assert_array_equal(
+          rhat_summary["avg_rhat"], rhat_summary[constants.AVG_R_HAT]
+      )
+      np.testing.assert_array_equal(
+          rhat_summary[["max_rhat", "avg_rhat"]],
+          rhat_summary[[constants.MAX_R_HAT, constants.AVG_R_HAT]],
+      )
 
   @parameterized.product(
       selected_geos=[None, ["geo_0"]],

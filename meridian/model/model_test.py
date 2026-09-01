@@ -44,7 +44,7 @@ CONVERGENCE_CHECK_RESULT_NOT_CONVERGED = results.ConvergenceCheckResult(
     config=mock.create_autospec(
         results.configs.ConvergenceConfig, spec_set=True
     ),
-    max_rhat=1.5,
+    max_r_hat=1.5,
     max_parameter="beta",
 )
 CONVERGENCE_CHECK_RESULT_CONVERGED = results.ConvergenceCheckResult(
@@ -52,7 +52,7 @@ CONVERGENCE_CHECK_RESULT_CONVERGED = results.ConvergenceCheckResult(
     config=mock.create_autospec(
         results.configs.ConvergenceConfig, spec_set=True
     ),
-    max_rhat=1.01,
+    max_r_hat=1.01,
     max_parameter="beta",
 )
 BASELINE_CHECK_RESULT_PASS = results.BaselineCheckResult(

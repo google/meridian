@@ -358,9 +358,9 @@ class ModelDiagnostics:
 
     # If the MCMC sampling fails, the r-hat value calculated will be very large.
     if (rhat[c.RHAT] > 1e10).any():
-      max_rhat = max(rhat[c.RHAT])
+      max_r_hat = max(rhat[c.RHAT])
       raise model.MCMCSamplingError(
-          f'MCMC sampling failed with a maximum R-hat value of {max_rhat}.'
+          f'MCMC sampling failed with a maximum R-hat value of {max_r_hat}.'
       )
 
     # Drop any parameters with a deterministic prior, such as slope_m, which
