@@ -29,6 +29,8 @@ dependencies = [
   "babel",
   "bidict",
   "immutabledict",
+  "jax == 0.7.2",
+  "jaxlib == 0.7.2",
   "joblib",
   "matplotlib < 3.11.0",
   "natsort >= 7.1.1, < 8",
@@ -37,7 +39,7 @@ dependencies = [
   "scipy >= 1.13.1, < 2",
   "statsmodels >= 0.14.5, < 0.15",
   "tensorflow >= 2.21.0, < 2.22",
-  "tfp-nightly == 0.26.0.dev20260130",
+  "tfp-nightly[substrates-jax] == 0.26.0.dev20260130",
   "tf-keras >= 2.21.0, < 2.22",
   "xarray",
 ]

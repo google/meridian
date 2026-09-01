@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   **Breaking change**: Toggle default backend from TensorFlow to JAX.
 *   Make 64-bit precision the default for the JAX backend. Users can opt out and
     use 32-bit precision by setting `MERIDIAN_ENABLE_JAX_X64=false`.
 *   **Breaking change**: Rename `max_rhat` to `max_r_hat` in

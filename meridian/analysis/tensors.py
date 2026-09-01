@@ -386,7 +386,10 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
         if not bool(np.all(backend.to_tensor(backend.equal(a, b)))):  # pyrefly: ignore[no-matching-overload]
           return False
       except (ValueError, TypeError):
-        if a != b:
+        if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+          if not np.array_equal(a, b):
+            return False
+        elif a != b:
           return False
     return True
 

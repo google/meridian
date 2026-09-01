@@ -98,8 +98,8 @@ class BackendInitializationTest(parameterized.TestCase):
 
     config_mod, backend_mod = self._import_backend_modules()
 
-    self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
-    self.assertIs(backend_mod.Tensor, tf.Tensor)
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
+    self.assertIs(backend_mod.Tensor, jax.Array)
 
   @parameterized.named_parameters(
       ("lowercase", "tensorflow"),
@@ -135,8 +135,8 @@ class BackendInitializationTest(parameterized.TestCase):
         "Invalid MERIDIAN_BACKEND environment variable: 'pytorch'",
         str(cm.warning),
     )
-    self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
-    self.assertIs(backend_mod.Tensor, tf.Tensor)
+    self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
+    self.assertIs(backend_mod.Tensor, jax.Array)
 
 
 _TF = config.Backend.TENSORFLOW.value
