@@ -21,6 +21,7 @@ from typing import Sequence
 import warnings
 from meridian import constants
 from meridian.model import prior_distribution
+# TODO: Remove copybara strip for release.
 import numpy as np
 
 __all__ = [
@@ -420,6 +421,7 @@ class ModelSpec:
           "Unsupported type for `saturation_spec` parameter:"
           f" {type(self.saturation_spec)}."
       )
+  # TODO: Remove copybara strip for release.
 
   @property
   def effective_media_prior_type(self) -> str:
