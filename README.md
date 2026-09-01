@@ -102,8 +102,9 @@ started quickly with using Meridian:
 | [Post-modeling][7]          | Post-modeling guidance for model fit, visualizations, optimizations, refreshing the model, and debugging. |
 | [Scenario planning][8]      | Plan budget allocation with Meridian on Colab & Data Studio interactively. |
 | [Migrate from LMMM][9]      | Learn about the differences between Meridian and LightweightMMM as you consider migrating. |
-| [API Reference][10]         | API reference documentation for the Meridian package. |
-| [Reference list][11]        | White papers and other referenced material.    |
+| [Full-funnel colab][10]     | Learn how to build a full-funnel MMM with intermediate mediator variables. |
+| [API Reference][11]         | API reference documentation for the Meridian package. |
+| [Reference list][12]        | White papers and other referenced material.    |
 
 [1]: https://developers.google.com/meridian
 [2]: https://developers.google.com/meridian/docs/basics/meridian-introduction
@@ -114,8 +115,9 @@ started quickly with using Meridian:
 [7]: https://developers.google.com/meridian/docs/post-modeling/model-fit
 [8]: https://developers.google.com/meridian/docs/scenario-planning/meridian-scenario-planner
 [9]: https://developers.google.com/meridian/docs/migrate
-[10]: https://developers.google.com/meridian/reference/api/meridian
-[11]: https://developers.google.com/meridian/docs/reference-list
+[10]: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/Meridian_Full_Funnel.ipynb
+[11]: https://developers.google.com/meridian/reference/api/meridian
+[12]: https://developers.google.com/meridian/docs/reference-list
 
 ## Support
 
