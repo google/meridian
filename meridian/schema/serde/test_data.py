@@ -4808,7 +4808,7 @@ CUSTOM_HYPERPARAMETERS_PROTO_1 = meridian_pb.Hyperparameters(
     organic_media_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION,
     organic_rf_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION,
     non_media_treatments_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION,
-    knots=[2],
+    n_knots=2,
     baseline_geo_string='baseline_geo',
     enable_aks=False,
     global_adstock_decay='binomial',
@@ -4851,7 +4851,7 @@ CUSTOM_HYPERPARAMETERS_PROTO_2 = meridian_pb.Hyperparameters(
     organic_media_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_CONTRIBUTION,
     organic_rf_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_COEFFICIENT,
     non_media_treatments_prior_type=_NonPaidTreatmentsPriorType.NON_PAID_TREATMENTS_PRIOR_TYPE_COEFFICIENT,
-    knots=[1, 5, 8],
+    knot_locations=meridian_pb.KnotLocations(locations=[1, 5, 8]),
     baseline_geo_int=3,
     roi_calibration_period=make_tensor_proto(
         dims=[2, 3],

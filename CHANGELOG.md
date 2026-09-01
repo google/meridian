@@ -39,6 +39,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Add `currency_code` as an optional ISO 4217 model specification attribute
     on `InputData` and `InputDataBuilder`, with automatic symbol resolution for
     reporting and optimization visualizations.
+*   Fix single-element `knots` deserialization ambiguity by introducing
+    `knots_spec` (`n_knots` and `knot_locations`) in the `Hyperparameters` proto
+    and SerDe, deprecating `knots` with backwards-compatible rehydration
+    support.
 
 ## [1.8.0] - 2026-08-14
 

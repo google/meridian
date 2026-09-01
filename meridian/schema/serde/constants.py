@@ -31,6 +31,10 @@ GLOBAL_SATURATION = 'global_saturation'
 SATURATION_BY_CHANNEL = 'saturation_by_channel'
 DEFAULT_SATURATION = 'hill'
 
+KNOTS_SPEC = 'knots_spec'
+N_KNOTS = 'n_knots'
+KNOT_LOCATIONS = 'knot_locations'
+
 # Constants for marketing data protobuf structure
 GEO_INFO = 'geo_info'
 METADATA = 'metadata'

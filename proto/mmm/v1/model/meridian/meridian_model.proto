@@ -370,6 +370,13 @@ message NonMediaBaselineValue {
   }
 }
 
+// Specifies explicit knot locations for time effects.
+message KnotLocations {
+  // A list of integers indicating the explicit knot locations (time indices)
+  // used to estimate time effects.
+  repeated int32 locations = 1;
+}
+
 // Hyperparameters for the MMM model.
 message Hyperparameters {
   reserved 5;
@@ -451,15 +458,18 @@ message Hyperparameters {
 
   // A (single-value) integer or a list of integers, indicating the knots used
   // to estimate time effects.
-  // If provided as a list of integers, its indices correspond to the indices of
-  // the time coordinates in the model.
-  // If provided as a single integer, then there are knots with locations
-  // equally spaced across time periods.
-  // If unset, then the number of knots used is equal to the number of time
-  // periods in the case of a geo model (i.e. each time period has its own
-  // regression coefficient). If unset in a national model, then the model
-  // uses `1` as the number of knots.
-  repeated int32 knots = 6;
+  //
+  // Deprecated. Use `knots_spec` (`n_knots` or `knot_locations`) instead.
+  repeated int32 knots = 6 [deprecated = true];
+
+  // Specifies the knots used to estimate time effects.
+  oneof knots_spec {
+    // Number of equally spaced knots across time periods.
+    int32 n_knots = 28;
+
+    // Explicit knot locations (time indices).
+    KnotLocations knot_locations = 29;
+  }
 
   // A boolean indicating whether to use the Automatic Knot Selection
   // algorithm to select optimal number of knots for running the model instead

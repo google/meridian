@@ -14,7 +14,7 @@
 
 """Serde for Hyperparameters."""
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 import warnings
 
 import bidict
@@ -115,10 +115,10 @@ class HyperparametersSerde(
     if obj.max_lag is not None:
       hyperparameters_proto.max_lag = obj.max_lag
 
-    if isinstance(obj.knots, int):
-      hyperparameters_proto.knots.append(obj.knots)
-    elif isinstance(obj.knots, list):
-      hyperparameters_proto.knots.extend(obj.knots)
+    if isinstance(obj.knots, int) and not isinstance(obj.knots, bool):
+      hyperparameters_proto.n_knots = obj.knots
+    elif isinstance(obj.knots, Collection):
+      hyperparameters_proto.knot_locations.locations.extend(obj.knots)
 
     if isinstance(obj.baseline_geo, str):
       hyperparameters_proto.baseline_geo_string = obj.baseline_geo
@@ -202,7 +202,14 @@ class HyperparametersSerde(
       baseline_geo = serialized.baseline_geo_string
 
     knots = None
-    if serialized.knots:
+    knots_field = serialized.WhichOneof(sc.KNOTS_SPEC)
+    if knots_field == sc.N_KNOTS:
+      knots = serialized.n_knots
+    elif knots_field == sc.KNOT_LOCATIONS:
+      knots = list(serialized.knot_locations.locations)
+    # TODO: Remove fallback for legacy 'knots' repeated field once
+    # downstream internal callers in ads/lift/mmm have migrated.
+    elif serialized.knots:
       if len(serialized.knots) == 1:
         knots = serialized.knots[0]
       else:

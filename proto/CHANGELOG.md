@@ -24,6 +24,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 *   Update EDA outcome severity documentation in README_internal.md.
+*   Add `knots_spec` oneof (`n_knots` and `knot_locations`) to `Hyperparameters`
+    proto to disambiguate single-element knots serialization and
+    deserialization, deprecating repeated field `knots`.
 
 ## [1.3.0] - 2026-08-13
 

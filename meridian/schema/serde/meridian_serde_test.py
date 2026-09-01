@@ -806,6 +806,48 @@ class MeridianSerdeTest(parameterized.TestCase):
               posterior=_POSTERIOR_DATASET,
           ),
       ),
+      dict(
+          testcase_name='single_knot_location_zero',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=[0]),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='single_knot_location_two',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=[2]),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='scalar_knots_two',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=2),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='multi_knot_locations',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=[1, 5, 8]),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='single_knot_tuple_zero',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=(0,)),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='multi_knot_tuple',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=(1, 5, 8)),
+          inf_data_fn=az.InferenceData,
+      ),
+      dict(
+          testcase_name='multi_knot_numpy_array',
+          input_data=_INPUT_DATA,
+          model_spec_fn=lambda: spec.ModelSpec(knots=np.array([1, 5, 8])),
+          inf_data_fn=az.InferenceData,
+      ),
   )
   def test_serialize_deserialize_round_trip(
       self,
@@ -849,6 +891,22 @@ class MeridianSerdeTest(parameterized.TestCase):
 
       self.assertEqual(
           original_model.model_spec.knots, deserialized_model.model_spec.knots
+      )
+      if original_model.model_spec.knots is not None:
+        self.assertIs(
+            type(original_model.model_spec.knots),
+            type(deserialized_model.model_spec.knots),
+        )
+      np.testing.assert_array_equal(
+          original_model.knot_info.knot_locations,
+          deserialized_model.knot_info.knot_locations,
+      )
+      self.assertEqual(
+          original_model.knot_info.n_knots, deserialized_model.knot_info.n_knots
+      )
+      np.testing.assert_allclose(
+          original_model.knot_info.weights,
+          deserialized_model.knot_info.weights,
       )
       self.assertEqual(
           original_model.model_spec.max_lag,
