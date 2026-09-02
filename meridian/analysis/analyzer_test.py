@@ -392,8 +392,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_time_dim_names(self):
     with self.assertRaisesRegex(
         ValueError,
-        r"`selected_times` must match the time dimension names from "
-        r"meridian\.InputData\.",
+        r"`selected_times` must match the time dimension coordinates from",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -403,12 +402,11 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   def test_filter_and_aggregate_geos_and_times_incorrect_time_bool(self):
     with self.assertRaisesRegex(
         ValueError,
-        r"Boolean `selected_times` must have the same number of elements as "
-        r"there are time period coordinates in `tensor`\.",
+        r"`selected_times` must be a list of strings\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
-          selected_times=[True] + [False] * (_N_MEDIA_TIMES - 1),
+          selected_times=[True] + [False] * (_N_MEDIA_TIMES - 1),  # pyrefly: ignore[bad-argument-type]
       )
 
   def test_filter_and_aggregate_geos_and_times_incorrect_selected_times_type(
@@ -416,7 +414,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(
         ValueError,
-        r"`selected_times` must be a list of strings or a list of booleans\.",
+        r"`selected_times` must be a list of strings\.",
     ):
       self.analyzer_media_only.filter_and_aggregate_geos_and_times(
           backend.to_tensor(self.input_data_media_only.media_spend),
@@ -460,6 +458,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         new_data=tensors.DataTensors(
             media=self.meridian_media_only.media_tensors.media[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian_media_only.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian_media_only.input_data.time.values[-10:]),
         ),
     )
     backend_test_utils.assert_allclose(
@@ -536,7 +535,9 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         dtype=backend.float_dtype,
     )
     mroi = self.analyzer_media_only.marginal_roi(
-        new_data=tensors.DataTensors(media_spend=new_media_spend)
+        new_data=tensors.DataTensors(
+            media_spend=new_media_spend,
+        )
     )
     np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))  # pyrefly: ignore[no-matching-overload]
 
@@ -546,7 +547,9 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         dtype=backend.float_dtype,
     )
     cpik = self.analyzer_media_only.cpik(
-        new_data=tensors.DataTensors(media_spend=new_media_spend)
+        new_data=tensors.DataTensors(
+            media_spend=new_media_spend,
+        )
     )
     backend_test_utils.assert_allclose(
         cpik, backend.zeros((_N_CHAINS, _N_KEEP, _N_MEDIA_CHANNELS)), atol=2e-6
@@ -702,6 +705,7 @@ class AnalyzerRFOnlyTest(backend_test_utils.MeridianTestCase):
             reach=self.meridian_rf_only.rf_tensors.reach[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
             frequency=self.meridian_rf_only.rf_tensors.frequency[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian_rf_only.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian_rf_only.input_data.time.values[-10:]),
         )
     )
     backend_test_utils.assert_allclose(
@@ -887,7 +891,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         [[[0.5, 0.6], [0.7, 0.8]], [[0.9, 1.0], [1.1, 1.2]]]
     )
 
-    data_tensors = tensors.DataTensors(media=media)
+    data_tensors = tensors.DataTensors(
+        media=media,
+        time=backend.to_tensor(["2021-01-01", "2021-01-08", "2021-01-15"]),
+    )
     dist_tensors = tensors.DistributionTensors(
         tau_g=tau_g,
         mu_t=mu_t,
@@ -939,6 +946,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         media=media,
         controls=controls,
         non_media_treatments=non_media_treatments,
+        time=backend.to_tensor(["2021-01-01", "2021-01-08", "2021-01-15"]),
     )
     dist_tensors = tensors.DistributionTensors(
         tau_g=tau_g,
@@ -1378,15 +1386,21 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
 
   def test_incremental_outcome_flexible_times_selected_times_wrong_type(self):
+    new_time = [
+        "2021-01-01",
+        "2021-01-08",
+        "2021-01-15",
+        "2021-01-22",
+        "2021-01-29",
+        "2021-02-05",
+        "2021-02-12",
+        "2021-02-19",
+        "2021-02-26",
+        "2021-03-05",
+    ]
     with self.assertRaisesRegex(
         ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `selected_times` must be a list of booleans with length"
-        r" equal to the number of time periods in the new data, or \(2\)"
-        r" `selected_times` must be a list of strings and `new_time` must be"
-        r" provided and `selected_times` must be a subset of `new_time`\.",
+        r"`selected_times` must match the time dimension coordinates from",
     ):
       self.analyzer.incremental_outcome(
           new_data=tensors.DataTensors(
@@ -1404,6 +1418,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                   (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
               ),
               revenue_per_kpi=backend.ones((_N_GEOS, 10)),
+              time=new_time,
           ),
           selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
@@ -1411,16 +1426,22 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_incremental_outcome_flexible_times_media_selected_times_wrong_type(
       self,
   ):
+    new_time = [
+        "2021-01-01",
+        "2021-01-08",
+        "2021-01-15",
+        "2021-01-22",
+        "2021-01-29",
+        "2021-02-05",
+        "2021-02-12",
+        "2021-02-19",
+        "2021-02-26",
+        "2021-03-05",
+    ]
     with self.assertRaisesRegex(
         ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `media_selected_times` must be a list of booleans with"
-        r" length equal to the number of time periods in the new data, or \(2\)"
-        r" `media_selected_times` must be a list of strings and `new_time` must"
-        r" be provided and `media_selected_times` must be a subset of"
-        r" `new_time`\.",
+        r"`media_selected_times` must match the time dimension coordinates"
+        r" from",
     ):
       self.analyzer.incremental_outcome(
           new_data=tensors.DataTensors(
@@ -1438,34 +1459,33 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                   (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
               ),
               revenue_per_kpi=backend.ones((_N_GEOS, 10)),
+              time=new_time,
           ),
           media_selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
 
   @parameterized.named_parameters(
       dict(
-          testcase_name="wrong_length",
+          testcase_name="wrong_type_boolean",
           media_selected_times=[False] * (_N_MEDIA_TIMES - 10) + [True],
           expected_message=(
-              r"Boolean `media_selected_times` must have the same number of"
-              r" elements as there are time period coordinates in the media"
-              r" tensors\."
+              r"`media_selected_times` must be a list of strings\."
           ),
       ),
       dict(
           testcase_name="wrong_names",
           media_selected_times=["random_time"],
           expected_message=(
-              r"`media_selected_times` must match the time dimension names from"
-              r" meridian\.InputData\."
+              r"`media_selected_times` must match the time dimension"
+              r" coordinates"
+              r" from"
           ),
       ),
       dict(
-          testcase_name="wrong_type",
+          testcase_name="wrong_type_mixed",
           media_selected_times=["random_time", False, True],
           expected_message=(
-              r"`media_selected_times` must be a list of strings or a list of"
-              r" booleans\."
+              r"`media_selected_times` must be a list of strings\."
           ),
       ),
   )
@@ -1474,7 +1494,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(ValueError, expected_message):
       self.analyzer.incremental_outcome(
-          media_selected_times=media_selected_times
+          media_selected_times=media_selected_times  # pyrefly: ignore[bad-argument-type]
       )
 
   def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
@@ -1487,16 +1507,16 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     outcome = self.analyzer.incremental_outcome(
         new_data=tensors.DataTensors(
-            revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES))
+            revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES)),
         ),
     )
     self.assertEqual(outcome.shape, (_N_CHAINS, _N_KEEP, n_channels))
 
-  def test_incremental_outcome_media_selected_times_all_false_returns_zero(
+  def test_incremental_outcome_empty_media_selected_times_returns_zero(
       self,
   ):
     no_media_times = self.analyzer.incremental_outcome(
-        media_selected_times=[False] * _N_MEDIA_TIMES,
+        media_selected_times=[],
         include_non_paid_channels=False,
     )
     backend_test_utils.assert_allequal(
@@ -1506,12 +1526,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_incremental_outcome_no_overlap_between_media_and_selected_times(
       self,
   ):
-    # If for any time period where media_selected_times is True, selected_times
-    # is False for this time period and the following `max_lag` time periods,
-    # then the incremental outcome should be zero.
+    # If for any time period where media_selected_times is active,
+    # selected_times does not overlap for this time period and the following
+    # `max_lag` time periods, then the incremental outcome should be zero.
     max_lag = self.meridian.model_spec.max_lag
     media_selected_times = [self.meridian.input_data.media_time.values[0]]
-    selected_times = [False] * (max_lag + 1) + [True] * (_N_TIMES - max_lag - 1)
+    selected_times = self.meridian.input_data.time.values[
+        (max_lag + 1) :
+    ].tolist()
     outcome = self.analyzer.incremental_outcome(
         selected_times=selected_times,
         media_selected_times=media_selected_times,
@@ -1522,14 +1544,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   def test_incremental_outcome_media_and_selected_times_overlap_non_zero(self):
     # Incremental outcome should be non-zero when there is at least one time
     # period of overlap between media_selected_times and selected_times. In this
-    # case, media_selected_times is True for week 1 and selected_times is True
-    # for week `max_lag+1` and the following weeks.
+    # case, media_selected_times is for week 1 and selected_times is for week
+    # `max_lag+1` and the following weeks.
     max_lag = self.meridian.model_spec.max_lag
     excess_times = _N_MEDIA_TIMES - _N_TIMES
-    media_selected_times = [True] + [False] * (_N_MEDIA_TIMES - 1)
-    selected_times = [False] * (max_lag - excess_times) + [True] * (
-        _N_TIMES - max_lag + excess_times
-    )
+    media_selected_times = [self.meridian.input_data.media_time.values[0]]
+    selected_times = self.meridian.input_data.time.values[
+        (max_lag - excess_times) :
+    ].tolist()
     outcome = self.analyzer.incremental_outcome(
         selected_times=selected_times,
         media_selected_times=media_selected_times,
@@ -1545,7 +1567,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       selected_times=[
           None,
           ["2021-04-19", "2021-09-13", "2021-12-13"],
-          [False] * (_N_TIMES - 3) + [True] * 3,
+          ["2021-01-25", "2021-02-01"],
       ],
       use_kpi=[False, True],
   )
@@ -1712,19 +1734,19 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         self.analyzer.model_context.input_data.time.values.tolist(),
     )
 
-  def test_incremental_outcome_xr_selected_times_boolean_mask(self):
+  def test_incremental_outcome_xr_selected_times_rejects_boolean_mask(self):
     time_values = self.input_data.time.values.tolist()
     selected_times = (np.arange(len(time_values)) % 2 == 0).tolist()
 
-    outcome_xr = self.analyzer.incremental_outcome_xr(
-        include_non_paid_channels=False,
-        selected_times=selected_times,
-        aggregate_geos=False,
-        aggregate_times=False,
-    )
-
-    expected_times = self.input_data.time.values[selected_times].tolist()
-    self.assertEqual(list(outcome_xr.time.values), expected_times)
+    with self.assertRaisesRegex(
+        ValueError, r"`selected_times` must be a list of strings\."
+    ):
+      self.analyzer.incremental_outcome_xr(
+          include_non_paid_channels=False,
+          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+          aggregate_geos=False,
+          aggregate_times=False,
+      )
 
   def test_incremental_outcome_xr_time_coord_fallback_failure(self):
     # Mock incremental_outcome to return a tensor with a different time size.
@@ -1827,6 +1849,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             reach=self.meridian.rf_tensors.reach[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
             frequency=self.meridian.rf_tensors.frequency[..., -10:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -10:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-10:]),
         ),
         include_non_paid_channels=False,
     )
@@ -1849,6 +1872,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             reach=self.meridian.rf_tensors.reach[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
             frequency=self.meridian.rf_tensors.frequency[..., -15:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -15:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-15:]),
         ),
         aggregate_times=False,
         include_non_paid_channels=False,
@@ -3017,7 +3041,9 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     # All times are selected.
     new_media_spend = backend.to_tensor([[[1, 2], [2, 3], [3, 4]]])
     actual_hist_spend = meridian_analyzer.get_aggregated_spend(
-        new_data=tensors.DataTensors(media_spend=new_media_spend)
+        new_data=tensors.DataTensors(
+            media_spend=new_media_spend,
+        )
     )
     expected_all_spend = np.array([6, 9, 9.3])
     backend_test_utils.assert_allclose(
@@ -3249,19 +3275,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
-  @parameterized.named_parameters(
-      (
-          "str_list",
-          ["2021-01-25", "2021-02-01"],
-      ),
-      (
-          "bool_list",
-          [True, True, False],
-      ),
-  )
   def test_get_aggregated_spend_selected_times_without_aggregate_times_correct_values(
       self,
-      selected_times,
   ):
     self.enter_context(
         mock.patch.object(
@@ -3311,6 +3326,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         inference_data=meridian.inference_data,
     )
 
+    selected_times = ["2021-01-25", "2021-02-01"]
     actual_hist_spend = meridian_analyzer.get_aggregated_spend(
         selected_times=selected_times,
         aggregate_times=False,
@@ -3327,20 +3343,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
-  @parameterized.named_parameters(
-      (
-          "str_list",
-          ["2024-01-01"],
-      ),
-      (
-          "bool_list",
-          [True, False],
-      ),
-  )
   def test_get_aggregated_spend_new_data_selected_times_without_aggregate_times_correct_values(
       self,
-      selected_times,
   ):
+    selected_times = ["2024-01-01"]
     self.enter_context(
         mock.patch.object(
             model.Meridian,
@@ -3691,9 +3697,12 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             * self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-total_times:]),
         ),
         freq_grid=[1.0, 2.0, 3.0],
-        selected_times=[False] * max_lag + [True] * n_new_times,
+        selected_times=list(
+            self.meridian.input_data.time.values[-n_new_times:]
+        ),
     )
     expected = self.analyzer.optimal_freq(
         selected_times=list(self.input_data.time.values)[-n_new_times:],
@@ -3889,8 +3898,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-total_times:]),
         ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
+        selected_times=list(
+            self.meridian.input_data.time.values[-n_new_times:]
+        ),
     )
     expected = self.analyzer.marginal_roi(
         selected_times=list(self.input_data.time.values)[-n_new_times:]
@@ -3952,8 +3964,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-total_times:]),
         ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
+        selected_times=list(
+            self.meridian.input_data.time.values[-n_new_times:]
+        ),
     )
     expected = self.analyzer.roi(
         selected_times=list(self.input_data.time.values)[-n_new_times:]
@@ -3971,7 +3986,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(
         self.analyzer.roi(
             new_data=tensors.DataTensors(
-                media_spend=total_media_spend, rf_spend=total_rf_spend
+                media_spend=total_media_spend,
+                rf_spend=total_rf_spend,
             )
         ),
         self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
@@ -4004,7 +4020,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
 
     roi = self.analyzer.roi(
         new_data=tensors.DataTensors(
-            media_spend=new_media_spend, rf_spend=new_rf_spend
+            media_spend=new_media_spend,
+            rf_spend=new_rf_spend,
         )
     )
 
@@ -4061,8 +4078,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             frequency=self.meridian.rf_tensors.frequency[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             rf_spend=self.meridian.rf_tensors.rf_spend[..., -total_times:, :],  # pyrefly: ignore[unsupported-operation]
             revenue_per_kpi=self.meridian.revenue_per_kpi[..., -total_times:],  # pyrefly: ignore[unsupported-operation]
+            time=list(self.meridian.input_data.time.values[-total_times:]),
         ),
-        selected_times=[False] * max_lag + [True] * n_new_times,
+        selected_times=list(
+            self.meridian.input_data.time.values[-n_new_times:]
+        ),
     )
     expected = self.analyzer.cpik(
         selected_times=list(self.input_data.time.values)[-n_new_times:]
@@ -4556,6 +4576,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
                 ..., -15:, :
             ],
+            time=list(self.meridian.input_data.time.values[-15:]),
         )
     )
     self.assertEqual(
@@ -4592,11 +4613,20 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             organic_frequency=self.meridian.organic_rf_tensors.organic_frequency[  # pyrefly: ignore[unsupported-operation]
                 ..., -5:, :
             ],
+            time=list(self.meridian.input_data.time.values[-5:]),
         ),
-        selected_times=[False, False, True, True, False],
+        selected_times=list(self.meridian.input_data.time.values[-5:][2:4]),
         aggregate_times=False,
     )
-    self.assertEqual(list(summary_metrics.time), [2, 3])
+    actual_times = [
+        t.decode("utf-8") if isinstance(t, bytes) else str(t)
+        for t in summary_metrics.time.values
+    ]
+    expected_times = [
+        t.decode("utf-8") if isinstance(t, bytes) else str(t)
+        for t in self.meridian.input_data.time.values[-5:][2:4]
+    ]
+    self.assertEqual(actual_times, expected_times)
     self.assertEqual(
         list(summary_metrics.data_vars.keys()),
         [
@@ -4636,7 +4666,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         t.decode("utf-8") if isinstance(t, bytes) else str(t)
         for t in summary_metrics.time.values
     ]
-    self.assertEqual(actual_times, ["0", "1", "2", "3", "4"])
+    self.assertEqual(actual_times, custom_dates)
 
   @parameterized.product(
       aggregate_geos=[False, True],
@@ -5144,25 +5174,20 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       dict(
           testcase_name="wrong_type",
           selected_times=["random_time", False, True],
-          expected_message=(
-              r"`selected_times` must be a list of strings or a list of"
-              r" booleans\."
-          ),
+          expected_message=r"`selected_times` must be a list of strings\.",
       ),
       dict(
           testcase_name="wrong_time_dim_names",
           selected_times=["random_time"],
           expected_message=(
-              r"`selected_times` must match the time dimension names from "
-              r"meridian\.InputData\."
+              r"`selected_times` must match the time dimension coordinates from"
           ),
       ),
       dict(
           testcase_name="no_new_data_wrong_time",
           selected_times=["2022-01-01"],
           expected_message=(
-              r"`selected_times` must match the time dimension names from "
-              r"meridian\.InputData\."
+              r"`selected_times` must match the time dimension coordinates from"
           ),
       ),
   )
@@ -5199,13 +5224,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        "If `media`, `reach`, `frequency`, `organic_media`, `organic_reach`,"
-        " `organic_frequency`, `non_media_treatments`, or `revenue_per_kpi` is"
-        " provided with a different number of time periods than in `InputData`,"
-        r" then \(1\) `selected_times` must be a list of booleans with length"
-        r" equal to the number of time periods in the new data, or \(2\)"
-        r" `selected_times` must be a list of strings and `new_time` must be"
-        r" provided and `selected_times` must be a subset of `new_time`\.",
+        r"`selected_times` must match the time dimension coordinates from",
     ):
       self.analyzer.response_curves(
           new_data=new_data, selected_times=["2022-01-01"]
@@ -5284,6 +5303,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           organic_reach=new_data.organic_reach,
           organic_frequency=new_data.organic_frequency,
           non_media_treatments=new_data.non_media_treatments,
+          time=new_data.time,
       )
       optimal_frequency = self.analyzer.optimal_freq(
           new_data=opt_freq_data,
@@ -5305,6 +5325,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           organic_reach=new_data.organic_reach,
           organic_frequency=new_data.organic_frequency,
           non_media_treatments=new_data.non_media_treatments,
+          time=new_data.time,
       )
     else:
       inc_outcome_new_data = new_data
@@ -5488,7 +5509,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
     self.assertLen(batches, len(expected_shapes))
-    shapes = [batch.alpha_m.shape for batch in batches]  # pytype: disable=attribute-error
+    shapes = [batch.alpha_m.shape for batch in batches]  # pyrefly: ignore[missing-attribute]
     self.assertEqual(shapes, expected_shapes)
 
 
@@ -5604,8 +5625,9 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
       calculated_m = np.zeros_like(param_m)
       for i in range(n_m):
         times = mmm.model_spec.roi_calibration_period[:, i]
+        media_selected_times = mmm.input_data.media_time.values[times].tolist()
         ii = mmm_analyzer.incremental_outcome(
-            media_selected_times=times.tolist(),
+            media_selected_times=media_selected_times,
             use_posterior=use_posterior,
         )
         spend = np.einsum(
@@ -5638,8 +5660,9 @@ def check_treatment_parameters(mmm, use_posterior, rtol=1e-3, atol=1e-3):
       calculated_rf = np.zeros_like(param_rf)
       for i in range(n_rf):
         times = mmm.model_spec.rf_roi_calibration_period[:, i]
+        media_selected_times = mmm.input_data.media_time.values[times].tolist()
         ii = mmm_analyzer.incremental_outcome(
-            media_selected_times=times.tolist(),
+            media_selected_times=media_selected_times,
             use_posterior=use_posterior,
         )
         spend = np.einsum(
@@ -5914,7 +5937,7 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
     # spend values can be so small that they cause numerical inaccuracies with
     # ROI priors.)
     total_outcome = np.sum(
-        input_data.kpi.values * input_data.revenue_per_kpi.values  # pytype: disable=attribute-error
+        input_data.kpi.values * input_data.revenue_per_kpi.values  # pyrefly: ignore[missing-attribute]
     )
 
     total_spend_m = np.sum(input_data.media_spend.values, (0, 1))  # pyrefly: ignore[missing-attribute]

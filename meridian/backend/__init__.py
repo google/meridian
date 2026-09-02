@@ -855,8 +855,11 @@ if _BACKEND == config.Backend.JAX:
             "U",
         )
         is_plain_string = isinstance(v, str)
+        is_string_sequence = isinstance(v, (tuple, list)) and all(
+            isinstance(x, str) for x in v
+        )
 
-        if is_numpy_string or is_plain_string:
+        if is_numpy_string or is_plain_string or is_string_sequence:
           aux[k] = v
         else:
           children.append(v)
@@ -1130,7 +1133,7 @@ if _BACKEND == config.Backend.JAX:
   _DEFAULT_FLOAT = "float64" if jax.config.jax_enable_x64 else "float32"
   bool_ = _ops.bool_
   newaxis = _ops.newaxis
-  TensorShape = _jax_tensor_shape
+  TensorShape = _jax_tensor_shape  # pylint: disable=invalid-name
   int32 = _ops.int32
   string = np.bytes_
 
@@ -1558,7 +1561,7 @@ else:
   raise ImportError(f"RNGHandler not implemented for backend: {_BACKEND}")
 
 
-def to_tensor(data: Any, dtype: Optional[Any] = None) -> Tensor:  # type: ignore
+def to_tensor(data: Any, dtype: Optional[Any] = None) -> Tensor:
   """Converts input data to the currently active backend tensor type.
 
   Args:

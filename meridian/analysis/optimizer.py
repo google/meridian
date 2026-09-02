@@ -119,11 +119,8 @@ class OptimizationGrid:
       reach and frequency data, but historical frequency is used for the
       optimization scenario.
     selected_geos: The geo coordinates from the model used in this grid.
-    selected_times: The time coordinates from the model used in this grid. If
-      new data with modified time coordinates is used for optimization, this is
-      a list of booleans indicating which time coordinates are selected.
-      Otherwise, this is a list of strings indicating the time coordinates used
-      in this grid.
+    selected_times: The time coordinates from the model used in this grid. This
+      is a list of strings indicating the time coordinates used in this grid.
   """
 
   _grid_dataset: xr.Dataset
@@ -138,7 +135,7 @@ class OptimizationGrid:
   round_factor: int
   optimal_frequency: np.ndarray | None
   selected_geos: Sequence[str] | None
-  selected_times: Sequence[str] | Sequence[bool] | None
+  selected_times: Sequence[str] | None
   max_frequency: float | None = None
 
   @property
@@ -1038,7 +1035,6 @@ class OptimizationResults:
         start_date=self.optimized_data.start_date,
         end_date=self.optimized_data.end_date,
         new_data=self.new_data,
-        return_flexible_str=True,
     )
     _, ubounds = self.spend_bounds
     upper_bound = (
@@ -1944,7 +1940,7 @@ class BudgetOptimizer:
       tensors_dict[c.REVENUE_PER_KPI] = _expand_tensor(
           revenue_per_kpi, (n_geos, n_times)
       )
-    tensors_dict[c.TIME] = backend.to_tensor(time)
+    tensors_dict[c.TIME] = time
     return tensors.DataTensors(**tensors_dict)
 
   def _validate_grid(
@@ -2008,7 +2004,8 @@ class BudgetOptimizer:
         required_tensors_names=required_tensors,
         model_context=self._analyzer.model_context,
     )
-    time_array = np.asarray(filled_data.time).astype(str)
+    assert filled_data.time is not None
+    time_array = filled_data.time
     first_date = tc.normalize_date(time_array[0])
     last_date = tc.normalize_date(time_array[-1])
 
@@ -2276,6 +2273,7 @@ class BudgetOptimizer:
           rf_impressions=filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
           rf_spend=filled_data.rf_spend,
           revenue_per_kpi=filled_data.revenue_per_kpi,
+          time=filled_data.time,
       )
       optimal_frequency = backend.to_tensor(
           self._analyzer.optimal_freq(
@@ -2399,7 +2397,8 @@ class BudgetOptimizer:
         `reach`, and `frequency` tensors. If `None`, the existing tensors from
         the Meridian object are used. If any of the tensors is provided with a
         different number of time periods than in `InputData`, then all tensors
-        must be provided with the same number of time periods.
+        must be provided with the same number of time periods, and
+        `new_data.time` must be provided.
       optimal_frequency: xr.DataArray with dimension `n_rf_channels`, containing
         the optimal frequency per channel, that maximizes posterior mean roi.
         Value is `None` if the model does not contain reach and frequency data,
@@ -2490,6 +2489,7 @@ class BudgetOptimizer:
         reach=new_reach,
         frequency=new_frequency,
         revenue_per_kpi=filled_data.revenue_per_kpi,
+        time=filled_data.time,
     )
 
     # incremental_outcome here is a tensor with the shape
@@ -2532,7 +2532,10 @@ class BudgetOptimizer:
 
     aggregated_impressions = self._analyzer.get_aggregated_impressions(
         new_data=tensors.DataTensors(
-            media=new_media, reach=new_reach, frequency=new_frequency
+            media=new_media,
+            reach=new_reach,
+            frequency=new_frequency,
+            time=filled_data.time,
         ),
         selected_times=selected_times,
         selected_geos=selected_geos,
@@ -2601,7 +2604,8 @@ class BudgetOptimizer:
         c.CPIK: ([c.CHANNEL, c.METRIC], np.array(cpik, dtype=np.float64)),
     }
 
-    all_times = np.asarray(filled_data.time).astype(str).tolist()
+    assert filled_data.time is not None
+    all_times = list(filled_data.time)
 
     attributes = {
         c.START_DATE: start_date if start_date else all_times[0],
@@ -2635,7 +2639,7 @@ class BudgetOptimizer:
       multipliers_grid: backend.Tensor,
       filled_data: tensors.DataTensors,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
       optimal_frequency: xr.DataArray | None = None,
@@ -2650,15 +2654,14 @@ class BudgetOptimizer:
         number of columns is equal to the number of total channels, containing
         incremental outcome by channel.
       multipliers_grid: A grid derived from spend.
-      filled_data: A `DataTensors` object containing the new `media`,
-        `reach`, `frequency`, and `revenue_per_kpi` tensors.
+      filled_data: A `DataTensors` object containing the new `media`, `reach`,
+        `frequency`, and `revenue_per_kpi` tensors.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Optional list of times to optimize. This can either be a
-        string list containing a subset of time dimension coordinates from
-        `InputData.time` or a boolean list with length equal to the time
-        dimension of the tensor. By default, all time periods are included.
+      selected_times: Optional list of times to optimize. This is a string list
+        containing a subset of time dimension coordinates. By default, all time
+        periods are included.
       use_posterior: Boolean. If `True`, then the incremental outcome is derived
         from the posterior distribution of the model. Otherwise, the prior
         distribution is used.
@@ -2716,6 +2719,7 @@ class BudgetOptimizer:
                     reach=new_reach,
                     frequency=new_frequency,  # pyrefly: ignore[bad-argument-type]
                     revenue_per_kpi=filled_data.revenue_per_kpi,
+                    time=filled_data.time,
                 ),
                 selected_geos=selected_geos,
                 selected_times=selected_times,
@@ -2736,7 +2740,7 @@ class BudgetOptimizer:
       step_size: int,
       new_data: tensors.DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       use_posterior: bool = True,
       use_kpi: bool = False,
       optimal_frequency: xr.DataArray | None = None,
@@ -2761,10 +2765,10 @@ class BudgetOptimizer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Optional list of times to optimize. This can either be a
-        string list containing a subset of time dimension coordinates from
-        `InputData.time` or a boolean list with length equal to the time
-        dimension of the tensor. By default, all time periods are included.
+      selected_times: Optional list of strings containing a subset of dates to
+        include. The values accepted here must match time dimension coordinates
+        from `InputData.time` (or `new_data.time` if `new_data` is provided). By
+        default, all time periods are included.
       use_posterior: Boolean. If `True`, then the incremental outcome is derived
         from the posterior distribution of the model. Otherwise, the prior
         distribution is used.
@@ -2818,14 +2822,6 @@ class BudgetOptimizer:
         required_tensors_names=c.PAID_DATA,
         model_context=model_context,
     )
-    if selected_times is not None and all(
-        isinstance(item, str) for item in selected_times
-    ):
-      target_times_set = tensors.normalize_times_set(selected_times)
-      time_arr = self._analyzer.model_context.input_data.time
-      selected_times = [
-          tensors.normalize_date_str(x) in target_times_set for x in time_arr
-      ]
     for i in range(n_grid_rows):
       self._update_incremental_outcome_grid(
           i=i,
@@ -3267,55 +3263,30 @@ def _expand_selected_times(
     start_date: tc.Date,
     end_date: tc.Date,
     new_data: tensors.DataTensors | None,
-    return_flexible_str: bool = False,
-) -> Sequence[str] | Sequence[bool] | None:
+) -> list[str] | None:
   """Creates selected_times from start_date and end_date.
 
   This function creates `selected_times` argument based on `start_date`,
-  `end_date` and `new_data`. If `new_data` is not used or used with unmodified
-  times, dates are selected from `meridian.input_data.time`. In the flexible
-  time scenario, when `new_data` is provided with modified times, dates are
-  selected from `new_data.time`. In this case, `new_data.time` must be provided
-  and the function returns a list of booleans.
+  `end_date` and `new_data`. If `new_data` is not used or `new_data.time` is
+  None, dates are selected from `model_context.expand_selected_time_dims`.
+  Otherwise, dates are selected from `new_data.expand_selected_time_dims`.
 
   Args:
     model_context: The `ModelContext` object with original data.
     start_date: Start date of the selected time period.
     end_date: End date of the selected time period.
-    new_data: The optional `DataTensors` object. If times are modified in
-      `new_data`, then `new_data.time` must be provided.
-    return_flexible_str: Whether to return a list of strings or a list of
-      booleans in case time is modified in `new_data`.
+    new_data: The optional `DataTensors` object.
 
   Returns:
-    If both `start_date` and `end_date` are `None`, returns `None`. If
-    `new_data` is not used or used with unmodified times, returns a list of
-    strings with selected dates. If `new_data` is used with modified times,
-    returns a list of strings or a list of booleans depending on the
-    `return_flexible_str` argument.
+    If both `start_date` and `end_date` are `None`, returns `None`. Otherwise,
+    returns a list of strings with selected dates.
   """
-  if start_date is None and end_date is None:
-    return None
-
-  new_data = new_data or tensors.DataTensors()
-  if new_data.get_modified_times(model_context=model_context) is None:
-    return model_context.expand_selected_time_dims(
+  if new_data is not None and new_data.time is not None:
+    return new_data.expand_selected_time_dims(
         start_date=start_date,
         end_date=end_date,
     )
-  else:
-    assert new_data.time is not None
-    new_times_str = np.asarray(new_data.time).astype(str).tolist()
-    time_coordinates = tc.TimeCoordinates.from_dates(new_times_str)
-    expanded_dates = time_coordinates.expand_selected_time_dims(
-        start_date=start_date,
-        end_date=end_date,
-    )
-    if expanded_dates is None:
-      expanded_dates = time_coordinates.all_dates
-    expanded_str = [date.strftime(c.DATE_FORMAT) for date in expanded_dates]
-    if return_flexible_str:
-      return [x for x in new_times_str if x in expanded_str]
-    # TODO: Remove once every method uses `new_data.time`.
-    else:
-      return [x in expanded_str for x in new_times_str]
+  return model_context.expand_selected_time_dims(
+      start_date=start_date,
+      end_date=end_date,
+  )

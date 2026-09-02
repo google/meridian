@@ -92,7 +92,9 @@ class WeeklyOptimizationGrid:
     Args:
       analyzer: An `Analyzer` instance with a fitted model.
       new_data: An optional `DataTensors` container with optional counterfactual
-        or future data tensors. Defaults to None.
+        or future data tensors. If any tensors have modified time dimensions,
+        all tensors must have the same number of time periods and
+        `new_data.time` must be provided. Defaults to None.
       start_date: Optional start date selector, inclusive. Defaults to None.
       end_date: Optional end date selector, inclusive. Defaults to None.
       use_posterior: Boolean. If True, the incremental outcome is derived from
@@ -151,15 +153,15 @@ class WeeklyOptimizationGrid:
         required_tensors_names=required_tensors,
         model_context=model_context,
     )
+    assert filled_data.time is not None
     channels = model_context.input_data.get_all_paid_channels()
-    all_times = np.asarray(filled_data.time).astype(str).tolist()
+    all_times = list(filled_data.time)
 
     selected_times_opt = optimizer._expand_selected_times(  # pylint: disable=protected-access
         model_context=model_context,
         start_date=start_date,
         end_date=end_date,
         new_data=filled_data,
-        return_flexible_str=True,
     )
     if selected_times_opt is not None:
       selected_times_list = [
@@ -257,6 +259,7 @@ class WeeklyOptimizationGrid:
             rf_impressions=filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
             rf_spend=filled_data.rf_spend,
             revenue_per_kpi=filled_data.revenue_per_kpi,
+            time=filled_data.time,
         )
         opt_freq_ds = analyzer.optimal_freq(
             new_data=opt_freq_data,
@@ -759,7 +762,7 @@ class WeeklyOptimizationGrid:
       spend_bound_upper: np.ndarray,
       step_size: int,
       spend: np.ndarray | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
   ) -> tuple[np.ndarray, np.ndarray]:
     """Creates spend and incremental outcome grids from weekly grid."""
     n_grid_rows = int(

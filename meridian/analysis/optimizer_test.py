@@ -605,9 +605,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   def test_modified_times_new_data_no_time_throws_exception(self):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        'If the time dimension of a variable in `new_data` is modified, then '
-        'all variables must be provided in `new_data`. The following variables '
-        "are missing: `['time']`.",
+        '`time` must be provided in `new_data` if any time dimension in'
+        ' `new_data` is modified.',
     ):
       self.budget_optimizer_media_and_rf.optimize(
           new_data=tensors.DataTensors(
@@ -741,21 +740,21 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'testcase_name': 'selected_times_range',
           'start_date': '2025-04-07',
           'end_date': '2025-04-21',
-          'expected_times': [False, True, True, True, False],
+          'expected_times': ['2025-04-07', '2025-04-14', '2025-04-21'],
           'expected_dates': ['2025-04-07', '2025-04-21'],
       },
       {
           'testcase_name': 'end_none',
           'start_date': '2025-04-14',
           'end_date': None,
-          'expected_times': [False, False, True, True, True],
+          'expected_times': ['2025-04-14', '2025-04-21', '2025-04-28'],
           'expected_dates': ['2025-04-14', '2025-04-28'],
       },
       {
           'testcase_name': 'start_none',
           'start_date': None,
           'end_date': '2025-04-14',
-          'expected_times': [True, True, True, False, False],
+          'expected_times': ['2025-03-31', '2025-04-07', '2025-04-14'],
           'expected_dates': ['2025-03-31', '2025-04-14'],
       },
       {
@@ -1646,7 +1645,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=selected_geos,
-        selected_times=[True, True] + [False] * (_N_TIMES - 2),
+        selected_times=['2021-01-25', '2021-02-01'],
         use_kpi=False,
         batch_size=c.DEFAULT_BATCH_SIZE,
         include_non_paid_channels=False,
@@ -1734,7 +1733,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[True, True] + [False] * (_N_TIMES - 2),
+        selected_times=['2021-01-25', '2021-02-01'],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
@@ -1819,7 +1818,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[True, True] + [False] * (_N_TIMES - 2),
+        selected_times=['2021-01-25', '2021-02-01'],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
@@ -1828,7 +1827,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _, mock_kwargs = mock_incremental_outcome.call_args
     self.assertEqual(
         mock_kwargs['selected_times'],
-        [True, True] + [False] * (_N_TIMES - 2),
+        ['2021-01-25', '2021-02-01'],
     )
     np.testing.assert_allclose(  # pyrefly: ignore[no-matching-overload]
         mock_kwargs['new_data'].frequency,
@@ -1927,7 +1926,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[True, True] + [False] * (_N_TIMES - 2),
+        selected_times=['2021-01-25', '2021-02-01'],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,
@@ -2025,7 +2024,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=True,
         new_data=mock.ANY,
         selected_geos=None,
-        selected_times=[True, True] + [False] * (_N_TIMES - 2),
+        selected_times=['2021-01-25', '2021-02-01'],
         batch_size=c.DEFAULT_BATCH_SIZE,
         use_kpi=False,
         include_non_paid_channels=False,

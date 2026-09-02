@@ -16,6 +16,7 @@
 
 from collections.abc import Iterable, Sequence
 import dataclasses
+import datetime as dt
 import numbers
 from typing import Any, Optional, Union
 import warnings
@@ -85,30 +86,24 @@ def _check_n_dims(tensor: backend.Tensor, name: str, n_dims: int) -> None:
     )
 
 
-def _is_bool_list(l: Sequence[Any]) -> bool:
-  """Returns True if the list contains only booleans."""
-  return all(isinstance(item, bool) for item in l)
-
-
-def _is_str_list(l: Sequence[Any]) -> bool:
-  """Returns True if the list contains only strings."""
-  return all(isinstance(item, str) for item in l)
-
-
 def normalize_date_str(
-    time_val: tc.Date | xr.DataArray,
+    time_val: tc.Date | xr.DataArray | backend.Tensor,
 ) -> str:
   """Extracts the 'YYYY-MM-DD' prefix string from a date coordinate or string.
 
   Args:
     time_val: A polymorphic `Date` (`tc.Date`), a 0-D xarray `DataArray`
       coordinate scalar (which may wrap a date string, datetime, or NumPy
-      timestamp), or any other date coordinate scalar (e.g. `pd.Timestamp`).
+      timestamp), a `backend.Tensor` string scalar, or any other date coordinate
+      scalar (e.g. `pd.Timestamp`).
 
   Returns:
     The normalized 'YYYY-MM-DD' date string.
   """
-  val = time_val.item() if hasattr(time_val, "item") else time_val
+  val = time_val.numpy() if hasattr(time_val, "numpy") else time_val
+  val = val.item() if hasattr(val, "item") else val
+  if isinstance(val, bytes):
+    val = val.decode("utf-8")
   if isinstance(val, str):
     val = val[:10]
   return tc.normalize_date(val).strftime(constants.DATE_FORMAT)  # pyrefly: ignore[bad-argument-type]
@@ -131,114 +126,54 @@ def _is_normalized_subset(
 
 
 def _validate_selected_times(
-    selected_times: Sequence[str] | Sequence[bool],
-    input_times: xr.DataArray,
-    n_times: int,
+    selected_times: Sequence[str] | None,
+    input_times: xr.DataArray | Sequence[str],
     *,
     arg_name: str,
-    comparison_arg_name: str,
 ) -> None:
   """Raises an error if selected_times is invalid.
 
   Args:
-    selected_times: Sequence of time names or booleans to resolve.
-    input_times: InputData time period coordinates.
-    n_times: InputData time periods count.
+    selected_times: Optional sequence of time names to resolve.
+    input_times: Target time period coordinates.
     arg_name: Name of the `selected_times` argument.
-    comparison_arg_name: Name of arg to compare with.
 
   Raises:
     ValueError: A `ValueError` is raised when coordinates in `selected_times` do
-      not match time coordinates in `input_times` (either partially or entirely)
-      or more `selected_times` than `n_times` were provided when a boolean list
-      contains both true and false values.
+      not match time coordinates in `input_times` or is not a list of strings.
   """
   if not selected_times:
     return
-  if _is_bool_list(selected_times):
-    if len(selected_times) != n_times:
+  if not all(isinstance(item, str) for item in selected_times):
+    raise ValueError(f"`{arg_name}` must be a list of strings.")
+  if not _is_normalized_subset(selected_times, input_times):  # pyrefly: ignore[bad-argument-type]
+    start_date = normalize_date_str(input_times[0])
+    end_date = normalize_date_str(input_times[-1])
+    raise ValueError(
+        f"`{arg_name}` must match the time dimension coordinates from"
+        f" '{start_date}' to '{end_date}'."
+    )
+
+
+def _validate_time_coordinates(time: Sequence[str] | None) -> None:
+  """Validates that time follows the same format and spacing rules as InputData.time."""
+  if time is None:
+    return
+  for t in time:
+    try:
+      dt.datetime.strptime(t, constants.DATE_FORMAT)
+    except (TypeError, ValueError) as exc:
       raise ValueError(
-          f"Boolean `{arg_name}` must have the same number of elements as "
-          f"there are time period coordinates in {comparison_arg_name}."
-      )
-  elif _is_str_list(selected_times):
-    if not _is_normalized_subset(selected_times, input_times):  # pyrefly: ignore[bad-argument-type]
-      raise ValueError(
-          f"`{arg_name}` must match the time dimension names from "
-          "meridian.InputData."
-      )
-  else:
-    raise ValueError(
-        f"`{arg_name}` must be a list of strings or a list of booleans."
-    )
+          f"Invalid time label: {t!r}. Expected format:"
+          f" '{constants.DATE_FORMAT}'"
+      ) from exc
 
-
-def _validate_flexible_selected_times(
-    *,
-    selected_times: Sequence[str] | Sequence[bool] | None,
-    media_selected_times: Sequence[str] | Sequence[bool] | None,
-    new_n_media_times: int,
-    new_time: Sequence[str] | None = None,
-) -> None:
-  """Raises an error if selected times or media selected times is invalid.
-
-  This checks that (1) the `selected_times` and `media_selected_times` arguments
-  are lists of booleans with the same number of elements as `new_n_media_times`,
-  or (2) the `selected_times` and `media_selected_times` arguments are lists of
-  strings and the `new_time` list is provided and `selected_times` and
-  `media_selected_times` are subsets of `new_time`. This is only relevant if the
-  time dimension of any of the variables in `new_data` used in the analysis is
-  modified.
-
-  Args:
-    selected_times: Optional list of times to validate.
-    media_selected_times: Optional list of media times to validate.
-    new_n_media_times: The number of time periods in the new data.
-    new_time: The optional time dimension of the new data.
-  """
-  if selected_times and (
-      not (
-          _is_bool_list(selected_times)
-          and len(selected_times) == new_n_media_times
-      )
-      and not (
-          _is_str_list(selected_times)
-          and new_time is not None
-          and _is_normalized_subset(selected_times, new_time)
-      )
-  ):
-    raise ValueError(
-        "If `media`, `reach`, `frequency`, `organic_media`,"
-        " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
-        " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then (1) `selected_times` must be a list"
-        " of booleans with length equal to the number of time periods in"
-        " the new data, or (2) `selected_times` must be a list of strings and"
-        " `new_time` must be provided and `selected_times` must be a subset of"
-        " `new_time`."
-    )
-
-  if media_selected_times and (
-      not (
-          _is_bool_list(media_selected_times)
-          and len(media_selected_times) == new_n_media_times
-      )
-      and not (
-          _is_str_list(media_selected_times)
-          and new_time is not None
-          and _is_normalized_subset(media_selected_times, new_time)
-      )
-  ):
-    raise ValueError(
-        "If `media`, `reach`, `frequency`, `organic_media`,"
-        " `organic_reach`, `organic_frequency`, `non_media_treatments`, or"
-        " `revenue_per_kpi` is provided with a different number of time"
-        " periods than in `InputData`, then (1) `media_selected_times` must be"
-        " a list of booleans with length equal to the number of time"
-        " periods in the new data, or (2) `media_selected_times` must be a list"
-        " of strings and `new_time` must be provided and"
-        " `media_selected_times` must be a subset of `new_time`."
-    )
+  if len(time) > 1:
+    time_coords = tc.TimeCoordinates.from_dates(time)
+    try:
+      _ = time_coords.interval_days
+    except ValueError as exc:
+      raise ValueError("Time coordinates must be regularly spaced.") from exc
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -273,8 +208,12 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
     controls: Optional tensor with dimensions `(n_geos, n_times, n_controls)`.
     revenue_per_kpi: Optional tensor with dimensions `(n_geos, T)` for any time
       dimension `T`.
-    time: Optional tensor of time coordinates in the "YYYY-mm-dd" string format
-      for time dimension `T`.
+    time: Optional sequence or array of date coordinates (strings in
+      "YYYY-MM-DD" format, `Date` objects, or datetime objects) corresponding to
+      time dimension `T`. Required if any tensor has a modified time dimension
+      `T` differing from historical model dimensions. If omitted and tensor
+      shapes match the original model dimensions, `time` is automatically
+      populated from the model's historical time coordinates.
   """
 
   media: Union[backend.Tensor, None]
@@ -289,7 +228,7 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
   non_media_treatments: Union[backend.Tensor, None]
   controls: Union[backend.Tensor, None]
   revenue_per_kpi: Union[backend.Tensor, None]
-  time: Union[backend.Tensor, None]
+  time: Union[tuple[str, ...], None]
 
   def __init__(
       self,
@@ -365,9 +304,7 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
         else None
     )
     self.time = (
-        backend.to_tensor(time, dtype=backend.string)
-        if time is not None
-        else None
+        tuple(normalize_date_str(t) for t in time) if time is not None else None
     )
     self._validate_n_dims()
 
@@ -448,11 +385,55 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
     ctx = get_model_context(meridian, model_context)
     return DataTensorsBuilder(ctx).get_modified_times(self)
 
+  @property
+  def time_coordinates(self) -> tc.TimeCoordinates | None:
+    """Returns TimeCoordinates instance constructed from self.time."""
+    if self.time is None:
+      return None
+    return tc.TimeCoordinates.from_dates(self.time)
+
+  def expand_selected_time_dims(
+      self,
+      start_date: tc.Date = None,
+      end_date: tc.Date = None,
+  ) -> list[str] | None:
+    """Validates and returns time dimension values based on the selected times.
+
+    If both `start_date` and `end_date` are None, returns None. If specified,
+    both `start_date` and `end_date` are inclusive, and must be present in
+    `self.time`.
+
+    Args:
+      start_date: Start date of the selected time period. If `None`, implies the
+        earliest time dimension value in `self.time`.
+      end_date: End date of the selected time period. If `None`, implies the
+        latest time dimension value in `self.time`.
+
+    Returns:
+      A list of time dimension values (as 'YYYY-MM-DD' strings) in `self.time`
+      within the selected time period, or `None` if both arguments are `None`,
+      or if `start_date` and `end_date` correspond to the entire time range in
+      `self.time`.
+
+    Raises:
+      `ValueError` if `start_date` or `end_date` is not in `self.time`.
+    """
+    if self.time is None or (start_date is None and end_date is None):
+      return None
+    expanded = self.time_coordinates.expand_selected_time_dims(  # pyrefly: ignore[missing-attribute]
+        start_date=start_date, end_date=end_date
+    )
+    if expanded is None:
+      return None
+    return [date.strftime(constants.DATE_FORMAT) for date in expanded]
+
   def filter_fields(self, fields: Sequence[str]) -> Self:
     """Returns a new DataTensors object with only the specified fields."""
     output = {}
     for field in fields:
       output[field] = getattr(self, field)
+    if self.time is not None and any(v is not None for v in output.values()):
+      output[constants.TIME] = self.time
     return DataTensors(**output)
 
   def validate_and_fill_missing_data(
@@ -520,7 +501,8 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
               f" {tensor.ndim} dimensions."
           )
       elif field.name == constants.TIME:
-        _check_n_dims(tensor, field.name, 1)
+        if not isinstance(tensor, tuple):
+          raise ValueError(f"New `{field.name}` must be a tuple.")
       else:
         _check_n_dims(tensor, field.name, 3)
 
@@ -651,10 +633,12 @@ class DataTensorsBuilder:
     """
     for field in dataclasses.fields(data):
       new_tensor = getattr(data, field.name)
-      if field.name == constants.RF_IMPRESSIONS:
+      if field.name == constants.TIME:
+        continue
+      elif field.name == constants.RF_IMPRESSIONS:
         old_tensor = getattr(self.model_context.rf_tensors, field.name)
       else:
-        old_tensor = getattr(self.model_context.input_data, field.name)
+        old_tensor = getattr(self.model_context.input_data, field.name, None)
       # The time dimension is always the second dimension, except for when spend
       # data is provided with only one dimension of (n_channels).
       if (
@@ -739,12 +723,14 @@ class DataTensorsBuilder:
   ) -> None:
     """Validates the geo dimension of the specified data variables."""
     for var_name in required_fields:
+      if var_name == constants.TIME:
+        continue
       new_tensor = getattr(data, var_name)
       if (
           new_tensor is not None
           and new_tensor.shape[0] != self.model_context.n_geos
       ):
-        # Skip spend and time data with only 1 dimension.
+        # Skip spend data with only 1 dimension.
         if new_tensor.ndim == 1:
           continue
         raise ValueError(
@@ -780,12 +766,18 @@ class DataTensorsBuilder:
       required_fields: Sequence[str],
   ) -> None:
     """Validates the time dimension of the specified data variables."""
+    if data.time is not None:
+      _validate_time_coordinates(data.time)
+
     for var_name in required_fields:
       new_tensor = getattr(data, var_name)
       if var_name == constants.RF_IMPRESSIONS:
         old_tensor = getattr(self.model_context.rf_tensors, var_name)
       else:
-        old_tensor = getattr(self.model_context.input_data, var_name)
+        old_tensor = getattr(self.model_context.input_data, var_name, None)
+
+      if old_tensor is None:
+        continue
 
       # Skip spend data with only 1 dimension of (n_channels).
       if (
@@ -796,15 +788,13 @@ class DataTensorsBuilder:
         continue
 
       if new_tensor is not None:
-        assert old_tensor is not None
-        if (
-            var_name == constants.TIME
-            and new_tensor.shape[0] != old_tensor.shape[0]
-        ):
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[0]}"
-              f" time periods. Found {new_tensor.shape[0]} time periods."
-          )
+        if var_name == constants.TIME:
+          if len(new_tensor) != self.model_context.n_times:
+            raise ValueError(
+                f"New `{var_name}` is expected to have"
+                f" {self.model_context.n_times} time periods. Found"
+                f" {len(new_tensor)} time periods."
+            )
         elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
           raise ValueError(
               f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
@@ -818,31 +808,43 @@ class DataTensorsBuilder:
   ) -> None:
     """Validates the time dimension for the flexible times case."""
     new_n_times = self.get_modified_times(data)
-    # If no times were modified, then there is nothing more to validate.
+    # If no times were modified, validate against historical time dimensions.
     if new_n_times is None:
+      self._validate_time_dims(data=data, required_fields=required_fields)
       return
+
+    if data.time is None:
+      raise ValueError(
+          "`time` must be provided in `new_data` if any time dimension in"
+          " `new_data` is modified."
+      )
+
+    if len(data.time) != new_n_times:
+      raise ValueError(
+          "If the time dimension of any variable in `new_data` is "
+          "modified, then all variables must be provided with the same "
+          f"number of time periods. `time` has {len(data.time)} "
+          "time periods, which does not match the modified number of time "
+          f"periods, {new_n_times}."
+      )
+
+    _validate_time_coordinates(data.time)
 
     missing_params = []
     for var_name in required_fields:
       new_tensor = getattr(data, var_name)
-      if var_name == constants.RF_IMPRESSIONS:
+      if var_name == constants.TIME:
+        continue
+      elif var_name == constants.RF_IMPRESSIONS:
         old_tensor = getattr(self.model_context.rf_tensors, var_name)
       else:
-        old_tensor = getattr(self.model_context.input_data, var_name)
+        old_tensor = getattr(self.model_context.input_data, var_name, None)
 
       if old_tensor is None:
         continue
 
       if new_tensor is None:
         missing_params.append(var_name)
-      elif var_name == constants.TIME and new_tensor.shape[0] != new_n_times:
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is "
-            "modified, then all variables must be provided with the same "
-            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
-            "time periods, which does not match the modified number of time "
-            f"periods, {new_n_times}.",
-        )
       elif (
           var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
           and new_tensor.ndim == 1
@@ -876,10 +878,16 @@ class DataTensorsBuilder:
   ) -> DataTensors:
     """Fills default values and returns a new DataTensors object."""
     output = {}
+    if data.time is not None:
+      output[constants.TIME] = data.time
+    else:
+      output[constants.TIME] = tuple(
+          normalize_date_str(t)
+          for t in self.model_context.input_data.time.values
+      )
     for field in dataclasses.fields(data):
       var_name = field.name
-      if var_name == "time" and data.time is not None:
-        output["time"] = data.time
+      if var_name == constants.TIME:
         continue
       if var_name not in required_fields:
         continue
@@ -898,11 +906,6 @@ class DataTensorsBuilder:
         old_tensor = self.model_context.controls
       elif var_name == constants.REVENUE_PER_KPI:
         old_tensor = self.model_context.revenue_per_kpi
-      elif var_name == constants.TIME:
-        old_tensor = backend.to_tensor(
-            self.model_context.input_data.time.values.tolist(),
-            dtype=backend.string,
-        )
       else:
         continue
 
@@ -940,15 +943,13 @@ class DataTensorsBuilder:
 
   def _resolve_time_indices(
       self,
-      selected_times: Sequence[str] | Sequence[bool] | None,
-      n_times: int,
-      input_times: xr.DataArray,
+      selected_times: Sequence[str] | None,
+      input_times: xr.DataArray | Sequence[str] | Any,
   ) -> backend.Tensor | None:
     """Resolves selected times to their integer indices.
 
     Args:
-      selected_times: Sequence of time names or booleans to resolve.
-      n_times: The number of time periods.
+      selected_times: Sequence of time names to resolve.
       input_times: The input times to resolve against.
 
     Returns:
@@ -959,47 +960,34 @@ class DataTensorsBuilder:
     _validate_selected_times(
         selected_times=selected_times,
         input_times=input_times,
-        n_times=n_times,
         arg_name="selected_times",
-        comparison_arg_name="`tensor`",
     )
-    if _is_str_list(selected_times):
-      selected_times_set = normalize_times_set(selected_times)
-      time_indices = [
-          i
-          for i, x in enumerate(input_times)
-          if normalize_date_str(x) in selected_times_set
-      ]
-    elif _is_bool_list(selected_times):
-      time_indices = [i for i, x in enumerate(selected_times) if x]
-    else:
-      return None
+    selected_times_set = normalize_times_set(selected_times)
+    time_indices = [
+        i
+        for i, x in enumerate(input_times)
+        if normalize_date_str(x) in selected_times_set
+    ]
     return backend.to_tensor(time_indices, dtype=backend.int32)
 
   def _package_inputs(
       self,
       tensors: DataTensors,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       payload_cls: type[AnalyzerInputs] = AnalyzerInputs,
       **kwargs,
   ) -> AnalyzerInputs:
     """Resolves indices and packages tensors into the specified payload class."""
-    n_times = self.get_modified_times(tensors) or self.model_context.n_times
-
     geo_indices = self._resolve_geo_indices(selected_geos)
     if tensors.time is not None:
-      if hasattr(tensors.time, "ndim"):
-        input_times = np.asarray(tensors.time).astype(str).tolist()
-      else:
-        input_times = tensors.time
+      input_times = tensors.time
     else:
       input_times = self.model_context.input_data.time
 
     time_indices = self._resolve_time_indices(
         selected_times=selected_times,
-        n_times=n_times,
-        input_times=input_times,  # pyrefly: ignore[bad-argument-type]
+        input_times=input_times,
     )
 
     return payload_cls(
@@ -1118,7 +1106,7 @@ class DataTensorsBuilder:
       optimal_frequency: Sequence[float] | backend.Tensor | float | None = None,
       insert_dummy_media: bool = False,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
   ) -> AnalyzerInputs:
     """Builds unscaled inputs and resolves indices.
 
@@ -1151,7 +1139,7 @@ class DataTensorsBuilder:
       new_data: DataTensors | None = None,
       include_non_paid_channels: bool = True,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
   ) -> AnalyzerInputs:
     """Builds scaled inputs and resolves geo and time indices.
 
@@ -1186,8 +1174,8 @@ class DataTensorsBuilder:
       self,
       new_data: DataTensors | None = None,
       non_media_baseline_values: Sequence[float] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
-      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
+      media_selected_times: Sequence[str] | None = None,
       include_non_paid_channels: bool = True,
   ) -> tuple[DataTensors, int | None]:
     """Resolves unscaled tensors, gets modified times, and performs validation checks."""
@@ -1209,33 +1197,24 @@ class DataTensorsBuilder:
 
     new_n_media_times = self.get_modified_times(base_unscaled)
 
-    if new_n_media_times is None:
-      _validate_selected_times(
-          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
-          input_times=self.model_context.input_data.time,
-          n_times=self.model_context.n_times,
-          arg_name="selected_times",
-          comparison_arg_name="the input data",
-      )
-      _validate_selected_times(
-          selected_times=media_selected_times,  # pyrefly: ignore[bad-argument-type]
-          input_times=self.model_context.input_data.media_time,
-          n_times=self.model_context.n_media_times,
-          arg_name="media_selected_times",
-          comparison_arg_name="the media tensors",
-      )
+    if new_n_media_times is not None:
+      assert base_unscaled.time is not None
+      time_coords = base_unscaled.time
+      media_time_coords = base_unscaled.time
     else:
-      new_time = (
-          np.asarray(base_unscaled.time).astype(str).tolist()
-          if base_unscaled.time is not None
-          else None
-      )
-      _validate_flexible_selected_times(
-          selected_times=selected_times,
-          media_selected_times=media_selected_times,
-          new_n_media_times=new_n_media_times,
-          new_time=new_time,
-      )
+      time_coords = self.model_context.input_data.time
+      media_time_coords = self.model_context.input_data.media_time
+
+    _validate_selected_times(
+        selected_times=selected_times,
+        input_times=time_coords,
+        arg_name="selected_times",
+    )
+    _validate_selected_times(
+        selected_times=media_selected_times,
+        input_times=media_time_coords,
+        arg_name="media_selected_times",
+    )
     return base_unscaled, new_n_media_times
 
   def build_counterfactual_inputs(
@@ -1245,8 +1224,8 @@ class DataTensorsBuilder:
       scaling_factor: float = 1.0,
       non_media_baseline_values: Sequence[float] | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
-      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
+      media_selected_times: Sequence[str] | None = None,
       by_reach: bool = True,
       include_non_paid_channels: bool = True,
       is_baseline: bool = False,
@@ -1260,10 +1239,9 @@ class DataTensorsBuilder:
         `(n_non_media_channels,)`. Each element is a float which means that the
         fixed value will be used as baseline for the given channel.
       selected_geos: Optional list containing a subset of geos to include.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans.
-      media_selected_times: Optional list containing either a subset of dates to
-        include or booleans.
+      selected_times: Optional list containing a subset of dates to include.
+      media_selected_times: Optional list containing a subset of dates to
+        include.
       by_reach: Boolean indicating whether to scale reach or frequency when rf
         data is available.
       include_non_paid_channels: Boolean. If `True`, organic media, organic RF
@@ -1288,25 +1266,18 @@ class DataTensorsBuilder:
       new_n_media_times = self.model_context.n_media_times
       media_times = self.model_context.input_data.media_time
     else:
-      new_time = (
-          np.asarray(base_unscaled.time).astype(str).tolist()
-          if base_unscaled.time is not None
-          else None
-      )
+      new_time = base_unscaled.time
       media_times = (
-          new_time[-new_n_media_times:] if new_time is not None else []
+          new_time[-new_n_media_times:] if new_time is not None else ()
       )
 
     if media_selected_times is None:
       resolved_media_selected_times = [True] * new_n_media_times
     else:
-      if _is_str_list(media_selected_times):
-        media_selected_set = normalize_times_set(media_selected_times)
-        resolved_media_selected_times = [
-            normalize_date_str(x) in media_selected_set for x in media_times
-        ]
-      else:
-        resolved_media_selected_times = [bool(x) for x in media_selected_times]
+      media_selected_set = normalize_times_set(media_selected_times)
+      resolved_media_selected_times = [
+          normalize_date_str(x) in media_selected_set for x in media_times
+      ]
 
     media_selected_times_mask = tuple(resolved_media_selected_times)
 

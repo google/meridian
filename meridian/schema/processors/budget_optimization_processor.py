@@ -119,7 +119,6 @@ import warnings
 from meridian import constants as c
 from meridian.analysis import optimizer
 from meridian.analysis import tensors
-from meridian.data import time_coordinates as tc
 from mmm.v1 import mmm_pb2 as pb
 from mmm.v1.common import estimate_pb2 as estimate_pb
 from mmm.v1.common import kpi_type_pb2 as kpi_type_pb
@@ -133,7 +132,6 @@ from mmm.v1.marketing.optimization import constraints_pb2 as constraints_pb
 from meridian.schema.processors import common
 from meridian.schema.processors import model_processor
 from meridian.schema.utils import time_record
-import numpy as np
 from typing_extensions import override
 import xarray as xr
 
@@ -392,10 +390,11 @@ class BudgetOptimizationProcessor(
           self._trained_model.mmm.input_data.get_all_paid_channels(),  # pyrefly: ignore[bad-argument-type]
       )
       kwargs.update(constraints_kwargs)  # pyrefly: ignore[no-matching-overload]
-      if spec.new_data is not None and spec.new_data.time is not None:
-        time_coords = tc.TimeCoordinates.from_dates(
-            [s.decode() for s in np.asarray(spec.new_data.time)]
-        )
+      if (
+          spec.new_data is not None
+          and spec.new_data.time_coordinates is not None
+      ):
+        time_coords = spec.new_data.time_coordinates
       else:
         time_coords = self._trained_model.time_coordinates
       resolver = spec.resolver(time_coords)

@@ -163,18 +163,16 @@ class MediaSummarySpec(model_processor.Spec):
       Meridian object. If `new_data` is provided, the metrics are calculated
       using the new tensors in `new_data` and the original values of the
       remaining tensors.
-    media_selected_times: Optional list containing booleans with length equal to
-      the number of time periods in `new_data`, if provided. If `new_data` is
-      provided, `media_selected_times` can select any subset of time periods in
-      `new_data`.  If `new_data` is not provided, `media_selected_times` selects
-      from model's original media data.
+    media_selected_times: Optional list of date strings specifying a subset of
+      time periods in `new_data`, if provided, or from model's original media
+      data.
   """
 
   aggregate_times: bool = True
   marginal_roi_by_reach: bool = True
   include_non_paid_channels: bool = False
   new_data: tensors.DataTensors | None = None
-  media_selected_times: Sequence[bool] | None = None
+  media_selected_times: Sequence[str] | None = None
 
   def validate(self):
     pass
@@ -200,20 +198,17 @@ class IncrementalOutcomeSpec(model_processor.Spec):
       `non_media_treatments` and `revenue_per_kpi`. If any of the tensors in
       `new_data` is provided with a different number of time periods than in
       `InputData`, then all tensors must be provided with the same number of
-      time periods.
-    media_selected_times: Optional list containing booleans with length equal to
-      the number of time periods in `new_data`, if provided. If `new_data` is
-      provided, `media_selected_times` can select any subset of time periods in
-      `new_data`.  If `new_data` is not provided, `media_selected_times` selects
-      from model's original media data and its length must be equal to the
-      number of time periods in the model's original media data.
+      time periods, and `new_data.time` must be provided.
+    media_selected_times: Optional list of date strings specifying a subset of
+      time periods in `new_data`, if provided, or from model's original media
+      data.
     include_non_paid_channels: Boolean. If `True`, the incremental outcome
       includes non-paid channels. Defaults to `False`.
   """
 
   aggregate_times: bool = True
   new_data: tensors.DataTensors | None = None
-  media_selected_times: Sequence[bool] | None = None
+  media_selected_times: Sequence[str] | None = None
   include_non_paid_channels: bool = False
 
   def validate(self):
@@ -1005,7 +1000,7 @@ class MarketingProcessor(
       self,
       resolver: model_processor.DatedSpecResolver,
       new_data: tensors.DataTensors | None = None,
-      media_selected_times: Sequence[bool] | None = None,
+      media_selected_times: Sequence[str] | None = None,
       selected_geos: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
@@ -1019,8 +1014,8 @@ class MarketingProcessor(
     Args:
       resolver: A `DatedSpecResolver` instance.
       new_data: A dataset containing the new data to use in the analysis.
-      media_selected_times: A boolean array of length `n_times` indicating which
-        time periods are media-active.
+      media_selected_times: Optional list of date strings indicating which time
+        periods are media-active.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
@@ -1047,12 +1042,10 @@ class MarketingProcessor(
       coordinates are: `channel` and `metric` (`mean`, `median`, `ci_low`,
       `ci_high`)
     """
-    # Selected times in boolean form are supported by the analyzer with and
-    # without the new data.
-    selected_times_bool = resolver.resolve_to_bool_selected_times()
+    selected_times = resolver.resolve_to_enumerated_selected_times()
     kwargs = {
         "selected_geos": selected_geos,
-        "selected_times": selected_times_bool,
+        "selected_times": selected_times,
         "aggregate_geos": aggregate_geos,
         "aggregate_times": aggregate_times,
         "batch_size": batch_size,

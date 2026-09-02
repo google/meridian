@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   **Breaking change**: Standardized time selection arguments
+    (`selected_times`, `media_selected_times`) across `Analyzer` and
+    `BudgetOptimizer` to strictly require date string coordinates
+    (`Sequence[str]`), removing support for positional boolean masks and
+    normalizing `DataTensors.time` to `tuple[str, ...]`.
 *   Relax `jax` and `jaxlib` dependency pins to `>= 0.7.2, < 1.0.0` and add
     `jax[cuda12]` to `[and-cuda]` optional dependencies to support Python 3.13
     and prevent PJRT accelerator plugin version mismatches.
@@ -35,7 +40,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     `ConvergenceCheckResult` and update R-hat summary metric constants
     (`AVG_R_HAT`, `MAX_R_HAT`, `PERCENT_BAD_R_HAT`, `ROW_IDX_BAD_R_HAT`,
     `COL_IDX_BAD_R_HAT`) to use the `_r_hat` convention.
-*   **Breaking change**: Removed `Meridian.populate_cached_properties()`. Use `ModelContext.populate_cached_properties()` directly.
+*   **Breaking change**: Removed `Meridian.populate_cached_properties()`. Use
+    `ModelContext.populate_cached_properties()` directly.
 *   Change `EDASeverity` outcome statuses from `INFO`/`ATTENTION`/`ERROR` to
     `INFO`/`REVIEW`/`FAIL` for consistency across the library.
 *   Attach the use_kpi attribute to the summary metrics dataset.

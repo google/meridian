@@ -187,11 +187,11 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
   ):
     new_param = {k: backend.ones(v) for k, v in new_param_shapes.items()}
     with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
-      tensors.DataTensors(**new_param)
+      tensors.DataTensors(**new_param)  # pyrefly: ignore[bad-argument-type]
 
   def test_validate_wrong_geos_media(self):
     new_data = tensors.DataTensors(
-        media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+        media=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
     )
     with self.assertRaisesRegex(
         ValueError, r"New `media` is expected to have 5 geos\. Found 6 geos\."
@@ -203,7 +203,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
   def test_validate_wrong_geos_media_spend(self):
     new_data = tensors.DataTensors(
-        media_spend=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS))
+        media_spend=backend.ones((6, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -214,9 +214,50 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
           model_context=self.meridian_media_and_rf.model_context,
       )
 
+  def test_validate_no_time_matches_historic_times(self):
+    new_data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS)),
+    )
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=[constants.MEDIA],
+        model_context=self.meridian_media_and_rf.model_context,
+    )
+    self.assertIsNotNone(filled_data.time)
+    self.assertLen(filled_data.time, _N_TIMES)
+
+  def test_validate_no_time_wrong_historic_times(self):
+    new_data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA],
+          model_context=self.meridian_media_and_rf.model_context,
+      )
+
+  def test_validate_wrong_times_controls(self):
+    new_data = tensors.DataTensors(
+        controls=backend.ones((_N_GEOS, 10, _N_CONTROLS)),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r"New `controls` is expected to have 49 time periods\. Found 10 time"
+        r" periods\.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.CONTROLS],
+          model_context=self.meridian_media_and_rf.model_context,
+          allow_modified_times=False,
+      )
+
   def test_validate_wrong_times_media(self):
     new_data = tensors.DataTensors(
-        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS))
+        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+        time=list(self.meridian_media_and_rf.input_data.time.values[:10]),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -229,9 +270,47 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
           allow_modified_times=False,
       )
 
+  def test_validate_invalid_time_format(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"time data '2021/01/01' does not match format '%Y-%m-%d'",
+    ):
+      tensors.DataTensors(
+          media=backend.ones((_N_GEOS, 2, _N_MEDIA_CHANNELS)),
+          time=["2021/01/01", "2021/01/08"],
+      )
+
+  def test_validate_non_monotonic_time(self):
+    new_data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, 2, _N_MEDIA_CHANNELS)),
+        time=["2021-01-08", "2021-01-01"],
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Time coordinates must be strictly monotonically increasing\.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA],
+          model_context=self.meridian_media_and_rf.model_context,
+      )
+
+  def test_validate_irregular_time_spacing(self):
+    new_data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, 3, _N_MEDIA_CHANNELS)),
+        time=["2021-01-01", "2021-01-03", "2021-01-20"],
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Time coordinates must be regularly spaced\.",
+    ):
+      new_data.validate_and_fill_missing_data(
+          required_tensors_names=[constants.MEDIA],
+          model_context=self.meridian_media_and_rf.model_context,
+      )
+
   def test_validate_wrong_channels_frequency(self):
     new_data = tensors.DataTensors(
-        frequency=backend.ones((_N_GEOS, _N_TIMES, 3))
+        frequency=backend.ones((_N_GEOS, _N_MEDIA_TIMES, 3)),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -244,7 +323,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
   def test_validate_wrong_channels_reach(self):
     new_data = tensors.DataTensors(
-        reach=backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1))
+        reach=backend.ones((_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS - 1)),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -267,9 +346,10 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         constants.REACH: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         constants.FREQUENCY: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+        constants.TIME: self.meridian_media_and_rf.input_data.time.values[:10],
     }
     new_data_dict.pop(missing_param)
-    new_data = tensors.DataTensors(**new_data_dict)
+    new_data = tensors.DataTensors(**new_data_dict)  # pyrefly: ignore[bad-argument-type]
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "If the time dimension of a variable in `new_data` is modified, then"
@@ -287,6 +367,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         frequency=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         revenue_per_kpi=backend.ones((_N_GEOS, 8)),
+        time=list(self.meridian_media_and_rf.input_data.time.values[:10]),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -310,10 +391,13 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     new_data_dict = {
         constants.MEDIA: backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
         constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+        constants.TIME: list(
+            self.meridian_media_only.input_data.time.values[:10]
+        ),
     }
     required_names = list(new_data_dict.keys())
     new_data_dict.pop(missing_param)
-    new_data = tensors.DataTensors(**new_data_dict)
+    new_data = tensors.DataTensors(**new_data_dict)  # pyrefly: ignore[bad-argument-type]
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "If the time dimension of a variable in `new_data` is modified,"
@@ -327,7 +411,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
 
   def test_validate_media_only_invalid_new_data(self):
     new_data = tensors.DataTensors(
-        reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS))
+        reach=backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
+        time=list(self.meridian_media_only.input_data.time.values[:10]),
     )
     with self.assertRaisesRegex(
         ValueError,
@@ -349,10 +434,11 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         constants.REACH: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         constants.FREQUENCY: backend.ones((_N_GEOS, 10, _N_RF_CHANNELS)),
         constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+        constants.TIME: self.meridian_rf_only.input_data.time.values[:10],
     }
     required_names = list(new_data_dict.keys())
     new_data_dict.pop(missing_param)
-    new_data = tensors.DataTensors(**new_data_dict)
+    new_data = tensors.DataTensors(**new_data_dict)  # pyrefly: ignore[bad-argument-type]
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "If the time dimension of a variable in `new_data` is modified, then"
@@ -417,6 +503,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     tensors_dict = {}
     for tensor_name in new_tensors_names:
       tensors_dict[tensor_name] = getattr(data, tensor_name)
+    if new_tensors_names:
+      tensors_dict[constants.TIME] = data.time
     new_data = tensors.DataTensors(**tensors_dict)
 
     required_tensors_names = [
@@ -474,10 +562,11 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
             (_N_GEOS, 10, _N_NON_MEDIA_CHANNELS)
         ),
         constants.REVENUE_PER_KPI: backend.ones((_N_GEOS, 10)),
+        constants.TIME: self.meridian_organic_media.input_data.time.values[:10],
     }
     required_names = list(new_data_dict.keys())
     new_data_dict.pop(missing_param)
-    new_data = tensors.DataTensors(**new_data_dict)
+    new_data = tensors.DataTensors(**new_data_dict)  # pyrefly: ignore[bad-argument-type]
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "If the time dimension of a variable in `new_data` is modified,"
@@ -507,6 +596,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
             (_N_GEOS, _N_TIMES, _N_NON_MEDIA_CHANNELS)
         ),
         revenue_per_kpi=backend.ones((_N_GEOS, _N_TIMES)),
+        time=list(self.meridian_organic_media.input_data.time.values[:10]),
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -551,7 +641,9 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     else:
       tensor = getattr(self.meridian_media_and_rf.input_data, param_name)
 
-    new_data = tensors.DataTensors(**{param_name: tensor})
+    new_data = tensors.DataTensors(**{  # pyrefly: ignore[bad-argument-type]
+        param_name: tensor,
+    })
     required = [constants.MEDIA]
 
     with self.assertWarnsRegex(UserWarning, warning_msg):
@@ -564,7 +656,8 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     new_data = tensors.DataTensors(
         non_media_treatments=self.meridian_non_media.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             :, :2, :
-        ]
+        ],
+        time=list(self.meridian_non_media.input_data.time.values[:2]),
     )
     required = [
         constants.MEDIA,
@@ -660,7 +753,7 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
         backend.to_tensor(expected_time_indices, dtype=backend.int32),
     )
 
-  def test_build_scaled_inputs_resolves_boolean_times(self):
+  def test_build_scaled_inputs_rejects_boolean_times(self):
     builder = tensors.DataTensorsBuilder(self.meridian.model_context)
 
     # Create a boolean mask for times
@@ -668,15 +761,12 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     selected_times[1] = True
     selected_times[3] = True
 
-    inputs = builder.build_scaled_inputs(
-        selected_times=selected_times,
-    )
-
-    expected_time_indices = [1, 3]
-    backend_test_utils.assert_allclose(
-        inputs.time_indices,
-        backend.to_tensor(expected_time_indices, dtype=backend.int32),
-    )
+    with self.assertRaisesRegex(
+        ValueError, r"`selected_times` must be a list of strings\."
+    ):
+      builder.build_scaled_inputs(
+          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+      )
 
   def test_build_unscaled_inputs_defaults(self):
     builder = tensors.DataTensorsBuilder(self.meridian.model_context)
@@ -1026,11 +1116,29 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
     target_date = tensors.normalize_date_str(input_times.values[2])
     resolved = builder._resolve_time_indices(
         selected_times=[f"{target_date}T00:00:00"],
-        n_times=len(input_times),
         input_times=input_times,
     )
     assert resolved is not None
     self.assertEqual(list(np.asarray(resolved)), [2])
+
+  def test_data_tensors_time_normalization(self):
+    data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, 3, _N_MEDIA_CHANNELS)),
+        time=[
+            "2021-01-01T12:00:00",
+            "2021-01-08",
+            "2021-01-15",
+        ],
+    )
+    self.assertEqual(data.time, ("2021-01-01", "2021-01-08", "2021-01-15"))
+    self.assertIsInstance(data.time, tuple)
+
+  def test_data_tensors_time_invalid_type_raises_error(self):
+    with self.assertRaises(ValueError):
+      tensors.DataTensors(
+          media=backend.ones((_N_GEOS, 1, _N_MEDIA_CHANNELS)),
+          time=[12345],  # pyrefly: ignore[bad-argument-type]
+      )
 
 
 class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
@@ -1170,7 +1278,7 @@ class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
     # Test invalid types
     with self.assertRaises(ValueError):
       builder.build_baseline_inputs(
-          non_media_baseline_values=["invalid"]  # pytype: disable=wrong-arg-types
+          non_media_baseline_values=["invalid"]  # pyrefly: ignore[bad-argument-type]
       )
 
     # Test invalid length
@@ -1179,6 +1287,51 @@ class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
       builder.build_baseline_inputs(
           non_media_baseline_values=invalid_length_values
       )
+
+  def test_time_coordinates_returns_none_when_time_is_none(self):
+    data = tensors.DataTensors()
+    self.assertIsNone(data.time_coordinates)
+
+  def test_time_coordinates_returns_instance_when_time_is_set(self):
+    times = ("2021-01-04", "2021-01-11", "2021-01-18")
+    data = tensors.DataTensors(time=times)
+    self.assertIsNotNone(data.time_coordinates)
+    self.assertEqual(data.time_coordinates.all_dates_str, list(times))  # pyrefly: ignore[missing-attribute]
+
+  def test_expand_selected_time_dims_returns_none_when_time_is_none(self):
+    data = tensors.DataTensors()
+    self.assertIsNone(
+        data.expand_selected_time_dims(
+            start_date="2021-01-04", end_date="2021-01-11"
+        )
+    )
+
+  def test_expand_selected_time_dims_returns_none_when_no_dates_passed(self):
+    times = ("2021-01-04", "2021-01-11", "2021-01-18")
+    data = tensors.DataTensors(time=times)
+    self.assertIsNone(data.expand_selected_time_dims())
+
+  def test_expand_selected_time_dims_returns_subset(self):
+    times = ("2021-01-04", "2021-01-11", "2021-01-18", "2021-01-25")
+    data = tensors.DataTensors(time=times)
+    expanded = data.expand_selected_time_dims(
+        start_date="2021-01-11", end_date="2021-01-18"
+    )
+    self.assertEqual(expanded, ["2021-01-11", "2021-01-18"])
+
+  def test_expand_selected_time_dims_returns_none_for_full_range(self):
+    times = ("2021-01-04", "2021-01-11", "2021-01-18")
+    data = tensors.DataTensors(time=times)
+    expanded = data.expand_selected_time_dims(
+        start_date="2021-01-04", end_date="2021-01-18"
+    )
+    self.assertIsNone(expanded)
+
+  def test_expand_selected_time_dims_raises_value_error_for_invalid_date(self):
+    times = ("2021-01-04", "2021-01-11", "2021-01-18")
+    data = tensors.DataTensors(time=times)
+    with self.assertRaises(ValueError):
+      data.expand_selected_time_dims(start_date="2020-01-01")
 
 
 if __name__ == "__main__":

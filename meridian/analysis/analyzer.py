@@ -344,7 +344,8 @@ class Analyzer:
       dist_tensors: DistributionTensors,
   ) -> backend.Tensor:
     """Computes batched KPI means."""
-    return self._get_kpi_means(data_tensors, dist_tensors)
+    data_tensors_jit = dataclasses.replace(data_tensors, time=None)
+    return self._get_kpi_means(data_tensors_jit, dist_tensors)
 
   def _use_kpi(self, use_kpi: bool = False) -> bool:
     """Checks if KPI analysis should be used.
@@ -734,7 +735,7 @@ class Analyzer:
       self,
       tensor: backend.Tensor,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       flexible_time_dim: bool = False,
@@ -750,17 +751,14 @@ class Analyzer:
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
-      selected_times: Optional list of times to include. This can either be a
-        string list containing a subset of time dimension coordinates from
-        `InputData.time` or a boolean list with length equal to the time
-        dimension of the tensor. By default, all time periods are included.
+      selected_times: Optional list of times to include. This is a string list
+        containing a subset of time dimension coordinates. By default, all time
+        periods are included.
       aggregate_geos: Boolean. If `True`, the tensor is summed over all geos.
       aggregate_times: Boolean. If `True`, the tensor is summed over all time
         periods.
       flexible_time_dim: Boolean. If `True`, the time dimension of the tensor is
-        not required to match the number of time periods in `InputData.time`. In
-        this case, if using `selected_times`, it must be a boolean list with
-        length equal to the time dimension of the tensor.
+        not required to match the number of time periods in `InputData.time`.
       has_media_dim: Boolean. Only used if `flexible_time_dim=True`. Otherwise,
         this is assumed based on the tensor dimensions. If `True`, the tensor is
         assumed to have a media dimension following the time dimension. If
@@ -1025,10 +1023,10 @@ class Analyzer:
       )
     n_media_times = self.model_context.n_media_times
     if data_tensors.media is not None:
-      n_times = data_tensors.media.shape[1]  # pytype: disable=attribute-error
+      n_times = data_tensors.media.shape[1]  # pyrefly: ignore[missing-attribute]
       n_times_output = n_times if n_times != n_media_times else None
     elif data_tensors.reach is not None:
-      n_times = data_tensors.reach.shape[1]  # pytype: disable=attribute-error
+      n_times = data_tensors.reach.shape[1]  # pyrefly: ignore[missing-attribute]
       n_times_output = n_times if n_times != n_media_times else None
     else:
       raise ValueError("Both media_scaled and reach_scaled cannot be None.")
@@ -1211,8 +1209,8 @@ class Analyzer:
       scaling_factor0: float = 0.0,
       scaling_factor1: float = 1.0,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
-      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
+      media_selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       inverse_transform_outcome: bool = True,
@@ -1287,7 +1285,7 @@ class Analyzer:
         `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
         any of the tensors in `new_data` is provided with a different number of
         time periods than in `InputData`, then all tensors must be provided with
-        the same number of time periods.
+        the same number of time periods, and `new_data.time` must be provided.
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float which means that the
         fixed value will be used as baseline for the given channel. It is
@@ -1304,22 +1302,20 @@ class Analyzer:
         non-negative and greater than `scaling_factor0`.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        `new_data` if time is modified in `new_data`, or `input_data.n_times`
-        otherwise. The incremental outcome corresponds to incremental KPI
-        generated during the `selected_times` arg by media executed during the
-        `media_selected_times` arg. Note that if `use_kpi=False`, then
-        `selected_times` can only include the time periods that have
-        `revenue_per_kpi` input data. By default, all time periods are included
-        where `revenue_per_kpi` data is available.
-      media_selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        KPI data or number of time periods in the `new_data` args, if provided.
-        If `new_data` is provided, `media_selected_times` can select any subset
-        of time periods in `new_data`. If `new_data` is not provided,
-        `media_selected_times` selects from `InputData.time`. The incremental
-        outcome corresponds to incremental KPI generated during the
+      selected_times: Optional list containing a subset of dates to include. If
+        `new_data` is provided, `selected_times` can select any subset of time
+        periods in `new_data.time`. If `new_data` is not provided,
+        `selected_times` selects from `InputData.time`. The incremental outcome
+        corresponds to incremental KPI generated during the `selected_times` arg
+        by media executed during the `media_selected_times` arg. Note that if
+        `use_kpi=False`, then `selected_times` can only include the time periods
+        that have `revenue_per_kpi` input data. By default, all time periods are
+        included where `revenue_per_kpi` data is available.
+      media_selected_times: Optional list containing a subset of dates to
+        include. If `new_data` is provided, `media_selected_times` can select
+        any subset of time periods in `new_data.time`. If `new_data` is not
+        provided, `media_selected_times` selects from `InputData.time`. The
+        incremental outcome corresponds to incremental KPI generated during the
         `selected_times` arg by treatment variables executed during the
         `media_selected_times` arg. For each channel, the incremental outcome is
         defined as the difference between expected KPI when treatment variables
@@ -1479,8 +1475,8 @@ class Analyzer:
       scaling_factor0: float = 0.0,
       scaling_factor1: float = 1.0,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
-      media_selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
+      media_selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = False,
       aggregate_times: bool = False,
       inverse_transform_outcome: bool = True,
@@ -1505,10 +1501,9 @@ class Analyzer:
       scaling_factor0: Scaling factor for counterfactual scenario 0.
       scaling_factor1: Scaling factor for counterfactual scenario 1.
       selected_geos: Optional sequence containing a subset of geos to include.
-      selected_times: Optional sequence containing either a subset of dates to
-        include or booleans.
-      media_selected_times: Optional sequence containing either a subset of
-        dates to include or booleans.
+      selected_times: Optional sequence containing a subset of dates to include.
+      media_selected_times: Optional sequence containing a subset of dates to
+        include.
       aggregate_geos: If `True`, then incremental outcome is summed over all
         regions. Defaults to `False` in this method to preserve dimensions.
       aggregate_times: If `True`, then incremental outcome is summed over all
@@ -1579,37 +1574,36 @@ class Analyzer:
 
       geo_coords = {}
       if constants.GEO in dims:
+        all_geos = self.model_context.input_data.geo.values
         if selected_geos is not None:
-          geo_coords[constants.GEO] = self.model_context.input_data.geo.values[
-              np.isin(
-                  self.model_context.input_data.geo.values,
-                  selected_geos,
-              )
+          selected_geos_set = set(selected_geos)
+          geo_coords[constants.GEO] = [
+              g for g in all_geos if g in selected_geos_set
           ]
         else:
-          geo_coords[constants.GEO] = coords[constants.GEO]
+          geo_coords[constants.GEO] = list(all_geos)
 
       time_coords = {}
       if constants.TIME in dims:
         time_idx = dims.index(constants.TIME)
         time_dim_size = outcome_tensor.shape[time_idx]
-
-        if selected_times is None:
-          # Fallback to original times if size matches.
-          # TODO: Support `new_data.time` properly.
-          if time_dim_size == len(coords[constants.TIME]):
-            time_coords[constants.TIME] = np.asarray(coords[constants.TIME])
-        elif all(isinstance(t, str) for t in selected_times):
-          filtered_times = self.model_context.input_data.time.values[
-              np.isin(self.model_context.input_data.time.values, selected_times)
+        all_times = (
+            new_data.time
+            if (new_data is not None and new_data.time is not None)
+            else self.model_context.input_data.time.values
+        )
+        if selected_times is not None:
+          selected_set = tensors.normalize_times_set(selected_times)
+          filtered_times = [
+              t
+              for t in all_times
+              if tensors.normalize_date_str(t) in selected_set
           ]
           if len(filtered_times) == time_dim_size:
             time_coords[constants.TIME] = filtered_times
-        elif len(coords[constants.TIME]) == len(selected_times):
-          # Boolean mask
-          time_coords[constants.TIME] = np.array(coords[constants.TIME])[
-              np.array(selected_times)
-          ]
+        else:
+          if len(all_times) == time_dim_size:
+            time_coords[constants.TIME] = list(all_times)
 
       return {
           constants.CHAIN: coords[constants.CHAIN],
@@ -1631,7 +1625,7 @@ class Analyzer:
   def _validate_geo_and_time_granularity(
       self,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
@@ -1639,9 +1633,8 @@ class Analyzer:
     Args:
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional. Contains a subset of times to include or
-        booleans with length `input_data.n_times`. By default, all time periods
-        are included.
+      selected_times: Optional. Contains a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: If `True`, then expected revenue is summed over all
         regions.
 
@@ -1696,7 +1689,7 @@ class Analyzer:
       use_posterior: bool = True,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       by_reach: bool = True,
       use_kpi: bool = False,
@@ -1740,13 +1733,13 @@ class Analyzer:
         tensors. If `None`, the marginal ROI is calculated using the original
         values of all the tensors. If any of the tensors in `new_data` is
         provided with a different number of time periods than in `InputData`,
-        then all tensors must be provided with the same number of time periods.
+        then all tensors must be provided with the same number of time periods,
+        and `new_data.time` must be provided. In this case, spend tensors must
+        be provided with geo and time granularity.
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. By default, all time periods are
-        included.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: If `True`, the expected revenue is summed over all of the
         regions.
       by_reach: Used for a channel with reach and frequency. If `True`, returns
@@ -1829,7 +1822,7 @@ class Analyzer:
       use_posterior: bool = True,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       use_kpi: bool = False,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
@@ -1868,13 +1861,13 @@ class Analyzer:
         `None`, the ROI is calculated using the original values of all the
         tensors. If any of the tensors in `new_data` is provided with a
         different number of time periods than in `InputData`, then all tensors
-        must be provided with the same number of time periods.
+        must be provided with the same number of time periods, and
+        `new_data.time` must be provided. In this case, spend tensors must be
+        provided with geo and time granularity.
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. By default, all time periods are
-        included.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected revenue is summed over
         all of the regions.
       use_kpi: If `False`, then revenue is used to calculate the ROI numerator.
@@ -1956,7 +1949,7 @@ class Analyzer:
       use_posterior: bool = True,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> backend.Tensor:
@@ -1996,13 +1989,12 @@ class Analyzer:
         `None`, the ROI is calculated using the original values of all the
         tensors. If any of the tensors in `new_data` is provided with a
         different number of time periods than in `InputData`, then all tensors
-        must be provided with the same number of time periods.
+        must be provided with the same number of time periods, and
+        `new_data.time` must be provided.
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        the `new_data` args, if provided. By default, all time periods are
-        included.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected KPI is summed over all of
         the regions.
       batch_size: Integer representing the maximum draws per chain in each
@@ -2284,7 +2276,7 @@ class Analyzer:
         `organic_frequency`, `non_media_treatments` and `revenue_per_kpi`. If
         any of the tensors in `new_data` is provided with a different number of
         time periods than in `InputData`, then all tensors must be provided with
-        the same number of time periods.
+        the same number of time periods, and `new_data.time` must be provided.
       use_kpi: Boolean. If `True`, the summary metrics are calculated using KPI.
         If `False`, the metrics are calculated using revenue.
       include_non_paid_channels: Boolean. If `True`, then non-media treatments
@@ -2330,7 +2322,7 @@ class Analyzer:
       marginal_roi_by_reach: bool = True,
       marginal_roi_incremental_increase: float = 0.01,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       optimal_frequency: Sequence[float] | None = None,
@@ -2373,7 +2365,8 @@ class Analyzer:
         `None`, the summary metrics are calculated using the original values of
         all the tensors. If `new_data` is provided with a different number of
         time periods than in `InputData`, then all tensors, except `controls`,
-        must have the same number of time periods.
+        must have the same number of time periods, and `new_data.time` must be
+        provided.
       marginal_roi_by_reach: Boolean. Marginal ROI (mROI) is defined as the
         return on the next dollar spent. If this argument is `True`, the
         assumption is that the next dollar spent only impacts reach, holding
@@ -2386,10 +2379,8 @@ class Analyzer:
         when `include_non_paid_channels` is `False`.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        the tensors in the `new_data` argument, if provided. By default, all
-        time periods are included.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -2527,24 +2518,21 @@ class Analyzer:
       )
       xr_coords[constants.GEO] = geo_dims  # pyrefly: ignore[unsupported-operation]
     if not aggregate_times:
-      # Get the time coordinates for flexible time dimensions.
-      modified_times = builder.get_modified_times(new_data)
-      if modified_times is None:
-        times = self.model_context.input_data.time.data
+      all_times = (
+          new_data.time
+          if new_data.time is not None
+          else self.model_context.input_data.time.values
+      )
+      if selected_times is not None:
+        selected_set = tensors.normalize_times_set(selected_times)
+        time_coords = [
+            t
+            for t in all_times
+            if tensors.normalize_date_str(t) in selected_set
+        ]
       else:
-        times = np.arange(modified_times)
-
-      time_indices = builder.build_unscaled_inputs(
-          new_data=new_data,
-          selected_times=selected_times,
-      ).time_indices
-
-      if time_indices is None:
-        time_coords = times
-      else:
-        time_coords = times[np.asarray(time_indices)]
-
-      xr_coords[constants.TIME] = time_coords  # pyrefly: ignore[unsupported-operation]
+        time_coords = list(all_times)
+      xr_coords[constants.TIME] = time_coords
     xr_dims_with_ci_and_distribution = xr_dims + (
         constants.METRIC,
         constants.DISTRIBUTION,
@@ -2752,7 +2740,7 @@ class Analyzer:
       self,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
       optimal_frequency: Sequence[float] | None = None,
@@ -2770,10 +2758,8 @@ class Analyzer:
         from the Meridian object are used.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included.
-      selected_times: Optional list containing either a subset of dates to
-        include or booleans with length equal to the number of time periods in
-        the tensors in the `new_data` argument, if provided. By default, all
-        time periods are included.
+      selected_times: Optional list containing a subset of dates to include. By
+        default, all time periods are included.
       aggregate_geos: Boolean. If `True`, the expected outcome is summed over
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
@@ -2992,7 +2978,7 @@ class Analyzer:
       use_posterior: bool = True,
       use_kpi: bool = False,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Calculates the optimal frequency that maximizes posterior mean ROI.
@@ -3023,7 +3009,8 @@ class Analyzer:
         data used to initialize the Meridian object is used. If any of the
         tensors in `new_data` is provided with a different number of time
         periods than in `InputData`, then all tensors must be provided with the
-        same number of time periods.
+        same number of time periods, and `new_data.time` must be provided. In
+        this case, `rf_spend` must be provided with geo and time granularity.
       max_frequency: Maximum frequency value used to calculate the frequency
         grid. If `None`, the maximum frequency value is calculated from the
         historic frequency (maximum value of Meridian.input_data, not
@@ -4467,7 +4454,7 @@ class Analyzer:
       self,
       new_data: DataTensors | None = None,
       selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | Sequence[bool] | None = None,
+      selected_times: Sequence[str] | None = None,
       aggregate_times: bool = True,
       include_media: bool = True,
       include_rf: bool = True,
