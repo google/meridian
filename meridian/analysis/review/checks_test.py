@@ -26,6 +26,7 @@ from meridian.analysis.review import configs
 from meridian.analysis.review import results
 from meridian.data import input_data
 from meridian.model import context
+from meridian.model import transformers
 import numpy as np
 import xarray as xr
 
@@ -959,6 +960,21 @@ class BaselineCheckTest(parameterized.TestCase):
     )
 
 
+def _mock_filter_and_aggregate(
+    tensor,
+    aggregate_times: bool = False,
+    aggregate_geos: bool = False,
+    **unused_kwargs,
+):
+  if aggregate_times and aggregate_geos:
+    return np.sum(tensor, axis=(-2, -1) if tensor.ndim >= 2 else -1)
+  if aggregate_times:
+    return np.sum(tensor, axis=-1)
+  if aggregate_geos:
+    return np.sum(tensor, axis=-2)
+  return tensor
+
+
 class BayesianPPPCheckTest(parameterized.TestCase):
 
   def setUp(self):
@@ -968,12 +984,20 @@ class BayesianPPPCheckTest(parameterized.TestCase):
         spec_set=True,
         instance=True,
     )
+    self.mock_kpi_transformer = mock.create_autospec(
+        spec=transformers.KpiTransformer, spec_set=True, instance=True
+    )
+    self.mock_kpi_transformer.population_scaled_stdev = 1.0
+    self.model_context.kpi_transformer = self.mock_kpi_transformer
+    self.model_context.population = np.array([1.0, 1.0])
+    self.model_context.input_data.revenue_per_kpi = None
+
     self.inference_data = mock.create_autospec(
         spec=az.InferenceData, spec_set=False, instance=True
     )
-    self.inference_data.posterior = mock.create_autospec(
-        xr.Dataset, spec_set=True, instance=True
-    )
+    self.inference_data.posterior = {
+        constants.SIGMA: np.array([[0.0, 0.0]])
+    }
     self.analyzer = mock.create_autospec(
         spec=analyzer_module.Analyzer, spec_set=True, instance=True
     )
@@ -1006,7 +1030,12 @@ class BayesianPPPCheckTest(parameterized.TestCase):
       ),
   )
   def test_bayesian_ppp_check(
-      self, kpi, revenue_per_kpi, expected_outcome, expected_case, expected_ppp
+      self,
+      kpi,
+      revenue_per_kpi,
+      expected_outcome,
+      expected_case,
+      expected_ppp,
   ):
     self.model_context.input_data.kpi = kpi
     self.model_context.input_data.revenue_per_kpi = revenue_per_kpi
@@ -1023,6 +1052,12 @@ class BayesianPPPCheckTest(parameterized.TestCase):
     )
     result = check.run()
 
+    self.analyzer.expected_outcome.assert_called_once_with(
+        aggregate_times=True,
+        aggregate_geos=True,
+        selected_geos=None,
+        selected_times=None,
+    )
     self.assertEqual(result.case, expected_case)
     self.assertAlmostEqual(
         result.details[results.constants.BAYESIAN_PPP], expected_ppp
@@ -1030,7 +1065,6 @@ class BayesianPPPCheckTest(parameterized.TestCase):
 
   def test_bayesian_ppp_check_with_selected_times_geos(self):
     self.model_context.input_data.kpi = np.array([10, 20])
-    self.model_context.input_data.revenue_per_kpi = None
     self.analyzer.expected_outcome.return_value = np.array([25, 35])
     self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
         lambda tensor, **kwargs: tensor
@@ -1045,15 +1079,321 @@ class BayesianPPPCheckTest(parameterized.TestCase):
         selected_geos=["geo1"],
     )
     check.run()
-    args, _ = self.analyzer.filter_and_aggregate_geos_and_times.call_args
-    np.testing.assert_array_equal(
-        args[0], backend.to_tensor(np.array([10, 20]))
-    )
     self.analyzer.expected_outcome.assert_called_once_with(
         aggregate_times=True,
         aggregate_geos=True,
         selected_geos=["geo1"],
         selected_times=["time1"],
+    )
+
+  @mock.patch.object(np.random, "normal", autospec=True, spec_set=True)
+  def test_bayesian_ppp_check_predictive_distribution(
+      self, mock_random_normal
+  ):
+    self.model_context.input_data.kpi = np.array([10, 20])
+    expected_outcome = np.array([25.0, 35.0])
+    sigma = np.array([[1.0, 2.0]])
+    self.analyzer.expected_outcome.return_value = expected_outcome
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+    self.inference_data.posterior = {constants.SIGMA: sigma}
+    mock_random_normal.return_value = expected_outcome
+
+    check = checks.BayesianPPPCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
+    )
+    check.run()
+
+    self.analyzer.expected_outcome.assert_called_once_with(
+        aggregate_times=True,
+        aggregate_geos=True,
+        selected_geos=None,
+        selected_times=None,
+    )
+    np.testing.assert_array_equal(
+        mock_random_normal.call_args[0][0], expected_outcome
+    )
+    expected_total_sigma = np.array([np.sqrt(2.0), 2.0 * np.sqrt(2.0)])
+    np.testing.assert_allclose(
+        mock_random_normal.call_args[0][1], expected_total_sigma
+    )
+
+  def test_bayesian_ppp_is_larger_when_sigma_is_larger(self):
+    np.random.seed(0)
+    self.model_context.input_data.kpi = np.array([50.0, 50.0])
+    expected_outcome = np.full((1, 1000), 80.0)
+    self.analyzer.expected_outcome.return_value = expected_outcome
+    self.analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        lambda tensor, **kwargs: tensor
+    )
+
+    # Run with smaller sigma.
+    self.inference_data.posterior = {
+        constants.SIGMA: np.full((1, 1000), 0.1)
+    }
+    result_small_sigma = checks.BayesianPPPCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
+    ).run()
+
+    # Run with larger sigma.
+    self.inference_data.posterior = {
+        constants.SIGMA: np.full((1, 1000), 20.0)
+    }
+    result_large_sigma = checks.BayesianPPPCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=self.config,
+    ).run()
+
+    self.assertGreater(
+        result_large_sigma.details[results.constants.BAYESIAN_PPP],
+        result_small_sigma.details[results.constants.BAYESIAN_PPP],
+    )
+
+  def test_kpi_transformer_sensitivity_matches_analytical_weights(self):
+    n_geos, n_times = 4, 6
+    kpi_raw = np.random.uniform(100.0, 500.0, (n_geos, n_times))
+    pop = np.array([50.0, 100.0, 200.0, 400.0])
+    kpi_transformer = transformers.KpiTransformer(
+        kpi=backend.to_tensor(kpi_raw),
+        population=backend.to_tensor(pop),
+    )
+    slope = (
+        kpi_transformer.inverse(backend.to_tensor(np.ones((n_geos, 1))))
+        - kpi_transformer.inverse(backend.to_tensor(np.zeros((n_geos, 1))))
+    )
+    expected_slope = np.asarray(slope)
+    analytical_slope = (
+        float(kpi_transformer.population_scaled_stdev) * pop[:, np.newaxis]
+    )
+
+    np.testing.assert_allclose(expected_slope, analytical_slope, rtol=1e-6)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_revenue_shared_sigma",
+          n_geos=3,
+          n_times=4,
+          use_revenue=True,
+          unique_sigma=False,
+      ),
+      dict(
+          testcase_name="geo_kpi_shared_sigma",
+          n_geos=3,
+          n_times=4,
+          use_revenue=False,
+          unique_sigma=False,
+      ),
+      dict(
+          testcase_name="geo_revenue_geo_sigma",
+          n_geos=3,
+          n_times=4,
+          use_revenue=True,
+          unique_sigma=True,
+      ),
+      dict(
+          testcase_name="geo_kpi_geo_sigma",
+          n_geos=3,
+          n_times=4,
+          use_revenue=False,
+          unique_sigma=True,
+      ),
+      dict(
+          testcase_name="national_revenue",
+          n_geos=1,
+          n_times=4,
+          use_revenue=True,
+          unique_sigma=False,
+      ),
+      dict(
+          testcase_name="national_kpi",
+          n_geos=1,
+          n_times=4,
+          use_revenue=False,
+          unique_sigma=False,
+      ),
+  )
+  def test_calculate_total_sigma_configuration_matrix(
+      self, n_geos, n_times, use_revenue, unique_sigma
+  ):
+    n_chains, n_draws = 2, 5
+    geos = [f"geo_{i}" for i in range(n_geos)]
+
+    kpi = np.random.uniform(50.0, 100.0, (n_geos, n_times))
+    pop = np.linspace(100.0, 500.0, n_geos) if n_geos > 1 else np.array([1.0])
+    price = (
+        np.random.uniform(1.5, 2.5, (n_geos, n_times)) if use_revenue else None
+    )
+
+    kpi_transformer = transformers.KpiTransformer(
+        kpi=backend.to_tensor(kpi),
+        population=backend.to_tensor(pop),
+    )
+
+    model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    model_context.kpi_transformer = kpi_transformer
+    model_context.population = pop
+    model_context.input_data.kpi = kpi
+    model_context.input_data.revenue_per_kpi = price
+
+    if unique_sigma:
+      sigma_vals = np.random.uniform(0.1, 0.3, (n_chains, n_draws, n_geos))
+      sigma_da = xr.DataArray(
+          sigma_vals,
+          dims=["chain", "draw", "geo"],
+          coords={"geo": geos},
+      )
+    else:
+      sigma_vals = np.random.uniform(0.1, 0.3, (n_chains, n_draws))
+      sigma_da = xr.DataArray(
+          sigma_vals,
+          dims=["chain", "draw"],
+      )
+
+    inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    inference_data.posterior = {constants.SIGMA: sigma_da}
+
+    analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+
+    analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        _mock_filter_and_aggregate
+    )
+
+    check = checks.BayesianPPPCheck(
+        model_context=model_context,
+        inference_data=inference_data,
+        analyzer=analyzer,
+        config=configs.BayesianPPPConfig(),
+    )
+
+    # Compute expected analytical total sigma.
+    stdev = float(kpi_transformer.population_scaled_stdev)
+    if price is not None:
+      weight = pop[:, np.newaxis] * price
+    else:
+      weight = np.broadcast_to(
+          pop[:, np.newaxis] if n_geos > 1 else pop, (n_geos, n_times)
+      )
+    weight_sq = weight**2
+    weight_sq_sum_time = np.sum(weight_sq, axis=-1)
+
+    if unique_sigma:
+      expected_total_var = np.sum(
+          (sigma_vals**2) * weight_sq_sum_time, axis=-1
+      ) * (stdev**2)
+      expected_total_sigma = np.sqrt(expected_total_var).flatten()
+    else:
+      expected_total_sigma = sigma_vals.flatten() * (
+          stdev * np.sqrt(np.sum(weight_sq))
+      )
+
+    actual_total_sigma = check._calculate_total_sigma()
+    np.testing.assert_allclose(
+        actual_total_sigma, expected_total_sigma, rtol=1e-6
+    )
+
+  def test_calculate_total_sigma_subset_filtering(self):
+    n_chains, n_draws, n_geos, n_times = 2, 4, 4, 5
+    geos = [f"geo_{i}" for i in range(n_geos)]
+    selected_geos = ["geo_0", "geo_2"]
+    selected_times = ["time_1", "time_3", "time_4"]
+    selected_geo_idx = [0, 2]
+    selected_time_idx = [1, 3, 4]
+
+    kpi = np.random.uniform(50.0, 100.0, (n_geos, n_times))
+    pop = np.array([100.0, 200.0, 300.0, 400.0])
+    price = np.random.uniform(1.0, 2.0, (n_geos, n_times))
+
+    kpi_transformer = transformers.KpiTransformer(
+        kpi=backend.to_tensor(kpi),
+        population=backend.to_tensor(pop),
+    )
+
+    model_context = mock.create_autospec(
+        spec=context.ModelContext, spec_set=True, instance=True
+    )
+    model_context.kpi_transformer = kpi_transformer
+    model_context.population = pop
+    model_context.input_data.kpi = kpi
+    model_context.input_data.revenue_per_kpi = price
+
+    sigma_vals = np.random.uniform(0.1, 0.3, (n_chains, n_draws, n_geos))
+    sigma_da = xr.DataArray(
+        sigma_vals,
+        dims=["chain", "draw", "geo"],
+        coords={"geo": geos},
+    )
+    inference_data = mock.create_autospec(
+        spec=az.InferenceData, spec_set=False, instance=True
+    )
+    inference_data.posterior = {constants.SIGMA: sigma_da}
+
+    analyzer = mock.create_autospec(
+        spec=analyzer_module.Analyzer, spec_set=True, instance=True
+    )
+
+    def mock_subset_filter_and_aggregate(
+        tensor,
+        selected_geos=None,
+        selected_times=None,
+        aggregate_geos=False,
+        aggregate_times=False,
+        **unused_kwargs,
+    ):
+      t = np.asarray(tensor)
+      geo_idx = [0, 2] if selected_geos else list(range(n_geos))
+      time_idx = [1, 3, 4] if selected_times else list(range(n_times))
+      t_filtered = t[..., geo_idx, :][..., :, time_idx]
+      if aggregate_times and aggregate_geos:
+        return np.sum(t_filtered, axis=(-2, -1))
+      if aggregate_times:
+        return np.sum(t_filtered, axis=-1)
+      if aggregate_geos:
+        return np.sum(t_filtered, axis=-2)
+      return t_filtered
+
+    analyzer.filter_and_aggregate_geos_and_times.side_effect = (
+        mock_subset_filter_and_aggregate
+    )
+
+    check = checks.BayesianPPPCheck(
+        model_context=model_context,
+        inference_data=inference_data,
+        analyzer=analyzer,
+        config=configs.BayesianPPPConfig(),
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+
+    # Compute expected analytical total sigma under filtered subsets.
+    stdev = float(kpi_transformer.population_scaled_stdev)
+    weight = pop[:, np.newaxis] * price
+    weight_sq_filtered = (
+        weight[selected_geo_idx, :][:, selected_time_idx] ** 2
+    ).sum(axis=-1)
+    sigma_selected = sigma_vals[:, :, selected_geo_idx]
+    expected_total_var = np.sum(
+        (sigma_selected**2) * weight_sq_filtered, axis=-1
+    ) * (stdev**2)
+    expected_total_sigma = np.sqrt(expected_total_var).flatten()
+
+    actual_total_sigma = check._calculate_total_sigma()
+    np.testing.assert_allclose(
+        actual_total_sigma, expected_total_sigma, rtol=1e-6
     )
 
 

@@ -217,6 +217,76 @@ class BayesianPPPCheck(
 ):
   """Checks for Bayesian Posterior Predictive P-value."""
 
+  def _calculate_total_sigma(self) -> np.ndarray:
+    """Calculates the standard deviation of the aggregate total outcome noise.
+
+    In Meridian, each cell (g, t) has independent residual error on the
+    normalized scale:
+
+    y_{g, t}^scaled ~ N(mu_{g, t}^scaled, sigma_g^2)
+
+    Converting normalized KPI to raw KPI/revenue scales each cell by:
+    weight_{g, t} = stdev * pop_g * revenue_per_kpi_{g, t}
+
+    where stdev = kpi_transformer.population_scaled_stdev and
+    pop_g = population_g. Note: revenue_per_kpi is set to 1.0 in the weight
+    calculation if it's passed as None.
+
+    Since the sum of independent normal random variables is itself normal:
+    sum_{g, t} y_{g, t} ~ N(sum_{g, t} mu_{g, t}, sum_{g, t} Var(y_{g, t}))
+
+    the aggregate variance is computed analytically:
+    total_var_s = sum_{g, t} (sigma_{s, g} * weight_{g, t})^2
+
+    Simulating directly on the aggregate sum via N(total_outcome_expected,
+    sqrt(total_var)) is mathematically identical to simulating each individual
+    cell and summing them. This is more efficient.
+
+    Returns:
+      A 1D numpy array representing the total residual standard deviation across
+      all posterior draws.
+    """
+    stdev = float(self._model_context.kpi_transformer.population_scaled_stdev)
+    kpi_shape = np.shape(self._model_context.input_data.kpi)
+    pop = np.asarray(self._model_context.population)
+    if len(kpi_shape) > pop.ndim:
+      pop = pop.reshape(pop.shape + (1,) * (len(kpi_shape) - pop.ndim))
+
+    revenue_per_kpi = self._model_context.input_data.revenue_per_kpi
+    if revenue_per_kpi is not None:
+      weight_sq = (pop * np.asarray(revenue_per_kpi)) ** 2
+    else:
+      weight_sq = np.broadcast_to(pop, kpi_shape) ** 2
+
+    weight_sq_filtered = np.asarray(
+        self._analyzer.filter_and_aggregate_geos_and_times(
+            backend.to_tensor(weight_sq),
+            selected_geos=self._selected_geos,
+            selected_times=self._selected_times,
+            aggregate_geos=False,
+            aggregate_times=True,
+        )
+    )
+
+    sigma = np.asarray(
+        self._inference_data.posterior[constants.SIGMA]  # pyrefly: ignore[missing-attribute]
+    )
+    if sigma.ndim == 2:
+      return sigma.flatten() * (
+          stdev * np.sqrt(np.sum(weight_sq_filtered))
+      )
+    if self._selected_geos is not None:
+      sigma_selected = np.asarray(
+          self._inference_data.posterior[constants.SIGMA].sel(  # pyrefly: ignore[missing-attribute]
+              geo=list(self._selected_geos)
+          )
+      )
+    else:
+      sigma_selected = sigma
+    return np.sqrt(
+        np.sum(sigma_selected**2 * weight_sq_filtered, axis=-1) * (stdev**2)
+    ).flatten()
+
   def run(self) -> results.BayesianPPPCheckResult:
     analyzer = self._analyzer
 
@@ -233,10 +303,10 @@ class BayesianPPPCheck(
             selected_times=self._selected_times,
             aggregate_geos=False,
             aggregate_times=False,
-            has_media_dim=False,
         )
     )
     total_outcome_actual = np.sum(total_actual_outcome_filtered)  # pyrefly: ignore[no-matching-overload]
+
     total_outcome_posterior = analyzer.expected_outcome(
         aggregate_times=True,
         aggregate_geos=True,
@@ -244,12 +314,22 @@ class BayesianPPPCheck(
         selected_times=self._selected_times,
     )
     total_outcome_expected = np.asarray(total_outcome_posterior).flatten()
+    total_sigma = self._calculate_total_sigma()
 
-    total_outcome_expected_mean = np.mean(total_outcome_expected)
-
+    total_outcome_posterior_predictive = np.random.normal(
+        total_outcome_expected, total_sigma
+    )
+    total_outcome_posterior_predictive_mean = np.mean(
+        total_outcome_posterior_predictive
+    )
     bayesian_ppp = np.mean(
-        np.abs(total_outcome_expected - total_outcome_expected_mean)
-        >= np.abs(total_outcome_actual - total_outcome_expected_mean)
+        np.abs(
+            total_outcome_posterior_predictive
+            - total_outcome_posterior_predictive_mean
+        )
+        >= np.abs(
+            total_outcome_actual - total_outcome_posterior_predictive_mean
+        )
     )
 
     if bayesian_ppp >= self._config.ppp_threshold:
