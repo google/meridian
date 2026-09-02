@@ -67,14 +67,17 @@ colab = [
   "psutil",
   "python-calamine",  # For parsing the included simulated .xlsx files.
 ]
+
 # GPU deps
 # Installed through `pip install -e .[and-cuda]`
 and-cuda = [
   "tensorflow[and-cuda] >= 2.21.0, < 2.22",
 ]
+
 # MLflow deps
 # Installed through `pip install -e .[mlflow]`
 mlflow = ["mlflow"]
+
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
@@ -82,9 +85,10 @@ jax = [
     "jaxlib==0.7.2",
     "tfp-nightly[substrates-jax]==0.26.0.dev20260130",
 ]
+
 # MMM proto schema.
 schema = [
-  "mmm-proto-schema >= 1.3.0",
+  "mmm-proto-schema >= 1.3.1",
   "semver",
 ]
 
@@ -92,8 +96,13 @@ schema = [
 scenarioplanner = [
   "google-api-python-client",
   "google-auth",
-  "mmm-proto-schema >= 1.3.0",
+  "mmm-proto-schema >= 1.3.1",
   "semver",
+]
+
+# Meridian GeoX.
+geox = [
+  "meridian-geox >= 0.1.1,"
 ]
 
 [tool.pyink]
