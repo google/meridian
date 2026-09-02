@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Relax `jax` and `jaxlib` dependency pins to `>= 0.7.2, < 1.0.0` and add
+    `jax[cuda12]` to `[and-cuda]` optional dependencies to support Python 3.13
+    and prevent PJRT accelerator plugin version mismatches.
 *   Update `BayesianPPPCheck` calculation to use the posterior predictive
     distribution with `sigma` rather than the posterior expected outcome.
 *   **Breaking change**: Toggle default backend from TensorFlow to JAX.

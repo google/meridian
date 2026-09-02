@@ -29,8 +29,8 @@ dependencies = [
   "babel",
   "bidict",
   "immutabledict",
-  "jax == 0.7.2",
-  "jaxlib == 0.7.2",
+  "jax >= 0.7.2, < 1.0.0",
+  "jaxlib >= 0.7.2, < 1.0.0",
   "joblib",
   "matplotlib < 3.11.0",
   "natsort >= 7.1.1, < 8",
@@ -72,6 +72,7 @@ colab = [
 # Installed through `pip install -e .[and-cuda]`
 and-cuda = [
   "tensorflow[and-cuda] >= 2.21.0, < 2.22",
+  "jax[cuda12] >= 0.7.2, < 1.0.0",
 ]
 
 # MLflow deps
@@ -81,9 +82,9 @@ mlflow = ["mlflow"]
 # JAX backend dependencies.
 # Installed through `pip install -e .[jax]`
 jax = [
-    "jax==0.7.2",
-    "jaxlib==0.7.2",
-    "tfp-nightly[substrates-jax]==0.26.0.dev20260130",
+  "jax >= 0.7.2, < 1.0.0",
+  "jaxlib >= 0.7.2, < 1.0.0",
+  "tfp-nightly[substrates-jax] == 0.26.0.dev20260130",
 ]
 
 # MMM proto schema.
