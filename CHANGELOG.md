@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   **Breaking change**: Toggle default backend from TensorFlow to JAX.
+*   Add prior calibration through incrementality experiments such as Meridian GeoX.
+*   Add channel calibration recommendations.
 *   **Breaking change**: Standardized time selection arguments
     (`selected_times`, `media_selected_times`) across `Analyzer` and
     `BudgetOptimizer` to strictly require date string coordinates
@@ -31,20 +34,20 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Relax `jax` and `jaxlib` dependency pins to `>= 0.7.2, < 1.0.0` and add
     `jax[cuda12]` to `[and-cuda]` optional dependencies to support Python 3.13
     and prevent PJRT accelerator plugin version mismatches.
-*   Update `BayesianPPPCheck` calculation to use the posterior predictive
-    distribution with `sigma` rather than the posterior expected outcome.
-*   **Breaking change**: Toggle default backend from TensorFlow to JAX.
-*   Make 64-bit precision the default for the JAX backend. Users can opt out and
-    use 32-bit precision by setting `MERIDIAN_ENABLE_JAX_X64=false`.
 *   **Breaking change**: Rename `max_rhat` to `max_r_hat` in
     `ConvergenceCheckResult` and update R-hat summary metric constants
     (`AVG_R_HAT`, `MAX_R_HAT`, `PERCENT_BAD_R_HAT`, `ROW_IDX_BAD_R_HAT`,
     `COL_IDX_BAD_R_HAT`) to use the `_r_hat` convention.
 *   **Breaking change**: Removed `Meridian.populate_cached_properties()`. Use
     `ModelContext.populate_cached_properties()` directly.
-*   Change `EDASeverity` outcome statuses from `INFO`/`ATTENTION`/`ERROR` to
-    `INFO`/`REVIEW`/`FAIL` for consistency across the library.
-*   Attach the use_kpi attribute to the summary metrics dataset.
+*   **Breaking change**: Change `EDASeverity` outcome statuses from
+    `INFO`/`ATTENTION`/`ERROR` to `INFO`/`REVIEW`/`FAIL` for consistency across
+    the library.
+*   Update `BayesianPPPCheck` calculation to use the posterior predictive
+    distribution with `sigma` rather than the posterior expected outcome.
+*   Make 64-bit precision the default for the JAX backend. Users can opt out and
+    use 32-bit precision by setting `MERIDIAN_ENABLE_JAX_X64=false`.
+*   Attach the `use_kpi` attribute to the summary metrics dataset.
 *   Add channel-level inspection methods (`get_media_scaling_factor`,
     `get_channel_parameters`, `get_channel_parameter_tensor`) and
     `ChannelParameters` dataclass to `ModelContext`.
