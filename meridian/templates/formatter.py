@@ -25,7 +25,6 @@ import immutabledict
 import jinja2
 from meridian import constants as c
 
-
 __all__ = [
     'CardSpec',
     'ChartSpec',
@@ -174,7 +173,11 @@ def compact_number(n: float, precision: int = 0, currency: str = '') -> str:
   return currency + suffixed
 
 
-def compact_number_expr(value: str = 'value', n_sig_digits: int = 3) -> str:
+def compact_number_expr(
+    value: str = 'value',
+    n_sig_digits: int = 3,
+    currency: str = '',
+) -> str:
   """Returns the Vega expression to format the datum value with SI-prefixes.
 
   The scientific notation prefixes (k, M, G, T) are used for numeric values to
@@ -184,10 +187,19 @@ def compact_number_expr(value: str = 'value', n_sig_digits: int = 3) -> str:
   Args:
     value: Datum value to format.
     n_sig_digits: The number of significant digits for the formatted number.
+    currency: Optional currency symbol to prefix the formatted number
+      (e.g. '$', '€').
 
-  Returns: The Vega expression string to format the text into a compact form.
+  Returns:
+    The Vega expression string to format the text into a compact form.
   """
-  return f"replace(format(datum.{value}, '.{n_sig_digits}~s'), 'G', 'B')"
+  expr = f"replace(format(datum.{value}, '.{n_sig_digits}~s'), 'G', 'B')"
+  if currency:
+    return (
+        f"(datum.{value} < 0 ? '-' : '') + '{currency}' +"
+        f" replace(format(abs(datum.{value}), '.{n_sig_digits}~s'), 'G', 'B')"
+    )
+  return expr
 
 
 def format_number_text(percent_value: float, actual_value: float) -> str:

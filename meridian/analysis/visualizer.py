@@ -420,6 +420,8 @@ class ModelFit:
     self._model_fit_data = self._analyzer.expected_vs_actual_data(
         use_kpi=self._use_kpi, confidence_level=confidence_level
     )
+    currency_code = getattr(self._meridian.input_data, 'currency_code', None)
+    self._currency = currency_module.get_currency_symbol(currency_code)
 
   @property
   def model_fit_data(self) -> xr.Dataset:
@@ -529,7 +531,9 @@ class ModelFit:
                 domain=False,
                 tickCount=5,
                 labelPadding=c.PADDING_10,
-                labelExpr=formatter.compact_number_expr(),
+                labelExpr=formatter.compact_number_expr(
+                    currency=self._currency if not self._use_kpi else ''
+                ),
                 **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
             ),
         ),
@@ -942,6 +946,10 @@ class MediaEffects:
 
     self._by_reach = by_reach
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
+    currency_code = getattr(
+        self._analyzer.model_context.input_data, 'currency_code', None
+    )
+    self._currency = currency_module.get_currency_symbol(currency_code)
 
   @functools.lru_cache(maxsize=128)
   def response_curves_data(
@@ -1145,7 +1153,9 @@ class MediaEffects:
                 f'{c.SPEND}:Q',
                 title=summary_text.SPEND_LABEL,
                 axis=alt.Axis(
-                    labelExpr=formatter.compact_number_expr(),
+                    labelExpr=formatter.compact_number_expr(
+                        currency=self._currency
+                    ),
                     **formatter.AXIS_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
@@ -1153,7 +1163,9 @@ class MediaEffects:
                 f'{c.MEAN}:Q',
                 title=y_axis_label,
                 axis=alt.Axis(
-                    labelExpr=formatter.compact_number_expr(),
+                    labelExpr=formatter.compact_number_expr(
+                        currency=self._currency if not self._use_kpi else ''
+                    ),
                     **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
             ),
@@ -1542,6 +1554,8 @@ class MediaSummary:
     self._marginal_roi_by_reach = marginal_roi_by_reach
     self._non_media_baseline_values = non_media_baseline_values
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
+    currency_code = getattr(self._meridian.input_data, 'currency_code', None)
+    self._currency = currency_module.get_currency_symbol(currency_code)
 
   @property
   def paid_summary_metrics(self):
@@ -1852,7 +1866,9 @@ class MediaSummary:
                     domain=False,
                     tickCount=5,
                     labelPadding=c.PADDING_10,
-                    labelExpr=formatter.compact_number_expr(),
+                    labelExpr=formatter.compact_number_expr(
+                        currency=self._currency if not self._use_kpi else ''
+                    ),
                     **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
                 scale=alt.Scale(domainMin=min_y, clamp=True),

@@ -59,6 +59,20 @@ class FormatterTest(parameterized.TestCase):
     expr = formatter.compact_number_expr('other', 2)
     self.assertEqual(expr, "replace(format(datum.other, '.2~s'), 'G', 'B')")
 
+  def test_compact_number_expr_with_currency(self):
+    expr_usd = formatter.compact_number_expr(currency='$')
+    self.assertEqual(
+        expr_usd,
+        "(datum.value < 0 ? '-' : '') + '$' +"
+        " replace(format(abs(datum.value), '.3~s'), 'G', 'B')",
+    )
+    expr_eur = formatter.compact_number_expr('spend', 2, currency='€')
+    self.assertEqual(
+        expr_eur,
+        "(datum.spend < 0 ? '-' : '') + '€' +"
+        " replace(format(abs(datum.spend), '.2~s'), 'G', 'B')",
+    )
+
   @parameterized.named_parameters(
       ('rounded_up_percent', 0.4257, 15, '42.6% (15)'),
       ('rounded_down_percent', 0.4251, 15, '42.5% (15)'),

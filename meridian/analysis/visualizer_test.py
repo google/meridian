@@ -727,13 +727,37 @@ class ModelFitTest(absltest.TestCase):
         plot.layer[0].encoding.y["axis"].to_dict(),
         {
             "domain": False,
-            "labelExpr": formatter.compact_number_expr(),
+            "labelExpr": formatter.compact_number_expr(
+                currency=self.model_fit_kpi_type_revenue._currency
+            ),
             "labelPadding": c.PADDING_10,
             "tickCount": 5,
             "ticks": False,
         }
         | formatter.Y_AXIS_TITLE_CONFIG,
     )
+
+  def test_model_fit_axis_encoding_with_currency_code(self):
+    with mock.patch.object(
+        self.model_fit_kpi_type_revenue._meridian.input_data,
+        "currency_code",
+        "EUR",
+    ):
+      model_fit_eur = visualizer.ModelFit(
+          self.model_fit_kpi_type_revenue._meridian, use_kpi=False
+      )
+      plot = model_fit_eur.plot_model_fit()
+      self.assertEqual(
+          plot.layer[0].encoding.y["axis"].to_dict(),
+          {
+              "domain": False,
+              "labelExpr": formatter.compact_number_expr(currency="€"),
+              "labelPadding": c.PADDING_10,
+              "tickCount": 5,
+              "ticks": False,
+          }
+          | formatter.Y_AXIS_TITLE_CONFIG,
+      )
 
   def test_model_fit_tooltip_encoding(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
@@ -1389,13 +1413,50 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertEqual(plot.config["axis"].to_dict(), formatter.TEXT_CONFIG)
     self.assertEqual(
         plot.layer[0].encoding.x["axis"].to_dict(),
-        {"labelExpr": formatter.compact_number_expr()} | formatter.AXIS_CONFIG,
+        {
+            "labelExpr": formatter.compact_number_expr(
+                currency=self.media_effects_kpi_type_revenue._currency
+            )
+        }
+        | formatter.AXIS_CONFIG,
     )
     self.assertEqual(
         plot.layer[0].encoding.y["axis"].to_dict(),
-        {"labelExpr": formatter.compact_number_expr()}
+        {
+            "labelExpr": formatter.compact_number_expr(
+                currency=self.media_effects_kpi_type_revenue._currency
+            )
+        }
         | formatter.Y_AXIS_TITLE_CONFIG,
     )
+
+  def test_media_effects_plot_response_curves_axis_configs_with_currency_code(
+      self,
+  ):
+    with mock.patch.object(
+        self.media_effects_kpi_type_revenue._analyzer.model_context.input_data,
+        "currency_code",
+        "EUR",
+    ):
+      media_effects_eur = visualizer.MediaEffects(
+          analyzer=self.media_effects_kpi_type_revenue._analyzer,
+          use_kpi=False,
+      )
+      plot = media_effects_eur.plot_response_curves(plot_separately=False)
+      self.assertEqual(
+          plot.layer[0].encoding.x["axis"].to_dict(),
+          {
+              "labelExpr": formatter.compact_number_expr(currency="€"),
+          }
+          | formatter.AXIS_CONFIG,
+      )
+      self.assertEqual(
+          plot.layer[0].encoding.y["axis"].to_dict(),
+          {
+              "labelExpr": formatter.compact_number_expr(currency="€"),
+          }
+          | formatter.Y_AXIS_TITLE_CONFIG,
+      )
 
   def test_media_effects_plot_adstock_decay_plot_include_ci(self):
     plot = self.media_effects_kpi_type_revenue.plot_adstock_decay()
@@ -2197,6 +2258,38 @@ class MediaSummaryTest(parameterized.TestCase):
       )
     self.assertEqual(plot_kpi.encoding.y["title"], "KPI")
     self.assertEqual(plot_revenue.encoding.y["title"], "Revenue")
+    self.assertEqual(
+        plot_kpi.encoding.y["axis"]["labelExpr"],
+        formatter.compact_number_expr(currency=""),
+    )
+    self.assertEqual(
+        plot_revenue.encoding.y["axis"]["labelExpr"],
+        formatter.compact_number_expr(currency="$"),
+    )
+
+  def test_media_summary_plot_channel_contribution_area_chart_with_currency_code(
+      self,
+  ):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      with mock.patch.object(
+          self.media_summary_revenue._meridian.input_data,
+          "currency_code",
+          "EUR",
+      ):
+        media_summary_eur = visualizer.MediaSummary(
+            self.media_summary_revenue._meridian, use_kpi=False
+        )
+        plot = media_summary_eur.plot_channel_contribution_area_chart()
+        self.assertEqual(
+            plot.encoding.y["axis"]["labelExpr"],
+            formatter.compact_number_expr(currency="€"),
+        )
 
   def test_media_summary_plot_channel_contribution_area_chart_baseline_min(
       self,
