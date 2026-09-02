@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   **Breaking change**: Refactor `NotFittedModelError` to `common.errors.NotFittedModelError`.
 *   **Breaking change**: Toggle default backend from TensorFlow to JAX.
 *   Add prior calibration through incrementality experiments such as Meridian GeoX.
 *   Add channel calibration recommendations.
