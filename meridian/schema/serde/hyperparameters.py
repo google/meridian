@@ -27,6 +27,13 @@ from meridian.schema.serde import serde
 from meridian.schema.utils import proto_enum_converter
 import numpy as np
 
+__all__ = [
+    "HyperparametersSerde",
+    "media_effects_converter",
+    "non_paid_treatments_prior_type_converter",
+    "paid_media_prior_type_converter",
+]
+
 _MediaEffectsDist = meridian_pb.MediaEffectsDistribution
 _PaidMediaPriorType = meridian_pb.PaidMediaPriorType
 _NonPaidTreatmentsPriorType = meridian_pb.NonPaidTreatmentsPriorType

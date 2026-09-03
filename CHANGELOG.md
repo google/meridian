@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-02
+
 *   **Breaking change**: Refactor `NotFittedModelError` to `common.errors.NotFittedModelError`.
 *   **Breaking change**: Toggle default backend from TensorFlow to JAX.
 *   Add prior calibration through incrementality experiments such as Meridian GeoX.
@@ -584,4 +586,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.7.0]: https://github.com/google/meridian/releases/tag/v1.7.0
 [1.7.1]: https://github.com/google/meridian/releases/tag/v1.7.1
 [1.8.0]: https://github.com/google/meridian/releases/tag/v1.8.0
-[Unreleased]: https://github.com/google/meridian/compare/v1.8.0...HEAD
+[2.0.0]: https://github.com/google/meridian/releases/tag/v2.0.0
+[Unreleased]: https://github.com/google/meridian/compare/v2.0.0...HEAD

@@ -54,6 +54,26 @@ if TYPE_CHECKING:
 
 SeedType = Any
 
+__all__ = [
+    "ExtensionType",
+    "RNGHandler",
+    "Tensor",
+    "TensorShape",
+    "adstock_process",
+    "computation_backend",
+    "computation_precision",
+    "config",
+    "make_ndarray",
+    "make_tensor_proto",
+    "result_type",
+    "set_random_seed",
+    "stabilize_rf_roi_grid",
+    "standardize_dtype",
+    "to_tensor",
+    "vectorized_map",
+    "xla_windowed_adaptive_nuts",
+]
+
 
 def standardize_dtype(dtype: Any) -> str:
   """Converts a backend-specific dtype to a standard string representation.

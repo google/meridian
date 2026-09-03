@@ -32,6 +32,8 @@ from meridian.model import context
 from meridian.model.calibration import base as calibration_base
 import numpy as np
 
+__all__ = ["ModelReviewer"]
+
 CheckType = typing.Type[checks.BaseCheck]
 ConfigInstance = configs.BaseConfig
 ChecksBattery = typing.Mapping[CheckType, ConfigInstance]

@@ -25,6 +25,8 @@ from mmm.v1.model.meridian.eda import eda_spec_pb2 as eda_spec_pb
 from meridian.schema.serde import function_registry as function_registry_utils
 from meridian.schema.serde import serde
 
+__all__ = ["EDASpecSerde"]
+
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
 _FUNCTION_REGISTRY_NAME = "function_registry"
