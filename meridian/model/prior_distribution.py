@@ -1231,6 +1231,16 @@ def distributions_are_equal(
   a_params = a.parameters.copy()
   b_params = b.parameters.copy()
 
+  # Calibration metadata should be ignored for mathematical equality.
+  for key in [
+      constants.IS_CALIBRATED,
+      constants.CALIBRATION_OUTPUTS,
+  ]:
+    if key in a_params:
+      del a_params[key]
+    if key in b_params:
+      del b_params[key]
+
   if constants.DISTRIBUTION in a_params and constants.DISTRIBUTION in b_params:
     if not distributions_are_equal(
         a_params[constants.DISTRIBUTION], b_params[constants.DISTRIBUTION]

@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: Remove copybara strip for release.
+import types
+from typing import Any
 from absl.testing import absltest
 from absl.testing import parameterized
-
-# TODO: Remove copybara strip for release.
+from meridian import backend
 from meridian import constants
 from meridian.model import prior_distribution
 from meridian.model import spec
-
-# TODO: Remove copybara strip for release.
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 
 
@@ -569,7 +568,221 @@ class ModelSpecTest(parameterized.TestCase):
     ):
       spec.ModelSpec(max_lag=max_lag)  # pyrefly: ignore[bad-argument-type]
 
-  # TODO: Remove copybara strip for release.
+  @parameterized.named_parameters(
+      (
+          "string_decay",
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          8,
+      ),
+      (
+          "mapping_decay",
+          constants.BINOMIAL_DECAY,
+          4,
+          {"Search": constants.BINOMIAL_DECAY},
+          4,
+      ),
+      (
+          "unmentioned_channel_defaults_to_geometric",
+          constants.GEOMETRIC_DECAY,
+          8,
+          {"Other": constants.BINOMIAL_DECAY},
+          8,
+      ),
+      (
+          "mapping_prior",
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          8,
+          "mapping",
+      ),
+      (
+          "object_prior",
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          8,
+          "object",
+      ),
+      (
+          "partially_calibrated",
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          8,
+          "dataclass",
+          True,
+      ),
+  )
+  def test_spec_inits_matching_calibrated_prior_works(
+      self,
+      cal_adstock_decay_spec,
+      cal_max_lag,
+      spec_adstock_decay_spec,
+      spec_max_lag,
+      prior_type: str = "dataclass",
+      has_uncalibrated_channel: bool = False,
+  ):
+    cal_output = calibration_base.CalibrationOutput(
+        channel_name="Search",
+        intermediary_prior=backend.tfd.Normal(0.0, 1.0),
+        adstock_decay_spec=cal_adstock_decay_spec,
+        max_lag=cal_max_lag,
+    )
+    if has_uncalibrated_channel:
+      distributions = [
+          backend.tfd.Normal(0.1, 0.5),
+          backend.tfd.Normal(0.2, 0.9),
+      ]
+      is_calibrated = [False, True]
+      calibration_outputs = [None, cal_output]
+    else:
+      distributions = [backend.tfd.Normal(0.2, 0.9)]
+      is_calibrated = [True]
+      calibration_outputs = [cal_output]
+
+    roi_dist = calibration_base.CalibratedDistribution(
+        distributions=distributions,
+        is_calibrated=is_calibrated,
+        calibration_outputs=calibration_outputs,
+    )
+    prior: Any
+    if prior_type == "mapping":
+      prior = {constants.ROI_M: roi_dist}
+    elif prior_type == "object":
+      prior = types.SimpleNamespace(roi_m=roi_dist)
+    else:
+      prior = prior_distribution.PriorDistribution(roi_m=roi_dist)
+
+    model_spec = spec.ModelSpec(
+        prior=prior,  # pyrefly: ignore[bad-argument-type]
+        max_lag=spec_max_lag,
+        adstock_decay_spec=spec_adstock_decay_spec,
+    )
+    self.assertEqual(model_spec.max_lag, spec_max_lag)
+    self.assertEqual(model_spec.adstock_decay_spec, spec_adstock_decay_spec)
+
+  @parameterized.named_parameters(
+      (
+          "mismatched_max_lag",
+          "Search",
+          constants.ROI_M,
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          4,
+          (
+              "The `max_lag` for calibrated channel 'Search' (8) does not"
+              " match the ModelSpec `max_lag` (4). `max_lag` is used to"
+              " calculate the duration adjustment during prior calibration. To"
+              " fix this, set `ModelSpec(max_lag=...)` to match the value"
+              " used during prior calibration, or recalibrate the prior using"
+              " the desired `max_lag`."
+          ),
+      ),
+      (
+          "mismatched_adstock_decay_spec_str",
+          "Search",
+          constants.ROI_M,
+          constants.GEOMETRIC_DECAY,
+          8,
+          constants.BINOMIAL_DECAY,
+          8,
+          (
+              "The `adstock_decay_spec` for calibrated channel 'Search'"
+              " ('geometric') does not match the ModelSpec `adstock_decay_spec`"
+              " ('binomial'). `adstock_decay_spec` is used to calculate the"
+              " duration adjustment during prior calibration. To fix this, set"
+              " `ModelSpec(adstock_decay_spec=...)` to match the value used"
+              " during prior calibration, or recalibrate the prior using the"
+              " desired `adstock_decay_spec`."
+          ),
+      ),
+      (
+          "mismatched_adstock_decay_spec_mapping",
+          "Search",
+          constants.ROI_M,
+          constants.GEOMETRIC_DECAY,
+          8,
+          {"Search": constants.BINOMIAL_DECAY},
+          8,
+          (
+              "The `adstock_decay_spec` for calibrated channel 'Search'"
+              " ('geometric') does not match the ModelSpec `adstock_decay_spec`"
+              " ('binomial'). `adstock_decay_spec` is used to calculate the"
+              " duration adjustment during prior calibration. To fix this, set"
+              " `ModelSpec(adstock_decay_spec=...)` to match the value used"
+              " during prior calibration, or recalibrate the prior using the"
+              " desired `adstock_decay_spec`."
+          ),
+      ),
+      (
+          "mismatched_rf_channel",
+          "YouTube_RF",
+          constants.ROI_RF,
+          constants.BINOMIAL_DECAY,
+          8,
+          constants.GEOMETRIC_DECAY,
+          8,
+          (
+              "The `adstock_decay_spec` for calibrated channel 'YouTube_RF'"
+              " ('binomial') does not match the ModelSpec `adstock_decay_spec`"
+              " ('geometric'). `adstock_decay_spec` is used to calculate the"
+              " duration adjustment during prior calibration. To fix this, set"
+              " `ModelSpec(adstock_decay_spec=...)` to match the value used"
+              " during prior calibration, or recalibrate the prior using the"
+              " desired `adstock_decay_spec`."
+          ),
+      ),
+      (
+          "mismatched_adstock_decay_spec_unmentioned_in_mapping",
+          "Search",
+          constants.ROI_M,
+          constants.BINOMIAL_DECAY,
+          8,
+          {"Other": constants.BINOMIAL_DECAY},
+          8,
+          (
+              "The `adstock_decay_spec` for calibrated channel 'Search'"
+              " ('binomial') does not match the ModelSpec `adstock_decay_spec`"
+              " ('geometric'). `adstock_decay_spec` is used to calculate the"
+              " duration adjustment during prior calibration. To fix this, set"
+              " `ModelSpec(adstock_decay_spec=...)` to match the value used"
+              " during prior calibration, or recalibrate the prior using the"
+              " desired `adstock_decay_spec`."
+          ),
+      ),
+  )
+  def test_spec_inits_mismatched_calibrated_prior_fails(
+      self,
+      channel_name,
+      prior_attr,
+      cal_adstock_decay_spec,
+      cal_max_lag,
+      spec_adstock_decay_spec,
+      spec_max_lag,
+      error_message,
+  ):
+    cal_output = calibration_base.CalibrationOutput(
+        channel_name=channel_name,
+        intermediary_prior=backend.tfd.Normal(0.0, 1.0),
+        adstock_decay_spec=cal_adstock_decay_spec,
+        max_lag=cal_max_lag,
+    )
+    roi_dist = calibration_base.CalibratedDistribution(
+        distributions=[backend.tfd.Normal(0.2, 0.9)],
+        is_calibrated=[True],
+        calibration_outputs=[cal_output],
+    )
+    prior = prior_distribution.PriorDistribution(**{prior_attr: roi_dist})
+    with self.assertRaisesWithLiteralMatch(ValueError, error_message):
+      spec.ModelSpec(
+          prior=prior,
+          max_lag=spec_max_lag,
+          adstock_decay_spec=spec_adstock_decay_spec,
+      )
 
 
 if __name__ == "__main__":

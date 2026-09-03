@@ -78,6 +78,11 @@ def _is_valid_results_subset(
     results_by_type: Mapping[type[results.CheckResult], results.CheckResult],
 ) -> bool:
   """Checks if the present results match one of the allowed subsets."""
+  present_types = present_types - frozenset([
+      results.ImplausibleROICheckResult,
+      results.HighVarianceCheckResult,
+      results.PotentialBiasCheckResult,
+  ])
   # Case A: Convergence check only, which must have failed.
   if present_types == results.CONVERGENCE_ONLY_SET:
     conv_result = results_by_type[results.ConvergenceCheckResult]

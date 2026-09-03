@@ -1,0 +1,177 @@
+{#
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+#}
+<card class="channel-recommendation-card" id="channel-recommendations">
+  <card-title>
+    Channel calibration recommendation
+  </card-title>
+  {% if has_calibration_warning %}
+  <div class="status-banner-strip warning">
+     <span class="material-icons-outlined">warning</span>
+     <span>{{ recommendation_warning }}</span>
+  </div>
+  {% else %}
+  <div class="status-banner-strip info">
+     <span class="material-icons-outlined">info</span>
+     <span>{{ recommendation_info or "No channels require calibration. We recommend reviewing the table and plots below to check for channels near the boundaries that may be good candidates for calibration via an incrementality experiment such as those run with Meridian GeoX." }}</span>
+  </div>
+  {% endif %}
+  <div class="metrics-section">
+    <table class="channel-recommendation-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Score</th>
+          <th>High ROI</th>
+          <th>Low ROI</th>
+          <th>High Variance ROI</th>
+          <th>Potential Bias</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rec in recommendations %}
+        <tr>
+          <td>{{ rec.channel_name }}</td>
+          {% if rec.is_calibrated %}
+          <td colspan="5" class="calibrated-row-cell">
+            <chip class="calibrated-wide">Calibrated</chip>
+          </td>
+          {% else %}
+          <td class="calibration-score-cell" style="white-space: nowrap !important; text-align: center !important;">
+            <div class="score-container" style="display: inline-flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; gap: 8px !important; white-space: nowrap !important;">
+              <div class="channel-score-chart{% if rec.calibration_score < (calibration_score_threshold|default(67.5)) %} warning{% endif %}" style="width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: 50%; position: relative; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; white-space: nowrap !important; box-sizing: border-box !important; background: radial-gradient(circle at center, #ffffff 10.5px, transparent 11px), conic-gradient({% if rec.calibration_score < (calibration_score_threshold|default(67.5)) %}{{ calibration_score_yellow_color|default('#fcc934') }}{% else %}#6ba4ff{% endif %} {{ rec.calibration_score }}%, #eee 0);"></div>
+              <span class="score-value" style="font-size: 14px !important; font-weight: 500 !important; display: inline-block !important; white-space: nowrap !important;">{{ "%.1f"|format(rec.calibration_score) }}</span>
+            </div>
+          </td>
+          <td>
+            {% if rec.high_roi_status.name == 'REVIEW' %}
+            <chip class="driver">{{ driver_text|default("Driver") }}</chip>
+            {% else %}
+            <chip class="non-driver">{{ non_driver_text|default("Non-Driver") }}</chip>
+            {% endif %}
+          </td>
+          <td>
+            {% if rec.low_roi_status.name == 'REVIEW' %}
+            <chip class="driver">{{ driver_text|default("Driver") }}</chip>
+            {% else %}
+            <chip class="non-driver">{{ non_driver_text|default("Non-Driver") }}</chip>
+            {% endif %}
+          </td>
+          <td>
+            {% if rec.high_variance_status.name == 'REVIEW' %}
+            <chip class="driver">{{ driver_text|default("Driver") }}</chip>
+            {% else %}
+            <chip class="non-driver">{{ non_driver_text|default("Non-Driver") }}</chip>
+            {% endif %}
+          </td>
+          <td>
+            {% if rec.potential_bias_status.name == 'REVIEW' %}
+            <chip class="driver">{{ driver_text|default("Driver") }}</chip>
+            {% else %}
+            <chip class="non-driver">{{ non_driver_text|default("Non-Driver") }}</chip>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if implausible_roi_chart or high_variance_chart or potential_bias_chart or implausible_roi_chart_json or high_variance_chart_json or potential_bias_chart_json %}
+  <charts class="recommendation-plots">
+    {% set impl_chart = implausible_roi_chart_json or implausible_roi_chart %}
+    {% if impl_chart %}
+    <chart class="recommendation-plot-container">
+      <div class="chart-title">Spend vs. ROI (Implausible ROI Check)</div>
+      {% if implausible_roi_description %}
+      {% if implausible_roi_is_warning or implausible_roi_has_warning %}
+      <div class="status-banner-strip warning advisory-warning-banner">
+        <span class="material-icons-outlined">warning</span>
+        <p>{{ implausible_roi_description|safe }}</p>
+      </div>
+      {% else %}
+      <div class="status-banner-strip info advisory-warning-banner">
+        <span class="material-icons-outlined">info</span>
+        <p>{{ implausible_roi_description|safe }}</p>
+      </div>
+      {% endif %}
+      {% endif %}
+      <chart-embed id="implausible-roi-chart"></chart-embed>
+      <script type="text/javascript">
+        (() => {
+          const spec = JSON.parse({{ impl_chart|tojson }});
+          vegaEmbed('#implausible-roi-chart', spec).catch(console.error);
+        })();
+      </script>
+    </chart>
+    {% endif %}
+
+    {% set hv_chart = high_variance_chart_json or high_variance_chart %}
+    {% if hv_chart %}
+    <chart class="recommendation-plot-container">
+      <div class="chart-title">Spend vs. Relative Credible Interval (High Variance ROI Check)</div>
+      {% if high_variance_description %}
+      {% if high_variance_is_warning or high_variance_has_warning %}
+      <div class="status-banner-strip warning advisory-warning-banner">
+        <span class="material-icons-outlined">warning</span>
+        <p>{{ high_variance_description|safe }}</p>
+      </div>
+      {% else %}
+      <div class="status-banner-strip info advisory-warning-banner">
+        <span class="material-icons-outlined">info</span>
+        <p>{{ high_variance_description|safe }}</p>
+      </div>
+      {% endif %}
+      {% endif %}
+      <chart-embed id="high-variance-chart"></chart-embed>
+      <script type="text/javascript">
+        (() => {
+          const spec = JSON.parse({{ hv_chart|tojson }});
+          vegaEmbed('#high-variance-chart', spec).catch(console.error);
+        })();
+      </script>
+    </chart>
+    {% endif %}
+
+    {% set pb_chart = potential_bias_chart_json or potential_bias_chart %}
+    {% if pb_chart %}
+    <chart class="recommendation-plot-container">
+      <div class="chart-title">Correlation with Controls (Potential Bias Check)</div>
+      {% if potential_bias_description %}
+      {% if potential_bias_is_warning or potential_bias_has_warning %}
+      <div class="status-banner-strip warning advisory-warning-banner">
+        <span class="material-icons-outlined">warning</span>
+        <p>{{ potential_bias_description|safe }}</p>
+      </div>
+      {% else %}
+      <div class="status-banner-strip info advisory-warning-banner">
+        <span class="material-icons-outlined">info</span>
+        <p>{{ potential_bias_description|safe }}</p>
+      </div>
+      {% endif %}
+      {% endif %}
+      <chart-embed id="potential-bias-chart"></chart-embed>
+      <script type="text/javascript">
+        (() => {
+          const spec = JSON.parse({{ pb_chart|tojson }});
+          vegaEmbed('#potential-bias-chart', spec).catch(console.error);
+        })();
+      </script>
+    </chart>
+    {% endif %}
+  </charts>
+  {% endif %}
+</card>

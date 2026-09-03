@@ -26,15 +26,21 @@ from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
-
+from meridian.analysis.review import plots
 from meridian.analysis.review import results
 from meridian.model import context
-
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 
 CheckType = typing.Type[checks.BaseCheck]
 ConfigInstance = configs.BaseConfig
 ChecksBattery = typing.Mapping[CheckType, ConfigInstance]
+
+_CALIBRATION_CHECKS = (
+    checks.ImplausibleROICheck,
+    checks.HighVarianceCheck,
+    checks.PotentialBiasCheck,
+)
 
 
 _POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
@@ -43,6 +49,9 @@ _POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
     checks.GoodnessOfFitCheck: configs.GoodnessOfFitConfig(),
     checks.PriorPosteriorShiftCheck: configs.PriorPosteriorShiftConfig(),
     checks.ROIConsistencyCheck: configs.ROIConsistencyConfig(),
+    checks.ImplausibleROICheck: configs.ImplausibleROIConfig(),
+    checks.HighVarianceCheck: configs.HighVarianceConfig(),
+    checks.PotentialBiasCheck: configs.PotentialBiasConfig(),
 })
 
 
@@ -285,6 +294,9 @@ class ModelReviewer:
     """Checks if a check class is relevant for this model."""
     if not check_class.is_relevant(self._model_context, self._inference_data):
       return False
+    if check_class in _CALIBRATION_CHECKS:
+      if self._should_skip_calibration_checks(check_class):
+        return False
     return True
 
   def _should_skip_calibration_checks(self, check_class: CheckType) -> bool:
@@ -415,11 +427,161 @@ class ModelReviewer:
       overall_status = results.Status.PASS
       summary_message = "Passed: No major quality issues were identified."
 
+    implausible_roi_result = next(
+        (
+            r
+            for r in self._results.values()
+            if isinstance(r, results.ImplausibleROICheckResult)
+        ),
+        None,
+    )
+    high_variance_result = next(
+        (
+            r
+            for r in self._results.values()
+            if isinstance(r, results.HighVarianceCheckResult)
+        ),
+        None,
+    )
+    potential_bias_result = next(
+        (
+            r
+            for r in self._results.values()
+            if isinstance(r, results.PotentialBiasCheckResult)
+        ),
+        None,
+    )
+
+    implausible_roi_chart_json = plots.generate_implausible_roi_chart_json(
+        implausible_roi_result
+    )
+    high_variance_chart_json = plots.generate_high_variance_chart_json(
+        high_variance_result
+    )
+    potential_bias_chart_json = plots.generate_potential_bias_chart_json(
+        potential_bias_result
+    )
+
     return results.ReviewSummary(
         overall_status=overall_status,
         summary_message=summary_message,
         results=list(self._results.values()),
         health_score=self._compute_health_score(),
+        channel_calibration_status=self._get_calibration_status_by_channel(),
+        calibrated_channel_names=self._get_calibrated_channels_with_experiments(),
+        implausible_roi_chart_json=implausible_roi_chart_json,
+        high_variance_chart_json=high_variance_chart_json,
+        potential_bias_chart_json=potential_bias_chart_json,
+        calibration_overview_data=self._get_calibration_overview_data(),
     )
 
-  # TODO: Remove for GeoX release.
+  def _get_calibration_status_by_channel(self) -> dict[str, bool]:
+    """Returns a mapping of channel name to whether it is calibrated."""
+    status_map = {}
+    input_data = self._model_context.input_data
+
+    def _update_status_map(channel_coord: str, roi_attr: str):
+      if (coord_data := getattr(input_data, channel_coord, None)) is not None:
+        channels = coord_data.values.tolist()
+        prior = getattr(self._model_context.model_spec, constants.PRIOR, None)
+        roi_dist = getattr(prior, roi_attr, None) if prior is not None else None
+        if isinstance(roi_dist, calibration_base.CalibratedDistribution):
+          calib_status = roi_dist.get_calibration_status()
+        else:
+          calib_status = [False] * len(channels)
+        for ch, is_calib in zip(channels, calib_status):
+          status_map[ch] = bool(is_calib)
+
+    _update_status_map(constants.MEDIA_CHANNEL, constants.ROI_M)
+    _update_status_map(constants.RF_CHANNEL, constants.ROI_RF)
+
+    return status_map
+
+  def _get_calibrated_channels_with_experiments(self) -> list[str]:
+    """Returns a list of channel names that have calibration outputs."""
+    input_data = self._model_context.input_data
+    prior = getattr(self._model_context.model_spec, constants.PRIOR, None)
+    if prior is None:
+      return []
+
+    channels_with_experiments = []
+    for coord, attr in [
+        (constants.MEDIA_CHANNEL, constants.ROI_M),
+        (constants.RF_CHANNEL, constants.ROI_RF),
+    ]:
+      if getattr(input_data, coord, None) is None:
+        continue
+
+      roi_dist = getattr(prior, attr, None)
+      if isinstance(roi_dist, calibration_base.CalibratedDistribution):
+        channels_with_experiments.extend(
+            out.channel_name for out in roi_dist.calibration_outputs if out
+        )
+
+    return channels_with_experiments
+
+  def _get_calibration_overview_data(
+      self,
+  ) -> list[results.CalibrationOverviewChannelData]:
+    """Returns calibration overview data for all calibrated channels with experiments."""
+    posterior = getattr(self._inference_data, constants.POSTERIOR, None)
+    if posterior is None:
+      return []
+
+    input_data = self._model_context.input_data
+    prior = self._model_context.model_spec.prior
+
+    overview_data = []
+    for coord_name, param_name, coord_data, spend_data in [
+        (
+            constants.MEDIA_CHANNEL,
+            constants.ROI_M,
+            input_data.media_channel,
+            input_data.media_spend,
+        ),
+        (
+            constants.RF_CHANNEL,
+            constants.ROI_RF,
+            input_data.rf_channel,
+            input_data.rf_spend,
+        ),
+    ]:
+      roi_dist = getattr(prior, param_name, None)
+      if (
+          coord_data is None
+          or spend_data is None
+          or not isinstance(roi_dist, calibration_base.CalibratedDistribution)
+      ):
+        continue
+
+      channel_names = list(coord_data.values)
+      total_spend = spend_data.sum(
+          dim=[d for d in spend_data.dims if d != coord_name]
+      )
+      for idx, out in enumerate(roi_dist.calibration_outputs):
+        if out is None:
+          continue
+        coord_val = channel_names[idx]
+        ch_name = getattr(out, review_constants.CHANNEL_NAME, None) or coord_val
+        ch_data = results.CalibrationOverviewChannelData(
+            channel_name=ch_name,
+            spend=float(total_spend.sel({coord_name: coord_val}).values),
+            calibrated_output=out,
+            calibrated_prior_dist=(
+                roi_dist.distributions[idx] if roi_dist.distributions else None
+            ),
+            posterior_samples=posterior[param_name]
+            .sel({coord_name: coord_val})
+            .values.flatten(),
+        )
+        ch_data = dataclasses.replace(
+            ch_data,
+            chart_json=plots.generate_calibration_overview_chart_json(ch_data),
+            details_chart_json=plots.generate_calibration_details_chart_json(
+                ch_data
+            ),
+        )
+        overview_data.append(ch_data)
+
+    return sorted(overview_data, key=lambda d: d.spend, reverse=True)
+

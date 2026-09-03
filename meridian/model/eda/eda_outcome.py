@@ -37,6 +37,12 @@ __all__ = (
     "PopulationCorrelationArtifact",
     "PriorProbabilityArtifact",
     "DataParameterRatioArtifact",
+    "CalibrationExperimentAdjustmentStage",
+    "ExperimentAdjustmentStageData",
+    "ExperimentAdjustmentData",
+    "ExperimentAdjustmentArtifact",
+    "PriorQualityData",
+    "PriorQualityArtifact",
     "EDACheckType",
     "EDAOutcome",
     "CriticalCheckEDAOutcomes",
@@ -301,6 +307,101 @@ class DataParameterRatioArtifact(AnalysisArtifact):
 
 
 @enum.unique
+class CalibrationExperimentAdjustmentStage(enum.StrEnum):
+  """Enumeration for step-by-step experiment parameter adjustment stages."""
+
+  UNADJUSTED_RAW = eda_constants.STAGE_UNADJUSTED_RAW
+  SPEND_ADJUSTED = eda_constants.STAGE_SPEND_ADJUSTED
+  SPEND_DURATION_ADJUSTED = eda_constants.STAGE_SPEND_DURATION_ADJUSTED
+  SPEND_DURATION_RECENCY_ADJUSTED = (
+      eda_constants.STAGE_SPEND_DURATION_RECENCY_ADJUSTED
+  )
+  SPEND_DURATION_RECENCY_USER_ADJUSTED = (
+      eda_constants.STAGE_SPEND_DURATION_RECENCY_USER_ADJUSTED
+  )
+  FINAL_ADJUSTED = eda_constants.STAGE_FINAL_ADJUSTED
+
+
+@dataclasses.dataclass(frozen=True)
+class ExperimentAdjustmentStageData:
+  """Container for a single adjustment stage of an experiment.
+
+  Attributes:
+    stage: The adjustment stage enum.
+    point_estimate: Point estimate (Mean) for this stage.
+    standard_error: Standard error (SE) for this stage.
+  """
+
+  stage: CalibrationExperimentAdjustmentStage
+  point_estimate: float
+  standard_error: float
+
+
+@dataclasses.dataclass(frozen=True)
+class ExperimentAdjustmentData:
+  """Container for step-by-step experiment adjustment data for one experiment.
+
+  Attributes:
+    source_type: Source type of the experiment.
+    stages: Sequence of adjustment stage data for this experiment.
+  """
+
+  source_type: str
+  stages: Sequence[ExperimentAdjustmentStageData]
+
+
+@dataclasses.dataclass(frozen=True)
+class ExperimentAdjustmentArtifact(AnalysisArtifact):
+  """Artifact for experiment parameter adjustments check.
+
+  Attributes:
+    adjustment_data: Mapping of channel name to a sequence of experiment
+      adjustment data objects.
+  """
+
+  adjustment_data: Mapping[str, Sequence[ExperimentAdjustmentData]]
+
+
+@dataclasses.dataclass(frozen=True)
+class PriorQualityData:
+  """Container for prior quality check metrics for a single channel.
+
+  Attributes:
+    channel_name: Name of the media channel.
+    prior_width_ratio: Ratio of the prior 80% CI width to the default LogNormal
+      prior width.
+    baseline_prior_type: String representation of the baseline prior
+      distribution type (e.g. 'LogNormal', 'Normal', 'ImproperUniform').
+    overlap_percentage: Overlap coefficient between empirical intermediary
+      distribution and fitted parameterized prior (in [0.0, 1.0]).
+    n_negative_experiments: Number of experiments for this channel with negative
+      point estimates.
+    bimodal_statistic: Bimodality statistic for the calibrated prior
+      (0.0=unimodal, 1.0=bimodal analytical, Hartigan's Dip Test statistic, or
+      None if not available).
+  """
+
+  channel_name: str
+  prior_width_ratio: float
+  baseline_prior_type: str
+  overlap_percentage: float
+  n_negative_experiments: int
+  bimodal_statistic: float | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class PriorQualityArtifact(AnalysisArtifact):
+  """Artifact for prior quality check.
+
+  Attributes:
+    prior_quality_data: Sequence of prior quality data objects for calibrated
+      channels.
+  """
+
+  prior_quality_data: Sequence[PriorQualityData]
+
+
+@enum.unique
 class EDACheckType(enum.Enum):
   """Enumeration for the type of an EDA check."""
 
@@ -313,6 +414,8 @@ class EDACheckType(enum.Enum):
   POPULATION_CORRELATION = enum.auto()
   PRIOR_PROBABILITY = enum.auto()
   DATA_ADEQUACY = enum.auto()
+  EXPERIMENT_ADJUSTMENT = enum.auto()
+  PRIOR_QUALITY = enum.auto()
 
 
 ArtifactType = typing.TypeVar("ArtifactType", bound=AnalysisArtifact)

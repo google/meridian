@@ -19,6 +19,7 @@ from typing import Literal
 import altair as alt
 import immutabledict
 from meridian import constants
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 
 ##### EDA Engine constants #####
@@ -144,6 +145,101 @@ CHANNEL_TYPE_TO_COLOR = immutabledict.immutabledict({
 })
 
 
+EXPERIMENT_SOURCE_TYPE_TO_LABEL_SUFFIX = immutabledict.immutabledict({
+    calibration_base.SourceType.MERIDIAN_GEOX: ' (Meridian GeoX)',
+    calibration_base.SourceType.GENERIC: ' (Incrementality)',
+})
+# Prior calibration plotting constants
+PRIOR_QUANTILE_THRESHOLD = 0.99
+EXPERIMENT_SD_MULTIPLIER = 3
+MIN_ROI = 0.01
+ROI_GRID_BOUND_MULTIPLIER = 1.5
+ROI_GRID_POINTS = 100
+HISTOGRAM_BINS = 100
+PRIOR_CALIBRATION_BANNER_TEXT_TEMPLATE = (
+    'This figure displays your incrementality experiments and their impact on'
+    ' your Meridian priors for {channels}.'
+    ' Please inspect the plot to ensure the calibrated prior aligns with'
+    ' your expectations.'
+)
+PRIOR_CALIBRATION_REPORT_CHANNEL_LIMIT = 5
+PRIOR_CALIBRATION_REPORT_EXPERIMENT_LIMIT = 3
+PRIOR_CALIBRATION_LIMIT_MESSAGE = (
+    ' (Due to space constraints, this report only displays your {limit}'
+    ' highest-spend calibrated channels. Please use'
+    ' `MeridianEDA.plot_calibration()` in your notebook to review all'
+    ' calibrated channels.)'
+)
+PRIOR_CALIBRATION_EXPERIMENT_ORDER_INFO = (
+    'Experiments within each channel are displayed in the order they were'
+    ' input in `CalibrationBuilder`.'
+)
+PRIOR_CALIBRATION_ADJUSTMENT_GRID_INFO = (
+    'Shows step-by-step experiment parameter adjustments for calibrated'
+    ' channels.'
+)
+STAGE = 'stage'
+POINT_ESTIMATE = 'point_estimate'
+STANDARD_ERROR = 'standard_error'
+CI_LOWER = 'ci_lower'
+CI_UPPER = 'ci_upper'
+LABEL_TEXT = 'label_text'
+MEAN_ROI_PLUS_MINUS_SE = 'Mean ROI ± SE'
+EXPERIMENT_ADJUSTMENTS_PLOT_TITLE_TEMPLATE = 'Experiment Adjustments: {ch_name}'
+EXPERIMENT_LEGEND_TITLE = 'Experiment'
+STAGE_UNADJUSTED_RAW = 'Unadjusted (Raw)'
+STAGE_SPEND_ADJUSTED = 'Spend Adjusted'
+STAGE_SPEND_DURATION_ADJUSTED = 'Spend + Duration\nAdjusted'
+STAGE_SPEND_DURATION_RECENCY_ADJUSTED = 'Spend + Duration +\nRecency Adjusted'
+STAGE_SPEND_DURATION_RECENCY_USER_ADJUSTED = (
+    'Spend + Duration +\nRecency + User Adjusted'
+)
+STAGE_FINAL_ADJUSTED = 'Adjusted (Final)'
+DENSITY = 'density'
+INTERMEDIARY_PRIOR = 'Intermediary prior'
+BASELINE_PRIOR = 'Baseline prior'
+CALIBRATED_PRIOR = 'Calibrated prior'
+EXPERIMENT_LABEL_PREFIX = 'Experiment'
+CALIBRATION_LEFT_PLOT_TITLE = (
+    'Incrementality Experiments and Intermediary Prior'
+)
+CALIBRATION_RIGHT_PLOT_TITLE = 'Intermediary and Parameterized Priors'
+INTERMEDIARY_PRIOR_COLOR = '#bdc1c6'
+BASELINE_PRIOR_COLOR = '#70757a'
+CALIBRATED_PRIOR_COLOR = '#146c2e'
+EXPERIMENT_COLORS = (
+    '#1f77b4',
+    '#ff7f0e',
+    '#2ca02c',
+    '#d62728',
+    '#9467bd',
+    '#8c564b',
+    '#e377c2',
+    '#7f7f7f',
+    '#bcbd22',
+    '#17becf',
+)
+PRIOR_CALIBRATION_CHART_ID = 'prior-calibration-chart'
+EXPERIMENT_ADJUSTMENTS_CHART_ID = 'experiment-adjustments-chart'
+EXPERIMENT_ADJUSTMENTS_REPORT_CHANNEL_LIMIT = 5
+EXPERIMENT_ADJUSTMENTS_REPORT_EXPERIMENT_LIMIT = 3
+EXPERIMENT_ADJUSTMENTS_BANNER_TEXT_TEMPLATE = (
+    'These plots display your incrementality experiments and the adjustments'
+    " we made for each experiment's spend, duration and recency for {channels}."
+    ' They also show the final mean and standard error we used to inform the'
+    ' Meridian prior. The Meridian prior for each channel is a combination of'
+    ' your adjusted experiments for that channel and your baseline prior, if'
+    ' applicable.'
+)
+EXPERIMENT_ADJUSTMENTS_LIMIT_MESSAGE = (
+    ' (Due to space constraints, this report only displays your {limit}'
+    ' highest-spend calibrated channels with their 3 smallest standard error'
+    ' experiments. Please use `MeridianEDA.plot_experiment_adjustments()` in'
+    ' your notebook to review experiment adjustments for all experiments in'
+    ' all calibrated channels.)'
+)
+
+
 ##### Report constants #####
 REPORT_TITLE = 'Meridian Exploratory Data Analysis Report'
 DISPLAY_LIMIT_MESSAGE = (
@@ -189,6 +285,18 @@ R_SQUARED_GEO_TABLE_ID = 'r-squared-geo-table'
 PRIOR_SPECIFICATIONS_CARD_ID = 'prior-specifications'
 PRIOR_SPECIFICATIONS_CARD_TITLE = 'Prior Specifications'
 PRIOR_CHART_ID = 'prior-chart'
+PRIOR_QUALITY_TABLE_ID = 'prior-quality-table'
+CALIBRATED_PRIOR_PARAMETERS = (constants.ROI_M, constants.ROI_RF)
+PRIOR_QUALITY_RELATIVE_WIDTH_RATIO = 'relative_width_ratio'
+PRIOR_QUALITY_BIMODAL_STATISTIC = 'bimodal_statistic'
+PRIOR_QUALITY_OVERLAP_PERCENTAGE = 'overlap_percentage'
+PRIOR_QUALITY_NEGATIVE_EXPERIMENTS = 'negative_experiments'
+OVERLAP_PERCENTAGE_THRESHOLD = 0.80
+# Empirically calibrated F0.5-maximizing Dip Test statistic cutoff threshold
+# across 220 benchmark priors (44 LogNormal baselines x 5 Normal likelihoods).
+DIP_STATISTIC_THRESHOLD = 0.00338
+# Threshold for prior width ratio.
+HIGH_VARIANCE_THRESHOLD = 1.0
 # summary
 SUMMARY_CARD_ID = 'summary'
 SUMMARY_CARD_TITLE = 'Summary'
@@ -342,6 +450,57 @@ PRIOR_PROBABILITY_REPORT_INFO = (
     ' prior probability of negative baseline is high, consider custom treatment'
     ' priors. In particular, a custom `contribution prior` type may be'
     ' appropriate.<br/><br/>'
+)
+PRIOR_QUALITY_TABLE_INFO = (
+    'Please review the prior quality checks for calibrated channels. A bimodal'
+    ' statistic greater than 0.00338 indicates potential multimodality.'
+)
+BASELINE_PRIOR_TYPE = 'Baseline Prior Type'
+PRIOR_BIMODALITY_STATISTIC = 'Prior Bimodality Statistic'
+PRIOR_WIDTH_RATIO = 'Prior Width Ratio'
+INTERMEDIARY_AND_PARAMETERIZED_OVERLAP_PERCENTAGE = (
+    'Intermediary and Parameterized Overlap Percentage'
+)
+NEGATIVE_POINT_ESTIMATE_EXPERIMENTS = 'Negative Point Estimate Experiments'
+NOT_AVAILABLE = 'Not Available'
+LOG_CONCAVITY_EVALUATION_BOUNDS = (0.01, 20.0)
+LOG_CONCAVITY_NUM_POINTS = 1000
+LOG_CONCAVITY_NUMERICAL_TOLERANCE = 1e-6
+BIMODALITY_STATISTIC_THRESHOLD = 0.00338
+GRID = 'grid'
+PDF = 'pdf'
+DX = 'dx'
+NEGATIVE_POINT_ESTIMATE_EXPERIMENTS_WARNING = (
+    'Channel(s) [{channels}] have a calibrated prior based on experiments with'
+    ' negative point estimates. Review these experiment results for accuracy.'
+)
+UNINFORMATIVE_CALIBRATED_PRIOR_WARNING = (
+    'Channel(s) [{channels}] have an uninformative calibrated prior. Consider'
+    ' adjusting the baseline prior or user adjustments for the experiments'
+    ' associated with these channels to increase the informativeness of this'
+    ' prior.'
+)
+PRIOR_BIMODALITY_WARNING = (
+    'Channel(s) [{channels}] have an intermediary prior that is bimodal.'
+    ' Inspect the Incrementality Experiments and Intermediary Prior and'
+    ' Intermediary Prior and Parameterized Prior plots to determine if the'
+    ' parameterized prior is an accurate representation of the intermediary'
+    ' prior. To reduce bimodality, consider using a baseline prior that is'
+    ' more aligned with your experiments.'
+)
+BASELINE_PRIOR_TYPE_BIMODALITY_WARNING = (
+    'Channel(s) [{channels}] have a baseline prior type that may lead to'
+    ' intermediary prior bimodality. Inspect the Incrementality Experiments'
+    ' and Intermediary Prior and Intermediary Prior and Parameterized Prior'
+    ' plots to determine if the parameterized prior is an accurate'
+    ' representation of the intermediary prior. To reduce bimodality,'
+    ' consider using a baseline prior that is more aligned with your'
+    ' experiments.'
+)
+LOW_OVERLAP_PRIORS_WARNING = (
+    'Channel(s) [{channels}] have intermediary and parameterized priors with'
+    ' low overlap. Review the "Intermediary and Parameterized Distribution"'
+    ' plot to confirm and consider making user adjustments to experiments.'
 )
 DATA_ADEQUACY_INFO = textwrap.dedent("""\
 As a rough guidance, please review the ratio of data points to

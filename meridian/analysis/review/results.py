@@ -27,11 +27,9 @@ import jinja2
 from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
-
-# TODO: Remove for GeoX release.
+from meridian.model.calibration import base as calibration_base
 from meridian.templates import formatter
-
-# TODO: Remove for GeoX release.
+import numpy as np
 import xarray as xr
 
 
@@ -911,7 +909,141 @@ _CALIBRATION_CHECK_RESULTS = (
 )
 
 
-# TODO: Remove for GeoX release.
+@dataclasses.dataclass(frozen=True)
+class CalibrationOverviewChannelData:
+  """Container for calibration overview data for a single channel.
+
+  Attributes:
+    channel_name: Name of the channel.
+    spend: Total spend of the channel.
+    calibrated_output: The calibration output container for the channel.
+    calibrated_prior_dist: The 1D calibrated prior distribution for the channel.
+    posterior_samples: 1D array of posterior ROI samples for the channel.
+    chart_json: Serialized JSON string for the Altair overview chart.
+    details_chart_json: Serialized JSON string for the Altair details chart.
+  """
+
+  channel_name: str
+  spend: float
+  calibrated_output: calibration_base.CalibrationOutput | None = None
+  calibrated_prior_dist: Any = None
+  posterior_samples: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.array([])
+  )
+  chart_json: str | None = None
+  details_chart_json: str | None = None
+
+
+def _normalized_center_bowl(
+    roi: float,
+    spend_share: float,
+    roi_lower_bound: float = configs.ImplausibleROIConfig.roi_lower_bound,
+    roi_upper_bound: float = configs.ImplausibleROIConfig.roi_upper_bound,
+) -> float:
+  """Computes the Implausible ROI component score (Normalized Center Bowl).
+
+  Args:
+    roi: Posterior mean ROI for the channel.
+    spend_share: Proportion of total spend for the channel.
+    roi_lower_bound: Lower threshold parameter for implausible ROI.
+    roi_upper_bound: Upper threshold parameter for implausible ROI.
+
+  Returns:
+    Implausible ROI score bounded in [0.0, 100.0].
+  """
+  if spend_share <= 0:
+    return 100.0
+  roi_safe = max(roi, constants.EPSILON)
+  spend_share_safe = max(spend_share, constants.EPSILON)
+
+  center = np.sqrt(roi_lower_bound * roi_upper_bound)
+  z = np.log(roi_safe / center)
+  d = np.log(
+      (1.0 / spend_share_safe) * np.sqrt(roi_upper_bound / roi_lower_bound)
+  )
+  d = max(d, constants.EPSILON)
+  v = (z / d) ** 2
+  return float(np.clip(100.0 * np.exp(-np.log(2) * v), 0.0, 100.0))
+
+
+def _normalized_half_bowl(
+    relative_width_ratio: float,
+    spend_share: float,
+    high_variance_threshold: float = configs.HighVarianceConfig.high_variance_threshold,
+    ideal_threshold: float = constants.HIGH_VARIANCE_IDEAL_THRESHOLD,
+) -> float:
+  """Computes the High Variance ROI component score (Normalized Half Bowl).
+
+  Args:
+    relative_width_ratio: Ratio of posterior HDI width to prior HDI width.
+    spend_share: Proportion of total spend for the channel.
+    high_variance_threshold: Threshold parameter for high variance ROI.
+    ideal_threshold: Benchmark ideal threshold below which score is 100.
+
+  Returns:
+    High variance ROI score bounded in [0.0, 100.0].
+  """
+  x = relative_width_ratio * spend_share
+  if x <= ideal_threshold:
+    return 100.0
+  x_safe = max(x, constants.EPSILON)
+  z = np.log(x_safe / ideal_threshold)
+  d = np.log(high_variance_threshold / ideal_threshold)
+  d = max(d, constants.EPSILON)
+  v = (z / d) ** 2
+  penalty = 1.0 - np.exp(-np.log(2) * v)
+  return float(np.clip(100.0 * (1.0 - penalty), 0.0, 100.0))
+
+
+def _potential_bias_score(
+    max_abs_correlation: float,
+    correlation_threshold: float = configs.PotentialBiasConfig.correlation_threshold,
+) -> float:
+  """Computes the Potential Bias component score.
+
+  Args:
+    max_abs_correlation: Maximum absolute Pearson correlation with any control
+      variable across geos.
+    correlation_threshold: Threshold for potential bias check.
+
+  Returns:
+    Potential bias score bounded in [0.0, 100.0].
+  """
+  max_bias = float(np.clip(max_abs_correlation, 0.0, 1.0))
+  if max_bias <= 0.0:
+    return 0.0
+  if correlation_threshold <= 0.0 or correlation_threshold >= 1.0:
+    exponent = 1.0
+  else:
+    exponent = np.log(0.5) / np.log(correlation_threshold)
+  return float(np.clip(100.0 * (max_bias**exponent), 0.0, 100.0))
+
+
+def _compute_channel_calibration_score(
+    implausible_roi_score: float,
+    high_variance_roi_score: float,
+    potential_bias_score: float,
+) -> float:
+  """Computes composite calibration score for an uncalibrated channel."""
+  return (
+      constants.CALIBRATION_IMPLAUSIBLE_ROI_WEIGHT * implausible_roi_score
+      + constants.CALIBRATION_HIGH_VARIANCE_WEIGHT * high_variance_roi_score
+      + constants.CALIBRATION_POTENTIAL_BIAS_WEIGHT * potential_bias_score
+  )
+
+
+def _order_channels_by_status(
+    channels: Iterable[str],
+    status: Mapping[str, bool] | None,
+) -> list[str]:
+  """Orders channels by their appearance in channel_calibration_status."""
+  if not status:
+    return list(dict.fromkeys(channels))
+  channel_order = {ch: i for i, ch in enumerate(status)}
+  unique_channels = list(dict.fromkeys(channels))
+  return sorted(
+      unique_channels, key=lambda c: channel_order.get(c, float("inf"))
+  )
 
 
 # ==============================================================================
@@ -926,12 +1058,216 @@ class ReviewSummary:
     summary_message: A summary message of all checks.
     results: A list of all check results.
     health_score: The health score of the model.
+    channel_calibration_status: Mapping of channel name to calibration status.
+    calibrated_channel_names: Sequence of calibrated channel names.
+    implausible_roi_chart_json: Chart JSON for implausible ROI recommendation
+      plot.
+    high_variance_chart_json: Chart JSON for high variance recommendation plot.
+    potential_bias_chart_json: Chart JSON for potential bias recommendation
+      plot.
+    calibration_overview_data: Sequence of calibration overview channel data.
   """  # fmt: skip
 
   overall_status: Status
   summary_message: str
   results: list[CheckResult]
   health_score: float
+  channel_calibration_status: Mapping[str, bool] = dataclasses.field(
+      default_factory=dict
+  )
+  calibrated_channel_names: Sequence[str] = dataclasses.field(
+      default_factory=list
+  )
+  implausible_roi_chart_json: str | None = None
+  high_variance_chart_json: str | None = None
+  potential_bias_chart_json: str | None = None
+  calibration_overview_data: Sequence[CalibrationOverviewChannelData] = ()
+
+  @property
+  def channel_calibration_recommendations(self) -> list[dict[str, Any]]:
+    """Computes per-channel calibration recommendation data.
+
+    The recommendations are filtered based on the total number of channels:
+    - If the total number of channels is less than or equal to
+      `MAX_CHANNELS_FOR_CALIBRATED_DISPLAY`, all channels (both calibrated and
+      uncalibrated) are included in their original order.
+    - If the total number of channels exceeds this threshold, calibrated
+      channels are excluded from the output, and all uncalibrated channels are
+      shown in their original order.
+
+    Returns:
+      A list of dictionaries containing channel recommendation data.
+    """
+    if not any(isinstance(r, _CALIBRATION_CHECK_RESULTS) for r in self.results):
+      return []
+
+    high_roi_map = {}
+    low_roi_map = {}
+    high_variance_map = {}
+    potential_bias_map = {}
+
+    for r in self.results:
+      if isinstance(r, ImplausibleROICheckResult):
+        for cr in r.channel_results:
+          if cr.case == ImplausibleROIChannelCases.ROI_HIGH:
+            high_roi_map[cr.channel_name] = Status.REVIEW
+            low_roi_map[cr.channel_name] = Status.PASS
+          elif cr.case == ImplausibleROIChannelCases.ROI_LOW:
+            high_roi_map[cr.channel_name] = Status.PASS
+            low_roi_map[cr.channel_name] = Status.REVIEW
+          else:
+            high_roi_map[cr.channel_name] = Status.PASS
+            low_roi_map[cr.channel_name] = Status.PASS
+      elif isinstance(r, HighVarianceCheckResult):
+        # If `HighVarianceCheck` occurs in the list of the post convergence
+        # checks more than once, the entire `high_variance_map` will be
+        # overwritten.
+        high_variance_map = {
+            cr.channel_name: cr.case.status for cr in r.channel_results
+        }
+      elif isinstance(r, PotentialBiasCheckResult):
+        # If `PotentialBiasCheck` occurs in the list of the post convergence
+        # checks more than once, the entire `potential_bias_map` will be
+        # overwritten.
+        potential_bias_map = {
+            cr.channel_name: cr.case.status for cr in r.channel_results
+        }
+
+    recs = []
+    n_channels = len(self.channel_calibration_status)
+    scores = self.channel_calibration_scores
+    for (
+        channel_name,
+        is_calibrated,
+    ) in self.channel_calibration_status.items():
+      if is_calibrated:
+        if n_channels <= constants.MAX_CHANNELS_FOR_CALIBRATED_DISPLAY:
+          recs.append({
+              constants.CHANNEL_NAME: channel_name,
+              constants.IS_CALIBRATED: True,
+              constants.CALIBRATION_SCORE: scores.get(
+                  channel_name, constants.CALIBRATED_CHANNEL_SCORE
+              ),
+          })
+      else:
+        recs.append({
+            constants.CHANNEL_NAME: channel_name,
+            constants.IS_CALIBRATED: False,
+            constants.CALIBRATION_SCORE: scores.get(
+                channel_name, constants.CALIBRATED_CHANNEL_SCORE
+            ),
+            constants.HIGH_ROI_STATUS: high_roi_map.get(
+                channel_name, Status.PASS
+            ),
+            constants.LOW_ROI_STATUS: low_roi_map.get(
+                channel_name, Status.PASS
+            ),
+            constants.HIGH_VARIANCE_STATUS: high_variance_map.get(
+                channel_name, Status.PASS
+            ),
+            constants.POTENTIAL_BIAS_STATUS: potential_bias_map.get(
+                channel_name, Status.PASS
+            ),
+        })
+
+    return recs
+
+  @functools.cached_property
+  def channel_calibration_scores(self) -> Mapping[str, float]:
+    """Computes per-channel calibration scores."""
+    if not self.channel_calibration_status:
+      return {}
+
+    implausible_roi_map = {}
+    implausible_roi_result = next(
+        (r for r in self.results if isinstance(r, ImplausibleROICheckResult)),
+        None,
+    )
+    if implausible_roi_result is not None:
+      for cr in implausible_roi_result.channel_results:
+        implausible_roi_map[cr.channel_name] = _normalized_center_bowl(
+            roi=cr.roi_mean,
+            spend_share=cr.spend_share,
+        )
+
+    high_variance_map = {}
+    high_variance_result = next(
+        (r for r in self.results if isinstance(r, HighVarianceCheckResult)),
+        None,
+    )
+    if high_variance_result is not None:
+      for cr in high_variance_result.channel_results:
+        high_variance_map[cr.channel_name] = _normalized_half_bowl(
+            relative_width_ratio=cr.relative_width_ratio,
+            spend_share=cr.spend_share,
+        )
+
+    potential_bias_map = {}
+    potential_bias_result = next(
+        (r for r in self.results if isinstance(r, PotentialBiasCheckResult)),
+        None,
+    )
+    if potential_bias_result is not None:
+      if potential_bias_result.case == PotentialBiasAggregateCases.NO_CONTROLS:
+        for ch in self.channel_calibration_status:
+          potential_bias_map[ch] = 0.0
+      else:
+        for cr in potential_bias_result.channel_results:
+          potential_bias_map[cr.channel_name] = _potential_bias_score(
+              max_abs_correlation=cr.max_abs_correlation,
+          )
+
+    scores = {}
+    for (
+        channel_name,
+        is_calibrated,
+    ) in self.channel_calibration_status.items():
+      if is_calibrated:
+        scores[channel_name] = constants.CALIBRATED_CHANNEL_SCORE
+      else:
+        imp_score = implausible_roi_map.get(
+            channel_name, constants.CALIBRATED_CHANNEL_SCORE
+        )
+        hv_score = high_variance_map.get(
+            channel_name, constants.CALIBRATED_CHANNEL_SCORE
+        )
+        pb_score = potential_bias_map.get(
+            channel_name, constants.CALIBRATED_CHANNEL_SCORE
+        )
+        scores[channel_name] = _compute_channel_calibration_score(
+            implausible_roi_score=imp_score,
+            high_variance_roi_score=hv_score,
+            potential_bias_score=pb_score,
+        )
+
+    return scores
+
+  @property
+  def calibration_score(self) -> float:
+    """Computes the overall model-level calibration score (arithmetic average)."""
+    scores = self.channel_calibration_scores
+    if not scores:
+      return constants.CALIBRATED_CHANNEL_SCORE
+    return float(np.mean(list(scores.values())))
+
+  @property
+  def channels_recommended_for_calibration(self) -> list[str]:
+    """Returns uncalibrated channels with calibration score below threshold."""
+    status = self.channel_calibration_status or {}
+    uncalibrated = [
+        ch
+        for ch, score in self.channel_calibration_scores.items()
+        if not status.get(ch, False)
+        and score < constants.CALIBRATION_SCORE_THRESHOLD
+    ]
+    return _order_channels_by_status(uncalibrated, status)
+
+  _channels_recommended_for_calibration = channels_recommended_for_calibration
+
+  @property
+  def has_calibration_warning(self) -> bool:
+    """Returns True if any uncalibrated channel has score below threshold."""
+    return bool(self.channels_recommended_for_calibration)
 
   def __repr__(self) -> str:
     report = []
@@ -944,6 +1280,8 @@ class ReviewSummary:
     report.append("\nCheck Results:")
 
     for result in self.results:
+      if isinstance(result, _CALIBRATION_CHECK_RESULTS):
+        continue
       name = result.__class__.__name__
       if name.endswith("CheckResult"):
         title = name[: -len("CheckResult")]
@@ -954,6 +1292,56 @@ class ReviewSummary:
       report.append(f"{title} Check:")
       report.append(f"  Status: {result.case.status.name}")
       report.append(f"  Recommendation: {result.recommendation}")
+
+    if (
+        self.channel_calibration_recommendations
+        and self.channel_calibration_status
+    ):
+      report.append("\n" + "=" * 115)
+      report.append("Channel Calibration Recommendation")
+      report.append("=" * 115)
+      report.append(
+          f"{'Channel':<20} | {'Calibration Score':<18} | {'High ROI':<15} |"
+          f" {'Low ROI':<15} | {'High Variance ROI':<17} |"
+          f" {'Potential Bias':<14}"
+      )
+      report.append("-" * 115)
+
+      for rec in self.channel_calibration_recommendations:
+        channel_name = rec[constants.CHANNEL_NAME]
+        score = rec[constants.CALIBRATION_SCORE]
+        score_str = f"{score:.1f}"
+        if rec[constants.IS_CALIBRATED]:
+          report.append(
+              f"{channel_name:<20} | {score_str:<18} |"
+              f" {'-' * 29} Calibrated {'-' * 29}"
+          )
+        else:
+          high_roi_str = (
+              constants.DRIVER
+              if rec[constants.HIGH_ROI_STATUS] == Status.REVIEW
+              else constants.NON_DRIVER
+          )
+          low_roi_str = (
+              constants.DRIVER
+              if rec[constants.LOW_ROI_STATUS] == Status.REVIEW
+              else constants.NON_DRIVER
+          )
+          hv_str = (
+              constants.DRIVER
+              if rec[constants.HIGH_VARIANCE_STATUS] == Status.REVIEW
+              else constants.NON_DRIVER
+          )
+          pb_str = (
+              constants.DRIVER
+              if rec[constants.POTENTIAL_BIAS_STATUS] == Status.REVIEW
+              else constants.NON_DRIVER
+          )
+          report.append(
+              f"{channel_name:<20} | {score_str:<18} | {high_roi_str:<15}"
+              f" | {low_roi_str:<15} | {hv_str:<17} | {pb_str:<14}"
+          )
+      report.append("-" * 115)
 
     return "\n".join(report)
 
@@ -989,6 +1377,11 @@ class ReviewSummary:
     """Generates the HTML model health card (as sanitized content str)."""
     html_template = self._template_env.get_template("summary.html.jinja")
     cards = [self._create_health_card_html()]
+    if self.channel_calibration_recommendations:
+      cards.append(self._create_calibration_summary_card_html())
+      cards.append(self._create_calibration_overview_card_html())
+      cards.append(self._create_calibration_details_card_html())
+      cards.append(self._create_channel_recommendation_card_html())
     return html_template.render(
         title=summary_text.MODEL_HEALTH_CARD_TITLE,
         cards=cards,
@@ -1000,6 +1393,15 @@ class ReviewSummary:
     channel_checks = []
 
     for result in self.results:
+      if isinstance(
+          result,
+          (
+              ImplausibleROICheckResult,
+              HighVarianceCheckResult,
+              PotentialBiasCheckResult,
+          ),
+      ):
+        continue
       check_data = self._get_check_data(result)
       if isinstance(
           result,
@@ -1016,12 +1418,420 @@ class ReviewSummary:
         "model_health_summary_card.html.jinja"
     )
 
+    calibration_score = self.calibration_score
+    recommended_channels = self.channels_recommended_for_calibration
+    recommended_channels_text = _format_list_with_and(
+        [f"'{c}'" for c in recommended_channels]
+    )
+    calibration_recommendation_text = build_calibration_recommendation_text(
+        recommended_channels=recommended_channels,
+        driver_issues_by_channel=(
+            self._uncalibrated_channels_with_driver_issues()
+        ),
+        location=constants.CALIBRATION_TEXT_METRICS_CHECK,
+        calibration_score=calibration_score,
+    )
+
     return template.render(
         health_score=self.health_score,
         overall_status=self.overall_status.name,
         summary_message=self.summary_message,
         metrics_checks=model_checks,
         advanced_checks=channel_checks,
+        has_calibration_recommendations=bool(
+            self.channel_calibration_recommendations
+        ),
+        n_recommended=len(recommended_channels),
+        n_total_channels=len(self.channel_calibration_status),
+        calibration_score=calibration_score,
+        recommended_channels_text=recommended_channels_text,
+        calibration_recommendation_text=calibration_recommendation_text,
+    )
+
+  def _create_channel_recommendation_card_html(self) -> str:
+    """Creates the HTML snippet for the Channel Calibration Recommendation Card."""
+    status = self.channel_calibration_status or {}
+    recommended_channels = self.channels_recommended_for_calibration
+    issues_by_channel = self._uncalibrated_channels_with_driver_issues()
+
+    banner_text = build_calibration_recommendation_text(
+        recommended_channels=recommended_channels,
+        driver_issues_by_channel=issues_by_channel,
+        location=constants.CALIBRATION_TEXT_CHANNEL_RECOMMENDATION,
+    )
+
+    recommendation_warning = None
+    recommendation_info = None
+    if self.has_calibration_warning:
+      recommendation_warning = banner_text
+    else:
+      recommendation_info = banner_text
+
+    implausible_roi_result = next(
+        (r for r in self.results if isinstance(r, ImplausibleROICheckResult)),
+        None,
+    )
+    implausible_roi_description = None
+    implausible_roi_is_warning = False
+    if self.implausible_roi_chart_json or implausible_roi_result is not None:
+      desc = (
+          "This plot displays your media and reach and frequency channels"
+          " according to their spend and ROI."
+      )
+      if implausible_roi_result is not None:
+        flagged = []
+        high_roi_channels = _order_channels_by_status(
+            [
+                ch
+                for ch in implausible_roi_result.high_roi_channels
+                if not status.get(ch, False)
+            ],
+            status,
+        )
+        low_roi_channels = _order_channels_by_status(
+            [
+                ch
+                for ch in implausible_roi_result.low_roi_channels
+                if not status.get(ch, False)
+            ],
+            status,
+        )
+        if high_roi_channels:
+          ch_text = _format_list_with_and(
+              [f"'{ch}'" for ch in high_roi_channels]
+          )
+          flagged.append(f"{ch_text} for having high ROI")
+        if low_roi_channels:
+          ch_text = _format_list_with_and(
+              [f"'{ch}'" for ch in low_roi_channels]
+          )
+          flagged.append(f"{ch_text} for having low ROI")
+        if flagged:
+          desc += f" We recommend reviewing {_format_list_with_and(flagged)}."
+          implausible_roi_is_warning = True
+      if implausible_roi_is_warning:
+        desc += (
+            " In general, the deeper the channels are into their respective"
+            " regions, the greater the concern may be and the more value you"
+            " may gain from an incrementality experiment for that channel."
+            " Conversely, channels outside of the regions but close to the"
+            " boundary may also be strong candidates for calibration. For"
+            " readability, ROIs between 0.6 and 19 are clustered together on"
+            " this plot. Please hover over points or use <a"
+            ' href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
+            ' target="_blank">MeridianAnalyzer.roi</a> to view the exact ROI'
+            " for specific channels."
+        )
+      else:
+        desc += (
+            " Channels closer to the boundaries of the Implausible High ROI and"
+            " Implausible Low ROI regions may be strong candidates for"
+            " calibration. For readability, ROIs between 0.6 and 19 are"
+            " clustered together on this plot. Please hover over points or use"
+            ' <a href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
+            ' target="_blank">MeridianAnalyzer.roi</a> to view the exact ROI'
+            " for specific channels."
+        )
+      implausible_roi_description = desc
+
+    high_variance_result = next(
+        (r for r in self.results if isinstance(r, HighVarianceCheckResult)),
+        None,
+    )
+    high_variance_description = None
+    high_variance_is_warning = False
+    if self.high_variance_chart_json or high_variance_result is not None:
+      desc = (
+          "This plot displays your media and reach and frequency channels"
+          " according to their spend and Relative Credible Interval (RCI), a"
+          " measure of their variance."
+      )
+      if high_variance_result is not None:
+        high_variance_channels = _order_channels_by_status(
+            [
+                ch
+                for ch in high_variance_result.high_variance_channels
+                if not status.get(ch, False)
+            ],
+            status,
+        )
+        if high_variance_channels:
+          ch_text = _format_list_with_and(
+              [f"'{ch}'" for ch in high_variance_channels]
+          )
+          desc += (
+              f" We recommend reviewing {ch_text} for having high variance"
+              " ROI. In general, the deeper the channels are into the blue"
+              " region, the greater the concern may be and the more value you"
+              " may gain from an incrementality experiment for that channel."
+              " Conversely, channels outside of the region but close to the"
+              " boundary may also be strong candidates for calibration."
+          )
+          high_variance_is_warning = True
+      if not high_variance_is_warning:
+        desc += (
+            " Channels close to the boundary of the High Variance ROI region"
+            " may be strong candidates for calibration."
+        )
+      high_variance_description = desc
+
+    potential_bias_result = next(
+        (r for r in self.results if isinstance(r, PotentialBiasCheckResult)),
+        None,
+    )
+    potential_bias_description = None
+    potential_bias_is_warning = False
+    if self.potential_bias_chart_json or potential_bias_result is not None:
+      desc = (
+          "This plot displays your media and reach and frequency channels"
+          " along with their correlation with your available controls."
+      )
+      if potential_bias_result is not None:
+        low_correlation_channels = _order_channels_by_status(
+            [
+                ch
+                for ch in potential_bias_result.low_correlation_channels
+                if not status.get(ch, False)
+            ],
+            status,
+        )
+        if low_correlation_channels:
+          ch_text = _format_list_with_and(
+              [f"'{ch}'" for ch in low_correlation_channels]
+          )
+          if len(low_correlation_channels) > 1:
+            desc += (
+                f" {ch_text} show potential bias as they have low correlation"
+                " with all controls and thus may be missing relevant controls."
+            )
+          else:
+            desc += (
+                f" {ch_text} shows potential bias as it has low correlation"
+                " with all controls and thus may be missing relevant controls."
+            )
+          potential_bias_is_warning = True
+      potential_bias_description = desc
+
+    template = self._template_env.get_template(
+        "channel_recommendation_card.html.jinja"
+    )
+    return template.render(
+        recommendations=self.channel_calibration_recommendations,
+        has_calibration_warning=self.has_calibration_warning,
+        recommendation_warning=recommendation_warning,
+        recommendation_info=recommendation_info,
+        calibration_score_threshold=constants.CALIBRATION_SCORE_THRESHOLD,
+        calibration_score_yellow_color=constants.CALIBRATION_SCORE_YELLOW_COLOR,
+        driver_text=constants.DRIVER,
+        non_driver_text=constants.NON_DRIVER,
+        implausible_roi_chart_json=self.implausible_roi_chart_json,
+        high_variance_chart_json=self.high_variance_chart_json,
+        potential_bias_chart_json=self.potential_bias_chart_json,
+        implausible_roi_description=implausible_roi_description,
+        high_variance_description=high_variance_description,
+        potential_bias_description=potential_bias_description,
+        implausible_roi_is_warning=implausible_roi_is_warning,
+        high_variance_is_warning=high_variance_is_warning,
+        potential_bias_is_warning=potential_bias_is_warning,
+        implausible_roi_has_warning=implausible_roi_is_warning,
+        high_variance_has_warning=high_variance_is_warning,
+        potential_bias_has_warning=potential_bias_is_warning,
+        implausible_roi_has_flagged_channels=implausible_roi_is_warning,
+        high_variance_has_flagged_channels=high_variance_is_warning,
+        potential_bias_has_flagged_channels=potential_bias_is_warning,
+    )
+
+  def _create_calibration_summary_card_html(self) -> str:
+    """Creates the HTML snippet for the Meridian GeoX Calibration Summary Card."""
+    status = self.channel_calibration_status or {}
+    recommended_channels = self.channels_recommended_for_calibration
+    issues_by_channel = self._uncalibrated_channels_with_driver_issues()
+
+    recommendation_text = build_calibration_recommendation_text(
+        recommended_channels=recommended_channels,
+        driver_issues_by_channel=issues_by_channel,
+        location=constants.CALIBRATION_TEXT_CALIBRATION_SUMMARY,
+    )
+
+    template = self._template_env.get_template(
+        "calibration_summary_card.html.jinja"
+    )
+
+    calibration_score = self.calibration_score
+    calibrated_channels = _order_channels_by_status(
+        self.calibrated_channel_names, status
+    )
+
+    return template.render(
+        calibration_score=calibration_score,
+        calibration_score_threshold=constants.CALIBRATION_SCORE_THRESHOLD,
+        calibration_score_yellow_color=constants.CALIBRATION_SCORE_YELLOW_COLOR,
+        n_calibrated=len(calibrated_channels),
+        calibrated_channels_text=_format_list_with_and(
+            [f"'{c}'" for c in calibrated_channels]
+        ),
+        n_recommended=len(recommended_channels),
+        recommendation_text=recommendation_text,
+    )
+
+  def _uncalibrated_channels_with_driver_issues(
+      self,
+  ) -> Mapping[str, list[str]]:
+    """Returns a mapping of uncalibrated channel name to list of flagged issues."""
+    status = self.channel_calibration_status or {}
+    issues_by_channel = collections.defaultdict(list)
+    for r in self.results:
+      if isinstance(r, ImplausibleROICheckResult):
+        for ch in r.high_roi_channels:
+          if not status.get(ch, False):
+            issues_by_channel[ch].append(constants.HIGH_ROI)
+        for ch in r.low_roi_channels:
+          if not status.get(ch, False):
+            issues_by_channel[ch].append(constants.LOW_ROI)
+      elif isinstance(r, HighVarianceCheckResult):
+        for ch in r.high_variance_channels:
+          if not status.get(ch, False):
+            issues_by_channel[ch].append(constants.HIGH_VARIANCE)
+      elif isinstance(r, PotentialBiasCheckResult):
+        for ch in r.low_correlation_channels:
+          if not status.get(ch, False):
+            issues_by_channel[ch].append(constants.POTENTIAL_BIAS)
+    ordered_channels = _order_channels_by_status(
+        issues_by_channel.keys(), status
+    )
+    return {
+        ch: list(dict.fromkeys(issues_by_channel[ch]))
+        for ch in ordered_channels
+    }
+
+  _get_recommended_channels_with_issues = (
+      _uncalibrated_channels_with_driver_issues
+  )
+
+  def _create_calibration_overview_card_html(self) -> str:
+    """Creates the HTML snippet for the Calibration Overview Card."""
+    if not self.calibration_overview_data:
+      return ""
+    sorted_data = sorted(
+        self.calibration_overview_data,
+        key=lambda ch: ch.spend or 0.0,
+        reverse=True,
+    )
+    plotted_channels_data = sorted_data[
+        : constants.MAX_CHANNELS_FOR_OVERVIEW_CARD
+    ]
+    n_total_channels = len(sorted_data)
+    status = self.channel_calibration_status or {}
+    ordered_channel_names = _order_channels_by_status(
+        [ch.channel_name for ch in plotted_channels_data], status
+    )
+    channels_text = _format_list_with_and(
+        [f"'{c}'" for c in ordered_channel_names]
+    )
+
+    overview_description = (
+        "These plots display your incrementality experiments and their impact"
+        f" on your Meridian priors for {channels_text}. The left column"
+        " figure(s) display incrementality experiments and the intermediary"
+        " prior for each channel. The middle column figure(s) display the"
+        " intermediary prior and the parameterized prior that it produced. The"
+        " right column figure(s) display the prior for each channel along with"
+        " the trained Meridian posterior, which is a combination of your"
+        " experiment-informed prior and your available data."
+    )
+    has_more_channels = (
+        n_total_channels > constants.MAX_CHANNELS_FOR_OVERVIEW_CARD
+    )
+    has_more_experiments = any(
+        len(ch.calibrated_output.experiments)
+        > constants.MAX_EXPERIMENTS_FOR_OVERVIEW_CARD
+        for ch in plotted_channels_data
+        if ch.calibrated_output and ch.calibrated_output.experiments
+    )
+
+    if has_more_channels or has_more_experiments:
+      # TODO: Add reference to how to plot more experiments.
+      overview_description += (
+          " The five highest-spend channels with experiments are plotted here"
+          " along with their five experiments with the smallest adjusted"
+          " standard error."
+      )
+
+    plotted_channels = []
+    for idx, ch_data in enumerate(plotted_channels_data):
+      plotted_channels.append({
+          constants.CHANNEL_NAME: ch_data.channel_name,
+          constants.CHART_ID: str(idx),
+          constants.CHART_JSON: ch_data.chart_json or "",
+      })
+
+    template = self._template_env.get_template(
+        "calibration_overview_card.html.jinja"
+    )
+    return template.render(
+        overview_description=overview_description,
+        plotted_channels=plotted_channels,
+    )
+
+  def _create_calibration_details_card_html(self) -> str:
+    """Creates the HTML snippet for the Calibration Details Card."""
+    if not self.calibration_overview_data:
+      return ""
+    details_data = list(self.calibration_overview_data)
+
+    sorted_data = sorted(
+        details_data, key=lambda ch: ch.spend or 0.0, reverse=True
+    )
+    valid_data = [ch for ch in sorted_data if ch.details_chart_json]
+    if not valid_data:
+      return ""
+    plotted_channels_data = valid_data[
+        : constants.MAX_CHANNELS_FOR_DETAILS_CARD
+    ]
+    n_total_channels = len(valid_data)
+
+    details_description = (
+        "These plots display your incrementality experiments and the"
+        " adjustments we made for each experiment's spend, duration and"
+        " recency, as well as the final mean and standard error used to"
+        " inform the Meridian prior. Default adjustments are plotted instead of"
+        " any values you didn't provide. The Meridian prior for each channel"
+        " is a combination of the adjusted experiments for that channel and"
+        " your baseline prior, if applicable."
+    )
+
+    has_more_channels = (
+        n_total_channels > constants.MAX_CHANNELS_FOR_DETAILS_CARD
+    )
+    has_more_experiments = any(
+        len(ch.calibrated_output.experiments)
+        > constants.MAX_EXPERIMENTS_FOR_DETAILS_CARD
+        for ch in plotted_channels_data
+        if ch.calibrated_output and ch.calibrated_output.experiments
+    )
+
+    if has_more_channels or has_more_experiments:
+      # TODO: Add reference to how to plot more experiments.
+      details_description += (
+          " The five highest-spend channels with experiments are plotted here"
+          " along with their five experiments with the smallest adjusted"
+          " standard error."
+      )
+
+    plotted_channels = []
+    for idx, ch_data in enumerate(plotted_channels_data):
+      plotted_channels.append({
+          constants.CHANNEL_NAME: ch_data.channel_name,
+          constants.CHART_ID: str(idx),
+          constants.CHART_JSON: ch_data.details_chart_json or "",
+      })
+
+    template = self._template_env.get_template(
+        "calibration_details_card.html.jinja"
+    )
+    return template.render(
+        details_description=details_description,
+        plotted_channels=plotted_channels,
     )
 
   def _get_check_data(self, result: CheckResult) -> Mapping[str, Any]:
@@ -1050,3 +1860,129 @@ class ReviewSummary:
           f"Check result {name} not found in CHECK_RESULT_NAME_MAP."
       )
     return constants.CHECK_RESULT_NAME_MAP[name]
+
+
+NO_CHANNELS_REQUIRE_CALIBRATION_RECOMMENDATION = (
+    constants.NO_CHANNELS_REQUIRE_CALIBRATION_RECOMMENDATION
+)
+
+
+def _format_channel_issue(channel: str, issues: Sequence[str]) -> str:
+  """Formats flagged issues for a single channel."""
+  unique_issues = list(dict.fromkeys(issues))
+  if unique_issues == [constants.POTENTIAL_BIAS]:
+    return f"'{channel}' shows {constants.POTENTIAL_BIAS}"
+  return f"'{channel}' shows issues with {_format_list_with_and(unique_issues)}"
+
+
+def _format_list_with_and(items: Sequence[str]) -> str:
+  """Formats a list of strings into a natural language list with 'and'."""
+  if not items:
+    return ""
+  if len(items) == 1:
+    return items[0]
+  if len(items) == 2:
+    return f"{items[0]} and {items[1]}"
+  return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
+def build_calibration_recommendation_text(
+    recommended_channels: Sequence[str] | None = None,
+    driver_issues_by_channel: Mapping[str, Sequence[str]] | None = None,
+    location: str = constants.CALIBRATION_TEXT_CHANNEL_RECOMMENDATION,
+    calibration_score: float | None = None,
+) -> str:
+  """Constructs the calibration recommendation message for a given location.
+
+  Args:
+    recommended_channels: List of uncalibrated channel names with score below
+      threshold.
+    driver_issues_by_channel: Mapping of uncalibrated channel names to their
+      flagged driver issue names.
+    location: One of constants.CALIBRATION_TEXT_METRICS_CHECK,
+      constants.CALIBRATION_TEXT_CALIBRATION_SUMMARY, or
+      constants.CALIBRATION_TEXT_CHANNEL_RECOMMENDATION.
+    calibration_score: Overall calibration score (used for metrics_check).
+
+  Returns:
+    The formatted recommendation string for the user.
+  """
+  channels = list(dict.fromkeys(recommended_channels or []))
+  has_recommended = bool(channels)
+  drivers_dict = driver_issues_by_channel or {}
+  active_drivers = {
+      ch: issues for ch, issues in drivers_dict.items() if issues
+  }
+  has_drivers = bool(active_drivers)
+
+  rec_clause = None
+  rec_sentence = None
+  if has_recommended:
+    rec_channels_formatted = _format_list_with_and([f"'{c}'" for c in channels])
+    rec_clause = (
+        "We recommend incrementality experiments to improve prior accuracy"
+        f" for {rec_channels_formatted}"
+    )
+    rec_sentence = f"{rec_clause}."
+  else:
+    rec_sentence = constants.NO_CHANNELS_REQUIRE_CALIBRATION
+
+  drivers_text = None
+  if has_drivers:
+    driver_sentences = [
+        _format_channel_issue(ch, issues)
+        for ch, issues in active_drivers.items()
+    ]
+    drivers_text = _format_list_with_and(driver_sentences)
+
+  if location == constants.CALIBRATION_TEXT_METRICS_CHECK:
+    if calibration_score is not None:
+      score_prefix = (
+          f"The overall calibration score is {calibration_score:.1f}/100."
+      )
+      return f"{score_prefix} {rec_sentence}"
+    return rec_sentence
+
+  if location == constants.CALIBRATION_TEXT_CALIBRATION_SUMMARY:
+    if has_recommended:
+      if has_drivers:
+        return (
+            f"{rec_clause}: {drivers_text}."
+            f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+        )
+      return (
+          f"{rec_clause}."
+          f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+      )
+    return constants.NO_CHANNELS_REQUIRE_CALIBRATION
+
+  if location == constants.CALIBRATION_TEXT_CHANNEL_RECOMMENDATION:
+    if has_recommended:
+      if has_drivers:
+        return (
+            f"{rec_clause}: {drivers_text}."
+            f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+        )
+      return (
+          f"{rec_clause}."
+          f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+      )
+    if has_drivers:
+      candidate_phrase = (
+          "this channel may be a good candidate"
+          if len(active_drivers) == 1
+          else "these channels may be good candidates"
+      )
+      return (
+          f"{constants.NO_CHANNELS_REQUIRE_CALIBRATION} However,"
+          f" {drivers_text}. We recommend reviewing the table and plots below"
+          f" to check if {candidate_phrase} for calibration via an"
+          " incrementality experiment such as those run with Meridian GeoX."
+      )
+    return (
+        f"{constants.NO_CHANNELS_REQUIRE_CALIBRATION}"
+        f" {constants.REVIEW_BOUNDARIES_INFO_TEXT}"
+    )
+
+  raise ValueError(f"Unknown location: {location}")
+

@@ -31,7 +31,7 @@ from meridian.data import input_data
 from meridian.model import context
 from meridian.model import prior_distribution
 from meridian.model import spec as model_spec_module
-# TODO: Remove for GeoX release.
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 import xarray as xr
 
@@ -1066,5 +1066,760 @@ class ReviewerTest(parameterized.TestCase):
         },
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='no_revenue_per_kpi_skips_roi_checks',
+          revenue_per_kpi=None,
+          n_media_channels=1,
+          n_rf_channels=0,
+          has_inference_data=True,
+          has_posterior=True,
+          posterior_coords=[constants.MEDIA_CHANNEL],
+          check_class=checks.ImplausibleROICheck,
+          should_skip=True,
+      ),
+      dict(
+          testcase_name='has_revenue_per_kpi_runs_roi_checks',
+          revenue_per_kpi=mock.create_autospec(xr.DataArray, instance=True),
+          n_media_channels=1,
+          n_rf_channels=0,
+          has_inference_data=True,
+          has_posterior=True,
+          posterior_coords=[constants.MEDIA_CHANNEL],
+          check_class=checks.ImplausibleROICheck,
+          should_skip=False,
+      ),
+      dict(
+          testcase_name='no_channels_skips_all',
+          revenue_per_kpi=mock.create_autospec(xr.DataArray, instance=True),
+          n_media_channels=0,
+          n_rf_channels=0,
+          has_inference_data=True,
+          has_posterior=True,
+          posterior_coords=[],
+          check_class=checks.PotentialBiasCheck,
+          should_skip=True,
+      ),
+      dict(
+          testcase_name='no_inference_data_skips_all',
+          revenue_per_kpi=mock.create_autospec(xr.DataArray, instance=True),
+          n_media_channels=1,
+          n_rf_channels=0,
+          has_inference_data=False,
+          has_posterior=False,
+          posterior_coords=[],
+          check_class=checks.PotentialBiasCheck,
+          should_skip=True,
+      ),
+      dict(
+          testcase_name='no_posterior_skips_all',
+          revenue_per_kpi=mock.create_autospec(xr.DataArray, instance=True),
+          n_media_channels=1,
+          n_rf_channels=0,
+          has_inference_data=True,
+          has_posterior=False,
+          posterior_coords=[],
+          check_class=checks.PotentialBiasCheck,
+          should_skip=True,
+      ),
+      dict(
+          testcase_name='no_matching_coords_skips_all',
+          revenue_per_kpi=mock.create_autospec(xr.DataArray, instance=True),
+          n_media_channels=1,
+          n_rf_channels=0,
+          has_inference_data=True,
+          has_posterior=True,
+          posterior_coords=['foo'],
+          check_class=checks.PotentialBiasCheck,
+          should_skip=True,
+      ),
+  )
+  def test_should_skip_calibration_checks(
+      self,
+      revenue_per_kpi,
+      n_media_channels,
+      n_rf_channels,
+      has_inference_data,
+      has_posterior,
+      posterior_coords,
+      check_class,
+      should_skip,
+  ):
+    self._model_context.input_data.revenue_per_kpi = revenue_per_kpi
+    self._model_context.n_media_channels = n_media_channels
+    self._model_context.n_rf_channels = n_rf_channels
+
+    if has_inference_data:
+      mock_inference_data = mock.create_autospec(
+          az.InferenceData, instance=True
+      )
+      if has_posterior:
+        mock_posterior = mock.create_autospec(xr.Dataset, instance=True)
+        mock_posterior.coords = posterior_coords
+        mock_inference_data.posterior = mock_posterior
+      else:
+        if hasattr(mock_inference_data, 'posterior'):
+          delattr(mock_inference_data, 'posterior')
+    else:
+      mock_inference_data = None
+
+    # ModelReviewer.__init__ prevents inference_data=None.
+    # However, _should_skip_calibration_checks has a check for it.
+    # We test the logic by bypassing __init__ validation if necessary,
+    # or we can test it on the object after initialization if we can modify it.
+    # Since we want to test _should_skip_calibration_checks directly:
+    if not has_inference_data:
+      # Bypass init validation for this specific unit test case
+      with mock.patch.object(
+          reviewer.ModelReviewer, '__init__', return_value=None
+      ):
+        rev = reviewer.ModelReviewer()
+        rev._model_context = self._model_context
+        rev._inference_data = None
+    else:
+      rev = reviewer.ModelReviewer(
+          model_context=self._model_context,
+          inference_data=mock_inference_data,
+          post_convergence_checks=immutabledict.immutabledict({
+              check_class: configs.BaseConfig(),
+          }),
+      )
+
+    self.assertEqual(
+        rev._should_skip_calibration_checks(check_class), should_skip
+    )
+
+
+class CalibrationRecommendationTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='all_uncalibrated',
+          media_calibration=[False, False],
+          rf_calibration=[False],
+          expected_status={
+              'ch1': False,
+              'ch2': False,
+              'rf1': False,
+          },
+      ),
+      dict(
+          testcase_name='all_calibrated',
+          media_calibration=[True, True],
+          rf_calibration=[True],
+          expected_status={
+              'ch1': True,
+              'ch2': True,
+              'rf1': True,
+          },
+      ),
+      dict(
+          testcase_name='mixed',
+          media_calibration=[True, False],
+          rf_calibration=[False],
+          expected_status={
+              'ch1': True,
+              'ch2': False,
+              'rf1': False,
+          },
+      ),
+  )
+  def test_get_calibration_status_by_channel(
+      self, media_calibration, rf_calibration, expected_status
+  ):
+    model_context = mock.create_autospec(
+        context.ModelContext, spec_set=True, instance=True
+    )
+    type(model_context).n_media_channels = mock.PropertyMock(
+        return_value=len(media_calibration)
+    )
+    type(model_context).n_rf_channels = mock.PropertyMock(
+        return_value=len(rf_calibration)
+    )
+
+    input_data_mock = mock.create_autospec(
+        input_data.InputData, spec_set=True, instance=True
+    )
+    input_data_mock.media_channel.values = np.array(
+        [f'ch{i+1}' for i in range(len(media_calibration))]
+    )
+    input_data_mock.rf_channel.values = np.array(
+        [f'rf{i+1}' for i in range(len(rf_calibration))]
+    )
+    model_context.input_data = input_data_mock
+
+    roi_m = calibration_base.CalibratedDistribution(
+        distributions=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        is_calibrated=media_calibration,
+    )
+
+    roi_rf = calibration_base.CalibratedDistribution(
+        distributions=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        is_calibrated=rf_calibration,
+    )
+
+    prior = prior_distribution.PriorDistribution(
+        roi_m=roi_m,
+        roi_rf=roi_rf,
+    )
+    model_spec = model_spec_module.ModelSpec(prior=prior)
+    model_context.model_spec = model_spec
+
+    rev = reviewer.ModelReviewer(
+        model_context=model_context,
+        inference_data=mock.create_autospec(
+            az.InferenceData, spec_set=True, instance=True
+        ),
+    )
+
+    status = rev._get_calibration_status_by_channel()
+    self.assertEqual(status, expected_status)
+
+
+class CalibrationRecommendationReviewerTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._model_context = mock.create_autospec(
+        context.ModelContext, spec_set=True, instance=True
+    )
+    self._input_data = mock.create_autospec(
+        input_data.InputData, spec_set=True, instance=True
+    )
+    self._input_data.get_all_paid_channels.return_value = np.array(
+        ['calibrated_channel', 'uncalibrated_channel']
+    )
+    mock_media_channel = mock.create_autospec(xr.DataArray, instance=True)
+    type(mock_media_channel).values = mock.PropertyMock(
+        return_value=np.array(['calibrated_channel', 'uncalibrated_channel'])
+    )
+    type(self._input_data).media_channel = mock.PropertyMock(
+        return_value=mock_media_channel
+    )
+    self._input_data.rf_channel = None
+    self._input_data.media_spend = None
+    self._input_data.rf_spend = None
+
+    type(self._model_context).input_data = mock.PropertyMock(
+        return_value=self._input_data
+    )
+    type(self._model_context).n_media_channels = mock.PropertyMock(
+        return_value=2
+    )
+    type(self._model_context).n_rf_channels = mock.PropertyMock(return_value=0)
+    self._model_spec = mock.create_autospec(
+        model_spec_module.ModelSpec, spec_set=False, instance=True
+    )
+    self._prior = mock.create_autospec(
+        prior_distribution.PriorDistribution, spec_set=False, instance=True
+    )
+    calibrated_output = calibration_base.CalibrationOutput(
+        channel_name='calibrated_channel',
+        baseline_prior=None,
+        intermediary_prior=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+    )
+    self._roi_m = calibration_base.CalibratedDistribution(
+        distributions=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        is_calibrated=[True, False],
+        calibration_outputs=[calibrated_output, None],
+    )
+    self._prior.roi_m = self._roi_m
+    self._prior.roi_rf = None
+    self._model_spec.prior = self._prior
+    self._model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    self._model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_ROI
+    )
+    type(self._model_context).model_spec = mock.PropertyMock(
+        return_value=self._model_spec
+    )
+
+    self._inference_data = mock.create_autospec(az.InferenceData, instance=True)
+    mock_posterior = mock.create_autospec(xr.Dataset, instance=True)
+    mock_posterior.coords = [constants.MEDIA_CHANNEL]
+    self._inference_data.posterior = mock_posterior
+
+  def test_calibration_recommendation_execution(self):
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({
+            checks.ImplausibleROICheck: configs.ImplausibleROIConfig(),
+        }),
+    )
+
+    with mock.patch.object(
+        checks.ImplausibleROICheck, 'run', autospec=True
+    ) as mock_run:
+      mock_run.return_value = results.ImplausibleROICheckResult(
+          case=results.ImplausibleROIAggregateCases.PASS,
+          channel_results=[],
+          high_roi_channels=[],
+          low_roi_channels=[],
+          aggregate_details={},
+      )
+      with mock.patch.object(
+          checks.ConvergenceCheck, 'run', autospec=True
+      ) as mock_conv:
+        mock_conv.return_value = results.ConvergenceCheckResult(
+            case=results.ConvergenceCases.CONVERGED,
+            config=configs.ConvergenceConfig(),
+            max_r_hat=1.0,
+            max_parameter='mock',
+        )
+        with mock.patch.object(
+            reviewer.ModelReviewer, '_compute_health_score', autospec=True
+        ) as mock_health:
+          mock_health.return_value = 100.0
+          summary = review.run()
+
+    self.assertEqual(summary.calibrated_channel_names, ['calibrated_channel'])
+    self.assertEqual(
+        summary.channel_calibration_status,
+        {
+            'calibrated_channel': True,
+            'uncalibrated_channel': False,
+        },
+    )
+    self.assertEqual(
+        summary.channel_calibration_recommendations,
+        [
+            {
+                review_constants.CHANNEL_NAME: 'calibrated_channel',
+                review_constants.IS_CALIBRATED: True,
+                review_constants.CALIBRATION_SCORE: (
+                    review_constants.CALIBRATED_CHANNEL_SCORE
+                ),
+            },
+            {
+                review_constants.CHANNEL_NAME: 'uncalibrated_channel',
+                review_constants.IS_CALIBRATED: False,
+                review_constants.CALIBRATION_SCORE: (
+                    review_constants.CALIBRATED_CHANNEL_SCORE
+                ),
+                review_constants.HIGH_ROI_STATUS: results.Status.PASS,
+                review_constants.LOW_ROI_STATUS: results.Status.PASS,
+                review_constants.HIGH_VARIANCE_STATUS: results.Status.PASS,
+                review_constants.POTENTIAL_BIAS_STATUS: results.Status.PASS,
+            },
+        ],
+    )
+
+  def test_get_calibrated_channels_with_experiments_rf(self):
+    # Setup RF channels
+    mock_rf_channel = mock.create_autospec(xr.DataArray, instance=True)
+    type(mock_rf_channel).values = mock.PropertyMock(
+        return_value=np.array(['calibrated_rf_channel'])
+    )
+    self._input_data.rf_channel = mock_rf_channel
+    type(self._model_context).n_rf_channels = mock.PropertyMock(return_value=1)
+
+    # Setup Calibrated Distribution for RF
+    rf_output = calibration_base.CalibrationOutput(
+        channel_name='calibrated_rf_channel',
+        baseline_prior=None,
+        intermediary_prior=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+    )
+    mock_roi_rf = calibration_base.CalibratedDistribution(
+        distributions=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        is_calibrated=[True],
+        calibration_outputs=[rf_output],
+    )
+    self._prior.roi_rf = mock_roi_rf
+
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({}),
+    )
+
+    calibrated_channels = review._get_calibrated_channels_with_experiments()
+    self.assertIn('calibrated_rf_channel', calibrated_channels)
+
+  def test_get_calibrated_channels_with_experiments_no_prior(self):
+    setattr(self._model_spec, constants.PRIOR, None)
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({}),
+    )
+    calibrated_channels = review._get_calibrated_channels_with_experiments()
+    self.assertEqual(calibrated_channels, [])
+
+  def test_run_skips_roi_checks_with_non_roi_priors(self):
+    self._model_spec.effective_media_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    self._model_spec.effective_rf_prior_type = (
+        constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    )
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({
+            checks.ImplausibleROICheck: configs.ImplausibleROIConfig(),
+            checks.HighVarianceCheck: configs.HighVarianceConfig(),
+        }),
+    )
+    with mock.patch.object(
+        checks.ImplausibleROICheck, 'run', autospec=True
+    ) as mock_implausible_run, mock.patch.object(
+        checks.HighVarianceCheck, 'run', autospec=True
+    ) as mock_high_var_run, mock.patch.object(
+        checks.ConvergenceCheck, 'run', autospec=True
+    ) as mock_conv, mock.patch.object(
+        reviewer.ModelReviewer, '_compute_health_score', autospec=True
+    ) as mock_health:
+      mock_conv.return_value = results.ConvergenceCheckResult(
+          case=results.ConvergenceCases.CONVERGED,
+          config=configs.ConvergenceConfig(),
+          max_r_hat=1.0,
+          max_parameter='mock',
+      )
+      mock_health.return_value = 100.0
+      summary = review.run()
+
+    mock_implausible_run.assert_not_called()
+    mock_high_var_run.assert_not_called()
+    self.assertLen(summary.results, 1)
+    self.assertEqual(summary.results[0], mock_conv.return_value)
+
+
+class ScoreFunctionsTest(absltest.TestCase):
+
+  def test_get_pps_score_empty_channel_results_returns_100(self):
+    mock_result = results.PriorPosteriorShiftCheckResult(
+        case=results.PriorPosteriorShiftAggregateCases.PASS,
+        channel_results=[],
+        no_shift_channels=[],
+    )
+    self.assertEqual(reviewer._get_pps_score(mock_result), 100.0)
+
+  def test_get_roi_consistency_score_empty_channel_results_returns_100(self):
+    mock_result = results.ROIConsistencyCheckResult(
+        case=results.ROIConsistencyAggregateCases.PASS,
+        channel_results=[],
+        aggregate_details={},
+    )
+    self.assertEqual(reviewer._get_roi_consistency_score(mock_result), 100.0)
+
+
+class CalibrationOverviewDataTest(CalibrationRecommendationReviewerTest):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='none_prior',
+          modify_setup=lambda self: setattr(
+              self._model_spec, constants.PRIOR, None
+          ),
+      ),
+      dict(
+          testcase_name='none_posterior',
+          modify_setup=lambda self: setattr(
+              self._inference_data, constants.POSTERIOR, None
+          ),
+      ),
+      dict(
+          testcase_name='none_spend',
+          modify_setup=lambda self: setattr(
+              self._input_data, 'media_spend', None
+          ),
+      ),
+      dict(
+          testcase_name='uncalibrated_distribution',
+          modify_setup=lambda self: setattr(self._prior, 'roi_m', None),
+      ),
+  )
+  def test_get_calibration_overview_data_empty(self, modify_setup):
+    modify_setup(self)
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({}),
+    )
+    self.assertEqual(review._get_calibration_overview_data(), [])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='media_channel_2d_spend',
+          media_channels=['calibrated_channel', 'uncalibrated_channel'],
+          media_spend=xr.DataArray(
+              [[100.0, 200.0]],
+              coords={
+                  'time': ['t1'],
+                  constants.MEDIA_CHANNEL: [
+                      'calibrated_channel',
+                      'uncalibrated_channel',
+                  ],
+              },
+              dims=['time', constants.MEDIA_CHANNEL],
+          ),
+          media_calibrated_indices=[0],
+          media_posterior=[[[1.0, 2.0]]],
+          rf_channels=None,
+          rf_spend=None,
+          rf_calibrated_indices=None,
+          rf_posterior=None,
+          expected_channel_names=['calibrated_channel'],
+          expected_spends=[100.0],
+          expected_posterior_samples=[[1.0]],
+      ),
+      dict(
+          testcase_name='rf_channel_2d_spend',
+          media_channels=None,
+          media_spend=None,
+          media_calibrated_indices=None,
+          media_posterior=None,
+          rf_channels=['rf_channel'],
+          rf_spend=xr.DataArray(
+              [[300.0]],
+              coords={
+                  'time': ['t1'],
+                  constants.RF_CHANNEL: ['rf_channel'],
+              },
+              dims=['time', constants.RF_CHANNEL],
+          ),
+          rf_calibrated_indices=[0],
+          rf_posterior=[[[1.5]]],
+          expected_channel_names=['rf_channel'],
+          expected_spends=[300.0],
+          expected_posterior_samples=[[1.5]],
+      ),
+      dict(
+          testcase_name='sorting_by_spend_1d_spend',
+          media_channels=['channel_0', 'channel_1'],
+          media_spend=xr.DataArray(
+              [100.0, 500.0],
+              coords={constants.MEDIA_CHANNEL: ['channel_0', 'channel_1']},
+              dims=[constants.MEDIA_CHANNEL],
+          ),
+          media_calibrated_indices=[0, 1],
+          media_posterior=[[[1.0, 2.0]]],
+          rf_channels=None,
+          rf_spend=None,
+          rf_calibrated_indices=None,
+          rf_posterior=None,
+          expected_channel_names=['channel_1', 'channel_0'],
+          expected_spends=[500.0, 100.0],
+          expected_posterior_samples=[[2.0], [1.0]],
+      ),
+      dict(
+          testcase_name='geo_time_3d_spend',
+          media_channels=['channel_0'],
+          media_spend=xr.DataArray(
+              [[[10.0]], [[20.0]]],
+              coords={
+                  'geo': ['geo1', 'geo2'],
+                  'time': ['time1'],
+                  constants.MEDIA_CHANNEL: ['channel_0'],
+              },
+              dims=['geo', 'time', constants.MEDIA_CHANNEL],
+          ),
+          media_calibrated_indices=[0],
+          media_posterior=[[[1.0]]],
+          rf_channels=None,
+          rf_spend=None,
+          rf_calibrated_indices=None,
+          rf_posterior=None,
+          expected_channel_names=['channel_0'],
+          expected_spends=[30.0],
+          expected_posterior_samples=[[1.0]],
+      ),
+      dict(
+          testcase_name='both_media_and_rf_sorted',
+          media_channels=['media_ch'],
+          media_spend=xr.DataArray(
+              [100.0],
+              coords={constants.MEDIA_CHANNEL: ['media_ch']},
+              dims=[constants.MEDIA_CHANNEL],
+          ),
+          media_calibrated_indices=[0],
+          media_posterior=[[[1.0]]],
+          rf_channels=['rf_ch'],
+          rf_spend=xr.DataArray(
+              [400.0],
+              coords={constants.RF_CHANNEL: ['rf_ch']},
+              dims=[constants.RF_CHANNEL],
+          ),
+          rf_calibrated_indices=[0],
+          rf_posterior=[[[2.0]]],
+          expected_channel_names=['rf_ch', 'media_ch'],
+          expected_spends=[400.0, 100.0],
+          expected_posterior_samples=[[2.0], [1.0]],
+      ),
+  )
+  def test_get_calibration_overview_data(
+      self,
+      media_channels,
+      media_spend,
+      media_calibrated_indices,
+      media_posterior,
+      rf_channels,
+      rf_spend,
+      rf_calibrated_indices,
+      rf_posterior,
+      expected_channel_names,
+      expected_spends,
+      expected_posterior_samples,
+  ):
+    expected_outputs = {}
+    expected_dists = {}
+    posterior_dict = {}
+
+    for is_rf, channels, spend, cal_indices, post_vals in [
+        (
+            False,
+            media_channels,
+            media_spend,
+            media_calibrated_indices,
+            media_posterior,
+        ),
+        (
+            True,
+            rf_channels,
+            rf_spend,
+            rf_calibrated_indices,
+            rf_posterior,
+        ),
+    ]:
+      coord_name = constants.RF_CHANNEL if is_rf else constants.MEDIA_CHANNEL
+      param_name = constants.ROI_RF if is_rf else constants.ROI_M
+      if channels is None:
+        if is_rf:
+          self._input_data.rf_channel = None
+          self._input_data.rf_spend = None
+          self._prior.roi_rf = None
+        else:
+          self._input_data.media_channel = None
+          self._input_data.media_spend = None
+          self._prior.roi_m = None
+        continue
+
+      coord_da = xr.DataArray(
+          channels, coords={coord_name: channels}, dims=[coord_name]
+      )
+      if is_rf:
+        type(self._input_data).rf_channel = mock.PropertyMock(
+            return_value=coord_da
+        )
+        self._input_data.rf_spend = spend
+      else:
+        type(self._input_data).media_channel = mock.PropertyMock(
+            return_value=coord_da
+        )
+        self._input_data.media_spend = spend
+
+      outputs = []
+      dists = []
+      for idx, ch in enumerate(channels):
+        if idx in (cal_indices or []):
+          prior_dist = backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+          )
+          mock_out = calibration_base.CalibrationOutput(
+              channel_name=ch,
+              baseline_prior=None,
+              intermediary_prior=prior_dist,
+              experiments=[
+                  calibration_base.CalibratedExperiment(
+                      source_type=calibration_base.SourceType.MERIDIAN_GEOX,
+                      raw_experiment_result=calibration_base.ExperimentResult(
+                          point_estimate=1.0, standard_error=0.2
+                      ),
+                      adjusted_experiment_result=(
+                          calibration_base.ExperimentResult(
+                              point_estimate=1.0, standard_error=0.2
+                          )
+                      ),
+                      tau_spend=0.0,
+                      tau_recency=0.0,
+                      tau_duration=0.0,
+                      gamma_duration=1.0,
+                  )
+              ],
+          )
+          channel_dist = backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+          )
+          outputs.append(mock_out)
+          dists.append(channel_dist)
+          expected_outputs[ch] = mock_out
+        else:
+          dummy_dist = backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+          )
+          outputs.append(None)
+          dists.append(dummy_dist)
+
+      is_calibrated = [
+          idx in (cal_indices or []) for idx in range(len(channels))
+      ]
+      mock_roi_dist = calibration_base.CalibratedDistribution(
+          distributions=dists,
+          is_calibrated=is_calibrated,
+          calibration_outputs=outputs,
+      )
+      for idx, ch in enumerate(channels):
+        if idx in (cal_indices or []):
+          expected_dists[ch] = mock_roi_dist.distributions[idx]
+
+      param_name = constants.ROI_RF if is_rf else constants.ROI_M
+      setattr(self._prior, param_name, mock_roi_dist)
+
+      posterior_dims = ['chain', 'draw', coord_name][: np.ndim(post_vals)]
+      posterior_dict[param_name] = xr.DataArray(
+          post_vals,
+          coords={coord_name: channels},
+          dims=posterior_dims,
+      )
+
+    mock_posterior = mock.create_autospec(
+        xr.Dataset, instance=True, spec_set=True
+    )
+    mock_posterior.__getitem__.side_effect = lambda key: posterior_dict[key]
+    type(self._inference_data).posterior = mock.PropertyMock(
+        return_value=mock_posterior
+    )
+
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+        post_convergence_checks=immutabledict.immutabledict({}),
+    )
+    data = review._get_calibration_overview_data()
+
+    self.assertIsInstance(data, list)
+    self.assertLen(data, len(expected_channel_names))
+    for item, exp_name, exp_spend, exp_post in zip(
+        data,
+        expected_channel_names,
+        expected_spends,
+        expected_posterior_samples,
+    ):
+      self.assertEqual(item.channel_name, exp_name)
+      self.assertEqual(item.spend, exp_spend)
+      self.assertEqual(item.calibrated_output, expected_outputs[exp_name])
+      self.assertEqual(item.calibrated_prior_dist, expected_dists[exp_name])
+      self.assertIsNotNone(item.chart_json)
+      self.assertIn(
+          review_constants.CALIBRATION_LEFT_PLOT_TITLE, item.chart_json
+      )
+      np.testing.assert_array_equal(item.posterior_samples, exp_post)
+
 if __name__ == '__main__':
   absltest.main()
+

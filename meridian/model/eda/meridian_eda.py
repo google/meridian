@@ -24,8 +24,11 @@ import re
 from typing import Literal, TYPE_CHECKING
 
 import altair as alt
+from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
+from meridian.model.calibration import base as calibration_base
+from meridian.model.eda import calibration_plots
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine as eda_engine_module
 from meridian.model.eda import eda_outcome
@@ -34,6 +37,278 @@ from meridian.templates import formatter
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+_CalibrationResultsByChannel = dict[
+    str,
+    tuple[
+        calibration_base.CalibrationOutput,
+        backend.tfd.Distribution,
+    ],
+]
+
+
+_make_calibration_plot_df = calibration_plots.make_calibration_plot_df
+_create_roi_grid = calibration_plots.create_roi_grid
+_filter_and_sort_experiments = calibration_plots.filter_and_sort_experiments
+_CalibrationPlotData = calibration_plots.CalibrationPlotData
+_prepare_calibration_data = calibration_plots.prepare_calibration_data
+_make_density_line_chart = calibration_plots.make_density_line_chart
+
+
+def _get_total_spend_by_channel(
+    eda_engine: eda_engine_module.EDAEngine,
+) -> xr.DataArray | None:
+  """Computes total spend by channel from the EDA engine."""
+  if eda_engine.national_all_spend_ds is None:
+    return None
+  stacked_spend = eda_engine_module.stack_variables(
+      eda_engine.national_all_spend_ds, constants.CHANNEL
+  )
+  return stacked_spend.sum(dim=constants.TIME)
+
+
+_create_interactive_hover_layers = (
+    calibration_plots.create_interactive_hover_layers
+)
+_build_calibration_chart = calibration_plots.build_calibration_chart
+_plot_single_channel_calibration = (
+    calibration_plots.plot_single_channel_calibration
+)
+
+
+def _build_experiment_adjustment_chart_layers(
+    df: pd.DataFrame, channel_title: str | Sequence[str]
+) -> alt.Chart:
+  """Constructs and layers the Altair components for experiment adjustment grid."""
+  x_encoding = alt.X(
+      f'{eda_constants.STAGE}:N',
+      sort=None,
+      title=None,
+      axis=alt.Axis(
+          labelAngle=-20,
+          labelFontSize=11,
+          labelExpr=r"split(datum.label, '\n')",
+      ),
+  )
+  y_encoding = alt.Y(
+      f'{eda_constants.POINT_ESTIMATE}:Q',
+      title=eda_constants.MEAN_ROI_PLUS_MINUS_SE,
+      scale=alt.Scale(zero=False, padding=70),
+  )
+  color_encoding = alt.Color(
+      f'{eda_constants.VARIABLE}:N',
+      legend=None,
+  )
+
+  tooltips = [
+      alt.Tooltip(f'{eda_constants.STAGE}:N', title='Stage'),
+      alt.Tooltip(f'{eda_constants.VARIABLE}:N', title='Experiment'),
+      alt.Tooltip(
+          f'{eda_constants.POINT_ESTIMATE}:Q',
+          title='Point Estimate (Mean)',
+          format='.4f',
+      ),
+      alt.Tooltip(
+          f'{eda_constants.STANDARD_ERROR}:Q',
+          title='Standard Error (SE)',
+          format='.4f',
+      ),
+      alt.Tooltip(
+          f'{eda_constants.CI_LOWER}:Q', title='Mean - SE', format='.4f'
+      ),
+      alt.Tooltip(
+          f'{eda_constants.CI_UPPER}:Q', title='Mean + SE', format='.4f'
+      ),
+  ]
+
+  rules = (
+      alt.Chart(df)
+      .mark_rule(strokeWidth=2)
+      .encode(
+          x=x_encoding,
+          y=alt.Y(
+              f'{eda_constants.CI_LOWER}:Q',
+              title=eda_constants.MEAN_ROI_PLUS_MINUS_SE,
+              scale=alt.Scale(zero=False, padding=70),
+          ),
+          y2=alt.Y2(f'{eda_constants.CI_UPPER}:Q'),
+          color=color_encoding,
+          tooltip=tooltips,
+      )
+  )
+
+  ticks_lower = (
+      alt.Chart(df)
+      .mark_tick(size=12, strokeWidth=2)
+      .encode(
+          x=x_encoding,
+          y=alt.Y(f'{eda_constants.CI_LOWER}:Q'),
+          color=color_encoding,
+          tooltip=tooltips,
+      )
+  )
+
+  ticks_upper = (
+      alt.Chart(df)
+      .mark_tick(size=12, strokeWidth=2)
+      .encode(
+          x=x_encoding,
+          y=alt.Y(f'{eda_constants.CI_UPPER}:Q'),
+          color=color_encoding,
+          tooltip=tooltips,
+      )
+  )
+
+  points = (
+      alt.Chart(df)
+      .mark_point(filled=False, size=90, strokeWidth=2)
+      .encode(
+          x=x_encoding,
+          y=y_encoding,
+          color=color_encoding,
+          tooltip=tooltips,
+      )
+  )
+
+  df_3_lines = df[df[eda_constants.LABEL_TEXT].str.count('\n') >= 2]
+  df_2_lines = df[df[eda_constants.LABEL_TEXT].str.count('\n') == 1]
+
+  text_layer_3 = (
+      alt.Chart(df_3_lines)
+      .mark_text(
+          align='center',
+          baseline='top',
+          dy=-38,
+          fontSize=10,
+          fontWeight='bold',
+          lineBreak='\n',
+      )
+      .encode(
+          x=x_encoding,
+          y=alt.Y(f'{eda_constants.CI_UPPER}:Q'),
+          text=f'{eda_constants.LABEL_TEXT}:N',
+          color=color_encoding,
+      )
+  )
+
+  text_layer_2 = (
+      alt.Chart(df_2_lines)
+      .mark_text(
+          align='center',
+          baseline='top',
+          dy=-26,
+          fontSize=10,
+          fontWeight='bold',
+          lineBreak='\n',
+      )
+      .encode(
+          x=x_encoding,
+          y=alt.Y(f'{eda_constants.CI_UPPER}:Q'),
+          text=f'{eda_constants.LABEL_TEXT}:N',
+          color=color_encoding,
+      )
+  )
+
+  return alt.layer(  # pyrefly: ignore[bad-return]
+      rules, ticks_lower, ticks_upper, points, text_layer_3, text_layer_2
+  ).properties(
+      title=alt.TitleParams(
+          text=channel_title,
+          anchor='start',
+          fontSize=12,
+          fontWeight='bold',
+      ),
+      width=400,
+      height=220,
+  )
+
+
+def _format_experiment_label(
+    exp_idx: int,
+    source_type: calibration_base.SourceType,
+) -> str:
+  """Formats an experiment label with its 1-based index and source type suffix."""
+  label_suffix = calibration_plots.get_experiment_label_suffix(source_type)
+  return f'{eda_constants.EXPERIMENT_LABEL_PREFIX} {exp_idx}{label_suffix}'
+
+
+def _prepare_experiment_adjustment_df(
+    indexed_exp_data_list: Sequence[
+        tuple[int, eda_outcome.ExperimentAdjustmentData]
+    ],
+) -> pd.DataFrame:
+  """Processes experiment adjustment data into a DataFrame for Altair plotting."""
+  rows = []
+  for exp_idx, exp_data in indexed_exp_data_list:
+    exp_label = _format_experiment_label(
+        exp_idx, calibration_base.SourceType(exp_data.source_type)
+    )
+
+    baseline_mean = exp_data.stages[0].point_estimate
+    baseline_se = exp_data.stages[0].standard_error
+    num_stages = len(exp_data.stages)
+
+    for stage_idx, stage_data in enumerate(exp_data.stages):
+      stage_name = stage_data.stage.value
+      mean = stage_data.point_estimate
+      se = stage_data.standard_error
+
+      if stage_idx == 0:
+        label_text = f'Baseline\nM: {mean:.2f}\nSE: {se:.2f}'
+      elif stage_idx == num_stages - 1:
+        label_text = f'Final\nM: {mean:.2f}\nSE: {se:.2f}'
+      else:
+        delta_m = mean - baseline_mean
+        delta_se = se - baseline_se
+        label_text = f'ΔM: {delta_m:+.2f}\nΔSE: {delta_se:+.2f}'
+
+      rows.append({
+          eda_constants.VARIABLE: exp_label,
+          eda_constants.STAGE: stage_name,
+          eda_constants.POINT_ESTIMATE: mean,
+          eda_constants.STANDARD_ERROR: se,
+          eda_constants.CI_LOWER: mean - se,
+          eda_constants.CI_UPPER: mean + se,
+          eda_constants.LABEL_TEXT: label_text,
+      })
+
+  return pd.DataFrame(rows)
+
+
+def _build_experiment_adjustment_grid(
+    ch_name: str,
+    indexed_exp_data_list: Sequence[
+        tuple[int, eda_outcome.ExperimentAdjustmentData]
+    ],
+    spend: float | None = None,
+    show_spend_in_title: bool = True,
+) -> alt.Chart | None:
+  """Builds the Altair errorbar grid chart for a single channel's experiment adjustments."""
+  chart_title = eda_constants.EXPERIMENT_ADJUSTMENTS_PLOT_TITLE_TEMPLATE.format(
+      ch_name=ch_name
+  )
+  if show_spend_in_title and spend is not None:
+    channel_title = f'{chart_title} (Total Spend: ${spend:,.0f})'
+  else:
+    channel_title = chart_title
+
+  sub_charts = []
+  for exp_idx, exp_data in indexed_exp_data_list:
+    exp_df = _prepare_experiment_adjustment_df([(exp_idx, exp_data)])
+    exp_name = _format_experiment_label(
+        exp_idx, calibration_base.SourceType(exp_data.source_type)
+    )
+    sub_title = [
+        f'{channel_title}',
+        f'({exp_name})',
+    ]
+    sub_chart = _build_experiment_adjustment_chart_layers(exp_df, sub_title)
+    sub_charts.append(sub_chart)
+
+  if not sub_charts:
+    return None
+  return alt.hconcat(*sub_charts) if len(sub_charts) > 1 else sub_charts[0]  # pyrefly: ignore[bad-return]
+
 
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
@@ -304,6 +579,20 @@ class MeridianEDA:
   ) -> eda_outcome.EDAOutcome[eda_outcome.PriorProbabilityArtifact]:
     return self.eda_engine.check_prior_probability()
 
+  @functools.cached_property
+  def _dataset_level_prior_quality_check_outcome(
+      self,
+  ) -> eda_outcome.EDAOutcome[eda_outcome.PriorQualityArtifact] | None:
+    """Runs and caches the dataset-level prior quality check outcome.
+
+    Returns:
+      An EDAOutcome containing a PriorQualityArtifact, or None if unavailable.
+    """
+    try:
+      return self.eda_engine.check_prior_quality()
+    except (AttributeError, ValueError):
+      return None
+
   def generate_and_save_report(self, filename: str, filepath: str) -> None:
     """Generates and saves a HTML report containing EDA findings.
 
@@ -423,6 +712,245 @@ class MeridianEDA:
         .configure_title(anchor='start')
         .configure_axis(labelOverlap='parity')
     )
+
+  def _get_calibration_results_by_channel(
+      self,
+  ) -> _CalibrationResultsByChannel:
+    """Maps calibrated channel names to their output and 1D prior distribution."""
+    calibrated_priors = self.eda_engine.get_calibrated_priors()
+    if not calibrated_priors:
+      return {}
+
+    calibration_results = {}
+    for joint_prior in calibrated_priors:
+      for idx, output in enumerate(joint_prior.calibration_outputs):
+        if output is not None:
+          calibration_results[output.channel_name] = (
+              output,
+              joint_prior.distributions[idx],
+          )
+    return calibration_results
+
+  def _sort_channels_by_spend(self, channel_names: Sequence[str]) -> list[str]:
+    """Sorts the channel names by total national spend in descending order."""
+    total_spend_da = _get_total_spend_by_channel(self.eda_engine)
+    if total_spend_da is None:
+      return list(channel_names)
+
+    available_channels = set(total_spend_da[constants.CHANNEL].values)
+    for c in channel_names:
+      if c not in available_channels:
+        raise ValueError(f"Channel '{c}' is not present in the spend dataset.")
+
+    return sorted(
+        channel_names,
+        key=lambda c: float(total_spend_da.sel({constants.CHANNEL: c}).values),
+        reverse=True,
+    )
+
+  def _get_plotting_calibrated_channels(
+      self,
+      channel_name: str | None,
+      limit_channels: int | None,
+      sort_channels: bool,
+      calibrated_channels: Sequence[str],
+  ) -> Sequence[str]:
+    """Resolves, sorts, and limits the channels to plot.
+
+    Args:
+      channel_name: Optional name of a specific channel. If provided, only this
+        channel is returned.
+      limit_channels: Optional maximum number of channels to return.
+      sort_channels: If True, sorts channels by total spend.
+      calibrated_channels: List of all calibrated channel names.
+
+    Returns:
+      Sequence of channel names to plot.
+
+    Raises:
+      ValueError: If `channel_name` is provided but not in
+        `calibrated_channels`, or if `sort_channels` is True and any
+        calibrated channel is not present in the spend dataset.
+    """
+    if channel_name is not None:
+      if channel_name not in calibrated_channels:
+        raise ValueError(
+            f"Channel '{channel_name}' is not calibrated or has no calibration"
+            ' outputs.'
+        )
+      return [channel_name]
+
+    if not calibrated_channels:
+      return []
+
+    sorted_channels = (
+        self._sort_channels_by_spend(calibrated_channels)
+        if sort_channels
+        else list(calibrated_channels)
+    )
+    return (
+        sorted_channels[:limit_channels]
+        if limit_channels is not None
+        else sorted_channels
+    )
+
+  # TODO: UX review and Eng fix on color codes.
+  def plot_calibration(
+      self,
+      channel_name: str | None = None,
+      limit_channels: int | None = None,
+      limit_experiments: int | None = None,
+      sort_channels: bool = True,
+      sort_experiments: bool = True,
+  ) -> alt.Chart | None:
+    """Plots the prior calibration comparison charts (1x2 subplots).
+
+    Args:
+      channel_name: Optional name of a specific channel. If None, plots all
+        calibrated channels.
+      limit_channels: Optional maximum number of channels to display (sorted by
+        spend).
+      limit_experiments: Optional maximum number of experiments to display per
+        channel (sorted by SE).
+      sort_channels: If True, ranks channels by total spend.
+      sort_experiments: If True, ranks experiments by adjusted SE (ascending).
+
+    Returns:
+      An Altair Chart containing the calibration plots, or None if no calibrated
+      priors exist in the model.
+    """
+    if limit_channels is not None and limit_channels <= 0:
+      raise ValueError('limit_channels must be greater than 0.')
+    if limit_experiments is not None and limit_experiments <= 0:
+      raise ValueError('limit_experiments must be greater than 0.')
+
+    calibration_results = self._get_calibration_results_by_channel()
+    if not calibration_results:
+      return None
+
+    # We assume only paid channels can be calibrated. Non-paid channels
+    # (e.g., organic) are not supported for calibration plotting as they lack
+    # spend data.
+    channels_to_plot = self._get_plotting_calibrated_channels(
+        channel_name=channel_name,
+        limit_channels=limit_channels,
+        sort_channels=sort_channels,
+        calibrated_channels=list(calibration_results.keys()),
+    )
+
+    rng_handler = backend.RNGHandler(seed=eda_constants.DEFAULT_PRIOR_SEED)
+    total_spend_da = _get_total_spend_by_channel(self.eda_engine)
+
+    channel_charts = []
+    for ch_name in channels_to_plot:
+      calibrated_output, calibrated_prior_dist = calibration_results[ch_name]
+      indexed_experiments = _filter_and_sort_experiments(
+          experiments=calibrated_output.experiments,
+          get_se_fn=lambda e: e.adjusted_experiment_result.standard_error,
+          limit_experiments=limit_experiments,
+          sort_experiments=sort_experiments,
+      )
+      channel_chart = _plot_single_channel_calibration(
+          ch_name=ch_name,
+          calibrated_output=calibrated_output,
+          calibrated_prior_dist=calibrated_prior_dist,
+          indexed_experiments=indexed_experiments,
+          rng_handler=rng_handler,
+          total_spend_da=total_spend_da,
+          show_spend_in_title=(channel_name is None),
+      )
+      channel_charts.append(channel_chart)
+
+    return (
+        alt.vconcat(*channel_charts).resolve_scale(color='independent')
+        if channel_charts
+        else None
+    )
+
+  def plot_experiment_adjustments(
+      self,
+      channel_name: str | None = None,
+      limit_channels: int | None = None,
+      limit_experiments: int | None = None,
+      sort_channels: bool = True,
+      sort_experiments: bool = True,
+  ) -> alt.Chart | None:
+    """Plots the step-by-step experiment adjustments errorbar grid.
+
+    Args:
+      channel_name: Name of the specific channel to plot. Default is None. If
+        None, plots all calibrated channels.
+      limit_channels: Optional maximum number of channels to display (sorted by
+        spend).
+      limit_experiments: Optional maximum number of experiments to display per
+        channel (sorted by Standard Error).
+      sort_channels: If True, ranks channels by total spend.
+      sort_experiments: If True, ranks experiments by adjusted Standard Error
+        (ascending).
+
+    Returns:
+      An Altair Chart containing the experiment adjustment errorbar grid, or
+      None
+      if no calibrated priors exist in the model.
+    """
+    if limit_channels is not None and limit_channels <= 0:
+      raise ValueError('limit_channels must be greater than 0.')
+    if limit_experiments is not None and limit_experiments <= 0:
+      raise ValueError('limit_experiments must be greater than 0.')
+
+    outcome = self.eda_engine.check_experiment_adjustment()
+    try:
+      [artifact] = outcome.get_overall_artifacts()
+    except ValueError:
+      return None
+
+    adjustment_data = artifact.adjustment_data
+
+    channels_to_plot = self._get_plotting_calibrated_channels(
+        channel_name=channel_name,
+        limit_channels=limit_channels,
+        sort_channels=sort_channels,
+        calibrated_channels=list(adjustment_data.keys()),
+    )
+    if not channels_to_plot:
+      return None
+
+    total_spend_da = _get_total_spend_by_channel(self.eda_engine)
+
+    channel_charts = []
+    for ch_name in channels_to_plot:
+      if ch_name not in adjustment_data:
+        continue
+      indexed_exp_data_list = _filter_and_sort_experiments(
+          experiments=adjustment_data[ch_name],
+          get_se_fn=lambda exp: exp.stages[-1].standard_error,
+          limit_experiments=limit_experiments,
+          sort_experiments=sort_experiments,
+      )
+      if not indexed_exp_data_list:
+        continue
+
+      if (
+          channel_name is None
+          and total_spend_da is not None
+          and ch_name in total_spend_da[constants.CHANNEL].values
+      ):
+        spend = float(total_spend_da.sel({constants.CHANNEL: ch_name}).values)
+      else:
+        spend = None
+
+      channel_chart = _build_experiment_adjustment_grid(
+          ch_name=ch_name,
+          indexed_exp_data_list=indexed_exp_data_list,
+          spend=spend,
+          show_spend_in_title=(channel_name is None),
+      )
+      if channel_chart is not None:
+        channel_charts.append(channel_chart)
+
+    if not channel_charts:
+      return None
+    return alt.vconcat(*channel_charts).resolve_scale(color='independent')
 
   def plot_cost_per_media_unit_time_series(
       self, geos: Geos = 1, channels: Sequence[str] | None = None
@@ -1946,6 +2474,118 @@ class MeridianEDA:
       )
     return tables
 
+  def _generate_prior_quality_table(self) -> formatter.TableSpec | None:
+    """Generates a TableSpec summarizing prior quality indicators.
+
+    Returns:
+      A TableSpec containing the prior quality table, or None if unavailable.
+    """
+    outcome = self._dataset_level_prior_quality_check_outcome
+    if outcome is None:
+      return None
+
+    try:
+      artifacts = outcome.get_overall_artifacts()
+    except ValueError:
+      return None
+
+    if not artifacts or not artifacts[0].prior_quality_data:
+      return None
+    quality_data = artifacts[0].prior_quality_data
+
+    column_headers = [
+        constants.CHANNEL,
+        eda_constants.BASELINE_PRIOR_TYPE,
+        eda_constants.PRIOR_BIMODALITY_STATISTIC,
+        eda_constants.PRIOR_WIDTH_RATIO,
+        eda_constants.INTERMEDIARY_AND_PARAMETERIZED_OVERLAP_PERCENTAGE,
+        eda_constants.NEGATIVE_POINT_ESTIMATE_EXPERIMENTS,
+    ]
+
+    row_values = []
+    bimodal_channels = []
+    baseline_type_bimodal_channels = []
+    width_channels = []
+    overlap_channels = []
+    neg_exp_channels = []
+
+    for data in quality_data:
+      bimodal_str = (
+          eda_constants.NOT_AVAILABLE
+          if data.bimodal_statistic is None
+          else f'{data.bimodal_statistic:.4f}'
+      )
+      width_str = f'{data.prior_width_ratio:.2f}'
+      overlap_str = f'{data.overlap_percentage * 100:.0f}%'
+      neg_count_str = str(data.n_negative_experiments)
+
+      if data.bimodal_statistic is None:
+        baseline_type_bimodal_channels.append(data.channel_name)
+      elif (
+          data.bimodal_statistic > eda_constants.BIMODALITY_STATISTIC_THRESHOLD
+      ):
+        bimodal_channels.append(data.channel_name)
+
+      if data.prior_width_ratio > eda_constants.HIGH_VARIANCE_THRESHOLD:
+        width_channels.append(data.channel_name)
+      if data.overlap_percentage < eda_constants.OVERLAP_PERCENTAGE_THRESHOLD:
+        overlap_channels.append(data.channel_name)
+      if data.n_negative_experiments > 0:
+        neg_exp_channels.append(data.channel_name)
+
+      row_values.append([
+          data.channel_name,
+          data.baseline_prior_type,
+          bimodal_str,
+          width_str,
+          overlap_str,
+          neg_count_str,
+      ])
+
+    warnings = []
+    if bimodal_channels:
+      channels_str = ', '.join(bimodal_channels)
+      warnings.append(
+          eda_constants.PRIOR_BIMODALITY_WARNING.format(channels=channels_str)
+      )
+    if baseline_type_bimodal_channels:
+      channels_str = ', '.join(baseline_type_bimodal_channels)
+      warnings.append(
+          eda_constants.BASELINE_PRIOR_TYPE_BIMODALITY_WARNING.format(
+              channels=channels_str
+          )
+      )
+    if width_channels:
+      channels_str = ', '.join(width_channels)
+      warnings.append(
+          eda_constants.UNINFORMATIVE_CALIBRATED_PRIOR_WARNING.format(
+              channels=channels_str
+          )
+      )
+    if overlap_channels:
+      channels_str = ', '.join(overlap_channels)
+      warnings.append(
+          eda_constants.LOW_OVERLAP_PRIORS_WARNING.format(channels=channels_str)
+      )
+    if neg_exp_channels:
+      channels_str = ', '.join(neg_exp_channels)
+      warnings.append(
+          eda_constants.NEGATIVE_POINT_ESTIMATE_EXPERIMENTS_WARNING.format(
+              channels=channels_str
+          )
+      )
+
+    return formatter.TableSpec(
+        id=eda_constants.PRIOR_QUALITY_TABLE_ID,
+        title='Prior Quality Summary',
+        column_headers=column_headers,
+        row_values=row_values,
+        warnings=warnings if warnings else None,
+        infos=[eda_constants.PRIOR_QUALITY_TABLE_INFO]
+        if not warnings
+        else None,
+    )
+
   def _generate_prior_specifications_card(
       self,
   ) -> tuple[str, dict[eda_outcome.EDASeverity, int]]:
@@ -1963,6 +2603,22 @@ class MeridianEDA:
     chart_specs: list[formatter.ChartSpec | formatter.TableSpec] = [prior_chart]
 
     card_severity_counts = _initialize_severity_counts()
+    calibration_chart_spec = self._generate_prior_calibration_chart_spec()
+    if calibration_chart_spec is not None:
+      chart_specs.append(calibration_chart_spec)
+    experiment_adjustments_chart_spec = (
+        self._generate_experiment_adjustments_chart_spec()
+    )
+    if experiment_adjustments_chart_spec is not None:
+      chart_specs.append(experiment_adjustments_chart_spec)
+    prior_quality_table_spec = self._generate_prior_quality_table()
+    if prior_quality_table_spec is not None:
+      chart_specs.append(prior_quality_table_spec)
+    outcome = self._dataset_level_prior_quality_check_outcome
+    if outcome is not None:
+      for finding in outcome.findings:
+        if finding.severity in card_severity_counts:
+          card_severity_counts[finding.severity] += 1
 
     return (
         formatter.create_card_html(
@@ -1987,6 +2643,92 @@ class MeridianEDA:
             f'{eda_constants.PRIOR_PROBABILITY_REPORT_INFO}Prior Probability of'
             f' negative baseline: {prior_probability}'
         ],
+    )
+
+  def _generate_prior_calibration_chart_spec(
+      self,
+  ) -> formatter.ChartSpec | None:
+    """Generates the ChartSpec for the prior calibration comparison chart."""
+    channel_limit = eda_constants.PRIOR_CALIBRATION_REPORT_CHANNEL_LIMIT
+    exp_limit = eda_constants.PRIOR_CALIBRATION_REPORT_EXPERIMENT_LIMIT
+    calibration_chart = self.plot_calibration(
+        limit_channels=channel_limit,
+        limit_experiments=exp_limit,
+    )
+    if calibration_chart is None:
+      return None
+
+    calibration_results = self._get_calibration_results_by_channel()
+    calibrated_channels = list(calibration_results.keys())
+
+    if len(calibrated_channels) > channel_limit:
+      channels_text = f'your {channel_limit} highest-spend calibrated channels'
+      banner_text = eda_constants.PRIOR_CALIBRATION_BANNER_TEXT_TEMPLATE.format(
+          channels=channels_text
+      ) + eda_constants.PRIOR_CALIBRATION_LIMIT_MESSAGE.format(
+          limit=channel_limit
+      )
+    else:
+      channels_text = 'all calibrated channels'
+      banner_text = eda_constants.PRIOR_CALIBRATION_BANNER_TEXT_TEMPLATE.format(
+          channels=channels_text
+      )
+
+    return formatter.ChartSpec(
+        id=eda_constants.PRIOR_CALIBRATION_CHART_ID,
+        chart_json=calibration_chart.to_json(),
+        infos=[
+            banner_text,
+            eda_constants.PRIOR_CALIBRATION_EXPERIMENT_ORDER_INFO,
+        ],
+    )
+
+  def _generate_experiment_adjustments_chart_spec(
+      self,
+  ) -> formatter.ChartSpec | None:
+    """Generates the ChartSpec for the experiment adjustments chart."""
+    channel_limit = eda_constants.EXPERIMENT_ADJUSTMENTS_REPORT_CHANNEL_LIMIT
+    exp_limit = eda_constants.EXPERIMENT_ADJUSTMENTS_REPORT_EXPERIMENT_LIMIT
+    adjustments_chart = self.plot_experiment_adjustments(
+        limit_channels=channel_limit,
+        limit_experiments=exp_limit,
+    )
+    if adjustments_chart is None:
+      return None
+
+    outcome = self.eda_engine.check_experiment_adjustment()
+    try:
+      [artifact] = outcome.get_overall_artifacts()
+    except ValueError:
+      return None
+
+    if not artifact.adjustment_data:
+      return None
+
+    calibrated_channels = list(artifact.adjustment_data.keys())
+
+    if len(calibrated_channels) > channel_limit:
+      channels_text = f'your {channel_limit} highest-spend calibrated channels'
+      banner_text = (
+          eda_constants.EXPERIMENT_ADJUSTMENTS_BANNER_TEXT_TEMPLATE.format(
+              channels=channels_text
+          )
+          + eda_constants.EXPERIMENT_ADJUSTMENTS_LIMIT_MESSAGE.format(
+              limit=channel_limit
+          )
+      )
+    else:
+      channels_text = 'all calibrated channels'
+      banner_text = (
+          eda_constants.EXPERIMENT_ADJUSTMENTS_BANNER_TEXT_TEMPLATE.format(
+              channels=channels_text
+          )
+      )
+
+    return formatter.ChartSpec(
+        id=eda_constants.EXPERIMENT_ADJUSTMENTS_CHART_ID,
+        chart_json=adjustments_chart.to_json(),
+        infos=[banner_text],
     )
 
   def _validate_and_get_geos_to_plot(self, geos: Geos) -> Sequence[str]:

@@ -21,6 +21,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import altair as alt
 import arviz as az
+from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
 from meridian.backend import test_utils as backend_test_utils
@@ -28,13 +29,13 @@ from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
 from meridian.model import model
+from meridian.model.calibration import base as calibration_base
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
 from meridian.model.eda import eda_spec
 from meridian.model.eda import meridian_eda
 from meridian.model.eda import sampling_eda_engine
-
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -698,6 +699,13 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
             else [_create_prior_artifact([1, 2])],
         )
     )
+    self._mock_eda_engine.check_prior_quality.return_value = (
+        eda_outcome.EDAOutcome(
+            check_type=eda_outcome.EDACheckType.PRIOR_QUALITY,
+            findings=[],
+            analysis_artifacts=[],
+        )
+    )
 
     data_param_artifact = eda_outcome.DataParameterRatioArtifact(
         level=eda_outcome.AnalysisLevel.OVERALL,
@@ -764,6 +772,9 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     self.enter_context(
         mock.patch.object(self._eda, 'plot_prior_mean', autospec=True)
     ).return_value.to_json.return_value = '{"prior_mean": "json"}'
+    self.enter_context(
+        mock.patch.object(self._eda, 'plot_calibration', autospec=True)
+    ).return_value = None
 
   # ============================================================================
   # __init__ Tests
@@ -2392,6 +2403,984 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     actual_values = sorted(plot.data[eda_constants.VALUE].tolist())
     np.testing.assert_allclose(actual_values, [-0.2, 0.5])
 
+  # ============================================================================
+  # Prior Calibration Plot Tests
+  # ============================================================================
+  def test_plot_calibration_no_calibrated_priors_returns_none(self):
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[],
+        )
+    )
+    self.assertIsNone(self._eda.plot_calibration())
+
+  def test_plot_calibration_no_outputs_returns_none(self):
+    mock_prior = calibration_base.CalibratedDistribution(
+        distributions=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        is_calibrated=[True, True],
+        calibration_outputs=[None, None],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    self.assertIsNone(self._eda.plot_calibration())
+
+  def _create_mock_calibrated_distribution(
+      self,
+      channel_name: str,
+      experiments: Sequence[calibration_base.CalibratedExperiment],
+      has_baseline: bool = False,
+  ) -> calibration_base.CalibratedDistribution:
+    """Creates a mock CalibratedDistribution for a channel."""
+    dist = backend.tfd.Normal(
+        backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+    )
+    if has_baseline:
+      baseline = backend.tfd.Normal(
+          backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+      )
+    else:
+      baseline = None
+    output = calibration_base.CalibrationOutput(
+        channel_name=channel_name,
+        experiments=list(experiments),
+        baseline_prior=baseline,
+        intermediary_prior=dist,
+    )
+    return calibration_base.CalibratedDistribution(
+        distributions=dist,
+        is_calibrated=[True],
+        calibration_outputs=[output],
+    )
+
+  def test_plot_calibration_invalid_channel_name_raises(self):
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend', experiments=[]
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Channel 'google_spend' is not calibrated or has no calibration"
+        ' outputs.',
+    ):
+      self._eda.plot_calibration(channel_name='google_spend')
+
+  def _create_mock_calibrated_experiment(
+      self,
+      raw_estimate: float,
+      raw_se: float,
+      adj_estimate: float | None = None,
+      adj_se: float | None = None,
+      source_type: calibration_base.SourceType = calibration_base.SourceType.GENERIC,
+      user_point_estimate_adjustment: float = 0.0,
+      user_standard_error_adjustment: float = 0.0,
+      tau_spend: float = 0.0,
+      tau_duration: float = 0.0,
+      tau_recency: float = 0.0,
+      gamma_duration: float = 1.0,
+  ) -> calibration_base.CalibratedExperiment:
+    """Creates a mock CalibratedExperiment with the given estimates and SEs."""
+    if adj_estimate is None:
+      adj_estimate = raw_estimate
+    if adj_se is None:
+      adj_se = raw_se
+
+    return calibration_base.CalibratedExperiment(
+        source_type=source_type,
+        raw_experiment_result=calibration_base.ExperimentResult(
+            point_estimate=raw_estimate, standard_error=raw_se
+        ),
+        adjusted_experiment_result=calibration_base.ExperimentResult(
+            point_estimate=adj_estimate, standard_error=adj_se
+        ),
+        user_point_estimate_adjustment=user_point_estimate_adjustment,
+        user_standard_error_adjustment=user_standard_error_adjustment,
+        tau_spend=tau_spend,
+        tau_duration=tau_duration,
+        tau_recency=tau_recency,
+        gamma_duration=gamma_duration,
+    )
+
+  def test_plot_calibration_success(self):
+    mock_experiment = self._create_mock_calibrated_experiment(
+        raw_estimate=0.5,
+        raw_se=0.1,
+        adj_estimate=0.6,
+        adj_se=0.08,
+    )
+
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[mock_experiment],
+        has_baseline=True,
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    self._setup_mock_spend_ds()
+
+    # Run the plotting method
+    plot = self._eda.plot_calibration()
+
+    # Verify the child chart's title contains the channel name and total spend
+    self.assertEqual(
+        plot.vconcat[0].title.text,  # pyrefly: ignore[missing-attribute]
+        'Prior Calibration: facebook_spend (Total Spend: $600)',
+    )
+
+  def test_plot_calibration_success_no_sort_experiments(self):
+    mock_experiment1 = self._create_mock_calibrated_experiment(
+        raw_estimate=0.5,
+        raw_se=0.1,
+    )
+    mock_experiment2 = self._create_mock_calibrated_experiment(
+        raw_estimate=0.6,
+        raw_se=0.2,
+    )
+
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[mock_experiment1, mock_experiment2],
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    self._setup_mock_spend_ds()
+    # Call with sort_experiments=False to cover the unsorted branch
+    plot = self._eda.plot_calibration(
+        channel_name='facebook_spend', sort_experiments=False
+    )
+
+    self.assertIsInstance(plot, (alt.HConcatChart, alt.VConcatChart))
+
+  def _create_mock_experiment_adjustment_data(
+      self,
+      raw_est: float,
+      raw_se: float,
+      source_type: calibration_base.SourceType = (
+          calibration_base.SourceType.GENERIC
+      ),
+  ) -> eda_outcome.ExperimentAdjustmentData:
+    stages = [
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.UNADJUSTED_RAW,
+            point_estimate=raw_est,
+            standard_error=raw_se,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_ADJUSTED,
+            point_estimate=raw_est,
+            standard_error=raw_se,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_DURATION_ADJUSTED,
+            point_estimate=raw_est,
+            standard_error=raw_se,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_DURATION_RECENCY_ADJUSTED,
+            point_estimate=raw_est,
+            standard_error=raw_se,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.FINAL_ADJUSTED,
+            point_estimate=raw_est,
+            standard_error=raw_se,
+        ),
+    ]
+    return eda_outcome.ExperimentAdjustmentData(
+        source_type=source_type,
+        stages=stages,
+    )
+
+  def _create_mock_calibrated_experiments_for_ordering(
+      self,
+  ) -> list[calibration_base.CalibratedExperiment]:
+    return [
+        self._create_mock_calibrated_experiment(0.5, 0.5),
+        self._create_mock_calibrated_experiment(0.6, 0.1),
+        self._create_mock_calibrated_experiment(0.7, 0.8),
+        self._create_mock_calibrated_experiment(0.8, 0.2),
+    ]
+
+  def _create_mock_experiment_adjustments_for_ordering(
+      self,
+  ) -> list[eda_outcome.ExperimentAdjustmentData]:
+    return [
+        self._create_mock_experiment_adjustment_data(0.5, 0.5),
+        self._create_mock_experiment_adjustment_data(0.6, 0.1),
+        self._create_mock_experiment_adjustment_data(0.7, 0.8),
+        self._create_mock_experiment_adjustment_data(0.8, 0.2),
+    ]
+
+  def _setup_mock_spend_ds(
+      self,
+      channel_name: str = 'facebook_spend',
+      spend_values: Sequence[float] = (100.0, 200.0, 300.0),
+  ) -> None:
+    self._mock_eda_engine.national_all_spend_ds = xr.Dataset({
+        constants.MEDIA_SPEND: xr.DataArray(
+            np.array([[v] for v in spend_values]),
+            dims=[constants.TIME, constants.MEDIA_CHANNEL],
+            coords={
+                constants.TIME: range(len(spend_values)),
+                constants.MEDIA_CHANNEL: [channel_name],
+            },
+        )
+    })
+
+  def _setup_mock_calibrated_prior(
+      self,
+      experiments: Sequence[calibration_base.CalibratedExperiment],
+      channel_name: str = 'facebook_spend',
+      spend_values: Sequence[float] = (100.0, 200.0, 300.0),
+  ) -> None:
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name=channel_name,
+        experiments=experiments,
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    self._setup_mock_spend_ds(
+        channel_name=channel_name, spend_values=spend_values
+    )
+
+  def _extract_calibration_plot_labels(
+      self, plot: alt.Chart | None
+  ) -> list[str]:
+    self.assertIsNotNone(plot)
+    assert plot is not None
+    subplot = plot.vconcat[0] if hasattr(plot, 'vconcat') else plot
+    labels = []
+    for layer in subplot.hconcat[0].layer:  # pyrefly: ignore[missing-attribute]
+      if (
+          getattr(layer, 'data', None) is not None
+          and layer.data is not alt.Undefined
+      ):
+        if eda_constants.LABEL in layer.data.columns:
+          for lbl in layer.data[eda_constants.LABEL].unique().tolist():
+            if lbl not in labels:
+              labels.append(lbl)
+    return labels
+
+  def _setup_mock_adjustment_outcome(
+      self,
+      adjustment_data: Mapping[
+          str, Sequence[eda_outcome.ExperimentAdjustmentData]
+      ],
+      spend_values: Sequence[float] = (100.0,),
+  ) -> None:
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data=adjustment_data,
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+    self._setup_mock_spend_ds(spend_values=spend_values)
+
+  def _setup_mock_calibrated_channels_with_spend(self):
+    mock_exp_f1 = self._create_mock_calibrated_experiment(0.5, 0.2)
+    mock_exp_f2 = self._create_mock_calibrated_experiment(0.6, 0.05)
+    mock_exp_g1 = self._create_mock_calibrated_experiment(1.0, 0.1)
+    mock_exp_g2 = self._create_mock_calibrated_experiment(1.1, 0.01)
+
+    mock_prior_f = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[mock_exp_f1, mock_exp_f2],
+    )
+    mock_prior_g = self._create_mock_calibrated_distribution(
+        channel_name='google_spend',
+        experiments=[mock_exp_g1, mock_exp_g2],
+    )
+
+    exp_f1 = self._create_mock_experiment_adjustment_data(0.5, 0.2)
+    exp_f2 = self._create_mock_experiment_adjustment_data(0.6, 0.05)
+    exp_g1 = self._create_mock_experiment_adjustment_data(1.0, 0.1)
+    exp_g2 = self._create_mock_experiment_adjustment_data(1.1, 0.01)
+
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior_f, mock_prior_g],
+        )
+    )
+
+    adjustment_data = {
+        'facebook_spend': [exp_f1, exp_f2],
+        'google_spend': [exp_g1, exp_g2],
+    }
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data=adjustment_data,
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+
+    self._mock_eda_engine.national_all_spend_ds = xr.Dataset({
+        constants.MEDIA_SPEND: xr.DataArray(
+            np.array([[100.0, 500.0]]),  # Shape (1, 2)
+            dims=[constants.TIME, constants.MEDIA_CHANNEL],
+            coords={
+                constants.TIME: [0],
+                constants.MEDIA_CHANNEL: ['facebook_spend', 'google_spend'],
+            },
+        )
+    })
+
+  def test_plot_calibration_sorting_channels_by_spend(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_sorted = self._eda.plot_calibration(sort_channels=True)
+    self.assertIsInstance(plot_sorted, alt.VConcatChart)
+    self.assertIn('google_spend', plot_sorted.vconcat[0].title.text)
+    self.assertIn('facebook_spend', plot_sorted.vconcat[1].title.text)
+
+  def test_plot_calibration_limiting_channels(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_limited_ch = self._eda.plot_calibration(
+        limit_channels=1, sort_channels=True
+    )
+    self.assertIsInstance(plot_limited_ch, alt.VConcatChart)
+    self.assertIn('google_spend', plot_limited_ch.vconcat[0].title.text)
+    self.assertLen(plot_limited_ch.vconcat, 1)
+
+  def test_plot_calibration_limiting_experiments(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_limited_exp = self._eda.plot_calibration(limit_experiments=1)
+    self.assertIsInstance(plot_limited_exp, alt.VConcatChart)
+    first_channel_hconcat = plot_limited_exp.vconcat[0]
+    left_subplot_layers = first_channel_hconcat.hconcat[0].layer
+    # Assert left subplot contains baseline + experiment line +
+    # intermediary + hover layers (5 total layers).
+    self.assertLen(left_subplot_layers, 5)
+
+  def test_plot_calibration_error_invalid_limit_channels(self):
+    with self.assertRaisesRegex(
+        ValueError, 'limit_channels must be greater than 0.'
+    ):
+      self._eda.plot_calibration(limit_channels=0)
+
+    with self.assertRaisesRegex(
+        ValueError, 'limit_channels must be greater than 0.'
+    ):
+      self._eda.plot_calibration(limit_channels=-1)
+
+  def test_plot_calibration_error_invalid_limit_experiments(self):
+    with self.assertRaisesRegex(
+        ValueError, 'limit_experiments must be greater than 0.'
+    ):
+      self._eda.plot_calibration(limit_experiments=0)
+
+    with self.assertRaisesRegex(
+        ValueError, 'limit_experiments must be greater than 0.'
+    ):
+      self._eda.plot_calibration(limit_experiments=-1)
+
+  def test_plot_calibration_experiment_source_type_labels(self):
+    mock_experiment_geox = self._create_mock_calibrated_experiment(
+        raw_estimate=0.5,
+        raw_se=0.1,
+        source_type=calibration_base.SourceType.MERIDIAN_GEOX,
+    )
+    mock_experiment_generic = self._create_mock_calibrated_experiment(
+        raw_estimate=0.6,
+        raw_se=0.2,
+        source_type=calibration_base.SourceType.GENERIC,
+    )
+    self._setup_mock_calibrated_prior(
+        experiments=[mock_experiment_geox, mock_experiment_generic]
+    )
+    plot = self._eda.plot_calibration(channel_name='facebook_spend')
+    labels = self._extract_calibration_plot_labels(plot)
+    self.assertIn('Experiment 1 (Meridian GeoX)', labels)
+    self.assertIn('Experiment 2 (Incrementality)', labels)
+
+  @parameterized.named_parameters(
+      (
+          'sorted_limit2',
+          2,
+          True,
+          [(2, 1), (4, 3)],
+      ),
+      (
+          'sorted_limit3',
+          3,
+          True,
+          [(1, 0), (2, 1), (4, 3)],
+      ),
+      (
+          'unsorted_limit2',
+          2,
+          False,
+          [(1, 0), (2, 1)],
+      ),
+      (
+          'sorted_none_limit',
+          None,
+          True,
+          [(1, 0), (2, 1), (3, 2), (4, 3)],
+      ),
+      (
+          'sorted_oversized_limit',
+          10,
+          True,
+          [(1, 0), (2, 1), (3, 2), (4, 3)],
+      ),
+  )
+  def test_filter_and_sort_experiments(
+      self,
+      limit_experiments: int | None,
+      sort_experiments: bool,
+      expected_indexed_experiments: Sequence[tuple[int, int]],
+  ):
+    experiments = self._create_mock_calibrated_experiments_for_ordering()
+    result = meridian_eda._filter_and_sort_experiments(
+        experiments=experiments,
+        get_se_fn=lambda e: e.adjusted_experiment_result.standard_error,
+        limit_experiments=limit_experiments,
+        sort_experiments=sort_experiments,
+    )
+    expected = [
+        (exp_num, experiments[idx])
+        for exp_num, idx in expected_indexed_experiments
+    ]
+    self.assertEqual(result, expected)
+
+  def test_filter_and_sort_experiments_empty(self):
+    result_empty = meridian_eda._filter_and_sort_experiments(
+        experiments=[],
+        get_se_fn=lambda e: e.adjusted_experiment_result.standard_error,
+        limit_experiments=2,
+        sort_experiments=True,
+    )
+    self.assertEqual(result_empty, [])
+
+  def test_filter_and_sort_experiments_tied_se(self):
+    exp_tie1 = self._create_mock_calibrated_experiment(0.5, 0.1)
+    exp_tie2 = self._create_mock_calibrated_experiment(0.6, 0.1)
+    result_tied = meridian_eda._filter_and_sort_experiments(
+        experiments=[exp_tie1, exp_tie2],
+        get_se_fn=lambda e: e.adjusted_experiment_result.standard_error,
+        limit_experiments=2,
+        sort_experiments=True,
+    )
+    self.assertEqual(result_tied, [(1, exp_tie1), (2, exp_tie2)])
+
+  def test_plot_calibration_multi_experiment_preserves_original_indices_and_order(
+      self,
+  ):
+    experiments = self._create_mock_calibrated_experiments_for_ordering()
+    self._setup_mock_calibrated_prior(experiments=experiments)
+
+    # Limit to top 2 lowest SE experiments (exp 2 and exp 4)
+    plot = self._eda.plot_calibration(
+        channel_name='facebook_spend',
+        limit_experiments=2,
+        sort_experiments=True,
+    )
+    labels = self._extract_calibration_plot_labels(plot)
+
+    self.assertIn('Experiment 2 (Incrementality)', labels)
+    self.assertIn('Experiment 4 (Incrementality)', labels)
+    self.assertNotIn('Experiment 1 (Incrementality)', labels)
+    self.assertNotIn('Experiment 3 (Incrementality)', labels)
+    exp_labels = [l for l in labels if l.startswith('Experiment ')]
+    self.assertEqual(
+        exp_labels,
+        ['Experiment 2 (Incrementality)', 'Experiment 4 (Incrementality)'],
+    )
+
+  def test_plot_calibration_interactivity_tooltips_and_selection(self):
+    mock_experiment = self._create_mock_calibrated_experiment(
+        raw_estimate=0.5, raw_se=0.1
+    )
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[mock_experiment],
+        has_baseline=True,
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    self._mock_eda_engine.national_all_spend_ds = xr.Dataset({
+        constants.MEDIA_SPEND: xr.DataArray(
+            np.array([[100.0], [200.0], [300.0]]),
+            dims=[constants.TIME, constants.MEDIA_CHANNEL],
+            coords={
+                constants.TIME: range(3),
+                constants.MEDIA_CHANNEL: ['facebook_spend'],
+            },
+        )
+    })
+    plot = self._eda.plot_calibration(channel_name='facebook_spend')
+    chart_json = plot.to_json()  # pyrefly: ignore[missing-attribute]
+    self.assertIn('select', chart_json)
+    self.assertIn('legend', chart_json)
+    self.assertIn('tooltip', chart_json)
+
+  def test_plot_experiment_adjustments_no_outputs_returns_none(self):
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[],
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibration_outputs',
+            return_value=[],
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            side_effect=sampling_eda_engine.SamplingEDAEngine.check_experiment_adjustment,
+        )
+    )
+    self.assertIsNone(self._eda.plot_experiment_adjustments())
+
+  def test_plot_experiment_adjustments_invalid_channel_name_raises(self):
+    exp_f = self._create_mock_experiment_adjustment_data(0.5, 0.1)
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data={'facebook_spend': [exp_f]},
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Channel 'invalid_channel' is not calibrated or has no calibration"
+        ' outputs.',
+    ):
+      self._eda.plot_experiment_adjustments(channel_name='invalid_channel')
+
+  def test_plot_experiment_adjustments_success(self):
+    exp_f = self._create_mock_experiment_adjustment_data(0.5, 0.1)
+    mock_prior = self._create_mock_calibrated_distribution(
+        channel_name='facebook_spend',
+        experiments=[],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'get_calibrated_priors',
+            return_value=[mock_prior],
+        )
+    )
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data={'facebook_spend': [exp_f]},
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+    self._mock_eda_engine.national_all_spend_ds = xr.Dataset({
+        constants.MEDIA_SPEND: xr.DataArray(
+            np.array([[100.0], [200.0], [300.0]]),
+            dims=[constants.TIME, constants.MEDIA_CHANNEL],
+            coords={
+                constants.TIME: range(3),
+                constants.MEDIA_CHANNEL: ['facebook_spend'],
+            },
+        )
+    })
+    plot = self._eda.plot_experiment_adjustments()
+    self.assertIsInstance(plot, (alt.LayerChart, alt.VConcatChart))
+    title_text = (
+        plot.vconcat[0].title.text
+        if hasattr(plot, 'vconcat')
+        else plot.title.text
+    )
+    self.assertEqual(
+        title_text,
+        [
+            'Experiment Adjustments: facebook_spend (Total Spend: $600)',
+            '(Experiment 1 (Incrementality))',
+        ],
+    )
+
+  def test_plot_experiment_adjustments_user_adjustment_stage(self):
+    exp_data = eda_outcome.ExperimentAdjustmentData(
+        source_type=calibration_base.SourceType.MERIDIAN_GEOX,
+        stages=[
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.UNADJUSTED_RAW,
+                point_estimate=0.5,
+                standard_error=0.1,
+            ),
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_ADJUSTED,
+                point_estimate=0.5,
+                standard_error=0.12,
+            ),
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_DURATION_ADJUSTED,
+                point_estimate=0.55,
+                standard_error=0.13,
+            ),
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_DURATION_RECENCY_ADJUSTED,
+                point_estimate=0.55,
+                standard_error=0.15,
+            ),
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_DURATION_RECENCY_USER_ADJUSTED,
+                point_estimate=0.60,
+                standard_error=0.18,
+            ),
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.FINAL_ADJUSTED,
+                point_estimate=0.60,
+                standard_error=0.18,
+            ),
+        ],
+    )
+    self._setup_mock_adjustment_outcome(
+        adjustment_data={'facebook_spend': [exp_data]}
+    )
+    chart = self._eda.plot_experiment_adjustments()
+    self.assertIsNotNone(chart)
+
+  def _get_chart_title_text(self, chart) -> str:
+    if hasattr(chart, 'hconcat'):
+      chart = chart.hconcat[0]
+    if hasattr(chart, 'title') and hasattr(chart.title, 'text'):
+      text = chart.title.text
+      if isinstance(text, (list, tuple)):
+        return ' '.join(text)
+      return text
+    return ''
+
+  def test_plot_experiment_adjustments_sorting_channels_by_spend(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_sorted = self._eda.plot_experiment_adjustments(sort_channels=True)
+    self.assertIsInstance(plot_sorted, alt.VConcatChart)
+    self.assertIn(
+        'google_spend', self._get_chart_title_text(plot_sorted.vconcat[0])
+    )
+    self.assertIn(
+        'facebook_spend', self._get_chart_title_text(plot_sorted.vconcat[1])
+    )
+
+  def test_plot_experiment_adjustments_limiting_channels(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_limited_ch = self._eda.plot_experiment_adjustments(
+        limit_channels=1, sort_channels=True
+    )
+    self.assertIsInstance(plot_limited_ch, alt.VConcatChart)
+    self.assertIn(
+        'google_spend', self._get_chart_title_text(plot_limited_ch.vconcat[0])
+    )
+    self.assertLen(plot_limited_ch.vconcat, 1)
+
+  def test_plot_experiment_adjustments_limiting_experiments(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_limited_exp = self._eda.plot_experiment_adjustments(
+        limit_experiments=1
+    )
+    self.assertIsInstance(plot_limited_exp, alt.VConcatChart)
+
+  def test_plot_experiment_adjustments_no_sort_experiments(self):
+    self._setup_mock_calibrated_channels_with_spend()
+    plot_unsorted_exp = self._eda.plot_experiment_adjustments(
+        sort_experiments=False
+    )
+    self.assertIsInstance(plot_unsorted_exp, alt.VConcatChart)
+
+  def test_plot_experiment_adjustments_single_channel_title(self):
+    exp_f = self._create_mock_experiment_adjustment_data(0.5, 0.1)
+    self._setup_mock_adjustment_outcome(
+        adjustment_data={'facebook_spend': [exp_f]}
+    )
+    plot = self._eda.plot_experiment_adjustments(channel_name='facebook_spend')
+    title_text = (
+        plot.vconcat[0].title.text
+        if hasattr(plot, 'vconcat')
+        else plot.title.text  # pyrefly: ignore[missing-attribute]
+    )
+    self.assertEqual(
+        title_text,
+        [
+            'Experiment Adjustments: facebook_spend',
+            '(Experiment 1 (Incrementality))',
+        ],
+    )
+
+  @parameterized.named_parameters(
+      (
+          'geox',
+          calibration_base.SourceType.MERIDIAN_GEOX,
+          '(Experiment 1 (Meridian GeoX))',
+      ),
+      (
+          'generic',
+          calibration_base.SourceType.GENERIC,
+          '(Experiment 1 (Incrementality))',
+      ),
+  )
+  def test_plot_experiment_adjustments_source_type_suffix(
+      self,
+      source_type: calibration_base.SourceType,
+      expected_subtitle: str,
+  ):
+    exp = self._create_mock_experiment_adjustment_data(
+        raw_est=0.5,
+        raw_se=0.1,
+        source_type=source_type,
+    )
+    self._setup_mock_adjustment_outcome(
+        adjustment_data={'facebook_spend': [exp]}
+    )
+    plot = self._eda.plot_experiment_adjustments(channel_name='facebook_spend')
+    title_text = (
+        plot.vconcat[0].title.text
+        if hasattr(plot, 'vconcat')
+        else plot.title.text  # pyrefly: ignore[missing-attribute]
+    )
+    self.assertEqual(
+        title_text,
+        [
+            'Experiment Adjustments: facebook_spend',
+            expected_subtitle,
+        ],
+    )
+
+  def test_plot_experiment_adjustments_multi_experiment_preserves_original_indices_and_order(
+      self,
+  ):
+    experiments = self._create_mock_experiment_adjustments_for_ordering()
+    self._setup_mock_adjustment_outcome(
+        adjustment_data={'facebook_spend': experiments}
+    )
+
+    plot = self._eda.plot_experiment_adjustments(
+        channel_name='facebook_spend',
+        limit_experiments=2,
+        sort_experiments=True,
+    )
+    self.assertIsInstance(plot, (alt.HConcatChart, alt.VConcatChart))
+    channel_chart = plot.vconcat[0] if hasattr(plot, 'vconcat') else plot
+    self.assertIsInstance(channel_chart, alt.HConcatChart)
+    subcharts = channel_chart.hconcat
+    self.assertLen(subcharts, 2)
+    self.assertIn(
+        '(Experiment 2 (Incrementality))',
+        self._get_chart_title_text(subcharts[0]),
+    )
+    self.assertIn(
+        '(Experiment 4 (Incrementality))',
+        self._get_chart_title_text(subcharts[1]),
+    )
+    self.assertEqual(
+        subcharts[0].layer[0].data[eda_constants.VARIABLE].iloc[0],
+        'Experiment 2 (Incrementality)',
+    )
+    self.assertEqual(
+        subcharts[1].layer[0].data[eda_constants.VARIABLE].iloc[0],
+        'Experiment 4 (Incrementality)',
+    )
+
+  @parameterized.named_parameters(
+      (
+          'zero_limit_channels',
+          {'limit_channels': 0},
+          'limit_channels must be greater than 0.',
+      ),
+      (
+          'negative_limit_channels',
+          {'limit_channels': -1},
+          'limit_channels must be greater than 0.',
+      ),
+      (
+          'zero_limit_experiments',
+          {'limit_experiments': 0},
+          'limit_experiments must be greater than 0.',
+      ),
+      (
+          'negative_limit_experiments',
+          {'limit_experiments': -1},
+          'limit_experiments must be greater than 0.',
+      ),
+  )
+  def test_plot_experiment_adjustments_invalid_limits(
+      self, kwargs, expected_error
+  ):
+    with self.assertRaisesRegex(ValueError, expected_error):
+      self._eda.plot_experiment_adjustments(**kwargs)
+
+  def _setup_mock_experiment_adjustment_data(
+      self,
+      source_type: calibration_base.SourceType = calibration_base.SourceType.GENERIC,
+  ) -> eda_outcome.EDAOutcome:
+    stages = [
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.UNADJUSTED_RAW,
+            point_estimate=0.5,
+            standard_error=0.1,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.SPEND_ADJUSTED,
+            point_estimate=0.5,
+            standard_error=0.12,
+        ),
+        eda_outcome.ExperimentAdjustmentStageData(
+            stage=eda_outcome.CalibrationExperimentAdjustmentStage.FINAL_ADJUSTED,
+            point_estimate=0.6,
+            standard_error=0.15,
+        ),
+    ]
+    exp = eda_outcome.ExperimentAdjustmentData(
+        source_type=source_type,
+        stages=stages,
+    )
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data={'facebook_spend': [exp]},
+    )
+    return eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+
+  def test_plot_experiment_adjustments_no_data_to_plot(self):
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+    self.assertIsNone(self._eda.plot_experiment_adjustments())
+
+  def test_plot_experiment_adjustments_empty_adjustment_data(self):
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data={},
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+    self.assertIsNone(self._eda.plot_experiment_adjustments())
+
+  def test_plot_experiment_adjustments_empty_channel_experiments(self):
+    self._setup_mock_adjustment_outcome(
+        adjustment_data={'facebook_spend': []}
+    )
+    self.assertIsNone(self._eda.plot_experiment_adjustments())
+
   def test_plot_prior_mean_national_success(self):
     self._meridian.is_national = True
     artifact = _create_prior_artifact([0.5, -0.2])
@@ -3066,6 +4055,381 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     for snippet in expected_text:
       with self.subTest(f'expected_text_{snippet}'):
         self.assertIn(snippet, full_text)
+
+  def test_prior_specifications_card_with_calibration(self) -> None:
+    self._stub_plotters()
+    self._meridian.is_national = False
+
+    mock_chart = mock.create_autospec(alt.Chart, instance=True)
+    mock_chart.to_json.return_value = '{"calibration": "json"}'
+    self.enter_context(
+        mock.patch.object(
+            self._eda, 'plot_calibration', return_value=mock_chart
+        )
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            self._eda,
+            '_get_calibration_results_by_channel',
+            return_value={'facebook_spend': (None, None)},
+        )
+    )
+
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+
+    dom = self._get_output_eda_report_html_dom()
+    card = dom.find(
+        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
+    )
+    self.assertIsNotNone(card)
+
+    # Check both chart IDs exist in the card
+    self.assertIsNotNone(
+        card.find(f".//*[@id='{eda_constants.PRIOR_CHART_ID}']")
+    )
+    self.assertIsNotNone(
+        card.find(f".//*[@id='{eda_constants.PRIOR_CALIBRATION_CHART_ID}']")
+    )
+
+    # Check the banner text is included in the card's text
+    full_text = ''.join(card.itertext())
+    self.assertIn(
+        'This figure displays your incrementality experiments and their impact',
+        full_text,
+    )
+    self.assertIn(
+        'Experiments within each channel are displayed in the order they were',
+        full_text,
+    )
+
+  def test_prior_specifications_card_with_calibration_limit_channels(
+      self,
+  ) -> None:
+    self._stub_plotters()
+    self._meridian.is_national = False
+
+    mock_chart = mock.create_autospec(alt.Chart, instance=True)
+    mock_chart.to_json.return_value = '{"calibration": "json"}'
+    mock_plot_calibration = self.enter_context(
+        mock.patch.object(
+            self._eda, 'plot_calibration', return_value=mock_chart
+        )
+    )
+
+    six_channels = {f'channel_{i}': (None, None) for i in range(6)}
+    self.enter_context(
+        mock.patch.object(
+            self._eda,
+            '_get_calibration_results_by_channel',
+            return_value=six_channels,
+        )
+    )
+
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+
+    dom = self._get_output_eda_report_html_dom()
+    card = dom.find(
+        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
+    )
+    self.assertIsNotNone(card)
+
+    mock_plot_calibration.assert_called_with(
+        limit_channels=eda_constants.PRIOR_CALIBRATION_REPORT_CHANNEL_LIMIT,
+        limit_experiments=eda_constants.PRIOR_CALIBRATION_REPORT_EXPERIMENT_LIMIT,
+    )
+
+    full_text = ''.join(card.itertext())
+    expected_limit_msg = eda_constants.PRIOR_CALIBRATION_LIMIT_MESSAGE.format(
+        limit=eda_constants.PRIOR_CALIBRATION_REPORT_CHANNEL_LIMIT
+    )
+    self.assertIn(expected_limit_msg, full_text)
+    self.assertIn(
+        f'your {eda_constants.PRIOR_CALIBRATION_REPORT_CHANNEL_LIMIT}'
+        ' highest-spend calibrated channels',
+        full_text,
+    )
+    self.assertIn(
+        'This figure displays your incrementality experiments and their impact',
+        full_text,
+    )
+
+  def test_prior_specifications_card_includes_experiment_adjustments(
+      self,
+  ) -> None:
+    self._stub_plotters()
+    self._meridian.is_national = False
+
+    mock_chart = mock.create_autospec(alt.Chart, instance=True)
+    mock_chart.to_json.return_value = '{"experiment_adjustments": "json"}'
+    mock_plot_adjustments = self.enter_context(
+        mock.patch.object(
+            self._eda, 'plot_experiment_adjustments', return_value=mock_chart
+        )
+    )
+
+    exp_data = eda_outcome.ExperimentAdjustmentData(
+        source_type=calibration_base.SourceType.GENERIC,
+        stages=[
+            eda_outcome.ExperimentAdjustmentStageData(
+                stage=eda_outcome.CalibrationExperimentAdjustmentStage.UNADJUSTED_RAW,
+                point_estimate=0.5,
+                standard_error=0.1,
+            ),
+        ],
+    )
+    artifact = eda_outcome.ExperimentAdjustmentArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        adjustment_data={f'channel_{i}': [exp_data] for i in range(6)},
+    )
+    outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.EXPERIMENT_ADJUSTMENT,
+        findings=[],
+        analysis_artifacts=[artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_experiment_adjustment',
+            return_value=outcome,
+        )
+    )
+
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+
+    quality_data = eda_outcome.PriorQualityData(
+        channel_name='channel_0',
+        prior_width_ratio=1.2,
+        baseline_prior_type='LogNormal',
+        bimodal_statistic=0.0,
+        overlap_percentage=0.95,
+        n_negative_experiments=0,
+    )
+    quality_artifact = eda_outcome.PriorQualityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        prior_quality_data=[quality_data],
+    )
+    quality_outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PRIOR_QUALITY,
+        findings=[],
+        analysis_artifacts=[quality_artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_prior_quality',
+            return_value=quality_outcome,
+        )
+    )
+
+    dom = self._get_output_eda_report_html_dom()
+    card = dom.find(
+        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
+    )
+    with self.subTest('card_exists'):
+      self.assertIsNotNone(card)
+    with self.subTest('adjustments_chart_exists'):
+      self.assertIsNotNone(
+          card.find(
+              f".//*[@id='{eda_constants.EXPERIMENT_ADJUSTMENTS_CHART_ID}']"
+          )
+      )
+    with self.subTest('mock_called_with_limits'):
+      mock_plot_adjustments.assert_called_with(
+          limit_channels=eda_constants.EXPERIMENT_ADJUSTMENTS_REPORT_CHANNEL_LIMIT,
+          limit_experiments=eda_constants.EXPERIMENT_ADJUSTMENTS_REPORT_EXPERIMENT_LIMIT,
+      )
+    with self.subTest('card_text_contains_messages'):
+      full_text = ''.join(card.itertext())
+      expected_limit_msg = (
+          eda_constants.EXPERIMENT_ADJUSTMENTS_LIMIT_MESSAGE.format(
+              limit=eda_constants.EXPERIMENT_ADJUSTMENTS_REPORT_CHANNEL_LIMIT
+          )
+      )
+      self.assertIn(expected_limit_msg, full_text)
+      self.assertIn(
+          'These plots display your incrementality experiments and the'
+          ' adjustments',
+          full_text,
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='all_warnings_and_columns',
+          quality_data=[
+              eda_outcome.PriorQualityData(
+                  channel_name='channel_warn',
+                  prior_width_ratio=1.2,
+                  baseline_prior_type='LogNormal',
+                  bimodal_statistic=0.5,
+                  overlap_percentage=0.75,
+                  n_negative_experiments=1,
+              ),
+              eda_outcome.PriorQualityData(
+                  channel_name='channel_ok',
+                  prior_width_ratio=0.8,
+                  baseline_prior_type='Normal',
+                  bimodal_statistic=0.0,
+                  overlap_percentage=0.95,
+                  n_negative_experiments=0,
+              ),
+          ],
+          expected_texts=[
+              'channel_warn',
+              'channel_ok',
+              'negative point estimates',
+              'uninformative calibrated prior',
+              'intermediary prior that is bimodal',
+              'low overlap',
+          ],
+      ),
+      dict(
+          testcase_name='confirmed_bimodal_prior_warning',
+          quality_data=[
+              eda_outcome.PriorQualityData(
+                  channel_name='channel_custom',
+                  prior_width_ratio=0.8,
+                  baseline_prior_type='LogNormal',
+                  bimodal_statistic=1.0,
+                  overlap_percentage=0.9,
+                  n_negative_experiments=0,
+              ),
+          ],
+          expected_texts=['intermediary prior that is bimodal'],
+      ),
+      dict(
+          testcase_name='unsupported_baseline_prior_type_bimodality_warning',
+          quality_data=[
+              eda_outcome.PriorQualityData(
+                  channel_name='channel_custom_student',
+                  prior_width_ratio=0.8,
+                  baseline_prior_type='StudentT',
+                  bimodal_statistic=None,
+                  overlap_percentage=0.9,
+                  n_negative_experiments=0,
+              ),
+          ],
+          expected_texts=[
+              (
+                  'baseline prior type that may lead to intermediary prior'
+                  ' bimodality'
+              ),
+              'Not Available',
+              'StudentT',
+          ],
+      ),
+  )
+  def test_prior_specifications_card_prior_quality_warnings(
+      self,
+      quality_data: Sequence[eda_outcome.PriorQualityData],
+      expected_texts: Sequence[str],
+  ) -> None:
+    self._eda.__dict__.pop('_dataset_level_prior_quality_check_outcome', None)
+    self._stub_plotters()
+    self._meridian.is_national = False
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+    quality_outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PRIOR_QUALITY,
+        findings=[],
+        analysis_artifacts=[
+            eda_outcome.PriorQualityArtifact(
+                level=eda_outcome.AnalysisLevel.OVERALL,
+                prior_quality_data=list(quality_data),
+            )
+        ],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_prior_quality',
+            return_value=quality_outcome,
+        )
+    )
+
+    dom = self._get_output_eda_report_html_dom()
+    card = dom.find(
+        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
+    )
+    self.assertIsNotNone(card)
+    table = card.find(f".//*[@id='{eda_constants.PRIOR_QUALITY_TABLE_ID}']")
+    self.assertIsNotNone(table)
+    card_text = ''.join(card.itertext())
+    for text in expected_texts:
+      self.assertIn(text, card_text)
+
+  def test_prior_specifications_card_empty_quality_data_omits_table(
+      self,
+  ) -> None:
+    self._eda.__dict__.pop('_dataset_level_prior_quality_check_outcome', None)
+    self._stub_plotters()
+    self._meridian.is_national = False
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+    empty_artifact = eda_outcome.PriorQualityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        prior_quality_data=[],
+    )
+    empty_outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PRIOR_QUALITY,
+        findings=[],
+        analysis_artifacts=[empty_artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_prior_quality',
+            return_value=empty_outcome,
+        )
+    )
+    dom = self._get_output_eda_report_html_dom()
+    card = dom.find(
+        f".//card[@id='{eda_constants.PRIOR_SPECIFICATIONS_CARD_ID}']"
+    )
+    self.assertIsNotNone(card)
+    self.assertIsNone(
+        card.find(f".//*[@id='{eda_constants.PRIOR_QUALITY_TABLE_ID}']")
+    )
+
+  def test_prior_specifications_card_severity_aggregation(self) -> None:
+    self._eda.__dict__.pop('_dataset_level_prior_quality_check_outcome', None)
+    self._stub_plotters()
+    self._stub_engine_checks(
+        prior_artifacts=[_create_prior_artifact([0.5, 0.6])],
+    )
+    finding_prior_quality = eda_outcome.EDAFinding(
+        finding_cause=eda_outcome.FindingCause.NONE,
+        severity=eda_outcome.EDASeverity.REVIEW,
+        associated_artifact=None,
+        explanation='Prior quality attention finding.',
+    )
+    quality_artifact = eda_outcome.PriorQualityArtifact(
+        level=eda_outcome.AnalysisLevel.OVERALL,
+        prior_quality_data=[],
+    )
+    quality_outcome = eda_outcome.EDAOutcome(
+        check_type=eda_outcome.EDACheckType.PRIOR_QUALITY,
+        findings=[finding_prior_quality],
+        analysis_artifacts=[quality_artifact],
+    )
+    self.enter_context(
+        mock.patch.object(
+            self._mock_eda_engine,
+            'check_prior_quality',
+            return_value=quality_outcome,
+        )
+    )
+
+    _, severity_counts = self._eda._generate_prior_specifications_card()
+    self.assertEqual(severity_counts[eda_outcome.EDASeverity.REVIEW], 1)
 
   @parameterized.named_parameters(
       dict(

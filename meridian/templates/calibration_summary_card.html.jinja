@@ -1,0 +1,92 @@
+{#
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+#}
+<card id="summary" class="calibration-summary-card">
+  <card-title>
+    Meridian GeoX calibration summary
+  </card-title>
+
+  <div class="health-score-section">
+    <div class="score-container">
+      <div class="score-label">Calibration score</div>
+      <div class="score-chart-and-value">
+        <div class="health-score-chart calibration-score-chart{% if calibration_score < (calibration_score_threshold|default(67.5)) %} warning{% endif %}" style="background: conic-gradient({% if calibration_score < (calibration_score_threshold|default(67.5)) %}{{ calibration_score_yellow_color|default('#fcc934') }}{% else %}#6ba4ff{% endif %} {{ calibration_score }}%, #eee 0);">
+        </div>
+        <div class="score-value">{{ "%.1f"|format(calibration_score) }}</div>
+      </div>
+    </div>
+    <div class="score-explanation">
+      <div class="explanation-title">How is calibration score measured?</div>
+      <p>
+        The Meridian calibration score gives a view of the overall calibration
+        health of your Meridian media and reach &amp; frequency channels.
+        The score combines the number of calibrated channels along with
+        potential channel recommendations for the remaining channels. The
+        calibration score is a factor in your overall model health score in
+        the previous section. See
+        <a href="https://developers.google.com/meridian/docs/post-modeling/channel-recommendation" target="_blank">Channel Calibration Recommendation and Score</a>
+        to learn more.
+      </p>
+    </div>
+  </div>
+
+  <charts>
+    <chart-table id="summary-table" style="flex-basis: 100%;">
+      <div class="chart-table-content">
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Overview</th>
+              <th>Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Prior calibration</td>
+              <td>
+                {% if n_calibrated > 0 %}
+                  <chip class="pass">{{ n_calibrated }} channel(s)</chip>
+                {% else %}
+                  <chip class="neutral">0 channel(s)</chip>
+                {% endif %}
+              </td>
+              <td>
+                {% if n_calibrated > 0 %}
+                  Calibration has been completed for {{ calibrated_channels_text }} using incrementality experiments, as detailed in the Calibration overview and Calibration details sections.
+                {% else %}
+                  No prior calibration has been completed using incrementality experiments.
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>Channel recommendation</td>
+              <td>
+                {% if n_recommended > 0 %}
+                  <chip class="review">{{ n_recommended }} channel(s)</chip>
+                {% else %}
+                  <chip class="neutral">0 channel(s)</chip>
+                {% endif %}
+              </td>
+              <td>
+                {{ recommendation_text }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </chart-table>
+  </charts>
+</card>
