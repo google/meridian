@@ -30,7 +30,6 @@ from meridian.model import model
 import numpy as np
 import xarray as xr
 
-
 _TEST_DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), 'model', 'test_data'
 )
@@ -435,8 +434,8 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     self.assertIsNotNone(weekly_grid_opt)
     self.assertTrue(weekly_grid_opt.use_optimal_frequency)
-    self.assertIsNotNone(weekly_grid_opt.optimal_frequency)
-    self.assertLen(weekly_grid_opt.optimal_frequency, _N_RF_CHANNELS)
+    self.assertIsNotNone(weekly_grid_opt.opt_freq_ds)
+    self.assertIsInstance(weekly_grid_opt.opt_freq_ds, xr.Dataset)
 
     # Case 2: use_optimal_frequency=False
     weekly_grid_no_opt = weekly_optimization_grid.WeeklyOptimizationGrid.create(
@@ -447,7 +446,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     self.assertIsNotNone(weekly_grid_no_opt)
     self.assertFalse(weekly_grid_no_opt.use_optimal_frequency)
-    self.assertIsNone(weekly_grid_no_opt.optimal_frequency)
+    self.assertIsNone(weekly_grid_no_opt.opt_freq_ds)
 
   @parameterized.named_parameters(
       dict(
@@ -918,7 +917,68 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         combined.nonoptimized_spend[c.TIME].data.tolist(), expected_times
     )
 
+  def test_combine_weekly_grids_with_rf(self):
+    model_times = (
+        np.asarray(self.meridian_media_and_rf.input_data.time)
+        .astype(str)
+        .tolist()
+    )
+    grid1 = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_and_rf._analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+        start_date=model_times[0],
+        end_date=model_times[2],
+    )
+    grid2 = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_and_rf._analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+        start_date=model_times[3],
+        end_date=model_times[5],
+    )
+    self.assertIsNotNone(grid1.opt_freq_ds)
+    self.assertIsNotNone(grid2.opt_freq_ds)
+
+    combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
+        [grid1, grid2]  # pyrefly: ignore[bad-argument-type]
+    )
+    self.assertIsNotNone(combined)
+    expected_times = model_times[:6]
+    self.assertEqual(combined.time, expected_times)
+    self.assertEqual(
+        combined.nonoptimized_spend[c.TIME].data.tolist(), expected_times
+    )
+    self.assertIsNotNone(combined.opt_freq_ds)
+    self.assertTrue(combined.opt_freq_ds.equals(grid1.opt_freq_ds))
+
+    # Test mismatched opt_freq_ds presence: second grid missing opt_freq_ds
+    grid2_no_opt_freq_ds = dataclasses.replace(grid2, opt_freq_ds=None)
+    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
+      weekly_optimization_grid.WeeklyOptimizationGrid.combine(
+          [grid1, grid2_no_opt_freq_ds]  # pyrefly: ignore[bad-argument-type]
+      )
+
+    # Test mismatched opt_freq_ds presence: first grid missing opt_freq_ds
+    grid1_no_opt_freq_ds = dataclasses.replace(grid1, opt_freq_ds=None)
+    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
+      weekly_optimization_grid.WeeklyOptimizationGrid.combine(
+          [grid1_no_opt_freq_ds, grid2]  # pyrefly: ignore[bad-argument-type]
+      )
+
+    # Test mismatched opt_freq_ds values
+    diff_opt_freq_ds = grid2.opt_freq_ds.copy(deep=True)
+    diff_opt_freq_ds = diff_opt_freq_ds.assign(
+        dummy_var=(['channel'], np.ones(grid2.n_rf_channels))
+    )
+    grid2_diff_opt_freq_ds = dataclasses.replace(
+        grid2, opt_freq_ds=diff_opt_freq_ds
+    )
+    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds values'):
+      weekly_optimization_grid.WeeklyOptimizationGrid.combine(
+          [grid1, grid2_diff_opt_freq_ds]  # pyrefly: ignore[bad-argument-type]
+      )
+
 
 if __name__ == '__main__':
   absltest.main()
-

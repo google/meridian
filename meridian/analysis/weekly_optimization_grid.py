@@ -48,7 +48,7 @@ class WeeklyOptimizationGrid:
     n_rf_channels: Number of reach and frequency channels in the grid.
     use_optimal_frequency: Whether optimal frequency was used.
     max_frequency: Maximum frequency value used for optimal frequency.
-    optimal_frequency: Optional ndarray of optimal frequency per RF channel.
+    opt_freq_ds: Optional[xr.Dataset] containing Frequency vs ROI grid data.
   """
 
   incremental_outcome: xr.DataArray
@@ -62,7 +62,7 @@ class WeeklyOptimizationGrid:
   n_rf_channels: int = 0
   use_optimal_frequency: bool = True
   max_frequency: float | None = None
-  optimal_frequency: np.ndarray | None = None
+  opt_freq_ds: xr.Dataset | None = None
 
   @classmethod
   def create(
@@ -253,6 +253,7 @@ class WeeklyOptimizationGrid:
       decay_m = None
       sat_m = None
 
+    opt_freq_ds = None
     if model_context.n_rf_channels > 0:
       if use_optimal_frequency:
         opt_freq_data = analyzer_module.DataTensors(
@@ -271,9 +272,6 @@ class WeeklyOptimizationGrid:
             opt_freq_ds.optimal_frequency,
             dtype=backend.float_dtype,
         )
-        optimal_frequency = np.asarray(
-            opt_freq_ds.optimal_frequency.data, dtype=float
-        )
         frequency_base = to_float(
             backend.ones_like(filled_data.frequency) * optimal_frequency_tensor  # pyrefly: ignore[bad-argument-type]
         )
@@ -290,7 +288,6 @@ class WeeklyOptimizationGrid:
               )
           )
       else:
-        optimal_frequency = None
         frequency_base = to_float(filled_data.frequency)  # pyrefly: ignore[bad-argument-type]
         if model_context.rf_tensors.reach_transformer is None:
           reach_base_scaled = to_float(model_context.rf_tensors.reach_scaled)  # pyrefly: ignore[bad-argument-type]
@@ -307,7 +304,6 @@ class WeeklyOptimizationGrid:
       decay_rf = model_context.adstock_decay_spec.rf
       sat_rf = model_context.saturation_spec.rf
     else:
-      optimal_frequency = None
       reach_base_scaled = None
       frequency_base = None
       alpha_rf = None
@@ -380,7 +376,7 @@ class WeeklyOptimizationGrid:
         n_rf_channels=model_context.n_rf_channels,
         use_optimal_frequency=use_optimal_frequency,
         max_frequency=max_frequency,
-        optimal_frequency=optimal_frequency,
+        opt_freq_ds=opt_freq_ds,
     )
 
   @classmethod
@@ -739,6 +735,12 @@ class WeeklyOptimizationGrid:
         attrs={c.SPEND_STEP_SIZE: step_size},
     )
 
+    optimal_frequency = None
+    if self.opt_freq_ds is not None and c.OPTIMAL_FREQUENCY in self.opt_freq_ds:
+      optimal_frequency = np.asarray(
+          self.opt_freq_ds.optimal_frequency.data, dtype=float
+      )
+
     return optimizer.OptimizationGrid(
         _grid_dataset=grid_dataset,
         historical_spend=hist_spend,
@@ -750,7 +752,7 @@ class WeeklyOptimizationGrid:
         end_date=end_date_str,
         gtol=0.0001,
         round_factor=round_factor,
-        optimal_frequency=self.optimal_frequency,
+        optimal_frequency=optimal_frequency,
         selected_geos=None,
         selected_times=selected_times,
     )
@@ -882,16 +884,15 @@ class WeeklyOptimizationGrid:
         raise ValueError(
             f'Grid at index {i} has a different max_frequency value.'
         )
-      if (grid.optimal_frequency is None) != (first.optimal_frequency is None):
+      if (grid.opt_freq_ds is None) != (first.opt_freq_ds is None):
         raise ValueError(
-            f'Grid at index {i} has different optimal_frequency values.'
+            f'Grid at index {i} has different opt_freq_ds presence.'
         )
-      if grid.optimal_frequency is not None and not np.array_equal(
-          grid.optimal_frequency, first.optimal_frequency  # pyrefly: ignore[bad-argument-type]
-      ):
-        raise ValueError(
-            f'Grid at index {i} has different optimal_frequency values.'
-        )
+      if grid.opt_freq_ds is not None and first.opt_freq_ds is not None:
+        if not grid.opt_freq_ds.equals(first.opt_freq_ds):
+          raise ValueError(
+              f'Grid at index {i} has different opt_freq_ds values.'
+          )
       if not np.array_equal(grid.channels, first.channels):
         raise ValueError(f'Grid at index {i} has different channels.')
       if not np.array_equal(
@@ -939,5 +940,5 @@ class WeeklyOptimizationGrid:
         n_rf_channels=first.n_rf_channels,
         use_optimal_frequency=first.use_optimal_frequency,
         max_frequency=first.max_frequency,
-        optimal_frequency=first.optimal_frequency,
+        opt_freq_ds=first.opt_freq_ds,
     )
