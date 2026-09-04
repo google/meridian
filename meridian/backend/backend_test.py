@@ -96,7 +96,9 @@ class BackendInitializationTest(parameterized.TestCase):
     if "MERIDIAN_BACKEND" in os.environ:
       del os.environ["MERIDIAN_BACKEND"]
 
-    config_mod, backend_mod = self._import_backend_modules()
+    with warnings.catch_warnings():
+      warnings.simplefilter("error", FutureWarning)
+      config_mod, backend_mod = self._import_backend_modules()
 
     self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
     self.assertIs(backend_mod.Tensor, jax.Array)
@@ -108,10 +110,26 @@ class BackendInitializationTest(parameterized.TestCase):
   def test_env_var_tensorflow(self, env_value):
     os.environ["MERIDIAN_BACKEND"] = env_value
 
-    config_mod, backend_mod = self._import_backend_modules()
+    with self.assertWarns(FutureWarning) as cm:
+      config_mod, backend_mod = self._import_backend_modules()
 
+    self.assertIn(
+        config_mod.TENSORFLOW_DEPRECATION_WARNING,
+        str(cm.warning),
+    )
     self.assertEqual(config_mod.get_backend(), config_mod.Backend.TENSORFLOW)
     self.assertIs(backend_mod.Tensor, tf.Tensor)
+
+  def test_env_var_tensorflow_warns_once(self):
+    os.environ["MERIDIAN_BACKEND"] = "tensorflow"
+
+    with self.assertWarns(FutureWarning):
+      config_mod, _ = self._import_backend_modules()
+
+    # Second call within the same process lifecycle should not warn again.
+    with warnings.catch_warnings():
+      warnings.simplefilter("error", FutureWarning)
+      config_mod._warn_tensorflow_deprecated()
 
   @parameterized.named_parameters(
       ("lowercase", "jax"),
@@ -120,7 +138,9 @@ class BackendInitializationTest(parameterized.TestCase):
   def test_env_var_jax(self, env_value):
     os.environ["MERIDIAN_BACKEND"] = env_value
 
-    config_mod, backend_mod = self._import_backend_modules()
+    with warnings.catch_warnings():
+      warnings.simplefilter("error", FutureWarning)
+      config_mod, backend_mod = self._import_backend_modules()
 
     self.assertEqual(config_mod.get_backend(), config_mod.Backend.JAX)
     self.assertIs(backend_mod.Tensor, jax.Array)
@@ -286,7 +306,8 @@ class BackendJaxX64Test(parameterized.TestCase):
     os.environ["MERIDIAN_ENABLE_JAX_X64"] = "True"
     os.environ["MERIDIAN_BACKEND"] = "tensorflow"
 
-    _, backend_mod = self._import_backend_modules()
+    with self.assertWarns(FutureWarning):
+      _, backend_mod = self._import_backend_modules()
 
     self.assertEqual(
         (
@@ -326,14 +347,15 @@ class BackendTest(parameterized.TestCase):
   def tearDown(self):
     super().tearDown()
     with warnings.catch_warnings():
-      warnings.simplefilter("ignore", UserWarning)
+      warnings.simplefilter("ignore", (UserWarning, FutureWarning))
       config.set_backend(self._original_backend)
 
     importlib.reload(backend)
 
   def _set_backend_for_test(self, backend_name: str):
-
-    config.set_backend(backend_name)
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", FutureWarning)
+      config.set_backend(backend_name)
 
     importlib.reload(backend)
 
@@ -351,7 +373,18 @@ class BackendTest(parameterized.TestCase):
     else:
       backend_selection = input_value
 
-    config.set_backend(backend_selection)
+    if expected_backend == config.Backend.TENSORFLOW:
+      config._TF_DEPRECATION_WARNED = False
+      with self.assertWarns(FutureWarning) as cm:
+        config.set_backend(backend_selection)
+      self.assertIn(
+          config.TENSORFLOW_DEPRECATION_WARNING,
+          str(cm.warning),
+      )
+    else:
+      with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        config.set_backend(backend_selection)
 
     importlib.reload(backend)
 
@@ -1662,13 +1695,15 @@ class BackendFunctionWrappersTest(parameterized.TestCase):
   def tearDown(self):
     super().tearDown()
     with warnings.catch_warnings():
-      warnings.simplefilter("ignore", UserWarning)
+      warnings.simplefilter("ignore", (UserWarning, FutureWarning))
       config.set_backend(self._original_backend)
     importlib.reload(backend)
 
   def _set_backend_for_test(self, backend_name: str):
     if config.get_backend().value != backend_name:
-      config.set_backend(backend_name)
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        config.set_backend(backend_name)
       importlib.reload(backend)
 
   @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
