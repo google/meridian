@@ -51,6 +51,28 @@ class ComputationPrecision(enum.IntEnum):
 
 _DEFAULT_BACKEND = Backend.JAX
 
+TENSORFLOW_DEPRECATION_WARNING = (
+    "The TensorFlow backend in Meridian is deprecated and will be removed in "
+    "a future release. JAX is now the default backend. To use JAX, unset "
+    "the 'MERIDIAN_BACKEND' environment variable."
+)
+
+_TF_DEPRECATION_WARNED = False
+
+
+def _warn_tensorflow_deprecated(stacklevel: int = 2) -> None:
+  """Emits an idempotent deprecation warning when TensorFlow is enabled."""
+  global _TF_DEPRECATION_WARNED
+  if _TF_DEPRECATION_WARNED:
+    return
+
+  warnings.warn(
+      TENSORFLOW_DEPRECATION_WARNING,
+      category=FutureWarning,
+      stacklevel=stacklevel,
+  )
+  _TF_DEPRECATION_WARNED = True
+
 
 def _initialize_backend() -> Backend:
   """Initializes the backend based on environment variables or defaults."""
@@ -61,6 +83,8 @@ def _initialize_backend() -> Backend:
 
   try:
     backend = Backend(env_backend_str.lower())
+    if backend == Backend.TENSORFLOW:
+      _warn_tensorflow_deprecated(stacklevel=2)
     return backend
   except ValueError:
     warnings.warn(
@@ -130,7 +154,9 @@ def set_backend(backend: Union[Backend, str]) -> None:
     raise ValueError("Backend must be a Backend enum member or a string.")
 
   _BACKEND = backend_enum
-  if _BACKEND == Backend.JAX:
+  if _BACKEND == Backend.TENSORFLOW:
+    _warn_tensorflow_deprecated(stacklevel=2)
+  elif _BACKEND == Backend.JAX:
     _configure_jax_precision()
 
 
