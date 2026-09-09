@@ -16,8 +16,3 @@
 
 from meridian.model.calibration.adapters import experiment
 from meridian.model.calibration.adapters import meridian_geox
-
-__all__ = [
-    "experiment",
-    "meridian_geox",
-]
