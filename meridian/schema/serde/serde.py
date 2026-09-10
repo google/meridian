@@ -17,6 +17,10 @@
 import abc
 from typing import Generic, TypeVar
 
+__all__ = [
+    "Serde",
+]
+
 
 WireFormat = TypeVar("WireFormat")
 PythonType = TypeVar("PythonType")

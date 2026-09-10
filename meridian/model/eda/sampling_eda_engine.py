@@ -34,6 +34,10 @@ from meridian.model.eda import eda_spec as eda_spec_module
 import numpy as np
 import xarray as xr
 
+__all__ = [
+    "SamplingEDAEngine",
+]
+
 if TYPE_CHECKING:
   from meridian.analysis import analyzer as analyzer_module  # pylint: disable=g-bad-import-order,g-import-not-at-top
 

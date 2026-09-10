@@ -33,6 +33,10 @@ import xarray as xr
 
 from google.type import date_pb2
 
+__all__ = [
+    "MarketingDataSerde",
+]
+
 # Mapping from DataArray names to coordinate names
 _COORD_NAME_MAP = {
     c.MEDIA: c.MEDIA_CHANNEL,

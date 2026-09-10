@@ -22,6 +22,12 @@ import inspect
 from typing import Any, Callable
 import warnings
 
+__all__ = [
+    "FunctionRegistry",
+    "LambdaSourceCodeWarning",
+    "SourceCodeRetrievalError",
+]
+
 
 class SourceCodeRetrievalError(Exception):
   """Raised when the source code of a function cannot be retrieved."""

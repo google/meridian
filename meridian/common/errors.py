@@ -14,6 +14,10 @@
 
 """Common errors for the Meridian library."""
 
+__all__ = [
+    "NotFittedModelError",
+]
+
 
 class NotFittedModelError(Exception):
   """Model has not been fitted."""

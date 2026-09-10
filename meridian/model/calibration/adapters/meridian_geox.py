@@ -37,6 +37,11 @@ else:  # pylint: disable=unreachable
     geox_api = None
     HAS_GEOX = False
 
+__all__ = [
+    "InvalidGeoXResultError",
+    "resolve_meridian_geox_source",
+]
+
 
 class InvalidGeoXResultError(ValueError):
   """GeoX analysis result that violates modeling assumptions."""

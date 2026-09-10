@@ -19,6 +19,11 @@ import re
 from mmm.v1.common import target_metric_pb2 as target_metric_pb
 from scenarioplanner.converters.dataframe import constants as dc
 
+__all__ = [
+    "create_grid_sheet_name",
+    "map_target_metric_str",
+]
+
 
 def map_target_metric_str(metric: target_metric_pb.TargetMetric) -> str:
   """Maps a TargetMetric enum to a string.

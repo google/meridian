@@ -21,6 +21,10 @@ import datetime
 from meridian import constants
 from meridian.model.calibration import base
 
+__all__ = [
+    "resolve_experiment_source",
+]
+
 
 def _transform_to_revenue(
     *,

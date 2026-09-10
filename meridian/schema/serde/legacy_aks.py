@@ -35,6 +35,12 @@ import numpy as np
 from scipy import interpolate
 from statsmodels.regression import linear_model
 
+__all__ = [
+    'AKS',
+    'AKSResult',
+    'get_legacy_knots',
+]
+
 
 @dataclasses.dataclass(frozen=True)
 class AKSResult:

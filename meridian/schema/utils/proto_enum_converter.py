@@ -19,6 +19,10 @@ import warnings
 
 import bidict
 
+__all__ = [
+    "ProtoEnumConverter",
+]
+
 
 EnumType = TypeVar("EnumType")
 DefaultType = TypeVar("DefaultType")

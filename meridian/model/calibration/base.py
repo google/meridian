@@ -29,6 +29,20 @@ from meridian.model.calibration import constants as calibration_constants
 from meridian.model.calibration import roi
 import tensorflow as tf
 
+__all__ = [
+    "CalibratedDistribution",
+    "CalibratedExperiment",
+    "CalibratedPriors",
+    "CalibrationData",
+    "CalibrationInput",
+    "CalibrationOutput",
+    "CalibrationRegistry",
+    "CalibrationRegistryResult",
+    "ExperimentInfo",
+    "ExperimentResult",
+    "SourceType",
+]
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ExperimentResult:

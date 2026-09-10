@@ -32,6 +32,10 @@ import numpy as np
 
 from tensorflow.core.framework import tensor_shape_pb2  # pylint: disable=g-direct-tensorflow-import
 
+__all__ = [
+    "DistributionSerde",
+]
+
 FunctionRegistry = function_registry_utils.FunctionRegistry
 
 

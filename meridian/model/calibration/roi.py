@@ -27,6 +27,12 @@ from meridian.model.calibration import constants as calibration_constants
 import numpy as np
 import scipy.optimize as opt
 
+__all__ = [
+    "GridDistribution",
+    "ImproperUniformPrior",
+    "get_calibrated_roi_prior",
+]
+
 # Constants for grid evaluation and calibration.
 _SCOUT_GRID_MULTIPLIER = 5.0
 _DEFAULT_SCOUT_MIN = -20.0

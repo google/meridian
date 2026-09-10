@@ -75,6 +75,23 @@ from mmm.v1.marketing.optimization import reach_frequency_optimization_pb2 as rf
 
 from google.type import date_pb2 as date_pb
 
+__all__ = [
+    "BudgetOptimizationResult",
+    "BudgetOptimizationSpec",
+    "DateInterval",
+    "FrequencyOutcomeGrid",
+    "IncrementalOutcomeGrid",
+    "MarketingAnalysis",
+    "MarketingData",
+    "MediaAnalysis",
+    "Mmm",
+    "NonMediaAnalysis",
+    "Outcome",
+    "ReachFrequencyOptimizationResult",
+    "ResponseCurve",
+    "RfOptimizationSpec",
+]
+
 
 _DateIntervalTuple: TypeAlias = tuple[datetime.date, datetime.date]
 

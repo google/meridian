@@ -21,6 +21,11 @@ from meridian import constants
 import numpy as np
 import xarray as xr
 
+__all__ = [
+    "check_coords_match",
+    "validate_time_coord_format",
+]
+
 
 def validate_time_coord_format(array: xr.DataArray | None):
   """Validates the `time` dimensions format of the selected DataArray.

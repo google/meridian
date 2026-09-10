@@ -78,6 +78,10 @@ from mmm.v1 import mmm_pb2 as pb
 from meridian.schema.serde import meridian_serde
 import semver
 
+__all__ = [
+    'ModelKernelProcessor',
+]
+
 
 class ModelKernelProcessor(abc.ABC):
   """Transcribes a model's stats into an `"MmmKernel` message."""

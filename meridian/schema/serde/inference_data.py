@@ -21,6 +21,10 @@ from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import serde
 import xarray as xr
 
+__all__ = [
+    "InferenceDataSerde",
+]
+
 
 _NETCDF_FORMAT = "NETCDF3_64BIT"  # scipy only supports up to v3
 _PRIOR_FIELD = "prior"

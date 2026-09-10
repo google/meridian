@@ -28,6 +28,10 @@ from meridian.data import time_coordinates as tc
 import numpy as np
 import xarray as xr
 
+__all__ = [
+    'WeeklyOptimizationGrid',
+]
+
 
 @dataclasses.dataclass(frozen=True)
 class WeeklyOptimizationGrid:

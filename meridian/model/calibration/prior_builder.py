@@ -32,6 +32,10 @@ from meridian.model.calibration.adapters import experiment as experiment_adapter
 from meridian.model.calibration.adapters import meridian_geox as geox_adapter
 import numpy as np
 
+__all__ = [
+    "CalibrationBuilder",
+]
+
 
 if TYPE_CHECKING:
   # pylint: disable=g-import-not-at-top
