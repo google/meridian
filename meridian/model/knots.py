@@ -115,7 +115,7 @@ def l1_distance_weights(
   )
 
   for t in times:
-    left_idx = left_knot_indices[t]
+    left_idx = left_knot_indices[t]  # pyrefly: ignore[bad-index]
     current_time = times[t]
 
     if current_time in knot_locations:

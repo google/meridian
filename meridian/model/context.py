@@ -1116,16 +1116,16 @@ class ModelContext:
     return {  # pyrefly: ignore[bad-return]
         constants.CHAIN: np.arange(n_chains),
         constants.DRAW: np.arange(n_draws),
-        constants.GEO: self.input_data.geo,
-        constants.TIME: self.input_data.time,
-        constants.MEDIA_TIME: self.input_data.media_time,
+        constants.GEO: self.input_data.geo,  # pyrefly: ignore[bad-assignment]
+        constants.TIME: self.input_data.time,  # pyrefly: ignore[bad-assignment]
+        constants.MEDIA_TIME: self.input_data.media_time,  # pyrefly: ignore[bad-assignment]
         constants.KNOTS: np.arange(self.knot_info.n_knots),
-        constants.CONTROL_VARIABLE: control_variable_names,
-        constants.NON_MEDIA_CHANNEL: non_media_channel_names,
-        constants.MEDIA_CHANNEL: media_channel_names,
-        constants.RF_CHANNEL: rf_channel_names,
-        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,
-        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,
+        constants.CONTROL_VARIABLE: control_variable_names,  # pyrefly: ignore[bad-assignment]
+        constants.NON_MEDIA_CHANNEL: non_media_channel_names,  # pyrefly: ignore[bad-assignment]
+        constants.MEDIA_CHANNEL: media_channel_names,  # pyrefly: ignore[bad-assignment]
+        constants.RF_CHANNEL: rf_channel_names,  # pyrefly: ignore[bad-assignment]
+        constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,  # pyrefly: ignore[bad-assignment]
+        constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,  # pyrefly: ignore[bad-assignment]
     }
 
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:

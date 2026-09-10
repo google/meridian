@@ -3094,7 +3094,7 @@ class Analyzer:
         (len(freq_grid), self.model_context.n_rf_channels, 4)  # pyrefly: ignore[bad-argument-type]
     )
 
-    for i, freq in enumerate(freq_grid):  # pyrefly: ignore[bad-argument-type]
+    for i, freq in enumerate(freq_grid):  # pyrefly: ignore[bad-argument-type, not-iterable]
       inputs = builder.build_unscaled_inputs(
           new_data=new_data,
           required_tensors_names=[

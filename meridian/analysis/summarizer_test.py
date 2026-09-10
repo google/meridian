@@ -312,7 +312,7 @@ class SummarizerTest(parameterized.TestCase):
   def test_output_chips_one_week(self):
     start_date, end_date = dt.datetime(2022, 1, 1), dt.datetime(2022, 1, 1)
 
-    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
+    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [  # pyrefly: ignore[missing-attribute]
         start_date.strftime(c.DATE_FORMAT)
     ]
 
@@ -592,7 +592,7 @@ class SummarizerTest(parameterized.TestCase):
     with mock.patch.object(self.model_fit, 'plot_model_fit') as plot:
       plot().to_json.return_value = f'["{mock_spec}"]'
 
-      self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
+      self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [  # pyrefly: ignore[missing-attribute]
           '2022-06-04',
           '2022-06-11',
           '2022-06-18',
@@ -785,7 +785,7 @@ class SummarizerTest(parameterized.TestCase):
     )
 
   def test_media_summary_with_custom_date_range(self):
-    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
+    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [  # pyrefly: ignore[missing-attribute]
         '2022-06-04',
         '2022-06-11',
         '2022-06-18',
@@ -833,7 +833,7 @@ class SummarizerTest(parameterized.TestCase):
     with mock.patch.object(self.media_effects, 'plot_response_curves') as plot:
       plot().to_json.return_value = f'["{mock_spec_1}"]'
 
-      self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
+      self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [  # pyrefly: ignore[missing-attribute]
           '2022-06-04',
           '2022-06-11',
           '2022-06-18',
@@ -873,7 +873,7 @@ class SummarizerTest(parameterized.TestCase):
       plot().to_json.assert_called_once()
 
   def test_reach_frequency_with_custom_date_range(self):
-    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [
+    self.summarizer_revenue._meridian.expand_selected_time_dims.return_value = [  # pyrefly: ignore[missing-attribute]
         '2022-06-04',
         '2022-06-11',
         '2022-06-18',
