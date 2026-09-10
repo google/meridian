@@ -54,6 +54,177 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertIsNone(model_spec.population_scaled_non_media_channels)
     self.assertIsNone(model_spec.non_media_population_scaling_id)
     self.assertIsNone(model_spec.non_media_baseline_values)
+    self.assertTrue(model_spec.allows_negative_aggregate_baseline)
+
+  def test_spec_inits_with_allows_negative_aggregate_baseline_false(self):
+    model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
+    self.assertFalse(model_spec.allows_negative_aggregate_baseline)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="scalar_normal_zero_loc",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(2.0)
+          ),
+      ),
+      dict(
+          testcase_name="batched_normal_zero_loc_common_scale",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              np.array([0.0, 0.0], dtype=backend.np_float_dtype),
+              np.array([2.0, 2.0], dtype=backend.np_float_dtype),
+          ),
+      ),
+      dict(
+          testcase_name="batch_broadcast_normal_zero_loc",
+          get_knot_dist=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.Normal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(2.0)
+              ),
+              3,
+          ),
+      ),
+  )
+  def test_spec_inits_allows_negative_aggregate_baseline_false_valid_knot_prior_works(
+      self, get_knot_dist
+  ):
+    prior = prior_distribution.PriorDistribution(knot_values=get_knot_dist())
+    model_spec = spec.ModelSpec(
+        prior=prior,
+        allows_negative_aggregate_baseline=False,
+    )
+    self.assertFalse(model_spec.allows_negative_aggregate_baseline)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="deterministic_zero",
+          get_knot_dist=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0.0)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got a `Deterministic` distribution. To fix this, pass"
+              " `tfd.Normal(loc=0.0, scale=...)` with a positive scalar"
+              " `scale`, or set `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="uniform",
+          get_knot_dist=lambda: backend.tfd.Uniform(
+              backend.np_float_dtype(-1.0), backend.np_float_dtype(1.0)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got a `Uniform` distribution. To fix this, pass"
+              " `tfd.Normal(loc=0.0, scale=...)` with a positive scalar"
+              " `scale`, or set `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="scalar_normal_nonzero_loc",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(1.0), backend.np_float_dtype(5.0)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `loc=1.0`. To fix this, pass `tfd.Normal(loc=0.0,"
+              " scale=...)` with a positive scalar `scale`, or set"
+              " `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="batched_normal_nonzero_loc",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              np.array([0.0, 1.0], dtype=backend.np_float_dtype),
+              np.array([5.0, 5.0], dtype=backend.np_float_dtype),
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `loc=[0.0, 1.0]`. To fix this, pass"
+              " `tfd.Normal(loc=0.0, scale=...)` with a positive scalar"
+              " `scale`, or set `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="batched_normal_varying_scale",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              np.array([0.0, 0.0], dtype=backend.np_float_dtype),
+              np.array([5.0, 2.0], dtype=backend.np_float_dtype),
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `scale=[5.0, 2.0]`. To fix this, pass"
+              " `tfd.Normal(loc=0.0, scale=...)` with a positive scalar"
+              " `scale`, or set `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="scalar_normal_zero_scale",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(0.0)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `scale=0.0`. To fix this, pass `tfd.Normal(loc=0.0,"
+              " scale=...)` with a positive scalar `scale`, or set"
+              " `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="scalar_normal_negative_scale",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(-1.0)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `scale=-1.0`. To fix this, pass `tfd.Normal(loc=0.0,"
+              " scale=...)` with a positive scalar `scale`, or set"
+              " `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+      dict(
+          testcase_name="scalar_normal_inf_scale",
+          get_knot_dist=lambda: backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(np.inf)
+          ),
+          expected_error=(
+              "When `allows_negative_aggregate_baseline` is `False`,"
+              " `prior.knot_values` must be a `Normal` distribution with"
+              " `loc=0` and a common positive finite `scale` across all knots,"
+              " but got `scale=inf`. To fix this, pass `tfd.Normal(loc=0.0,"
+              " scale=...)` with a positive scalar `scale`, or set"
+              " `allows_negative_aggregate_baseline=True`."
+          ),
+      ),
+  )
+  def test_spec_inits_allows_negative_aggregate_baseline_false_invalid_knot_prior_fails(
+      self, get_knot_dist, expected_error
+  ):
+    prior = prior_distribution.PriorDistribution(knot_values=get_knot_dist())
+    with self.assertRaisesWithLiteralMatch(ValueError, expected_error):
+      spec.ModelSpec(
+          prior=prior,
+          allows_negative_aggregate_baseline=False,
+      )
+    # When allows_negative_aggregate_baseline=True, the same prior is allowed.
+    model_spec = spec.ModelSpec(
+        prior=prior,
+        allows_negative_aggregate_baseline=True,
+    )
+    self.assertTrue(model_spec.allows_negative_aggregate_baseline)
 
   @parameterized.named_parameters(
       ("log_normal", "log_normal"),

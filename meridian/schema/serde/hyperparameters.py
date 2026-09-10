@@ -618,6 +618,9 @@ class HyperparametersSerde(
             obj.non_media_treatments_prior_type
         ),
         enable_aks=obj.enable_aks,
+        force_nonnegative_aggregate_baseline=(
+            not obj.allows_negative_aggregate_baseline
+        ),
     )
     if obj.max_lag is not None:
       hyperparameters_proto.max_lag = obj.max_lag
@@ -878,6 +881,9 @@ class HyperparametersSerde(
         non_media_baseline_values=non_media_baseline_values,
         knots=knots,
         enable_aks=serialized.enable_aks,
+        allows_negative_aggregate_baseline=(
+            not serialized.force_nonnegative_aggregate_baseline
+        ),
         baseline_geo=baseline_geo,
         roi_calibration=roi_calibration,
         roi_calibration_period=roi_calibration_period,

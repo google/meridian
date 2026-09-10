@@ -31,6 +31,7 @@ from statsmodels.regression import linear_model
 
 __all__ = [
     'KnotInfo',
+    'compute_knot_rotation_matrix',
     'get_knot_info',
     'l1_distance_weights',
 ]
@@ -144,6 +145,66 @@ def _get_equally_spaced_knot_locations(n_times, n_knots):
   return np.linspace(0, n_times - 1, n_knots, dtype=int)
 
 
+def compute_knot_rotation_matrix(
+    weights: np.ndarray,
+    time_weights: np.ndarray | None = None,
+) -> tuple[np.ndarray, float]:
+  r"""Computes an orthonormal rotation matrix and norm for knots.
+
+  For knots $$b$$ of dimension $$K$$, the aggregate baseline across time
+  contributed by knots is:
+
+  $$\sum_t \text{time\_weights}_t \cdot \mu_t = \sum_k W_k b_k = W^T b$$
+
+  where $$W_k = \sum_t \text{weights}[k, t] \cdot \text{time\_weights}[t]$$ (or
+  $$W_k = \sum_t \text{weights}[k, t]$$ when `time_weights` is `None`).
+
+  This function constructs an orthonormal matrix
+  $$Q \in \mathbb{R}^{K \times K}$$ (satisfying $$Q Q^T = I$$ and $$Q = Q^T$$)
+  whose first row is $$u = W / \|W\|_2$$ via a closed-form Householder
+  reflection. Under the rotated basis $$\tilde{b} = Q b$$ (or
+  $$b = Q^T \tilde{b}$$), the sum satisfies:
+
+  $$W^T b = \|W\|_2 \cdot \tilde{b}_0$$
+
+  which decouples the aggregate baseline constraint entirely onto the scalar
+  $$\tilde{b}_0$$.
+
+  Args:
+    weights: An array of shape (n_knots, n_times) containing knot weights.
+    time_weights: An optional array of shape (n_times,) containing outcome
+      weights per time period. If None, uniform weights of 1.0 are used.
+
+  Returns:
+    A tuple (rotation_matrix, norm_w):
+      rotation_matrix: An orthonormal float array of shape (n_knots, n_knots).
+      norm_w: The Euclidean L2 norm of the knot weight sums.
+  """
+  if time_weights is None:
+    w = np.sum(weights, axis=-1)
+  else:
+    w = np.sum(weights * np.asarray(time_weights)[np.newaxis, :], axis=-1)
+  k = len(w)
+  norm_w = float(np.linalg.norm(w))
+  if np.any(w < 0.0) or norm_w <= 0.0 or not np.isfinite(norm_w):
+    raise ValueError(
+        'Weighted knot sums must be non-negative with a strictly positive L2'
+        f' norm, but got `norm_w={norm_w}`. Please ensure `weights` and'
+        ' `time_weights` are non-negative and have non-zero overlap.'
+    )
+  if k == 1:
+    return np.ones((1, 1), dtype=weights.dtype), norm_w
+
+  u = w / norm_w
+  if np.isclose(u[0], 1.0):
+    return np.eye(k, dtype=weights.dtype), norm_w
+  # Householder reflection mapping e_0 to u.
+  v = u.copy()
+  v[0] -= 1.0
+  q = np.eye(k, dtype=weights.dtype) - np.outer(v, v) / (1.0 - u[0])
+  return q, norm_w
+
+
 @dataclasses.dataclass(frozen=True)
 class KnotInfo:
   """Contains the number of knots, knot locations, and weights.
@@ -158,6 +219,27 @@ class KnotInfo:
   n_knots: int
   knot_locations: np.ndarray[int, np.dtype[int]]  # pyrefly: ignore[bad-specialization]
   weights: np.ndarray[int, np.dtype[float]]  # pyrefly: ignore[bad-specialization]
+
+  @property
+  def rotation_matrix(self) -> np.ndarray:
+    """Orthonormal `(n_knots, n_knots)` rotation matrix for knots.
+
+    Constructed via `compute_knot_rotation_matrix` using uniform time weights.
+    Its first row aligns with the unit vector of knot weight sums across time,
+    isolating the unweighted aggregate time-effect sum onto the first rotated
+    knot coordinate.
+    """
+    return compute_knot_rotation_matrix(self.weights)[0]  # pyrefly: ignore[bad-argument-type]
+
+  @property
+  def norm_w(self) -> float:
+    """Euclidean L2 norm of the knot weight sums across time.
+
+    Computed via `compute_knot_rotation_matrix` using uniform time weights.
+    Represents the scaling factor relating the first rotated knot coordinate to
+    the unweighted sum of time effects across all time periods.
+    """
+    return compute_knot_rotation_matrix(self.weights)[1]  # pyrefly: ignore[bad-argument-type]
 
 
 def get_knot_info(

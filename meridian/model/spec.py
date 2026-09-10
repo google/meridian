@@ -20,6 +20,7 @@ import datetime
 import enum
 from typing import Sequence
 import warnings
+from meridian import backend
 from meridian import constants
 from meridian.data import time_coordinates
 from meridian.model import prior_distribution
@@ -546,6 +547,13 @@ class ModelSpec:
       instead of the default 1 for national models and n_times for geo models.
       If this is set to `True` and the `knots` arg is provided, then an error
       will be raised. Default: `False`.
+    allows_negative_aggregate_baseline: A boolean indicating whether to allow
+      the total baseline outcome aggregated across all geos and time periods to
+      be negative in prior and posterior draws. If `False`, the aggregate
+      baseline is constrained to be positive, though baseline values for
+      individual geos or time periods may still be negative. Setting this to
+      `False` requires `prior.knot_values` to be a `Normal` distribution with
+      `loc=0` and a common `scale` across all knots. Default: `True`.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
@@ -581,6 +589,7 @@ class ModelSpec:
   adstock_decay_spec: str | Mapping[str, str] = constants.GEOMETRIC_DECAY
   saturation_spec: str | Mapping[str, str] = constants.HILL
   enable_aks: bool = False
+  allows_negative_aggregate_baseline: bool = True
 
   def __post_init__(self) -> None:
     # Validate media_effects_dist.
@@ -917,6 +926,48 @@ class ModelSpec:
           f" {type(self.saturation_spec)}."
       )
     self._validate_calibrated_priors()
+    self.validate_knot_values_prior()
+
+  def validate_knot_values_prior(self) -> None:
+    """Validates `prior.knot_values` when negative baseline is disallowed."""
+    if self.allows_negative_aggregate_baseline or self.prior is None:
+      return
+    if isinstance(self.prior, Mapping):
+      knot_dist = self.prior.get(constants.KNOT_VALUES)
+    else:
+      knot_dist = getattr(self.prior, constants.KNOT_VALUES, None)
+    if knot_dist is None:
+      return
+
+    while isinstance(knot_dist, backend.tfd.BatchBroadcast):
+      knot_dist = knot_dist.distribution
+
+    error_prefix = (
+        "When `allows_negative_aggregate_baseline` is `False`,"
+        " `prior.knot_values` must be a `Normal` distribution with `loc=0` and"
+        " a common positive finite `scale` across all knots, but got "
+    )
+    error_suffix = (
+        " To fix this, pass `tfd.Normal(loc=0.0, scale=...)` with a positive"
+        " scalar `scale`, or set `allows_negative_aggregate_baseline=True`."
+    )
+    if not isinstance(knot_dist, backend.tfd.Normal):
+      raise ValueError(
+          f"{error_prefix}a `{type(knot_dist).__name__}`"
+          f" distribution.{error_suffix}"
+      )
+
+    loc = np.asarray(knot_dist.loc)
+    if not np.all(np.isfinite(loc)) or np.any(loc != 0.0):
+      raise ValueError(f"{error_prefix}`loc={loc.tolist()}`.{error_suffix}")
+
+    scale = np.asarray(knot_dist.scale)
+    if (
+        not np.all(np.isfinite(scale))
+        or np.any(scale <= 0.0)
+        or (scale.size > 1 and not np.all(scale == scale.flat[0]))
+    ):
+      raise ValueError(f"{error_prefix}`scale={scale.tolist()}`.{error_suffix}")
 
   def _validate_calibrated_priors(self) -> None:
     """Validates that calibrated distribution metadata matches ModelSpec settings."""
