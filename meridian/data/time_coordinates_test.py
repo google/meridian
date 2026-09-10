@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-
 _ALL_DATES = [
     "2024-01-01",
     "2024-01-08",
@@ -332,6 +331,123 @@ class TimeCoordinatesTest(parameterized.TestCase):
         dt.datetime.strptime(date, constants.DATE_FORMAT).date()
         for date in expected_dates
     ]
+    self.assertEqual(dates, expected_dates)
+
+  def test_get_selected_dates_with_none_boundaries(self):
+    dates_start_only = self.coordinates.get_selected_dates(
+        selected_interval=("2024-02-05", None)
+    )
+    self.assertEqual(
+        dates_start_only,
+        [
+            dt.date(2024, 2, 5),
+            dt.date(2024, 2, 12),
+            dt.date(2024, 2, 19),
+        ],
+    )
+    dates_end_only = self.coordinates.get_selected_dates(
+        selected_interval=(None, "2024-01-15")
+    )
+    self.assertEqual(
+        dates_end_only,
+        [
+            dt.date(2024, 1, 1),
+            dt.date(2024, 1, 8),
+            dt.date(2024, 1, 15),
+        ],
+    )
+
+  def test_get_selected_dates_str_selected_interval_is_none(self):
+    self.assertEqual(
+        self.coordinates.get_selected_dates_str(),
+        self.coordinates.all_dates_str,
+    )
+    self.assertEqual(
+        self.coordinates.get_selected_dates_str(selected_interval=None),
+        self.coordinates.all_dates_str,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_interval_tuple_str",
+          selected_interval=("2024-01-01", "2024-02-19"),
+      ),
+      dict(
+          testcase_name="selected_interval_tuple_datetime",
+          selected_interval=(
+              dt.datetime(year=2024, month=1, day=1),
+              dt.datetime(year=2024, month=2, day=19),
+          ),
+      ),
+      dict(
+          testcase_name="selected_interval_tuple_np_datetime64",
+          selected_interval=(
+              np.datetime64("2024-01-01"),
+              np.datetime64("2024-02-19"),
+          ),
+      ),
+      dict(
+          testcase_name="selected_interval_date_interval",
+          selected_interval=(
+              dt.date(year=2024, month=1, day=1),
+              dt.date(year=2024, month=2, day=19),
+          ),
+      ),
+  )
+  def test_get_selected_dates_str_selected_interval_matches_range_of_all_dates(
+      self, selected_interval: time_coordinates.DateInterval
+  ):
+    times = self.coordinates.get_selected_dates_str(
+        selected_interval=selected_interval
+    )
+    self.assertEqual(times, self.coordinates.all_dates_str)
+
+  def test_get_selected_dates_str_selected_interval_is_not_subset_of_all_dates(
+      self,
+  ):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"end_date \(2024-02-26\) must be in the time coordinates!",
+    ):
+      self.coordinates.get_selected_dates_str(
+          selected_interval=("2024-01-01", "2024-02-26"),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="first_half_of_all_dates",
+          selected_interval=("2024-01-01", "2024-01-15"),
+          expected_dates=["2024-01-01", "2024-01-08", "2024-01-15"],
+      ),
+      dict(
+          testcase_name="second_half_of_all_dates",
+          selected_interval=("2024-02-05", "2024-02-19"),
+          expected_dates=["2024-02-05", "2024-02-12", "2024-02-19"],
+      ),
+      dict(
+          testcase_name="middle_of_all_dates",
+          selected_interval=("2024-01-22", "2024-02-05"),
+          expected_dates=["2024-01-22", "2024-01-29", "2024-02-05"],
+      ),
+      dict(
+          testcase_name="start_only",
+          selected_interval=("2024-02-05", None),
+          expected_dates=["2024-02-05", "2024-02-12", "2024-02-19"],
+      ),
+      dict(
+          testcase_name="end_only",
+          selected_interval=(None, "2024-01-15"),
+          expected_dates=["2024-01-01", "2024-01-08", "2024-01-15"],
+      ),
+  )
+  def test_get_selected_dates_str_converts_selected_interval_into_list_of_strings(
+      self,
+      selected_interval: tuple[str | None, str | None],
+      expected_dates: list[str],
+  ):
+    dates = self.coordinates.get_selected_dates_str(
+        selected_interval=selected_interval,
+    )
     self.assertEqual(dates, expected_dates)
 
   @parameterized.named_parameters(
