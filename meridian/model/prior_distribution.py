@@ -75,6 +75,14 @@ class PriorDistribution:
   | `alpha_rf`            | `n_rf_channels`            |
   | `alpha_om`            | `n_organic_media_channels` |
   | `alpha_orf`           | `n_organic_rf_channels`    |
+  | `weibull_shape_m`     | `n_media_channels`         |
+  | `weibull_shape_rf`    | `n_rf_channels`            |
+  | `weibull_shape_om`    | `n_organic_media_channels` |
+  | `weibull_shape_orf`   | `n_organic_rf_channels`    |
+  | `weibull_scale_m`     | `n_media_channels`         |
+  | `weibull_scale_rf`    | `n_rf_channels`            |
+  | `weibull_scale_om`    | `n_organic_media_channels` |
+  | `weibull_scale_orf`   | `n_organic_rf_channels`    |
   | `ec_m`                | `n_media_channels`         |
   | `ec_rf`               | `n_rf_channels`            |
   | `ec_om`               | `n_organic_media_channels` |
@@ -184,6 +192,37 @@ class PriorDistribution:
       media input. Default distribution is `Uniform(0.0, 1.0)`.
     alpha_orf: Prior distribution on the Adstock decay parameter for organic RF
       input. Default distribution is `Uniform(0.0, 1.0)`.
+    weibull_shape_m: Prior distribution on the Weibull Adstock shape parameter
+      for media input. Only used by media channels whose `adstock_decay_spec` is
+      `'weibull'`. Values greater than one place the peak media effect at a
+      positive lag. Default distribution is `LogNormal(log(2.0), 0.4)`.
+    weibull_shape_rf: Prior distribution on the Weibull Adstock shape parameter
+      for RF input. Only used by RF channels whose `adstock_decay_spec` is
+      `'weibull'`. Default distribution is `LogNormal(log(2.0), 0.4)`.
+    weibull_shape_om: Prior distribution on the Weibull Adstock shape parameter
+      for organic media input. Only used by organic media channels whose
+      `adstock_decay_spec` is `'weibull'`. Default distribution is
+      `LogNormal(log(2.0), 0.4)`.
+    weibull_shape_orf: Prior distribution on the Weibull Adstock shape parameter
+      for organic RF input. Only used by organic RF channels whose
+      `adstock_decay_spec` is `'weibull'`. Default distribution is
+      `LogNormal(log(2.0), 0.4)`.
+    weibull_scale_m: Prior distribution on the Weibull Adstock scale parameter
+      for media input, expressed in time periods. Only used by media channels
+      whose `adstock_decay_spec` is `'weibull'`. Default distribution is
+      `LogNormal(log(4.0), 0.5)`.
+    weibull_scale_rf: Prior distribution on the Weibull Adstock scale parameter
+      for RF input, expressed in time periods. Only used by RF channels whose
+      `adstock_decay_spec` is `'weibull'`. Default distribution is
+      `LogNormal(log(4.0), 0.5)`.
+    weibull_scale_om: Prior distribution on the Weibull Adstock scale parameter
+      for organic media input, expressed in time periods. Only used by organic
+      media channels whose `adstock_decay_spec` is `'weibull'`. Default
+      distribution is `LogNormal(log(4.0), 0.5)`.
+    weibull_scale_orf: Prior distribution on the Weibull Adstock scale parameter
+      for organic RF input, expressed in time periods. Only used by organic RF
+      channels whose `adstock_decay_spec` is `'weibull'`. Default distribution
+      is `LogNormal(log(4.0), 0.5)`.
     ec_m: Prior distribution on the `half-saturation` Hill parameter for media
       input. Default distribution is `TruncatedNormal(0.8, 0.8, 0.1, 10)`.
     ec_rf: Prior distribution on the `half-saturation` Hill parameter for RF
@@ -378,6 +417,62 @@ class PriorDistribution:
           backend.np_float_dtype(0.0),
           backend.np_float_dtype(1.0),
           name=constants.ALPHA_ORF,
+      ),
+  )
+  weibull_shape_m: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(2.0)),
+          backend.np_float_dtype(0.4),
+          name=constants.WEIBULL_SHAPE_M,
+      ),
+  )
+  weibull_scale_m: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(4.0)),
+          backend.np_float_dtype(0.5),
+          name=constants.WEIBULL_SCALE_M,
+      ),
+  )
+  weibull_shape_rf: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(2.0)),
+          backend.np_float_dtype(0.4),
+          name=constants.WEIBULL_SHAPE_RF,
+      ),
+  )
+  weibull_scale_rf: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(4.0)),
+          backend.np_float_dtype(0.5),
+          name=constants.WEIBULL_SCALE_RF,
+      ),
+  )
+  weibull_shape_om: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(2.0)),
+          backend.np_float_dtype(0.4),
+          name=constants.WEIBULL_SHAPE_OM,
+      ),
+  )
+  weibull_scale_om: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(4.0)),
+          backend.np_float_dtype(0.5),
+          name=constants.WEIBULL_SCALE_OM,
+      ),
+  )
+  weibull_shape_orf: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(2.0)),
+          backend.np_float_dtype(0.4),
+          name=constants.WEIBULL_SHAPE_ORF,
+      ),
+  )
+  weibull_scale_orf: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: backend.tfd.LogNormal(
+          backend.np_float_dtype(np.log(4.0)),
+          backend.np_float_dtype(0.5),
+          name=constants.WEIBULL_SCALE_ORF,
       ),
   )
   ec_m: backend.tfd.Distribution = dataclasses.field(
@@ -660,6 +755,8 @@ class PriorDistribution:
     _validate_media_custom_priors(self.mroi_m)
     _validate_media_custom_priors(self.contribution_m)
     _validate_media_custom_priors(self.alpha_m)
+    _validate_media_custom_priors(self.weibull_shape_m)
+    _validate_media_custom_priors(self.weibull_scale_m)
     _validate_media_custom_priors(self.ec_m)
     _validate_media_custom_priors(self.slope_m)
     _validate_media_custom_priors(self.eta_m)
@@ -682,6 +779,8 @@ class PriorDistribution:
 
     _validate_organic_media_custom_priors(self.contribution_om)
     _validate_organic_media_custom_priors(self.alpha_om)
+    _validate_organic_media_custom_priors(self.weibull_shape_om)
+    _validate_organic_media_custom_priors(self.weibull_scale_om)
     _validate_organic_media_custom_priors(self.ec_om)
     _validate_organic_media_custom_priors(self.slope_om)
     _validate_organic_media_custom_priors(self.eta_om)
@@ -704,6 +803,8 @@ class PriorDistribution:
 
     _validate_organic_rf_custom_priors(self.contribution_orf)
     _validate_organic_rf_custom_priors(self.alpha_orf)
+    _validate_organic_rf_custom_priors(self.weibull_shape_orf)
+    _validate_organic_rf_custom_priors(self.weibull_scale_orf)
     _validate_organic_rf_custom_priors(self.ec_orf)
     _validate_organic_rf_custom_priors(self.slope_orf)
     _validate_organic_rf_custom_priors(self.eta_orf)
@@ -724,6 +825,8 @@ class PriorDistribution:
     _validate_rf_custom_priors(self.mroi_rf)
     _validate_rf_custom_priors(self.contribution_rf)
     _validate_rf_custom_priors(self.alpha_rf)
+    _validate_rf_custom_priors(self.weibull_shape_rf)
+    _validate_rf_custom_priors(self.weibull_scale_rf)
     _validate_rf_custom_priors(self.ec_rf)
     _validate_rf_custom_priors(self.slope_rf)
     _validate_rf_custom_priors(self.eta_rf)
@@ -843,6 +946,38 @@ class PriorDistribution:
     )
     alpha_orf = backend.tfd.BatchBroadcast(
         self.alpha_orf, n_organic_rf_channels, name=constants.ALPHA_ORF
+    )
+    weibull_shape_m = backend.tfd.BatchBroadcast(
+        self.weibull_shape_m, n_media_channels, name=constants.WEIBULL_SHAPE_M
+    )
+    weibull_scale_m = backend.tfd.BatchBroadcast(
+        self.weibull_scale_m, n_media_channels, name=constants.WEIBULL_SCALE_M
+    )
+    weibull_shape_rf = backend.tfd.BatchBroadcast(
+        self.weibull_shape_rf, n_rf_channels, name=constants.WEIBULL_SHAPE_RF
+    )
+    weibull_scale_rf = backend.tfd.BatchBroadcast(
+        self.weibull_scale_rf, n_rf_channels, name=constants.WEIBULL_SCALE_RF
+    )
+    weibull_shape_om = backend.tfd.BatchBroadcast(
+        self.weibull_shape_om,
+        n_organic_media_channels,
+        name=constants.WEIBULL_SHAPE_OM,
+    )
+    weibull_scale_om = backend.tfd.BatchBroadcast(
+        self.weibull_scale_om,
+        n_organic_media_channels,
+        name=constants.WEIBULL_SCALE_OM,
+    )
+    weibull_shape_orf = backend.tfd.BatchBroadcast(
+        self.weibull_shape_orf,
+        n_organic_rf_channels,
+        name=constants.WEIBULL_SHAPE_ORF,
+    )
+    weibull_scale_orf = backend.tfd.BatchBroadcast(
+        self.weibull_scale_orf,
+        n_organic_rf_channels,
+        name=constants.WEIBULL_SCALE_ORF,
     )
     ec_m = backend.tfd.BatchBroadcast(
         self.ec_m, n_media_channels, name=constants.EC_M
@@ -964,6 +1099,14 @@ class PriorDistribution:
         alpha_rf=alpha_rf,
         alpha_om=alpha_om,
         alpha_orf=alpha_orf,
+        weibull_shape_m=weibull_shape_m,
+        weibull_scale_m=weibull_scale_m,
+        weibull_shape_rf=weibull_shape_rf,
+        weibull_scale_rf=weibull_scale_rf,
+        weibull_shape_om=weibull_shape_om,
+        weibull_scale_om=weibull_scale_om,
+        weibull_shape_orf=weibull_shape_orf,
+        weibull_scale_orf=weibull_scale_orf,
         ec_m=ec_m,
         ec_rf=ec_rf,
         ec_om=ec_om,
@@ -1527,6 +1670,14 @@ _parameter_space_bounds = {
     'alpha_rf': (0, 1),
     'alpha_om': (0, 1),
     'alpha_orf': (0, 1),
+    'weibull_shape_m': (0, np.inf),
+    'weibull_shape_rf': (0, np.inf),
+    'weibull_shape_om': (0, np.inf),
+    'weibull_shape_orf': (0, np.inf),
+    'weibull_scale_m': (0, np.inf),
+    'weibull_scale_rf': (0, np.inf),
+    'weibull_scale_om': (0, np.inf),
+    'weibull_scale_orf': (0, np.inf),
     'ec_m': (0, np.inf),
     'ec_rf': (0, np.inf),
     'ec_om': (0, np.inf),

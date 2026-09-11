@@ -186,6 +186,62 @@ class PosteriorMCMCSamplerTest(
     with self.subTest("y_is_present"):
       self.assertIn("y", sample_dict)
 
+  @parameterized.named_parameters(
+      dict(testcase_name="geometric", uses_weibull=False),
+      dict(testcase_name="weibull", uses_weibull=True),
+  )
+  def test_get_joint_dist_weibull_parameters(self, uses_weibull: bool):
+    """Weibull params are in the sampling graph iff Weibull decay is used."""
+    adstock_decay_spec = (
+        constants.WEIBULL_DECAY if uses_weibull else constants.GEOMETRIC_DECAY
+    )
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(adstock_decay_spec=adstock_decay_spec),
+    )
+
+    sampling_dist = (
+        meridian.posterior_sampler_callable._get_joint_dist_sampling_unpinned()
+    )
+    sample_dict = sampling_dist.sample(
+        seed=self.get_next_rng_seed_or_key()
+    )._asdict()
+
+    weibull_params = (
+        constants.WEIBULL_SHAPE_M,
+        constants.WEIBULL_SCALE_M,
+        constants.WEIBULL_SHAPE_RF,
+        constants.WEIBULL_SCALE_RF,
+    )
+    for param in weibull_params:
+      if uses_weibull:
+        self.assertIn(param, sample_dict)
+        self.assertTrue(np.all(np.asarray(sample_dict[param]) > 0))
+      else:
+        self.assertNotIn(param, sample_dict)
+
+    # `alpha` remains in the graph either way: it is a per-channel parameter
+    # that is simply unused by the Weibull channels.
+    self.assertIn(constants.ALPHA_M, sample_dict)
+
+  def test_get_joint_dist_weibull_log_prob_is_finite(self):
+    """The Weibull adstock likelihood is well-defined under mixed decay."""
+    input_data = self.short_input_data_with_media_and_rf
+    weibull_channel = str(input_data.media_channel.values[0])
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(
+            adstock_decay_spec={weibull_channel: constants.WEIBULL_DECAY},
+        ),
+    )
+
+    joint_dist = meridian.posterior_sampler_callable._get_joint_dist_unpinned()
+    sample = joint_dist.sample(seed=self.get_next_rng_seed_or_key())
+
+    log_prob = joint_dist.log_prob(sample)
+
+    self.assertTrue(np.all(np.isfinite(np.asarray(log_prob))))
+
   def test_sampling_log_prob_matches_full_distribution(self):
     """Verifies that sampling and full graphs produce the same log probability."""
     model_spec = spec.ModelSpec(

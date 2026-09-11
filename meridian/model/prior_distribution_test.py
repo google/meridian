@@ -2135,6 +2135,118 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     priors = prior_distribution.PriorDistribution(**{param_name: dist})
     self.assertEqual(getattr(priors, param_name), dist)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='shape_m', param_name=c.WEIBULL_SHAPE_M, loc=2.0),
+      dict(testcase_name='shape_rf', param_name=c.WEIBULL_SHAPE_RF, loc=2.0),
+      dict(testcase_name='shape_om', param_name=c.WEIBULL_SHAPE_OM, loc=2.0),
+      dict(testcase_name='shape_orf', param_name=c.WEIBULL_SHAPE_ORF, loc=2.0),
+      dict(testcase_name='scale_m', param_name=c.WEIBULL_SCALE_M, loc=4.0),
+      dict(testcase_name='scale_rf', param_name=c.WEIBULL_SCALE_RF, loc=4.0),
+      dict(testcase_name='scale_om', param_name=c.WEIBULL_SCALE_OM, loc=4.0),
+      dict(testcase_name='scale_orf', param_name=c.WEIBULL_SCALE_ORF, loc=4.0),
+  )
+  def test_default_weibull_prior_is_lognormal(
+      self, param_name: str, loc: float
+  ):
+    distribution = getattr(prior_distribution.PriorDistribution(), param_name)
+
+    self.assertIsInstance(distribution, backend.tfd.LogNormal)
+    self.assertEqual(distribution.name, param_name)
+    test_utils.assert_allclose(
+        distribution.loc, backend.np_float_dtype(np.log(loc))
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='shape_m',
+          param_name=c.WEIBULL_SHAPE_M,
+          n_channels=_N_MEDIA_CHANNELS,
+      ),
+      dict(
+          testcase_name='scale_m',
+          param_name=c.WEIBULL_SCALE_M,
+          n_channels=_N_MEDIA_CHANNELS,
+      ),
+      dict(
+          testcase_name='shape_rf',
+          param_name=c.WEIBULL_SHAPE_RF,
+          n_channels=_N_RF_CHANNELS,
+      ),
+      dict(
+          testcase_name='scale_rf',
+          param_name=c.WEIBULL_SCALE_RF,
+          n_channels=_N_RF_CHANNELS,
+      ),
+      dict(
+          testcase_name='shape_om',
+          param_name=c.WEIBULL_SHAPE_OM,
+          n_channels=_N_ORGANIC_MEDIA_CHANNELS,
+      ),
+      dict(
+          testcase_name='scale_om',
+          param_name=c.WEIBULL_SCALE_OM,
+          n_channels=_N_ORGANIC_MEDIA_CHANNELS,
+      ),
+      dict(
+          testcase_name='shape_orf',
+          param_name=c.WEIBULL_SHAPE_ORF,
+          n_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+      dict(
+          testcase_name='scale_orf',
+          param_name=c.WEIBULL_SCALE_ORF,
+          n_channels=_N_ORGANIC_RF_CHANNELS,
+      ),
+  )
+  def test_broadcast_weibull_prior_to_channel_shape(
+      self, param_name: str, n_channels: int
+  ):
+    broadcast_distribution = prior_distribution.PriorDistribution().broadcast(
+        n_geos=_N_GEOS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        unique_sigma_for_each_geo=True,
+        n_knots=_N_KNOTS,
+        is_national=False,
+        set_total_media_contribution_prior=False,
+        kpi=1.0,
+        total_spend=np.array([]),
+    )
+
+    distribution = getattr(broadcast_distribution, param_name)
+
+    self.assertEqual(distribution.batch_shape, (n_channels,))
+
+  @parameterized.named_parameters(
+      dict(testcase_name='shape_m', param_name=c.WEIBULL_SHAPE_M),
+      dict(testcase_name='scale_m', param_name=c.WEIBULL_SCALE_M),
+      dict(testcase_name='shape_rf', param_name=c.WEIBULL_SHAPE_RF),
+      dict(testcase_name='scale_rf', param_name=c.WEIBULL_SCALE_RF),
+      dict(testcase_name='shape_om', param_name=c.WEIBULL_SHAPE_OM),
+      dict(testcase_name='scale_om', param_name=c.WEIBULL_SCALE_OM),
+      dict(testcase_name='shape_orf', param_name=c.WEIBULL_SHAPE_ORF),
+      dict(testcase_name='scale_orf', param_name=c.WEIBULL_SCALE_ORF),
+  )
+  def test_weibull_prior_with_negative_support_raises_error(
+      self, param_name: str
+  ):
+    # Weibull shape and scale must be positive, so a prior with support on the
+    # negative reals is invalid.
+    negative_support_prior = backend.tfd.Normal(
+        backend.np_float_dtype(2.0),
+        backend.np_float_dtype(1.0),
+        name=param_name,
+    )
+
+    with self.assertRaises(ValueError):
+      prior_distribution.PriorDistribution(
+          **{param_name: negative_support_prior}
+      )
+
 
 class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
 

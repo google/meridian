@@ -96,6 +96,36 @@ class ComputeAdstockHillsTest(
       _, mock_kwargs = calls[0]
       self.assertEqual(mock_kwargs["n_times_output"], 8)
 
+  def test_adstock_hill_media_forwards_weibull_parameters(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    weibull_shape = backend.ones(shape=(self._N_MEDIA_CHANNELS,)) * 2.0
+    weibull_scale = backend.ones(shape=(self._N_MEDIA_CHANNELS,)) * 3.0
+    with mock.patch.object(
+        adstock_hill, "AdstockTransformer", autospec=True
+    ) as mock_adstock_cls:
+      mock_adstock_cls.return_value.forward.return_value = media
+
+      self.equations.adstock_hill_media(
+          media=media,
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions=constants.WEIBULL_DECAY,
+          weibull_shape=weibull_shape,
+          weibull_scale=weibull_scale,
+      )
+
+      _, mock_kwargs = mock_adstock_cls.call_args_list[0]
+      self.assertEqual(mock_kwargs["decay_functions"], constants.WEIBULL_DECAY)
+      test_utils.assert_allclose(mock_kwargs["weibull_shape"], weibull_shape)
+      test_utils.assert_allclose(mock_kwargs["weibull_scale"], weibull_scale)
+
   @parameterized.named_parameters(
       dict(
           testcase_name="adstock_first",
@@ -349,6 +379,39 @@ class ComputeAdstockHillsTest(
       calls = mock_adstock_cls.call_args_list
       _, mock_kwargs = calls[0]
       self.assertEqual(mock_kwargs["n_times_output"], 8)
+
+  def test_adstock_hill_rf_forwards_weibull_parameters(self):
+    data = self.input_data_with_media_and_rf
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    reach = backend.to_tensor(data.reach, dtype=backend.float_dtype)
+    frequency = backend.to_tensor(data.frequency, dtype=backend.float_dtype)
+    weibull_shape = backend.ones(shape=(self._N_RF_CHANNELS,)) * 2.0
+    weibull_scale = backend.ones(shape=(self._N_RF_CHANNELS,)) * 3.0
+    with mock.patch.object(
+        adstock_hill, "AdstockTransformer", autospec=True
+    ) as mock_adstock_cls:
+      mock_adstock_cls.return_value.forward.return_value = media
+
+      self.equations.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_RF_CHANNELS,)),
+          decay_functions=constants.WEIBULL_DECAY,
+          weibull_shape=weibull_shape,
+          weibull_scale=weibull_scale,
+      )
+
+      _, mock_kwargs = mock_adstock_cls.call_args_list[0]
+      self.assertEqual(mock_kwargs["decay_functions"], constants.WEIBULL_DECAY)
+      test_utils.assert_allclose(mock_kwargs["weibull_shape"], weibull_shape)
+      test_utils.assert_allclose(mock_kwargs["weibull_scale"], weibull_scale)
 
   def test_adstock_hill_rf(self):
     data = self.input_data_with_media_and_rf
@@ -680,6 +743,8 @@ class LinearPredictorCounterfactualDifferenceTest(
           ec=ec_m,
           slope=slope_m,
           decay_functions="geometric",
+          weibull_shape=None,
+          weibull_scale=None,
       )
       test_utils.assert_allclose(
           result, backend.to_tensor([6.0], dtype=backend.float_dtype)
@@ -736,6 +801,8 @@ class LinearPredictorCounterfactualDifferenceTest(
           ec=ec_rf,
           slope=slope_rf,
           decay_functions="geometric",
+          weibull_shape=None,
+          weibull_scale=None,
       )
       test_utils.assert_allclose(
           result, backend.to_tensor([6.0], dtype=backend.float_dtype)

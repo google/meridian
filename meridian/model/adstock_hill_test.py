@@ -67,6 +67,30 @@ _GEOMETRIC_1_0_WEIGHTS = (1.0, 1.0, 1.0, 1.0, 1.0)
 _MAX_LAG = 4
 
 
+def _weibull_weights(shape: float, scale: float) -> tuple[float, ...]:
+  """Reference implementation of unnormalized Weibull decay weights.
+
+  Args:
+    shape: The Weibull shape parameter.
+    scale: The Weibull scale parameter.
+
+  Returns:
+    Weights ordered by descending lag, matching the `l_range` convention of
+    `adstock_hill.compute_decay_weights`.
+  """
+  lags = np.arange(_MAX_LAG, -1, -1, dtype=np.float64)
+  return tuple(
+      np.exp(-((lags / scale) ** shape))
+      - np.exp(-(((lags + 1.0) / scale) ** shape))
+  )
+
+
+# `shape > 1` puts the peak weight at a positive lag, which is the property
+# that geometric and binomial decay cannot express.
+_WEIBULL_SHAPE_2_SCALE_3_WEIGHTS = _weibull_weights(2.0, 3.0)
+_WEIBULL_SHAPE_1_SCALE_1_WEIGHTS = _weibull_weights(1.0, 1.0)
+
+
 class TestAdstockDecayFunction(test_utils.MeridianTestCase):
   """Tests for adstock_hill.AdstockDecayFunction."""
 
@@ -227,6 +251,136 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
           weights / backend.reduce_max(weights, axis=1, keepdims=True),  # pyrefly: ignore[bad-argument-type, unsupported-operation]
           expected_weights,
           rtol=1e-5,
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="shape_2_scale_3",
+          weibull_shape=2.0,
+          weibull_scale=3.0,
+          expected_weights=_WEIBULL_SHAPE_2_SCALE_3_WEIGHTS,
+      ),
+      dict(
+          testcase_name="shape_1_scale_1",
+          weibull_shape=1.0,
+          weibull_scale=1.0,
+          expected_weights=_WEIBULL_SHAPE_1_SCALE_1_WEIGHTS,
+      ),
+  )
+  def test_compute_decay_weights_weibull_single_channel(
+      self, weibull_shape, weibull_scale, expected_weights
+  ):
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
+
+    with self.subTest("unnormalized"):
+      weights = adstock_hill.compute_decay_weights(
+          backend.to_tensor(0.5, dtype=backend.float_dtype),
+          l_range,
+          _MAX_LAG + 1,
+          constants.WEIBULL_DECAY,
+          normalize=False,
+          weibull_shape=backend.to_tensor(
+              weibull_shape, dtype=backend.float_dtype
+          ),
+          weibull_scale=backend.to_tensor(
+              weibull_scale, dtype=backend.float_dtype
+          ),
+      )
+
+      test_utils.assert_allclose(weights, expected_weights, rtol=1e-5)
+
+    with self.subTest("normalized"):
+      weights = adstock_hill.compute_decay_weights(
+          backend.to_tensor(0.5, dtype=backend.float_dtype),
+          l_range,
+          _MAX_LAG + 1,
+          constants.WEIBULL_DECAY,
+          normalize=True,
+          weibull_shape=backend.to_tensor(
+              weibull_shape, dtype=backend.float_dtype
+          ),
+          weibull_scale=backend.to_tensor(
+              weibull_scale, dtype=backend.float_dtype
+          ),
+      )
+
+      test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)  # pyrefly: ignore[bad-argument-type]
+
+  def test_compute_decay_weights_weibull_is_not_monotonic_in_lag(self):
+    """Weibull with `shape > 1` peaks at a positive lag."""
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
+
+    weights = np.asarray(
+        adstock_hill.compute_decay_weights(
+            backend.to_tensor(0.5, dtype=backend.float_dtype),
+            l_range,
+            _MAX_LAG + 1,
+            constants.WEIBULL_DECAY,
+            normalize=True,
+            weibull_shape=backend.to_tensor(3.0, dtype=backend.float_dtype),
+            weibull_scale=backend.to_tensor(4.0, dtype=backend.float_dtype),
+        )
+    )
+
+    # `l_range` counts down, so index `_MAX_LAG` is lag zero.
+    self.assertLess(weights[_MAX_LAG], np.max(weights))
+
+  def test_compute_decay_weights_mixed_weibull_and_geometric(self):
+    """Non-Weibull channels must not evaluate the Weibull parameters.
+
+    The Weibull entries of the non-Weibull channels are `NaN` here, so a
+    masked implementation that evaluates every kernel for every channel would
+    produce `NaN` output.
+    """
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
+    alpha = backend.to_tensor([0.5, 0.5, 0.5], dtype=backend.float_dtype)
+    decay_functions = (
+        constants.WEIBULL_DECAY,
+        constants.GEOMETRIC_DECAY,
+        constants.BINOMIAL_DECAY,
+    )
+
+    weights = adstock_hill.compute_decay_weights(
+        alpha,
+        l_range,
+        _MAX_LAG + 1,
+        decay_functions,
+        normalize=True,
+        weibull_shape=backend.to_tensor(
+            [2.0, np.nan, np.nan], dtype=backend.float_dtype
+        ),
+        weibull_scale=backend.to_tensor(
+            [3.0, np.nan, np.nan], dtype=backend.float_dtype
+        ),
+    )
+
+    weights_np = np.asarray(weights)
+    self.assertFalse(np.any(np.isnan(weights_np)))
+    test_utils.assert_allclose(
+        backend.reduce_sum(weights, axis=-1), [1.0] * 3, rtol=1e-5  # pyrefly: ignore[bad-argument-type]
+    )
+    expected_weibull = np.asarray(_WEIBULL_SHAPE_2_SCALE_3_WEIGHTS)
+    test_utils.assert_allclose(
+        weights_np[0], expected_weibull / expected_weibull.sum(), rtol=1e-5
+    )
+    expected_geometric = np.asarray(_GEOMETRIC_0_5_WEIGHTS)
+    test_utils.assert_allclose(
+        weights_np[1], expected_geometric / expected_geometric.sum(), rtol=1e-5
+    )
+
+  def test_compute_decay_weights_weibull_without_parameters_raises_error(self):
+    l_range = backend.arange(_MAX_LAG, -1, -1, dtype=backend.float_dtype)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`weibull_shape` and `weibull_scale` are required when the adstock"
+        " decay function is 'weibull'.",
+    ):
+      _ = adstock_hill.compute_decay_weights(
+          backend.to_tensor(0.5, dtype=backend.float_dtype),
+          l_range,
+          _MAX_LAG + 1,
+          constants.WEIBULL_DECAY,
       )
 
   def test_incompatible_alpha_decay_function_raises_error(self):

@@ -6006,5 +6006,71 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
     check_treatment_parameters(mmm, use_posterior=True)
 
 
+class AnalyzerWeibullAdstockTest(backend_test_utils.MeridianTestCase):
+  """Tests `adstock_decay` for models that mix Weibull and geometric decay."""
+
+  def setUp(self):
+    super().setUp()
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=10,
+        n_media_times=15,
+        n_controls=1,
+        n_media_channels=2,
+        n_rf_channels=1,
+        seed=1,
+        nonzero_shift=1.0,
+    )
+    self.weibull_channel = str(input_data.media_channel.values[0])  # pyrefly: ignore[missing-attribute]
+    self.geometric_channel = str(input_data.media_channel.values[1])  # pyrefly: ignore[missing-attribute]
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+    mmm = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(
+            adstock_decay_spec={
+                self.weibull_channel: constants.WEIBULL_DECAY,
+            },
+        ),
+    )
+    mmm.sample_prior(5, seed=self.get_next_rng_seed_or_key())
+    mmm.sample_joint_dist_unpinned_as_posterior(  # pyrefly: ignore[missing-attribute]
+        5, seed=self.get_next_rng_seed_or_key()
+    )
+    self.adstock_decay_df = analyzer.Analyzer(mmm).adstock_decay()
+
+  def _posterior_mean_curve(self, channel: str) -> np.ndarray:
+    channel_df = self.adstock_decay_df[
+        (self.adstock_decay_df[constants.CHANNEL] == channel)
+        & (self.adstock_decay_df[constants.DISTRIBUTION] == constants.POSTERIOR)
+    ].sort_values(by=constants.TIME_UNITS)
+    return np.array(channel_df[constants.MEAN])
+
+  def test_adstock_decay_weibull_channel_peaks_after_lag_zero(self):
+    # The default Weibull shape prior is centered well above one, so the decay
+    # curve must peak at a positive lag. This is the property that geometric
+    # and binomial decay cannot express.
+    mean_curve = self._posterior_mean_curve(self.weibull_channel)
+
+    self.assertNotEmpty(mean_curve)
+    self.assertGreater(np.argmax(mean_curve), 0)
+
+  def test_adstock_decay_geometric_channel_is_monotonically_decreasing(self):
+    # The geometric channel in the same model must be unaffected by its
+    # Weibull-decayed neighbor.
+    mean_curve = self._posterior_mean_curve(self.geometric_channel)
+
+    self.assertNotEmpty(mean_curve)
+    self.assertTrue((np.diff(mean_curve) <= 0).all())
+
+  def test_adstock_decay_curves_are_finite(self):
+    self.assertTrue(
+        np.all(np.isfinite(self.adstock_decay_df[constants.MEAN])),
+        msg="Weibull decay must not leak NaNs into other channels.",
+    )
+
+
 if __name__ == "__main__":
   absltest.main()

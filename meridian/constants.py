@@ -298,6 +298,10 @@ XI_C = 'xi_c'
 XI_N = 'xi_n'
 ALPHA_M = 'alpha_m'
 ALPHA_RF = 'alpha_rf'
+WEIBULL_SHAPE_M = 'weibull_shape_m'
+WEIBULL_SCALE_M = 'weibull_scale_m'
+WEIBULL_SHAPE_RF = 'weibull_shape_rf'
+WEIBULL_SCALE_RF = 'weibull_scale_rf'
 EC_M = 'ec_m'
 EC_RF = 'ec_rf'
 SLOPE_M = 'slope_m'
@@ -315,6 +319,10 @@ ETA_OM = 'eta_om'
 ETA_ORF = 'eta_orf'
 ALPHA_OM = 'alpha_om'
 ALPHA_ORF = 'alpha_orf'
+WEIBULL_SHAPE_OM = 'weibull_shape_om'
+WEIBULL_SCALE_OM = 'weibull_scale_om'
+WEIBULL_SHAPE_ORF = 'weibull_shape_orf'
+WEIBULL_SCALE_ORF = 'weibull_scale_orf'
 EC_OM = 'ec_om'
 EC_ORF = 'ec_orf'
 SLOPE_OM = 'slope_om'
@@ -404,6 +412,8 @@ MEDIA_PARAMETERS = (
     BETA_M,
     ETA_M,
     ALPHA_M,
+    WEIBULL_SHAPE_M,
+    WEIBULL_SCALE_M,
     EC_M,
     SLOPE_M,
 )
@@ -414,6 +424,8 @@ RF_PARAMETERS = (
     BETA_RF,
     ETA_RF,
     ALPHA_RF,
+    WEIBULL_SHAPE_RF,
+    WEIBULL_SCALE_RF,
     EC_RF,
     SLOPE_RF,
 )
@@ -422,6 +434,8 @@ ORGANIC_MEDIA_PARAMETERS = (
     BETA_OM,
     ETA_OM,
     ALPHA_OM,
+    WEIBULL_SHAPE_OM,
+    WEIBULL_SCALE_OM,
     EC_OM,
     SLOPE_OM,
 )
@@ -430,6 +444,8 @@ ORGANIC_RF_PARAMETERS = (
     BETA_ORF,
     ETA_ORF,
     ALPHA_ORF,
+    WEIBULL_SHAPE_ORF,
+    WEIBULL_SCALE_ORF,
     EC_ORF,
     SLOPE_ORF,
 )
@@ -588,8 +604,13 @@ ADSTOCK_HILL_FUNCTIONS = frozenset({
 # Adstock decay functions.
 GEOMETRIC_DECAY = 'geometric'
 BINOMIAL_DECAY = 'binomial'
+WEIBULL_DECAY = 'weibull'
 
-ADSTOCK_DECAY_FUNCTIONS = frozenset({GEOMETRIC_DECAY, BINOMIAL_DECAY})
+ADSTOCK_DECAY_FUNCTIONS = frozenset({
+    GEOMETRIC_DECAY,
+    BINOMIAL_DECAY,
+    WEIBULL_DECAY,
+})
 ADSTOCK_CHANNELS = (MEDIA, RF, ORGANIC_MEDIA, ORGANIC_RF)
 
 # Distribution constants.

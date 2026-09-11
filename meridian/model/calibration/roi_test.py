@@ -247,6 +247,17 @@ class RoiTest(parameterized.TestCase):
     )
     self.assertAlmostEqual(tau_duration, expected_factor, places=5)
 
+  def test_duration_adjustment_weibull_raises_error(self) -> None:
+    with self.assertRaisesRegex(
+        ValueError,
+        "ROI calibration does not support the 'weibull' adstock decay",
+    ):
+      roi._duration_adjustment(
+          duration=4.0,
+          max_lag=8,
+          adstock_decay_function=meridian_constants.WEIBULL_DECAY,
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="default_no_adjustment",

@@ -21,6 +21,7 @@ import warnings
 
 from meridian import backend
 from meridian import constants
+from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
 
@@ -129,6 +130,13 @@ class PriorDistributionSampler:
             sample_shape=sample_shape, seed=rng_handler.get_next_seed()
         ),
     }
+    if adstock_hill.uses_weibull_decay(ctx.adstock_decay_spec.media):
+      media_vars[constants.WEIBULL_SHAPE_M] = prior.weibull_shape_m.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
+      media_vars[constants.WEIBULL_SCALE_M] = prior.weibull_scale_m.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
     beta_gm_dev = backend.tfd.Sample(
         backend.tfd.Normal(
             loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
@@ -171,12 +179,16 @@ class PriorDistributionSampler:
           slope=media_vars[constants.SLOPE_M],
           decay_functions=ctx.adstock_decay_spec.media,
           saturation_spec=ctx.saturation_spec.media,
+          weibull_shape=media_vars.get(constants.WEIBULL_SHAPE_M),
+          weibull_scale=media_vars.get(constants.WEIBULL_SCALE_M),
       )
       linear_predictor_counterfactual_difference = self._model_equations.linear_predictor_counterfactual_difference_media(
           media_transformed=media_transformed,
           alpha_m=media_vars[constants.ALPHA_M],
           ec_m=media_vars[constants.EC_M],
           slope_m=media_vars[constants.SLOPE_M],
+          weibull_shape_m=media_vars.get(constants.WEIBULL_SHAPE_M),
+          weibull_scale_m=media_vars.get(constants.WEIBULL_SCALE_M),
       )
       beta_m_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
@@ -239,6 +251,13 @@ class PriorDistributionSampler:
             sample_shape=sample_shape, seed=rng_handler.get_next_seed()
         ),
     }
+    if adstock_hill.uses_weibull_decay(ctx.adstock_decay_spec.rf):
+      rf_vars[constants.WEIBULL_SHAPE_RF] = prior.weibull_shape_rf.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
+      rf_vars[constants.WEIBULL_SCALE_RF] = prior.weibull_scale_rf.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
     beta_grf_dev = backend.tfd.Sample(
         backend.tfd.Normal(
             loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
@@ -282,6 +301,8 @@ class PriorDistributionSampler:
           slope=rf_vars[constants.SLOPE_RF],
           decay_functions=ctx.adstock_decay_spec.rf,
           saturation_spec=ctx.saturation_spec.rf,
+          weibull_shape=rf_vars.get(constants.WEIBULL_SHAPE_RF),
+          weibull_scale=rf_vars.get(constants.WEIBULL_SCALE_RF),
       )
       linear_predictor_counterfactual_difference = (
           self._model_equations.linear_predictor_counterfactual_difference_rf(
@@ -289,6 +310,8 @@ class PriorDistributionSampler:
               alpha_rf=rf_vars[constants.ALPHA_RF],
               ec_rf=rf_vars[constants.EC_RF],
               slope_rf=rf_vars[constants.SLOPE_RF],
+              weibull_shape_rf=rf_vars.get(constants.WEIBULL_SHAPE_RF),
+              weibull_scale_rf=rf_vars.get(constants.WEIBULL_SCALE_RF),
           )
       )
       beta_rf_value = self._model_equations.calculate_beta_x(
@@ -353,6 +376,17 @@ class PriorDistributionSampler:
             sample_shape=sample_shape, seed=rng_handler.get_next_seed()
         ),
     }
+    if adstock_hill.uses_weibull_decay(ctx.adstock_decay_spec.organic_media):
+      organic_media_vars[constants.WEIBULL_SHAPE_OM] = (
+          prior.weibull_shape_om.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
+      )
+      organic_media_vars[constants.WEIBULL_SCALE_OM] = (
+          prior.weibull_scale_om.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
+      )
     beta_gom_dev = backend.tfd.Sample(
         backend.tfd.Normal(
             loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
@@ -383,6 +417,8 @@ class PriorDistributionSampler:
           slope=organic_media_vars[constants.SLOPE_OM],
           decay_functions=ctx.adstock_decay_spec.organic_media,
           saturation_spec=ctx.saturation_spec.organic_media,
+          weibull_shape=organic_media_vars.get(constants.WEIBULL_SHAPE_OM),
+          weibull_scale=organic_media_vars.get(constants.WEIBULL_SCALE_OM),
       )
       beta_om_value = self._model_equations.calculate_beta_x(
           is_non_media=False,
@@ -449,6 +485,17 @@ class PriorDistributionSampler:
             sample_shape=sample_shape, seed=rng_handler.get_next_seed()
         ),
     }
+    if adstock_hill.uses_weibull_decay(ctx.adstock_decay_spec.organic_rf):
+      organic_rf_vars[constants.WEIBULL_SHAPE_ORF] = (
+          prior.weibull_shape_orf.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
+      )
+      organic_rf_vars[constants.WEIBULL_SCALE_ORF] = (
+          prior.weibull_scale_orf.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          )
+      )
     beta_gorf_dev = backend.tfd.Sample(
         backend.tfd.Normal(
             loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
@@ -480,6 +527,8 @@ class PriorDistributionSampler:
           slope=organic_rf_vars[constants.SLOPE_ORF],
           decay_functions=ctx.adstock_decay_spec.organic_rf,
           saturation_spec=ctx.saturation_spec.organic_rf,
+          weibull_shape=organic_rf_vars.get(constants.WEIBULL_SHAPE_ORF),
+          weibull_scale=organic_rf_vars.get(constants.WEIBULL_SCALE_ORF),
       )
       beta_orf_value = self._model_equations.calculate_beta_x(
           is_non_media=False,

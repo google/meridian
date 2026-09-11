@@ -22,6 +22,7 @@ import warnings
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
@@ -296,6 +297,12 @@ def _joint_dist_base_logic(
 
   if media_tensors.media is not None:
     alpha_m = yield prior_broadcast.alpha_m
+    if adstock_hill.uses_weibull_decay(model_context.adstock_decay_spec.media):
+      weibull_shape_m = yield prior_broadcast.weibull_shape_m
+      weibull_scale_m = yield prior_broadcast.weibull_scale_m
+    else:
+      weibull_shape_m = None
+      weibull_scale_m = None
     ec_m = yield prior_broadcast.ec_m
     eta_m = yield prior_broadcast.eta_m
     slope_m = yield prior_broadcast.slope_m
@@ -314,6 +321,8 @@ def _joint_dist_base_logic(
         slope=slope_m,
         decay_functions=model_context.adstock_decay_spec.media,
         saturation_spec=model_context.saturation_spec.media,
+        weibull_shape=weibull_shape_m,
+        weibull_scale=weibull_scale_m,
     )
     prior_type = model_context.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -336,6 +345,8 @@ def _joint_dist_base_logic(
               alpha_m=alpha_m,
               ec_m=ec_m,
               slope_m=slope_m,
+              weibull_shape_m=weibull_shape_m,
+              weibull_scale_m=weibull_scale_m,
           )
       )
       beta_m = model_equations.calculate_beta_x(
@@ -362,6 +373,12 @@ def _joint_dist_base_logic(
 
   if rf_tensors.reach is not None:
     alpha_rf = yield prior_broadcast.alpha_rf
+    if adstock_hill.uses_weibull_decay(model_context.adstock_decay_spec.rf):
+      weibull_shape_rf = yield prior_broadcast.weibull_shape_rf
+      weibull_scale_rf = yield prior_broadcast.weibull_scale_rf
+    else:
+      weibull_shape_rf = None
+      weibull_scale_rf = None
     ec_rf = yield prior_broadcast.ec_rf
     eta_rf = yield prior_broadcast.eta_rf
     slope_rf = yield prior_broadcast.slope_rf
@@ -381,6 +398,8 @@ def _joint_dist_base_logic(
         slope=slope_rf,
         decay_functions=model_context.adstock_decay_spec.rf,
         saturation_spec=model_context.saturation_spec.rf,
+        weibull_shape=weibull_shape_rf,
+        weibull_scale=weibull_scale_rf,
     )
 
     prior_type = model_context.model_spec.effective_rf_prior_type
@@ -404,6 +423,8 @@ def _joint_dist_base_logic(
               alpha_rf=alpha_rf,
               ec_rf=ec_rf,
               slope_rf=slope_rf,
+              weibull_shape_rf=weibull_shape_rf,
+              weibull_scale_rf=weibull_scale_rf,
           )
       )
       beta_rf = model_equations.calculate_beta_x(
@@ -430,6 +451,14 @@ def _joint_dist_base_logic(
 
   if organic_media_tensors.organic_media is not None:
     alpha_om = yield prior_broadcast.alpha_om
+    if adstock_hill.uses_weibull_decay(
+        model_context.adstock_decay_spec.organic_media
+    ):
+      weibull_shape_om = yield prior_broadcast.weibull_shape_om
+      weibull_scale_om = yield prior_broadcast.weibull_scale_om
+    else:
+      weibull_shape_om = None
+      weibull_scale_om = None
     ec_om = yield prior_broadcast.ec_om
     eta_om = yield prior_broadcast.eta_om
     slope_om = yield prior_broadcast.slope_om
@@ -448,6 +477,8 @@ def _joint_dist_base_logic(
         slope=slope_om,
         decay_functions=model_context.adstock_decay_spec.organic_media,
         saturation_spec=model_context.saturation_spec.organic_media,
+        weibull_shape=weibull_shape_om,
+        weibull_scale=weibull_scale_om,
     )
     prior_type = model_context.model_spec.organic_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
@@ -481,6 +512,14 @@ def _joint_dist_base_logic(
 
   if organic_rf_tensors.organic_reach is not None:
     alpha_orf = yield prior_broadcast.alpha_orf
+    if adstock_hill.uses_weibull_decay(
+        model_context.adstock_decay_spec.organic_rf
+    ):
+      weibull_shape_orf = yield prior_broadcast.weibull_shape_orf
+      weibull_scale_orf = yield prior_broadcast.weibull_scale_orf
+    else:
+      weibull_shape_orf = None
+      weibull_scale_orf = None
     ec_orf = yield prior_broadcast.ec_orf
     eta_orf = yield prior_broadcast.eta_orf
     slope_orf = yield prior_broadcast.slope_orf
@@ -500,6 +539,8 @@ def _joint_dist_base_logic(
         slope=slope_orf,
         decay_functions=model_context.adstock_decay_spec.organic_rf,
         saturation_spec=model_context.saturation_spec.organic_rf,
+        weibull_shape=weibull_shape_orf,
+        weibull_scale=weibull_scale_orf,
     )
 
     prior_type = model_context.model_spec.organic_rf_prior_type

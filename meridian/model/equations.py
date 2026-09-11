@@ -48,6 +48,8 @@ class ModelEquations:
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
       saturation_spec: str | Sequence[str] = constants.HILL,
+      weibull_shape: backend.Tensor | None = None,
+      weibull_scale: backend.Tensor | None = None,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms media or using Adstock and Hill functions in the desired order.
@@ -64,6 +66,10 @@ class ModelEquations:
         function(s) for each channel. Default: 'geometric'.
       saturation_spec: String or sequence of strings denoting the saturation
         function(s) for each channel. Default: 'hill'.
+      weibull_shape: Weibull Adstock shape parameter. Required if any channel
+        uses 'weibull' decay, ignored otherwise.
+      weibull_scale: Weibull Adstock scale parameter. Required if any channel
+        uses 'weibull' decay, ignored otherwise.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `media` equals
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
@@ -87,6 +93,8 @@ class ModelEquations:
         max_lag=self._context.model_spec.max_lag,
         n_times_output=n_times_output,
         decay_functions=decay_functions,
+        weibull_shape=weibull_shape,
+        weibull_scale=weibull_scale,
     )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
@@ -134,6 +142,8 @@ class ModelEquations:
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
       saturation_spec: str | Sequence[str] = constants.HILL,
+      weibull_shape: backend.Tensor | None = None,
+      weibull_scale: backend.Tensor | None = None,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
@@ -150,6 +160,10 @@ class ModelEquations:
         function(s) for each channel. Default: 'geometric'.
       saturation_spec: String or sequence of strings denoting the saturation
         function(s) for each channel. Default: 'hill'.
+      weibull_shape: Weibull Adstock shape parameter. Required if any channel
+        uses 'weibull' decay, ignored otherwise.
+      weibull_scale: Weibull Adstock scale parameter. Required if any channel
+        uses 'weibull' decay, ignored otherwise.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `reach` equals
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
@@ -177,6 +191,8 @@ class ModelEquations:
         max_lag=self._context.model_spec.max_lag,
         n_times_output=n_times_output,
         decay_functions=decay_functions,
+        weibull_shape=weibull_shape,
+        weibull_scale=weibull_scale,
     )
     adj_frequency = hill_transformer.forward(frequency)
 
@@ -302,6 +318,8 @@ class ModelEquations:
       alpha_m: backend.Tensor,
       ec_m: backend.Tensor,
       slope_m: backend.Tensor,
+      weibull_shape_m: backend.Tensor | None = None,
+      weibull_scale_m: backend.Tensor | None = None,
   ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for non-RF media.
 
@@ -319,6 +337,10 @@ class ModelEquations:
       alpha_m: The adstock alpha parameter values.
       ec_m: The adstock ec parameter values.
       slope_m: The adstock hill slope parameter values.
+      weibull_shape_m: The Weibull adstock shape parameter values, or `None` if
+        no media channel uses 'weibull' decay.
+      weibull_scale_m: The Weibull adstock scale parameter values, or `None` if
+        no media channel uses 'weibull' decay.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -332,6 +354,8 @@ class ModelEquations:
         ec=ec_m,
         slope=slope_m,
         decay_functions=self._context.adstock_decay_spec.media,
+        weibull_shape=weibull_shape_m,
+        weibull_scale=weibull_scale_m,
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
@@ -346,6 +370,8 @@ class ModelEquations:
       alpha_rf: backend.Tensor,
       ec_rf: backend.Tensor,
       slope_rf: backend.Tensor,
+      weibull_shape_rf: backend.Tensor | None = None,
+      weibull_scale_rf: backend.Tensor | None = None,
   ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for RF media.
 
@@ -363,6 +389,10 @@ class ModelEquations:
       alpha_rf: The adstock alpha parameter values.
       ec_rf: The adstock ec parameter values.
       slope_rf: The adstock hill slope parameter values.
+      weibull_shape_rf: The Weibull adstock shape parameter values, or `None` if
+        no RF channel uses 'weibull' decay.
+      weibull_scale_rf: The Weibull adstock scale parameter values, or `None` if
+        no RF channel uses 'weibull' decay.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -377,6 +407,8 @@ class ModelEquations:
         ec=ec_rf,
         slope=slope_rf,
         decay_functions=self._context.adstock_decay_spec.rf,
+        weibull_shape=weibull_shape_rf,
+        weibull_scale=weibull_scale_rf,
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.

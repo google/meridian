@@ -237,6 +237,17 @@ message PriorDistributions {
   Distribution ec_orf = 27;
   Distribution slope_om = 28;
   Distribution slope_orf = 29;
+
+  // Weibull adstock decay priors. Only used by channels whose adstock decay
+  // function is `weibull`.
+  Distribution weibull_shape_m = 37;
+  Distribution weibull_scale_m = 38;
+  Distribution weibull_shape_rf = 39;
+  Distribution weibull_scale_rf = 40;
+  Distribution weibull_shape_om = 41;
+  Distribution weibull_scale_om = 42;
+  Distribution weibull_shape_orf = 43;
+  Distribution weibull_scale_orf = 44;
 }
 
 // A container for user prior distribution parameters in a Meridian model.
@@ -291,6 +302,17 @@ message PriorTfpDistributions {
   TfpDistribution ec_orf = 27;
   TfpDistribution slope_om = 28;
   TfpDistribution slope_orf = 29;
+
+  // Weibull adstock decay priors. Only used by channels whose adstock decay
+  // function is `weibull`.
+  TfpDistribution weibull_shape_m = 38;
+  TfpDistribution weibull_scale_m = 39;
+  TfpDistribution weibull_shape_rf = 40;
+  TfpDistribution weibull_scale_rf = 41;
+  TfpDistribution weibull_shape_om = 42;
+  TfpDistribution weibull_scale_om = 43;
+  TfpDistribution weibull_shape_orf = 44;
+  TfpDistribution weibull_scale_orf = 45;
 
   // Lookup table that contains function names mapped to hashed functions used
   // by various `tfp.distributions`.
