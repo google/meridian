@@ -215,6 +215,12 @@ def _duration_adjustment(
         f"Invalid adstock_decay_function {adstock_decay_function!r}. Valid "
         f"options are {sorted(meridian_constants.ADSTOCK_DECAY_FUNCTIONS)}."
     )
+  if adstock_decay_function == meridian_constants.WEIBULL_DECAY:
+    raise ValueError(
+        "ROI calibration does not support the 'weibull' adstock decay "
+        "function. The duration adjustment is computed from a single "
+        "representative decay rate, which has no Weibull equivalent."
+    )
 
   p = _calculate_capture_proportion(
       duration=duration,

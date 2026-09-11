@@ -720,6 +720,78 @@ class PriorDistributionSamplerTest(
       with self.assertRaises(AttributeError):
         getattr(prior, var)
 
+  def test_sample_prior_without_weibull_decay_omits_weibull_params(self):
+    """Weibull params are not sampled unless a channel group uses Weibull."""
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+
+    for var in (
+        constants.WEIBULL_SHAPE_M,
+        constants.WEIBULL_SCALE_M,
+        constants.WEIBULL_SHAPE_RF,
+        constants.WEIBULL_SCALE_RF,
+    ):
+      with self.assertRaises(AttributeError):
+        getattr(prior, var)
+
+  def test_sample_prior_with_weibull_decay_samples_weibull_params(self):
+    """Weibull params are sampled for the channel groups that use Weibull."""
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(
+            adstock_decay_spec=constants.WEIBULL_DECAY,
+        ),
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+
+    media_shape = (1, self._N_DRAWS, self._N_MEDIA_CHANNELS)
+    rf_shape = (1, self._N_DRAWS, self._N_RF_CHANNELS)
+    expected_vars_and_shapes = {
+        constants.WEIBULL_SHAPE_M: media_shape,
+        constants.WEIBULL_SCALE_M: media_shape,
+        constants.WEIBULL_SHAPE_RF: rf_shape,
+        constants.WEIBULL_SCALE_RF: rf_shape,
+    }
+    for var, shape in expected_vars_and_shapes.items():
+      self.assertTrue(hasattr(prior, var))
+      self.assertEqual(getattr(prior, var).shape, shape)
+      self.assertTrue(np.all(getattr(prior, var).values > 0))
+
+  def test_sample_prior_with_mixed_decay_only_samples_used_groups(self):
+    """Only the channel groups containing a Weibull channel are sampled."""
+    input_data = self.short_input_data_with_media_and_rf
+    weibull_channel = str(input_data.media_channel.values[0])
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(
+            adstock_decay_spec={weibull_channel: constants.WEIBULL_DECAY},
+        ),
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+
+    with self.subTest("media_group_is_sampled"):
+      self.assertEqual(
+          prior.weibull_shape_m.shape,
+          (1, self._N_DRAWS, self._N_MEDIA_CHANNELS),
+      )
+      self.assertEqual(
+          prior.weibull_scale_m.shape,
+          (1, self._N_DRAWS, self._N_MEDIA_CHANNELS),
+      )
+    with self.subTest("rf_group_is_not_sampled"):
+      for var in (constants.WEIBULL_SHAPE_RF, constants.WEIBULL_SCALE_RF):
+        with self.assertRaises(AttributeError):
+          getattr(prior, var)
+
 
 class PriorDistributionSamplerInitTest(
     parameterized.TestCase,

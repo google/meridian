@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `weibull_shape_*` and `weibull_scale_*` fields to `PriorDistributions`
+    and `PriorTfpDistributions` protos to support the new `'weibull'` adstock
+    decay function.
+
 ## [1.3.1] - 2026-09-01
 
 *   Update EDA outcome severity documentation in README_internal.md.

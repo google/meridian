@@ -621,6 +621,266 @@ alpha_rf {
     }
   }
 }
+weibull_shape_m {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 0.69
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_shape_m"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.40
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_shape_m"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 6
+    }
+  }
+}
+weibull_scale_m {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 1.39
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_scale_m"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.50
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_scale_m"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 6
+    }
+  }
+}
+weibull_shape_rf {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 0.69
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_shape_rf"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.40
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_shape_rf"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 4
+    }
+  }
+}
+weibull_scale_rf {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 1.39
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_scale_rf"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.50
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_scale_rf"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 4
+    }
+  }
+}
 ec_m {
   distribution_type: "BatchBroadcast"
   parameters {
@@ -1617,6 +1877,266 @@ alpha_orf {
     key: "name"
     value {
       string_value: "alpha_orf"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 1
+    }
+  }
+}
+weibull_shape_om {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 0.69
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_shape_om"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.40
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_shape_om"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 2
+    }
+  }
+}
+weibull_scale_om {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 1.39
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_scale_om"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.50
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_scale_om"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 2
+    }
+  }
+}
+weibull_shape_orf {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 0.69
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_shape_orf"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.40
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_shape_orf"
+    }
+  }
+  parameters {
+    key: "to_shape"
+    value {
+      none_value: true
+    }
+  }
+  parameters {
+    key: "validate_args"
+    value {
+      int_value: 0
+    }
+  }
+  parameters {
+    key: "with_shape"
+    value {
+      int_value: 1
+    }
+  }
+}
+weibull_scale_orf {
+  distribution_type: "BatchBroadcast"
+  parameters {
+    key: "distribution"
+    value {
+      distribution_value {
+        distribution_type: "LogNormal"
+        parameters {
+          key: "allow_nan_stats"
+          value {
+            int_value: 1
+          }
+        }
+        parameters {
+          key: "loc"
+          value {
+            scalar_value: 1.39
+          }
+        }
+        parameters {
+          key: "name"
+          value {
+            string_value: "weibull_scale_orf"
+          }
+        }
+        parameters {
+          key: "scale"
+          value {
+            scalar_value: 0.50
+          }
+        }
+        parameters {
+          key: "validate_args"
+          value {
+            int_value: 0
+          }
+        }
+      }
+    }
+  }
+  parameters {
+    key: "name"
+    value {
+      string_value: "weibull_scale_orf"
     }
   }
   parameters {

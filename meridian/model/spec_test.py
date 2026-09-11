@@ -514,11 +514,13 @@ class ModelSpecTest(parameterized.TestCase):
   @parameterized.named_parameters(
       ("geometric", constants.GEOMETRIC_DECAY),
       ("binomial", constants.BINOMIAL_DECAY),
+      ("weibull", constants.WEIBULL_DECAY),
       (
           "mapping",
           {
               "ch1": constants.GEOMETRIC_DECAY,
               "ch2": constants.BINOMIAL_DECAY,
+              "ch3": constants.WEIBULL_DECAY,
           },
       ),
   )
@@ -532,7 +534,7 @@ class ModelSpecTest(parameterized.TestCase):
           "invalid",
           (
               "The `adstock_decay_spec` parameter 'invalid' must be one of"
-              " ['binomial', 'geometric']."
+              " ['binomial', 'geometric', 'weibull']."
           ),
       ),
       (
@@ -540,7 +542,7 @@ class ModelSpecTest(parameterized.TestCase):
           {"ch1": "invalid"},
           (
               "The `adstock_decay_spec` for channel 'ch1' must be one of"
-              " ['binomial', 'geometric'], but got 'invalid'."
+              " ['binomial', 'geometric', 'weibull'], but got 'invalid'."
           ),
       ),
   )

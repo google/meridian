@@ -24,6 +24,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 *   Add `get_selected_dates_str` to TimeCoordinates.
+*   Add a `'weibull'` option to `ModelSpec.adstock_decay_spec`, a flexible
+    adstock decay function parameterized by per-channel `weibull_shape` and
+    `weibull_scale` priors that, unlike `'geometric'` and `'binomial'`, can
+    place its peak effect at a lag greater than zero.
 
 ## [2.0.0] - 2026-09-02
 

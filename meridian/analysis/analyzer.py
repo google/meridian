@@ -379,6 +379,33 @@ class Analyzer:
 
     return use_kpi or self.model_context.input_data.revenue_per_kpi is None
 
+  def _get_prior_and_posterior_draws(
+      self, parameter: str, n_channels: int
+  ) -> tuple[backend.Tensor, backend.Tensor]:
+    """Returns `(prior, posterior)` draws of `parameter` as batched tensors.
+
+    Args:
+      parameter: The name of the parameter in `InferenceData`.
+      n_channels: The number of channels the parameter is defined over.
+
+    Returns:
+      A tuple of tensors with a leading singleton batch dimension, matching the
+      layout that `adstock_hill.compute_decay_weights` expects for `alpha`.
+    """
+    prior = self._inference_data.prior[parameter].values[0]  # pyrefly: ignore[missing-attribute]
+    posterior = np.reshape(
+        self._inference_data.posterior[parameter].values,  # pyrefly: ignore[missing-attribute]
+        (-1, n_channels),
+    )
+    return (
+        backend.to_tensor(
+            prior[backend.newaxis, ...], dtype=backend.float_dtype
+        ),
+        backend.to_tensor(
+            posterior[backend.newaxis, ...], dtype=backend.float_dtype
+        ),
+    )
+
   def _get_adstock_dataframe(
       self,
       channel_type: str,
@@ -413,6 +440,9 @@ class Analyzer:
           (-1, self.model_context.n_media_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.media
+      shape_param = constants.WEIBULL_SHAPE_M
+      scale_param = constants.WEIBULL_SCALE_M
+      n_channels = self.model_context.n_media_channels
     elif channel_type == constants.RF:
       prior = self._inference_data.prior.alpha_rf.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
@@ -420,6 +450,9 @@ class Analyzer:
           (-1, self.model_context.n_rf_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.rf
+      shape_param = constants.WEIBULL_SHAPE_RF
+      scale_param = constants.WEIBULL_SCALE_RF
+      n_channels = self.model_context.n_rf_channels
     elif channel_type == constants.ORGANIC_MEDIA:
       prior = self._inference_data.prior.alpha_om.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
@@ -427,6 +460,9 @@ class Analyzer:
           (-1, self.model_context.n_organic_media_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.organic_media
+      shape_param = constants.WEIBULL_SHAPE_OM
+      scale_param = constants.WEIBULL_SCALE_OM
+      n_channels = self.model_context.n_organic_media_channels
     elif channel_type == constants.ORGANIC_RF:
       prior = self._inference_data.prior.alpha_orf.values[0]  # pyrefly: ignore[missing-attribute]
       posterior = np.reshape(
@@ -434,10 +470,24 @@ class Analyzer:
           (-1, self.model_context.n_organic_rf_channels),
       )
       decay_functions = self.model_context.adstock_decay_spec.organic_rf
+      shape_param = constants.WEIBULL_SHAPE_ORF
+      scale_param = constants.WEIBULL_SCALE_ORF
+      n_channels = self.model_context.n_organic_rf_channels
     else:
       raise ValueError(
           f"Unsupported channel type for adstock decay: '{channel_type}'. "
       )
+
+    if adstock_hill.uses_weibull_decay(decay_functions):
+      weibull_shape_prior, weibull_shape_posterior = (
+          self._get_prior_and_posterior_draws(shape_param, n_channels)
+      )
+      weibull_scale_prior, weibull_scale_posterior = (
+          self._get_prior_and_posterior_draws(scale_param, n_channels)
+      )
+    else:
+      weibull_shape_prior = weibull_shape_posterior = None
+      weibull_scale_prior = weibull_scale_posterior = None
 
     decayed_effect_prior = adstock_hill.compute_decay_weights(
         alpha=backend.to_tensor(
@@ -447,6 +497,8 @@ class Analyzer:
         window_size=window_size,
         decay_functions=decay_functions,
         normalize=False,
+        weibull_shape=weibull_shape_prior,
+        weibull_scale=weibull_scale_prior,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
         alpha=backend.to_tensor(
@@ -456,6 +508,8 @@ class Analyzer:
         window_size=window_size,
         decay_functions=decay_functions,
         normalize=False,
+        weibull_shape=weibull_shape_posterior,
+        weibull_scale=weibull_scale_posterior,
     )
 
     decayed_effect_prior_transpose = backend.transpose(
@@ -510,6 +564,10 @@ class Analyzer:
           constants.ALPHA_M,
           constants.BETA_GM,
       ])
+      if adstock_hill.uses_weibull_decay(
+          self.model_context.adstock_decay_spec.media
+      ):
+        params.extend([constants.WEIBULL_SHAPE_M, constants.WEIBULL_SCALE_M])
     if self.model_context.rf_tensors.reach is not None:
       params.extend([
           constants.EC_RF,
@@ -517,6 +575,10 @@ class Analyzer:
           constants.ALPHA_RF,
           constants.BETA_GRF,
       ])
+      if adstock_hill.uses_weibull_decay(
+          self.model_context.adstock_decay_spec.rf
+      ):
+        params.extend([constants.WEIBULL_SHAPE_RF, constants.WEIBULL_SCALE_RF])
     if include_non_paid_channels:
       if self.model_context.organic_media_tensors.organic_media is not None:
         params.extend([
@@ -525,6 +587,13 @@ class Analyzer:
             constants.ALPHA_OM,
             constants.BETA_GOM,
         ])
+        if adstock_hill.uses_weibull_decay(
+            self.model_context.adstock_decay_spec.organic_media
+        ):
+          params.extend([
+              constants.WEIBULL_SHAPE_OM,
+              constants.WEIBULL_SCALE_OM,
+          ])
       if self.model_context.organic_rf_tensors.organic_reach is not None:
         params.extend([
             constants.EC_ORF,
@@ -532,6 +601,13 @@ class Analyzer:
             constants.ALPHA_ORF,
             constants.BETA_GORF,
         ])
+        if adstock_hill.uses_weibull_decay(
+            self.model_context.adstock_decay_spec.organic_rf
+        ):
+          params.extend([
+              constants.WEIBULL_SHAPE_ORF,
+              constants.WEIBULL_SCALE_ORF,
+          ])
       if self.model_context.non_media_treatments is not None:
         params.extend([
             constants.GAMMA_GN,
@@ -572,6 +648,8 @@ class Analyzer:
               slope=dist_tensors.slope_m,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.media,
               saturation_spec=self.model_context.saturation_spec.media,
+              weibull_shape=dist_tensors.weibull_shape_m,
+              weibull_scale=dist_tensors.weibull_scale_m,
               n_times_output=n_times_output,
           )
       )
@@ -587,6 +665,8 @@ class Analyzer:
               slope=dist_tensors.slope_rf,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.rf,
               saturation_spec=self.model_context.saturation_spec.rf,
+              weibull_shape=dist_tensors.weibull_shape_rf,
+              weibull_scale=dist_tensors.weibull_scale_rf,
               n_times_output=n_times_output,
           )
       )
@@ -600,6 +680,8 @@ class Analyzer:
               slope=dist_tensors.slope_om,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.organic_media,
               saturation_spec=self.model_context.saturation_spec.organic_media,
+              weibull_shape=dist_tensors.weibull_shape_om,
+              weibull_scale=dist_tensors.weibull_scale_om,
               n_times_output=n_times_output,
           )
       )
@@ -614,6 +696,8 @@ class Analyzer:
               slope=dist_tensors.slope_orf,  # pyrefly: ignore[bad-argument-type]
               decay_functions=self.model_context.adstock_decay_spec.organic_rf,
               saturation_spec=self.model_context.saturation_spec.organic_rf,
+              weibull_shape=dist_tensors.weibull_shape_orf,
+              weibull_scale=dist_tensors.weibull_scale_orf,
               n_times_output=n_times_output,
           )
       )

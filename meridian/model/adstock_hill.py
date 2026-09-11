@@ -28,6 +28,7 @@ __all__ = [
     'HillTransformer',
     'transform_non_negative_reals_distribution',
     'compute_decay_weights',
+    'uses_weibull_decay',
 ]
 
 
@@ -99,29 +100,53 @@ def _validate_adstock_decay_function(adstock_decay_func: str):
     )
 
 
+def uses_weibull_decay(decay_functions: str | Sequence[str]) -> bool:
+  """Returns whether any channel in `decay_functions` uses Weibull decay.
+
+  The Weibull shape and scale parameters are only sampled, and only appear in
+  `InferenceData`, for channel groups where this returns `True`.
+
+  Args:
+    decay_functions: A single decay function, or one decay function per channel.
+  """
+  if isinstance(decay_functions, str):
+    return decay_functions == constants.WEIBULL_DECAY
+  return any(
+      decay_function == constants.WEIBULL_DECAY
+      for decay_function in decay_functions
+  )
+
+
 def compute_decay_weights(
     alpha: backend.Tensor,
     l_range: backend.Tensor,
     window_size: int,
     decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
     normalize: bool = True,
+    weibull_shape: backend.Tensor | None = None,
+    weibull_scale: backend.Tensor | None = None,
 ) -> backend.Tensor:
-  """Computes decay weights using geometric and/or binomial decay.
+  """Computes decay weights using geometric, binomial and/or Weibull decay.
 
   This function always broadcasts the lag dimension (`l_range`) to the
   trailing axis of the output tensor.
 
   Args:
     alpha: The parameter for the adstock decay function.
-    l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
-      0]`.
+    l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ..., 0]`.
     window_size: The number of time periods that go into the adstock weighted
       average for each output time period.
     decay_functions: String or sequence of strings indicating the decay
-      function(s) to use for the Adstock calculation. Allowed values
-      are 'geometric' and 'binomial'.
+      function(s) to use for the Adstock calculation. Allowed values are
+      'geometric', 'binomial' and 'weibull'.
     normalize: A boolean indicating whether to normalize the weights. Default:
       `True`.
+    weibull_shape: The shape parameter for Weibull decay, with the same channel
+      dimension as `alpha`. Required if any channel uses 'weibull' decay,
+      ignored otherwise.
+    weibull_scale: The scale parameter for Weibull decay, with the same channel
+      dimension as `alpha`. Required if any channel uses 'weibull' decay,
+      ignored otherwise.
 
   Returns:
     A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
@@ -129,39 +154,79 @@ def compute_decay_weights(
   Raises:
     ValueError: If the shape of `decay_functions` is not broadcastable to
     the shape of `alpha`.
-
   """
 
   if isinstance(decay_functions, str):
     # Same decay function for all channels
     return _compute_single_decay_function_weights(
-        alpha, l_range, window_size, decay_functions, normalize,
+        alpha,
+        l_range,
+        window_size,
+        decay_functions,
+        normalize,
+        weibull_shape=weibull_shape,
+        weibull_scale=weibull_scale,
     )
 
-  binomial_weights = _compute_single_decay_function_weights(
-      alpha, l_range, window_size, constants.BINOMIAL_DECAY, normalize,
-  )
-  geometric_weights = _compute_single_decay_function_weights(
-      alpha, l_range, window_size, constants.GEOMETRIC_DECAY, normalize,
-  )
-
-  is_binomial = [s == constants.BINOMIAL_DECAY for s in decay_functions]
-  binomial_decay_mask = backend.reshape(
-      backend.to_tensor(is_binomial, dtype=backend.bool_),  # pyrefly: ignore[bad-argument-type]
-      (-1, 1),
-  )
-
-  try:
-    # pytype: disable=bad-return-type
-    return backend.where(
-        binomial_decay_mask, binomial_weights, geometric_weights
-    )
-    # pytype: enable=bad-return-type
-  except (backend.errors.InvalidArgumentError, ValueError) as e:
+  n_channels = alpha.shape[-1] if alpha.shape else None
+  if n_channels is not None and n_channels != len(decay_functions):
     raise ValueError(
         f'The shape of `alpha` ({alpha.shape}) is incompatible with the length'
         f' of `decay_functions` ({len(decay_functions)})'
-    ) from e
+    )
+
+  distinct_decay_functions = set(decay_functions)
+  if len(distinct_decay_functions) == 1:
+    # All channels share the same decay function, so the per-channel dispatch
+    # below can be skipped.
+    return _compute_single_decay_function_weights(
+        alpha,
+        l_range,
+        window_size,
+        next(iter(distinct_decay_functions)),
+        normalize,
+        weibull_shape=weibull_shape,
+        weibull_scale=weibull_scale,
+    )
+
+  # Each channel is evaluated with its own decay function rather than
+  # evaluating every decay function for every channel and masking the result.
+  # Masking would still evaluate the Weibull kernel for non-Weibull channels,
+  # whose `weibull_shape` and `weibull_scale` entries are unconstrained by the
+  # likelihood, and non-finite values would propagate through the mask
+  # gradients.
+  channel_weights = []
+  for channel_index, decay_function in enumerate(decay_functions):
+    if decay_function == constants.WEIBULL_DECAY:
+      weibull_shape_i = _get_channel_parameter(weibull_shape, channel_index)
+      weibull_scale_i = _get_channel_parameter(weibull_scale, channel_index)
+    else:
+      weibull_shape_i = None
+      weibull_scale_i = None
+    channel_weights.append(
+        _compute_single_decay_function_weights(
+            alpha[..., channel_index],
+            l_range,
+            window_size,
+            decay_function,
+            normalize,
+            weibull_shape=weibull_shape_i,
+            weibull_scale=weibull_scale_i,
+        )
+    )
+  return backend.stack(channel_weights, axis=-2)
+
+
+def _get_channel_parameter(
+    param: backend.Tensor | None, channel_index: int
+) -> backend.Tensor | None:
+  """Slices the channel dimension out of a per-channel parameter tensor."""
+  if param is None:
+    return None
+  if not param.shape:
+    # A scalar parameter applies to every channel.
+    return param
+  return param[..., channel_index]
 
 
 def _compute_single_decay_function_weights(
@@ -170,8 +235,10 @@ def _compute_single_decay_function_weights(
     window_size: int,
     decay_function: str,
     normalize: bool,
-    ) -> backend.Tensor:
-  """Computes decay weights using geometric decay.
+    weibull_shape: backend.Tensor | None = None,
+    weibull_scale: backend.Tensor | None = None,
+) -> backend.Tensor:
+  """Computes decay weights using a single decay function.
 
   This function always broadcasts the lag dimension (`l_range`) to the
   trailing axis of the output tensor.
@@ -183,8 +250,13 @@ def _compute_single_decay_function_weights(
       window_size: The number of time periods that go into the adstock weighted
         average for each output time period.
       decay_function: String indicating the decay function to use for the
-        Adstock calculation. Allowed values are 'geometric' and 'binomial'.
+        Adstock calculation. Allowed values are 'geometric', 'binomial' and
+        'weibull'.
       normalize: A boolean indicating whether to normalize the weights.
+      weibull_shape: The shape parameter for Weibull decay. Required if
+        `decay_function` is 'weibull', ignored otherwise.
+      weibull_scale: The scale parameter for Weibull decay. Required if
+        `decay_function` is 'weibull', ignored otherwise.
 
   Returns:
       A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
@@ -196,13 +268,54 @@ def _compute_single_decay_function_weights(
   elif decay_function == constants.BINOMIAL_DECAY:
     mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
     weights = (1 - l_range / window_size) ** mapped_alpha_binomial  # pyrefly: ignore[unsupported-operation]
+  elif decay_function == constants.WEIBULL_DECAY:
+    weights = _compute_weibull_weights(l_range, weibull_shape, weibull_scale)
   else:
     raise ValueError(f'Unsupported decay function: {decay_function}')
 
   if normalize:
-    normalization_factors = backend.reduce_sum(weights, axis=-1, keepdims=True)
-    return backend.divide(weights, normalization_factors)
+    normalization_factors = backend.reduce_sum(weights, axis=-1, keepdims=True)  # pyrefly: ignore[bad-argument-type]
+    return backend.divide(weights, normalization_factors)  # pyrefly: ignore[bad-argument-type]
   return weights
+
+
+def _compute_weibull_weights(
+    l_range: backend.Tensor,
+    weibull_shape: backend.Tensor | None,
+    weibull_scale: backend.Tensor | None,
+) -> backend.Tensor:
+  """Computes unnormalized Weibull adstock weights.
+
+  The weight of lag `l` is the probability mass that a Weibull distribution
+  with the given shape and scale assigns to the interval `[l, l+1)`, that is
+  `exp(-(l/scale)**shape) - exp(-((l+1)/scale)**shape)`. Unlike geometric and
+  binomial decay, this is not monotonically decreasing in the lag: `shape > 1`
+  places the peak effect at a positive lag, which is the behavior a delayed,
+  upper-funnel channel needs.
+
+  Args:
+    l_range: A 1D tensor representing the lag range.
+    weibull_shape: The shape parameter of the Weibull decay.
+    weibull_scale: The scale parameter of the Weibull decay.
+
+  Returns:
+    A tensor of unnormalized weights.
+
+  Raises:
+    ValueError: If `weibull_shape` or `weibull_scale` is `None`.
+  """
+  if weibull_shape is None or weibull_scale is None:
+    raise ValueError(
+        '`weibull_shape` and `weibull_scale` are required when the adstock'
+        " decay function is 'weibull'."
+    )
+  shape = backend.expand_dims(weibull_shape, -1)  # pyrefly: ignore[bad-argument-type]
+  scale = backend.expand_dims(weibull_scale, -1)  # pyrefly: ignore[bad-argument-type]
+  scaled_lag_start = l_range / scale  # pyrefly: ignore[unsupported-operation]
+  scaled_lag_end = (l_range + 1.0) / scale  # pyrefly: ignore[unsupported-operation]
+  return backend.exp(-(scaled_lag_start**shape)) - backend.exp(  # pyrefly: ignore[unsupported-operation]
+      -(scaled_lag_end**shape)
+  )
 
 
 def _validate_arguments(
@@ -240,6 +353,8 @@ def _adstock(
     max_lag: int,
     n_times_output: int,
     decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+    weibull_shape: backend.Tensor | None = None,
+    weibull_scale: backend.Tensor | None = None,
 ) -> backend.Tensor:
   """Computes the Adstock function."""
   _validate_arguments(
@@ -288,6 +403,8 @@ def _adstock(
       window_size=window_size,
       decay_functions=decay_functions,
       normalize=True,
+      weibull_shape=weibull_shape,
+      weibull_scale=weibull_scale,
   )
   return backend.adstock_process(
       media=media, weights=weights, n_times_output=n_times_output  # pyrefly: ignore[bad-argument-type]
@@ -346,6 +463,8 @@ class AdstockTransformer(AdstockHillTransformer):
       max_lag: int,
       n_times_output: int,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      weibull_shape: backend.Tensor | None = None,
+      weibull_scale: backend.Tensor | None = None,
   ):
     """Initializes this transformer based on Adstock function parameters.
 
@@ -363,13 +482,21 @@ class AdstockTransformer(AdstockHillTransformer):
         example, `media[..., -n_times_output:, :]` represents the media
         execution of the output weeks.
       decay_functions: String or list of strings indicating the decay
-        function(s) to use for the Adstock calculation for each channel.
-        Default is geometric decay for all channels.
+        function(s) to use for the Adstock calculation for each channel. Default
+        is geometric decay for all channels.
+      weibull_shape: Tensor of Weibull shape parameters with dimensions `[...,
+        n_media_channels]`. Required if any channel uses 'weibull' decay,
+        ignored otherwise.
+      weibull_scale: Tensor of Weibull scale parameters with dimensions `[...,
+        n_media_channels]`. Required if any channel uses 'weibull' decay,
+        ignored otherwise.
     """
     self._alpha = alpha
     self._max_lag = max_lag
     self._n_times_output = n_times_output
     self._decay_functions = decay_functions
+    self._weibull_shape = weibull_shape
+    self._weibull_scale = weibull_scale
 
   def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
@@ -399,6 +526,8 @@ class AdstockTransformer(AdstockHillTransformer):
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
         decay_functions=self._decay_functions,
+        weibull_shape=self._weibull_shape,
+        weibull_scale=self._weibull_scale,
     )
 
 

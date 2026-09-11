@@ -210,12 +210,17 @@ class ModelSpec:
       variables are scaled by population. Default: `None`.
     adstock_decay_spec: A string or mapping specifying the adstock decay
       function for each media, RF, organic media and organic RF channel. If a
-      string, must be either `'geometric'` or `'binomial'`, specifying that
-      decay function for all channels. If a mapping, keys should be channel
-      names and values should be `'geometric'` or `'binomial'`, with each
-      key-value pair denoting the adstock decay function to use for that
-      channel. Channels that are not specified in the mapping default to using
-      'geometric'. Default: `'geometric'`.
+      string, must be one of `'geometric'`, `'binomial'` or `'weibull'`,
+      specifying that decay function for all channels. If a mapping, keys should
+      be channel names and values should be `'geometric'`, `'binomial'` or
+      `'weibull'`, with each key-value pair denoting the adstock decay function
+      to use for that channel. Channels that are not specified in the mapping
+      default to using 'geometric'. The `'weibull'` decay function is
+      parameterized by per-channel `weibull_shape` and `weibull_scale`
+      parameters instead of `alpha`, and unlike the other decay functions it can
+      place its peak weight at a lag greater than zero (when `weibull_shape >
+      1`), which is useful for upper-funnel channels with delayed effects.
+      Default: `'geometric'`.
     saturation_spec: A string or mapping specifying the saturation function for
       each media, RF, organic media and organic RF channel. If a string, must be
       either `'hill'` or `'none'`, specifying that saturation function for all

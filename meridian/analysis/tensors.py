@@ -515,6 +515,14 @@ class DistributionTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inh
   alpha_rf: Union[backend.Tensor, None] = None
   alpha_om: Union[backend.Tensor, None] = None
   alpha_orf: Union[backend.Tensor, None] = None
+  weibull_shape_m: Union[backend.Tensor, None] = None
+  weibull_shape_rf: Union[backend.Tensor, None] = None
+  weibull_shape_om: Union[backend.Tensor, None] = None
+  weibull_shape_orf: Union[backend.Tensor, None] = None
+  weibull_scale_m: Union[backend.Tensor, None] = None
+  weibull_scale_rf: Union[backend.Tensor, None] = None
+  weibull_scale_om: Union[backend.Tensor, None] = None
+  weibull_scale_orf: Union[backend.Tensor, None] = None
   ec_m: Union[backend.Tensor, None] = None
   ec_rf: Union[backend.Tensor, None] = None
   ec_om: Union[backend.Tensor, None] = None
