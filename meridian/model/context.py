@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 import dataclasses
+import datetime
 import functools
-from typing import Any
+from typing import Any, cast
 import warnings
 
 from meridian import backend
@@ -59,6 +60,263 @@ class ChannelParameters:
 
 def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
   return decay_spec[index] if not isinstance(decay_spec, str) else decay_spec
+
+
+def _nearest_coordinates_hint(
+    target: datetime.date, dates: Sequence[datetime.date]
+) -> str:
+  """Describes the time coordinates bracketing `target`, for error messages."""
+  earlier = [date for date in dates if date < target]
+  later = [date for date in dates if date > target]
+  nearest = [str(d) for d in earlier[-1:] + later[:1]]
+  if not nearest:
+    return ""
+  return f" The nearest are {' and '.join(nearest)}."
+
+
+def _compile_date_range_mask(
+    date_ranges: Sequence[spec.DateRange],
+    dates: Sequence[datetime.date],
+    *,
+    spec_name: str,
+) -> np.ndarray:
+  """Compiles a sequence of `DateRange`s into a boolean mask over `dates`.
+
+  Each `DateRange` is the closed interval `[start_date, end_date]`, matching
+  the semantics documented on `spec.DateRange`: both bounds are inclusive. An
+  omitted bound leaves that side open, so `DateRange()` selects every date. The
+  union of all the given ranges is taken.
+
+  Note: Every bound that is present must be one of `dates`.
+
+  Args:
+    date_ranges: The date ranges to compile.
+    dates: The date coordinates to compile against, in order.
+    spec_name: The `ModelSpec` attribute being compiled, used in error messages.
+
+  Returns:
+    A boolean array of shape `(len(dates),)`, `True` wherever the date falls
+    inside at least one of `date_ranges`.
+
+  Raises:
+    ValueError: If a bound is not one of `dates`.
+  """
+  known_dates = set(dates)
+  mask = np.zeros(len(dates), dtype=bool)
+  for date_range in date_ranges:
+    # `DateRange.__post_init__` already normalizes these, but the declared
+    # attribute type stays polymorphic (`Date | None`), so normalize again to
+    # compare `date` against `date` rather than against `str`.
+    start = (
+        tc.normalize_date(date_range.start_date)
+        if date_range.start_date is not None
+        else None
+    )
+    end = (
+        tc.normalize_date(date_range.end_date)
+        if date_range.end_date is not None
+        else None
+    )
+    for bound_name, bound in (("start_date", start), ("end_date", end)):
+      if bound is not None and bound not in known_dates:
+        raise ValueError(
+            f"`{spec_name}` has a `DateRange` whose `{bound_name}` ({bound}) is"
+            " not one of the input data's time coordinates. Date range bounds"
+            " must name an exact time coordinate."
+            + _nearest_coordinates_hint(bound, dates)
+        )
+    mask |= np.array(
+        [
+            (start is None or date >= start) and (end is None or date <= end)
+            for date in dates
+        ],
+        dtype=bool,
+    )
+  return mask
+
+
+def _resolve_name_indices(
+    names: Sequence[str],
+    universe: Sequence[str],
+    *,
+    spec_name: str,
+    dim_name: str,
+) -> list[int]:
+  """Resolves coordinate names to their positional indices.
+
+  Args:
+    names: The names to resolve.
+    universe: The ordered coordinate values to resolve against.
+    spec_name: The `ModelSpec` attribute being compiled, used in error messages.
+    dim_name: The input data dimension being resolved against, used in error
+      messages.
+
+  Returns:
+    The index of each name in `universe`, in the order given.
+
+  Raises:
+    ValueError: If any name is absent from `universe`.
+  """
+  index_of = {name: index for index, name in enumerate(universe)}
+  unknown = [name for name in names if name not in index_of]
+  if unknown:
+    raise ValueError(
+        f"`{spec_name}` refers to {dim_name} that are not in the input data:"
+        f" {sorted(unknown)}. Available {dim_name}: {sorted(universe)}."
+    )
+  return [index_of[name] for name in names]
+
+
+def _compile_name_mask(
+    names: Sequence[str],
+    universe: Sequence[str],
+    *,
+    spec_name: str,
+    dim_name: str,
+) -> np.ndarray:
+  """Compiles a selection of coordinate names into a boolean mask.
+
+  Args:
+    names: The selected names.
+    universe: The ordered coordinate values to compile against.
+    spec_name: The `ModelSpec` attribute being compiled, used in error messages.
+    dim_name: The input data dimension being resolved against, used in error
+      messages.
+
+  Returns:
+    A boolean array of shape `(len(universe),)`, `True` at the selected names.
+
+  Raises:
+    ValueError: If any name is absent from `universe`.
+  """
+  mask = np.zeros(len(universe), dtype=bool)
+  mask[
+      _resolve_name_indices(
+          names, universe, spec_name=spec_name, dim_name=dim_name
+      )
+  ] = True
+  return mask
+
+
+def _compile_calibration_spec(
+    calibration: spec.CalibrationSpec,
+    dates: Sequence[datetime.date],
+    channels: Sequence[str],
+    *,
+    spec_name: str,
+    dim_name: str,
+) -> np.ndarray:
+  """Compiles a `CalibrationSpec` into a boolean calibration period array.
+
+  Args:
+    calibration: The declarative calibration specification.
+    dates: The media time coordinates to compile against, in order.
+    channels: The channel coordinates to compile against, in order.
+    spec_name: The `ModelSpec` attribute being compiled, used in error messages.
+    dim_name: The channel dimension being resolved against, used in error
+      messages.
+
+  Returns:
+    A boolean array of shape `(len(dates), len(channels))`.
+
+  Raises:
+    ValueError: If a channel name is absent from `channels`, or a date range
+      bound is not one of `dates`.
+  """
+  entries = calibration.spec
+  n_channels = len(channels)
+
+  # `CalibrationSpec.__post_init__` guarantees the sequence is homogeneous and
+  # non-empty, so the first element determines the scope of the whole spec.
+  # The type checker cannot carry that guarantee across the sequence, hence the
+  # casts.
+  if isinstance(entries[0], spec.DateRange):
+    global_mask = _compile_date_range_mask(
+        cast(Sequence[spec.DateRange], entries), dates, spec_name=spec_name
+    )
+    return np.tile(global_mask[:, np.newaxis], (1, n_channels))
+
+  # Per-channel scope. A channel that no entry mentions is left *unrestricted*
+  # (all `True`), matching the documented meaning of an unset
+  # `roi_calibration_period`: "If `None`, all times are used." Defaulting an
+  # unmentioned channel to all `False` would instead zero out its aggregated
+  # spend, making the denominator of its ROI prior zero.
+  compiled = np.zeros((len(dates), n_channels), dtype=bool)
+  is_mentioned = np.zeros(n_channels, dtype=bool)
+  for entry in cast(Sequence[spec.ChannelCalibrationSpec], entries):
+    mask = _compile_date_range_mask(
+        entry.date_ranges, dates, spec_name=spec_name
+    )
+    for index in _resolve_name_indices(
+        entry.channels, channels, spec_name=spec_name, dim_name=dim_name
+    ):
+      compiled[:, index] |= mask
+      is_mentioned[index] = True
+  compiled[:, ~is_mentioned] = True
+  return compiled
+
+
+def _compile_geo_holdout_specs(
+    geo_specs: Sequence[spec.GeoHoldoutSpec],
+    dates: Sequence[datetime.date],
+    geos: Sequence[str],
+) -> np.ndarray:
+  """Compiles per-geo holdout specs into a boolean holdout mask.
+
+  Unlike calibration, a geo that no entry mentions is simply not held out, so
+  it compiles to all `False`.
+
+  Args:
+    geo_specs: The per-geo holdout specifications.
+    dates: The time coordinates to compile against, in order.
+    geos: The geo coordinates to compile against, in order.
+
+  Returns:
+    A boolean array of shape `(len(geos), len(dates))`.
+
+  Raises:
+    ValueError: If a geo name is absent from `geos`, or a date range bound is
+      not one of `dates`.
+  """
+  compiled = np.zeros((len(geos), len(dates)), dtype=bool)
+  for geo_spec in geo_specs:
+    mask = _compile_date_range_mask(
+        geo_spec.date_ranges, dates, spec_name="holdout"
+    )
+    for index in _resolve_name_indices(
+        geo_spec.geos, geos, spec_name="holdout", dim_name="geos"
+    ):
+      compiled[index, :] |= mask
+  return compiled
+
+
+def _draw_random_holdout(
+    random_spec: spec.RandomHoldoutSpec,
+    n_geos: int,
+    n_times: int,
+) -> np.ndarray:
+  """Draws a random holdout mask, stratified by geo.
+
+  Each geo independently holds out exactly `round(ratio * n_times)` time
+  periods, sampled without replacement. Stratifying by geo -- rather than
+  drawing over the flattened `n_geos * n_times` cell space -- guarantees that
+  every geo contributes both training and test rows.
+
+  Args:
+    random_spec: The random holdout specification.
+    n_geos: The number of geos.
+    n_times: The number of time periods.
+
+  Returns:
+    A boolean array of shape `(n_geos, n_times)`.
+  """
+  rng = np.random.default_rng(random_spec.seed)
+  n_holdout = min(int(round(random_spec.ratio * n_times)), n_times)
+  mask = np.zeros((n_geos, n_times), dtype=bool)
+  if n_holdout > 0:
+    for geo_index in range(n_geos):
+      mask[geo_index, rng.choice(n_times, size=n_holdout, replace=False)] = True
+  return mask
 
 
 @dataclasses.dataclass(frozen=True)
@@ -110,6 +368,11 @@ class ModelContext:
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
 
+  # TODO: Deduplicate with `_validate_model_spec_shapes`. Both
+  # methods run from `__init__` and validate the same legacy `ModelSpec`
+  # arrays (`roi_calibration_period`, `rf_roi_calibration_period`,
+  # `holdout_id`, `control_population_scaling_id`) against the same shapes,
+  # with near-identical error messages.
   def _validate_data_dependent_model_spec(self):
     """Validates that the data dependent model specs have correct shapes."""
 
@@ -183,6 +446,7 @@ class ModelContext:
           f" ({self.n_non_media_channels},)`."
       )
 
+  # TODO: Deduplicate with `_validate_data_dependent_model_spec`.
   def _validate_model_spec_shapes(self):
     """Validate shapes of model_spec attributes."""
     if self._model_spec.roi_calibration_period is not None:
@@ -695,6 +959,238 @@ class ModelContext:
       return None
     tensor = backend.to_tensor(self._model_spec.holdout_id, dtype=backend.bool_)
     return tensor[backend.newaxis, ...] if self.is_national else tensor
+
+  # --------------------------------------------------------------------------
+  # Compiled model spec properties.
+  #
+  # These resolve `ModelSpec`'s declarative attributes against this context's
+  # `InputData` coordinates, producing the positional boolean arrays the model
+  # engine consumes. They are the single place where a channel name becomes a
+  # column index and a date range becomes a row mask.
+  #
+  # Precedence is *legacy first*: when both a declarative attribute and its
+  # deprecated array counterpart are set, the deprecated array wins. This
+  # matches the contract `ModelSpec.__post_init__` currently advertises in its
+  # conflict warning ("<legacy> takes precedence for backward compatibility").
+  # --------------------------------------------------------------------------
+
+  def _coordinate_names(self, coordinate: Any) -> list[str]:
+    """Returns an input data coordinate's values as a list of strings."""
+    if coordinate is None:
+      return []
+    return [str(value) for value in coordinate.values]
+
+  @functools.cached_property
+  def compiled_roi_calibration_period(self) -> np.ndarray | None:
+    """The effective ROI calibration period for media channels.
+
+    Resolved from the declarative `ModelSpec.roi_calibration` against the input
+    data's media time and media channel coordinates, or taken as-is from the
+    deprecated `ModelSpec.roi_calibration_period`.
+
+    Returns:
+      A boolean array of shape `(n_media_times, n_media_channels)`, or `None`
+      if neither attribute is set.
+
+    Raises:
+      ValueError: If the spec names a media channel not in the input data, or
+        a date range bound that is not a time coordinate.
+    """
+    if self._model_spec.roi_calibration_period is not None:
+      return self._model_spec.roi_calibration_period
+    if self._model_spec.roi_calibration is None:
+      return None
+    return _compile_calibration_spec(
+        self._model_spec.roi_calibration,
+        self._input_data.media_time_coordinates.all_dates,
+        self._coordinate_names(self._input_data.media_channel),
+        spec_name="roi_calibration",
+        dim_name="media channels",
+    )
+
+  @functools.cached_property
+  def compiled_rf_roi_calibration_period(self) -> np.ndarray | None:
+    """The effective ROI calibration period for reach & frequency channels.
+
+    Resolved from the declarative `ModelSpec.rf_roi_calibration` against the
+    input data's media time and RF channel coordinates, or taken as-is from the
+    deprecated `ModelSpec.rf_roi_calibration_period`.
+
+    Returns:
+      A boolean array of shape `(n_media_times, n_rf_channels)`, or `None` if
+      neither attribute is set.
+
+    Raises:
+      ValueError: If the spec names an RF channel not in the input data, or a
+        date range bound that is not a time coordinate.
+    """
+    if self._model_spec.rf_roi_calibration_period is not None:
+      return self._model_spec.rf_roi_calibration_period
+    if self._model_spec.rf_roi_calibration is None:
+      return None
+    return _compile_calibration_spec(
+        self._model_spec.rf_roi_calibration,
+        self._input_data.media_time_coordinates.all_dates,
+        self._coordinate_names(self._input_data.rf_channel),
+        spec_name="rf_roi_calibration",
+        dim_name="RF channels",
+    )
+
+  @functools.cached_property
+  def compiled_holdout_id(self) -> np.ndarray | None:
+    """The effective holdout mask.
+
+    Resolved from the declarative `ModelSpec.holdout` against the input data's
+    time and geo coordinates, or taken as-is from the deprecated
+    `ModelSpec.holdout_id`.
+
+    For a declarative holdout, a `resolved` draw always wins and is never
+    re-drawn; see `spec.RandomHoldoutSpec` for why a seed alone cannot
+    reproduce a draw. Only when a `RandomHoldoutSpec` carries no `resolved`
+    draw is one made here, once, and memoized for the lifetime of this context.
+
+    Returns:
+      A boolean array of shape `(n_times,)` for a national model or
+      `(n_geos, n_times)` otherwise -- the same convention as the deprecated
+      `ModelSpec.holdout_id` -- or `None` if neither attribute is set.
+
+    Raises:
+      ValueError: If the spec names a geo not in the input data, or a date
+        range bound that is not a time coordinate.
+    """
+    if self._model_spec.holdout_id is not None:
+      return self._model_spec.holdout_id
+    holdout = self._model_spec.holdout
+    if holdout is None:
+      return None
+
+    dates = self._input_data.time_coordinates.all_dates
+    geos = self._coordinate_names(self._input_data.geo)
+
+    if holdout.resolved is not None:
+      compiled = _compile_geo_holdout_specs(holdout.resolved, dates, geos)
+    elif isinstance(holdout.spec, spec.RandomHoldoutSpec):
+      compiled = _draw_random_holdout(holdout.spec, len(geos), len(dates))
+    elif isinstance(holdout.spec[0], spec.DateRange):
+      # A global holdout applies the same date mask to every geo.
+      global_mask = _compile_date_range_mask(
+          cast(Sequence[spec.DateRange], holdout.spec),
+          dates,
+          spec_name="holdout",
+      )
+      compiled = np.tile(global_mask[np.newaxis, :], (len(geos), 1))
+    else:
+      compiled = _compile_geo_holdout_specs(
+          cast(Sequence[spec.GeoHoldoutSpec], holdout.spec), dates, geos
+      )
+
+    # National models carry a 1-D holdout, matching the legacy convention that
+    # `_validate_model_spec_shapes` enforces.
+    return compiled[0] if self.is_national else compiled
+
+  @functools.cached_property
+  def compiled_control_population_scaling_id(self) -> np.ndarray | None:
+    """The effective population-scaling selection for control variables.
+
+    Resolved from the declarative `ModelSpec.population_scaled_controls`
+    against the input data's control variable coordinates, or taken as-is from
+    the deprecated `ModelSpec.control_population_scaling_id`.
+
+    Returns:
+      A boolean array of shape `(n_controls,)`, or `None` if neither attribute
+      is set.
+
+    Raises:
+      ValueError: If the spec names a control variable not in the input data.
+    """
+    if self._model_spec.control_population_scaling_id is not None:
+      return self._model_spec.control_population_scaling_id
+    if self._model_spec.population_scaled_controls is None:
+      return None
+    return _compile_name_mask(
+        self._model_spec.population_scaled_controls,
+        self._coordinate_names(self._input_data.control_variable),
+        spec_name="population_scaled_controls",
+        dim_name="control variables",
+    )
+
+  @functools.cached_property
+  def compiled_non_media_population_scaling_id(self) -> np.ndarray | None:
+    """The effective population-scaling selection for non-media channels.
+
+    Resolved from the declarative
+    `ModelSpec.population_scaled_non_media_channels` against the input data's
+    non-media channel coordinates, or taken as-is from the deprecated
+    `ModelSpec.non_media_population_scaling_id`.
+
+    Returns:
+      A boolean array of shape `(n_non_media_channels,)`, or `None` if neither
+      attribute is set.
+
+    Raises:
+      ValueError: If the spec names a non-media channel not in the input data.
+    """
+    if self._model_spec.non_media_population_scaling_id is not None:
+      return self._model_spec.non_media_population_scaling_id
+    if self._model_spec.population_scaled_non_media_channels is None:
+      return None
+    return _compile_name_mask(
+        self._model_spec.population_scaled_non_media_channels,
+        self._coordinate_names(self._input_data.non_media_channel),
+        spec_name="population_scaled_non_media_channels",
+        dim_name="non-media channels",
+    )
+
+  def resolve_non_media_baseline_values(
+      self,
+      values: Mapping[str, float | str] | Sequence[float | str] | None,
+  ) -> list[float | str] | None:
+    """Resolves non-media baseline values into positional channel order.
+
+    A mapping only needs to name the channels whose baseline differs from the
+    default; any channel it omits falls back to `'min'`.
+
+    Args:
+      values: A mapping from non-media channel name to baseline value, a
+        sequence already in channel order, or `None`.
+
+    Returns:
+      A list of length `n_non_media_channels` in channel order, or `None` if
+      `values` is `None`.
+
+    Raises:
+      ValueError: If a mapping key is not a known non-media channel.
+    """
+    if values is None:
+      return None
+    if not isinstance(values, Mapping):
+      return list(values)
+    channels = self._coordinate_names(self._input_data.non_media_channel)
+    _resolve_name_indices(
+        list(values.keys()),
+        channels,
+        spec_name="non_media_baseline_values",
+        dim_name="non-media channels",
+    )
+    return [
+        values.get(channel, constants.NON_MEDIA_BASELINE_MIN)
+        for channel in channels
+    ]
+
+  @functools.cached_property
+  def compiled_non_media_baseline_values(self) -> list[float | str] | None:
+    """`ModelSpec.non_media_baseline_values`, in positional channel order.
+
+    Returns:
+      A list of length `n_non_media_channels`, or `None` if the attribute is
+      unset.
+
+    Raises:
+      ValueError: If the attribute is a mapping naming an unknown channel.
+    """
+    return self.resolve_non_media_baseline_values(
+        self._model_spec.non_media_baseline_values
+    )
 
   def _warn_setting_ignored_priors(self):
     """Raises a warning if ignored priors are set."""
