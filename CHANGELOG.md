@@ -24,6 +24,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 ## [Unreleased]
 
 *   Add `get_selected_dates_str` to TimeCoordinates.
+*   Update `mmm-proto-schema` dependency to >= 1.4.0.
 
 ## [2.0.0] - 2026-09-02
 

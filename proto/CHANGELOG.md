@@ -23,6 +23,27 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-11
+
+*   Add `CalibrationConfig` and `ChannelDateRangeCalibration` protos, together
+    with the `roi_calibration_config` and `rf_roi_calibration_config` fields in
+    `Hyperparameters`, expressing ROI calibration windows declaratively as date
+    intervals over named channels.
+*   Add `HoldoutConfig` and `GeoDateRangeHoldout` protos, together with the
+    `holdout_config` field in `Hyperparameters`, expressing holdouts
+    declaratively as global date intervals, geo x date-interval windows, or a
+    random draw. `HoldoutConfig.resolved` records the materialized draw for a
+    random holdout, which a seed alone cannot reproduce across computational
+    backends or library versions.
+*   Add `population_scaled_controls` and `population_scaled_non_media_channels`
+    to `Hyperparameters`, selecting population-scaled variables by name.
+*   Add `non_media_baseline_values_map` to `Hyperparameters`, decoupling
+    non-media baseline configuration from channel ordering.
+*   Deprecate the raw tensor and positional `Hyperparameters` fields superseded
+    by the above: `roi_calibration_period`, `rf_roi_calibration_period`,
+    `holdout_id`, `holdout_ratio`, `control_population_scaling_id`,
+    `non_media_population_scaling_id`, and `non_media_baseline_values`.
+
 ## [1.3.1] - 2026-09-01
 
 *   Update EDA outcome severity documentation in README_internal.md.
@@ -80,4 +101,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.2.2]: https://github.com/google/meridian/releases/tag/proto-v1.2.2
 [1.3.0]: https://github.com/google/meridian/releases/tag/proto-v1.3.0
 [1.3.1]: https://github.com/google/meridian/releases/tag/proto-v1.3.1
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.3.1...HEAD
+[1.4.0]: https://github.com/google/meridian/releases/tag/proto-v1.4.0
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.4.0...HEAD
