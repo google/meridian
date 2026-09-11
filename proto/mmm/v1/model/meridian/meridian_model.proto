@@ -16,6 +16,7 @@ edition = "2023";
 
 package mmm.v1.model.meridian;
 
+import "mmm/v1/common/date_interval.proto";
 import "mmm/v1/model/meridian/eda/eda_spec.proto";
 import "mmm/v1/model/meridian/review/results.proto";
 import "tensorflow/core/framework/tensor.proto";
@@ -377,6 +378,148 @@ message KnotLocations {
   repeated int32 locations = 1;
 }
 
+// Specifies ROI calibration date intervals for a subset of channels.
+//
+// In Marketing Mix Modeling, ROI calibration incorporates experimental ground
+// truth (e.g. lift test results) into the model's Bayesian prior. This message
+// maps specific treatment channels to the non-contiguous date intervals during
+// which experiments occurred.
+//
+message ChannelDateRangeCalibration {
+  // Channel names where `date_intervals` apply for ROI calibration.
+  // These names must match the coordinate labels in `InputData.media_channel`
+  // (for paid media) or `InputData.rf_channel` (for reach and frequency).
+  repeated string channels = 1;
+
+  // Non-contiguous date intervals where ROI calibration is applied for the
+  // specified channels. Each interval contains an inclusive `start_date` and an
+  // exclusive `end_date`. These date intervals act as declarative selectors
+  // over the discrete date coordinates present in the input data (e.g.
+  // `InputData.media_time`). Each interval must encompass one or more observed
+  // dates in the dataset to be valid.
+  repeated mmm.v1.common.DateInterval date_intervals = 2;
+}
+
+// Declarative ROI calibration specification supporting both global and
+// channel-specific date intervals.
+//
+message CalibrationConfig {
+  // Specifies global date intervals applied across all channels of this
+  // treatment type.
+  message GlobalCalibrationDateRanges {
+    // Non-contiguous date intervals applied across all channels.
+    // These date intervals act as declarative selectors over the discrete date
+    // coordinates present in the input data (e.g. `InputData.media_time`). Each
+    // interval must encompass one or more observed dates in the dataset to be
+    // valid.
+    repeated mmm.v1.common.DateInterval date_intervals = 1;
+  }
+
+  // Specifies channel-specific date intervals.
+  message ChannelDateRanges {
+    // Calibration date intervals for specific channels or channel groups.
+    repeated ChannelDateRangeCalibration channel_date_ranges = 1;
+  }
+
+  oneof spec {
+    // Global calibration date intervals across all channels.
+    GlobalCalibrationDateRanges global_date_ranges = 1;
+
+    // Channel-specific calibration windows.
+    ChannelDateRanges channel_date_ranges = 2;
+  }
+}
+
+// Specifies holdout date intervals for a subset of geos.
+//
+// Used in spatio-temporal holdout configurations to hold out specific date
+// intervals for specific geographic units.
+//
+message GeoDateRangeHoldout {
+  // Geo names where `date_intervals` apply for holdout.
+  // These names must match the coordinate labels in `InputData.geo`.
+  repeated string geos = 1;
+
+  // Non-contiguous date intervals where holdout applies for the specified geos.
+  // Each interval contains an inclusive `start_date` and an exclusive
+  // `end_date`. These date intervals act as declarative selectors over the
+  // discrete date coordinates present in the input data (e.g.
+  // `InputData.time`). Each interval must encompass one or more observed dates
+  // in the dataset to be valid.
+  repeated mmm.v1.common.DateInterval date_intervals = 2;
+}
+
+// Declarative holdout specification supporting temporal, spatial, and
+// spatio-temporal holdout windows, as well as randomized holdout sampling.
+//
+// This message is self-contained: `spec` declares the holdout *intent*, and
+// `resolved` records the materialized draw when that intent is
+// non-deterministic. Together they fully determine the holdout without
+// resorting to a raw, input-data-shaped tensor.
+//
+message HoldoutConfig {
+  // Specifies global temporal holdouts applied to all geos.
+  message GlobalHoldoutDateRanges {
+    // Non-contiguous date intervals held out across all geos.
+    // These date intervals act as declarative selectors over the discrete date
+    // coordinates present in the input data (e.g. `InputData.time`). Each
+    // interval must encompass one or more observed dates in the dataset to be
+    // valid.
+    repeated mmm.v1.common.DateInterval date_intervals = 1;
+  }
+
+  // Specifies spatio-temporal holdouts for specific geos.
+  message GeoDateRanges {
+    // Holdout date intervals for specific geos.
+    repeated GeoDateRangeHoldout geo_date_ranges = 1;
+  }
+
+  // Specifies randomized holdout sampling with an optional PRNG seed.
+  message RandomHoldout {
+    // Proportion of observations randomly selected for holdout evaluation
+    // (e.g. 0.2 for a 20% random holdout sample). Must be in the range
+    // (0.0, 1.0).
+    double ratio = 1;
+
+    // Pseudo-random number generator (PRNG) seed used to sample holdout
+    // observations deterministically. If unset, a deterministic default seed is
+    // used during model compilation.
+    //
+    // Note that a seed alone does NOT reproduce a draw: the drawn sample also
+    // depends on the computational backend (TensorFlow vs. JAX) and library
+    // version. The authoritative record of a draw is `resolved`.
+    int64 seed = 2 [features.field_presence = EXPLICIT];
+  }
+
+  // The declarative holdout intent.
+  oneof spec {
+    // Global temporal holdouts (applied to all geos).
+    GlobalHoldoutDateRanges global_date_ranges = 1;
+
+    // Spatio-temporal holdouts (geo x time windows).
+    GeoDateRanges geo_date_ranges = 2;
+
+    // Randomized holdout sampling, materialized into `resolved` at fit time.
+    RandomHoldout random_holdout = 3;
+  }
+
+  // The materialized result of a non-deterministic `spec`, expressed
+  // declaratively as geo x time windows.
+  //
+  // Populated ONLY when `spec` is `random_holdout`. A random draw cannot be
+  // reproduced from `ratio` and `seed` alone across computational backends or
+  // library versions, so the drawn sample is recorded explicitly here.
+  //
+  // For the deterministic variants (`global_date_ranges`, `geo_date_ranges`),
+  // `spec` reproduces the holdout exactly on every read, so this field is
+  // redundant and MUST be left unset.
+  //
+  // When set, this field is authoritative and MUST NOT be re-drawn on
+  // deserialization; `spec` is retained as provenance describing how the
+  // holdout was originally requested.
+  GeoDateRanges resolved = 4;
+}
+
 // Hyperparameters for the MMM model.
 message Hyperparameters {
   reserved 5;
@@ -448,13 +591,17 @@ message Hyperparameters {
   // This indicates the subset of `time` coordinates in the model for media ROI
   // calibration. If unset, all time coordinates are used for media ROI
   // calibration.
-  tensorflow.TensorProto roi_calibration_period = 9;
+  //
+  // Deprecated. Use `roi_calibration_config` instead.
+  tensorflow.TensorProto roi_calibration_period = 9 [deprecated = true];
 
   // A boolean tensor in the shape `(n_media_times, n_rf_channels)`.
   // This indicates the subset of `time` coordinates in the model for reach and
   // frequency ROI calibration. If unset, all time coordinates are used for R&F
   // ROI calibration.
-  tensorflow.TensorProto rf_roi_calibration_period = 10;
+  //
+  // Deprecated. Use `rf_roi_calibration_config` instead.
+  tensorflow.TensorProto rf_roi_calibration_period = 10 [deprecated = true];
 
   // A (single-value) integer or a list of integers, indicating the knots used
   // to estimate time effects.
@@ -490,32 +637,57 @@ message Hyperparameters {
     string baseline_geo_string = 8;
   }
 
+  // Holdout specification.
+  //
+  // `holdout_config` is the preferred, self-contained representation: it
+  // carries both the declarative holdout *intent* and, where that intent is
+  // non-deterministic, the *resolved* draw. The two legacy alternatives below
+  // are retained for reading existing payloads.
   oneof holdout_spec {
     // A boolean tensor in the shape `(n_geos, n_times)` for a geo-level model
     // or `(n_times,)` for a national model.
     // This indicates which observations are part of the holdout sample, which
     // are excluded from the training sample. For more details on the holdout
     // sample, see: `meridian.model.spec.ModelSpec`
-    tensorflow.TensorProto holdout_id = 11;
+    //
+    // Deprecated. This leaks a raw, input-data-shaped tensor into the schema.
+    // Use `holdout_config` instead, which expresses the same holdout
+    // declaratively in terms of geo names and date intervals.
+    tensorflow.TensorProto holdout_id = 11 [deprecated = true];
 
     // The ratio of holdout data to use for the goodness of fit check. Used as
     // inputs and this will be implemented in training module right before
     // feeding into Meridian.
-    // The holdout only applied to date as of Q1 2025.
-    double holdout_ratio = 16;
+    //
+    // Deprecated. Use `holdout_config.random_holdout` instead, which also
+    // records the resolved draw in `holdout_config.resolved`.
+    double holdout_ratio = 16 [deprecated = true];
+
+    // Declarative holdout specification defining temporal (all geos),
+    // spatio-temporal (geo-specific), or random holdout configurations.
+    //
+    // This is the preferred field. It is self-contained: for deterministic
+    // specifications it fully determines the holdout, and for random
+    // specifications it additionally records the resolved draw.
+    HoldoutConfig holdout_config = 32;
   }
 
   // A boolean tensor in the shape `(n_controls,)`.
   // This indicates the control variables for which the control value will be
   // scaled by population.
   // If unset, no control variables are scaled by population.
-  tensorflow.TensorProto control_population_scaling_id = 12;
+  //
+  // Deprecated. Use `population_scaled_controls` instead.
+  tensorflow.TensorProto control_population_scaling_id = 12 [deprecated = true];
 
   // A boolean tensor in the shape `(n_non_media_channels,)`.
   // This indicates the non-media treatments channels for which the value will
   // be scaled by population.
   // If unset, no non-media treatments channels are scaled by population.
-  tensorflow.TensorProto non_media_population_scaling_id = 14;
+  //
+  // Deprecated. Use `population_scaled_non_media_channels` instead.
+  tensorflow.TensorProto non_media_population_scaling_id = 14
+      [deprecated = true];
 
   // Specifies the adstock decay function for each media, RF, organic media and
   // organic RF channel. Default is 'geometric'.
@@ -549,7 +721,30 @@ message Hyperparameters {
   // If `None`, the minimum value is used as baseline for each non-media
   // treatments channel. This attribute is used as the default value for the
   // corresponding argument to `Analyzer` methods.
-  repeated NonMediaBaselineValue non_media_baseline_values = 25;
+  //
+  // Deprecated. Use `non_media_baseline_values_map` instead.
+  repeated NonMediaBaselineValue non_media_baseline_values = 25
+      [deprecated = true];
+
+  // Declarative ROI calibration specification for paid media channels.
+  CalibrationConfig roi_calibration_config = 30;
+
+  // Declarative ROI calibration specification for reach and frequency channels.
+  CalibrationConfig rf_roi_calibration_config = 31;
+
+  // Names of control variables selected for population scaling.
+  // If empty, no control variables are scaled by population.
+  repeated string population_scaled_controls = 33;
+
+  // Names of non-media treatment channels selected for population scaling.
+  // If empty, no non-media treatment channels are scaled by population.
+  repeated string population_scaled_non_media_channels = 34;
+
+  // Named baseline values for non-media treatment channels.
+  // Maps channel names to their respective baseline configuration (either a
+  // fixed float value or a baseline function like MIN or MAX). Channels not
+  // specified in the map default to using MIN.
+  map<string, NonMediaBaselineValue> non_media_baseline_values_map = 35;
 }
 
 // A named tensor parameter.
