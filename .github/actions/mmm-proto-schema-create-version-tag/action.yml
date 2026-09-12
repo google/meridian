@@ -1,0 +1,38 @@
+inputs:
+  new_version:
+    description: The new Meridian semantic version string to create a tag for.
+    required: true
+  tag_prefix:
+    description: The prefix to use for the git tag.
+    required: true
+permissions:
+  contents: write
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+    - name: Create and Push Tag
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const newTag = '${{ inputs.tag_prefix }}${{ inputs.new_version }}';
+          try {
+            await github.rest.git.createTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: newTag,
+              message: `Release ${newTag}`,
+              object: context.sha,
+              type: 'commit'
+            });
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${newTag}`,
+              sha: context.sha
+            });
+            console.log(`Created and pushed new tag: ${newTag}`);
+          } catch (error) {
+            console.error('Error creating tag:', error);
+            core.setFailed(`Failed to create tag: ${error.message}`);
+          }
