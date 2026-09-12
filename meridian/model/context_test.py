@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Collection, Mapping, Sequence
+import datetime
 import types
 from typing import Any
 from unittest import mock
@@ -2171,6 +2172,674 @@ class InferenceDataTest(
 
     expected = backend.to_tensor([[0.2]])
     test_utils.assert_allclose(tensor, expected)
+
+
+class CompiledModelSpecTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests for `ModelContext`'s compiled model spec properties."""
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def _context(
+      self,
+      data: input_data.InputData,
+      model_spec: spec.ModelSpec,
+  ) -> context.ModelContext:
+    return context.ModelContext(input_data=data, model_spec=model_spec)
+
+  # --- Invariants the compilation logic depends on ----------------------------
+
+  # `_compile_calibration_spec` and `compiled_holdout_id` decide how to
+  # interpret an entire sequence by inspecting only its first element. That is
+  # sound only because the spec dataclasses reject mixed-scope and empty
+  # sequences at construction. These tests pin those guarantees next to the
+  # code that relies on them, so relaxing the validation cannot quietly become
+  # a mis-compilation.
+  #
+  # Static typing already rejects a *literal* mixed list, so each case below
+  # builds the sequence as `list[Any]`. That is deliberate: it reproduces the
+  # dynamically-built sequence the runtime guard actually exists to catch.
+
+  def test_calibration_spec_rejects_mixed_scopes(self):
+    mixed: list[Any] = [
+        spec.DateRange("2021-01-25", "2021-02-01"),
+        spec.ChannelCalibrationSpec(
+            channels=["ch_1"],
+            date_ranges=[spec.DateRange("2021-01-25", "2021-02-01")],
+        ),
+    ]
+    with self.assertRaisesRegex(ValueError, "the two cannot be mixed"):
+      spec.CalibrationSpec(spec=mixed)
+
+  def test_holdout_spec_rejects_mixed_scopes(self):
+    mixed: list[Any] = [
+        spec.DateRange("2021-01-25", "2021-02-01"),
+        spec.GeoHoldoutSpec(
+            geos=["geo_0"],
+            date_ranges=[spec.DateRange("2021-01-25", "2021-02-01")],
+        ),
+    ]
+    with self.assertRaisesRegex(ValueError, "the two cannot be mixed"):
+      spec.HoldoutSpec(spec=mixed)
+
+  def test_calibration_spec_rejects_empty_sequence(self):
+    """An empty sequence would make the `entries[0]` scope probe raise."""
+    with self.assertRaisesRegex(ValueError, "cannot be empty"):
+      spec.CalibrationSpec(spec=[])
+
+  def test_holdout_spec_rejects_empty_sequence(self):
+    with self.assertRaisesRegex(ValueError, "cannot be empty"):
+      spec.HoldoutSpec(spec=[])
+
+  # --- Date range bound validation -------------------------------------------
+
+  # A `DateRange` bound must name an exact time coordinate. A bound landing
+  # between two coordinates has no well-defined period boundary, so it has no
+  # faithful half-open `DateInterval` representation.
+
+  def test_compiled_roi_calibration_rejects_start_date_off_coordinate(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    off_coordinate = dates[10] + datetime.timedelta(days=1)
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[spec.DateRange(off_coordinate, dates[20])]
+        ),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "`roi_calibration` has a `DateRange` whose `start_date`"
+        f" \\({off_coordinate}\\) is not one of the input data's time"
+        " coordinates",
+    ):
+      _ = self._context(data, model_spec).compiled_roi_calibration_period
+
+  def test_compiled_roi_calibration_rejects_end_date_off_coordinate(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    off_coordinate = dates[20] + datetime.timedelta(days=1)
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[spec.DateRange(dates[10], off_coordinate)]
+        ),
+    )
+    with self.assertRaisesRegex(ValueError, "`end_date`"):
+      _ = self._context(data, model_spec).compiled_roi_calibration_period
+
+  def test_off_coordinate_bound_error_names_the_bracketing_coordinates(self):
+    """The message points at the two coordinates the bad bound falls between."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    off_coordinate = dates[10] + datetime.timedelta(days=1)
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[spec.DateRange(off_coordinate, dates[20])]
+        ),
+    )
+    with self.assertRaisesRegex(
+        ValueError, f"nearest are {dates[10]} and {dates[11]}"
+    ):
+      _ = self._context(data, model_spec).compiled_roi_calibration_period
+
+  def test_compiled_holdout_rejects_off_coordinate_bound(self):
+    """The holdout path validates bounds too, not just calibration."""
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    off_coordinate = dates[10] + datetime.timedelta(days=1)
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=[spec.DateRange(off_coordinate, dates[20])]
+        )
+    )
+    with self.assertRaisesRegex(ValueError, "`holdout` has a `DateRange`"):
+      _ = self._context(data, model_spec).compiled_holdout_id
+
+  def test_compiled_per_geo_holdout_rejects_off_coordinate_bound(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    off_coordinate = dates[10] + datetime.timedelta(days=1)
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=[
+                spec.GeoHoldoutSpec(
+                    geos=["geo_0"],
+                    date_ranges=[spec.DateRange(off_coordinate, dates[20])],
+                )
+            ]
+        )
+    )
+    with self.assertRaisesRegex(ValueError, "`holdout` has a `DateRange`"):
+      _ = self._context(data, model_spec).compiled_holdout_id
+
+  def test_omitted_date_range_bounds_are_not_validated(self):
+    """An open bound is not a coordinate, and must stay legal."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(spec=[spec.DateRange()]),
+    )
+    compiled = self._context(data, model_spec).compiled_roi_calibration_period
+
+    assert compiled is not None
+    np.testing.assert_array_equal(
+        compiled, np.ones((len(dates), 3), dtype=bool)
+    )
+
+  # --- ROI calibration ------------------------------------------------------
+
+  def test_compiled_roi_calibration_period_unset_is_none(self):
+    model_context = self._context(
+        self.input_data_with_media_and_rf, spec.ModelSpec()
+    )
+    self.assertIsNone(model_context.compiled_roi_calibration_period)
+
+  def test_compiled_roi_calibration_period_passes_through_legacy_array(self):
+    data = self.input_data_with_media_and_rf
+    legacy = np.zeros((len(data.media_time), 3), dtype=bool)
+    legacy[5:10, 1] = True
+    model_context = self._context(
+        data, spec.ModelSpec(roi_calibration_period=legacy)
+    )
+    np.testing.assert_array_equal(
+        model_context.compiled_roi_calibration_period, legacy
+    )
+
+  def test_compiled_roi_calibration_period_prefers_legacy_over_declarative(
+      self,
+  ):
+    """The deprecated array wins, matching what `ModelSpec` warns it will do."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    legacy = np.zeros((len(dates), 3), dtype=bool)
+    legacy[0, 0] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          roi_calibration=spec.CalibrationSpec(
+              spec=[spec.DateRange(dates[10], dates[20])]
+          ),
+          roi_calibration_period=legacy,
+      )
+    model_context = self._context(data, model_spec)
+    np.testing.assert_array_equal(
+        model_context.compiled_roi_calibration_period, legacy
+    )
+
+  def test_compiled_roi_calibration_period_global_date_ranges(self):
+    """A global spec applies one date mask to every channel."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[spec.DateRange(dates[10], dates[20])]
+        ),
+    )
+    compiled = self._context(data, model_spec).compiled_roi_calibration_period
+
+    assert compiled is not None
+    self.assertEqual(compiled.shape, (len(dates), 3))
+    expected = np.zeros(len(dates), dtype=bool)
+    # `[start, end]`: both index 10 and index 20 are included.
+    expected[10:21] = True
+    for channel in range(3):
+      np.testing.assert_array_equal(compiled[:, channel], expected)
+
+  def test_compiled_roi_calibration_period_unions_multiple_date_ranges(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[
+                spec.DateRange(dates[10], dates[20]),
+                spec.DateRange(dates[30], dates[35]),
+            ]
+        ),
+    )
+    compiled = self._context(data, model_spec).compiled_roi_calibration_period
+
+    assert compiled is not None
+    expected = np.zeros(len(dates), dtype=bool)
+    expected[10:21] = True
+    expected[30:36] = True
+    np.testing.assert_array_equal(compiled[:, 0], expected)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="both_bounds_open", start=None, end=None),
+      dict(testcase_name="open_start", start=None, end=10),
+      dict(testcase_name="open_end", start=10, end=None),
+  )
+  def test_compiled_roi_calibration_period_open_bounds(
+      self, start: int | None, end: int | None
+  ):
+    """An omitted bound is resolved against the data, not left empty."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[
+                spec.DateRange(
+                    dates[start] if start is not None else None,
+                    dates[end] if end is not None else None,
+                )
+            ]
+        ),
+    )
+    compiled = self._context(data, model_spec).compiled_roi_calibration_period
+
+    assert compiled is not None
+    expected = np.zeros(len(dates), dtype=bool)
+    # `end` is inclusive, but Python slicing is not, hence the `+ 1`.
+    expected[slice(start, end + 1 if end is not None else None)] = True
+    np.testing.assert_array_equal(compiled[:, 0], expected)
+
+  def test_compiled_roi_calibration_period_per_channel(self):
+    """Channels the spec does not name are left unrestricted, not zeroed."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    assert data.media_channel is not None
+    channels = list(data.media_channel.values)
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[
+                spec.ChannelCalibrationSpec(
+                    channels=[channels[1]],
+                    date_ranges=[spec.DateRange(dates[10], dates[20])],
+                )
+            ]
+        ),
+    )
+    compiled = self._context(data, model_spec).compiled_roi_calibration_period
+
+    assert compiled is not None
+    expected_named = np.zeros(len(dates), dtype=bool)
+    expected_named[10:21] = True
+    np.testing.assert_array_equal(compiled[:, 1], expected_named)
+
+    # An all-`False` column here would zero the channel's aggregated spend and
+    # make its ROI prior denominator zero, so unnamed channels must be `True`.
+    unrestricted = np.ones(len(dates), dtype=bool)
+    np.testing.assert_array_equal(compiled[:, 0], unrestricted)
+    np.testing.assert_array_equal(compiled[:, 2], unrestricted)
+
+  def test_compiled_roi_calibration_period_unknown_channel_fails(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration=spec.CalibrationSpec(
+            spec=[
+                spec.ChannelCalibrationSpec(
+                    channels=["not_a_channel"],
+                    date_ranges=[spec.DateRange(dates[0], dates[5])],
+                )
+            ]
+        ),
+    )
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`roi_calibration` refers to media channels that are not in the input"
+        r" data: \['not_a_channel'\]",
+    ):
+      _ = model_context.compiled_roi_calibration_period
+
+  # --- RF ROI calibration ---------------------------------------------------
+
+  def test_compiled_rf_roi_calibration_period_global_date_ranges(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        rf_roi_calibration=spec.CalibrationSpec(
+            spec=[spec.DateRange(dates[10], dates[20])]
+        ),
+    )
+    compiled = self._context(
+        data, model_spec
+    ).compiled_rf_roi_calibration_period
+
+    assert compiled is not None
+    self.assertEqual(compiled.shape, (len(dates), 2))
+    expected = np.zeros(len(dates), dtype=bool)
+    expected[10:21] = True
+    np.testing.assert_array_equal(compiled[:, 0], expected)
+
+  def test_compiled_rf_roi_calibration_period_unknown_channel_fails(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        rf_roi_calibration=spec.CalibrationSpec(
+            spec=[
+                spec.ChannelCalibrationSpec(
+                    channels=["not_an_rf_channel"],
+                    date_ranges=[spec.DateRange(dates[0], dates[5])],
+                )
+            ]
+        ),
+    )
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`rf_roi_calibration` refers to RF channels that are not in the input"
+        r" data: \['not_an_rf_channel'\]",
+    ):
+      _ = model_context.compiled_rf_roi_calibration_period
+
+  # --- Holdout --------------------------------------------------------------
+
+  def test_compiled_holdout_id_unset_is_none(self):
+    model_context = self._context(
+        self.input_data_with_media_and_rf, spec.ModelSpec()
+    )
+    self.assertIsNone(model_context.compiled_holdout_id)
+
+  def test_compiled_holdout_id_passes_through_legacy_array(self):
+    data = self.input_data_with_media_and_rf
+    legacy = np.zeros((len(data.geo), len(data.time)), dtype=bool)
+    legacy[0, :5] = True
+    model_context = self._context(data, spec.ModelSpec(holdout_id=legacy))
+    np.testing.assert_array_equal(model_context.compiled_holdout_id, legacy)
+
+  def test_compiled_holdout_id_prefers_legacy_over_declarative(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    legacy = np.zeros((len(data.geo), len(dates)), dtype=bool)
+    legacy[0, :5] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])]),
+          holdout_id=legacy,
+      )
+    model_context = self._context(data, model_spec)
+    np.testing.assert_array_equal(model_context.compiled_holdout_id, legacy)
+
+  def test_compiled_holdout_id_global_date_ranges(self):
+    """A global holdout applies the same date mask to every geo."""
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    n_geos = len(data.geo)
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])])
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    self.assertEqual(compiled.shape, (n_geos, len(dates)))
+    expected_row = np.zeros(len(dates), dtype=bool)
+    expected_row[10:21] = True
+    for geo in range(n_geos):
+      np.testing.assert_array_equal(compiled[geo], expected_row)
+
+  def test_compiled_holdout_id_per_geo(self):
+    """Geos the spec does not name are simply not held out."""
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    geos = [str(geo) for geo in data.geo.values]
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=[
+                spec.GeoHoldoutSpec(
+                    geos=[geos[1]],
+                    date_ranges=[spec.DateRange(dates[10], dates[20])],
+                )
+            ]
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    expected = np.zeros((len(geos), len(dates)), dtype=bool)
+    expected[1, 10:21] = True
+    np.testing.assert_array_equal(compiled, expected)
+
+  def test_compiled_holdout_id_unknown_geo_fails(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=[
+                spec.GeoHoldoutSpec(
+                    geos=["not_a_geo"],
+                    date_ranges=[spec.DateRange(dates[0], dates[5])],
+                )
+            ]
+        )
+    )
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`holdout` refers to geos that are not in the input data:"
+        r" \['not_a_geo'\]",
+    ):
+      _ = model_context.compiled_holdout_id
+
+  def test_compiled_holdout_id_random_holds_out_exact_ratio_per_geo(self):
+    """The draw is stratified: every geo holds out the same exact count."""
+    data = self.input_data_with_media_and_rf
+    n_times = len(data.time)
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.2, seed=17)
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    self.assertEqual(compiled.shape, (len(data.geo), n_times))
+    expected_per_geo = round(0.2 * n_times)
+    np.testing.assert_array_equal(
+        compiled.sum(axis=1),
+        np.full(len(data.geo), expected_per_geo),
+    )
+    self.assertEqual(compiled.sum(), expected_per_geo * len(data.geo))
+
+  def test_compiled_holdout_id_random_draws_differ_across_geos(self):
+    """Stratification must not degenerate into the same draw for every geo."""
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.2, seed=17)
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    distinct_rows = {row.tobytes() for row in compiled}
+    self.assertLen(distinct_rows, len(data.geo))
+
+  def test_compiled_holdout_id_random_is_reproducible_for_a_seed(self):
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.3, seed=99)
+        )
+    )
+    first = self._context(data, model_spec).compiled_holdout_id
+    second = self._context(data, model_spec).compiled_holdout_id
+    np.testing.assert_array_equal(first, second)
+
+  def test_compiled_holdout_id_random_is_drawn_only_once(self):
+    """Without a seed the draw is random, so memoization must hold it fixed."""
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=spec.RandomHoldoutSpec(ratio=0.5))
+    )
+    model_context = self._context(data, model_spec)
+    np.testing.assert_array_equal(
+        model_context.compiled_holdout_id, model_context.compiled_holdout_id
+    )
+
+  def test_compiled_holdout_id_resolved_wins_over_random_spec(self):
+    """A materialized draw is authoritative and is never re-drawn."""
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    geos = [str(geo) for geo in data.geo.values]
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.5, seed=3),
+            resolved=[
+                spec.GeoHoldoutSpec(
+                    geos=[geos[0]],
+                    date_ranges=[spec.DateRange(dates[0], dates[5])],
+                )
+            ],
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    expected = np.zeros((len(geos), len(dates)), dtype=bool)
+    expected[0, 0:6] = True
+    np.testing.assert_array_equal(compiled, expected)
+    # A 0.5 draw would have held out roughly half the grid, not 6 cells.
+    self.assertEqual(compiled.sum(), 6)
+
+  def test_compiled_holdout_id_national_is_one_dimensional(self):
+    """National models keep the 1-D convention of the legacy attribute."""
+    data = self.national_input_data_media_and_rf
+    dates = data.time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])])
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    self.assertEqual(compiled.shape, (len(dates),))
+    expected = np.zeros(len(dates), dtype=bool)
+    expected[10:21] = True
+    np.testing.assert_array_equal(compiled, expected)
+
+  # --- Population scaling ---------------------------------------------------
+
+  def test_compiled_control_population_scaling_id_unset_is_none(self):
+    model_context = self._context(
+        self.input_data_with_media_and_rf, spec.ModelSpec()
+    )
+    self.assertIsNone(model_context.compiled_control_population_scaling_id)
+
+  def test_compiled_control_population_scaling_id_from_names(self):
+    data = self.input_data_with_media_and_rf
+    assert data.control_variable is not None
+    controls = [str(control) for control in data.control_variable.values]
+    model_spec = spec.ModelSpec(population_scaled_controls=[controls[1]])
+    compiled = self._context(
+        data, model_spec
+    ).compiled_control_population_scaling_id
+
+    expected = np.zeros(len(controls), dtype=bool)
+    expected[1] = True
+    np.testing.assert_array_equal(compiled, expected)
+
+  def test_compiled_control_population_scaling_id_prefers_legacy(self):
+    data = self.input_data_with_media_and_rf
+    assert data.control_variable is not None
+    controls = [str(control) for control in data.control_variable.values]
+    legacy = np.zeros(len(controls), dtype=bool)
+    legacy[0] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          population_scaled_controls=[controls[1]],
+          control_population_scaling_id=legacy,
+      )
+    compiled = self._context(
+        data, model_spec
+    ).compiled_control_population_scaling_id
+    np.testing.assert_array_equal(compiled, legacy)
+
+  def test_compiled_control_population_scaling_id_unknown_name_fails(self):
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(population_scaled_controls=["not_a_control"])
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`population_scaled_controls` refers to control variables that are not"
+        r" in the input data: \['not_a_control'\]",
+    ):
+      _ = model_context.compiled_control_population_scaling_id
+
+  def test_compiled_non_media_population_scaling_id_from_names(self):
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = [str(channel) for channel in data.non_media_channel.values]
+    model_spec = spec.ModelSpec(
+        population_scaled_non_media_channels=[channels[0]]
+    )
+    compiled = self._context(
+        data, model_spec
+    ).compiled_non_media_population_scaling_id
+
+    expected = np.zeros(len(channels), dtype=bool)
+    expected[0] = True
+    np.testing.assert_array_equal(compiled, expected)
+
+  def test_compiled_non_media_population_scaling_id_unknown_name_fails(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(
+        population_scaled_non_media_channels=["not_a_channel"]
+    )
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`population_scaled_non_media_channels` refers to non-media channels"
+        r" that are not in the input data: \['not_a_channel'\]",
+    ):
+      _ = model_context.compiled_non_media_population_scaling_id
+
+  # --- Non-media baseline values --------------------------------------------
+
+  def test_compiled_non_media_baseline_values_unset_is_none(self):
+    model_context = self._context(
+        self.input_data_non_media_and_organic, spec.ModelSpec()
+    )
+    self.assertIsNone(model_context.compiled_non_media_baseline_values)
+
+  def test_compiled_non_media_baseline_values_sequence_is_passed_through(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(non_media_baseline_values=["max", 1.5])
+    self.assertEqual(
+        self._context(data, model_spec).compiled_non_media_baseline_values,
+        ["max", 1.5],
+    )
+
+  def test_compiled_non_media_baseline_values_mapping_defaults_to_min(self):
+    """A mapping only names the channels that differ from the default."""
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = [str(channel) for channel in data.non_media_channel.values]
+    model_spec = spec.ModelSpec(non_media_baseline_values={channels[1]: "max"})
+    self.assertEqual(
+        self._context(data, model_spec).compiled_non_media_baseline_values,
+        [constants.NON_MEDIA_BASELINE_MIN, "max"],
+    )
+
+  def test_compiled_non_media_baseline_values_unknown_channel_fails(self):
+    data = self.input_data_non_media_and_organic
+    model_spec = spec.ModelSpec(
+        non_media_baseline_values={"not_a_channel": "max"}
+    )
+    model_context = self._context(data, model_spec)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`non_media_baseline_values` refers to non-media channels that are not"
+        r" in the input data: \['not_a_channel'\]",
+    ):
+      _ = model_context.compiled_non_media_baseline_values
 
 
 if __name__ == "__main__":
