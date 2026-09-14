@@ -156,6 +156,44 @@ class TimeRecordTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
+          testcase_name="date",
+          date=dt.date(2024, 1, 8),
+          expected=date_pb2.Date(year=2024, month=1, day=8),
+      ),
+      dict(
+          testcase_name="leap_day",
+          date=dt.date(2024, 2, 29),
+          expected=date_pb2.Date(year=2024, month=2, day=29),
+      ),
+      dict(
+          testcase_name="datetime_drops_the_time_of_day",
+          date=dt.datetime(2024, 1, 8, 13, 45, 30),
+          expected=date_pb2.Date(year=2024, month=1, day=8),
+      ),
+  )
+  def test_to_date_proto(self, date, expected):
+    compare.assertProtoEqual(self, time_record.to_date_proto(date), expected)
+
+  def test_from_date_proto(self):
+    self.assertEqual(
+        time_record.from_date_proto(date_pb2.Date(year=2024, month=2, day=29)),
+        dt.date(2024, 2, 29),
+    )
+
+  def test_from_date_proto_rejects_an_unset_date(self):
+    """An unset `Date` defaults to all zeroes, which is not a calendar date."""
+    with self.assertRaises(ValueError):
+      time_record.from_date_proto(date_pb2.Date())
+
+  def test_date_proto_round_trips(self):
+    date = dt.date(2024, 12, 31)
+
+    self.assertEqual(
+        time_record.from_date_proto(time_record.to_date_proto(date)), date
+    )
+
+  @parameterized.named_parameters(
+      dict(
           testcase_name="single_day",
           start_date=dt.datetime(year=2024, month=1, day=1),
           end_date=dt.datetime(year=2024, month=1, day=1),

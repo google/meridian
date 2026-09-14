@@ -14,7 +14,7 @@
 
 """Deals with coordinate values in the time dimensions of input data."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import dataclasses
 import datetime
 import functools
@@ -312,6 +312,19 @@ class TimeCoordinates:
       bounds.append((start_date, end_date))
 
     return bounds
+
+  @functools.cached_property
+  def period_ends(self) -> Mapping[datetime.date, datetime.date]:
+    """Maps each time coordinate to the exclusive end of the period it starts.
+
+    This is `get_period_bounds()` over the whole range, keyed by start date, for
+    callers that need to look a single coordinate's period end up rather than
+    iterate the sequence.
+
+    Raises:
+      ValueError: If the time coordinates are not regularly spaced.
+    """
+    return dict(self.get_period_bounds())
 
   def expand_selected_time_dims(
       self,
