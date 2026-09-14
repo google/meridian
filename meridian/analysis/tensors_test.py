@@ -1251,9 +1251,9 @@ class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
 
     # Apply population scaling if needed (matching the implementation)
     ctx = self.meridian.model_context
-    if ctx.model_spec.non_media_population_scaling_id is not None:
+    if ctx.compiled_non_media_population_scaling_id is not None:
       scaling_factors = backend.where(
-          ctx.model_spec.non_media_population_scaling_id,
+          ctx.compiled_non_media_population_scaling_id,
           ctx.population[:, backend.newaxis, backend.newaxis],
           backend.ones_like(ctx.population)[
               :, backend.newaxis, backend.newaxis
@@ -1268,6 +1268,39 @@ class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(
         inputs.tensors.non_media_treatments,
         expected_baseline_tensor,
+    )
+
+  def _non_media_baseline(
+      self, model_spec: spec.ModelSpec
+  ) -> backend.Tensor | None:
+    """Returns the baseline non-media treatments for the given model spec."""
+    meridian = model.Meridian(input_data=self.input_data, model_spec=model_spec)
+    builder = tensors.DataTensorsBuilder(meridian.model_context)
+    return builder.build_baseline_inputs().tensors.non_media_treatments
+
+  def test_build_baseline_inputs_population_scaling_from_declarative_spec(self):
+    """A declaratively named channel is population-scaled like a legacy one."""
+    assert self.input_data.non_media_channel is not None
+    channels = [str(c) for c in self.input_data.non_media_channel.values]
+    legacy = np.zeros(len(channels), dtype=bool)
+    legacy[0] = True
+
+    declarative_baseline = self._non_media_baseline(
+        spec.ModelSpec(
+            max_lag=15, population_scaled_non_media_channels=[channels[0]]
+        )
+    )
+    backend_test_utils.assert_allclose(
+        declarative_baseline,
+        self._non_media_baseline(
+            spec.ModelSpec(max_lag=15, non_media_population_scaling_id=legacy)
+        ),
+    )
+    # Scaling must actually have been applied, or the comparison above would
+    # hold for any pair of specs.
+    backend_test_utils.assert_not_allequal(
+        declarative_baseline,
+        self._non_media_baseline(spec.ModelSpec(max_lag=15)),
     )
 
   def test_build_baseline_inputs_raises_value_error_for_invalid_baseline_values(

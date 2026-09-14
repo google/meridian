@@ -2063,10 +2063,10 @@ class Analyzer:
       )
 
     train_draws = np.where(  # pyrefly: ignore[no-matching-overload]
-        self.model_context.model_spec.holdout_id, np.nan, draws
+        self.model_context.compiled_holdout_id, np.nan, draws
     )
     test_draws = np.where(  # pyrefly: ignore[no-matching-overload]
-        self.model_context.model_spec.holdout_id, draws, np.nan
+        self.model_context.compiled_holdout_id, draws, np.nan
     )
     draws_by_evaluation_set = np.stack(  # pyrefly: ignore[no-matching-overload]
         [train_draws, test_draws, draws], axis=0
@@ -2090,14 +2090,14 @@ class Analyzer:
 
   def _can_split_by_holdout_id(self, split_by_holdout_id: bool) -> bool:
     """Returns whether the data can be split by holdout_id."""
-    if split_by_holdout_id and self.model_context.model_spec.holdout_id is None:
+    if split_by_holdout_id and self.model_context.compiled_holdout_id is None:
       warnings.warn(
-          "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
-          " not be split."
+          "`split_by_holdout_id` is True but the model has no holdout"
+          " configured. Data will not be split."
       )
     return (
         split_by_holdout_id
-        and self.model_context.model_spec.holdout_id is not None
+        and self.model_context.compiled_holdout_id is not None
     )
 
   def expected_vs_actual_data(
@@ -3312,7 +3312,7 @@ class Analyzer:
     rsquared_national, mape_national, wmape_national = (
         self._predictive_accuracy_helper(np.sum(actual, 0), np.sum(expected, 0))
     )
-    if self.model_context.model_spec.holdout_id is None:
+    if self.model_context.compiled_holdout_id is None:
       rsquared_arr = [rsquared, rsquared_national]
       mape_arr = [mape, mape_national]
       wmape_arr = [wmape, wmape_national]
@@ -3326,7 +3326,7 @@ class Analyzer:
       xr_coords[constants.EVALUATION_SET_VAR] = list(constants.EVALUATION_SET)
 
       holdout_id = self._filter_holdout_id_for_selected_geos_and_times(
-          self.model_context.model_spec.holdout_id,
+          self.model_context.compiled_holdout_id,
           selected_geos,
           selected_times,
       )

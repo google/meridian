@@ -1390,9 +1390,9 @@ class DataTensorsBuilder:
           )[backend.newaxis, backend.newaxis, :],
           ctx.non_media_treatments.shape,
       )
-      if ctx.model_spec.non_media_population_scaling_id is not None:
+      if ctx.compiled_non_media_population_scaling_id is not None:
         scaling_factors = backend.where(
-            ctx.model_spec.non_media_population_scaling_id,
+            ctx.compiled_non_media_population_scaling_id,
             ctx.population[:, backend.newaxis, backend.newaxis],
             backend.ones_like(ctx.population)[
                 :, backend.newaxis, backend.newaxis
