@@ -188,7 +188,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         model_id=model_id,
         model_version=str(meridian_version),
         hyperparameters=hyperparameters.HyperparametersSerde().serialize(
-            mmm.model_spec
+            mmm.model_spec, model_context=mmm.model_context
         ),
         prior_tfp_distributions=distribution.DistributionSerde(
             distribution_function_registry
@@ -296,6 +296,20 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     serialized.model.Unpack(ser_meridian)
     serialized_version = semver.VersionInfo.parse(ser_meridian.model_version)
 
+    if serialized_version > _VERSION_INFO:
+      warnings.warn(
+          (
+              'This model was serialized by Meridian'
+              f' {serialized_version}, which is newer than the Meridian'
+              f' {_VERSION_INFO} reading it. Any fields added after'
+              f' {_VERSION_INFO} are silently ignored, so the loaded model may'
+              ' differ from the one that was serialized -- including in its'
+              ' configuration, not only in its metadata. Upgrade Meridian to'
+              f' {serialized_version} or later to load it faithfully.'
+          ),
+          UserWarning,
+      )
+
     stored_backend = ser_meridian.computation_backend
     current_backend = backend.computation_backend()
     if (
@@ -330,9 +344,19 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
           UserWarning,
       )
 
+    # The marketing data is deserialized first because the hyperparameters'
+    # declarative date ranges are expressed against its time coordinates. The
+    # two are otherwise independent.
+    deserialized_marketing_data = (
+        marketing_data.MarketingDataSerde().deserialize(
+            serialized.marketing_data, str(serialized_version)
+        )
+    )
     deserialized_hyperparameters = (
         hyperparameters.HyperparametersSerde().deserialize(
-            ser_meridian.hyperparameters, str(serialized_version)
+            ser_meridian.hyperparameters,
+            str(serialized_version),
+            input_data=deserialized_marketing_data,
         )
     )
 
@@ -353,11 +377,6 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         ser_meridian_priors,
         str(serialized_version),
         force_deserialization=force_deserialization,
-    )
-    deserialized_marketing_data = (
-        marketing_data.MarketingDataSerde().deserialize(
-            serialized.marketing_data, str(serialized_version)
-        )
     )
     deserialized_inference_data = (
         inference_data.InferenceDataSerde().deserialize(

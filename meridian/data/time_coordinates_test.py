@@ -622,6 +622,44 @@ class TimeCoordinatesTest(parameterized.TestCase):
     ):
       coords.get_period_bounds()
 
+  def test_period_ends_keys_the_bounds_by_start_date(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 2, 1),
+            dt.date(2024, 3, 1),
+        ])
+    )
+
+    self.assertEqual(
+        coords.period_ends,
+        {
+            dt.date(2024, 1, 1): dt.date(2024, 2, 1),
+            dt.date(2024, 2, 1): dt.date(2024, 3, 1),
+            dt.date(2024, 3, 1): dt.date(2024, 4, 1),
+        },
+    )
+
+  def test_period_ends_is_cached(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([dt.date(2024, 1, 1), dt.date(2024, 1, 8)])
+    )
+
+    self.assertIs(coords.period_ends, coords.period_ends)
+
+  def test_period_ends_irregular_raises(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 1, 3),
+            dt.date(2024, 1, 10),
+        ])
+    )
+    with self.assertRaisesRegex(
+        ValueError, "Time coordinates are not regularly spaced!"
+    ):
+      _ = coords.period_ends
+
 
 if __name__ == "__main__":
   absltest.main()

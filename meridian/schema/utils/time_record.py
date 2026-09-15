@@ -29,6 +29,8 @@ __all__ = [
     "convert_times_to_date_intervals",
     "create_date_interval_pb",
     "dates_from_date_interval_proto",
+    "from_date_proto",
+    "to_date_proto",
 ]
 
 
@@ -53,18 +55,27 @@ def convert_times_to_date_intervals(
     raise ValueError("There must be at least 2 time points.")
 
   coords = time_coordinates.TimeCoordinates.from_dates(times)
-  bounds = coords.get_period_bounds()
   time_to_date_interval: MutableMapping[str, date_interval_pb2.DateInterval] = (
       {}
   )
 
-  for start_date, end_date in bounds:
+  for start_date, end_date in coords.period_ends.items():
     date_interval = create_date_interval_pb(start_date, end_date)
     time_to_date_interval[start_date.strftime(constants.DATE_FORMAT)] = (
         date_interval
     )
 
   return time_to_date_interval
+
+
+def to_date_proto(date: datetime.date) -> date_pb2.Date:
+  """Converts a `datetime.date` into a `google.type.Date` proto."""
+  return date_pb2.Date(year=date.year, month=date.month, day=date.day)
+
+
+def from_date_proto(date_proto: date_pb2.Date) -> datetime.date:
+  """Converts a `google.type.Date` proto into a `datetime.date`."""
+  return datetime.date(date_proto.year, date_proto.month, date_proto.day)
 
 
 def create_date_interval_pb(
@@ -80,19 +91,9 @@ def create_date_interval_pb(
   Returns:
     Returns a date interval proto wrapping the start/end dates.
   """
-  start_date_proto = date_pb2.Date(
-      year=start_date.year,
-      month=start_date.month,
-      day=start_date.day,
-  )
-  end_date_proto = date_pb2.Date(
-      year=end_date.year,
-      month=end_date.month,
-      day=end_date.day,
-  )
   return date_interval_pb2.DateInterval(
-      start_date=start_date_proto,
-      end_date=end_date_proto,
+      start_date=to_date_proto(start_date),
+      end_date=to_date_proto(end_date),
       tag=tag,
   )
 
@@ -101,14 +102,7 @@ def dates_from_date_interval_proto(
     date_interval: date_interval_pb2.DateInterval,
 ) -> tuple[datetime.date, datetime.date]:
   """Returns a tuple of `[start, end)` date range from a `DateInterval` proto."""
-  start_date = datetime.date(
-      date_interval.start_date.year,
-      date_interval.start_date.month,
-      date_interval.start_date.day,
+  return (
+      from_date_proto(date_interval.start_date),
+      from_date_proto(date_interval.end_date),
   )
-  end_date = datetime.date(
-      date_interval.end_date.year,
-      date_interval.end_date.month,
-      date_interval.end_date.day,
-  )
-  return start_date, end_date
