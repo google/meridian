@@ -14,18 +14,26 @@
 
 """Serde for Hyperparameters."""
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
+import datetime
+from typing import cast
 import warnings
 
 import bidict
 from meridian import backend
 from meridian import constants as c
+from meridian.data import input_data as data
+from meridian.data import time_coordinates as tc
+from meridian.model import context as model_context_lib
 from meridian.model import spec
+from mmm.v1.common import date_interval_pb2
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import constants as sc
 from meridian.schema.serde import serde
 from meridian.schema.utils import proto_enum_converter
+from meridian.schema.utils import time_record
 import numpy as np
+
 
 __all__ = [
     "HyperparametersSerde",
@@ -81,6 +89,463 @@ non_paid_treatments_prior_type_converter = proto_enum_converter.ProtoEnumConvert
 )
 
 
+# ------------------------------------------------------------------------------
+# Declarative spec translation.
+#
+# `spec.DateRange` is the closed interval `[start_date, end_date]`, matching
+# Meridian's other date selection APIs. `mmm.v1.common.DateInterval` is the
+# half-open `[start_date, end_date)`. This module is the only place the two
+# conventions meet, so every conversion between them lives here.
+#
+# The end bound is converted through `TimeCoordinates.get_period_bounds`, which
+# steps forward by one *calendar* period.
+# ------------------------------------------------------------------------------
+
+
+def _serialize_date_range(
+    date_range: spec.DateRange,
+    period_ends: Mapping[datetime.date, datetime.date],
+    *,
+    spec_name: str,
+) -> date_interval_pb2.DateInterval:
+  """Converts a closed `DateRange` into a half-open `DateInterval` proto.
+
+  An omitted bound is left unset rather than resolved against the data, so that
+  an open-ended range survives a round trip as an open-ended range.
+
+  Args:
+    date_range: The closed date range to convert.
+    period_ends: Exclusive period end for each time coordinate.
+    spec_name: The `ModelSpec` attribute being serialized, used in error
+      messages.
+
+  Returns:
+    The equivalent half-open `DateInterval`.
+
+  Raises:
+    ValueError: If `end_date` is not one of the time coordinates, and so has no
+      period whose end could terminate the interval.
+  """
+  interval = date_interval_pb2.DateInterval()
+  if date_range.start_date is not None:
+    # The start bound needs no adjustment. It is also not checked against the
+    # coordinates here because `ModelContext` already rejects an off-coordinate
+    # bound when it compiles the spec.
+    interval.start_date.CopyFrom(
+        time_record.to_date_proto(tc.normalize_date(date_range.start_date))
+    )
+  if date_range.end_date is not None:
+    end_date = tc.normalize_date(date_range.end_date)
+    if end_date not in period_ends:
+      raise ValueError(
+          f"`{spec_name}` has a `DateRange` whose `end_date` ({end_date}) is"
+          " not one of the input data's time coordinates, so the end of the"
+          " period it selects is undefined. Date range bounds must name an"
+          " exact time coordinate."
+      )
+    interval.end_date.CopyFrom(time_record.to_date_proto(period_ends[end_date]))
+  return interval
+
+
+def _deserialize_date_range(
+    interval: date_interval_pb2.DateInterval,
+    dates: Sequence[datetime.date],
+    *,
+    spec_name: str,
+) -> spec.DateRange:
+  """Converts a half-open `DateInterval` proto into a closed `DateRange`.
+
+  Args:
+    interval: The half-open date interval to convert.
+    dates: The time coordinates the interval selects over, in order.
+    spec_name: The `ModelSpec` attribute being deserialized, used in error
+      messages.
+
+  Returns:
+    The equivalent closed `DateRange`.
+
+  Raises:
+    ValueError: If the exclusive `end_date` precedes every time coordinate, and
+      so selects nothing.
+  """
+  start_date = (
+      time_record.from_date_proto(interval.start_date)
+      if interval.HasField(sc.START_DATE)
+      else None
+  )
+  end_date = None
+  if interval.HasField(sc.END_DATE):
+    exclusive_end = time_record.from_date_proto(interval.end_date)
+    # The last coordinate the half-open interval covers is the last one
+    # strictly before its exclusive end.
+    selected = [date for date in dates if date < exclusive_end]
+    if not selected:
+      raise ValueError(
+          f"`{spec_name}` has a `DateInterval` whose exclusive `end_date`"
+          f" ({exclusive_end}) is at or before every time coordinate in the"
+          " input data, so it selects no dates."
+      )
+    end_date = selected[-1]
+  return spec.DateRange(start_date=start_date, end_date=end_date)
+
+
+def _serialize_calibration(
+    calibration: spec.CalibrationSpec,
+    period_ends: Mapping[datetime.date, datetime.date],
+    *,
+    spec_name: str,
+) -> meridian_pb.CalibrationConfig:
+  """Converts a `CalibrationSpec` into a `CalibrationConfig` proto."""
+  config = meridian_pb.CalibrationConfig()
+  entries = calibration.spec
+
+  # `CalibrationSpec.__post_init__` guarantees the sequence is homogeneous and
+  # non-empty, so the first element determines the scope of the whole spec.
+  if isinstance(entries[0], spec.DateRange):
+    config.global_date_ranges.date_intervals.extend(
+        _serialize_date_range(entry, period_ends, spec_name=spec_name)
+        for entry in cast(Sequence[spec.DateRange], entries)
+    )
+    return config
+
+  for entry in cast(Sequence[spec.ChannelCalibrationSpec], entries):
+    config.channel_date_ranges.channel_date_ranges.add(
+        channels=entry.channels,
+        date_intervals=[
+            _serialize_date_range(date_range, period_ends, spec_name=spec_name)
+            for date_range in entry.date_ranges
+        ],
+    )
+  return config
+
+
+def _deserialize_calibration(
+    config: meridian_pb.CalibrationConfig,
+    dates: Sequence[datetime.date],
+    *,
+    spec_name: str,
+) -> spec.CalibrationSpec | None:
+  """Converts a `CalibrationConfig` proto into a `CalibrationSpec`."""
+  which = config.WhichOneof(sc.CONFIG_SPEC_ONEOF)
+  if which == sc.GLOBAL_DATE_RANGES:
+    return spec.CalibrationSpec(
+        spec=[
+            _deserialize_date_range(interval, dates, spec_name=spec_name)
+            for interval in config.global_date_ranges.date_intervals
+        ]
+    )
+  if which == sc.CHANNEL_DATE_RANGES:
+    return spec.CalibrationSpec(
+        spec=[
+            spec.ChannelCalibrationSpec(
+                channels=list(entry.channels),
+                date_ranges=[
+                    _deserialize_date_range(
+                        interval, dates, spec_name=spec_name
+                    )
+                    for interval in entry.date_intervals
+                ],
+            )
+            for entry in config.channel_date_ranges.channel_date_ranges
+        ]
+    )
+  return None
+
+
+def _serialize_geo_holdout(
+    geo_spec: spec.GeoHoldoutSpec,
+    period_ends: Mapping[datetime.date, datetime.date],
+) -> meridian_pb.GeoDateRangeHoldout:
+  """Converts a `GeoHoldoutSpec` into a `GeoDateRangeHoldout` proto."""
+  return meridian_pb.GeoDateRangeHoldout(
+      geos=geo_spec.geos,
+      date_intervals=[
+          _serialize_date_range(date_range, period_ends, spec_name="holdout")
+          for date_range in geo_spec.date_ranges
+      ],
+  )
+
+
+def _deserialize_geo_holdout(
+    geo_proto: meridian_pb.GeoDateRangeHoldout,
+    dates: Sequence[datetime.date],
+) -> spec.GeoHoldoutSpec:
+  """Converts a `GeoDateRangeHoldout` proto into a `GeoHoldoutSpec`."""
+  return spec.GeoHoldoutSpec(
+      geos=list(geo_proto.geos),
+      date_ranges=[
+          _deserialize_date_range(interval, dates, spec_name="holdout")
+          for interval in geo_proto.date_intervals
+      ],
+  )
+
+
+def _serialize_holdout(
+    holdout: spec.HoldoutSpec,
+    period_ends: Mapping[datetime.date, datetime.date],
+    *,
+    resolved: Sequence[spec.GeoHoldoutSpec] | None,
+) -> meridian_pb.HoldoutConfig:
+  """Converts a `HoldoutSpec` into a `HoldoutConfig` proto.
+
+  Args:
+    holdout: The declarative holdout specification.
+    period_ends: Exclusive period end for each time coordinate.
+    resolved: The draw to record, for a `RandomHoldoutSpec` whose draw this
+      model actually used. `None` leaves `resolved` unset.
+
+  Returns:
+    The equivalent `HoldoutConfig`.
+  """
+  config = meridian_pb.HoldoutConfig()
+  entries = holdout.spec
+
+  if isinstance(entries, spec.RandomHoldoutSpec):
+    config.random_holdout.ratio = entries.ratio
+    if entries.seed is not None:
+      config.random_holdout.seed = entries.seed
+  elif isinstance(entries[0], spec.DateRange):
+    config.global_date_ranges.date_intervals.extend(
+        _serialize_date_range(entry, period_ends, spec_name="holdout")
+        for entry in cast(Sequence[spec.DateRange], entries)
+    )
+  else:
+    config.geo_date_ranges.geo_date_ranges.extend(
+        _serialize_geo_holdout(entry, period_ends)
+        for entry in cast(Sequence[spec.GeoHoldoutSpec], entries)
+    )
+
+  if resolved is not None:
+    config.resolved.geo_date_ranges.extend(
+        _serialize_geo_holdout(entry, period_ends) for entry in resolved
+    )
+  return config
+
+
+def _deserialize_holdout(
+    config: meridian_pb.HoldoutConfig,
+    dates: Sequence[datetime.date],
+) -> spec.HoldoutSpec | None:
+  """Converts a `HoldoutConfig` proto into a `HoldoutSpec`.
+
+  Args:
+    config: The declarative holdout configuration.
+    dates: The time coordinates the holdout selects over, in order.
+
+  Returns:
+    The equivalent `HoldoutSpec`, or `None` if `config` declares no holdout.
+
+  Raises:
+    ValueError: If `resolved` is present but holds no geos.
+  """
+  which = config.WhichOneof(sc.CONFIG_SPEC_ONEOF)
+  if which is None:
+    return None
+
+  resolved = None
+  holdout_spec: (
+      Sequence[spec.DateRange]
+      | Sequence[spec.GeoHoldoutSpec]
+      | spec.RandomHoldoutSpec
+  )
+  if which == sc.RANDOM_HOLDOUT:
+    holdout_spec = spec.RandomHoldoutSpec(
+        ratio=config.random_holdout.ratio,
+        seed=(
+            config.random_holdout.seed
+            if config.random_holdout.HasField(sc.SEED)
+            else None
+        ),
+    )
+    if config.HasField(sc.RESOLVED):
+      resolved = [
+          _deserialize_geo_holdout(geo_proto, dates)
+          for geo_proto in config.resolved.geo_date_ranges
+      ]
+      if not resolved:
+        raise ValueError(
+            "`holdout_config.resolved` is present but holds no geos. A"
+            " resolved random holdout must record at least one held-out geo."
+        )
+  elif which == sc.GLOBAL_DATE_RANGES:
+    holdout_spec = [
+        _deserialize_date_range(interval, dates, spec_name="holdout")
+        for interval in config.global_date_ranges.date_intervals
+    ]
+  else:
+    holdout_spec = [
+        _deserialize_geo_holdout(geo_proto, dates)
+        for geo_proto in config.geo_date_ranges.geo_date_ranges
+    ]
+
+  return spec.HoldoutSpec(spec=holdout_spec, resolved=resolved)
+
+
+def _warn_if_random_holdout_is_unresolved(
+    holdout: spec.HoldoutSpec | None,
+    holdout_id: np.ndarray | None,
+) -> None:
+  """Warns if a random holdout will govern but its draw was not recorded.
+
+  Args:
+    holdout: The deserialized declarative holdout, if any.
+    holdout_id: The deserialized deprecated holdout array, if any. When it is
+      set it takes precedence, so the random specification is inert and there is
+      nothing to warn about.
+  """
+  if holdout_id is not None:
+    return
+  if holdout is None or not isinstance(holdout.spec, spec.RandomHoldoutSpec):
+    return
+  if holdout.resolved is not None:
+    return
+  # The draw that the original fit used was not recorded, so it cannot be
+  # restored; see `spec.RandomHoldoutSpec` for why a seed alone does not
+  # reproduce one.
+  warnings.warn(
+      "The serialized model requests a random holdout but does not record the"
+      " draw that was used. A new holdout sample will be drawn when the model"
+      " is compiled, and it will not match the one used during the original"
+      " fit. The model remains valid for inference, but its train/test"
+      " predictive accuracy metrics are not meaningful.",
+      UserWarning,
+      stacklevel=2,
+  )
+
+
+def _fill_non_media_baseline_value(
+    value_proto: meridian_pb.NonMediaBaselineValue, value: float | str
+) -> None:
+  """Populates a `NonMediaBaselineValue` proto from a baseline value."""
+  if isinstance(value, str):
+    if value.lower() == c.NON_MEDIA_BASELINE_MIN:
+      value_proto.function_value = _NonMediaBaselineFunction.MIN
+    elif value.lower() == c.NON_MEDIA_BASELINE_MAX:
+      value_proto.function_value = _NonMediaBaselineFunction.MAX
+  elif isinstance(value, (float, int)):
+    value_proto.value = float(value)
+
+
+def _read_non_media_baseline_value(
+    value_proto: meridian_pb.NonMediaBaselineValue,
+) -> float | str:
+  """Reads a baseline value out of a `NonMediaBaselineValue` proto.
+
+  Args:
+    value_proto: The serialized baseline value.
+
+  Returns:
+    Either a fixed float value or a baseline function name.
+
+  Raises:
+    ValueError: If the proto holds an unrecognized value or function.
+  """
+  field = value_proto.WhichOneof("non_media_baseline_value")
+  if field == "value":
+    return value_proto.value
+  if field == "function_value":
+    if value_proto.function_value == _NonMediaBaselineFunction.MIN:
+      return c.NON_MEDIA_BASELINE_MIN
+    if value_proto.function_value == _NonMediaBaselineFunction.MAX:
+      return c.NON_MEDIA_BASELINE_MAX
+    if (
+        value_proto.function_value
+        == _NonMediaBaselineFunction.NON_MEDIA_BASELINE_FUNCTION_UNSPECIFIED
+    ):
+      warnings.warn(
+          "Non-media baseline function value is unspecified. Resolving to"
+          " 'min'."
+      )
+      return c.NON_MEDIA_BASELINE_MIN
+    raise ValueError(
+        "Unsupported NonMediaBaselineFunction proto enum value:"
+        f" {value_proto.function_value}."
+    )
+  raise ValueError(
+      f"Unsupported NonMediaBaselineValue proto enum value: {field}."
+  )
+
+
+def _require_model_context(
+    model_context: model_context_lib.ModelContext | None, spec_name: str
+) -> model_context_lib.ModelContext:
+  """Returns `model_context`, or raises explaining why it is needed."""
+  if model_context is None:
+    raise ValueError(
+        f"Serializing `{spec_name}` requires `model_context`, because its date"
+        " ranges are expressed against the input data's time coordinates. Pass"
+        " the `ModelContext` of the model being serialized."
+    )
+  return model_context
+
+
+def _require_input_data(
+    input_data: data.InputData | None, field_name: str
+) -> data.InputData:
+  """Returns `input_data`, or raises explaining why it is needed."""
+  if input_data is None:
+    raise ValueError(
+        f"Deserializing `{field_name}` requires `input_data`, because its date"
+        " intervals are interpreted against the input data's time coordinates."
+        " Pass the `InputData` deserialized from the same payload."
+    )
+  return input_data
+
+
+def _serialize_declarative_specs(
+    obj: spec.ModelSpec,
+    proto: meridian_pb.Hyperparameters,
+    model_context: model_context_lib.ModelContext | None,
+) -> None:
+  """Writes `obj`'s declarative specifications into `proto`.
+
+  Args:
+    obj: The model spec being serialized.
+    proto: The proto to write into.
+    model_context: The context of the model being serialized, or `None`.
+
+  Raises:
+    ValueError: If a declarative date-range specification is set but
+      `model_context` is `None`.
+  """
+  if obj.roi_calibration is not None:
+    context = _require_model_context(model_context, "roi_calibration")
+    proto.roi_calibration_config.CopyFrom(
+        _serialize_calibration(
+            obj.roi_calibration,
+            context.input_data.media_time_coordinates.period_ends,
+            spec_name="roi_calibration",
+        )
+    )
+  if obj.rf_roi_calibration is not None:
+    context = _require_model_context(model_context, "rf_roi_calibration")
+    proto.rf_roi_calibration_config.CopyFrom(
+        _serialize_calibration(
+            obj.rf_roi_calibration,
+            context.input_data.media_time_coordinates.period_ends,
+            spec_name="rf_roi_calibration",
+        )
+    )
+  if obj.holdout is not None:
+    context = _require_model_context(model_context, "holdout")
+    proto.holdout_config.CopyFrom(
+        _serialize_holdout(
+            obj.holdout,
+            context.input_data.time_coordinates.period_ends,
+            resolved=context.resolved_random_holdout,
+        )
+    )
+  # A repeated field cannot distinguish an empty selection from an unset one,
+  # so an empty sequence deserializes back as `None`. The two compile to the
+  # same thing: nothing is scaled by population.
+  if obj.population_scaled_controls is not None:
+    proto.population_scaled_controls.extend(obj.population_scaled_controls)
+  if obj.population_scaled_non_media_channels is not None:
+    proto.population_scaled_non_media_channels.extend(
+        obj.population_scaled_non_media_channels
+    )
+
+
 class HyperparametersSerde(
     serde.Serde[meridian_pb.Hyperparameters, spec.ModelSpec]
 ):
@@ -89,10 +554,45 @@ class HyperparametersSerde(
   Note that this Serde only handles the Hyperparameters part of ModelSpec.
   The 'prior' attribute of ModelSpec is serialized/deserialized separately
   using DistributionSerde.
+
+  Several `ModelSpec` attributes come in pairs: a declarative attribute and the
+  deprecated array it supersedes. This Serde is a faithful mirror of whichever
+  of them are set, and implements no precedence between them: it writes the
+  declarative proto field if and only if the declarative attribute is set, and
+  the deprecated proto field if and only if the deprecated attribute is set.
+  Deserialization is the exact inverse, so every `ModelSpec` state round-trips
+  unchanged -- including the state where both are set, which `ModelSpec` allows
+  with a warning.
+
+  Resolving which of a pair governs is `ModelContext`'s job, not this one. Were
+  this Serde to make that decision too, the two could drift apart, and a model
+  could silently fit differently after a save and reload.
   """
 
-  def serialize(self, obj: spec.ModelSpec) -> meridian_pb.Hyperparameters:  # pyrefly: ignore[bad-override]
-    """Serializes the given ModelSpec into a `Hyperparameters` proto."""
+  def serialize(  # pyrefly: ignore[bad-override]
+      self,
+      obj: spec.ModelSpec,
+      *,
+      model_context: model_context_lib.ModelContext | None = None,
+  ) -> meridian_pb.Hyperparameters:
+    """Serializes the given ModelSpec into a `Hyperparameters` proto.
+
+    Args:
+      obj: The model spec to serialize.
+      model_context: The context of the model being serialized. Required only if
+        `obj` carries a declarative date-range specification, whose bounds are
+        expressed against the input data's time coordinates, and which for a
+        random holdout also supplies the draw to record.
+
+    Returns:
+      A `Hyperparameters` proto.
+
+    Raises:
+      ValueError: If `obj` carries a declarative date-range specification but
+        `model_context` is `None`, or if a date range bound is not one of the
+        input data's time coordinates.
+    """
+
     hyperparameters_proto = meridian_pb.Hyperparameters(
         media_effects_dist=media_effects_converter.to_proto(
             obj.media_effects_dist
@@ -169,16 +669,21 @@ class HyperparametersSerde(
           obj.saturation_spec
       )
 
-    if obj.non_media_baseline_values is not None:
+    # `non_media_baseline_values` holds either the declarative channel-name
+    # mapping or the deprecated positional sequence, never both, so its type
+    # selects which of the two proto fields is written.
+    if isinstance(obj.non_media_baseline_values, Mapping):
+      for channel, value in obj.non_media_baseline_values.items():
+        _fill_non_media_baseline_value(
+            hyperparameters_proto.non_media_baseline_values_map[channel], value
+        )
+    elif obj.non_media_baseline_values is not None:
       for value in obj.non_media_baseline_values:
-        value_proto = hyperparameters_proto.non_media_baseline_values.add()
-        if isinstance(value, str):
-          if value.lower() == "min":
-            value_proto.function_value = _NonMediaBaselineFunction.MIN
-          elif value.lower() == "max":
-            value_proto.function_value = _NonMediaBaselineFunction.MAX
-        elif isinstance(value, (float, int)):
-          value_proto.value = float(value)
+        _fill_non_media_baseline_value(
+            hyperparameters_proto.non_media_baseline_values.add(), value
+        )
+
+    _serialize_declarative_specs(obj, hyperparameters_proto, model_context)
 
     return hyperparameters_proto
 
@@ -186,6 +691,8 @@ class HyperparametersSerde(
       self,
       serialized: meridian_pb.Hyperparameters,
       serialized_version: str = "",
+      *,
+      input_data: data.InputData | None = None,
   ) -> spec.ModelSpec:
     """Deserializes the given `Hyperparameters` proto into a ModelSpec.
 
@@ -197,10 +704,19 @@ class HyperparametersSerde(
       serialized: The serialized `Hyperparameters` proto.
       serialized_version: The version of the serialized model. This is used to
         handle changes in deserialization logic across different versions.
+      input_data: The input data deserialized from the same payload. Required
+        only if `serialized` carries a declarative date-range configuration,
+        whose half-open date intervals are interpreted against the input data's
+        time coordinates.
 
     Returns:
       A Meridian model spec container.
+
+    Raises:
+      ValueError: If `serialized` carries a declarative date-range
+        configuration but `input_data` is `None`.
     """
+
     baseline_geo = None
     baseline_geo_field = serialized.WhichOneof(sc.BASELINE_GEO_ONEOF)
     if baseline_geo_field == sc.BASELINE_GEO_INT:
@@ -257,36 +773,62 @@ class HyperparametersSerde(
         else None
     )
 
+    # The declarative mapping supersedes the deprecated positional sequence.
+    # `ModelSpec` holds them in a single attribute, so unlike the other
+    # deprecated pairs they cannot both survive; the newer one wins, matching
+    # how `knots` treats its own deprecated field above.
     non_media_baseline_values = None
-    if serialized.non_media_baseline_values:
-      non_media_baseline_values = []
-      for value_proto in serialized.non_media_baseline_values:
-        field = value_proto.WhichOneof("non_media_baseline_value")
-        if field == "value":
-          non_media_baseline_values.append(value_proto.value)
-        elif field == "function_value":
-          if value_proto.function_value == _NonMediaBaselineFunction.MIN:
-            non_media_baseline_values.append("min")
-          elif value_proto.function_value == _NonMediaBaselineFunction.MAX:
-            non_media_baseline_values.append("max")
-          elif (
-              value_proto.function_value
-              == _NonMediaBaselineFunction.NON_MEDIA_BASELINE_FUNCTION_UNSPECIFIED
-          ):
-            warnings.warn(
-                "Non-media baseline function value is unspecified. Resolving to"
-                " 'min'."
-            )
-            non_media_baseline_values.append("min")
-          else:
-            raise ValueError(
-                "Unsupported NonMediaBaselineFunction proto enum value:"
-                f" {value_proto.function_value}."
-            )
-        else:
-          raise ValueError(
-              f"Unsupported NonMediaBaselineValue proto enum value: {field}."
+    if serialized.non_media_baseline_values_map:
+      non_media_baseline_values = {
+          channel: _read_non_media_baseline_value(value_proto)
+          for channel, value_proto in (
+              serialized.non_media_baseline_values_map.items()
           )
+      }
+    elif serialized.non_media_baseline_values:
+      non_media_baseline_values = [
+          _read_non_media_baseline_value(value_proto)
+          for value_proto in serialized.non_media_baseline_values
+      ]
+
+    roi_calibration = None
+    if serialized.HasField(sc.ROI_CALIBRATION_CONFIG):
+      roi_calibration = _deserialize_calibration(
+          serialized.roi_calibration_config,
+          _require_input_data(
+              input_data, sc.ROI_CALIBRATION_CONFIG
+          ).media_time_coordinates.all_dates,
+          spec_name="roi_calibration",
+      )
+    rf_roi_calibration = None
+    if serialized.HasField(sc.RF_ROI_CALIBRATION_CONFIG):
+      rf_roi_calibration = _deserialize_calibration(
+          serialized.rf_roi_calibration_config,
+          _require_input_data(
+              input_data, sc.RF_ROI_CALIBRATION_CONFIG
+          ).media_time_coordinates.all_dates,
+          spec_name="rf_roi_calibration",
+      )
+    holdout = None
+    if serialized.HasField(sc.HOLDOUT_CONFIG):
+      holdout = _deserialize_holdout(
+          serialized.holdout_config,
+          _require_input_data(
+              input_data, sc.HOLDOUT_CONFIG
+          ).time_coordinates.all_dates,
+      )
+    _warn_if_random_holdout_is_unresolved(holdout, holdout_id)
+
+    population_scaled_controls = (
+        list(serialized.population_scaled_controls)
+        if serialized.population_scaled_controls
+        else None
+    )
+    population_scaled_non_media_channels = (
+        list(serialized.population_scaled_non_media_channels)
+        if serialized.population_scaled_non_media_channels
+        else None
+    )
 
     adstock_decay_spec_field = serialized.WhichOneof(sc.ADSTOCK_DECAY_SPEC)
     if adstock_decay_spec_field == sc.GLOBAL_ADSTOCK_DECAY:
@@ -337,10 +879,17 @@ class HyperparametersSerde(
         knots=knots,
         enable_aks=serialized.enable_aks,
         baseline_geo=baseline_geo,
+        roi_calibration=roi_calibration,
         roi_calibration_period=roi_calibration_period,
+        rf_roi_calibration=rf_roi_calibration,
         rf_roi_calibration_period=rf_roi_calibration_period,
+        holdout=holdout,
         holdout_id=holdout_id,
+        population_scaled_controls=population_scaled_controls,
         control_population_scaling_id=control_population_scaling_id,
+        population_scaled_non_media_channels=(
+            population_scaled_non_media_channels
+        ),
         non_media_population_scaling_id=non_media_population_scaling_id,
         adstock_decay_spec=adstock_decay_spec,
         saturation_spec=saturation_spec,

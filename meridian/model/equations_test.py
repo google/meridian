@@ -886,6 +886,72 @@ class ComputeNonMediaTreatmentsBaselineTest(
     actual_baseline = eqs.compute_non_media_treatments_baseline()
     test_utils.assert_allclose(expected_baseline, actual_baseline)
 
+  def test_compute_non_media_treatments_baseline_mapping(self) -> None:
+    """Tests baseline calculation with a mapping of channel names to values."""
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = list(data.non_media_channel.values)
+    baseline_map = {channels[0]: "min", channels[1]: 5.0}
+    model_spec = spec.ModelSpec(non_media_baseline_values=baseline_map)
+    model_context_instance = context.ModelContext(data, model_spec)
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    non_media_treatments = eqs._context.non_media_treatments
+    expected_baseline_min = backend.reduce_min(
+        non_media_treatments[..., 0], axis=[0, 1]  # pyrefly: ignore[unsupported-operation]
+    )
+    expected_baseline_float = backend.to_tensor(5.0, dtype=backend.float_dtype)
+    expected_baseline = backend.stack(
+        [expected_baseline_min, expected_baseline_float], axis=-1  # pyrefly: ignore[bad-argument-type]
+    )
+    test_utils.assert_allclose(
+        expected_baseline, eqs.compute_non_media_treatments_baseline()
+    )
+
+  def test_compute_non_media_treatments_baseline_mapping_argument(self) -> None:
+    """An explicit mapping argument resolves the same as the equivalent list."""
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = list(data.non_media_channel.values)
+    model_context_instance = context.ModelContext(data, spec.ModelSpec())
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    test_utils.assert_allclose(
+        eqs.compute_non_media_treatments_baseline(
+            non_media_baseline_values={channels[1]: 5.0}
+        ),
+        # The mapping names only the channel that differs from the default.
+        eqs.compute_non_media_treatments_baseline(
+            non_media_baseline_values=[constants.NON_MEDIA_BASELINE_MIN, 5.0]
+        ),
+    )
+
+  def test_compute_non_media_treatments_baseline_mapping_argument_unknown_channel_fails(
+      self,
+  ) -> None:
+    data = self.input_data_non_media_and_organic
+    model_context_instance = context.ModelContext(data, spec.ModelSpec())
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`non_media_baseline_values` refers to non-media channels that are not"
+        r" in the input data: \['unknown_channel'\]",
+    ):
+      eqs.compute_non_media_treatments_baseline(
+          non_media_baseline_values={"unknown_channel": "min"}
+      )
+
+  def test_compute_non_media_treatments_baseline_mapping_unknown_channel_fails(
+      self,
+  ) -> None:
+    data = self.input_data_non_media_and_organic
+    baseline_map = {"unknown_channel": "min"}
+    model_spec = spec.ModelSpec(non_media_baseline_values=baseline_map)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`non_media_baseline_values` refers to non-media channels that are not"
+        r" in the input data: \['unknown_channel'\]",
+    ):
+      context.ModelContext(data, model_spec)
+
 
 if __name__ == "__main__":
   absltest.main()

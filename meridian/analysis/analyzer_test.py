@@ -4871,6 +4871,53 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         ],
     )
 
+  def _predictive_accuracy(self, model_spec: spec.ModelSpec) -> xr.Dataset:
+    """Returns the predictive accuracy table for a model built from `spec`."""
+    meridian = model.Meridian(model_spec=model_spec, input_data=self.input_data)
+    return analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    ).predictive_accuracy()
+
+  def test_predictive_accuracy_with_declarative_holdout_splits_evaluation_sets(
+      self,
+  ):
+    """A declarative holdout must split the table, not collapse to All Data."""
+    dates = self.input_data.time_coordinates.all_dates
+    dataset = self._predictive_accuracy(
+        spec.ModelSpec(
+            max_lag=15,
+            holdout=spec.HoldoutSpec(
+                spec=[spec.DateRange(dates[10], dates[20])]
+            ),
+        )
+    )
+    self.assertCountEqual(
+        list(dataset.coords[constants.EVALUATION_SET_VAR].values),
+        list(constants.EVALUATION_SET),
+    )
+
+  def test_predictive_accuracy_declarative_holdout_matches_legacy_array(self):
+    """The two ways of expressing one holdout must give the same numbers."""
+    dates = self.input_data.time_coordinates.all_dates
+    legacy = np.full([self.meridian.n_geos, self.meridian.n_times], False)
+    # `[start, end]`: both index 10 and index 20 are included.
+    legacy[:, 10:21] = True
+
+    backend_test_utils.assert_allclose(
+        self._predictive_accuracy(
+            spec.ModelSpec(
+                max_lag=15,
+                holdout=spec.HoldoutSpec(
+                    spec=[spec.DateRange(dates[10], dates[20])]
+                ),
+            )
+        )[constants.VALUE].values,
+        self._predictive_accuracy(
+            spec.ModelSpec(max_lag=15, holdout_id=legacy)
+        )[constants.VALUE].values,
+    )
+
   @parameterized.product(
       selected_geos=[None, ["geo_1", "geo_3"]],
       selected_times=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
@@ -5152,10 +5199,36 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       self.assertLen(w, 1)
       self.assertTrue(issubclass(w[0].category, UserWarning))
       self.assertIn(
-          "`split_by_holdout_id` is True but `holdout_id` is `None`. Data will"
-          " not be split.",
+          "`split_by_holdout_id` is True but the model has no holdout"
+          " configured. Data will not be split.",
           str(w[0].message),
       )
+
+  def test_expected_vs_actual_split_by_declarative_holdout_does_not_warn(self):
+    """A declarative holdout counts as a holdout for the split-by gate."""
+    dates = self.input_data.time_coordinates.all_dates
+    meridian = model.Meridian(
+        model_spec=spec.ModelSpec(
+            max_lag=15,
+            holdout=spec.HoldoutSpec(
+                spec=[spec.DateRange(dates[10], dates[20])]
+            ),
+        ),
+        input_data=self.input_data,
+    )
+    declarative_analyzer = analyzer.Analyzer(
+        model_context=meridian.model_context,
+        inference_data=meridian.inference_data,
+    )
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      warnings.filterwarnings("ignore", category=DeprecationWarning)
+      ds = declarative_analyzer.expected_vs_actual_data(
+          split_by_holdout_id=True
+      )
+
+    self.assertEmpty(w)
+    self.assertIn(constants.EVALUATION_SET_VAR, ds.coords)
 
   def test_response_curves_check_both_channel_types_returns_correct_spend(self):
     response_curve_data = self.analyzer.response_curves(by_reach=False)

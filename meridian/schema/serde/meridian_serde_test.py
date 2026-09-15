@@ -343,6 +343,61 @@ class MeridianSerdeTest(parameterized.TestCase):
           ]
           self.assertEmpty(precision_warnings)
 
+  def _mmm_kernel_with_model_version(
+      self, model_version: semver.VersionInfo
+  ) -> kernel_pb.MmmKernel:
+    meridian_model = meridian_pb.MeridianModel(
+        model_version=str(model_version),
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    return kernel_pb.MmmKernel(
+        model=any_model,
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+    )
+
+  def test_deserialize_warns_when_serialized_by_a_newer_meridian(self):
+    """Unknown fields are dropped silently, so the user must be told."""
+    newer_version = serde._VERSION_INFO.bump_minor()  # pylint: disable=protected-access
+
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always')
+      self.serde.deserialize(self._mmm_kernel_with_model_version(newer_version))
+
+    messages = [
+        str(w.message) for w in caught if 'newer than' in str(w.message)
+    ]
+    self.assertLen(messages, 1)
+    self.assertIn(f'serialized by Meridian {newer_version}', messages[0])
+    # Knowing the versions disagree is not enough: the user has to understand
+    # that the model they loaded may be configured differently from the one
+    # that was saved.
+    self.assertIn('silently ignored', messages[0])
+    self.assertIn('may differ from the one that was serialized', messages[0])
+
+  @parameterized.named_parameters(
+      dict(testcase_name='same_version', version_fn=lambda current: current),
+      dict(
+          testcase_name='older_version',
+          version_fn=lambda current: semver.VersionInfo.parse('1.2.3'),
+      ),
+  )
+  def test_deserialize_does_not_warn_for_a_version_it_can_read(
+      self, version_fn: Callable[[semver.VersionInfo], semver.VersionInfo]
+  ):
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always')
+      self.serde.deserialize(
+          self._mmm_kernel_with_model_version(
+              version_fn(serde._VERSION_INFO)  # pylint: disable=protected-access
+          )
+      )
+
+    self.assertEmpty([w for w in caught if 'newer than' in str(w.message)])
+
   def test_serialize_no_controls(self):
     meridian_model = model.Meridian(
         input_data=_INPUT_DATA_NO_CONTROLS,
@@ -586,7 +641,14 @@ class MeridianSerdeTest(parameterized.TestCase):
       deserialized_model = self.serde.deserialize(mmm_kernel)
 
       mock_hyperparameters_deserialize.assert_called_once_with(
-          meridian_model.hyperparameters, mock_version
+          meridian_model.hyperparameters, mock_version, input_data=mock.ANY
+      )
+      # The declarative date ranges are expressed against the input data's time
+      # coordinates, so the marketing data has to be deserialized first and
+      # threaded in.
+      self.assertIs(
+          mock_hyperparameters_deserialize.call_args.kwargs['input_data'],
+          deserialized_model.input_data,
       )
       mock_prior_tfp_distributions_deserialize.assert_called_once_with(
           meridian_model.prior_tfp_distributions,

@@ -20,6 +20,7 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.model import spec
 from meridian.model import transformers
+import numpy as np
 
 
 __all__ = [
@@ -99,8 +100,24 @@ class MediaTensors:
 def build_media_tensors(
     input_data: data.InputData,
     model_spec: spec.ModelSpec,
+    *,
+    calibration_period: np.ndarray | None,
 ) -> MediaTensors:
-  """Derives a MediaTensors container from media values in given input data."""
+  """Derives a MediaTensors container from media values in given input data.
+
+  Args:
+    input_data: The input data to derive the media tensors from.
+    model_spec: The model specification.
+    calibration_period: The resolved ROI calibration period, of shape
+      `(n_media_times, n_media_channels)`, or `None` if the model is not
+      calibrated over a restricted period. Resolve this from
+      `ModelContext.compiled_roi_calibration_period` rather than reading the
+      deprecated `ModelSpec.roi_calibration_period` directly, so that a
+      declaratively configured calibration period is honored.
+
+  Returns:
+    A `MediaTensors` container.
+  """
   if input_data.media is None:
     return MediaTensors()
 
@@ -114,7 +131,6 @@ def build_media_tensors(
   )
   media_scaled = media_transformer.forward(media)
   prior_type = model_spec.effective_media_prior_type
-  calibration_period = model_spec.roi_calibration_period
   if calibration_period is not None:
     calibration_period_tensor = backend.to_tensor(
         calibration_period, dtype=backend.bool_
@@ -255,8 +271,24 @@ class RfTensors:
 def build_rf_tensors(
     input_data: data.InputData,
     model_spec: spec.ModelSpec,
+    *,
+    calibration_period: np.ndarray | None,
 ) -> RfTensors:
-  """Derives an RfTensors container from RF media values in given input."""
+  """Derives an RfTensors container from RF media values in given input.
+
+  Args:
+    input_data: The input data to derive the RF tensors from.
+    model_spec: The model specification.
+    calibration_period: The resolved RF ROI calibration period, of shape
+      `(n_media_times, n_rf_channels)`, or `None` if the model is not calibrated
+      over a restricted period. Resolve this from
+      `ModelContext.compiled_rf_roi_calibration_period` rather than reading the
+      deprecated `ModelSpec.rf_roi_calibration_period` directly, so that a
+      declaratively configured calibration period is honored.
+
+  Returns:
+    An `RfTensors` container.
+  """
   if input_data.reach is None:
     return RfTensors()
 
@@ -271,13 +303,14 @@ def build_rf_tensors(
   )
   reach_scaled = reach_transformer.forward(reach)
   prior_type = model_spec.effective_rf_prior_type
-  calibration_period = model_spec.rf_roi_calibration_period
   if calibration_period is not None:
-    calibration_period = backend.to_tensor(
+    calibration_period_tensor = backend.to_tensor(
         calibration_period, dtype=backend.bool_
     )
+  else:
+    calibration_period_tensor = None
   aggregated_rf_spend = backend.to_tensor(
-      input_data.aggregate_rf_spend(calibration_period=calibration_period),  # pyrefly: ignore[bad-argument-type]
+      input_data.aggregate_rf_spend(calibration_period=calibration_period_tensor),  # pyrefly: ignore[bad-argument-type]
       dtype=backend.float_dtype,
   )
   # Set `prior_reach_scaled_counterfactual` and `prior_denominator` depending on
@@ -287,11 +320,9 @@ def build_rf_tensors(
     if calibration_period is None:
       prior_reach_scaled_counterfactual = None
     else:
-      prior_reach_scaled_counterfactual = (
-          _roi_calibration_scaled_counterfactual(
-              reach_scaled,
-              calibration_period=calibration_period,
-          )
+      prior_reach_scaled_counterfactual = _roi_calibration_scaled_counterfactual(
+          reach_scaled,
+          calibration_period=calibration_period_tensor,  # pyrefly: ignore[bad-argument-type]
       )
   elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
     prior_reach_scaled_counterfactual = reach_scaled * constants.MROI_FACTOR
