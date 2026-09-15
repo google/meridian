@@ -247,7 +247,9 @@ class WeeklyOptimizationGrid:
       slope_m = to_float(inf_data.slope_m)
       beta_gm = to_float(inf_data.beta_gm)
       decay_m = model_context.adstock_decay_spec.media
+      decay_m = tuple(decay_m) if isinstance(decay_m, list) else decay_m
       sat_m = model_context.saturation_spec.media
+      sat_m = tuple(sat_m) if isinstance(sat_m, list) else sat_m
     else:
       media_base_scaled = None
       alpha_m = None
@@ -306,7 +308,9 @@ class WeeklyOptimizationGrid:
       slope_rf = to_float(inf_data.slope_rf)
       beta_grf = to_float(inf_data.beta_grf)
       decay_rf = model_context.adstock_decay_spec.rf
+      decay_rf = tuple(decay_rf) if isinstance(decay_rf, list) else decay_rf
       sat_rf = model_context.saturation_spec.rf
+      sat_rf = tuple(sat_rf) if isinstance(sat_rf, list) else sat_rf
     else:
       reach_base_scaled = None
       frequency_base = None
