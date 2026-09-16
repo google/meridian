@@ -427,6 +427,7 @@ class ModelContext:
 
     self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
+    self._resolve_declarative_model_spec()
 
     self._set_total_media_contribution_prior = False
     self._warn_setting_ignored_priors()
@@ -437,6 +438,30 @@ class ModelContext:
     self._validate_time_invariants()
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
+
+  def _resolve_declarative_model_spec(self) -> None:
+    """Resolves every declarative `ModelSpec` attribute against the input data.
+
+    The legacy array attributes are validated eagerly, in `__init__`. Resolving
+    the declarative attributes here gives them the same failure timing, so an
+    unknown channel, geo or control name -- or a date range bound that is not a
+    time coordinate -- is reported while the caller is still holding the spec
+    that caused it, rather than part-way through sampling.
+
+    Every property below is a `functools.cached_property`, so this only moves
+    the work earlier; it does not repeat it. In particular a `RandomHoldoutSpec`
+    is drawn exactly once, here, and every later reader sees that same draw.
+
+    Raises:
+      ValueError: If any declarative attribute cannot be resolved against the
+        input data.
+    """
+    _ = self.compiled_roi_calibration_period
+    _ = self.compiled_rf_roi_calibration_period
+    _ = self.compiled_holdout_id
+    _ = self.compiled_control_population_scaling_id
+    _ = self.compiled_non_media_population_scaling_id
+    _ = self.compiled_non_media_baseline_values
 
   # TODO: Deduplicate with `_validate_model_spec_shapes`. Both
   # methods run from `__init__` and validate the same legacy `ModelSpec`
@@ -772,11 +797,19 @@ class ModelContext:
 
   @functools.cached_property
   def media_tensors(self) -> media.MediaTensors:
-    return media.build_media_tensors(self._input_data, self._model_spec)
+    return media.build_media_tensors(
+        self._input_data,
+        self._model_spec,
+        calibration_period=self.compiled_roi_calibration_period,
+    )
 
   @functools.cached_property
   def rf_tensors(self) -> media.RfTensors:
-    return media.build_rf_tensors(self._input_data, self._model_spec)
+    return media.build_rf_tensors(
+        self._input_data,
+        self._model_spec,
+        calibration_period=self.compiled_rf_roi_calibration_period,
+    )
 
   @functools.cached_property
   def organic_media_tensors(self) -> media.OrganicMediaTensors:
@@ -916,9 +949,9 @@ class ModelContext:
     if self.controls is None:
       return None
 
-    if self._model_spec.control_population_scaling_id is not None:
+    if self.compiled_control_population_scaling_id is not None:
       controls_population_scaling_id = backend.to_tensor(
-          self._model_spec.control_population_scaling_id, dtype=backend.bool_
+          self.compiled_control_population_scaling_id, dtype=backend.bool_
       )
     else:
       controls_population_scaling_id = None
@@ -936,9 +969,9 @@ class ModelContext:
     """Returns a `CenteringAndScalingTransformer` for non-media treatments."""
     if self.non_media_treatments is None:
       return None
-    if self._model_spec.non_media_population_scaling_id is not None:
+    if self.compiled_non_media_population_scaling_id is not None:
       non_media_population_scaling_id = backend.to_tensor(
-          self._model_spec.non_media_population_scaling_id, dtype=backend.bool_
+          self.compiled_non_media_population_scaling_id, dtype=backend.bool_
       )
     else:
       non_media_population_scaling_id = None
@@ -1025,9 +1058,10 @@ class ModelContext:
 
   @functools.cached_property
   def holdout_id(self) -> backend.Tensor | None:
-    if self._model_spec.holdout_id is None:
+    compiled = self.compiled_holdout_id
+    if compiled is None:
       return None
-    tensor = backend.to_tensor(self._model_spec.holdout_id, dtype=backend.bool_)
+    tensor = backend.to_tensor(compiled, dtype=backend.bool_)
     return tensor[backend.newaxis, ...] if self.is_national else tensor
 
   # --------------------------------------------------------------------------

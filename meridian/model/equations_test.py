@@ -907,20 +907,50 @@ class ComputeNonMediaTreatmentsBaselineTest(
         expected_baseline, eqs.compute_non_media_treatments_baseline()
     )
 
+  def test_compute_non_media_treatments_baseline_mapping_argument(self) -> None:
+    """An explicit mapping argument resolves the same as the equivalent list."""
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = list(data.non_media_channel.values)
+    model_context_instance = context.ModelContext(data, spec.ModelSpec())
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    test_utils.assert_allclose(
+        eqs.compute_non_media_treatments_baseline(
+            non_media_baseline_values={channels[1]: 5.0}
+        ),
+        # The mapping names only the channel that differs from the default.
+        eqs.compute_non_media_treatments_baseline(
+            non_media_baseline_values=[constants.NON_MEDIA_BASELINE_MIN, 5.0]
+        ),
+    )
+
+  def test_compute_non_media_treatments_baseline_mapping_argument_unknown_channel_fails(
+      self,
+  ) -> None:
+    data = self.input_data_non_media_and_organic
+    model_context_instance = context.ModelContext(data, spec.ModelSpec())
+    eqs = equations.ModelEquations(model_context=model_context_instance)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`non_media_baseline_values` refers to non-media channels that are not"
+        r" in the input data: \['unknown_channel'\]",
+    ):
+      eqs.compute_non_media_treatments_baseline(
+          non_media_baseline_values={"unknown_channel": "min"}
+      )
+
   def test_compute_non_media_treatments_baseline_mapping_unknown_channel_fails(
       self,
   ) -> None:
     data = self.input_data_non_media_and_organic
     baseline_map = {"unknown_channel": "min"}
     model_spec = spec.ModelSpec(non_media_baseline_values=baseline_map)
-    model_context_instance = context.ModelContext(data, model_spec)
-    eqs = equations.ModelEquations(model_context=model_context_instance)
     with self.assertRaisesRegex(
         ValueError,
-        r"Unknown non-media channels in `non_media_baseline_values`:"
-        r" \['unknown_channel'\]",
+        r"`non_media_baseline_values` refers to non-media channels that are not"
+        r" in the input data: \['unknown_channel'\]",
     ):
-      eqs.compute_non_media_treatments_baseline()
+      context.ModelContext(data, model_spec)
 
 
 if __name__ == "__main__":

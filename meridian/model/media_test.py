@@ -171,7 +171,7 @@ class MediaTensorsTest(parameterized.TestCase):
 
   def test_no_media_values(self):
     media_tensors = media.build_media_tensors(
-        _INPUT_DATA_WITH_RF_ONLY, spec.ModelSpec()
+        _INPUT_DATA_WITH_RF_ONLY, spec.ModelSpec(), calibration_period=None
     )
 
     self.assertIsNone(media_tensors.media)
@@ -215,6 +215,7 @@ class MediaTensorsTest(parameterized.TestCase):
             rf_prior_type=paid_media_prior_type,
             roi_calibration_period=roi_calibration_period,
         ),
+        calibration_period=roi_calibration_period,
     )
 
     test_utils.assert_allclose(
@@ -226,6 +227,27 @@ class MediaTensorsTest(parameterized.TestCase):
     self.assertIsNotNone(media_tensors.media_transformer)
     test_utils.assert_allclose(
         media_tensors.media_scaled, _INPUT_DATA_WITH_MEDIA_ONLY.media
+    )
+
+  def test_media_tensors_calibration_period_comes_from_the_argument(self):
+    """The argument drives calibration, not the deprecated spec attribute."""
+    # Deliberately unset on the spec: a declaratively configured model arrives
+    # here with the period already resolved by `ModelContext`.
+    model_spec = spec.ModelSpec(
+        media_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
+        roi_calibration_period=None,
+    )
+    self.assertIsNotNone(
+        media.build_media_tensors(
+            _INPUT_DATA_WITH_MEDIA_ONLY,
+            model_spec,
+            calibration_period=_ROI_CALIBRATION_PERIOD,
+        ).prior_media_scaled_counterfactual
+    )
+    self.assertIsNone(
+        media.build_media_tensors(
+            _INPUT_DATA_WITH_MEDIA_ONLY, model_spec, calibration_period=None
+        ).prior_media_scaled_counterfactual
     )
 
 
@@ -282,7 +304,7 @@ class RfTensorsTest(parameterized.TestCase):
 
   def test_no_rf_values(self):
     rf_tensors = media.build_rf_tensors(
-        _INPUT_DATA_WITH_MEDIA_ONLY, spec.ModelSpec()
+        _INPUT_DATA_WITH_MEDIA_ONLY, spec.ModelSpec(), calibration_period=None
     )
 
     self.assertIsNone(rf_tensors.reach)
@@ -309,6 +331,7 @@ class RfTensorsTest(parameterized.TestCase):
     rf_tensors = media.build_rf_tensors(
         _INPUT_DATA_WITH_RF_ONLY,
         spec.ModelSpec(rf_roi_calibration_period=rf_roi_calibration_period),
+        calibration_period=rf_roi_calibration_period,
     )
 
     test_utils.assert_allclose(rf_tensors.reach, _INPUT_DATA_WITH_RF_ONLY.reach)
@@ -325,6 +348,25 @@ class RfTensorsTest(parameterized.TestCase):
     self.assertIsNotNone(rf_tensors.reach_transformer)
     test_utils.assert_allclose(
         rf_tensors.reach_scaled, _INPUT_DATA_WITH_RF_ONLY.reach
+    )
+
+  def test_rf_tensors_calibration_period_comes_from_the_argument(self):
+    """The argument drives calibration, not the deprecated spec attribute."""
+    model_spec = spec.ModelSpec(
+        rf_prior_type=c.TREATMENT_PRIOR_TYPE_ROI,
+        rf_roi_calibration_period=None,
+    )
+    self.assertIsNotNone(
+        media.build_rf_tensors(
+            _INPUT_DATA_WITH_RF_ONLY,
+            model_spec,
+            calibration_period=_ROI_CALIBRATION_PERIOD,
+        ).prior_reach_scaled_counterfactual
+    )
+    self.assertIsNone(
+        media.build_rf_tensors(
+            _INPUT_DATA_WITH_RF_ONLY, model_spec, calibration_period=None
+        ).prior_reach_scaled_counterfactual
     )
 
 

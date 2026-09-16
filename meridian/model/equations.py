@@ -233,16 +233,22 @@ class ModelEquations:
       baseline values for each non-media treatment channel.
     """
     if non_media_baseline_values is None:
-      non_media_baseline_values = (
-          self._context.model_spec.non_media_baseline_values
+      non_media_baseline_values_filled = (
+          self._context.compiled_non_media_baseline_values
+      )
+    else:
+      non_media_baseline_values_filled = (
+          self._context.resolve_non_media_baseline_values(
+              non_media_baseline_values
+          )
       )
 
     no_op_scaling_factor = backend.ones_like(self._context.population)[
         :, backend.newaxis, backend.newaxis
     ]
-    if self._context.model_spec.non_media_population_scaling_id is not None:
+    if self._context.compiled_non_media_population_scaling_id is not None:
       scaling_factors = backend.where(
-          self._context.model_spec.non_media_population_scaling_id,
+          self._context.compiled_non_media_population_scaling_id,
           self._context.population[:, backend.newaxis, backend.newaxis],
           no_op_scaling_factor,
       )
@@ -253,31 +259,12 @@ class ModelEquations:
         self._context.non_media_treatments, scaling_factors
     )
 
-    if non_media_baseline_values is None:
-      # If non_media_baseline_values is not provided, use the minimum
-      # value for each non_media treatment channel as the baseline.
+    if non_media_baseline_values_filled is None:
+      # No baseline values anywhere: use the minimum value for each non-media
+      # treatment channel as the baseline.
       non_media_baseline_values_filled = [
           constants.NON_MEDIA_BASELINE_MIN
       ] * non_media_treatments_population_scaled.shape[-1]
-    elif isinstance(non_media_baseline_values, Mapping):
-      channels = []
-      if (
-          self._context.input_data is not None
-          and self._context.input_data.non_media_channel is not None
-      ):
-        channels = list(self._context.input_data.non_media_channel.values)
-      unknown_channels = set(non_media_baseline_values.keys()) - set(channels)
-      if unknown_channels:
-        raise ValueError(
-            "Unknown non-media channels in `non_media_baseline_values`:"
-            f" {sorted(unknown_channels)}."
-        )
-      non_media_baseline_values_filled = [
-          non_media_baseline_values.get(c, constants.NON_MEDIA_BASELINE_MIN)
-          for c in channels
-      ]
-    else:
-      non_media_baseline_values_filled = list(non_media_baseline_values)
 
     if non_media_treatments_population_scaled.shape[-1] != len(
         non_media_baseline_values_filled

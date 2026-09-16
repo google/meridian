@@ -2490,13 +2490,12 @@ class CompiledModelSpecTest(
             ]
         ),
     )
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`roi_calibration` refers to media channels that are not in the input"
         r" data: \['not_a_channel'\]",
     ):
-      _ = model_context.compiled_roi_calibration_period
+      _ = self._context(data, model_spec)
 
   # --- RF ROI calibration ---------------------------------------------------
 
@@ -2533,13 +2532,12 @@ class CompiledModelSpecTest(
             ]
         ),
     )
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`rf_roi_calibration` refers to RF channels that are not in the input"
         r" data: \['not_an_rf_channel'\]",
     ):
-      _ = model_context.compiled_rf_roi_calibration_period
+      _ = self._context(data, model_spec)
 
   # --- Holdout --------------------------------------------------------------
 
@@ -2621,13 +2619,12 @@ class CompiledModelSpecTest(
             ]
         )
     )
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`holdout` refers to geos that are not in the input data:"
         r" \['not_a_geo'\]",
     ):
-      _ = model_context.compiled_holdout_id
+      _ = self._context(data, model_spec)
 
   def test_compiled_holdout_id_random_holds_out_exact_ratio_per_geo(self):
     """The draw is stratified: every geo holds out the same exact count."""
@@ -2793,13 +2790,12 @@ class CompiledModelSpecTest(
   def test_compiled_control_population_scaling_id_unknown_name_fails(self):
     data = self.input_data_with_media_and_rf
     model_spec = spec.ModelSpec(population_scaled_controls=["not_a_control"])
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`population_scaled_controls` refers to control variables that are not"
         r" in the input data: \['not_a_control'\]",
     ):
-      _ = model_context.compiled_control_population_scaling_id
+      _ = self._context(data, model_spec)
 
   def test_compiled_non_media_population_scaling_id_from_names(self):
     data = self.input_data_non_media_and_organic
@@ -2821,13 +2817,12 @@ class CompiledModelSpecTest(
     model_spec = spec.ModelSpec(
         population_scaled_non_media_channels=["not_a_channel"]
     )
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`population_scaled_non_media_channels` refers to non-media channels"
         r" that are not in the input data: \['not_a_channel'\]",
     ):
-      _ = model_context.compiled_non_media_population_scaling_id
+      _ = self._context(data, model_spec)
 
   # --- Non-media baseline values --------------------------------------------
 
@@ -2861,13 +2856,330 @@ class CompiledModelSpecTest(
     model_spec = spec.ModelSpec(
         non_media_baseline_values={"not_a_channel": "max"}
     )
-    model_context = self._context(data, model_spec)
     with self.assertRaisesRegex(
         ValueError,
         r"`non_media_baseline_values` refers to non-media channels that are not"
         r" in the input data: \['not_a_channel'\]",
     ):
-      _ = model_context.compiled_non_media_baseline_values
+      _ = self._context(data, model_spec)
+
+
+class CompiledModelSpecConsumerTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests that `ModelContext`'s consumers read the compiled model spec.
+
+  `CompiledModelSpecTest` covers the `compiled_*` properties in isolation.
+  These cases cover the layer above them: the properties the model engine
+  actually reads -- `holdout_id`, the two population-scaling transformers, and
+  the media and RF tensors -- must derive from the compiled values. A
+  legacy-only model must be unaffected, and a declaratively specified model
+  must behave like the legacy model it is equivalent to.
+  """
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def _context(
+      self,
+      data: input_data.InputData,
+      model_spec: spec.ModelSpec,
+  ) -> context.ModelContext:
+    return context.ModelContext(input_data=data, model_spec=model_spec)
+
+  def _assert_population_scaled_columns(
+      self,
+      transformer: Any,
+      expected_selection: Sequence[bool],
+  ):
+    """Asserts the transformer scales exactly the selected columns.
+
+    `CenteringAndScalingTransformer` stores a `(n_geos, n_channels)` factor
+    matrix whose column is the geo populations where the channel is selected
+    and all ones where it is not. Asserting against ones rather than against
+    the populations keeps the check exact and independent of the float dtype.
+
+    Args:
+      transformer: The `CenteringAndScalingTransformer` under test.
+      expected_selection: One boolean per channel, in channel order.
+    """
+    factors = transformer._population_scaling_factors  # pylint: disable=protected-access
+    self.assertIsNotNone(factors)
+    ones = backend.ones_like(factors[:, 0])
+    for channel, selected in enumerate(expected_selection):
+      if selected:
+        test_utils.assert_not_allequal(
+            factors[:, channel],
+            ones,
+            err_msg=f"Channel {channel} should be scaled by population.",
+        )
+      else:
+        test_utils.assert_allequal(
+            factors[:, channel],
+            ones,
+            err_msg=f"Channel {channel} should not be scaled by population.",
+        )
+
+  # --- `holdout_id` ---------------------------------------------------------
+
+  def test_holdout_id_from_legacy_array(self):
+    data = self.input_data_with_media_and_rf
+    legacy = np.zeros((len(data.geo), len(data.time)), dtype=bool)
+    legacy[0, :5] = True
+    model_context = self._context(data, spec.ModelSpec(holdout_id=legacy))
+    test_utils.assert_allequal(model_context.holdout_id, legacy)
+
+  def test_holdout_id_national_legacy_array_gains_leading_axis(self):
+    """A national model carries a 1-D holdout, broadcast to a single geo."""
+    data = self.national_input_data_media_and_rf
+    legacy = np.zeros((len(data.time),), dtype=bool)
+    legacy[:5] = True
+    model_context = self._context(data, spec.ModelSpec(holdout_id=legacy))
+    test_utils.assert_allequal(model_context.holdout_id, legacy[np.newaxis, :])
+
+  def test_holdout_id_from_declarative_spec(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])])
+    )
+    expected = np.zeros((len(data.geo), len(dates)), dtype=bool)
+    # `[start, end]`: both index 10 and index 20 are included.
+    expected[:, 10:21] = True
+    test_utils.assert_allequal(
+        self._context(data, model_spec).holdout_id, expected
+    )
+
+  def test_holdout_id_national_declarative_spec_gains_leading_axis(self):
+    data = self.national_input_data_media_and_rf
+    dates = data.time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])])
+    )
+    expected = np.zeros((1, len(dates)), dtype=bool)
+    expected[0, 10:21] = True
+    test_utils.assert_allequal(
+        self._context(data, model_spec).holdout_id, expected
+    )
+
+  def test_holdout_id_prefers_legacy_over_declarative(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    legacy = np.zeros((len(data.geo), len(dates)), dtype=bool)
+    legacy[0, :5] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])]),
+          holdout_id=legacy,
+      )
+    declarative = np.zeros((len(data.geo), len(dates)), dtype=bool)
+    declarative[:, 10:21] = True
+
+    holdout_id = self._context(data, model_spec).holdout_id
+    test_utils.assert_allequal(holdout_id, legacy)
+    test_utils.assert_not_allequal(holdout_id, declarative)
+
+  def test_both_holdout_attributes_warn_that_legacy_takes_precedence(self):
+    """Pins the warning text to the precedence the context actually applies."""
+    data = self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    legacy = np.zeros((len(data.geo), len(dates)), dtype=bool)
+    legacy[0, :5] = True
+    with self.assertWarnsRegex(
+        UserWarning,
+        r"`holdout_id` takes precedence for backward compatibility",
+    ):
+      spec.ModelSpec(
+          holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[10], dates[20])]),
+          holdout_id=legacy,
+      )
+
+  # --- Population scaling ---------------------------------------------------
+
+  def test_controls_transformer_scales_legacy_selected_controls(self):
+    data = self.input_data_with_media_and_rf
+    assert data.control_variable is not None
+    legacy = np.zeros(len(data.control_variable), dtype=bool)
+    legacy[1] = True
+    model_context = self._context(
+        data, spec.ModelSpec(control_population_scaling_id=legacy)
+    )
+    self._assert_population_scaled_columns(
+        model_context.controls_transformer, [False, True]
+    )
+
+  def test_controls_transformer_scales_declaratively_named_controls(self):
+    data = self.input_data_with_media_and_rf
+    assert data.control_variable is not None
+    controls = [str(control) for control in data.control_variable.values]
+    model_context = self._context(
+        data, spec.ModelSpec(population_scaled_controls=[controls[1]])
+    )
+    self._assert_population_scaled_columns(
+        model_context.controls_transformer, [False, True]
+    )
+
+  def test_controls_transformer_prefers_legacy_over_declarative(self):
+    data = self.input_data_with_media_and_rf
+    assert data.control_variable is not None
+    controls = [str(control) for control in data.control_variable.values]
+    legacy = np.zeros(len(controls), dtype=bool)
+    legacy[0] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          population_scaled_controls=[controls[1]],
+          control_population_scaling_id=legacy,
+      )
+    # The two selections are disjoint, so the assertion cannot pass vacuously.
+    self._assert_population_scaled_columns(
+        self._context(data, model_spec).controls_transformer, [True, False]
+    )
+
+  def test_non_media_transformer_scales_declaratively_named_channels(self):
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = [str(channel) for channel in data.non_media_channel.values]
+    model_context = self._context(
+        data,
+        spec.ModelSpec(population_scaled_non_media_channels=[channels[1]]),
+    )
+    self._assert_population_scaled_columns(
+        model_context.non_media_transformer, [False, True]
+    )
+
+  def test_non_media_transformer_prefers_legacy_over_declarative(self):
+    data = self.input_data_non_media_and_organic
+    assert data.non_media_channel is not None
+    channels = [str(channel) for channel in data.non_media_channel.values]
+    legacy = np.zeros(len(channels), dtype=bool)
+    legacy[0] = True
+    with self.assertWarns(UserWarning):
+      model_spec = spec.ModelSpec(
+          population_scaled_non_media_channels=[channels[1]],
+          non_media_population_scaling_id=legacy,
+      )
+    self._assert_population_scaled_columns(
+        self._context(data, model_spec).non_media_transformer, [True, False]
+    )
+
+  # --- ROI calibration ------------------------------------------------------
+
+  def test_media_tensors_honor_declarative_roi_calibration(self):
+    """A declarative calibration period produces the legacy tensors exactly."""
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    assert data.media_channel is not None
+    legacy = np.zeros((len(dates), len(data.media_channel)), dtype=bool)
+    legacy[10:21, :] = True
+    legacy_tensors = self._context(
+        data,
+        spec.ModelSpec(
+            media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+            roi_calibration_period=legacy,
+        ),
+    ).media_tensors
+    declarative_tensors = self._context(
+        data,
+        spec.ModelSpec(
+            media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+            roi_calibration=spec.CalibrationSpec(
+                spec=[spec.DateRange(dates[10], dates[20])]
+            ),
+        ),
+    ).media_tensors
+
+    # Before the calibration period was threaded through from the context, a
+    # declarative spec left this `None` and the model calibrated over the
+    # whole time window.
+    self.assertIsNotNone(declarative_tensors.prior_media_scaled_counterfactual)
+    test_utils.assert_allclose(
+        declarative_tensors.prior_media_scaled_counterfactual,
+        legacy_tensors.prior_media_scaled_counterfactual,
+    )
+    test_utils.assert_allclose(
+        declarative_tensors.prior_denominator,
+        legacy_tensors.prior_denominator,
+    )
+
+  def test_media_tensors_prefer_legacy_roi_calibration_period(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    assert data.media_channel is not None
+    n_media_channels = len(data.media_channel)
+    legacy = np.zeros((len(dates), n_media_channels), dtype=bool)
+    legacy[:5, :] = True
+    declarative = spec.CalibrationSpec(
+        spec=[spec.DateRange(dates[10], dates[20])]
+    )
+    with self.assertWarns(UserWarning):
+      both = spec.ModelSpec(
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          roi_calibration=declarative,
+          roi_calibration_period=legacy,
+      )
+
+    counterfactual = self._context(
+        data, both
+    ).media_tensors.prior_media_scaled_counterfactual
+    test_utils.assert_allclose(
+        counterfactual,
+        self._context(
+            data,
+            spec.ModelSpec(
+                media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+                roi_calibration_period=legacy,
+            ),
+        ).media_tensors.prior_media_scaled_counterfactual,
+    )
+    # The two periods are disjoint, so this distinguishes them.
+    test_utils.assert_not_allequal(
+        counterfactual,
+        self._context(
+            data,
+            spec.ModelSpec(
+                media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+                roi_calibration=declarative,
+            ),
+        ).media_tensors.prior_media_scaled_counterfactual,
+    )
+
+  def test_rf_tensors_honor_declarative_roi_calibration(self):
+    data = self.input_data_with_media_and_rf
+    dates = data.media_time_coordinates.all_dates
+    assert data.rf_channel is not None
+    legacy = np.zeros((len(dates), len(data.rf_channel)), dtype=bool)
+    legacy[10:21, :] = True
+    legacy_tensors = self._context(
+        data,
+        spec.ModelSpec(
+            rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+            rf_roi_calibration_period=legacy,
+        ),
+    ).rf_tensors
+    declarative_tensors = self._context(
+        data,
+        spec.ModelSpec(
+            rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+            rf_roi_calibration=spec.CalibrationSpec(
+                spec=[spec.DateRange(dates[10], dates[20])]
+            ),
+        ),
+    ).rf_tensors
+
+    self.assertIsNotNone(declarative_tensors.prior_reach_scaled_counterfactual)
+    test_utils.assert_allclose(
+        declarative_tensors.prior_reach_scaled_counterfactual,
+        legacy_tensors.prior_reach_scaled_counterfactual,
+    )
+    test_utils.assert_allclose(
+        declarative_tensors.prior_denominator,
+        legacy_tensors.prior_denominator,
+    )
 
 
 class HoldoutMaskInversionTest(parameterized.TestCase):
