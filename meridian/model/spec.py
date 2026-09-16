@@ -64,6 +64,11 @@ class DateRange:
 
   A range whose bounds are equal is valid and selects that single date.
 
+  A bound that is present must name one of the input data's time coordinates
+  exactly; a bound falling between two coordinates is rejected. Because it
+  depends on the data, the check happens when the range is compiled against an
+  `InputData`, not at construction time.
+
   Note:
     The `mmm.v1.common.DateInterval` proto that these specs serialize to uses
     the opposite, *half-open* `[start_date, end_date)` convention. The
