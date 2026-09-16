@@ -1626,5 +1626,248 @@ class MeridianSerdeTest(parameterized.TestCase):
       self.assertNotIn('knot_info', deserialized_model.model_context.__dict__)
 
 
+class HoldoutRoundTripTest(parameterized.TestCase):
+  """End-to-end coverage that a holdout survives a save/load round trip.
+
+  `hyperparameters_test` covers the proto translation in isolation and
+  `analyzer_test` covers analysis reading `ModelContext.compiled_holdout_id`.
+  This class of tests cover the seam between them.
+
+  Every case asserts on `compiled_holdout_id`, which is the attribute the
+  analysis and sampling layers actually consume, so an equal mask means every
+  downstream consumer sees the holdout the original fit used.
+  """
+
+  _RANDOM_HOLDOUT = spec.RandomHoldoutSpec(ratio=0.2, seed=17)
+  # Unseeded, so the draw comes from OS entropy and a re-draw would produce a
+  # different mask. Asserting mask equality is then a real assertion that the
+  # recorded draw governed, not that the seed happened to reproduce it.
+  _UNSEEDED_RANDOM_HOLDOUT = spec.RandomHoldoutSpec(ratio=0.2)
+
+  def setUp(self):
+    super().setUp()
+    # The create_tempdir() method below internally uses command line flag
+    # (--test_tmpdir) and such flags are not marked as parsed by default
+    # when running with pytest. Marking as parsed directly here to make the
+    # pytest run pass.
+    flags.FLAGS.mark_as_parsed()
+    self._tempdir = self.create_tempdir().full_path
+
+  def _save(self, mmm: model.Meridian, name: str = 'model') -> str:
+    """Writes `mmm` to a wire-format proto file and returns the path."""
+    file_path = os.path.join(self._tempdir, f'{name}.binpb')
+    serde.save_meridian(mmm, file_path)
+    return file_path
+
+  def _round_trip(
+      self,
+      model_spec: spec.ModelSpec,
+      input_data: meridian_input_data.InputData = _INPUT_DATA,
+  ) -> tuple[model.Meridian, model.Meridian]:
+    """Returns a model built from `model_spec` and its round-tripped copy."""
+    original = model.Meridian(input_data=input_data, model_spec=model_spec)
+    return original, serde.load_meridian(self._save(original))
+
+  def _model_spec_with_both_holdouts(self) -> spec.ModelSpec:
+    """Returns a spec with a legacy array and a random holdout both set."""
+    legacy = np.full((len(_INPUT_DATA.geo), len(_INPUT_DATA.time)), False)
+    legacy[:, 5:15] = True
+    with warnings.catch_warnings():
+      # Constructing a both-set spec warns about precedence and deprecation;
+      # that behavior belongs to `spec_test`, not here.
+      warnings.simplefilter('ignore')
+      return spec.ModelSpec(
+          holdout=spec.HoldoutSpec(spec=self._RANDOM_HOLDOUT),
+          holdout_id=legacy,
+      )
+
+  def test_a_random_draw_survives_the_round_trip(self):
+    original, loaded = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(spec=self._UNSEEDED_RANDOM_HOLDOUT)
+        )
+    )
+
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+
+  def test_the_loaded_spec_records_the_draw_alongside_the_intent(self):
+    _, loaded = self._round_trip(
+        spec.ModelSpec(holdout=spec.HoldoutSpec(spec=self._RANDOM_HOLDOUT))
+    )
+
+    holdout = loaded.model_spec.holdout
+    self.assertIsNotNone(holdout)
+    assert holdout is not None  # Narrows the type for the reads below.
+    # The request is provenance; the draw is what governs on reload.
+    self.assertEqual(holdout.spec, self._RANDOM_HOLDOUT)
+    self.assertIsNotNone(holdout.resolved)
+
+  def test_loading_a_recorded_draw_does_not_warn(self):
+    file_path = self._save(
+        model.Meridian(
+            input_data=_INPUT_DATA,
+            model_spec=spec.ModelSpec(
+                holdout=spec.HoldoutSpec(spec=self._RANDOM_HOLDOUT)
+            ),
+        )
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always')
+      serde.load_meridian(file_path)
+
+    self.assertEmpty(
+        [w for w in caught if 'does not record the draw' in str(w.message)]
+    )
+
+  def test_the_draw_is_stable_across_repeated_round_trips(self):
+    original, once = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(spec=self._UNSEEDED_RANDOM_HOLDOUT)
+        )
+    )
+    twice = serde.load_meridian(self._save(once, name='reloaded'))
+
+    # The recorded draw has to be carried forward on every write, not just the
+    # first one, or the second load would silently draw a different holdout.
+    np.testing.assert_array_equal(
+        twice.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+
+  def test_a_national_random_draw_survives_the_round_trip(self):
+    national_input_data = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=1,
+            n_times=49,
+            n_media_times=52,
+            n_controls=2,
+            n_media_channels=3,
+            seed=1,
+        )
+    )
+
+    original, loaded = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(spec=self._UNSEEDED_RANDOM_HOLDOUT)
+        ),
+        input_data=national_input_data,
+    )
+
+    # A national mask is 1-D over time, so the round trip also has to survive
+    # the squeeze that drops the geo axis.
+    national_mask = original.model_context.compiled_holdout_id
+    self.assertIsNotNone(national_mask)
+    assert national_mask is not None  # Narrows the type for the read below.
+    self.assertEqual(national_mask.ndim, 1)
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        national_mask,
+    )
+
+  def test_a_date_range_holdout_survives_the_round_trip(self):
+    dates = _INPUT_DATA.time_coordinates.all_dates
+
+    original, loaded = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(
+                spec=[spec.DateRange(dates[10], dates[20])]
+            )
+        )
+    )
+
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+    # Deterministic specs recompile from `spec`, so there is no draw to record.
+    holdout = loaded.model_spec.holdout
+    self.assertIsNotNone(holdout)
+    assert holdout is not None  # Narrows the type for the read below.
+    self.assertIsNone(holdout.resolved)
+
+  def test_a_geo_holdout_survives_the_round_trip(self):
+    dates = _INPUT_DATA.time_coordinates.all_dates
+
+    original, loaded = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(
+                spec=[
+                    spec.GeoHoldoutSpec(
+                        geos=['geo_1', 'geo_3'],
+                        date_ranges=[spec.DateRange(dates[10], dates[20])],
+                    )
+                ]
+            )
+        )
+    )
+
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+    # Deterministic specs recompile from `spec`, so there is no draw to record.
+    holdout = loaded.model_spec.holdout
+    self.assertIsNotNone(holdout)
+    assert holdout is not None  # Narrows the type for the read below.
+    self.assertIsNone(holdout.resolved)
+
+  def test_a_legacy_holdout_array_survives_the_round_trip(self):
+    legacy = np.full((len(_INPUT_DATA.geo), len(_INPUT_DATA.time)), False)
+    legacy[:, 5:15] = True
+    with warnings.catch_warnings():
+      warnings.simplefilter('ignore')  # Deprecation of `holdout_id`.
+      model_spec = spec.ModelSpec(holdout_id=legacy)
+
+    original, loaded = self._round_trip(model_spec)
+
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+
+  def test_a_legacy_array_keeps_precedence_across_the_round_trip(self):
+    model_spec = self._model_spec_with_both_holdouts()
+
+    original, loaded = self._round_trip(model_spec)
+
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+    # The random specification never governed, so no draw was made to record.
+    holdout = loaded.model_spec.holdout
+    self.assertIsNotNone(holdout)
+    assert holdout is not None  # Narrows the type for the read below.
+    self.assertIsNone(holdout.resolved)
+
+  def test_loading_an_inert_random_holdout_does_not_warn(self):
+    file_path = self._save(
+        model.Meridian(
+            input_data=_INPUT_DATA,
+            model_spec=self._model_spec_with_both_holdouts(),
+        )
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always')
+      serde.load_meridian(file_path)
+
+    # The unrecorded draw is not worth warning about when `holdout_id` governs.
+    self.assertEmpty(
+        [w for w in caught if 'does not record the draw' in str(w.message)]
+    )
+
+  def test_no_holdout_stays_absent_across_the_round_trip(self):
+    _, loaded = self._round_trip(spec.ModelSpec())
+
+    self.assertIsNone(loaded.model_spec.holdout)
+    self.assertIsNone(loaded.model_spec.holdout_id)
+    self.assertIsNone(loaded.model_context.compiled_holdout_id)
+
+
 if __name__ == '__main__':
   absltest.main()
