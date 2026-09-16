@@ -26,6 +26,21 @@ GLOBAL_ADSTOCK_DECAY = 'global_adstock_decay'
 ADSTOCK_DECAY_BY_CHANNEL = 'adstock_decay_by_channel'
 DEFAULT_DECAY = 'geometric'
 
+# Constants for the declarative `Hyperparameters` config messages.
+ROI_CALIBRATION_CONFIG = 'roi_calibration_config'
+RF_ROI_CALIBRATION_CONFIG = 'rf_roi_calibration_config'
+HOLDOUT_CONFIG = 'holdout_config'
+# `CalibrationConfig.spec` and `HoldoutConfig.spec` are both named `spec`.
+CONFIG_SPEC_ONEOF = 'spec'
+GLOBAL_DATE_RANGES = 'global_date_ranges'
+CHANNEL_DATE_RANGES = 'channel_date_ranges'
+GEO_DATE_RANGES = 'geo_date_ranges'
+RANDOM_HOLDOUT = 'random_holdout'
+RESOLVED = 'resolved'
+START_DATE = 'start_date'
+END_DATE = 'end_date'
+SEED = 'seed'
+
 SATURATION_SPEC = 'saturation_spec'
 GLOBAL_SATURATION = 'global_saturation'
 SATURATION_BY_CHANNEL = 'saturation_by_channel'

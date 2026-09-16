@@ -2685,6 +2685,34 @@ class CompiledModelSpecTest(
         model_context.compiled_holdout_id, model_context.compiled_holdout_id
     )
 
+  def test_compiled_holdout_id_random_rejects_a_ratio_that_holds_out_nothing(
+      self,
+  ):
+    """A ratio too small for the data would silently disable the holdout."""
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.4 / len(data.time), seed=17)
+        )
+    )
+
+    with self.assertRaisesRegex(ValueError, "rounds to zero of the input data"):
+      _ = self._context(data, model_spec).compiled_holdout_id
+
+  def test_compiled_holdout_id_random_allows_a_single_held_out_period(self):
+    """One period per geo is the smallest viable draw, and it is legal."""
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.8 / len(data.time), seed=17)
+        )
+    )
+
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    np.testing.assert_array_equal(compiled.sum(axis=1), np.ones(len(data.geo)))
+
   def test_compiled_holdout_id_resolved_wins_over_random_spec(self):
     """A materialized draw is authoritative and is never re-drawn."""
     data = self.input_data_with_media_and_rf
@@ -2840,6 +2868,233 @@ class CompiledModelSpecTest(
         r" in the input data: \['not_a_channel'\]",
     ):
       _ = model_context.compiled_non_media_baseline_values
+
+
+class HoldoutMaskInversionTest(parameterized.TestCase):
+  """Tests inverting a resolved holdout mask back into declarative ranges."""
+
+  # Five weekly coordinates, so that a run can start at the first index, end at
+  # the last, and be separated from another run by exactly one period.
+  _DATES = (
+      datetime.date(2021, 1, 4),
+      datetime.date(2021, 1, 11),
+      datetime.date(2021, 1, 18),
+      datetime.date(2021, 1, 25),
+      datetime.date(2021, 2, 1),
+  )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="single_period_at_the_first_index",
+          mask=[1, 0, 0, 0, 0],
+          expected=[(0, 0)],
+      ),
+      dict(
+          testcase_name="single_period_at_the_last_index",
+          mask=[0, 0, 0, 0, 1],
+          expected=[(4, 4)],
+      ),
+      dict(
+          testcase_name="single_period_in_the_middle",
+          mask=[0, 0, 1, 0, 0],
+          expected=[(2, 2)],
+      ),
+      dict(
+          testcase_name="two_runs_separated_by_one_period",
+          mask=[1, 1, 0, 1, 1],
+          expected=[(0, 1), (3, 4)],
+      ),
+      dict(
+          testcase_name="two_runs_separated_by_two_periods",
+          mask=[1, 0, 0, 1, 1],
+          expected=[(0, 0), (3, 4)],
+      ),
+      dict(
+          testcase_name="run_ending_at_the_last_index",
+          mask=[0, 0, 1, 1, 1],
+          expected=[(2, 4)],
+      ),
+      dict(
+          testcase_name="every_period",
+          mask=[1, 1, 1, 1, 1],
+          expected=[(0, 4)],
+      ),
+      dict(
+          testcase_name="alternating_periods",
+          mask=[1, 0, 1, 0, 1],
+          expected=[(0, 0), (2, 2), (4, 4)],
+      ),
+      dict(testcase_name="no_period", mask=[0, 0, 0, 0, 0], expected=[]),
+  )
+  def test_contiguous_runs_become_one_closed_range_each(
+      self, mask: list[int], expected: list[tuple[int, int]]
+  ):
+    """Two runs one period apart must not be merged into one range.
+
+    The separating period is not held out. Merging the runs would quietly add
+    it to the holdout, which is the off-by-one this inversion is most prone to.
+    """
+    ranges = context._contiguous_date_ranges(  # pylint: disable=protected-access
+        np.array(mask, dtype=bool), self._DATES
+    )
+
+    self.assertEqual(
+        ranges,
+        [
+            spec.DateRange(self._DATES[start], self._DATES[end])
+            for start, end in expected
+        ],
+    )
+
+  def test_geo_with_nothing_held_out_is_omitted(self):
+    """A geo no entry mentions is not held out, so it needs no entry."""
+    mask = np.array(
+        [[1, 1, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 1, 1]], dtype=bool
+    )
+
+    geo_specs = context._mask_to_geo_holdout_specs(  # pylint: disable=protected-access
+        mask, self._DATES, ["geo_0", "geo_1", "geo_2"]
+    )
+
+    self.assertEqual(
+        geo_specs,
+        [
+            spec.GeoHoldoutSpec(
+                geos=["geo_0"],
+                date_ranges=[spec.DateRange(self._DATES[0], self._DATES[1])],
+            ),
+            spec.GeoHoldoutSpec(
+                geos=["geo_2"],
+                date_ranges=[spec.DateRange(self._DATES[3], self._DATES[4])],
+            ),
+        ],
+    )
+
+
+class ResolvedRandomHoldoutTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests `ModelContext.resolved_random_holdout`."""
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def _context(
+      self,
+      model_spec: spec.ModelSpec,
+      data: input_data.InputData | None = None,
+  ) -> context.ModelContext:
+    return context.ModelContext(
+        input_data=self.input_data_with_media_and_rf if data is None else data,
+        model_spec=model_spec,
+    )
+
+  def test_the_draw_recompiles_to_the_same_mask(self):
+    """The inversion must be faithful, or a saved model reloads differently."""
+    drawn = self._context(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(spec=spec.RandomHoldoutSpec(ratio=0.2))
+        )
+    )
+    resolved = drawn.resolved_random_holdout
+    self.assertIsNotNone(resolved)
+
+    recompiled = self._context(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(
+                spec=spec.RandomHoldoutSpec(ratio=0.2), resolved=resolved
+            )
+        )
+    )
+
+    np.testing.assert_array_equal(
+        recompiled.compiled_holdout_id, drawn.compiled_holdout_id
+    )
+
+  def test_national_draw_recompiles_to_the_same_mask(self):
+    """A national model's mask is 1-D and still inverts to one geo entry."""
+    data = self.national_input_data_media_and_rf
+    drawn = self._context(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(spec=spec.RandomHoldoutSpec(ratio=0.2))
+        ),
+        data,
+    )
+    resolved = drawn.resolved_random_holdout
+    self.assertLen(resolved, 1)
+
+    recompiled = self._context(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(
+                spec=spec.RandomHoldoutSpec(ratio=0.2), resolved=resolved
+            )
+        ),
+        data,
+    )
+
+    np.testing.assert_array_equal(
+        recompiled.compiled_holdout_id, drawn.compiled_holdout_id
+    )
+
+  def test_holdout_id_leaves_no_draw_to_record(self):
+    """`holdout_id` governs, so the random spec never drew anything.
+
+    Recording a draw here would misrepresent the user's own array as the
+    outcome of a draw that did not happen.
+    """
+    legacy = np.zeros(
+        [
+            len(self.input_data_with_media_and_rf.geo),
+            len(self.input_data_with_media_and_rf.time),
+        ],
+        dtype=bool,
+    )
+    legacy[:, :3] = True
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore")
+      model_spec = spec.ModelSpec(
+          holdout=spec.HoldoutSpec(spec=spec.RandomHoldoutSpec(ratio=0.2)),
+          holdout_id=legacy,
+      )
+
+    self.assertIsNone(self._context(model_spec).resolved_random_holdout)
+
+  def test_an_existing_resolved_draw_is_returned_unchanged(self):
+    """A `resolved` draw is authoritative and must never be re-drawn."""
+    dates = self.input_data_with_media_and_rf.time_coordinates.all_dates
+    geos = [str(geo) for geo in self.input_data_with_media_and_rf.geo.values]
+    resolved = [
+        spec.GeoHoldoutSpec(
+            geos=[geos[0]], date_ranges=[spec.DateRange(dates[0], dates[2])]
+        )
+    ]
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.2), resolved=resolved
+        )
+    )
+
+    returned = self._context(model_spec).resolved_random_holdout
+
+    self.assertIsNotNone(returned)
+    assert returned is not None  # Narrows the type for the comparison below.
+    self.assertEqual(list(returned), resolved)
+
+  def test_a_declarative_date_range_holdout_is_not_a_draw(self):
+    dates = self.input_data_with_media_and_rf.time_coordinates.all_dates
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(spec=[spec.DateRange(dates[0], dates[2])])
+    )
+
+    self.assertIsNone(self._context(model_spec).resolved_random_holdout)
+
+  def test_no_holdout_has_no_draw(self):
+    self.assertIsNone(self._context(spec.ModelSpec()).resolved_random_holdout)
 
 
 if __name__ == "__main__":

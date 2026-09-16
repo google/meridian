@@ -313,14 +313,80 @@ def _draw_random_holdout(
 
   Returns:
     A boolean array of shape `(n_geos, n_times)`.
+
+  Raises:
+    ValueError: If the ratio rounds to zero time periods.
   """
-  rng = np.random.default_rng(random_spec.seed)
   n_holdout = min(int(round(random_spec.ratio * n_times)), n_times)
+  if n_holdout == 0:
+    raise ValueError(
+        f"`holdout` requests a random holdout ratio of {random_spec.ratio},"
+        f" which rounds to zero of the input data's {n_times} time periods, so"
+        " nothing would be held out. Use a larger ratio, or omit `holdout`"
+        " entirely if no holdout is intended."
+    )
+  rng = np.random.default_rng(random_spec.seed)
   mask = np.zeros((n_geos, n_times), dtype=bool)
-  if n_holdout > 0:
-    for geo_index in range(n_geos):
-      mask[geo_index, rng.choice(n_times, size=n_holdout, replace=False)] = True
+  for geo_index in range(n_geos):
+    mask[geo_index, rng.choice(n_times, size=n_holdout, replace=False)] = True
   return mask
+
+
+def _contiguous_date_ranges(
+    mask: np.ndarray, dates: Sequence[datetime.date]
+) -> list[spec.DateRange]:
+  """Groups a boolean mask over `dates` into one closed range per run.
+
+  Each maximal run of `True` becomes a single closed `DateRange`. Runs
+  separated by even one `False` stay separate ranges.
+
+  Args:
+    mask: A boolean array of shape `(len(dates),)`.
+    dates: The time coordinates the mask is over, in order.
+
+  Returns:
+    The selected date ranges, in ascending order. Empty if nothing is selected.
+  """
+  ranges = []
+  run_start = None
+  for index, selected in enumerate(mask):
+    if selected and run_start is None:
+      run_start = index
+    elif not selected and run_start is not None:
+      ranges.append(spec.DateRange(dates[run_start], dates[index - 1]))
+      run_start = None
+  if run_start is not None:
+    ranges.append(spec.DateRange(dates[run_start], dates[len(mask) - 1]))
+  return ranges
+
+
+def _mask_to_geo_holdout_specs(
+    mask: np.ndarray,
+    dates: Sequence[datetime.date],
+    geos: Sequence[str],
+) -> list[spec.GeoHoldoutSpec]:
+  """Inverts a holdout mask into per-geo declarative holdout specs.
+
+  This is the inverse of `_compile_geo_holdout_specs`.
+
+  A geo with nothing held out is omitted entirely rather than given an empty
+  entry, matching the rule that a geo no entry mentions is not held out.
+
+  Args:
+    mask: A boolean array of shape `(n_geos, n_times)`.
+    dates: The time coordinates, in order.
+    geos: The geo coordinates, in order.
+
+  Returns:
+    One `GeoHoldoutSpec` per geo that has at least one held-out period.
+  """
+  geo_specs = []
+  for geo_index, geo in enumerate(geos):
+    date_ranges = _contiguous_date_ranges(mask[geo_index], dates)
+    if not date_ranges:
+      continue
+    geo_specs.append(spec.GeoHoldoutSpec(geos=[geo], date_ranges=date_ranges))
+  return geo_specs
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1059,8 +1125,9 @@ class ModelContext:
       `ModelSpec.holdout_id` -- or `None` if neither attribute is set.
 
     Raises:
-      ValueError: If the spec names a geo not in the input data, or a date
-        range bound that is not a time coordinate.
+      ValueError: If the spec names a geo not in the input data, a date range
+        bound that is not a time coordinate, or a random holdout ratio that
+        rounds to zero time periods.
     """
     if self._model_spec.holdout_id is not None:
       return self._model_spec.holdout_id
@@ -1091,6 +1158,55 @@ class ModelContext:
     # National models carry a 1-D holdout, matching the legacy convention that
     # `_validate_model_spec_shapes` enforces.
     return compiled[0] if self.is_national else compiled
+
+  @functools.cached_property
+  def resolved_random_holdout(self) -> Sequence[spec.GeoHoldoutSpec] | None:
+    """The draw to record in `HoldoutSpec.resolved`, or `None` if there is none.
+
+    A `RandomHoldoutSpec` does not determine a holdout by itself, so the draw
+    the model actually used has to be recorded alongside it; see
+    `spec.RandomHoldoutSpec` for why a seed alone cannot reproduce one. This
+    inverts `compiled_holdout_id` back into the declarative form that
+    `HoldoutSpec.resolved` holds.
+
+    There is a draw to record only when the random specification is the one
+    that governed. If the deprecated `holdout_id` is also set it takes
+    precedence and this returns `None`.
+
+    Returns:
+      The draw as per-geo holdout specs, or `None` if the model has no random
+      holdout, or has one that did not govern.
+
+    Raises:
+      ValueError: If the spec names a geo not in the input data, a date range
+        bound that is not a time coordinate, or a random holdout ratio that
+        rounds to zero time periods.
+    """
+    holdout = self._model_spec.holdout
+    if holdout is None or not isinstance(holdout.spec, spec.RandomHoldoutSpec):
+      return None
+    if holdout.resolved is not None:
+      return holdout.resolved
+    if self._model_spec.holdout_id is not None:
+      return None
+
+    mask = self.compiled_holdout_id
+    if mask is None:
+      return None
+    mask = np.asarray(mask)
+    # A national model carries a 1-D mask over time only.
+    if mask.ndim == 1:
+      mask = mask[np.newaxis, :]
+
+    # The draw holds out at least one period per geo, so this is never empty.
+    return (
+        _mask_to_geo_holdout_specs(
+            mask,
+            self._input_data.time_coordinates.all_dates,
+            self._coordinate_names(self._input_data.geo),
+        )
+        or None
+    )
 
   @functools.cached_property
   def compiled_control_population_scaling_id(self) -> np.ndarray | None:
