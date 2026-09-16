@@ -20,7 +20,7 @@ definitions, such as adstock, hill, and other transformations used
 during model fitting. It requires a `ModelContext` instance for data access.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import numbers
 
 from meridian import backend
@@ -209,15 +209,18 @@ class ModelEquations:
 
   def compute_non_media_treatments_baseline(
       self,
-      non_media_baseline_values: Sequence[str | float] | None = None,
+      non_media_baseline_values: (
+          Mapping[str, str | float] | Sequence[str | float] | None
+      ) = None,
   ) -> backend.Tensor:
     """Computes the baseline for each non-media treatment channel.
 
     Args:
       non_media_baseline_values: Optional list of shape
-        `(n_non_media_channels,)`. Each element is either a float (which means
-        that the fixed value will be used as baseline for the given channel) or
-        one of the strings "min" or "max" (which mean that the global minimum or
+        `(n_non_media_channels,)`, or mapping from non-media channel names to
+        baseline values. Each element is either a float (which means that the
+        fixed value will be used as baseline for the given channel) or one of
+        the strings "min" or "max" (which mean that the global minimum or
         maximum value will be used as baseline for the values of the given
         non_media treatment channel). If float values are provided, it is
         expected that they are scaled by population for the channels where
@@ -256,8 +259,25 @@ class ModelEquations:
       non_media_baseline_values_filled = [
           constants.NON_MEDIA_BASELINE_MIN
       ] * non_media_treatments_population_scaled.shape[-1]
+    elif isinstance(non_media_baseline_values, Mapping):
+      channels = []
+      if (
+          self._context.input_data is not None
+          and self._context.input_data.non_media_channel is not None
+      ):
+        channels = list(self._context.input_data.non_media_channel.values)
+      unknown_channels = set(non_media_baseline_values.keys()) - set(channels)
+      if unknown_channels:
+        raise ValueError(
+            "Unknown non-media channels in `non_media_baseline_values`:"
+            f" {sorted(unknown_channels)}."
+        )
+      non_media_baseline_values_filled = [
+          non_media_baseline_values.get(c, constants.NON_MEDIA_BASELINE_MIN)
+          for c in channels
+      ]
     else:
-      non_media_baseline_values_filled = non_media_baseline_values
+      non_media_baseline_values_filled = list(non_media_baseline_values)
 
     if non_media_treatments_population_scaled.shape[-1] != len(
         non_media_baseline_values_filled
