@@ -14,7 +14,7 @@
 
 """Module for sampling prior distributions in a Meridian model."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import functools
 from typing import Optional, TYPE_CHECKING
 import warnings
@@ -32,6 +32,21 @@ if TYPE_CHECKING:
 __all__ = [
     "PriorDistributionSampler",
 ]
+
+
+def _compute_in_draw_batches(
+    fn: Callable[[slice], backend.Tensor],
+    n_draws: int,
+    batch_size: int,
+) -> backend.Tensor:
+  """Evaluates `fn(draw_slice)` in batches along the draw dimension (axis=1)."""
+  if n_draws <= batch_size:
+    return fn(slice(None))
+  batches = [
+      fn(slice(start, min(start + batch_size, n_draws)))
+      for start in range(0, n_draws, batch_size)
+  ]
+  return backend.concatenate(batches, axis=1)  # pyrefly: ignore[bad-argument-type]
 
 
 def _get_tau_g(
@@ -98,12 +113,15 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       rng_handler: backend.RNGHandler,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the media variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
       rng_handler: The backend-agnostic RNG handler managing the seed state.
+      batch_size: Maximum number of draws to process per batch when computing
+        transformed media and `beta_m`.
 
     Returns:
       A mapping of media parameter names to a tensor of shape `[n_draws, n_geos,
@@ -164,26 +182,35 @@ class PriorDistributionSampler:
       incremental_outcome_m = (
           treatment_parameter_m * ctx.media_tensors.prior_denominator
       )
-      media_transformed = self._model_equations.adstock_hill_media(
-          media=ctx.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
-          alpha=media_vars[constants.ALPHA_M],
-          ec=media_vars[constants.EC_M],
-          slope=media_vars[constants.SLOPE_M],
-          decay_functions=ctx.adstock_decay_spec.media,
-          saturation_spec=ctx.saturation_spec.media,
-      )
-      linear_predictor_counterfactual_difference = self._model_equations.linear_predictor_counterfactual_difference_media(
-          media_transformed=media_transformed,
-          alpha_m=media_vars[constants.ALPHA_M],
-          ec_m=media_vars[constants.EC_M],
-          slope_m=media_vars[constants.SLOPE_M],
-      )
-      beta_m_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_m,
-          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-          eta_x=media_vars[constants.ETA_M],
-          beta_gx_dev=beta_gm_dev,
+
+      def _compute_beta_m_batch(draw_slice: slice) -> backend.Tensor:
+        alpha_m = media_vars[constants.ALPHA_M][:, draw_slice]
+        ec_m = media_vars[constants.EC_M][:, draw_slice]
+        slope_m = media_vars[constants.SLOPE_M][:, draw_slice]
+        media_transformed = self._model_equations.adstock_hill_media(
+            media=ctx.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
+            alpha=alpha_m,
+            ec=ec_m,
+            slope=slope_m,
+            decay_functions=ctx.adstock_decay_spec.media,
+            saturation_spec=ctx.saturation_spec.media,
+        )
+        linear_predictor_counterfactual_difference = self._model_equations.linear_predictor_counterfactual_difference_media(
+            media_transformed=media_transformed,
+            alpha_m=alpha_m,
+            ec_m=ec_m,
+            slope_m=slope_m,
+        )
+        return self._model_equations.calculate_beta_x(
+            is_non_media=False,
+            incremental_outcome_x=incremental_outcome_m[:, draw_slice],
+            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+            eta_x=media_vars[constants.ETA_M][:, draw_slice],
+            beta_gx_dev=beta_gm_dev[:, draw_slice],
+        )
+
+      beta_m_value = _compute_in_draw_batches(
+          _compute_beta_m_batch, n_draws=n_draws, batch_size=batch_size
       )
       media_vars[constants.BETA_M] = backend.tfd.Deterministic(
           beta_m_value, name=constants.BETA_M
@@ -208,12 +235,15 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       rng_handler: backend.RNGHandler,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the RF variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
       rng_handler: The backend-agnostic RNG handler managing the seed state.
+      batch_size: Maximum number of draws to process per batch when computing
+        transformed RF and `beta_rf`.
 
     Returns:
       A mapping of RF parameter names to a tensor of shape
@@ -274,29 +304,38 @@ class PriorDistributionSampler:
       incremental_outcome_rf = (
           treatment_parameter_rf * ctx.rf_tensors.prior_denominator
       )
-      rf_transformed = self._model_equations.adstock_hill_rf(
-          reach=ctx.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
-          frequency=ctx.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
-          alpha=rf_vars[constants.ALPHA_RF],
-          ec=rf_vars[constants.EC_RF],
-          slope=rf_vars[constants.SLOPE_RF],
-          decay_functions=ctx.adstock_decay_spec.rf,
-          saturation_spec=ctx.saturation_spec.rf,
-      )
-      linear_predictor_counterfactual_difference = (
-          self._model_equations.linear_predictor_counterfactual_difference_rf(
-              rf_transformed=rf_transformed,
-              alpha_rf=rf_vars[constants.ALPHA_RF],
-              ec_rf=rf_vars[constants.EC_RF],
-              slope_rf=rf_vars[constants.SLOPE_RF],
-          )
-      )
-      beta_rf_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_rf,
-          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-          eta_x=rf_vars[constants.ETA_RF],
-          beta_gx_dev=beta_grf_dev,
+
+      def _compute_beta_rf_batch(draw_slice: slice) -> backend.Tensor:
+        alpha_rf = rf_vars[constants.ALPHA_RF][:, draw_slice]
+        ec_rf = rf_vars[constants.EC_RF][:, draw_slice]
+        slope_rf = rf_vars[constants.SLOPE_RF][:, draw_slice]
+        rf_transformed = self._model_equations.adstock_hill_rf(
+            reach=ctx.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
+            frequency=ctx.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
+            alpha=alpha_rf,
+            ec=ec_rf,
+            slope=slope_rf,
+            decay_functions=ctx.adstock_decay_spec.rf,
+            saturation_spec=ctx.saturation_spec.rf,
+        )
+        linear_predictor_counterfactual_difference = (
+            self._model_equations.linear_predictor_counterfactual_difference_rf(
+                rf_transformed=rf_transformed,
+                alpha_rf=alpha_rf,
+                ec_rf=ec_rf,
+                slope_rf=slope_rf,
+            )
+        )
+        return self._model_equations.calculate_beta_x(
+            is_non_media=False,
+            incremental_outcome_x=incremental_outcome_rf[:, draw_slice],
+            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+            eta_x=rf_vars[constants.ETA_RF][:, draw_slice],
+            beta_gx_dev=beta_grf_dev[:, draw_slice],
+        )
+
+      beta_rf_value = _compute_in_draw_batches(
+          _compute_beta_rf_batch, n_draws=n_draws, batch_size=batch_size
       )
       rf_vars[constants.BETA_RF] = backend.tfd.Deterministic(
           beta_rf_value,
@@ -322,12 +361,15 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       rng_handler: backend.RNGHandler,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of organic media variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
       rng_handler: The backend-agnostic RNG handler managing the seed state.
+      batch_size: Maximum number of draws to process per batch when computing
+        transformed organic media and `beta_om`.
 
     Returns:
       A mapping of organic media parameter names to a tensor of shape
@@ -376,20 +418,26 @@ class PriorDistributionSampler:
       incremental_outcome_om = (
           organic_media_vars[constants.CONTRIBUTION_OM] * ctx.total_outcome
       )
-      organic_media_transformed = self._model_equations.adstock_hill_media(
-          media=ctx.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
-          alpha=organic_media_vars[constants.ALPHA_OM],
-          ec=organic_media_vars[constants.EC_OM],
-          slope=organic_media_vars[constants.SLOPE_OM],
-          decay_functions=ctx.adstock_decay_spec.organic_media,
-          saturation_spec=ctx.saturation_spec.organic_media,
-      )
-      beta_om_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_om,
-          linear_predictor_counterfactual_difference=organic_media_transformed,
-          eta_x=organic_media_vars[constants.ETA_OM],
-          beta_gx_dev=beta_gom_dev,
+
+      def _compute_beta_om_batch(draw_slice: slice) -> backend.Tensor:
+        organic_media_transformed = self._model_equations.adstock_hill_media(
+            media=ctx.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
+            alpha=organic_media_vars[constants.ALPHA_OM][:, draw_slice],
+            ec=organic_media_vars[constants.EC_OM][:, draw_slice],
+            slope=organic_media_vars[constants.SLOPE_OM][:, draw_slice],
+            decay_functions=ctx.adstock_decay_spec.organic_media,
+            saturation_spec=ctx.saturation_spec.organic_media,
+        )
+        return self._model_equations.calculate_beta_x(
+            is_non_media=False,
+            incremental_outcome_x=incremental_outcome_om[:, draw_slice],
+            linear_predictor_counterfactual_difference=organic_media_transformed,
+            eta_x=organic_media_vars[constants.ETA_OM][:, draw_slice],
+            beta_gx_dev=beta_gom_dev[:, draw_slice],
+        )
+
+      beta_om_value = _compute_in_draw_batches(
+          _compute_beta_om_batch, n_draws=n_draws, batch_size=batch_size
       )
       organic_media_vars[constants.BETA_OM] = backend.tfd.Deterministic(
           beta_om_value,
@@ -418,12 +466,15 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       rng_handler: backend.RNGHandler,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from the prior distributions of the organic RF variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
       rng_handler: The backend-agnostic RNG handler managing the seed state.
+      batch_size: Maximum number of draws to process per batch when computing
+        transformed organic RF and `beta_orf`.
 
     Returns:
       A mapping of organic RF parameter names to a tensor of shape
@@ -472,21 +523,27 @@ class PriorDistributionSampler:
       incremental_outcome_orf = (
           organic_rf_vars[constants.CONTRIBUTION_ORF] * ctx.total_outcome
       )
-      organic_rf_transformed = self._model_equations.adstock_hill_rf(
-          reach=ctx.organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
-          frequency=ctx.organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
-          alpha=organic_rf_vars[constants.ALPHA_ORF],
-          ec=organic_rf_vars[constants.EC_ORF],
-          slope=organic_rf_vars[constants.SLOPE_ORF],
-          decay_functions=ctx.adstock_decay_spec.organic_rf,
-          saturation_spec=ctx.saturation_spec.organic_rf,
-      )
-      beta_orf_value = self._model_equations.calculate_beta_x(
-          is_non_media=False,
-          incremental_outcome_x=incremental_outcome_orf,
-          linear_predictor_counterfactual_difference=organic_rf_transformed,
-          eta_x=organic_rf_vars[constants.ETA_ORF],
-          beta_gx_dev=beta_gorf_dev,
+
+      def _compute_beta_orf_batch(draw_slice: slice) -> backend.Tensor:
+        organic_rf_transformed = self._model_equations.adstock_hill_rf(
+            reach=ctx.organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
+            frequency=ctx.organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
+            alpha=organic_rf_vars[constants.ALPHA_ORF][:, draw_slice],
+            ec=organic_rf_vars[constants.EC_ORF][:, draw_slice],
+            slope=organic_rf_vars[constants.SLOPE_ORF][:, draw_slice],
+            decay_functions=ctx.adstock_decay_spec.organic_rf,
+            saturation_spec=ctx.saturation_spec.organic_rf,
+        )
+        return self._model_equations.calculate_beta_x(
+            is_non_media=False,
+            incremental_outcome_x=incremental_outcome_orf[:, draw_slice],
+            linear_predictor_counterfactual_difference=organic_rf_transformed,
+            eta_x=organic_rf_vars[constants.ETA_ORF][:, draw_slice],
+            beta_gx_dev=beta_gorf_dev[:, draw_slice],
+        )
+
+      beta_orf_value = _compute_in_draw_batches(
+          _compute_beta_orf_batch, n_draws=n_draws, batch_size=batch_size
       )
       organic_rf_vars[constants.BETA_ORF] = backend.tfd.Deterministic(
           beta_orf_value,
@@ -515,12 +572,15 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       rng_handler: backend.RNGHandler,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws from the prior distributions of the non-media treatment variables.
 
     Args:
       n_draws: Number of samples drawn from the prior distribution.
       rng_handler: The backend-agnostic RNG handler managing the seed state.
+      batch_size: Maximum number of draws to process per batch when computing
+        `gamma_n`.
 
     Returns:
       A mapping of non-media treatment parameter names to a tensor of shape
@@ -566,12 +626,18 @@ class PriorDistributionSampler:
       linear_predictor_counterfactual_difference = (
           ctx.non_media_treatments_normalized - baseline_scaled
       )
-      gamma_n_value = self._model_equations.calculate_beta_x(
-          is_non_media=True,
-          incremental_outcome_x=incremental_outcome_n,
-          linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-          eta_x=non_media_treatments_vars[constants.XI_N],
-          beta_gx_dev=gamma_gn_dev,
+
+      def _compute_gamma_n_batch(draw_slice: slice) -> backend.Tensor:
+        return self._model_equations.calculate_beta_x(
+            is_non_media=True,
+            incremental_outcome_x=incremental_outcome_n[:, draw_slice],
+            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+            eta_x=non_media_treatments_vars[constants.XI_N][:, draw_slice],
+            beta_gx_dev=gamma_gn_dev[:, draw_slice],
+        )
+
+      gamma_n_value = _compute_in_draw_batches(
+          _compute_gamma_n_batch, n_draws=n_draws, batch_size=batch_size
       )
       non_media_treatments_vars[constants.GAMMA_N] = backend.tfd.Deterministic(
           gamma_n_value, name=constants.GAMMA_N
@@ -590,6 +656,7 @@ class PriorDistributionSampler:
       self,
       n_draws: int,
       seed: int | None = None,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from prior distributions.
 
@@ -598,10 +665,17 @@ class PriorDistributionSampler:
       seed: Used to set the seed for reproducible results. For more information,
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      batch_size: Maximum number of draws to process per batch when computing
+        media/RF transformations and derived parameters. Must be at least 1.
 
     Returns:
       A mapping of prior parameter names to tensors of the samples.
+
+    Raises:
+      ValueError: If `batch_size < 1`.
     """
+    if batch_size < 1:
+      raise ValueError(f"`batch_size` must be at least 1, got {batch_size}.")
     ctx = self._model_context
 
     # For stateful sampling, the random seed must be set to ensure that any
@@ -669,37 +743,25 @@ class PriorDistributionSampler:
           name=constants.GAMMA_GC,
       ).sample(seed=rng_handler.get_next_seed())
 
-    media_vars = (
-        self._sample_media_priors(n_draws, rng_handler)
-        if ctx.media_tensors.media is not None
-        else {}
-    )
-    rf_vars = (
-        self._sample_rf_priors(n_draws, rng_handler)
-        if ctx.rf_tensors.reach is not None
-        else {}
-    )
-    organic_media_vars = (
-        self._sample_organic_media_priors(n_draws, rng_handler)
-        if ctx.organic_media_tensors.organic_media is not None
-        else {}
-    )
-    organic_rf_vars = (
-        self._sample_organic_rf_priors(n_draws, rng_handler)
-        if ctx.organic_rf_tensors.organic_reach is not None
-        else {}
-    )
-    non_media_treatments_vars = (
-        self._sample_non_media_treatments_priors(n_draws, rng_handler)
-        if ctx.non_media_treatments_normalized is not None
-        else {}
-    )
+    if ctx.media_tensors.media is not None:
+      base_vars |= self._sample_media_priors(  # pyrefly: ignore[unsupported-operation]
+          n_draws, rng_handler, batch_size=batch_size
+      )
+    if ctx.rf_tensors.reach is not None:
+      base_vars |= self._sample_rf_priors(
+          n_draws, rng_handler, batch_size=batch_size
+      )
+    if ctx.organic_media_tensors.organic_media is not None:
+      base_vars |= self._sample_organic_media_priors(
+          n_draws, rng_handler, batch_size=batch_size
+      )
+    if ctx.organic_rf_tensors.organic_reach is not None:
+      base_vars |= self._sample_organic_rf_priors(
+          n_draws, rng_handler, batch_size=batch_size
+      )
+    if ctx.non_media_treatments_normalized is not None:
+      base_vars |= self._sample_non_media_treatments_priors(
+          n_draws, rng_handler, batch_size=batch_size
+      )
 
-    return (
-        base_vars  # pyrefly: ignore[unsupported-operation]
-        | media_vars
-        | rf_vars
-        | organic_media_vars
-        | organic_rf_vars
-        | non_media_treatments_vars
-    )
+    return base_vars
