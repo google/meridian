@@ -23,8 +23,39 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-17
+
 *   Add `get_selected_dates_str` to TimeCoordinates.
 *   Update `mmm-proto-schema` dependency to >= 1.4.0.
+*   Add a declarative vocabulary to `ModelSpec`, so that calibration windows,
+    holdouts and population scaling can be expressed with channel names, geo
+    names and dates rather than raw NumPy index arrays. New public types in
+    `meridian.model.spec`: `DateRange`, `CalibrationSpec`,
+    `ChannelCalibrationSpec`, `HoldoutSpec`, `GeoHoldoutSpec` and
+    `RandomHoldoutSpec`. A `DateRange` is inclusive of both bounds, and each
+    bound must name one of the input data's time coordinates exactly.
+*   Deprecate the five array-valued `ModelSpec` attributes in favor of
+    declarative equivalents: `roi_calibration_period` → `roi_calibration`,
+    `rf_roi_calibration_period` → `rf_roi_calibration`, `holdout_id` →
+    `holdout`, `control_population_scaling_id` → `population_scaled_controls`,
+    and `non_media_population_scaling_id` →
+    `population_scaled_non_media_channels`. The deprecated attributes keep
+    working and still take precedence when both members of a pair are set.
+    `non_media_baseline_values` additionally accepts a channel-name mapping.
+*   Add compiled properties to `ModelContext` that resolve the declarative
+    `ModelSpec` attributes against the `InputData` coordinates:
+    `compiled_roi_calibration_period`, `compiled_rf_roi_calibration_period`,
+    `compiled_holdout_id`, `compiled_control_population_scaling_id`,
+    `compiled_non_media_population_scaling_id`,
+    `compiled_non_media_baseline_values` and `resolved_random_holdout`. The
+    model and analysis layers read these instead of the raw `ModelSpec`
+    attributes.
+*   Persist the declarative `ModelSpec` attributes through `save_meridian` and
+    `load_meridian`. A `RandomHoldoutSpec` is drawn stratified by geo — each
+    geo holds out the same number of time periods — and the drawn holdout is
+    recorded alongside the spec when the model is saved, so reloading restores
+    the holdout that was actually fitted rather than redrawing it.
+*   Add `TimeCoordinates.period_ends`.
 
 ## [2.0.0] - 2026-09-02
 
@@ -590,4 +621,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.7.1]: https://github.com/google/meridian/releases/tag/v1.7.1
 [1.8.0]: https://github.com/google/meridian/releases/tag/v1.8.0
 [2.0.0]: https://github.com/google/meridian/releases/tag/v2.0.0
-[Unreleased]: https://github.com/google/meridian/compare/v2.0.0...HEAD
+[2.1.0]: https://github.com/google/meridian/releases/tag/v2.1.0
+[Unreleased]: https://github.com/google/meridian/compare/v2.1.0...HEAD
