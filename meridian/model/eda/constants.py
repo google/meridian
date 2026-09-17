@@ -422,8 +422,8 @@ units or scaled controls.
 
 For controls and non-media channels: Meridian doesn't population-scale these \
 variables by default. High correlation indicates that users should \
-population-scale these variables using the `control_population_scaling_id` or \
-`non_media_population_scaling_id` argument in `ModelSpec`.
+population-scale these variables using the `population_scaled_controls` or \
+`population_scaled_non_media_channels` argument in `ModelSpec`.
 
 For paid and organic media channels: Meridian automatically population-scales \
 these media channels by default. High correlation indicates that the variable \
