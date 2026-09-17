@@ -243,6 +243,15 @@ IMPLAUSIBLE_ROI_THRESHOLD_LOWER = 0.6
 IMPLAUSIBLE_ROI_SCALE_FACTOR = 19.0 / IMPLAUSIBLE_ROI_THRESHOLD_LOWER
 IMPLAUSIBLE_ROI_GAP_PLOTTED = 19.0
 IMPLAUSIBLE_ROI_MAX_PLOTTED = 100.0
+# Implausible ROI chart layout expressed relative to the configured ROI
+# thresholds. With the default thresholds (0.5 and 20) these reproduce the
+# layout above: ROIs in [0.6, 19) are clustered at the axis break and the top
+# of the axis is at 100.
+IMPLAUSIBLE_ROI_CLUSTER_LOWER_RATIO = 1.2
+IMPLAUSIBLE_ROI_CLUSTER_UPPER_RATIO = 0.95
+IMPLAUSIBLE_ROI_MAX_RATIO = 5.0
+IMPLAUSIBLE_ROI_LOWER_TICK_RATIOS = (0.4, 0.8)
+IMPLAUSIBLE_ROI_NUM_UPPER_TICKS = 5
 HIGH_VARIANCE_RCI_MAX_PLOTTED = 10.0
 
 # Chart color hex codes

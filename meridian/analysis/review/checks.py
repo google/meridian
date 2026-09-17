@@ -1175,6 +1175,8 @@ class ImplausibleROICheck(
         high_roi_channels=high_roi_channels,
         low_roi_channels=low_roi_channels,
         aggregate_details=aggregate_details,
+        roi_upper_bound=self._config.roi_upper_bound,
+        roi_lower_bound=self._config.roi_lower_bound,
     )
 
 
@@ -1261,6 +1263,8 @@ class HighVarianceCheck(
         case=agg_case,
         channel_results=channel_results,
         high_variance_channels=high_variance_channels,
+        prior_relative_hdi_width=self._config.prior_relative_hdi_width,
+        high_variance_threshold=self._config.high_variance_threshold,
     )
 
 
@@ -1303,6 +1307,7 @@ class PotentialBiasCheck(
           channel_results=[],
           low_correlation_channels=[],
           correlation_matrix=correlation_matrix,
+          correlation_threshold=self._config.correlation_threshold,
       )
 
     media_data = self._model_context.input_data.get_all_media_and_rf()
@@ -1363,4 +1368,5 @@ class PotentialBiasCheck(
         channel_results=channel_results,
         low_correlation_channels=low_correlation_channels,
         correlation_matrix=correlation_matrix,
+        correlation_threshold=self._config.correlation_threshold,
     )

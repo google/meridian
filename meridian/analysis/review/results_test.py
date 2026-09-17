@@ -1636,6 +1636,42 @@ Convergence Check:
     for unexpected_str in unexpected_in_output:
       self.assertNotIn(unexpected_str, rec_card)
 
+  def test_channel_recommendation_card_html_custom_implausible_roi_thresholds(
+      self,
+  ):
+    mock_result = results.ImplausibleROICheckResult(
+        case=results.ImplausibleROIAggregateCases.PASS,
+        channel_results=[],
+        high_roi_channels=[],
+        low_roi_channels=[],
+        aggregate_details={},
+        roi_lower_bound=1.25,
+        roi_upper_bound=45.0,
+    )
+    summary = _create_test_summary(
+        results_list=[mock_result],
+        implausible_roi_chart_json='{"spec": "implausible"}',
+    )
+    rec_card = summary._create_channel_recommendation_card_html()
+    self.assertIn("ROIs between 1.25 and 45 are clustered together", rec_card)
+
+  def test_channel_recommendation_card_html_default_implausible_roi_thresholds(
+      self,
+  ):
+    mock_result = results.ImplausibleROICheckResult(
+        case=results.ImplausibleROIAggregateCases.PASS,
+        channel_results=[],
+        high_roi_channels=[],
+        low_roi_channels=[],
+        aggregate_details={},
+    )
+    summary = _create_test_summary(
+        results_list=[mock_result],
+        implausible_roi_chart_json='{"spec": "implausible"}',
+    )
+    rec_card = summary._create_channel_recommendation_card_html()
+    self.assertIn("ROIs between 0.5 and 20 are clustered together", rec_card)
+
   @parameterized.named_parameters(
       (
           "low_roi",
