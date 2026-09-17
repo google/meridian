@@ -25,6 +25,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 *   Add `get_selected_dates_str` to TimeCoordinates.
 *   Update `mmm-proto-schema` dependency to >= 1.4.0.
+*   Add `batch_size` to `Meridian.sample_prior` and `PriorDistributionSampler`
+    to reduce peak memory usage.
 
 ## [2.0.0] - 2026-09-02
 

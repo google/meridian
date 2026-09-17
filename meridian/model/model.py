@@ -997,7 +997,12 @@ class Meridian:
     )
     return self._model_context.create_inference_data_dims()
 
-  def sample_prior(self, n_draws: int, seed: int | None = None):
+  def sample_prior(
+      self,
+      n_draws: int,
+      seed: int | None = None,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ):
     """Draws samples from the prior distributions.
 
     Drawn samples are merged into this model's Arviz `inference_data` property.
@@ -1007,8 +1012,13 @@ class Meridian:
       seed: Used to set the seed for reproducible results. For more information,
         see [PRNGS and seeds]
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
+      batch_size: Maximum number of draws to process per batch when computing
+        media/RF transformations and derived parameters. Limits device OOMs
+        caused by wide vectorized models.
     """
-    prior_draws = self.prior_sampler_callable(n_draws=n_draws, seed=seed)
+    prior_draws = self.prior_sampler_callable(
+        n_draws=n_draws, seed=seed, batch_size=batch_size
+    )
     # Create Arviz InferenceData for prior draws.
     prior_coords = self._model_context.create_inference_data_coords(1, n_draws)
     prior_dims = self._model_context.create_inference_data_dims()
