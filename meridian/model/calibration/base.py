@@ -27,7 +27,6 @@ from meridian import constants
 from meridian.model import prior_distribution
 from meridian.model.calibration import constants as calibration_constants
 from meridian.model.calibration import roi
-import tensorflow as tf
 
 __all__ = [
     "CalibratedDistribution",
@@ -199,18 +198,20 @@ class CalibrationInput:
       try:
         mean_val = self.baseline_prior.mean()
         var_val = self.baseline_prior.variance()
-        log_prob_val = self.baseline_prior.log_prob(tf.cast([0.0], tf.float32))
-        if not tf.math.reduce_all(tf.math.is_finite(mean_val)):
+        log_prob_val = self.baseline_prior.log_prob(
+            backend.to_tensor([0.0], dtype=backend.float_dtype)
+        )
+        if backend.reduce_any(~backend.is_finite(mean_val)):
           raise ValueError(
               f"The baseline prior for channel {self.channel_name!r} is"
               f" invalid: mean is non-finite (got: {mean_val})."
           )
-        if not tf.math.reduce_all(tf.math.is_finite(var_val)):
+        if backend.reduce_any(~backend.is_finite(var_val)):
           raise ValueError(
               f"The baseline prior for channel {self.channel_name!r} is"
               f" invalid: variance is non-finite (got: {var_val})."
           )
-        if tf.math.reduce_any(tf.math.is_nan(log_prob_val)):
+        if backend.reduce_any(backend.is_nan(log_prob_val)):
           raise ValueError(
               f"The baseline prior for channel {self.channel_name!r} is"
               f" invalid: log_prob returns NaN (got: {log_prob_val})."
