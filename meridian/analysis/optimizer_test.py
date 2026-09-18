@@ -2970,6 +2970,26 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         opt_result_2.nonoptimized_data_with_optimal_freq,
     )
 
+  def test_optimize_reuses_nonoptimized_data_when_optimal_frequency_is_none(
+      self,
+  ):
+    gtol = 0.01
+    grid = self.budget_optimizer_media_only.create_optimization_grid(gtol=gtol)
+    self.assertIsNone(grid.optimal_frequency)
+    with mock.patch.object(
+        self.budget_optimizer_media_only,
+        '_create_budget_dataset',
+        wraps=self.budget_optimizer_media_only._create_budget_dataset,
+    ) as mock_create_dataset:
+      opt_result = self.budget_optimizer_media_only.optimize(
+          optimization_grid=grid, gtol=gtol
+      )
+    self.assertEqual(mock_create_dataset.call_count, 2)
+    self.assertIs(
+        opt_result.nonoptimized_data_with_optimal_freq,
+        opt_result.nonoptimized_data,
+    )
+
   def test_optimize_with_wrong_granularity_raises_warning(self):
     grid = self.budget_optimizer_media_and_rf.create_optimization_grid(
         budget=10_000
