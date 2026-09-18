@@ -25,7 +25,6 @@ from meridian.backend import test_utils
 from meridian.model import prior_distribution
 from meridian.model.calibration import base
 import numpy as np
-import tensorflow as tf
 
 
 def _make_dummy_calibration_output(channel_name: str) -> base.CalibrationOutput:
@@ -329,9 +328,9 @@ class CalibrationInputTest(parameterized.TestCase):
     mock_prior = mock.create_autospec(
         backend.tfd.Distribution, instance=True, spec_set=True
     )
-    mock_prior.mean.return_value = tf.constant(1.0)
-    mock_prior.variance.return_value = tf.constant(1.0)
-    mock_prior.log_prob.return_value = tf.constant([0.0])
+    mock_prior.mean.return_value = backend.to_tensor(1.0)
+    mock_prior.variance.return_value = backend.to_tensor(1.0)
+    mock_prior.log_prob.return_value = backend.to_tensor([0.0])
     ci = base.CalibrationInput(
         channel_name="YouTube", total_spend=4000.0, baseline_prior=mock_prior
     )
@@ -381,9 +380,15 @@ class CalibrationInputTest(parameterized.TestCase):
     if raise_not_implemented:
       mock_baseline.mean.side_effect = NotImplementedError
     else:
-      mock_baseline.mean.return_value = tf.cast(mean_val, tf.float32)
-    mock_baseline.variance.return_value = tf.cast(var_val, tf.float32)
-    mock_baseline.log_prob.return_value = tf.cast(log_prob_val, tf.float32)
+      mock_baseline.mean.return_value = backend.to_tensor(
+          mean_val, dtype=backend.float_dtype
+      )
+    mock_baseline.variance.return_value = backend.to_tensor(
+        var_val, dtype=backend.float_dtype
+    )
+    mock_baseline.log_prob.return_value = backend.to_tensor(
+        log_prob_val, dtype=backend.float_dtype
+    )
 
     with self.assertRaisesRegex(ValueError, "invalid"):
       base.CalibrationInput(
@@ -562,9 +567,9 @@ class CalibrationRegistryTest(absltest.TestCase):
     mock_baseline = mock.create_autospec(
         backend.tfd.Distribution, instance=True, spec_set=True
     )
-    mock_baseline.mean.return_value = tf.constant(1.0)
-    mock_baseline.variance.return_value = tf.constant(1.0)
-    mock_baseline.log_prob.return_value = tf.constant([0.0])
+    mock_baseline.mean.return_value = backend.to_tensor(1.0)
+    mock_baseline.variance.return_value = backend.to_tensor(1.0)
+    mock_baseline.log_prob.return_value = backend.to_tensor([0.0])
 
     ci = base.CalibrationInput(
         channel_name="Search",
