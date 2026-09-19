@@ -498,6 +498,44 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
           max_constraint_variation=-0.1,
       )
 
+  def test_create_invalid_chains_per_batch_raises_error(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        '`chains_per_batch` must be positive\\.',
+    ):
+      weekly_optimization_grid.WeeklyOptimizationGrid.create(
+          self.budget_optimizer_media_only._analyzer,
+          chains_per_batch=0,
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name='one_chain_per_batch', chains_per_batch=1),
+      dict(testcase_name='all_chains_per_batch', chains_per_batch=2),
+      dict(testcase_name='more_than_all_chains_per_batch', chains_per_batch=3),
+  )
+  def test_create_with_chains_per_batch_matches_full_computation(
+      self, chains_per_batch
+  ):
+    for optimizer_instance in (
+        self.budget_optimizer_media_only,
+        self.budget_optimizer_media_and_rf,
+    ):
+      expected_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+          optimizer_instance._analyzer,
+          multiplier_step=0.5,
+          use_posterior=True,
+      )
+      batched_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+          optimizer_instance._analyzer,
+          multiplier_step=0.5,
+          use_posterior=True,
+          chains_per_batch=chains_per_batch,
+      )
+      xr.testing.assert_allclose(
+          batched_grid.incremental_outcome,
+          expected_grid.incremental_outcome,
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name='default_dates_default_budget',

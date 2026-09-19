@@ -85,6 +85,7 @@ class WeeklyOptimizationGrid:
       batch_size: int = 10,
       use_optimal_frequency: bool = True,
       max_frequency: float | None = None,
+      chains_per_batch: int | None = None,
   ) -> 'WeeklyOptimizationGrid':
     """Builds a weekly optimization grid using vectorized backend calculations.
 
@@ -122,6 +123,11 @@ class WeeklyOptimizationGrid:
         channels during grid creation. Defaults to True.
       max_frequency: Maximum frequency value used for optimal frequency grid.
         Defaults to None.
+      chains_per_batch: Maximum number of MCMC chains to process in each batch.
+        The computation is split over the chain dimension of the posterior (or
+        prior) parameters and the per-batch means are averaged back together,
+        which lowers the peak memory footprint without changing the result. If
+        None, all chains are processed at once. Defaults to None.
 
     Returns:
       A `WeeklyOptimizationGrid` object containing the weekly grid dataset and
@@ -141,6 +147,11 @@ class WeeklyOptimizationGrid:
       raise ValueError(
           '`max_constraint_variation` must be non-negative. Got'
           f' {max_constraint_variation}.'
+      )
+
+    if chains_per_batch is not None and chains_per_batch < 1:
+      raise ValueError(
+          f'`chains_per_batch` must be positive. Got {chains_per_batch}.'
       )
 
     dist_type = c.POSTERIOR if use_posterior else c.PRIOR
@@ -323,33 +334,73 @@ class WeeklyOptimizationGrid:
     all_outcomes = []
     multiplier_batch_size = max(1, batch_size)
 
+    # MCMC parameters are shaped `(n_chains, n_draws, ...)`. Splitting the
+    # computation over the chain dimension lowers the peak memory footprint.
+    if alpha_m is not None:
+      n_chains = int(alpha_m.shape[0])
+    elif alpha_rf is not None:
+      n_chains = int(alpha_rf.shape[0])
+    else:
+      n_chains = 0
+
+    if chains_per_batch is None or n_chains == 0:
+      chain_ranges = [(0, n_chains)]
+    else:
+      chain_ranges = [
+          (start, min(start + chains_per_batch, n_chains))
+          for start in range(0, n_chains, chains_per_batch)
+      ]
+
+    def slice_chains(
+        tensor: backend.Tensor | None, start: int, stop: int
+    ) -> backend.Tensor | None:
+      """Slices the leading chain dimension, preserving the tensor rank."""
+      if tensor is None or (start == 0 and stop == n_chains):
+        return tensor
+      return tensor[start:stop, ...]
+
     for i in range(0, len(all_multipliers_array), multiplier_batch_size):  # pyrefly: ignore[bad-argument-type]
       batch = all_multipliers_array[i : i + multiplier_batch_size]
-      batch_outcomes = cls._compute_batch(
-          batch,
-          media_base_scaled,
-          alpha_m,
-          ec_m,
-          slope_m,
-          beta_gm,
-          reach_base_scaled,
-          frequency_base,
-          alpha_rf,
-          ec_rf,
-          slope_rf,
-          beta_grf,
-          revenue_per_kpi,
-          time_indices=time_indices,
-          eqs=eqs,
-          decay_m=decay_m,
-          sat_m=sat_m,
-          decay_rf=decay_rf,
-          sat_rf=sat_rf,
-          n_times=n_times,
-          kpi_transformer=kpi_transformer,
-          use_kpi=use_kpi,
-      )
-      all_outcomes.append(np.asarray(batch_outcomes))
+      chain_outcomes = []
+      chain_weights = []
+      for chain_start, chain_stop in chain_ranges:
+        chain_outcome = cls._compute_batch(
+            batch,
+            media_base_scaled,
+            slice_chains(alpha_m, chain_start, chain_stop),
+            slice_chains(ec_m, chain_start, chain_stop),
+            slice_chains(slope_m, chain_start, chain_stop),
+            slice_chains(beta_gm, chain_start, chain_stop),
+            reach_base_scaled,
+            frequency_base,
+            slice_chains(alpha_rf, chain_start, chain_stop),
+            slice_chains(ec_rf, chain_start, chain_stop),
+            slice_chains(slope_rf, chain_start, chain_stop),
+            slice_chains(beta_grf, chain_start, chain_stop),
+            revenue_per_kpi,
+            time_indices=time_indices,
+            eqs=eqs,
+            decay_m=decay_m,
+            sat_m=sat_m,
+            decay_rf=decay_rf,
+            sat_rf=sat_rf,
+            n_times=n_times,
+            kpi_transformer=kpi_transformer,
+            use_kpi=use_kpi,
+        )
+        chain_outcomes.append(np.asarray(chain_outcome))
+        chain_weights.append(chain_stop - chain_start)
+
+      if len(chain_outcomes) == 1:
+        batch_outcomes = chain_outcomes[0]
+      else:
+        # `_compute_batch` averages over the chain and draw dimensions. Every
+        # chain has the same number of draws, so the global mean is the mean of
+        # the per-batch means weighted by the number of chains in each batch.
+        batch_outcomes = np.average(
+            np.stack(chain_outcomes, axis=0), axis=0, weights=chain_weights
+        )
+      all_outcomes.append(batch_outcomes)
 
     outcomes = np.concatenate(all_outcomes, axis=0)
 
