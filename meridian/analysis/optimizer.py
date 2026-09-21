@@ -1735,20 +1735,23 @@ class BudgetOptimizer:
         batch_size=batch_size,
         use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
     )
-    nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
-        new_data=new_data.filter_fields(c.PAID_DATA + (c.TIME,)),
-        use_posterior=use_posterior,
-        use_kpi=use_kpi,
-        hist_spend=optimization_grid.historical_spend,
-        spend=spend.non_optimized,
-        selected_geos=selected_geos,
-        start_date=start_date,
-        end_date=end_date,
-        optimal_frequency=optimization_grid.optimal_frequency,  # pyrefly: ignore[bad-argument-type]
-        confidence_level=confidence_level,
-        batch_size=batch_size,
-        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
-    )
+    if optimization_grid.optimal_frequency is None:
+      nonoptimized_data_with_optimal_freq = nonoptimized_data
+    else:
+      nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
+          new_data=new_data.filter_fields(c.PAID_DATA + (c.TIME,)),
+          use_posterior=use_posterior,
+          use_kpi=use_kpi,
+          hist_spend=optimization_grid.historical_spend,
+          spend=spend.non_optimized,
+          selected_geos=selected_geos,
+          start_date=start_date,
+          end_date=end_date,
+          optimal_frequency=optimization_grid.optimal_frequency,  # pyrefly: ignore[bad-argument-type]
+          confidence_level=confidence_level,
+          batch_size=batch_size,
+          use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
+      )
     constraints = {
         c.FIXED_BUDGET: fixed_budget,
     }
