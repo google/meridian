@@ -3133,7 +3133,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spend.data
     )
 
-  def test_impute_and_aggregate_spend_correct_values(self):
+  def test_aggregate_spend_correct_values(self):
     self.enter_context(
         mock.patch.object(
             model.Meridian,
@@ -3177,41 +3177,26 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         inference_data=meridian.inference_data,
     )
 
-    actual_spend_3d = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
+    actual_spend = meridian_analyzer._aggregate_spend(
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
         aggregate_times=True,
     )
-    self.assertEqual(actual_spend_3d.dims, (constants.CHANNEL,))
-    backend_test_utils.assert_allclose(actual_spend_3d.data, [6.6, 12.6])
+    self.assertEqual(actual_spend.dims, (constants.CHANNEL,))
+    backend_test_utils.assert_allclose(actual_spend.data, [6.6, 12.6])
 
-    actual_spend_3d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
+    actual_spend_no_agg = meridian_analyzer._aggregate_spend(
         channel_spend=backend.to_tensor(data.media_spend.values),
         channel_names=list(data.media_channel.values),
         aggregate_times=False,
         time_dims=list(data.time.values),
     )
     self.assertEqual(
-        actual_spend_3d_no_agg.dims, (constants.TIME, constants.CHANNEL)
+        actual_spend_no_agg.dims, (constants.TIME, constants.CHANNEL)
     )
     backend_test_utils.assert_allclose(
-        actual_spend_3d_no_agg.data, [[2.0, 4.0], [2.2, 4.2], [2.4, 4.4]]
+        actual_spend_no_agg.data, [[2.0, 4.0], [2.2, 4.2], [2.4, 4.4]]
     )
-
-    channel_spend_1d = backend.to_tensor([6.6, 12.6])
-    actual_spend_1d_no_agg = meridian_analyzer._impute_and_aggregate_spend(
-        media_execution_values=meridian.model_context.media_tensors.media,  # pyrefly: ignore[bad-argument-type]
-        channel_spend=channel_spend_1d,
-        channel_names=list(data.media_channel.values),
-        aggregate_times=False,
-        time_dims=list(data.time.values),
-    )
-    self.assertEqual(
-        actual_spend_1d_no_agg.dims, (constants.TIME, constants.CHANNEL)
-    )
-    self.assertEqual(actual_spend_1d_no_agg.shape, (3, 2))
 
   def test_get_aggregated_spend_selected_times_correct_values(self):
     self.enter_context(
@@ -3983,6 +3968,8 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
     )
 
+    # Spend provided with dimensions `(n_channels,)` is allocated across geos
+    # and times and then aggregated back, which is lossy in `float32`.
     backend_test_utils.assert_allclose(
         self.analyzer.roi(
             new_data=tensors.DataTensors(
@@ -3992,6 +3979,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         ),
         self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
         / backend.concatenate([total_media_spend, total_rf_spend], axis=-1),  # pyrefly: ignore[bad-argument-type]
+        rtol=1e-5,
     )
 
   def test_roi_zero_media_returns_zero(self):
@@ -4186,6 +4174,96 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     backend_test_utils.assert_allclose(
         media_summary.cpik,
         analysis_test_utils.SAMPLE_CPIK,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  def test_media_summary_input_data_spend_1d_returns_correct_values(self):
+    """Verifies support for `InputData` spend with dimensions `(n_channels,)`."""
+    # Avoid the pytype check complaint.
+    assert self.input_data.media_spend is not None
+    assert self.input_data.rf_spend is not None
+
+    input_data_1d_spend = dataclasses.replace(
+        self.input_data,
+        media_spend=self.input_data.media_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+        rf_spend=self.input_data.rf_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+    )
+    # Patch validation to avoid errors due to mismatched inference data.
+    with mock.patch.object(
+        model.Meridian,
+        "_validate_injected_inference_data",
+        autospec=True,
+        spec_set=True,
+    ):
+      meridian_1d_spend = model.Meridian(
+          input_data=input_data_1d_spend,
+          model_spec=spec.ModelSpec(max_lag=15),
+      )
+    analyzer_1d_spend = analyzer.Analyzer(
+        model_context=meridian_1d_spend.model_context,
+        inference_data=self.inference_data,
+    )
+
+    media_summary = analyzer_1d_spend.summary_metrics(
+        marginal_roi_by_reach=False,
+    )
+
+    # Aggregated spend is allocated across geos and times without changing the
+    # channel totals, so the metrics match the ones from the geo- and
+    # time-level spend of `self.input_data`.
+    backend_test_utils.assert_allclose(
+        media_summary.spend,
+        analysis_test_utils.SAMPLE_SPEND,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi, analysis_test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI,
+        atol=1e-3,
+        rtol=1e-3,
+    )
+
+  def test_media_summary_new_data_spend_1d_returns_correct_values(self):
+    """Verifies support for `new_data` spend with dimensions `(n_channels,)`."""
+    total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.media_tensors.media_spend  # pyrefly: ignore[bad-argument-type]
+    )
+    total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
+    )
+
+    media_summary = self.analyzer.summary_metrics(
+        new_data=tensors.DataTensors(
+            media_spend=total_media_spend,
+            rf_spend=total_rf_spend,
+        ),
+        marginal_roi_by_reach=False,
+    )
+
+    # Aggregated spend is allocated across geos and times without changing the
+    # channel totals, so the metrics match the ones from the geo- and
+    # time-level spend of `self.input_data`.
+    backend_test_utils.assert_allclose(
+        media_summary.spend,
+        analysis_test_utils.SAMPLE_SPEND,
+        atol=1e-4,
+        rtol=1e-4,
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.roi, analysis_test_utils.SAMPLE_ROI, atol=1e-3, rtol=1e-3
+    )
+    backend_test_utils.assert_allclose(
+        media_summary.mroi,
+        analysis_test_utils.SAMPLE_MROI,
         atol=1e-3,
         rtol=1e-3,
     )

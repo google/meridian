@@ -387,7 +387,6 @@ class InputData:
     ):
       raise ValueError("NA values found in the organic frequency data.")
 
-  # TODO: Combine with Analyzer._impute_and_aggregate_spend
   @functools.cached_property
   def allocated_media_spend(self) -> xr.DataArray | None:
     """Returns the allocated media spend for each geo and time."""
