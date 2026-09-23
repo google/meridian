@@ -396,7 +396,7 @@ class InputData:
     else:
       return self.media_spend
 
-  @property
+  @functools.cached_property
   def allocated_rf_spend(self) -> xr.DataArray | None:
     """Returns the allocated RF spend for each geo and time."""
     if self.rf_spend is not None and len(self.rf_spend.shape) == 1:
