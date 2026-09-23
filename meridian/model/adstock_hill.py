@@ -28,6 +28,7 @@ __all__ = [
     'HillTransformer',
     'transform_non_negative_reals_distribution',
     'compute_decay_weights',
+    'compute_hill_powers',
 ]
 
 
@@ -301,6 +302,29 @@ def _map_alpha_for_binomial_decay(x: backend.Tensor):
   return 1 / x - 1  # pyrefly: ignore[unsupported-operation]
 
 
+def compute_hill_powers(
+    media: backend.Tensor,
+    ec: backend.Tensor,
+    slope: backend.Tensor,
+) -> tuple[backend.Tensor, backend.Tensor]:
+  """Computes the `(media ** slope, ec ** slope)` terms of the Hill function.
+
+  Args:
+    media: Tensor with dimensions `[..., n_geos, n_media_times,
+      n_media_channels]`.
+    ec: Tensor with dimensions `[..., n_media_channels]`.
+    slope: Tensor with dimensions `[..., n_media_channels]`.
+
+  Returns:
+    A tuple `(t1, t2)` of tensors representing `media ** slope` with dimensions
+    `[..., n_geos, n_media_times, n_media_channels]` and `ec ** slope` with
+    dimensions `[..., 1, 1, n_media_channels]`.
+  """
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
+  return t1, t2
+
+
 def _hill(
     media: backend.Tensor,
     ec: backend.Tensor,
@@ -323,8 +347,7 @@ def _hill(
         '`media` contains a different number of channels than `slope` and `ec`.'
     )
 
-  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
-  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
+  t1, t2 = compute_hill_powers(media=media, ec=ec, slope=slope)
   return t1 / (t1 + t2)
 
 

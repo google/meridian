@@ -496,6 +496,211 @@ class ComputeAdstockHillsTest(
           saturation_spec=saturation_spec,
       )
 
+  def test_get_saturation_mask(self):
+    hill_mask = self.equations.get_saturation_mask(
+        saturation_spec=constants.HILL, n_channels=3
+    )
+    np.testing.assert_array_equal(
+        np.asarray(hill_mask), np.array([True, True, True])
+    )
+    none_mask = self.equations.get_saturation_mask(
+        saturation_spec=constants.NONE, n_channels=3
+    )
+    np.testing.assert_array_equal(
+        np.asarray(none_mask), np.array([False, False, False])
+    )
+    mixed_mask = self.equations.get_saturation_mask(
+        saturation_spec=[constants.HILL, constants.NONE, constants.HILL],
+        n_channels=3,
+    )
+    self.assertIsNotNone(mixed_mask)
+    np.testing.assert_array_equal(
+        np.asarray(mixed_mask), np.array([True, False, True])
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid saturation_spec: invalid. Must be 'hill' or 'none'.",
+    ):
+      self.equations.get_saturation_mask(
+          saturation_spec="invalid", n_channels=3
+      )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Invalid saturation function in saturation_spec: invalid. Must be"
+        " 'hill' or 'none'.",
+    ):
+      self.equations.get_saturation_mask(
+          saturation_spec=[constants.HILL, "invalid", constants.NONE],
+          n_channels=3,
+      )
+
+  def test_prepare_adstock_hill_media_missing_required_n_times_output(self):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec()
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    with self.assertRaisesRegex(
+        ValueError,
+        "n_times_output is required. This argument is only optional when"
+        " `media` has a number of time periods equal to `n_media_times`.",
+    ):
+      self.equations.prepare_adstock_hill_media(
+          media=media[:, :-8, :],
+          alpha=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          ec=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          slope=backend.ones(shape=(self._N_MEDIA_CHANNELS,)),
+          decay_functions=constants.GEOMETRIC_DECAY,
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="adstock_first_hill_all",
+          hill_before_adstock=False,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+      ),
+      dict(
+          testcase_name="adstock_first_zero_multiplier",
+          hill_before_adstock=False,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.0, 0.0, 0.0],
+      ),
+      dict(
+          testcase_name="adstock_first_saturation_none",
+          hill_before_adstock=False,
+          saturation_spec=constants.NONE,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+      ),
+      dict(
+          testcase_name="adstock_first_saturation_mixed_binomial",
+          hill_before_adstock=False,
+          saturation_spec=[constants.HILL, constants.NONE, constants.HILL],
+          decay_functions=constants.BINOMIAL_DECAY,
+          multipliers=[0.0, 1.2, 2.5],
+      ),
+      dict(
+          testcase_name="adstock_first_with_time_indices",
+          hill_before_adstock=False,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+          time_indices=[1, 3, 5],
+      ),
+      dict(
+          testcase_name="hill_first_hill_all",
+          hill_before_adstock=True,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+      ),
+      dict(
+          testcase_name="hill_first_zero_multiplier",
+          hill_before_adstock=True,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.0, 0.0, 0.0],
+      ),
+      dict(
+          testcase_name="hill_first_saturation_none",
+          hill_before_adstock=True,
+          saturation_spec=constants.NONE,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+      ),
+      dict(
+          testcase_name="hill_first_saturation_mixed_binomial",
+          hill_before_adstock=True,
+          saturation_spec=[constants.HILL, constants.NONE, constants.HILL],
+          decay_functions=constants.BINOMIAL_DECAY,
+          multipliers=[0.0, 1.2, 2.5],
+      ),
+      dict(
+          testcase_name="hill_first_with_time_indices",
+          hill_before_adstock=True,
+          saturation_spec=constants.HILL,
+          decay_functions=constants.GEOMETRIC_DECAY,
+          multipliers=[0.5, 1.5, 2.0],
+          time_indices=[1, 3, 5],
+      ),
+  )
+  def test_prepare_and_apply_adstock_hill_media_matches_adstock_hill_media(
+      self,
+      hill_before_adstock,
+      saturation_spec,
+      decay_functions,
+      multipliers,
+      time_indices=None,
+  ):
+    data = self.input_data_with_media_only
+    self.mock_context.input_data = data
+    self.mock_context.model_spec = spec.ModelSpec(
+        hill_before_adstock=hill_before_adstock,
+    )
+    self.mock_context.n_media_times = self._N_MEDIA_TIMES
+    self.mock_context.n_times = self._N_TIMES
+
+    media = backend.to_tensor(data.media, dtype=backend.float_dtype)
+    alpha = backend.to_tensor(
+        [[0.2, 0.5, 0.8], [0.3, 0.6, 0.7]], dtype=backend.float_dtype
+    )
+    ec = backend.to_tensor(
+        [[0.8, 1.2, 1.5], [1.0, 0.9, 1.3]], dtype=backend.float_dtype
+    )
+    slope = backend.to_tensor(
+        [[1.0, 2.0, 1.5], [0.8, 1.3, 2.2]], dtype=backend.float_dtype
+    )
+    multiplier_tensor = backend.to_tensor(
+        multipliers, dtype=backend.float_dtype
+    )
+    time_indices_tensor = (
+        backend.to_tensor(time_indices) if time_indices is not None else None
+    )
+
+    media_base, base_t1, t2 = self.equations.prepare_adstock_hill_media(
+        media=media,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=self._N_TIMES,
+        time_indices=time_indices_tensor,
+    )
+    saturation_mask = self.equations.get_saturation_mask(
+        saturation_spec=saturation_spec,
+        n_channels=self._N_MEDIA_CHANNELS,
+    )
+    actual = self.equations.apply_adstock_hill_media(
+        multiplier=multiplier_tensor,
+        alpha=alpha,
+        slope=slope,
+        media_base=media_base,
+        base_t1=base_t1,
+        t2=t2,
+        saturation_mask=saturation_mask,
+        n_times_output=self._N_TIMES,
+        decay_functions=decay_functions,
+        time_indices=time_indices_tensor,
+    )
+
+    expected = self.equations.adstock_hill_media(
+        media=media * multiplier_tensor,
+        alpha=alpha,
+        ec=ec,
+        slope=slope,
+        decay_functions=decay_functions,
+        n_times_output=self._N_TIMES,
+        saturation_spec=saturation_spec,
+    )
+    if time_indices_tensor is not None:
+      expected = backend.gather(expected, time_indices_tensor, axis=-2)
+    test_utils.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
+
 
 class CalculateBetaXTest(
     test_utils.MeridianTestCase,
