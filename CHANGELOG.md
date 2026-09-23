@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add an `include_knots` argument to `ModelFit.plot_model_fit()`, which draws
+    vertical reference lines at the time periods where the model's knots are
+    located.
 *   Add `get_selected_dates_str` to TimeCoordinates.
 *   Update `mmm-proto-schema` dependency to >= 1.4.0.
 *   Add a declarative vocabulary to `ModelSpec`, so that calibration windows,

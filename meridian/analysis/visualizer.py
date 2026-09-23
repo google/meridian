@@ -447,6 +447,7 @@ class ModelFit:
       show_geo_level: bool = False,
       include_baseline: bool = True,
       include_ci: bool = True,
+      include_knots: bool = False,
   ) -> alt.Chart:
     """Plots the expected versus actual outcome over time.
 
@@ -468,6 +469,8 @@ class ModelFit:
         any media execution.
       include_ci: If `True`, shows the credible intervals for the expected
         outcome.
+      include_knots: If `True`, shows vertical reference lines at the time
+        periods where the model's knots are located.
 
     Returns:
       An Altair plot showing the model fit.
@@ -486,6 +489,11 @@ class ModelFit:
     model_fit_df = self._transform_data_to_dataframe(
         selected_times, selected_geos, show_geo_level, include_baseline
     )
+    if include_knots:
+      model_fit_df[c.IS_KNOT] = (
+          model_fit_df[c.TIME].astype(str).isin(self._get_knot_times())
+      )
+      model_fit_df[c.KNOT_LABEL] = summary_text.KNOT_LOCATIONS_LABEL
 
     # Specify custom colors to use to plot each metric category.
     domain = [c.EXPECTED, c.ACTUAL]
@@ -574,6 +582,34 @@ class ModelFit:
 
     plot = alt.layer(lines, tooltips, points)
 
+    if include_knots:
+      # Encoding `strokeDash` as a second channel would add a duplicate legend
+      # entry, so the dash is set on the mark and on the legend symbol instead.
+      knot_legend = alt.Legend(
+          title=None,
+          symbolType='stroke',
+          symbolDash=list(c.STROKE_DASH),
+      )
+      # Filter to a single series so that only one rule is drawn per knot.
+      knot_lines = (
+          base.transform_filter(
+              alt.datum[c.IS_KNOT] & (alt.datum[c.TYPE] == c.EXPECTED)
+          )
+          .mark_rule(strokeDash=list(c.STROKE_DASH), opacity=0.7)
+          .encode(
+              x=f'{c.TIME}:T',
+              color=alt.Color(
+                  f'{c.KNOT_LABEL}:N',
+                  scale=alt.Scale(
+                      domain=[summary_text.KNOT_LOCATIONS_LABEL],
+                      range=[c.GREY_700],
+                  ),
+                  legend=knot_legend,
+              ),
+          )
+      )
+      plot += knot_lines
+
     if include_ci:
       # Only add a confidence interval area for the modeled data.
       confidence_band = base.mark_area(opacity=0.3).encode(
@@ -586,7 +622,12 @@ class ModelFit:
               legend=None,
           ),
       )
-      plot = (plot + confidence_band).resolve_scale(color=c.INDEPENDENT)
+      plot += confidence_band
+
+    # The knot and confidence interval layers define their own color scales,
+    # which must not be merged with the scale used for the outcome series.
+    if include_knots or include_ci:
+      plot = plot.resolve_scale(color=c.INDEPENDENT)
 
     if show_geo_level:
       plot = plot.facet(column=alt.Column(f'{c.GEO}:O', sort=selected_geos))
@@ -594,6 +635,17 @@ class ModelFit:
     return plot.configure_axis(**formatter.TEXT_CONFIG).properties(
         title=formatter.custom_title_params(title)
     )
+
+  def _get_knot_times(self) -> list[str]:
+    """Returns the time coordinates where the model's knots are located.
+
+    The knot locations are indices into the time dimension of
+    `meridian.InputData`, which are mapped back to the corresponding time
+    coordinate labels.
+    """
+    knot_locations = self._meridian.knot_info.knot_locations
+    times = np.asarray(self._meridian.input_data.time.values)
+    return [str(time) for time in times[knot_locations]]
 
   def _validate_times_to_plot(
       self, selected_times: Sequence[str] | None = None

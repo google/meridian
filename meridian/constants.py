@@ -622,6 +622,8 @@ TYPE = 'type'
 EXPECTED = 'expected'
 ACTUAL = 'actual'
 BASELINE = 'baseline'
+IS_KNOT = 'is_knot'
+KNOT_LABEL = 'knot_label'
 
 # Model fit filtering.
 GEO_GRANULARITY = 'geo_granularity'

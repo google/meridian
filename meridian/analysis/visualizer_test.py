@@ -29,6 +29,7 @@ from meridian.common import errors
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
 from meridian.model import context
+from meridian.model import knots
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
@@ -439,6 +440,15 @@ class ModelDiagnosticsTest(parameterized.TestCase):
     self.assertEqual(plot.config.axis.to_dict(), formatter.TEXT_CONFIG)
 
 
+def _get_knot_layers(plot: alt.Chart) -> list[alt.Chart]:
+  """Returns the layers of `plot` drawing the knot reference lines."""
+  return [
+      layer
+      for layer in plot.layer
+      if getattr(layer.mark, "strokeDash", alt.Undefined) is not alt.Undefined
+  ]
+
+
 class ModelFitTest(absltest.TestCase):
 
   @classmethod
@@ -513,6 +523,21 @@ class ModelFitTest(absltest.TestCase):
             return_value=mock_model_fit_data,
         )
     )
+
+    # Knot locations are indices into the `InputData` time dimension.
+    times = mock_model_fit_data.time.values
+    cls.input_data_1.time = xr.DataArray(
+        times, coords={c.TIME: times}, dims=[c.TIME]
+    )
+    cls.knot_locations = np.array([0, 25, 51])
+    cls.knot_times = [str(time) for time in times[cls.knot_locations]]
+    meridian_revenue.knot_info = mock.create_autospec(
+        knots.KnotInfo,
+        instance=True,
+        n_knots=len(cls.knot_locations),
+        knot_locations=cls.knot_locations,
+    )
+
     cls.model_fit_kpi_type_revenue = visualizer.ModelFit(
         meridian=meridian_revenue
     )
@@ -604,6 +629,75 @@ class ModelFitTest(absltest.TestCase):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(selected_times=times)
     self.assertListEqual(list(plot.data.time.unique()), times)
+
+  def test_model_fit_excludes_knots_by_default(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit()
+
+    self.assertNotIn(c.IS_KNOT, plot.data.columns)
+    self.assertNotIn(c.KNOT_LABEL, plot.data.columns)
+    self.assertEmpty(_get_knot_layers(plot))
+
+  def test_model_fit_include_knots_correct_mark(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_knots=True)
+
+    knot_layers = _get_knot_layers(plot)
+    self.assertLen(knot_layers, 1)
+    knot_layer = knot_layers[0]
+    self.assertEqual(knot_layer.mark.type, "rule")
+    self.assertEqual(knot_layer.mark.strokeDash, list(c.STROKE_DASH))
+    self.assertEqual(knot_layer.encoding.x.shorthand, f"{c.TIME}:T")
+    self.assertEqual(knot_layer.encoding.color["scale"]["range"], [c.GREY_700])
+
+  def test_model_fit_include_knots_adds_legend_entry(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_knots=True)
+
+    self.assertEqual(
+        list(plot.data[c.KNOT_LABEL].unique()),
+        [summary_text.KNOT_LOCATIONS_LABEL],
+    )
+    color = _get_knot_layers(plot)[0].encoding.color
+    self.assertEqual(color.shorthand, f"{c.KNOT_LABEL}:N")
+    self.assertEqual(
+        color["scale"]["domain"], [summary_text.KNOT_LOCATIONS_LABEL]
+    )
+    # The swatch is a dashed stroke matching the rules drawn on the chart.
+    self.assertIsNone(color["legend"]["title"])
+    self.assertEqual(color["legend"]["symbolType"], "stroke")
+    self.assertEqual(color["legend"]["symbolDash"], list(c.STROKE_DASH))
+    # The knot scales must not be merged with the outcome series scale.
+    self.assertEqual(plot.resolve["scale"]["color"], c.INDEPENDENT)
+
+  def test_model_fit_include_knots_does_not_encode_stroke_dash(self):
+    # Encoding `strokeDash` in addition to `color` produces a duplicate
+    # "Knot locations" entry in the legend.
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_knots=True)
+
+    knot_layer = _get_knot_layers(plot)[0]
+    self.assertIs(knot_layer.encoding.strokeDash, alt.Undefined)
+
+  def test_model_fit_include_knots_without_ci_resolves_color_scales(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(
+        include_knots=True, include_ci=False
+    )
+
+    self.assertEqual(plot.resolve["scale"]["color"], c.INDEPENDENT)
+
+  def test_model_fit_include_knots_flags_knot_times(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_knots=True)
+
+    knot_times = plot.data[plot.data[c.IS_KNOT]][c.TIME].unique()
+    self.assertCountEqual(knot_times, self.knot_times)
+
+  def test_model_fit_include_knots_only_flags_selected_times(self):
+    # Only the first knot (index 0) falls within the selected time range.
+    times = ["2023-01-01", "2023-01-08", "2023-01-15"]
+
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(
+        selected_times=times, include_knots=True
+    )
+
+    knot_times = plot.data[plot.data[c.IS_KNOT]][c.TIME].unique()
+    self.assertCountEqual(knot_times, [self.knot_times[0]])
 
   def test_model_fit_national_level_aggregates_all_geos(self):
     geo = ["geo 1", "geo 2", "geo 3", "geo 4"]
