@@ -28,7 +28,6 @@ import numpy as np
 from scipy import interpolate
 from statsmodels.regression import linear_model
 
-
 __all__ = [
     'KnotInfo',
     'get_knot_info',
@@ -260,7 +259,7 @@ class AKS:
   def automatic_knot_selection(
       self,
       base_penalty: np.ndarray | None = None,
-      min_internal_knots: int = 1,
+      min_internal_knots: int | None = None,
       max_internal_knots: int | None = None,
       required_knots: Collection[int] | None = None,
       excluded_knots: Collection[int] | None = None,
@@ -271,7 +270,9 @@ class AKS:
     Args:
       base_penalty: A vector of positive penalty values. The adaptive spline
         regression is performed for every value of penalty.
-      min_internal_knots: The minimum number of internal knots. Defaults to 1.
+      min_internal_knots: The minimum number of internal knots. If None,
+        defaults to 0 for knot selection while ensuring initial degrees of
+        freedom are sufficient.
       max_internal_knots: The maximum number of internal knots. If None, this
         value is calculated as the number of initial knots minus the total count
         of all treatment and control variables. Otherwise, the user-provided
@@ -334,8 +335,14 @@ class AKS:
       raise ValueError('The same knot cannot be both required and excluded.')
 
     knots = self._calculate_initial_knots(x, excluded_knots_arr)
+    min_internal_knots_for_validation = (
+        1 if min_internal_knots is None else min_internal_knots
+    )
     max_internal_knots = self._calculate_and_validate_max_internal_knots(
-        knots, min_internal_knots, max_internal_knots
+        knots, min_internal_knots_for_validation, max_internal_knots
+    )
+    min_internal_knots_for_selection = (
+        0 if min_internal_knots is None else min_internal_knots
     )
     geo_scaling_factor = 1 / np.sqrt(len(self._data.geo))
     penalty = geo_scaling_factor * base_penalty
@@ -376,18 +383,19 @@ class AKS:
         )
     ).tolist()
     if not any(
-        min_internal_knots <= k <= max_internal_knots
+        min_internal_knots_for_selection <= k <= max_internal_knots
         for k in available_knots_lengths
     ):
       raise ValueError(
-          f'The range [{min_internal_knots}, {max_internal_knots}] does not'
-          ' contain any of the available knot lengths:'
-          f' {pprint.pformat(available_knots_lengths)}'
+          f'The range [{min_internal_knots_for_selection},'
+          f' {max_internal_knots}] does not contain any of the available knot'
+          f' lengths: {pprint.pformat(available_knots_lengths)}'
       )
 
     n_knots = np.array([len(x) for x in aspline[constants.KNOTS_SELECTED]])
     feasible_idx = np.where(
-        (n_knots >= min_internal_knots) & (n_knots <= max_internal_knots)
+        (n_knots >= min_internal_knots_for_selection)
+        & (n_knots <= max_internal_knots)
     )[0]
     information_criterion = aspline[constants.AIC][feasible_idx]
     knots_sel = [aspline[constants.KNOTS_SELECTED][i] for i in feasible_idx]
@@ -449,9 +457,7 @@ class AKS:
       )
 
     if not np.all(np.isin(excluded_knots, knots)):
-      raise ValueError(
-          'The excluded knots are not legitimate knot locations.'
-      )
+      raise ValueError('The excluded knots are not legitimate knot locations.')
     is_included = ~np.isin(knots, excluded_knots)
     knots = knots[is_included]
     return knots
