@@ -57,6 +57,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Replace direct TensorFlow calls in `meridian.model.calibration` with
     `meridian.backend` to avoid unintended GPU memory pre-allocation when using
     the JAX backend.
+*   Add `batch_size` to `Meridian.sample_prior` and `PriorDistributionSampler`
+    to reduce peak memory usage.
 
 ## [2.0.0] - 2026-09-02
 

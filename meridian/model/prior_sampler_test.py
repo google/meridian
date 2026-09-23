@@ -720,6 +720,53 @@ class PriorDistributionSamplerTest(
       with self.assertRaises(AttributeError):
         getattr(prior, var)
 
+  @parameterized.named_parameters(
+      dict(testcase_name="batch_size_1", batch_size=1),
+      dict(testcase_name="batch_size_2_uneven", batch_size=2),
+      dict(testcase_name="batch_size_3_uneven", batch_size=3),
+  )
+  def test_sample_prior_batch_size_matches_unbatched(self, batch_size: int):
+    meridian_unbatched = model.Meridian(
+        input_data=self.short_input_data_non_media_and_organic,
+        model_spec=spec.ModelSpec(),
+    )
+    meridian_batched = model.Meridian(
+        input_data=self.short_input_data_non_media_and_organic,
+        model_spec=spec.ModelSpec(),
+    )
+    n_draws = 5
+    meridian_unbatched.sample_prior(n_draws=n_draws, seed=42, batch_size=100)
+    meridian_batched.sample_prior(
+        n_draws=n_draws, seed=42, batch_size=batch_size
+    )
+
+    unbatched = meridian_unbatched.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    batched = meridian_batched.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(set(batched.data_vars), set(unbatched.data_vars))
+    for key in unbatched.data_vars:
+      self.assertEqual(batched[key].shape, unbatched[key].shape)
+      np.testing.assert_allclose(
+          np.asarray(batched[key]),
+          np.asarray(unbatched[key]),
+          rtol=1e-5,
+          atol=1e-5,
+          err_msg=f"Mismatch in parameter {key} with batch_size={batch_size}",
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="zero", batch_size=0),
+      dict(testcase_name="negative", batch_size=-2),
+  )
+  def test_sample_prior_invalid_batch_size_raises_error(self, batch_size: int):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+    with self.assertRaisesRegex(
+        ValueError, "`batch_size` must be at least 1"
+    ):
+      meridian.sample_prior(n_draws=5, seed=42, batch_size=batch_size)
+
 
 class PriorDistributionSamplerInitTest(
     parameterized.TestCase,
