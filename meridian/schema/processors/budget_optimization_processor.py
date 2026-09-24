@@ -138,6 +138,7 @@ import xarray as xr
 __all__ = [
     'BudgetOptimizationProcessor',
     'BudgetOptimizationSpec',
+    'CachedBudgetOptimizationProcessor',
     'ChannelConstraintAbs',
     'ChannelConstraintRel',
 ]
@@ -368,6 +369,13 @@ class BudgetOptimizationProcessor(
   def _set_output(self, output: pb.Mmm, result: budget_pb.BudgetOptimization):
     output.marketing_optimization.budget_optimization.CopyFrom(result)
 
+  def _to_incremental_outcome_grid(
+      self,
+      optimization_grid: xr.Dataset,
+      grid_name: str | None,
+  ) -> budget_pb.IncrementalOutcomeGrid:
+    return to_incremental_outcome_grid(optimization_grid, grid_name=grid_name)
+
   def execute(
       self, specs: Sequence[BudgetOptimizationSpec]
   ) -> budget_pb.BudgetOptimization:
@@ -496,7 +504,7 @@ class BudgetOptimizationProcessor(
         spec=spec.to_proto(),
         optimized_marketing_analysis=optimized_marketing_analysis,
         nonoptimized_marketing_analysis=nonoptimized_marketing_analysis,
-        incremental_outcome_grid=to_incremental_outcome_grid(
+        incremental_outcome_grid=self._to_incremental_outcome_grid(
             opt_result.optimization_grid.grid_dataset,
             grid_name=spec.grid_name,
         ),
@@ -505,6 +513,51 @@ class BudgetOptimizationProcessor(
     if spec.group_id:
       result.group_id = spec.group_id
     return result
+
+
+class CachedBudgetOptimizationProcessor(BudgetOptimizationProcessor):
+  """A BudgetOptimizationProcessor that caches grid conversions per execute() batch."""
+
+  def __init__(self, trained_model: model_processor.ModelType):
+    super().__init__(trained_model)
+    self._cached_grids: (
+        dict[
+            tuple[int, str | None],
+            tuple[xr.Dataset, budget_pb.IncrementalOutcomeGrid],
+        ]
+        | None
+    ) = None
+
+  @override
+  def execute(
+      self, specs: Sequence[BudgetOptimizationSpec]
+  ) -> budget_pb.BudgetOptimization:
+    self._cached_grids = {}
+    try:
+      return super().execute(specs)
+    finally:
+      self._cached_grids = None
+
+  @override
+  def _to_incremental_outcome_grid(
+      self,
+      optimization_grid: xr.Dataset,
+      grid_name: str | None,
+  ) -> budget_pb.IncrementalOutcomeGrid:
+    if self._cached_grids is None:
+      return super()._to_incremental_outcome_grid(
+          optimization_grid, grid_name=grid_name
+      )
+    key = (id(optimization_grid), grid_name)
+    if key in self._cached_grids:
+      cached_grid_dataset, cached_proto = self._cached_grids[key]
+      if cached_grid_dataset is optimization_grid:
+        return cached_proto
+    proto = super()._to_incremental_outcome_grid(
+        optimization_grid, grid_name=grid_name
+    )
+    self._cached_grids[key] = (optimization_grid, proto)
+    return proto
 
 
 def to_marketing_analysis(
