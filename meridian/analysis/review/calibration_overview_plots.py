@@ -19,7 +19,7 @@ from typing import cast
 import altair as alt
 from meridian import backend
 from meridian.analysis.review import constants
-from meridian.analysis.review import results
+from meridian.model.calibration import base as calibration_base
 from meridian.model.eda import calibration_plots
 from meridian.model.eda import constants as eda_constants
 import numpy as np
@@ -34,40 +34,53 @@ _create_roi_grid = calibration_plots.create_roi_grid
 
 
 def build_calibration_overview_chart(
-    ch_data: results.CalibrationOverviewChannelData | None,
+    calibrated_output: calibration_base.CalibrationOutput | None,
+    calibrated_prior_dist: backend.tfd.Distribution | None,
+    posterior_samples: np.ndarray | None = None,
+    *,
+    limit_experiments: int | None = constants.MAX_EXPERIMENTS_FOR_OVERVIEW_CARD,
+    sort_experiments: bool = True,
 ) -> alt.HConcatChart | None:
-  """Builds the 1x3 side-by-side calibration overview chart for a single channel."""
-  if (
-      ch_data is None
-      or ch_data.calibrated_output is None
-      or ch_data.calibrated_prior_dist is None
-  ):
+  """Builds the 1x3 side-by-side calibration overview chart for a channel.
+
+  Args:
+    calibrated_output: The calibration output for the channel.
+    calibrated_prior_dist: The 1D calibrated prior distribution for the channel.
+    posterior_samples: Optional 1D array of posterior ROI samples. If None or
+      empty, the right subplot shows the intermediary prior instead.
+    limit_experiments: Optional maximum number of experiments to display. If
+      None, all experiments are displayed.
+    sort_experiments: If True, ranks experiments by adjusted standard error
+      (ascending) before applying `limit_experiments`.
+
+  Returns:
+    The chart, or None if the calibration output or the calibrated prior is
+    missing.
+  """
+  if calibrated_output is None or calibrated_prior_dist is None:
     return None
 
   indexed_experiments = calibration_plots.filter_and_sort_experiments(
-      ch_data.calibrated_output.experiments,
+      calibrated_output.experiments,
       lambda exp: exp.adjusted_experiment_result.standard_error,
-      limit_experiments=constants.MAX_EXPERIMENTS_FOR_OVERVIEW_CARD,
-      sort_experiments=True,
+      limit_experiments=limit_experiments,
+      sort_experiments=sort_experiments,
   )
   plot_data = calibration_plots.prepare_calibration_data(
-      calibrated_output=ch_data.calibrated_output,
-      calibrated_prior_dist=ch_data.calibrated_prior_dist,
+      calibrated_output=calibrated_output,
+      calibrated_prior_dist=calibrated_prior_dist,
       indexed_experiments=indexed_experiments,
       rng_handler=backend.RNGHandler(eda_constants.DEFAULT_PRIOR_SEED),
   )
 
   # Prepare posterior DataFrame if available.
   posterior_df = None
-  if (
-      ch_data.posterior_samples is not None
-      and len(ch_data.posterior_samples) > 0
-  ):
+  if posterior_samples is not None and len(posterior_samples) > 0:
     grid = _create_roi_grid(
-        ch_data.calibrated_prior_dist, [exp for _, exp in indexed_experiments]
+        calibrated_prior_dist, [exp for _, exp in indexed_experiments]
     )
     density, bins = np.histogram(
-        ch_data.posterior_samples,
+        posterior_samples,
         bins=eda_constants.HISTOGRAM_BINS,
         range=(grid[0], grid[-1]),
         density=True,

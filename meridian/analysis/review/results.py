@@ -23,8 +23,11 @@ import functools
 import os
 from typing import Any
 
+import altair as alt
 import jinja2
 from meridian.analysis import summary_text
+from meridian.analysis.review import calibration_details_plots
+from meridian.analysis.review import calibration_overview_plots
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
 from meridian.model.calibration import base as calibration_base
@@ -1346,6 +1349,174 @@ class ReviewSummary:
         for result in self.results
     }
 
+  def _select_calibration_channels(
+      self,
+      channel_name: str | None,
+      limit_channels: int | None,
+      limit_experiments: int | None,
+      sort_channels: bool,
+  ) -> list[CalibrationOverviewChannelData]:
+    """Validates the arguments and selects the calibrated channels to plot."""
+    if limit_channels is not None and limit_channels <= 0:
+      raise ValueError("limit_channels must be greater than 0.")
+    if limit_experiments is not None and limit_experiments <= 0:
+      raise ValueError("limit_experiments must be greater than 0.")
+    if not self.calibration_overview_data:
+      return []
+
+    data_by_channel = {
+        ch.channel_name: ch for ch in self.calibration_overview_data
+    }
+    if channel_name is not None:
+      if channel_name not in data_by_channel:
+        raise ValueError(
+            f"Channel '{channel_name}' is not a calibrated channel with"
+            f" experiments. Available channels: {list(data_by_channel)}."
+        )
+      channels_data = [data_by_channel[channel_name]]
+    elif sort_channels:
+      channels_data = sorted(
+          self.calibration_overview_data,
+          key=lambda ch: ch.spend or 0.0,
+          reverse=True,
+      )
+    else:
+      channels_data = [
+          data_by_channel[ch]
+          for ch in _order_channels_by_status(
+              data_by_channel, self.channel_calibration_status
+          )
+      ]
+    if limit_channels is not None:
+      channels_data = channels_data[:limit_channels]
+    return channels_data
+
+  def plot_calibration_overview(
+      self,
+      channel_name: str | None = None,
+      limit_channels: int | None = None,
+      limit_experiments: int | None = None,
+      sort_channels: bool = True,
+      sort_experiments: bool = True,
+  ) -> alt.VConcatChart | None:
+    """Plots the calibration overview charts (1x3 subplots per channel).
+
+    Unlike the "Calibration overview" card of the model health report, which is
+    limited to the five highest-spend channels and their five experiments with
+    the smallest adjusted standard error, this method can plot all calibrated
+    channels and all of their experiments. For each channel, the chart shows:
+      1. The incrementality experiments and the intermediary prior.
+      2. The intermediary prior and the parameterized prior.
+      3. The parameterized prior and the trained Meridian posterior.
+
+    Args:
+      channel_name: Optional name of a specific channel. If None, plots all
+        calibrated channels with experiments.
+      limit_channels: Optional maximum number of channels to display.
+      limit_experiments: Optional maximum number of experiments to display per
+        channel. If None, all experiments are displayed.
+      sort_channels: If True, ranks channels by total spend (descending).
+        Otherwise, channels are displayed in model channel order.
+      sort_experiments: If True, ranks experiments by adjusted standard error
+        (ascending) before applying `limit_experiments`.
+
+    Returns:
+      An Altair chart containing the calibration overview plots, or None if the
+      model has no calibrated channels with experiments.
+
+    Raises:
+      ValueError: If `limit_channels` or `limit_experiments` is not positive,
+        or if `channel_name` is not a calibrated channel with experiments.
+    """
+    channels_data = self._select_calibration_channels(
+        channel_name=channel_name,
+        limit_channels=limit_channels,
+        limit_experiments=limit_experiments,
+        sort_channels=sort_channels,
+    )
+    channel_charts = []
+    for ch_data in channels_data:
+      chart = calibration_overview_plots.build_calibration_overview_chart(
+          ch_data.calibrated_output,
+          ch_data.calibrated_prior_dist,
+          ch_data.posterior_samples,
+          limit_experiments=limit_experiments,
+          sort_experiments=sort_experiments,
+      )
+      if chart is not None:
+        channel_charts.append(
+            chart.properties(
+                title=alt.TitleParams(
+                    text=f"{ch_data.channel_name} calibration",
+                    anchor="start",
+                    fontSize=14,
+                )
+            )
+        )
+
+    if not channel_charts:
+      return None
+    return alt.vconcat(*channel_charts).resolve_scale(color="independent")
+
+  def plot_calibration_details(
+      self,
+      channel_name: str | None = None,
+      limit_channels: int | None = None,
+      limit_experiments: int | None = None,
+      sort_channels: bool = True,
+      sort_experiments: bool = True,
+  ) -> alt.VConcatChart | None:
+    """Plots the calibration details charts (experiment adjustments).
+
+    Unlike the "Calibration details" card of the model health report, which is
+    limited to the five highest-spend channels and their five experiments with
+    the smallest adjusted standard error, this method can plot all calibrated
+    channels and all of their experiments. For each experiment, the chart shows
+    the point estimate and standard error after each adjustment step: spend,
+    duration, recency, user adjustments (if provided), and the final adjusted
+    result used to inform the Meridian prior. Each row of the returned chart
+    corresponds to one channel.
+
+    Args:
+      channel_name: Optional name of a specific channel. If None, plots all
+        calibrated channels with experiments.
+      limit_channels: Optional maximum number of channels to display.
+      limit_experiments: Optional maximum number of experiments to display per
+        channel. If None, all experiments are displayed.
+      sort_channels: If True, ranks channels by total spend (descending).
+        Otherwise, channels are displayed in model channel order.
+      sort_experiments: If True, ranks experiments by adjusted standard error
+        (ascending) before applying `limit_experiments`.
+
+    Returns:
+      An Altair chart containing the calibration details plots, or None if the
+      model has no calibrated channels with experiments.
+
+    Raises:
+      ValueError: If `limit_channels` or `limit_experiments` is not positive,
+        or if `channel_name` is not a calibrated channel with experiments.
+    """
+    channels_data = self._select_calibration_channels(
+        channel_name=channel_name,
+        limit_channels=limit_channels,
+        limit_experiments=limit_experiments,
+        sort_channels=sort_channels,
+    )
+    channel_charts = []
+    for ch_data in channels_data:
+      chart = calibration_details_plots.build_calibration_details_chart(
+          ch_data.channel_name,
+          ch_data.calibrated_output,
+          limit_experiments=limit_experiments,
+          sort_experiments=sort_experiments,
+      )
+      if chart is not None:
+        channel_charts.append(chart)
+
+    if not channel_charts:
+      return None
+    return alt.vconcat(*channel_charts)
+
   def output_model_health_card(
       self,
       filename: str,
@@ -1752,11 +1923,13 @@ class ReviewSummary:
     )
 
     if has_more_channels or has_more_experiments:
-      # TODO: Add reference to how to plot more experiments.
       overview_description += (
           " The five highest-spend channels with experiments are plotted here"
           " along with their five experiments with the smallest adjusted"
-          " standard error."
+          " standard error. Please use"
+          f' <a href="{constants.PLOT_CALIBRATION_OVERVIEW_URL}"'
+          ' target="_blank">ReviewSummary.plot_calibration_overview</a> to'
+          " visualize additional channels and experiments."
       )
 
     plotted_channels = []
@@ -1813,11 +1986,13 @@ class ReviewSummary:
     )
 
     if has_more_channels or has_more_experiments:
-      # TODO: Add reference to how to plot more experiments.
       details_description += (
           " The five highest-spend channels with experiments are plotted here"
           " along with their five experiments with the smallest adjusted"
-          " standard error."
+          " standard error. Please use"
+          f' <a href="{constants.PLOT_CALIBRATION_DETAILS_URL}"'
+          ' target="_blank">ReviewSummary.plot_calibration_details</a> to'
+          " visualize additional channels and experiments."
       )
 
     plotted_channels = []
