@@ -953,6 +953,212 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     )
 
 
+class DataTensorsBuilderSpendAllocationTest(
+    backend_test_utils.MeridianTestCase
+):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
+    )
+    # Spend aggregated over the geo and time dimensions.
+    input_data.media_spend = data_test_utils.random_media_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        seed=0,
+    )
+    input_data.rf_spend = data_test_utils.random_rf_spend_nd_da(
+        n_geos=None,
+        n_times=None,
+        n_rf_channels=_N_RF_CHANNELS,
+        seed=0,
+    )
+    cls.meridian_1d_spend = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+
+    # Avoid the pytype check complaint.
+    assert input_data.media is not None
+    assert input_data.reach is not None
+    assert input_data.frequency is not None
+    assert input_data.media_spend is not None
+    assert input_data.rf_spend is not None
+    assert input_data.allocated_media_spend is not None
+    assert input_data.allocated_rf_spend is not None
+
+    cls.media = input_data.media.values
+    cls.reach = input_data.reach.values
+    cls.frequency = input_data.frequency.values
+    cls.aggregated_media_spend = input_data.media_spend.values
+    cls.aggregated_rf_spend = input_data.rf_spend.values
+    cls.allocated_media_spend = input_data.allocated_media_spend.values
+    cls.allocated_rf_spend = input_data.allocated_rf_spend.values
+
+  def _build_spend(
+      self,
+      new_data: tensors.DataTensors | None = None,
+      required_tensors_names: Sequence[str] = (
+          constants.PAID_CHANNELS + constants.SPEND_DATA
+      ),
+  ):
+    """Returns the filled `(media_spend, rf_spend)` as numpy arrays."""
+    builder = tensors.DataTensorsBuilder(self.meridian_1d_spend.model_context)
+    filled = builder.build_unscaled_inputs(
+        new_data=new_data,
+        required_tensors_names=required_tensors_names,
+    ).tensors
+    return np.asarray(filled.media_spend), np.asarray(filled.rf_spend)
+
+  def test_allocates_aggregated_spend_to_geo_and_time(self):
+    media_spend, rf_spend = self._build_spend()
+
+    self.assertEqual(media_spend.shape, (_N_GEOS, _N_TIMES, _N_MEDIA_CHANNELS))
+    self.assertEqual(rf_spend.shape, (_N_GEOS, _N_TIMES, _N_RF_CHANNELS))
+    # Allocation redistributes spend without changing the channel totals.
+    backend_test_utils.assert_allclose(
+        np.sum(media_spend, axis=(0, 1)),
+        self.aggregated_media_spend,
+        rtol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        np.sum(rf_spend, axis=(0, 1)), self.aggregated_rf_spend, rtol=1e-5
+    )
+
+  def test_allocation_is_proportional_to_media_units(self):
+    media_spend, _ = self._build_spend()
+
+    media = self.media[:, -_N_TIMES:, :]
+    expected = media / np.sum(media, axis=(0, 1)) * self.aggregated_media_spend
+    backend_test_utils.assert_allclose(media_spend, expected, rtol=1e-5)
+
+  def test_allocation_matches_input_data_allocated_spend(self):
+    media_spend, rf_spend = self._build_spend()
+
+    backend_test_utils.assert_allclose(
+        media_spend, self.allocated_media_spend, rtol=1e-5
+    )
+    backend_test_utils.assert_allclose(
+        rf_spend, self.allocated_rf_spend, rtol=1e-5
+    )
+
+  def test_allocation_uses_new_media(self):
+    # Reweight media non-uniformly across geos and times so that the allocation
+    # weights differ from the ones implied by the historical media.
+    geo_weights = np.linspace(1.0, 5.0, _N_GEOS)[:, np.newaxis, np.newaxis]
+    time_weights = np.linspace(1.0, 3.0, _N_MEDIA_TIMES)[
+        np.newaxis, :, np.newaxis
+    ]
+    new_media = self.media * geo_weights * time_weights
+
+    media_spend, _ = self._build_spend(
+        new_data=tensors.DataTensors(
+            media=backend.to_tensor(new_media, dtype=backend.float_dtype)
+        )
+    )
+
+    # The allocation weights come from the new media, not the historical one.
+    new_media_window = new_media[:, -_N_TIMES:, :]
+    expected = (
+        new_media_window
+        / np.sum(new_media_window, axis=(0, 1))
+        * self.aggregated_media_spend
+    )
+    backend_test_utils.assert_allclose(media_spend, expected, rtol=1e-5)
+    # Sanity check: the reweighting actually moves spend across geos and times,
+    # so the assertion above would fail if the historical media were used.
+    self.assertFalse(
+        np.allclose(media_spend, self.allocated_media_spend, rtol=1e-2)
+    )
+
+  def test_allocation_uses_new_reach_and_frequency(self):
+    # Reweight reach non-uniformly so that the RF impressions, and therefore
+    # the allocation weights, differ from the historical ones.
+    geo_weights = np.linspace(1.0, 5.0, _N_GEOS)[:, np.newaxis, np.newaxis]
+    time_weights = np.linspace(1.0, 3.0, _N_MEDIA_TIMES)[
+        np.newaxis, :, np.newaxis
+    ]
+    new_reach = self.reach * geo_weights * time_weights
+
+    _, rf_spend = self._build_spend(
+        new_data=tensors.DataTensors(
+            reach=backend.to_tensor(new_reach, dtype=backend.float_dtype)
+        )
+    )
+
+    # The allocation weights come from the new reach times the historical
+    # frequency, not from the historical impressions.
+    new_impressions = (new_reach * self.frequency)[:, -_N_TIMES:, :]
+    expected = (
+        new_impressions
+        / np.sum(new_impressions, axis=(0, 1))
+        * self.aggregated_rf_spend
+    )
+    backend_test_utils.assert_allclose(rf_spend, expected, rtol=1e-5)
+    # Sanity check: the reweighting actually moves spend across geos and times,
+    # so the assertion above would fail if the historical reach were used.
+    self.assertFalse(np.allclose(rf_spend, self.allocated_rf_spend, rtol=1e-2))
+
+  def test_allocation_without_execution_values_uses_model_tensors(self):
+    # Spend is the only required data, so the filled tensors carry no media,
+    # reach or frequency and the allocation falls back to the model tensors.
+    media_spend, rf_spend = self._build_spend(
+        required_tensors_names=constants.SPEND_DATA
+    )
+
+    backend_test_utils.assert_allclose(
+        media_spend, self.allocated_media_spend, rtol=1e-5
+    )
+    backend_test_utils.assert_allclose(
+        rf_spend, self.allocated_rf_spend, rtol=1e-5
+    )
+
+  def test_allocation_with_partial_rf_data_uses_model_tensors(self):
+    # `frequency` is not required, so only `reach` is available. Impressions
+    # cannot be derived from reach alone, so the model tensors are used.
+    _, rf_spend = self._build_spend(
+        required_tensors_names=constants.SPEND_DATA + (constants.REACH,)
+    )
+
+    backend_test_utils.assert_allclose(
+        rf_spend, self.allocated_rf_spend, rtol=1e-5
+    )
+
+  def test_three_dimensional_spend_is_unchanged(self):
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        seed=0,
+    )
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(max_lag=15),
+    )
+    builder = tensors.DataTensorsBuilder(meridian.model_context)
+
+    filled = builder.build_unscaled_inputs(
+        required_tensors_names=(constants.MEDIA, constants.MEDIA_SPEND),
+    ).tensors
+
+    # Avoid the pytype check complaint.
+    assert input_data.media_spend is not None
+    backend_test_utils.assert_allclose(
+        np.asarray(filled.media_spend), input_data.media_spend.values
+    )
+
+
 class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
 
   @classmethod
