@@ -23,9 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-*   Add an `include_knots` argument to `ModelFit.plot_model_fit()`, which draws
-    vertical reference lines at the time periods where the model's knots are
-    located.
+## [2.1.0] - 2026-09-17
+
 *   Add `get_selected_dates_str` to TimeCoordinates.
 *   Update `mmm-proto-schema` dependency to >= 1.4.0.
 *   Add a declarative vocabulary to `ModelSpec`, so that calibration windows,
@@ -62,6 +61,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     the JAX backend.
 *   Add `batch_size` to `Meridian.sample_prior` and `PriorDistributionSampler`
     to reduce peak memory usage.
+*   Add an `include_knots` argument to `ModelFit.plot_model_fit()`, which draws
+    vertical reference lines at the time periods where the model's knots are
+    located.
 
 ## [2.0.0] - 2026-09-02
 
@@ -627,4 +629,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.7.1]: https://github.com/google/meridian/releases/tag/v1.7.1
 [1.8.0]: https://github.com/google/meridian/releases/tag/v1.8.0
 [2.0.0]: https://github.com/google/meridian/releases/tag/v2.0.0
-[Unreleased]: https://github.com/google/meridian/compare/v2.0.0...HEAD
+[2.1.0]: https://github.com/google/meridian/releases/tag/v2.1.0
+[Unreleased]: https://github.com/google/meridian/compare/v2.1.0...HEAD
