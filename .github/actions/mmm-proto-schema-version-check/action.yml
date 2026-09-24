@@ -1,0 +1,59 @@
+# Check if version in version_file_path has been incremented. If so, set a `new_version` output.
+inputs:
+  python_version:
+    description: The Python version of the build toolchain to use.
+    required: true
+    default: 3.11
+  version_file_path:
+    description: The path to the file containing the __version__ string.
+    required: true
+  tag_match:
+    description: The git tag pattern to match for version comparison.
+    required: true
+  tag_prefix:
+    description: The prefix to strip from the tag to get the version.
+    required: true
+outputs:
+  new_version:
+    description: The new version if semver was incremented, otherwise an empty string.
+    value: ${{ steps.version_check.outputs.new_version }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+    - shell: bash
+      run: pip install semver
+    - id: version_check
+      name: Check Version
+      shell: bash
+      run: |
+        CURRENT_VERSION=$(python3 -c "import re; print(re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', open('${{ inputs.version_file_path }}').read(), re.M).group(1))")
+        echo "File version: $CURRENT_VERSION"
+        if ! python3 -m semver check "$CURRENT_VERSION"; then
+          echo "Error: Invalid semantic version in file: $CURRENT_VERSION"
+          exit 1
+        fi
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match '${{ inputs.tag_match }}' 2>/dev/null)
+        if [[ -z "$PREVIOUS_TAG" ]]; then
+          echo "No previous tag found matching ${{ inputs.tag_match }}. Using 0.0.0 as previous version."
+          PREVIOUS_VERSION="0.0.0"
+        else
+          echo "Found previous tag: $PREVIOUS_TAG"
+          PREVIOUS_VERSION=$(echo "$PREVIOUS_TAG" | sed 's|^${{ inputs.tag_prefix }}||')
+        fi
+        echo "Comparing $CURRENT_VERSION with $PREVIOUS_VERSION"
+        if [[ $(python3 -m semver compare "$CURRENT_VERSION" "$PREVIOUS_VERSION") -eq 1 ]]; then
+          echo "New version detected: $CURRENT_VERSION"
+          NEW_VERSION=$CURRENT_VERSION
+        else
+          echo "No version increment detected."
+          NEW_VERSION=""
+        fi
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
