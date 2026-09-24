@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `ReviewSummary.plot_calibration_overview()` and
+    `ReviewSummary.plot_calibration_details()` to plot the calibration overview
+    (experiments, priors and posterior) and the per-experiment adjustments for
+    all calibrated channels and experiments.
 *   Fix a `float32`/`float64` dtype mismatch in
     `adstock_hill.transform_non_negative_reals_distribution` on the 64-bit JAX
     backend by typing the `Shift` bijector parameter with

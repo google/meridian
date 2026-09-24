@@ -746,8 +746,12 @@ def generate_calibration_details_chart_json(
     ch_data: results.CalibrationOverviewChannelData | None,
 ) -> str | None:
   """Generates the Altair chart JSON for a calibration details channel chart."""
+  if ch_data is None:
+    return None
   try:
-    chart = build_calibration_details_chart(ch_data)
+    chart = build_calibration_details_chart(
+        ch_data.channel_name, ch_data.calibrated_output
+    )
     if chart is None:
       return None
     return chart.to_json()
@@ -769,8 +773,14 @@ def generate_calibration_overview_chart_json(
     ch_data: results.CalibrationOverviewChannelData | None,
 ) -> str | None:
   """Generates the Altair chart JSON for a calibration overview channel chart."""
+  if ch_data is None:
+    return None
   try:
-    chart = build_calibration_overview_chart(ch_data)
+    chart = build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     if chart is None:
       return None
     return chart.to_json()

@@ -229,7 +229,11 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
         channel_name="overview_channel",
         posterior_samples=posterior_samples,
     )
-    chart = calibration_overview_plots.build_calibration_overview_chart(ch_data)
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     self.assertIsNotNone(chart)
     self.assertIsInstance(chart, alt.HConcatChart)
     chart_dict = chart.to_dict()
@@ -270,7 +274,6 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
     self.assertIsInstance(chart_json, str)
 
   @parameterized.named_parameters(
-      ("none_input", None),
       (
           "none_calibrated_output",
           _create_mock_channel_data(has_calibrated_output=False),
@@ -288,7 +291,9 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
   )
   def test_build_calibration_overview_chart_none_returns_none(self, ch_data):
     self.assertIsNone(
-        calibration_overview_plots.build_calibration_overview_chart(ch_data)
+        calibration_overview_plots.build_calibration_overview_chart(
+            ch_data.calibrated_output, ch_data.calibrated_prior_dist
+        )
     )
 
   @parameterized.named_parameters(
@@ -319,7 +324,11 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
         has_baseline_prior=True,
         posterior_samples=np.array([1.2, 2.3]),
     )
-    chart = calibration_overview_plots.build_calibration_overview_chart(ch_data)
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     self.assertIsNotNone(chart)
     chart_dict = chart.to_dict()
     left_subplot = chart_dict["hconcat"][0]
@@ -376,7 +385,11 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
         has_baseline_prior=True,
     )
 
-    chart = calibration_overview_plots.build_calibration_overview_chart(ch_data)
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     self.assertIsNotNone(chart)
     chart_dict = chart.to_dict()
     left_subplot = chart_dict["hconcat"][0]
@@ -397,6 +410,31 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
     )
 
   @parameterized.named_parameters(
+      ("no_limit", None, True, 7),
+      ("no_sorting", 2, False, 2),
+  )
+  def test_build_calibration_overview_chart_limit_and_sort_experiments(
+      self, limit_experiments, sort_experiments, expected_num_experiments
+  ):
+    ch_data = _create_mock_channel_data(
+        experiments=_create_mock_experiments_for_filtering()
+    )
+
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        limit_experiments=limit_experiments,
+        sort_experiments=sort_experiments,
+    )
+    self.assertIsNotNone(chart)
+    domain, _ = _get_color_scale(chart.to_dict()["hconcat"][0])
+    exp_labels = [label for label in domain if label.startswith("Experiment ")]
+    self.assertLen(exp_labels, expected_num_experiments)
+    # Experiments 1..N: all of them, or the first N when not sorting by SE.
+    for i, label in enumerate(exp_labels, start=1):
+      self.assertStartsWith(label, f"Experiment {i} (")
+
+  @parameterized.named_parameters(
       ("presence", np.array([1.2, 2.3]), True),
       ("absence_empty_array", np.array([]), False),
       ("absence_none", None, False),
@@ -405,7 +443,11 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
       self, posterior_samples: np.ndarray | None, expected_present: bool
   ):
     ch_data = _create_mock_channel_data(posterior_samples=posterior_samples)
-    chart = calibration_overview_plots.build_calibration_overview_chart(ch_data)
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     self.assertIsNotNone(chart)
     chart_dict = chart.to_dict()
 
@@ -453,7 +495,11 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
         has_baseline_prior=has_baseline_prior,
         posterior_samples=np.array([1.2, 2.3]),
     )
-    chart = calibration_overview_plots.build_calibration_overview_chart(ch_data)
+    chart = calibration_overview_plots.build_calibration_overview_chart(
+        ch_data.calibrated_output,
+        ch_data.calibrated_prior_dist,
+        ch_data.posterior_samples,
+    )
     self.assertIsNotNone(chart)
     chart_dict = chart.to_dict()
     left_subplot = chart_dict["hconcat"][0]
@@ -541,7 +587,9 @@ class BuildCalibrationOverviewChartTest(parameterized.TestCase):
 
     with patch_ctx:
       chart = calibration_overview_plots.build_calibration_overview_chart(
-          ch_data
+          ch_data.calibrated_output,
+          ch_data.calibrated_prior_dist,
+          ch_data.posterior_samples,
       )
       self.assertIsNotNone(chart)
       chart_dict = chart.to_dict()

@@ -195,6 +195,14 @@ MAX_CHANNELS_FOR_DETAILS_CARD = 5
 MAX_EXPERIMENTS_FOR_DETAILS_CARD = 5
 MAX_CHANNELS_FOR_OVERVIEW_CARD = 5
 MAX_EXPERIMENTS_FOR_OVERVIEW_CARD = 5
+PLOT_CALIBRATION_OVERVIEW_URL = (
+    "https://developers.google.com/meridian/reference/api/meridian/analysis/"
+    "review/results/ReviewSummary#plot_calibration_overview"
+)
+PLOT_CALIBRATION_DETAILS_URL = (
+    "https://developers.google.com/meridian/reference/api/meridian/analysis/"
+    "review/results/ReviewSummary#plot_calibration_details"
+)
 CHANNEL_NAME = "channel_name"
 IS_CALIBRATED = "is_calibrated"
 HIGH_ROI_STATUS = "high_roi_status"
