@@ -100,8 +100,7 @@ class OptimizationGrid:
 
   Attributes:
     historical_spend: ndarray of shape `(n_paid_channels,)` containing
-      aggregated historical spend allocation for spend for all media and RF
-      channels.
+      aggregated historical spend allocation for all media and RF channels.
     use_kpi: Whether using generic KPI or revenue.
     use_posterior: Whether posterior distributions were used, or prior.
     use_optimal_frequency: Whether optimal frequency was used.
@@ -109,7 +108,7 @@ class OptimizationGrid:
     start_date: The start date of the optimization period.
     end_date: The end date of the optimization period.
     gtol: Float indicating the acceptable relative error for the budget used in
-      the grid setup. The budget is rounded by `10*n`, where `n` is the smallest
+      the grid setup. The budget is rounded by `10^n`, where `n` is the smallest
       integer such that `(budget - rounded_budget)` is less than or equal to
       `(budget * gtol)`.
     round_factor: The round factor used for the optimization grid.
@@ -182,9 +181,9 @@ class OptimizationGrid:
     Args:
       scenario: The optimization scenario with corresponding parameters.
       pct_of_spend: Numeric list of size `channels` containing the percentage
-        allocation for spend for all channels. The values must be between 0-1,
-        summing to 1. By default, the historical allocation is used. Budget and
-        allocation are used in conjunction to determine the non-optimized
+        allocation for spend for all channels. The values must be between 0 and
+        1, summing to 1. By default, the historical allocation is used. Budget
+        and allocation are used in conjunction to determine the non-optimized
         media-level spend, which is used to calculate the non-optimized
         performance metrics (for example, ROI) and construct the feasible range
         of media-level spend with the spend constraints.
@@ -192,25 +191,27 @@ class OptimizationGrid:
         constraint for all channels) indicating the lower bound of media-level
         spend. If given as a channel-indexed array, the order must match
         `channels`. The lower bound of media-level spend is `(1 -
-        spend_constraint_lower) * budget * allocation)`. The value must be
-        between 0-1. Defaults to `0.3` for fixed budget and `1` for flexible.
+        spend_constraint_lower) * budget * allocation`. The value must be
+        between 0 and 1. Defaults to `0.3` for fixed budget and `1` for
+        flexible.
       spend_constraint_upper: Numeric list of size `channels` or float (same
         constraint for all channels) indicating the upper bound of media-level
         spend. If given as a channel-indexed array, the order must match
         `channels`. The upper bound of media-level spend is `(1 +
-        spend_constraint_upper) * budget * allocation)`. Defaults to `0.3` for
+        spend_constraint_upper) * budget * allocation`. Defaults to `0.3` for
         fixed budget and `1` for flexible.
 
     Returns:
-      An xarray Dataset with `channel` as the coordinate and the following data
-      variables:
+      An xarray Dataset with `channel` as the coordinate and the following
+      data variables.
+
         * `optimized`: media spend that maximizes incremental outcome based
-        on spend constraints for all media and RF channels.
+          on spend constraints for all media and RF channels.
         * `non_optimized`: rounded channel-level spend.
 
     Raises:
-      A warning if the budget's rounding should be different from the grid's
-      round factor.'.
+      UserWarning: If the budget's rounding should be different from the grid's
+        round factor.
       ValueError: If spend allocation is not within the grid coverage.
     """
     total_budget = (
@@ -531,8 +532,7 @@ class OptimizationResults:
         `incremental_outcome`, `effectiveness`
       - Attributes: `start_date`, `end_date`, `budget`, `profit`,
         `total_incremental_outcome`, `total_roi`, `total_cpik`,
-        `is_revenue_kpi`,
-        `use_historical_budget`
+        `is_revenue_kpi`, `use_historical_budget`
 
     ROI and mROI are only included if `revenue_per_kpi` is known. Otherwise,
     CPIK is used.
@@ -1538,7 +1538,7 @@ class BudgetOptimizer:
 
     Passing `new_data.media` (or `new_data.reach` or `new_data.frequency`) will
     override both the flighting pattern and cost per media unit. Passing
-    `new_data.spend` (or `new_data.rf_spend) will only override the cost per
+    `new_data.spend` (or `new_data.rf_spend`) will only override the cost per
     media unit.
 
     If `start_date` or `end_date` is specified, these values must be selected
@@ -1566,13 +1566,13 @@ class BudgetOptimizer:
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
       selected_times: Deprecated. Tuple containing the start and end time
-        dimension coordinates for the duration to run the optimization on.
-        Please Use `start_date` and `end_date` instead.
+        dimension coordinates for the duration to run the optimization on. Use
+        `start_date` and `end_date` instead.
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format. Default is the first time period of `Meridian.InputData.time` if
         `new_data` is not provided; otherwise it is the first time period of
         `new_data.time`.
-      end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
+      end_date: Optional end date selector, *inclusive*, in _yyyy-mm-dd_ format.
         Default is the last time period of `Meridian.InputData.time` if
         `new_data` is not provided; otherwise it is the last time period of
         `new_data.time`.
@@ -1583,21 +1583,21 @@ class BudgetOptimizer:
         Defaults to the historical budget.
       pct_of_spend: Numeric list of size `n_paid_channels` containing the
         percentage allocation for spend for all media and RF channels. The order
-        must match `(InputData.media + InputData.reach)` with values between
-        0-1, summing to 1. By default, the historical allocation is used. Budget
-        and allocation are used in conjunction to determine the non-optimized
-        media-level spend, which is used to calculate the non-optimized
-        performance metrics (for example, ROI) and construct the feasible range
-        of media-level spend with the spend constraints. Consider using
-        `InputData.get_paid_channels_argument_builder()` to construct this
+        must match `(InputData.media + InputData.reach)` with values between 0
+        and 1, summing to 1. By default, the historical allocation is used.
+        Budget and allocation are used in conjunction to determine the
+        non-optimized media-level spend, which is used to calculate the
+        non-optimized performance metrics (for example, ROI) and construct the
+        feasible range of media-level spend with the spend constraints. Consider
+        using `InputData.get_paid_channels_argument_builder()` to construct this
         argument.
       spend_constraint_lower: Numeric list of size `n_paid_channels` or float
         (same constraint for all channels) indicating the lower bound of
         media-level spend. If given as a channel-indexed array, the order must
         match `(InputData.media + InputData.reach)`. The lower bound of
         media-level spend is `(1 - spend_constraint_lower) * budget *
-        allocation)`. The value must be between 0-1. Defaults to `0.3` for fixed
-        budget and `1` for flexible. Consider using
+        allocation`. The value must be between 0 and 1. Defaults to `0.3` for
+        fixed budget and `1` for flexible. Consider using
         `InputData.get_paid_channels_argument_builder()` to construct this
         argument.
       spend_constraint_upper: Numeric list of size `n_paid_channels` or float
@@ -1605,7 +1605,7 @@ class BudgetOptimizer:
         media-level spend. If given as a channel-indexed array, the order must
         match `(InputData.media + InputData.reach)`. The upper bound of
         media-level spend is `(1 + spend_constraint_upper) * budget *
-        allocation)`. Defaults to `0.3` for fixed budget and `1` for flexible.
+        allocation`. Defaults to `0.3` for fixed budget and `1` for flexible.
         Consider using `InputData.get_paid_channels_argument_builder()` to
         construct this argument.
       target_roi: Float indicating the target ROI constraint. Only used for
@@ -1615,7 +1615,7 @@ class BudgetOptimizer:
         used for flexible budget scenarios. The budget is constrained to when
         the marginal ROI of the total spend hits `target_mroi`.
       gtol: Float indicating the acceptable relative error for the budget used
-        in the grid setup. The budget will be rounded by `10*n`, where `n` is
+        in the grid setup. The budget will be rounded by `10^n`, where `n` is
         the smallest integer such that `(budget - rounded_budget)` is less than
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
       use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
@@ -1822,7 +1822,7 @@ class BudgetOptimizer:
       revenue_per_kpi: backend.Tensor | None = None,
       use_optimal_frequency: bool = True,
   ) -> tensors.DataTensors:
-    """Creates a `DataTensors` for optimizations from CPM and flighting data.
+    """Creates a `DataTensors` object for optimization from CPM and flighting data.
 
     CPM is broken down into cost per media unit, `cpmu`, for the media channels
     and cost per impression (reach * frequency), `cprf`, for the reach and
@@ -1834,7 +1834,7 @@ class BudgetOptimizer:
     national-level totals. If the model is a geo-level model, then the values
     are allocated across geos based on the population used in the model.
 
-    Below are the different combinations of tensors_dict that can be provided:
+    Below are the different combinations of tensors that can be provided:
       For media:
       1) `media`, `cpmu` (media units flighting pattern)
       2) `media_spend`, `cpmu` (spend flighting pattern)
@@ -1842,7 +1842,7 @@ class BudgetOptimizer:
       For R&F:
       If `use_optimal_frequency=True`, `frequency` should not be provided.
       Frequency input is not required for the optimization, so the new
-      `DataTensors` object will be created with `frequuency` arbitrarily set to
+      `DataTensors` object will be created with `frequency` arbitrarily set to
       1 and `reach=rf_impressions`.
       1) `rf_impressions`, `cprf` (impressions flighting pattern)
       2) `rf_spend`, `cprf` (spend flighting pattern)
@@ -1855,9 +1855,9 @@ class BudgetOptimizer:
     Args:
       time: A sequence or tensor of time coordinates in the "YYYY-mm-dd" string
         format.
-      cpmu: A tensor of cost per media unit with dimensions `(n_media_channels),
-        `(T, n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
-        dimension `T`.
+      cpmu: A tensor of cost per media unit with dimensions
+        `(n_media_channels)`, `(T, n_media_channels)`, or `(n_geos, T,
+        n_media_channels)` for any time dimension `T`.
       media: An optional tensor of media unit values with dimensions `(T,
         n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
         dimension `T`.
@@ -1865,7 +1865,7 @@ class BudgetOptimizer:
         n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
         dimension `T`.
       cprf: A tensor of cost per impression (reach * frequency) with dimensions
-        `(n_rf_channels), `(T, n_rf_channels)` or `(n_geos, T, n_rf_channels)`
+        `(n_rf_channels)`, `(T, n_rf_channels)`, or `(n_geos, T, n_rf_channels)`
         for any time dimension `T`.
       rf_impressions: A tensor of impressions (reach * frequency) values with
         dimensions `(T, n_rf_channels)` or `(n_geos, T, n_rf_channels)` for any
@@ -1878,14 +1878,14 @@ class BudgetOptimizer:
         or `(n_geos, T, n_rf_channels)` for any time dimension `T`.
       revenue_per_kpi: A tensor of revenue per KPI values with dimensions `()`,
         `(T)`, or `(n_geos, T)` for any time dimension `T`.
-      use_optimal_frequency: Boolean. If `True`, the optiaml frequency will be
+      use_optimal_frequency: Boolean. If `True`, the optimal frequency will be
         used in the optimization and a frequency value should not be provided.
         In this case, `reach=rf_impressions` and `frequency=1` (by arbitrary
         convention) in the new data. If `False`, the frequency value must be
         provided.
 
     Returns:
-      A `DataTensors` object with optional tensors_dict `media`, `reach`,
+      A `DataTensors` object with optional tensors `media`, `reach`,
       `frequency`, `media_spend`, `rf_spend`, `revenue_per_kpi`, and `time`.
     """
     n_times = time.shape[0] if isinstance(time, backend.Tensor) else len(time)
@@ -2135,7 +2135,7 @@ class BudgetOptimizer:
       use_kpi: bool = False,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
   ) -> OptimizationGrid:
-    """Creates a OptimizationGrid for optimization.
+    """Creates an `OptimizationGrid` for optimization.
 
     If `start_date` or `end_date` is specified, then the default values are
     inferred based on the subset of time periods specified. Both start and end
@@ -2143,7 +2143,7 @@ class BudgetOptimizer:
     the underlying model if optimizing the original data. If `new_data` is
     provided with a different number of time periods than in `InputData`, then
     the start and end time coordinates must match the time dimensions in
-    `new_data.time`. By default, all times periods are used. Either start or
+    `new_data.time`. By default, all time periods are used. Either start or
     end time component can be `None` to represent the first or the last time
     coordinate, respectively.
 
@@ -2164,30 +2164,30 @@ class BudgetOptimizer:
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
       selected_times: Deprecated. Tuple containing the start and end time
-        dimension coordinates. Please Use `start_date` and `end_date` instead.
+        dimension coordinates. Use `start_date` and `end_date` instead.
       start_date: Optional start date selector, *inclusive*, in _yyyy-mm-dd_
         format. Default is `None`, i.e. the first time period.
-      end_date: Optional end date selector, *inclusive* in _yyyy-mm-dd_ format.
+      end_date: Optional end date selector, *inclusive*, in _yyyy-mm-dd_ format.
         Default is `None`, i.e. the last time period.
       budget: Number indicating the total budget for the fixed budget scenario.
         Defaults to the historical budget.
       pct_of_spend: Numeric list of size `n_paid_channels` containing the
         percentage allocation for spend for all media and RF channels. The order
-        must match `(InputData.media + InputData.reach)` with values between
-        0-1, summing to 1. By default, the historical allocation is used. Budget
-        and allocation are used in conjunction to determine the non-optimized
-        media-level spend, which is used to calculate the non-optimized
-        performance metrics (for example, ROI) and construct the feasible range
-        of media-level spend with the spend constraints. Consider using
-        `InputData.get_paid_channels_argument_builder()` to construct this
+        must match `(InputData.media + InputData.reach)` with values between 0
+        and 1, summing to 1. By default, the historical allocation is used.
+        Budget and allocation are used in conjunction to determine the
+        non-optimized media-level spend, which is used to calculate the
+        non-optimized performance metrics (for example, ROI) and construct the
+        feasible range of media-level spend with the spend constraints. Consider
+        using `InputData.get_paid_channels_argument_builder()` to construct this
         argument.
       spend_constraint_lower: Numeric list of size `n_paid_channels` or float
         (same constraint for all channels) indicating the lower bound of
         media-level spend. If given as a channel-indexed array, the order must
         match `(InputData.media + InputData.reach)`. The lower bound of
         media-level spend is `(1 - spend_constraint_lower) * budget *
-        allocation)`. The value must be between 0-1. Defaults to `0.3` for fixed
-        budget and `1` for flexible. Consider using
+        allocation`. The value must be between 0 and 1. Defaults to `0.3` for
+        fixed budget and `1` for flexible. Consider using
         `InputData.get_paid_channels_argument_builder()` to construct this
         argument.
       spend_constraint_upper: Numeric list of size `n_paid_channels` or float
@@ -2195,14 +2195,14 @@ class BudgetOptimizer:
         media-level spend. If given as a channel-indexed array, the order must
         match `(InputData.media + InputData.reach)`. The upper bound of
         media-level spend is `(1 + spend_constraint_upper) * budget *
-        allocation)`. Defaults to `0.3` for fixed budget and `1` for flexible.
+        allocation`. Defaults to `0.3` for fixed budget and `1` for flexible.
         Consider using `InputData.get_paid_channels_argument_builder()` to
         construct this argument.
       gtol: Float indicating the acceptable relative error for the budget used
-        in the grid setup. The budget will be rounded by `10*n`, where `n` is
+        in the grid setup. The budget will be rounded by `10^n`, where `n` is
         the smallest integer such that `(budget - rounded_budget)` is less than
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
-      use_optimal_frequency: Boolean. Whether optimal frequency was used.
+      use_optimal_frequency: Boolean. Whether to use optimal frequency.
       max_frequency: Float indicating the frequency upper bound for the optimal
         frequency search space. If `None` when `use_optimal_frequency` is
         `True`, the max frequency of the input data is used. If
@@ -2991,16 +2991,16 @@ def get_optimization_bounds(
     n_channels: Integer number of total channels.
     spend: np.ndarray with size `n_total_channels` containing media-level spend
       for all media and RF channels.
-    round_factor: Integer number of digits to round optimization bounds.
+    round_factor: Integer number of digits to round optimization bounds to.
     spend_constraint_lower: Numeric list of size `n_total_channels` or float
       (same constraint for all media) indicating the lower bound of media-level
       spend. The lower bound of media-level spend is `(1 -
-      spend_constraint_lower) * budget * allocation)`. The value must be between
-      0-1.
+      spend_constraint_lower) * budget * allocation`. The value must be between
+      0 and 1.
     spend_constraint_upper: Numeric list of size `n_total_channels` or float
       (same constraint for all media) indicating the upper bound of media-level
       spend. The upper bound of media-level spend is `(1 +
-      spend_constraint_upper) * budget * allocation)`.
+      spend_constraint_upper) * budget * allocation`.
 
   Returns:
     lower_bound: np.ndarray of size `n_total_channels` containing the treated
@@ -3108,12 +3108,12 @@ def _get_spend_bounds(
     spend_constraint_lower: Numeric list of size `n_total_channels` or float
       (same constraint for all media) indicating the lower bound of media-level
       spend. The lower bound of media-level spend is `(1 -
-      spend_constraint_lower) * budget * allocation)`. The value must be between
-      0-1.
+      spend_constraint_lower) * budget * allocation`. The value must be between
+      0 and 1.
     spend_constraint_upper: Numeric list of size `n_total_channels` or float
       (same constraint for all media) indicating the upper bound of media-level
       spend. The upper bound of media-level spend is `(1 +
-      spend_constraint_upper) * budget * allocation)`.
+      spend_constraint_upper) * budget * allocation`.
 
   Returns:
     spend_bounds: tuple of np.ndarray of size `n_total_channels` containing
