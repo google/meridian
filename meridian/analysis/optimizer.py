@@ -33,6 +33,7 @@ from meridian.common import currency as currency_module
 from meridian.common import errors as common_errors
 from meridian.data import time_coordinates as tc
 from meridian.model import context
+from meridian.model import equations
 from meridian.model import model
 from meridian.templates import formatter
 import numpy as np
@@ -2634,107 +2635,6 @@ class BudgetOptimizer:
         attrs=attributes | (attrs or {}),  # pyrefly: ignore[unsupported-operation]
     )
 
-  def _update_incremental_outcome_grid(
-      self,
-      *,
-      i: int,
-      incremental_outcome_grid: np.ndarray,
-      multipliers_grid: backend.Tensor,
-      filled_data: tensors.DataTensors,
-      selected_geos: Sequence[str] | None = None,
-      selected_times: Sequence[str] | None = None,
-      use_posterior: bool = True,
-      use_kpi: bool = False,
-      optimal_frequency: xr.DataArray | None = None,
-      batch_size: int = c.DEFAULT_BATCH_SIZE,
-  ):
-    """Updates incremental_outcome_grid for each channel.
-
-    Args:
-      i: Row index used in updating incremental_outcome_grid.
-      incremental_outcome_grid: Discrete two-dimensional grid with the number of
-        rows determined by the `spend_constraints` and `step_size`, and the
-        number of columns is equal to the number of total channels, containing
-        incremental outcome by channel.
-      multipliers_grid: A grid derived from spend.
-      filled_data: A `DataTensors` object containing the new `media`, `reach`,
-        `frequency`, and `revenue_per_kpi` tensors.
-      selected_geos: Optional list containing a subset of geos to include. By
-        default, all geos are included. The selected geos should match those in
-        `InputData.geo`.
-      selected_times: Optional list of times to optimize. This is a string list
-        containing a subset of time dimension coordinates. By default, all time
-        periods are included.
-      use_posterior: Boolean. If `True`, then the incremental outcome is derived
-        from the posterior distribution of the model. Otherwise, the prior
-        distribution is used.
-      use_kpi: Boolean. If `True`, then the incremental outcome is derived from
-        the KPI impact. Otherwise, the incremental outcome is derived from the
-        revenue impact.
-      optimal_frequency: xr.DataArray with dimension `n_rf_channels`, containing
-        the optimal frequency per channel, that maximizes posterior mean roi.
-        Value is `None` if the model does not contain reach and frequency data,
-        or if the model does contain reach and frequency data, but historical
-        frequency is used for the optimization scenario.
-      batch_size: Max draws per chain in each batch. The calculation is run in
-        batches to avoid memory exhaustion. If a memory error occurs, try
-        reducing `batch_size`. The calculation will generally be faster with
-        larger `batch_size` values.
-    """
-    model_context = self._analyzer.model_context
-    if model_context.n_media_channels > 0:
-      new_media = (
-          multipliers_grid[i, : model_context.n_media_channels]  # pyrefly: ignore[unsupported-operation]
-          * filled_data.media
-      )
-    else:
-      new_media = None
-
-    if model_context.n_rf_channels == 0:
-      new_frequency = None
-      new_reach = None
-    elif optimal_frequency is not None:
-      new_frequency = (
-          backend.ones_like(filled_data.frequency) * optimal_frequency  # pyrefly: ignore[bad-argument-type]
-      )
-      new_reach = backend.divide_no_nan(
-          multipliers_grid[i, -model_context.n_rf_channels :]  # pyrefly: ignore[unsupported-operation]
-          * filled_data.reach
-          * filled_data.frequency,
-          new_frequency,
-      )
-    else:
-      new_frequency = filled_data.frequency
-      new_reach = (
-          multipliers_grid[i, -model_context.n_rf_channels :]  # pyrefly: ignore[unsupported-operation]
-          * filled_data.reach
-      )
-
-    # incremental_outcome returns a three dimensional tensor with dims
-    # (n_chains x n_draws x n_total_channels). Incremental_outcome_grid requires
-    # incremental outcome by channel.
-    incremental_outcome_grid[i, :] = np.mean(
-        np.asarray(
-            self._analyzer.incremental_outcome(
-                use_posterior=use_posterior,
-                new_data=tensors.DataTensors(
-                    media=new_media,
-                    reach=new_reach,
-                    frequency=new_frequency,  # pyrefly: ignore[bad-argument-type]
-                    revenue_per_kpi=filled_data.revenue_per_kpi,
-                    time=filled_data.time,
-                ),
-                selected_geos=selected_geos,
-                selected_times=selected_times,
-                use_kpi=use_kpi,
-                include_non_paid_channels=False,
-                batch_size=batch_size,
-            )
-        ),
-        axis=(c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
-        dtype=np.float64,
-    )
-
   def _create_grids(
       self,
       spend: np.ndarray,
@@ -2825,18 +2725,17 @@ class BudgetOptimizer:
         required_tensors_names=c.PAID_DATA,
         model_context=model_context,
     )
-    for i in range(n_grid_rows):
-      self._update_incremental_outcome_grid(
-          i=i,
-          incremental_outcome_grid=incremental_outcome_grid,
-          multipliers_grid=multipliers_grid,  # pyrefly: ignore[bad-argument-type]
-          selected_geos=selected_geos,
-          selected_times=selected_times,
-          filled_data=filled_data,
-          use_posterior=use_posterior,
-          use_kpi=use_kpi,
-          optimal_frequency=optimal_frequency,
-          batch_size=batch_size,
+    if model_context.n_media_channels > 0:
+      incremental_outcome_grid[:, : model_context.n_media_channels] = (
+          self._compute_media_incremental_outcome_grid(
+              multipliers_grid=multipliers_grid,  # pyrefly: ignore[bad-argument-type]
+              filled_data=filled_data,
+              selected_geos=selected_geos,
+              selected_times=selected_times,
+              use_posterior=use_posterior,
+              use_kpi=use_kpi,
+              batch_size=batch_size,
+          )
       )
     # In theory, for RF channels, incremental_outcome/spend should always be
     # same despite of spend, But given the level of precision,
@@ -2846,10 +2745,239 @@ class BudgetOptimizer:
     # we use the following code to fix it, and ensure incremental_outcome/spend
     # is always same for RF channels.
     if model_context.n_rf_channels > 0:
+      rf_spend_grid = spend_grid[:, -model_context.n_rf_channels :]
+      last_valid_indices = np.sum(~np.isnan(rf_spend_grid), axis=0) - 1
+      valid_rf = last_valid_indices >= 0
+      if np.any(valid_rf):
+        rf_column_indices = np.arange(
+            model_context.n_media_channels, n_grid_columns
+        )
+        rf_multipliers = multipliers_grid[
+            np.maximum(last_valid_indices, 0), rf_column_indices
+        ]
+        if optimal_frequency is not None:
+          new_frequency = (
+              backend.ones_like(filled_data.frequency) * optimal_frequency  # pyrefly: ignore[bad-argument-type]
+          )
+          new_reach = backend.divide_no_nan(
+              rf_multipliers * filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
+              new_frequency,
+          )
+        else:
+          new_frequency = filled_data.frequency
+          new_reach = rf_multipliers * filled_data.reach  # pyrefly: ignore[unsupported-operation]
+        rf_reference_outcome = np.mean(
+            np.asarray(
+                self._analyzer.incremental_outcome(
+                    use_posterior=use_posterior,
+                    new_data=tensors.DataTensors(
+                        media=filled_data.media,
+                        reach=new_reach,
+                        frequency=new_frequency,  # pyrefly: ignore[bad-argument-type]
+                        revenue_per_kpi=filled_data.revenue_per_kpi,
+                        time=filled_data.time,
+                    ),
+                    selected_geos=selected_geos,
+                    selected_times=selected_times,
+                    use_kpi=use_kpi,
+                    include_non_paid_channels=False,
+                    batch_size=batch_size,
+                )
+            ),
+            axis=(c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
+            dtype=np.float64,
+        )
+        incremental_outcome_grid[
+            last_valid_indices[valid_rf], rf_column_indices[valid_rf]
+        ] = rf_reference_outcome[rf_column_indices[valid_rf]]
       incremental_outcome_grid = backend.stabilize_rf_roi_grid(
           spend_grid, incremental_outcome_grid, model_context.n_rf_channels
       )
     return (spend_grid, incremental_outcome_grid)
+
+  @backend.function(jit_compile=True, static_argnames=['n_times_output'])
+  def _prepare_media_grid_batch(
+      self,
+      scaled_media: backend.Tensor,
+      alpha_m: backend.Tensor,
+      ec_m: backend.Tensor,
+      slope_m: backend.Tensor,
+      beta_gm: backend.Tensor,
+      scale_gt: backend.Tensor,
+      n_times_output: int,
+      geo_indices: backend.Tensor | None = None,
+      time_indices: backend.Tensor | None = None,
+  ) -> tuple[backend.Tensor, backend.Tensor, backend.Tensor, backend.Tensor]:
+    """Precomputes batch-level base media, Hill powers, and geo-time weights."""
+    m_context = self._analyzer.model_context
+    model_equations = equations.ModelEquations(m_context)
+    if geo_indices is not None:
+      beta_gm = backend.gather(beta_gm, geo_indices, axis=-2)
+    media_base, base_t1, t2 = model_equations.prepare_adstock_hill_media(
+        media=scaled_media,
+        alpha=alpha_m,
+        ec=ec_m,
+        slope=slope_m,
+        decay_functions=m_context.adstock_decay_spec.media,
+        n_times_output=n_times_output,
+        time_indices=time_indices,
+    )
+    weight_gtm = beta_gm[..., :, backend.newaxis, :] * scale_gt
+    return media_base, base_t1, t2, weight_gtm
+
+  @backend.function(jit_compile=True, static_argnames=['n_times_output'])
+  def _eval_media_grid_row(
+      self,
+      multiplier_row: backend.Tensor,
+      alpha_m: backend.Tensor,
+      slope_m: backend.Tensor,
+      media_base: backend.Tensor,
+      base_t1: backend.Tensor,
+      t2: backend.Tensor,
+      weight_gtm: backend.Tensor,
+      is_hill_mask: backend.Tensor,
+      n_times_output: int,
+      time_indices: backend.Tensor | None = None,
+  ) -> backend.Tensor:
+    """Evaluates incremental outcome summed over chains and draws for one row."""
+    m_context = self._analyzer.model_context
+    model_equations = equations.ModelEquations(m_context)
+    selected = model_equations.apply_adstock_hill_media(
+        multiplier=multiplier_row,
+        alpha=alpha_m,
+        slope=slope_m,
+        media_base=media_base,
+        base_t1=base_t1,
+        t2=t2,
+        saturation_mask=is_hill_mask,
+        n_times_output=n_times_output,
+        decay_functions=m_context.adstock_decay_spec.media,
+        time_indices=time_indices,
+    )
+    row_cdm = backend.einsum('cdgtm,cdgtm->cdm', selected, weight_gtm)
+    return backend.reduce_sum(row_cdm, axis=(0, 1))
+
+  def _compute_media_incremental_outcome_grid(
+      self,
+      multipliers_grid: np.ndarray,
+      filled_data: tensors.DataTensors,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
+      use_posterior: bool = True,
+      use_kpi: bool = False,
+      batch_size: int = c.DEFAULT_BATCH_SIZE,
+  ) -> np.ndarray:
+    """Computes the incremental outcome grid for paid media channels.
+
+    Precomputes Adstock and base Hill powers once per draw batch, then evaluates
+    each spend multiplier row against the precomputed tensors.
+
+    Args:
+      multipliers_grid: 2D array of spend multipliers of shape `(n_grid_rows,
+        n_total_paid_channels)`.
+      filled_data: Validated `DataTensors` containing paid channel and
+        `revenue_per_kpi` data.
+      selected_geos: Optional subset of geos to include.
+      selected_times: Optional subset of time coordinates to include.
+      use_posterior: If `True`, uses posterior draws; otherwise prior draws.
+      use_kpi: If `True`, computes KPI outcome; otherwise revenue outcome.
+      batch_size: Maximum number of draws per chain in each batch.
+
+    Returns:
+      2D `np.ndarray` of shape `(n_grid_rows, n_media_channels)` containing mean
+      incremental outcome across chains and draws for each grid point.
+    """
+    m_context = self._analyzer.model_context
+    model_equations = equations.ModelEquations(m_context)
+    n_grid_rows = multipliers_grid.shape[0]
+    n_media_channels = m_context.n_media_channels
+    accumulated_grid = np.zeros(
+        (n_grid_rows, n_media_channels), dtype=np.float64
+    )
+
+    builder = tensors.DataTensorsBuilder(m_context)
+    inputs1 = builder.build_counterfactual_inputs(
+        new_data=filled_data,
+        scaling_factor=1.0,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        include_non_paid_channels=False,
+        is_baseline=False,
+    )
+    scaled_media = inputs1.tensors.media
+    assert scaled_media is not None
+    n_times_actual = (
+        m_context.n_times
+        if scaled_media.shape[1] == m_context.n_media_times
+        else scaled_media.shape[1]
+    )
+    scale_gt = self._analyzer.inverse_outcome(
+        backend.ones(
+            (m_context.n_geos, n_times_actual, 1), dtype=scaled_media.dtype
+        ),
+        use_kpi=use_kpi,
+        revenue_per_kpi=inputs1.tensors.revenue_per_kpi,
+    )
+    if inputs1.geo_indices is not None:
+      scaled_media = backend.gather(scaled_media, inputs1.geo_indices, axis=0)
+      scale_gt = backend.gather(scale_gt, inputs1.geo_indices, axis=0)
+    if inputs1.time_indices is not None:
+      scale_gt = backend.gather(scale_gt, inputs1.time_indices, axis=1)
+
+    is_hill_mask = model_equations.get_saturation_mask(
+        m_context.saturation_spec.media, n_media_channels
+    )
+    media_multipliers = backend.to_tensor(
+        np.nan_to_num(multipliers_grid[:, :n_media_channels], nan=0.0),
+        dtype=backend.float_dtype,
+    )
+    param_list = [
+        c.ALPHA_M,
+        c.EC_M,
+        c.SLOPE_M,
+        c.BETA_GM,
+    ]
+    total_samples = 0
+    for dist_tensors in self._analyzer.yield_batched_distribution_tensors(
+        param_list=param_list,
+        use_posterior=use_posterior,
+        batch_size=batch_size,
+    ):
+      batch_samples = (
+          dist_tensors.alpha_m.shape[0] * dist_tensors.alpha_m.shape[1]  # pyrefly: ignore[missing-attribute]
+      )
+      total_samples += batch_samples
+      media_base, base_t1, t2, weight_gtm = self._prepare_media_grid_batch(
+          scaled_media=scaled_media,
+          alpha_m=dist_tensors.alpha_m,
+          ec_m=dist_tensors.ec_m,
+          slope_m=dist_tensors.slope_m,
+          beta_gm=dist_tensors.beta_gm,
+          scale_gt=scale_gt,
+          n_times_output=n_times_actual,
+          geo_indices=inputs1.geo_indices,
+          time_indices=inputs1.time_indices,
+      )
+      for i in range(n_grid_rows):
+        row_outcome = self._eval_media_grid_row(
+            multiplier_row=media_multipliers[i],  # pyrefly: ignore[unsupported-operation]
+            alpha_m=dist_tensors.alpha_m,  # pyrefly: ignore[bad-argument-type]
+            slope_m=dist_tensors.slope_m,  # pyrefly: ignore[bad-argument-type]
+            media_base=media_base,
+            base_t1=base_t1,
+            t2=t2,
+            weight_gtm=weight_gtm,
+            is_hill_mask=is_hill_mask,
+            n_times_output=n_times_actual,
+            time_indices=inputs1.time_indices,
+        )
+        accumulated_grid[i] += np.asarray(row_outcome, dtype=np.float64)
+
+    return np.where(
+        np.isnan(multipliers_grid[:, :n_media_channels]),
+        np.nan,
+        accumulated_grid / total_samples,
+    )
 
   def _validate_optimization_tensors(
       self,
