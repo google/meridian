@@ -2121,6 +2121,7 @@ class MediaSummary:
         )
     )
     x_axis_label = f'% {outcome}'
+    domain_max = 1.0 if (outcome_df[pct] >= 0).all() else alt.Undefined
     bar = base.mark_bar(size=c.BAR_SIZE).encode(
         x=alt.X(
             'prev_sum:Q',
@@ -2132,6 +2133,7 @@ class MediaSummary:
                 domain=False,
                 labelPadding=c.PADDING_10,
             ),
+            scale=alt.Scale(domainMax=domain_max, clamp=True),
         ),
         x2='sum_outcome:Q',
         color=alt.condition(
