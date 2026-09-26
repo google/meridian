@@ -271,8 +271,8 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
 
     Args:
       serialized: The serialized object in the form of an `MmmKernel` proto.
-      serialized_version: The version of the serialized model. This is used to
-        handle changes in deserialization logic across different versions.
+      serialized_version: Ignored. The version is read from `serialized`. Kept
+        for signature compatibility with `serde.Serde.deserialize`.
       distribution_function_registry: Optional. A lookup table that maps string
         keys to custom functions to be used as parameters in various
         `tfp.distributions`.

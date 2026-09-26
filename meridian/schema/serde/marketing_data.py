@@ -31,8 +31,6 @@ from meridian.schema.utils import time_record
 import numpy as np
 import xarray as xr
 
-from google.type import date_pb2
-
 __all__ = [
     "MarketingDataSerde",
 ]
@@ -62,7 +60,7 @@ class _DeserializedTimeDimension:
   @functools.cached_property
   def date_coordinates(self) -> list[dt.date]:
     """Returns a list of date coordinates in this time dimension."""
-    return [dt.date(d.year, d.month, d.day) for d in self._time_dimension.dates]
+    return [time_record.from_date_proto(d) for d in self._time_dimension.dates]
 
   @functools.cached_property
   def time_dimension_interval(self) -> date_interval_pb2.DateInterval:
@@ -264,29 +262,17 @@ def _get_date_interval_from_date_intervals(
   Returns:
       A DateInterval representing the earliest start date and latest end date.
   """
-  get_start_date = lambda interval: dt.date(
-      interval.start_date.year,
-      interval.start_date.month,
-      interval.start_date.day,
+  start_date = min(
+      time_record.from_date_proto(interval.start_date)
+      for interval in date_intervals
   )
-  get_end_date = lambda interval: dt.date(
-      interval.end_date.year, interval.end_date.month, interval.end_date.day
+  end_date = max(
+      time_record.from_date_proto(interval.end_date)
+      for interval in date_intervals
   )
-
-  min_start_date_interval = min(date_intervals, key=get_start_date)
-  max_end_date_interval = max(date_intervals, key=get_end_date)
-
   return date_interval_pb2.DateInterval(
-      start_date=date_pb2.Date(
-          year=min_start_date_interval.start_date.year,
-          month=min_start_date_interval.start_date.month,
-          day=min_start_date_interval.start_date.day,
-      ),
-      end_date=date_pb2.Date(
-          year=max_end_date_interval.end_date.year,
-          month=max_end_date_interval.end_date.month,
-          day=max_end_date_interval.end_date.day,
-      ),
+      start_date=time_record.to_date_proto(start_date),
+      end_date=time_record.to_date_proto(end_date),
   )
 
 

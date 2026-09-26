@@ -74,14 +74,13 @@ def normalize_date_interval(
 ) -> tuple[datetime.date, datetime.date]:
   """Normalizes representations of a date interval into a tuple of `date`s.
 
-  A date interval here is a tuple of `[start_date, end_date)` where:
+  A date interval here is a `(start_date, end_date)` tuple. Both dates are
+  polymorphic, taking the form of either:
 
-  * `start_date` is inclusive and `end_date` is exclusive.
-  * Both are polymorphic, taking the form of either:
-    * `datetime.datetime` (only the date component will be used)
-    * `datetime.date` (the normalized form)
-    * `np.datetime64` (only the date component will be used)
-    * `str` (will be parsed as "YYYY-mm-dd" or else throws)
+  * `datetime.datetime` (only the date component will be used)
+  * `datetime.date` (the normalized form)
+  * `np.datetime64` (only the date component will be used)
+  * `str` (will be parsed as "YYYY-mm-dd" or else throws)
 
   In all instances, the given date interval will be normalized as a tuple of
   `datetime.date`s.
@@ -90,7 +89,7 @@ def normalize_date_interval(
     date_interval: a polymorphic date interval to normalize.
 
   Returns:
-    A tuple of `date`s representing a `[start_date, end_date)` date interval.
+    A `(start_date, end_date)` tuple of `date`s.
   """
   start, end = date_interval
   start = normalize_date(start)
