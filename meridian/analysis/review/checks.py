@@ -837,12 +837,34 @@ class ROIConsistencyCheck(
 # ==============================================================================
 # Check: Prior-Posterior Shift
 # ==============================================================================
-def _bootstrap(x: np.ndarray, n_bootstraps: int) -> np.ndarray:
-  """Performs non-parametric bootstrap resampling on the columns of x."""
+def _bootstrap(
+    x: np.ndarray,
+    n_bootstraps: int,
+    n_samples_per_bootstrap: int | None = None,
+) -> np.ndarray:
+  """Performs non-parametric bootstrap resampling on the columns of x.
+
+  Args:
+    x: A 2D array of shape `(n_channels, n_posterior_samples)` containing the
+      posterior samples per channel.
+    n_bootstraps: Number of bootstrap samples to use for calculating posterior
+      statistics.
+    n_samples_per_bootstrap: Number of posterior samples to draw with
+      replacement for each bootstrap iteration. If None, uses all available
+      posterior samples.
+
+  Returns:
+    A 3D array of shape `(n_bootstraps, n_channels, n_samples_per_bootstrap)`
+    with the resampled data.
+  """
   n_rows, n_cols = x.shape
-  x_bs = np.empty((n_bootstraps, n_rows, n_cols))
+  if n_samples_per_bootstrap is None:
+    n_samples_per_bootstrap = n_cols
+  x_bs = np.empty((n_bootstraps, n_rows, n_samples_per_bootstrap))
   for i in range(n_bootstraps):
-    col_indices = np.random.choice(n_cols, n_cols, replace=True)
+    col_indices = np.random.choice(
+        n_cols, n_samples_per_bootstrap, replace=True
+    )
     x_bs[i, :, :] = x[:, col_indices]
   return x_bs
 
@@ -852,8 +874,24 @@ def _calculate_new_statistics_from_samples(
     n_bootstraps: int,
     var_name: str,
     n_channels: int,
+    n_samples_per_bootstrap: int | None = None,
 ) -> dict[str, np.ndarray]:
-  """Calculate Mean, Median, Q1, and Q3 from posterior samples."""
+  """Calculate Mean, Median, Q1, and Q3 from posterior samples.
+
+  Args:
+    inference_data: The InferenceData object containing posterior draws.
+    n_bootstraps: Number of bootstrap samples to use for calculating posterior
+      statistics.
+    var_name: The variable name in posterior samples to analyze.
+    n_channels: Number of channels for the given variable.
+    n_samples_per_bootstrap: Number of posterior samples to draw with
+      replacement for each bootstrap iteration. If None, uses all available
+      posterior samples.
+
+  Returns:
+    A dictionary mapping summary statistic names to arrays of shape
+    `(n_bootstraps, n_channels)`.
+  """
   n_chains = len(inference_data.posterior.coords[constants.CHAIN])  # pyrefly: ignore[missing-attribute]
   n_draws = len(inference_data.posterior.coords[constants.DRAW])  # pyrefly: ignore[missing-attribute]
   n_posterior_samples = n_chains * n_draws
@@ -865,7 +903,7 @@ def _calculate_new_statistics_from_samples(
       )
   )
   x = _bootstrap(
-      posterior_samples, n_bootstraps
+      posterior_samples, n_bootstraps, n_samples_per_bootstrap
   )  # x is (bootstraps, channels, samples)
 
   mean = np.mean(x, axis=-1)
@@ -951,6 +989,7 @@ class PriorPosteriorShiftCheck(
         self._config.n_bootstraps,
         var_name,
         n_channels,
+        self._config.n_samples_per_bootstrap,
     )
 
     alpha = self._config.alpha
