@@ -179,8 +179,13 @@ class DatedSpecResolver:
     if self._spec.start_date is not None:
       start = self._spec.start_date.strftime(c.DATE_FORMAT)
     if self._spec.end_date is not None:
-      inclusive_end_date = self._spec.end_date - datetime.timedelta(
-          days=self._interval_days
+      period_starts_by_end = {
+          end_date: start_date
+          for start_date, end_date in self._time_coordinates.period_ends.items()
+      }
+      inclusive_end_date = period_starts_by_end.get(
+          self._spec.end_date,
+          self._spec.end_date - datetime.timedelta(days=self._interval_days),
       )
       end = inclusive_end_date.strftime(c.DATE_FORMAT)
 
@@ -241,7 +246,7 @@ class DatedSpecResolver:
       end_date = normalized_selected_times[-1]
 
     # Adjust end_date to make it exclusive.
-    end_date += datetime.timedelta(days=self._interval_days)
+    end_date = self._time_coordinates.period_ends[end_date]
 
     return time_record.create_date_interval_pb(
         start_date, end_date, tag=self._spec.date_interval_tag
@@ -273,7 +278,7 @@ class DatedSpecResolver:
     for start_date in times_list:
       date_interval = time_record.create_date_interval_pb(
           start_date=start_date,
-          end_date=start_date + datetime.timedelta(days=self._interval_days),
+          end_date=self._time_coordinates.period_ends[start_date],
           tag=self._spec.date_interval_tag,
       )
       date_intervals.append(date_interval)
@@ -287,10 +292,11 @@ class DatedSpecResolver:
     start = self._spec.start_date or self._time_coordinates.all_dates[0]
     end = self._spec.end_date
     if end is None:
-      end = self._time_coordinates.all_dates[-1]
       # Adjust `end` to make it exclusive, but only if we pulled it from the
       # time coordinates.
-      end += datetime.timedelta(days=self._interval_days)
+      end = self._time_coordinates.period_ends[
+          self._time_coordinates.all_dates[-1]
+      ]
     return (start, end)
 
   def resolve_to_date_interval_proto(self) -> date_interval_pb2.DateInterval:
