@@ -851,6 +851,36 @@ class PriorPosteriorShiftCheckTest(parameterized.TestCase):
     )
     self.assertEqual(result.channel_results[0].channel_name, "ch1")
 
+  def test_bootstrap_custom_n_samples_per_bootstrap(self):
+    x = np.ones((3, 50))
+    x_bs_default = checks._bootstrap(x, n_bootstraps=10)
+    self.assertEqual(x_bs_default.shape, (10, 3, 50))
+    x_bs_custom = checks._bootstrap(
+        x, n_bootstraps=10, n_samples_per_bootstrap=25
+    )
+    self.assertEqual(x_bs_custom.shape, (10, 3, 25))
+
+  def test_prior_posterior_shift_check_custom_n_samples_per_bootstrap(self):
+    np.random.seed(0)
+    post_samples_shifted = np.random.normal(5.0, 1, size=(1, 50, 1))
+    self.config = configs.PriorPosteriorShiftConfig(
+        n_bootstraps=100, n_samples_per_bootstrap=30, alpha=0.05, seed=0
+    )
+    result = self._run_prior_posterior_shift_check(
+        media_channel_names=["ch1"],
+        posterior_media_samples=post_samples_shifted,
+        rf_channel_names=None,
+        posterior_rf_samples=None,
+    )
+    self.assertEqual(
+        result.case, results.PriorPosteriorShiftAggregateCases.PASS
+    )
+    self.assertLen(result.channel_results, 1)
+    self.assertEqual(
+        result.channel_results[0].case,
+        results.PriorPosteriorShiftChannelCases.SHIFT,
+    )
+
   def test_is_relevant_true_when_using_roi_priors(self):
     self.model_context.n_media_channels = 1
     self.model_context.model_spec.effective_media_prior_type = (
