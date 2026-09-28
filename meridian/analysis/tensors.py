@@ -186,7 +186,9 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
     media_spend: Optional tensor with dimensions `(n_media_channels,)` or
       `(n_geos, T, n_media_channels)` for any time dimension `T`. If the object
       includes variables with modified time periods, then this tensor must be
-      provided at the geo and time granularity.
+      provided at the geo and time granularity. Spend provided with dimensions
+      `(n_media_channels,)` is allocated across geos and times proportionally
+      to `media` before it is used in any analysis.
     reach: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for any
       time dimension `T`.
     frequency: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
@@ -196,7 +198,9 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
     rf_spend: Optional tensor with dimensions `(n_rf_channels,)` or `(n_geos, T,
       n_rf_channels)` for any time dimension `T`. If the object includes
       variables with modified time periods, then this tensor must be provided at
-      the geo and time granularity.
+      the geo and time granularity. Spend provided with dimensions
+      `(n_rf_channels,)` is allocated across geos and times proportionally to
+      `reach * frequency` before it is used in any analysis.
     organic_media: Optional tensor with dimensions `(n_geos, T,
       n_organic_media_channels)` for any time dimension `T`.
     organic_reach: Optional tensor with dimensions `(n_geos, T,
@@ -914,6 +918,78 @@ class DataTensorsBuilder:
 
     return DataTensors(**output)
 
+  def _allocate_spend(
+      self,
+      spend: backend.Tensor,
+      media_units: backend.Tensor,
+  ) -> backend.Tensor:
+    """Allocates aggregated spend proportionally to media execution values.
+
+    Args:
+      spend: Tensor with dimensions `(n_channels,)` containing spend that is
+        aggregated over the geo and time dimensions.
+      media_units: Tensor with dimensions `(n_geos, T, n_channels)` containing
+        the media execution values that the spend is allocated proportionally
+        to. If `T` is `n_media_times`, then only the last `n_times` periods are
+        used, since spend is not defined over the lagged media time periods.
+
+    Returns:
+      A tensor with dimensions `(n_geos, n_times, n_channels)`.
+    """
+    if media_units.shape[1] == self.model_context.n_media_times:
+      media_units = media_units[:, -self.model_context.n_times :, :]
+    cost_per_media_unit = backend.divide(
+        spend,  # pyrefly: ignore[bad-argument-type]
+        backend.reduce_sum(media_units, axis=(0, 1)),  # pyrefly: ignore[bad-argument-type]
+    )
+    return media_units * cost_per_media_unit  # pyrefly: ignore[unsupported-operation]
+
+  def _allocate_spend_tensors(self, data: DataTensors) -> DataTensors:
+    """Allocates aggregated spend over the geo and time dimensions.
+
+    `media_spend` and `rf_spend` can be provided with dimensions
+    `(n_channels,)`, aggregated over the geo and time dimensions. Analysis
+    requires spend at the geo and time granularity, so aggregated spend is
+    allocated proportionally to the corresponding media execution values.
+
+    This mirrors `InputData.allocated_media_spend` and
+    `InputData.allocated_rf_spend`, but operates on the tensors in `data` so
+    that the allocation reflects any new media values passed by the caller.
+
+    Args:
+      data: A `DataTensors` object containing the spend tensors to allocate.
+
+    Returns:
+      A `DataTensors` object where `media_spend` and `rf_spend` have dimensions
+      `(n_geos, n_times, n_channels)`. Spend tensors that are missing or that
+      already have this granularity are left unchanged.
+    """
+    allocated = {}
+    if data.media_spend is not None and data.media_spend.ndim == 1:
+      media = (
+          data.media
+          if data.media is not None
+          else self.model_context.media_tensors.media
+      )
+      allocated[constants.MEDIA_SPEND] = self._allocate_spend(
+          data.media_spend, media  # pyrefly: ignore[bad-argument-type]
+      )
+    if data.rf_spend is not None and data.rf_spend.ndim == 1:
+      if data.reach is not None and data.frequency is not None:
+        rf_impressions = data.reach * data.frequency  # pyrefly: ignore[unsupported-operation]
+      else:
+        rf_impressions = (
+            self.model_context.rf_tensors.reach  # pyrefly: ignore[unsupported-operation]
+            * self.model_context.rf_tensors.frequency
+        )
+      allocated[constants.RF_SPEND] = self._allocate_spend(
+          data.rf_spend, rf_impressions
+      )
+
+    if not allocated:
+      return data
+    return dataclasses.replace(data, **allocated)
+
   def _resolve_geo_indices(
       self, selected_geos: Sequence[str] | None
   ) -> backend.Tensor | None:
@@ -1095,6 +1171,7 @@ class DataTensorsBuilder:
           media_spend=dummy_media_spend,
       )
 
+    filled_data = self._allocate_spend_tensors(filled_data)
     filled_data = dataclasses.replace(filled_data, rf_impressions=None)
 
     return filled_data

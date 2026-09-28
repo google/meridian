@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Allocate spend that is aggregated over the geo and time dimensions once,
+    when the analysis data tensors are built, instead of imputing it separately
+    in `Analyzer.get_aggregated_spend`. `summary_metrics` now supports spend
+    provided with dimensions `(n_channels,)`.
+
 ## [2.1.0] - 2026-09-17
 
 *   Add `get_selected_dates_str` to TimeCoordinates.

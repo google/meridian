@@ -1787,35 +1787,26 @@ class Analyzer:
         aggregate_times=True,
         **dim_kwargs,
     )
+    # `total_spend` is always at the geo and time granularity, since aggregated
+    # spend is allocated across geos and times by `DataTensorsBuilder`.
     spend_inc = filled_data.total_spend() * incremental_increase  # pyrefly: ignore[unsupported-operation]
-    if spend_inc is not None and spend_inc.ndim == 3:  # pyrefly: ignore[missing-attribute]
-      inputs = builder.build_unscaled_inputs(
-          new_data=filled_data,
-          selected_geos=selected_geos,
-          selected_times=selected_times,
-      )
-      return backend.divide(
-          numerator,  # pyrefly: ignore[bad-argument-type]
-          self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
-              spend_inc,  # pyrefly: ignore[bad-argument-type]
-              geo_indices=inputs.geo_indices,
-              time_indices=inputs.time_indices,
-              aggregate_geos=aggregate_geos,
-              aggregate_times=True,
-              flexible_time_dim=True,
-              has_media_dim=True,
-          ),
-      )
-
-    if not aggregate_geos:
-      # This check should not be reachable. It is here to protect against
-      # future changes to self._validate_geo_and_time_granularity. If
-      # spend_inc.ndim is not 3 and `aggregate_geos` is `False`, then
-      # self._validate_geo_and_time_granularity should raise an error.
-      raise ValueError(
-          "aggregate_geos must be True if spend does not have a geo dimension."
-      )
-    return backend.divide(numerator, spend_inc)  # pyrefly: ignore[bad-argument-type]
+    inputs = builder.build_unscaled_inputs(
+        new_data=filled_data,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    return backend.divide(
+        numerator,  # pyrefly: ignore[bad-argument-type]
+        self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
+            spend_inc,  # pyrefly: ignore[bad-argument-type]
+            geo_indices=inputs.geo_indices,
+            time_indices=inputs.time_indices,
+            aggregate_geos=aggregate_geos,
+            aggregate_times=True,
+            flexible_time_dim=True,
+            has_media_dim=True,
+        ),
+    )
 
   def roi(
       self,
@@ -1913,36 +1904,26 @@ class Analyzer:
         **dim_kwargs,
     )
 
+    # `total_spend` is always at the geo and time granularity, since aggregated
+    # spend is allocated across geos and times by `DataTensorsBuilder`.
     spend = filled_data.total_spend()
-    if spend is not None and spend.ndim == 3:
-      inputs = builder.build_unscaled_inputs(
-          new_data=filled_data,
-          selected_geos=selected_geos,
-          selected_times=selected_times,
-      )
-      return backend.divide(
-          incremental_outcome,  # pyrefly: ignore[bad-argument-type]
-          self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
-              spend,
-              geo_indices=inputs.geo_indices,
-              time_indices=inputs.time_indices,
-              aggregate_geos=aggregate_geos,
-              aggregate_times=True,
-              flexible_time_dim=True,
-              has_media_dim=True,
-          ),
-      )
-
-    if not aggregate_geos:
-      # This check should not be reachable. It is here to protect against
-      # future changes to self._validate_geo_and_time_granularity. If
-      # spend_inc.ndim is not 3 and either of `aggregate_geos` or
-      # `aggregate_times` is `False`, then
-      # self._validate_geo_and_time_granularity should raise an error.
-      raise ValueError(
-          "aggregate_geos must be True if spend does not have a geo dimension."
-      )
-    return backend.divide(incremental_outcome, spend)  # pyrefly: ignore[bad-argument-type]
+    inputs = builder.build_unscaled_inputs(
+        new_data=filled_data,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+    )
+    return backend.divide(
+        incremental_outcome,  # pyrefly: ignore[bad-argument-type]
+        self.filter_and_aggregate_by_indices(  # pyrefly: ignore[bad-argument-type]
+            spend,  # pyrefly: ignore[bad-argument-type]
+            geo_indices=inputs.geo_indices,
+            time_indices=inputs.time_indices,
+            aggregate_geos=aggregate_geos,
+            aggregate_times=True,
+            flexible_time_dim=True,
+            has_media_dim=True,
+        ),
+    )
 
   def cpik(
       self,
@@ -2624,17 +2605,19 @@ class Analyzer:
       # If non-paid channels are not included, return all metrics, paid and
       # non-paid.
       spend_list = []
+      # The paid channel execution tensors are kept here, in addition to the
+      # spend tensors, so that spend provided in `new_data` with only a channel
+      # dimension is allocated proportionally to the new media values.
       new_spend_tensors = builder.build_unscaled_inputs(
           new_data=new_data.filter_fields(
-              list(constants.SPEND_DATA) + [constants.TIME]
+              list(constants.PERFORMANCE_DATA) + [constants.TIME]
           ),
-          required_tensors_names=constants.SPEND_DATA,
+          required_tensors_names=constants.PERFORMANCE_DATA,
       ).tensors
       if self.model_context.n_media_channels > 0:
         spend_list.append(new_spend_tensors.media_spend)
       if self.model_context.n_rf_channels > 0:
         spend_list.append(new_spend_tensors.rf_spend)
-      # TODO Add support for 1-dimensional spend.
       spend_inputs = builder.build_unscaled_inputs(
           new_data=new_data,
           selected_geos=selected_geos,
@@ -4540,8 +4523,7 @@ class Analyzer:
       )
       aggregated_media_spend = empty_da
     else:
-      aggregated_media_spend = self._impute_and_aggregate_spend(
-          media_execution_values=raw_filled_data.media,  # pyrefly: ignore[bad-argument-type]
+      aggregated_media_spend = self._aggregate_spend(
           channel_spend=raw_filled_data.media_spend,  # pyrefly: ignore[bad-argument-type]
           channel_names=list(
               self.model_context.input_data.media_channel.values
@@ -4566,9 +4548,7 @@ class Analyzer:
       )
       aggregated_rf_spend = empty_da
     else:
-      rf_execution_values = raw_filled_data.reach * raw_filled_data.frequency  # pyrefly: ignore[unsupported-operation]
-      aggregated_rf_spend = self._impute_and_aggregate_spend(
-          media_execution_values=rf_execution_values,
+      aggregated_rf_spend = self._aggregate_spend(
           channel_spend=raw_filled_data.rf_spend,  # pyrefly: ignore[bad-argument-type]
           channel_names=list(self.model_context.input_data.rf_channel.values),
           geo_indices=geo_indices,
@@ -4581,9 +4561,8 @@ class Analyzer:
         [aggregated_media_spend, aggregated_rf_spend], dim=constants.CHANNEL
     )
 
-  def _impute_and_aggregate_spend(
+  def _aggregate_spend(
       self,
-      media_execution_values: backend.Tensor,
       channel_spend: backend.Tensor,
       channel_names: Sequence[str],
       geo_indices: backend.Tensor | None = None,
@@ -4591,21 +4570,16 @@ class Analyzer:
       aggregate_times: bool = True,
       time_dims: Sequence[str] | backend.Tensor | None = None,
   ) -> xr.DataArray:
-    """Imputes and aggregates the spend within selected dimensions.
+    """Aggregates the spend within selected dimensions.
 
     This function is used to aggregate the spend within selected geos over the
-    selected time period. Imputation is required when `channel_spend` has only
-    one dimension and the aggregation is applied to only a subset of geos or
-    times, as specified by `geo_indices` and `time_indices`. The
-    `media_execution_values` argument only serves the purpose of imputation.
-    Although `media_execution_values` is a required argument, its values only
-    affect the output when imputation is required.
+    selected time period.
 
     Args:
-      media_execution_values: The media execution values over all time points.
-      channel_spend: The spend over all time points. Its shape can be `(n_geos,
-        n_times, n_media_channels)` or `(n_media_channels,)` if the data is
-        aggregated over `geo` and `time` dimensions.
+      channel_spend: The spend over all time points, with dimensions `(n_geos,
+        n_times, n_channels)`. Spend that is aggregated over the geo and time
+        dimensions in `InputData` is allocated to this granularity by
+        `DataTensorsBuilder`, proportionally to the media execution values.
       channel_names: The channel names.
       geo_indices: Optional int32 tensor containing the indices of geos to
         include. By default, all geos are included.
@@ -4619,43 +4593,17 @@ class Analyzer:
       An `xr.DataArray` with the coordinate `channel` (and `time` if
       `aggregate_times=False`) and contains the data variable `spend`.
     """
-    if channel_spend.ndim == 3:
-      aggregated_spend = np.asarray(
-          self.filter_and_aggregate_by_indices(
-              channel_spend,
-              geo_indices=geo_indices,
-              time_indices=time_indices,
-              has_media_dim=True,
-              aggregate_geos=True,
-              aggregate_times=aggregate_times,
-              flexible_time_dim=True,
-          )
-      )
-    # channel_spend.ndim can only be 3 or 1.
-    else:
-      # media spend can have more time points than the model time points
-      if media_execution_values.shape[1] == self.model_context.n_media_times:
-        media_exe_values = media_execution_values[
-            :, -self.model_context.n_times :, :
-        ]
-      else:
-        media_exe_values = media_execution_values
-      # Calculates CPM over all times and geos if the spend does not have time
-      # and geo dimensions.
-      target_media_exe_values = self.filter_and_aggregate_by_indices(
-          media_exe_values,
-          geo_indices=geo_indices,
-          time_indices=time_indices,
-          has_media_dim=True,
-          aggregate_geos=True,
-          aggregate_times=aggregate_times,
-          flexible_time_dim=True,
-      )
-      imputed_cpmu = backend.divide(
-          channel_spend,  # pyrefly: ignore[bad-argument-type]
-          np.sum(media_exe_values, (0, 1)),  # pyrefly: ignore[no-matching-overload]
-      )
-      aggregated_spend = np.asarray(target_media_exe_values * imputed_cpmu)  # pyrefly: ignore[unsupported-operation]
+    aggregated_spend = np.asarray(
+        self.filter_and_aggregate_by_indices(
+            channel_spend,
+            geo_indices=geo_indices,
+            time_indices=time_indices,
+            has_media_dim=True,
+            aggregate_geos=True,
+            aggregate_times=aggregate_times,
+            flexible_time_dim=True,
+        )
+    )
 
     if aggregate_times:
       dims = [constants.CHANNEL]
