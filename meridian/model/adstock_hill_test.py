@@ -595,6 +595,34 @@ class TestHill(test_utils.MeridianTestCase):
     ).forward(media)
     test_utils.assert_allclose(media_transformed, result)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_media_batch_dims",
+          get_media=lambda s: s._media,
+      ),
+      dict(
+          testcase_name="no_media_batch_dims",
+          get_media=lambda s: s._media[0, 0, ...],
+      ),
+  )
+  def test_compute_hill_powers(self, get_media):
+    """Tests compute_hill_powers intermediate terms and equivalence to Hill."""
+    media = get_media(self)
+    t1, t2 = adstock_hill.compute_hill_powers(
+        media=media, ec=self._ec, slope=self._slope
+    )
+    expected_t1 = media ** self._slope[..., backend.newaxis, backend.newaxis, :]
+    expected_t2 = (self._ec**self._slope)[
+        ..., backend.newaxis, backend.newaxis, :
+    ]
+    test_utils.assert_allclose(t1, expected_t1)
+    test_utils.assert_allclose(t2, expected_t2)
+
+    expected_hill = adstock_hill.HillTransformer(
+        ec=self._ec, slope=self._slope
+    ).forward(media)
+    test_utils.assert_allclose(t1 / (t1 + t2), expected_hill)
+
 
 class TestTransformNonNegativeRealsDistribution(test_utils.MeridianTestCase):
   """Tests for transform_non_negative_reals_distribution()."""

@@ -39,6 +39,174 @@ class ModelEquations:
   def __init__(self, model_context: context.ModelContext):
     self._context = model_context
 
+  def _resolve_n_times_output(
+      self,
+      n_times: int,
+      n_times_output: int | None = None,
+      tensor_name: str = constants.MEDIA,
+  ) -> int:
+    """Resolves `n_times_output` against `n_media_times` and `n_times`."""
+    if n_times_output is None and n_times == self._context.n_media_times:
+      return self._context.n_times
+    if n_times_output is None:
+      raise ValueError(
+          "n_times_output is required. This argument is only optional when "
+          f"`{tensor_name}` has a number of time periods equal to"
+          " `n_media_times`."
+      )
+    return n_times_output
+
+  def get_saturation_mask(
+      self,
+      saturation_spec: str | Sequence[str],
+      n_channels: int,
+  ) -> backend.Tensor:
+    """Returns a boolean mask indicating which channels use Hill saturation.
+
+    Args:
+      saturation_spec: String or sequence of strings denoting the saturation
+        function(s) ('hill' or 'none') for each channel.
+      n_channels: Number of channels when `saturation_spec` is a single string.
+
+    Returns:
+      A 1D boolean tensor of shape `(n_channels,)` where `True` indicates Hill
+      saturation and `False` indicates linear ('none') saturation.
+
+    Raises:
+      ValueError: If `saturation_spec` contains an unrecognized saturation
+        function name.
+    """
+    valid_saturation_functions = {constants.HILL, constants.NONE}
+    if isinstance(saturation_spec, str):
+      if saturation_spec not in valid_saturation_functions:
+        raise ValueError(
+            f"Invalid saturation_spec: {saturation_spec}. Must be"
+            f" '{constants.HILL}' or '{constants.NONE}'."
+        )
+      if saturation_spec == constants.HILL:
+        return backend.ones((n_channels,), dtype=backend.bool_)
+      return backend.zeros((n_channels,), dtype=backend.bool_)
+    for s in saturation_spec:
+      if s not in valid_saturation_functions:
+        raise ValueError(
+            f"Invalid saturation function in saturation_spec: {s}. Must be"
+            f" '{constants.HILL}' or '{constants.NONE}'."
+        )
+    return backend.to_tensor(
+        [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
+    )
+
+  def prepare_adstock_hill_media(
+      self,
+      *,
+      media: backend.Tensor,
+      alpha: backend.Tensor,
+      ec: backend.Tensor,
+      slope: backend.Tensor,
+      decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      n_times_output: int | None = None,
+      time_indices: backend.Tensor | None = None,
+  ) -> tuple[backend.Tensor, backend.Tensor, backend.Tensor]:
+    """Precomputes base media and Hill powers `(media_base, base_t1, t2)`.
+
+    Args:
+      media: Tensor of dimensions `(n_geos, n_media_times, n_media_channels)`
+        containing non-negative media execution values.
+      alpha: Tensor of dimensions `[..., n_media_channels]` for Adstock decay.
+      ec: Tensor of dimensions `[..., n_media_channels]` for Hill half-max
+        effective concentration.
+      slope: Tensor of dimensions `[..., n_media_channels]` for Hill slope.
+      decay_functions: String or sequence of strings denoting the adstock decay
+        function(s) for each channel. Default: 'geometric'.
+      n_times_output: Number of time periods to output. Optional when the number
+        of time periods in `media` equals `n_media_times`.
+      time_indices: Optional 1D index tensor along the output time axis to slice
+        `media_base` before computing `media_base ** slope` when
+        `hill_before_adstock=False`.
+
+    Returns:
+      A tuple `(media_base, base_t1, t2)` where `media_base` is either raw
+      `media` (when `hill_before_adstock=True`) or Adstock-transformed `media`
+      (when `hill_before_adstock=False`), `base_t1` is `media_base ** slope`,
+      and `t2` is `(ec ** slope)[..., newaxis, newaxis, :]`.
+    """
+    n_times_output = self._resolve_n_times_output(
+        media.shape[1], n_times_output, constants.MEDIA
+    )
+    if self._context.model_spec.hill_before_adstock:
+      media_base = media
+    else:
+      media_base = adstock_hill.AdstockTransformer(
+          alpha=alpha,
+          max_lag=self._context.model_spec.max_lag,
+          n_times_output=n_times_output,
+          decay_functions=decay_functions,
+      ).forward(media)
+      if time_indices is not None:
+        media_base = backend.gather(media_base, time_indices, axis=-2)
+    base_t1, t2 = adstock_hill.compute_hill_powers(
+        media=media_base, ec=ec, slope=slope
+    )
+    return media_base, base_t1, t2
+
+  def apply_adstock_hill_media(
+      self,
+      *,
+      multiplier: backend.Tensor,
+      alpha: backend.Tensor,
+      slope: backend.Tensor,
+      media_base: backend.Tensor,
+      base_t1: backend.Tensor,
+      t2: backend.Tensor,
+      saturation_mask: backend.Tensor,
+      n_times_output: int,
+      decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      time_indices: backend.Tensor | None = None,
+  ) -> backend.Tensor:
+    """Applies a spend multiplier, Hill saturation, and (if Hill-first) Adstock.
+
+    Args:
+      multiplier: Tensor of dimensions `(n_media_channels,)` (or `[...,
+        n_media_channels]`) containing non-negative per-channel media spend
+        multipliers.
+      alpha: Tensor of dimensions `[..., n_media_channels]` for Adstock decay.
+      slope: Tensor of dimensions `[..., n_media_channels]` for Hill slope.
+      media_base: Precomputed base media tensor from
+        `prepare_adstock_hill_media`.
+      base_t1: Precomputed `media_base ** slope` tensor from
+        `prepare_adstock_hill_media`.
+      t2: Precomputed `(ec ** slope)[..., newaxis, newaxis, :]` tensor from
+        `prepare_adstock_hill_media`.
+      saturation_mask: Boolean mask of shape `(n_media_channels,)` indicating
+        which channels use Hill saturation.
+      n_times_output: Number of output time periods before `time_indices`
+        slicing.
+      decay_functions: String or sequence of strings denoting the adstock decay
+        function(s) for each channel. Default: 'geometric'.
+      time_indices: Optional 1D index tensor along the output time axis when
+        `hill_before_adstock=True`.
+
+    Returns:
+      Transformed media tensor with dimensions `[..., n_geos, n_times,
+      n_media_channels]`.
+    """
+    multiplier_power = (multiplier**slope)[
+        ..., backend.newaxis, backend.newaxis, :
+    ]
+    t1 = multiplier_power * base_t1
+    hill_out = t1 / (t1 + t2)
+    selected = backend.where(saturation_mask, hill_out, multiplier * media_base)  # pyrefly: ignore[bad-argument-type]
+    if self._context.model_spec.hill_before_adstock:
+      selected = adstock_hill.AdstockTransformer(
+          alpha=alpha,
+          max_lag=self._context.model_spec.max_lag,
+          n_times_output=n_times_output,
+          decay_functions=decay_functions,
+      ).forward(selected)
+      if time_indices is not None:
+        selected = backend.gather(selected, time_indices, axis=-2)
+    return selected
+
   def adstock_hill_media(
       self,
       *,
@@ -72,16 +240,9 @@ class ModelEquations:
       Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
       representing Adstock and Hill-transformed media.
     """
-    if n_times_output is None and (
-        media.shape[1] == self._context.n_media_times
-    ):
-      n_times_output = self._context.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`media` has a number of time periods equal to `n_media_times`."
-      )
-
+    n_times_output = self._resolve_n_times_output(
+        media.shape[1], n_times_output, constants.MEDIA
+    )
     adstock_transformer = adstock_hill.AdstockTransformer(
         alpha=alpha,
         max_lag=self._context.model_spec.max_lag,
@@ -92,28 +253,7 @@ class ModelEquations:
         ec=ec,
         slope=slope,
     )
-
-    valid_saturation_funcs = {constants.HILL, "none"}
-    if isinstance(saturation_spec, str):
-      if saturation_spec not in valid_saturation_funcs:
-        raise ValueError(
-            f"Invalid saturation_spec: {saturation_spec}. Must be 'hill' or"
-            " 'none'."
-        )
-      if saturation_spec == constants.HILL:
-        mask = backend.ones((media.shape[-1],), dtype=backend.bool_)
-      else:
-        mask = backend.zeros((media.shape[-1],), dtype=backend.bool_)
-    else:
-      for s in saturation_spec:
-        if s not in valid_saturation_funcs:
-          raise ValueError(
-              f"Invalid saturation function in saturation_spec: {s}. Must be"
-              " 'hill' or 'none'."
-          )
-      mask = backend.to_tensor(
-          [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
-      )
+    mask = self.get_saturation_mask(saturation_spec, media.shape[-1])
 
     if self._context.model_spec.hill_before_adstock:
       hill_out = hill_transformer.forward(media)
@@ -158,16 +298,9 @@ class ModelEquations:
       Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
       representing Hill and Adstock-transformed RF.
     """
-    if n_times_output is None and (
-        reach.shape[1] == self._context.n_media_times
-    ):
-      n_times_output = self._context.n_times
-    elif n_times_output is None:
-      raise ValueError(
-          "n_times_output is required. This argument is only optional when "
-          "`reach` has a number of time periods equal to `n_media_times`."
-      )
-
+    n_times_output = self._resolve_n_times_output(
+        reach.shape[1], n_times_output, constants.REACH
+    )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
         slope=slope,
@@ -179,28 +312,7 @@ class ModelEquations:
         decay_functions=decay_functions,
     )
     adj_frequency = hill_transformer.forward(frequency)
-
-    valid_saturation_funcs = {constants.HILL, "none"}
-    if isinstance(saturation_spec, str):
-      if saturation_spec not in valid_saturation_funcs:
-        raise ValueError(
-            f"Invalid saturation_spec: {saturation_spec}. Must be 'hill' or"
-            " 'none'."
-        )
-      if saturation_spec == constants.HILL:
-        mask = backend.ones((frequency.shape[-1],), dtype=backend.bool_)
-      else:
-        mask = backend.zeros((frequency.shape[-1],), dtype=backend.bool_)
-    else:
-      for s in saturation_spec:
-        if s not in valid_saturation_funcs:
-          raise ValueError(
-              f"Invalid saturation function in saturation_spec: {s}. Must be"
-              " 'hill' or 'none'."
-          )
-      mask = backend.to_tensor(
-          [s == constants.HILL for s in saturation_spec], dtype=backend.bool_
-      )
+    mask = self.get_saturation_mask(saturation_spec, frequency.shape[-1])
 
     selected_frequency = backend.where(mask, adj_frequency, frequency)  # pyrefly: ignore[bad-argument-type]
     rf_out = adstock_transformer.forward(reach * selected_frequency)  # pyrefly: ignore[unsupported-operation]

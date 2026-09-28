@@ -1183,6 +1183,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      '_compute_media_incremental_outcome_grid',
+      autospec=True,
+      spec_set=True,
+  )
+  @mock.patch.object(
       analyzer.Analyzer, 'get_aggregated_impressions', autospec=True
   )
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
@@ -1190,7 +1196,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self,
       mock_incremental_outcome,
       mock_get_aggregated_impressions,
+      mock_compute_media_grid,
   ):
+    mock_compute_media_grid.side_effect = (
+        lambda _, multipliers_grid, **kwargs: np.where(
+            np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+            np.nan,
+            _OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS],
+        )
+    )
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
@@ -1214,6 +1228,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      '_compute_media_incremental_outcome_grid',
+      autospec=True,
+      spec_set=True,
+  )
+  @mock.patch.object(
       analyzer.Analyzer, 'get_aggregated_impressions', autospec=True
   )
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
@@ -1221,7 +1241,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self,
       mock_incremental_outcome,
       mock_get_aggregated_impressions,
+      mock_compute_media_grid,
   ):
+    mock_compute_media_grid.side_effect = (
+        lambda _, multipliers_grid, **kwargs: np.where(
+            np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+            np.nan,
+            _OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS],
+        )
+    )
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS]]],
         backend.float_dtype,
@@ -1280,6 +1308,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      '_compute_media_incremental_outcome_grid',
+      autospec=True,
+      spec_set=True,
+  )
+  @mock.patch.object(
       analyzer.Analyzer, 'get_aggregated_impressions', autospec=True
   )
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
@@ -1287,7 +1321,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self,
       mock_incremental_outcome,
       mock_get_aggregated_impressions,
+      mock_compute_media_grid,
   ):
+    mock_compute_media_grid.side_effect = (
+        lambda _, multipliers_grid, **kwargs: np.where(
+            np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+            np.nan,
+            _OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS],
+        )
+    )
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
@@ -1326,6 +1368,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     _verify_actual_vs_expected_budget_data(actual_data, expected_data)
 
   @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      '_compute_media_incremental_outcome_grid',
+      autospec=True,
+      spec_set=True,
+  )
+  @mock.patch.object(
       analyzer.Analyzer, 'get_aggregated_impressions', autospec=True
   )
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
@@ -1333,7 +1381,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self,
       mock_incremental_outcome,
       mock_get_aggregated_impressions,
+      mock_compute_media_grid,
   ):
+    mock_compute_media_grid.side_effect = (
+        lambda _, multipliers_grid, **kwargs: np.where(
+            np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+            np.nan,
+            _OPTIMIZED_INCREMENTAL_OUTCOME[:_N_MEDIA_CHANNELS],
+        )
+    )
     mock_incremental_outcome.return_value = backend.to_tensor(
         [[_OPTIMIZED_INCREMENTAL_OUTCOME]], backend.float_dtype
     )
@@ -1571,6 +1627,19 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   def test_optimization_grid_media_and_rf_correct(self):
+    self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf,
+            '_compute_media_incremental_outcome_grid',
+            autospec=True,
+            spec_set=True,
+            side_effect=lambda multipliers_grid, **kwargs: np.where(
+                np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+                np.nan,
+                1.0,
+            ),
+        )
+    )
     mock_incremental_outcome = self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
@@ -1635,10 +1704,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, 1.0, 1.0, 1.0, np.nan],
             [1.0, 1.0, 1.0, np.nan, np.nan],
             [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
+            [1.0, 1.0, np.nan, np.nan, np.nan],
+            [1.0, 1.0, np.nan, np.nan, np.nan],
+            [1.0, np.nan, np.nan, np.nan, np.nan],
+            [1.0, np.nan, np.nan, np.nan, np.nan],
         ],
     )
     mock_incremental_outcome.assert_called_with(
@@ -1668,12 +1737,17 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   def test_optimization_grid_media_only_correct(self):
-    mock_incremental_outcome = self.enter_context(
+    mock_compute_media_grid = self.enter_context(
         mock.patch.object(
-            self.budget_optimizer_media_only._analyzer,
-            'incremental_outcome',
+            self.budget_optimizer_media_only,
+            '_compute_media_incremental_outcome_grid',
             autospec=True,
-            return_value=backend.ones((_N_CHAINS, _N_DRAWS, _N_MEDIA_CHANNELS)),
+            spec_set=True,
+            side_effect=lambda multipliers_grid, **kwargs: np.where(
+                np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+                np.nan,
+                1.0,
+            ),
         )
     )
     model.Meridian.inference_data = mock.PropertyMock(
@@ -1723,20 +1797,20 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
+            [1.0, 1.0, np.nan],
+            [1.0, 1.0, np.nan],
+            [1.0, np.nan, np.nan],
+            [1.0, np.nan, np.nan],
         ],
     )
-    mock_incremental_outcome.assert_called_with(
-        use_posterior=True,
-        new_data=mock.ANY,
+    mock_compute_media_grid.assert_called_with(
+        multipliers_grid=mock.ANY,
+        filled_data=mock.ANY,
         selected_geos=None,
         selected_times=['2021-01-25', '2021-02-01'],
-        batch_size=c.DEFAULT_BATCH_SIZE,
+        use_posterior=True,
         use_kpi=False,
-        include_non_paid_channels=False,
+        batch_size=c.DEFAULT_BATCH_SIZE,
     )
     self.assertEqual(optimization_grid.spend_step_size, 100)
     np.testing.assert_allclose(
@@ -1845,6 +1919,19 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
 
   def test_optimization_grid_with_optimal_frequency_media_and_rf_correct(self):
+    self.enter_context(
+        mock.patch.object(
+            self.budget_optimizer_media_and_rf,
+            '_compute_media_incremental_outcome_grid',
+            autospec=True,
+            spec_set=True,
+            side_effect=lambda multipliers_grid, **kwargs: np.where(
+                np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+                np.nan,
+                1.0,
+            ),
+        )
+    )
     mock_incremental_outcome = self.enter_context(
         mock.patch.object(
             self.budget_optimizer_media_and_rf._analyzer,
@@ -1913,10 +2000,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, 1.0, 1.0, 1.0, np.nan],
             [1.0, 1.0, 1.0, np.nan, np.nan],
             [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
-            [1.0, 1.0, 1.0, np.nan, np.nan],
+            [1.0, 1.0, np.nan, np.nan, np.nan],
+            [1.0, 1.0, np.nan, np.nan, np.nan],
+            [1.0, np.nan, np.nan, np.nan, np.nan],
+            [1.0, np.nan, np.nan, np.nan, np.nan],
         ],
     )
     new_frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
@@ -2069,13 +2156,27 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'expected_optimal_spend': np.array([500, 600, 700, 800, 900]),
       },
   )
+  @mock.patch.object(
+      optimizer.BudgetOptimizer,
+      '_compute_media_incremental_outcome_grid',
+      autospec=True,
+      spec_set=True,
+  )
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
   def test_optimize_grid_correct(
       self,
       mock_incremental_outcome,
+      mock_compute_media_grid,
       scenario,
       expected_optimal_spend,
   ):
+    mock_compute_media_grid.side_effect = (
+        lambda _, multipliers_grid, **kwargs: np.where(
+            np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]),
+            np.nan,
+            1.0,
+        )
+    )
     mock_incremental_outcome.return_value = backend.ones((
         _N_CHAINS,
         _N_DRAWS,
@@ -3401,6 +3502,122 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       mock_response_curves.assert_called_once()
       _, kwargs = mock_response_curves.call_args
       self.assertEqual(kwargs['selected_geos'], selected_geos)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='default_adstock_first',
+          hill_before_adstock=False,
+          saturation_spec=c.HILL,
+          use_posterior=True,
+          use_kpi=False,
+          selected_geos=None,
+          selected_times=None,
+          batch_size=100,
+      ),
+      dict(
+          testcase_name='hill_before_adstock',
+          hill_before_adstock=True,
+          saturation_spec=c.HILL,
+          use_posterior=True,
+          use_kpi=False,
+          selected_geos=None,
+          selected_times=None,
+          batch_size=100,
+      ),
+      dict(
+          testcase_name='mixed_saturation_spec',
+          hill_before_adstock=False,
+          saturation_spec={'ch_0': c.HILL, 'ch_1': c.NONE, 'ch_2': c.HILL},
+          use_posterior=True,
+          use_kpi=False,
+          selected_geos=None,
+          selected_times=None,
+          batch_size=100,
+      ),
+      dict(
+          testcase_name='selected_geos_times_prior_kpi_batched',
+          hill_before_adstock=False,
+          saturation_spec=c.HILL,
+          use_posterior=False,
+          use_kpi=True,
+          selected_geos=['geo_0', 'geo_2'],
+          selected_times=['2021-02-01', '2021-02-08', '2021-02-15'],
+          batch_size=3,
+      ),
+  )
+  def test_compute_media_incremental_outcome_grid_matches_incremental_outcome(
+      self,
+      hill_before_adstock: bool,
+      saturation_spec: str | Mapping[str, str],
+      use_posterior: bool,
+      use_kpi: bool,
+      selected_geos: list[str] | None,
+      selected_times: list[str] | None,
+      batch_size: int,
+  ):
+    meridian_model = model.Meridian(
+        input_data=self.input_data_media_and_rf,
+        model_spec=spec.ModelSpec(
+            hill_before_adstock=hill_before_adstock,
+            saturation_spec=saturation_spec,
+        ),
+    )
+    budget_optimizer = optimizer.BudgetOptimizer(meridian_model)
+    multipliers_grid = np.array([
+        [0.0, 0.0, 0.0, 0.0, 0.0],
+        [0.5, 0.8, 1.0, 1.0, 1.0],
+        [1.0, 1.2, np.nan, 1.0, 1.0],
+        [1.5, np.nan, np.nan, 1.0, 1.0],
+    ])
+    filled_data = tensors.DataTensors().validate_and_fill_missing_data(
+        required_tensors_names=c.PAID_DATA,
+        model_context=budget_optimizer._analyzer.model_context,
+    )
+    actual = budget_optimizer._compute_media_incremental_outcome_grid(
+        multipliers_grid=multipliers_grid,
+        filled_data=filled_data,
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        batch_size=batch_size,
+    )
+
+    n_media_channels = budget_optimizer._analyzer.model_context.n_media_channels
+    expected = np.full((len(multipliers_grid), n_media_channels), np.nan)
+    for idx in range(len(multipliers_grid)):
+      multiplier_row = backend.to_tensor(
+          np.nan_to_num(multipliers_grid[idx, :n_media_channels], nan=0.0),
+          dtype=backend.float_dtype,
+      )
+      row_outcome = np.mean(
+          np.asarray(
+              budget_optimizer._analyzer.incremental_outcome(
+                  use_posterior=use_posterior,
+                  new_data=tensors.DataTensors(
+                      media=multiplier_row * filled_data.media,  # pyrefly: ignore[unsupported-operation]
+                      reach=filled_data.reach,
+                      frequency=filled_data.frequency,
+                      revenue_per_kpi=filled_data.revenue_per_kpi,
+                      time=filled_data.time,
+                  ),
+                  selected_geos=selected_geos,
+                  selected_times=selected_times,
+                  use_kpi=use_kpi,
+                  include_non_paid_channels=False,
+                  batch_size=batch_size,
+              )
+          )[..., :n_media_channels],
+          axis=(0, 1),
+      )
+      expected[idx] = np.where(
+          np.isnan(multipliers_grid[idx, :n_media_channels]),
+          np.nan,
+          row_outcome,
+      )
+
+    np.testing.assert_array_equal(actual[0], np.zeros(n_media_channels))
+    np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-3)
 
 
 class OptimizerPlotsTest(parameterized.TestCase):
