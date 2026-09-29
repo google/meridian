@@ -1082,11 +1082,16 @@ class Analyzer:
     use_kpi = self._use_kpi(use_kpi)
     if revenue_per_kpi is None:
       revenue_per_kpi = self.model_context.revenue_per_kpi
-    t1 = self.model_context.kpi_transformer.inverse(
-        backend.einsum("...m->m...", modeled_incremental_outcome)
+    # Inverse transform incremental KPI to the natural scale. Because
+    # `kpi_transformer.inverse` adds `population_scaled_mean`, we scale only
+    # by `population_scaled_stdev` and `population` to omit the mean
+    # intercept/offset and obtain the uncentered incremental KPI on the
+    # natural scale.
+    kpi = (
+        modeled_incremental_outcome
+        * self.model_context.kpi_transformer.population_scaled_stdev
+        * self.model_context.population[:, backend.newaxis, backend.newaxis]
     )
-    t2 = self.model_context.kpi_transformer.inverse(backend.zeros_like(t1))
-    kpi = backend.einsum("m...->...m", t1 - t2)
 
     if use_kpi:
       return kpi
