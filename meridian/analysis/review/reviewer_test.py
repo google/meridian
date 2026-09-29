@@ -1175,7 +1175,7 @@ class ReviewerTest(parameterized.TestCase):
       ):
         rev = reviewer.ModelReviewer()
         rev._model_context = self._model_context
-        rev._inference_data = None
+        rev._inference_data = None  # pyrefly: ignore[bad-assignment]
     else:
       rev = reviewer.ModelReviewer(
           model_context=self._model_context,
