@@ -852,7 +852,7 @@ class RoiTest(parameterized.TestCase):
         backend.tfd.Distribution, instance=True, spec_set=True
     )
     mock_baseline.mean.return_value = backend.to_tensor(1.0)
-    mock_baseline.variance.return_value = backend.to_tensor(1.0)
+    mock_baseline.stddev.return_value = backend.to_tensor(1.0)
     mock_baseline.log_prob.return_value = backend.to_tensor([-np.inf])
 
     with self.assertRaisesRegex(ValueError, "probability mass"):
@@ -947,6 +947,79 @@ class RoiTest(parameterized.TestCase):
     grid_min, grid_max = roi._compute_grid_bounds(prior=prior, likelihoods=[])
     self.assertAlmostEqual(grid_min, -0.545, delta=0.02)
     self.assertAlmostEqual(grid_max, 2.545, delta=0.02)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="prior_far_above_zero",
+          prior_loc=100.0,
+          prior_scale=1.0,
+          likelihood_params=(),
+          expected_loc=100.0,
+          expected_scale=1.0,
+          delta=0.02,
+      ),
+      dict(
+          testcase_name="prior_far_below_zero",
+          prior_loc=-100.0,
+          prior_scale=1.0,
+          likelihood_params=(),
+          expected_loc=-100.0,
+          expected_scale=1.0,
+          delta=0.02,
+      ),
+      dict(
+          testcase_name="prior_straddling_fifty",
+          prior_loc=50.0,
+          prior_scale=2.0,
+          likelihood_params=(),
+          expected_loc=50.0,
+          expected_scale=2.0,
+          delta=0.02,
+      ),
+      dict(
+          # A N(0, 1) prior and a N(100, 1) experiment combine to N(50, 0.71).
+          # The looser delta allows for the coarser grid over [-5, 105].
+          testcase_name="likelihood_far_from_prior",
+          prior_loc=0.0,
+          prior_scale=1.0,
+          likelihood_params=((100.0, 1.0),),
+          expected_loc=50.0,
+          expected_scale=1.0 / np.sqrt(2.0),
+          delta=0.06,
+      ),
+  )
+  def test_compute_grid_bounds_tracks_posterior_location(
+      self,
+      prior_loc: float,
+      prior_scale: float,
+      likelihood_params: Sequence[tuple[float, float]],
+      expected_loc: float,
+      expected_scale: float,
+      delta: float,
+  ) -> None:
+    # The grid bounds should follow the distributions on every backend, not
+    # fall back to the default [-20, 50] range.
+    prior = backend.tfd.Normal(
+        loc=backend.cast(prior_loc, backend.float_dtype),
+        scale=backend.cast(prior_scale, backend.float_dtype),
+    )
+    likelihoods = [
+        backend.tfd.Normal(
+            loc=backend.cast(loc, backend.float_dtype),
+            scale=backend.cast(scale, backend.float_dtype),
+        )
+        for loc, scale in likelihood_params
+    ]
+    grid_min, grid_max = roi._compute_grid_bounds(
+        prior=prior, likelihoods=likelihoods
+    )
+    expected_min, expected_max = stats.norm.ppf(
+        [roi._LOWER_PERCENTILE, roi._UPPER_PERCENTILE],
+        loc=expected_loc,
+        scale=expected_scale,
+    )
+    self.assertAlmostEqual(grid_min, expected_min, delta=delta)
+    self.assertAlmostEqual(grid_max, expected_max, delta=delta)
 
   def test_is_finite_backend(self) -> None:
     res = backend.is_finite(backend.to_tensor(1.5))  # pyrefly: ignore[bad-argument-type]

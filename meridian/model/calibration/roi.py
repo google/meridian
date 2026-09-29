@@ -315,12 +315,13 @@ def _compute_grid_bounds(
   low_bounds, high_bounds = [], []
   for d in all_dists:
     try:
-      m = float(d.mean().numpy())
-      s = float(d.stddev().numpy())
+      m = float(np.asarray(d.mean()))
+      s = float(np.asarray(d.stddev()))
       if np.isfinite(m) and np.isfinite(s):
         low_bounds.append(m - _SCOUT_GRID_MULTIPLIER * s)
         high_bounds.append(m + _SCOUT_GRID_MULTIPLIER * s)
-    except (AttributeError, NotImplementedError, ValueError):
+    except (NotImplementedError, ValueError):
+      # Skip distributions with no mean or stddev, e.g. ImproperUniformPrior.
       continue
 
   broad_min = min(low_bounds) if low_bounds else _DEFAULT_SCOUT_MIN
