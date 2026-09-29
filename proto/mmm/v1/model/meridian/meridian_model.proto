@@ -742,6 +742,12 @@ message Hyperparameters {
   // fixed float value or a baseline function like MIN or MAX). Channels not
   // specified in the map default to using MIN.
   map<string, NonMediaBaselineValue> non_media_baseline_values_map = 35;
+
+  // A boolean indicating whether to allow the population-weighted aggregate
+  // baseline across time and geos to be negative.
+  // Default: `True`.
+  bool allows_negative_aggregate_baseline = 36
+      [features.field_presence = EXPLICIT];
 }
 
 // A named tensor parameter.
