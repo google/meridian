@@ -233,6 +233,8 @@ class WeeklyOptimizationGrid:
           backend.to_tensor(tensor_like), dtype=backend.float_dtype
       )
 
+    population = to_float(model_context.population)
+
     if filled_data.revenue_per_kpi is None:
       n_geos = model_context.n_geos
       revenue_per_kpi = backend.ones(
@@ -365,19 +367,20 @@ class WeeklyOptimizationGrid:
       chain_weights = []
       for chain_start, chain_stop in chain_ranges:
         chain_outcome = cls._compute_batch(
-            batch,
-            media_base_scaled,
-            slice_chains(alpha_m, chain_start, chain_stop),
-            slice_chains(ec_m, chain_start, chain_stop),
-            slice_chains(slope_m, chain_start, chain_stop),
-            slice_chains(beta_gm, chain_start, chain_stop),
-            reach_base_scaled,
-            frequency_base,
-            slice_chains(alpha_rf, chain_start, chain_stop),
-            slice_chains(ec_rf, chain_start, chain_stop),
-            slice_chains(slope_rf, chain_start, chain_stop),
-            slice_chains(beta_grf, chain_start, chain_stop),
-            revenue_per_kpi,
+            multiplier_batch=batch,
+            media_base_scaled=media_base_scaled,
+            alpha_m=slice_chains(alpha_m, chain_start, chain_stop),
+            ec_m=slice_chains(ec_m, chain_start, chain_stop),
+            slope_m=slice_chains(slope_m, chain_start, chain_stop),
+            beta_gm=slice_chains(beta_gm, chain_start, chain_stop),
+            reach_base_scaled=reach_base_scaled,
+            frequency_base=frequency_base,
+            alpha_rf=slice_chains(alpha_rf, chain_start, chain_stop),
+            ec_rf=slice_chains(ec_rf, chain_start, chain_stop),
+            slope_rf=slice_chains(slope_rf, chain_start, chain_stop),
+            beta_grf=slice_chains(beta_grf, chain_start, chain_stop),
+            revenue_per_kpi=revenue_per_kpi,
+            population=population,
             time_indices=time_indices,
             eqs=eqs,
             decay_m=decay_m,
@@ -450,6 +453,7 @@ class WeeklyOptimizationGrid:
   )
   def _compute_batch(
       cls,
+      *,
       multiplier_batch: backend.Tensor,
       media_base_scaled: backend.Tensor | None,
       alpha_m: backend.Tensor | None,
@@ -463,6 +467,7 @@ class WeeklyOptimizationGrid:
       slope_rf: backend.Tensor | None,
       beta_grf: backend.Tensor | None,
       revenue_per_kpi: backend.Tensor,
+      population: backend.Tensor,
       time_indices: backend.Tensor | None,
       eqs: Any,
       decay_m: Any,
@@ -541,19 +546,15 @@ class WeeklyOptimizationGrid:
       incremental_kpi = backend.einsum(
           '...gtm,...gm->...gtm', media_diff, combined_beta
       )
-      # Inverse transform incremental KPI to natural scale.
-      # We calculate the difference between the inverse transformed incremental
-      # KPI and the inverse transformed zero to remove any intercept/offset
-      # introduced by the KPI transformer, obtaining the uncentered incremental
-      # KPI on the natural scale.
-      transformed_kpi = kpi_transformer.inverse(
-          backend.einsum('...m->m...', incremental_kpi)
-      )
-      transformed_zero = kpi_transformer.inverse(
-          backend.zeros_like(transformed_kpi)
-      )
-      incremental_kpi_natural = backend.einsum(
-          'm...->...m', transformed_kpi - transformed_zero
+      # Inverse transform incremental KPI to the natural scale. Because
+      # `kpi_transformer.inverse` adds `population_scaled_mean`, we scale only
+      # by `population_scaled_stdev` and `population` to omit the mean
+      # intercept/offset and obtain the uncentered incremental KPI on the
+      # natural scale.
+      incremental_kpi_natural = (
+          incremental_kpi
+          * kpi_transformer.population_scaled_stdev
+          * population[:, backend.newaxis, backend.newaxis]
       )
 
       if use_kpi:
