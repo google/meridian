@@ -82,6 +82,72 @@ HEALTH_SCORE_WEIGHT_GOF = 0.1
 HEALTH_SCORE_WEIGHT_PRIOR_POSTERIOR_SHIFT = 0.15
 HEALTH_SCORE_WEIGHT_ROI_CONSISTENCY = 0.15
 
+# Model review check recommendations
+NOT_FULLY_CONVERGED_RECOMMENDATION = (
+    "Manually inspect the parameters with high R-hat values to determine if the"
+    " results are acceptable for your use case, and consider increasing MCMC"
+    " iterations or investigating model misspecification."
+)
+NOT_CONVERGED_RECOMMENDATION = (
+    "We recommend increasing MCMC iterations or investigating model"
+    " misspecification (e.g., priors, multicollinearity) before proceeding."
+)
+CONVERGENCE_NOT_FULLY_CONVERGED_RECOMMENDATION = (
+    NOT_FULLY_CONVERGED_RECOMMENDATION
+)
+CONVERGENCE_NOT_CONVERGED_RECOMMENDATION = NOT_CONVERGED_RECOMMENDATION
+
+BASELINE_FAIL_RECOMMENDATION = (
+    "This high probability points to a statistical error and is a clear signal"
+    " that the model requires adjustment. The model is likely over-crediting"
+    " your treatments. Consider adjusting the model's settings, data, or priors"
+    " to correct this issue."
+)
+BASELINE_REVIEW_RECOMMENDATION = (
+    "This indicates that the baseline time series occasionally dips into"
+    " negative values. We recommend visually inspecting the baseline time"
+    " series in the Model Fit charts, but don't be overly concerned. An"
+    " occasional, small dip may indicate minor statistical error, which is"
+    " inherent in any model."
+)
+BASELINE_PASS_RECOMMENDATION = (
+    "We recommend visually inspecting the baseline time series in the Model "
+    "Fit charts to confirm this."
+)
+
+BAYESIAN_PPP_FAIL_RECOMMENDATION = (
+    "The observed total outcome is an extreme outlier compared to the model's"
+    " expected total outcomes, which suggests a systematic lack of fit. We"
+    " recommend reviewing input data quality and re-examining the model"
+    " specification (e.g., priors, transformations) to resolve this issue."
+)
+BAYESIAN_PPP_PASS_RECOMMENDATION = (
+    "The observed total outcome is consistent with the model's posterior"
+    " predictive distribution."
+)
+
+GOODNESS_OF_FIT_REVIEW_RECOMMENDATION = (
+    "A negative R-squared signals a potential conflict between your priors and"
+    " the data, and it warrants investigation. If this conflict is intentional"
+    " (due to an informative prior), no further action is needed. If it's"
+    " unintentional, we recommend relaxing your priors to be less restrictive."
+)
+GOODNESS_OF_FIT_PASS_RECOMMENDATION = (
+    "These goodness-of-fit metrics are intended for guidance and relative"
+    " comparison."
+)
+
+ROI_CONSISTENCY_RECOMMENDATION = (
+    "Please review this result to determine if it is reasonable within your"
+    " business context."
+)
+
+PPS_REVIEW_RECOMMENDATION = (
+    "Please review these channels to see if this is expected (due to a strong"
+    " priors) or problematic (due to a weak signal)."
+)
+PRIOR_POSTERIOR_SHIFT_REVIEW_RECOMMENDATION = PPS_REVIEW_RECOMMENDATION
+
 IMPLAUSIBLE_ROI_RECOMMENDATION = (
     "Please review these channels to determine if the ROI estimates are "
     "reasonable within your business context. Consider calibrating with an "

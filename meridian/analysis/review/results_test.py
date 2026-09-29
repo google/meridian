@@ -74,7 +74,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
         result.recommendation,
         "The model hasn't fully converged, and the `max_r_hat` for parameter"
         " `mock_var` is 3.00. "
-        f"{results.NOT_FULLY_CONVERGED_RECOMMENDATION}",
+        f"{review_constants.NOT_FULLY_CONVERGED_RECOMMENDATION}",
     )
 
   def test_convergence_check_result_not_converged(self):
@@ -90,7 +90,7 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
         result.recommendation,
         "The model hasn't converged, and the `max_r_hat` for parameter"
         " `mock_var` is 11.00. "
-        f"{results.NOT_CONVERGED_RECOMMENDATION}",
+        f"{review_constants.NOT_CONVERGED_RECOMMENDATION}",
     )
 
 
@@ -109,7 +109,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.01. "
-        f"{results._BASELINE_PASS_RECOMMENDATION}",
+        f"{review_constants.BASELINE_PASS_RECOMMENDATION}",
     )
 
   def test_baseline_check_result_review(self):
@@ -125,7 +125,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.15. "
-        f"{results._BASELINE_REVIEW_RECOMMENDATION}",
+        f"{review_constants.BASELINE_REVIEW_RECOMMENDATION}",
     )
 
   def test_baseline_check_result_fail(self):
@@ -141,7 +141,7 @@ class BaselineCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The posterior probability that the baseline is negative is 0.25. "
-        f"{results._BASELINE_FAIL_RECOMMENDATION}",
+        f"{review_constants.BASELINE_FAIL_RECOMMENDATION}",
     )
 
 
@@ -166,7 +166,7 @@ class ROIConsistencyResultTest(parameterized.TestCase):
               review_constants.LOW_HIGH_CHANNELS_MSG: "msg3",
           },
           expected_recommendation=(
-              f"msg1msg2msg3 {results._ROI_CONSISTENCY_RECOMMENDATION}"
+              f"msg1msg2msg3 {review_constants.ROI_CONSISTENCY_RECOMMENDATION}"
           ),
       ),
   )
@@ -196,7 +196,7 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.06. "
-        f"{results._BAYESIAN_PPP_PASS_RECOMMENDATION}",
+        f"{review_constants.BAYESIAN_PPP_PASS_RECOMMENDATION}",
     )
 
   def test_bayesian_ppp_check_result_fail(self):
@@ -209,7 +209,7 @@ class BayesianPPPCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "The Bayesian posterior predictive p-value is 0.04. "
-        f"{results._BAYESIAN_PPP_FAIL_RECOMMENDATION}",
+        f"{review_constants.BAYESIAN_PPP_FAIL_RECOMMENDATION}",
     )
 
 
@@ -286,7 +286,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "R-squared = 0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
-        f"{results._GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
+        f"{review_constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_pass_holdout(self):
@@ -310,7 +310,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
         "R-squared = 0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE ="
         " 0.1000 (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All),"
         " 0.1900 (Train), 0.2100 (Test)."
-        f" {results._GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
+        f" {review_constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_review(self):
@@ -325,7 +325,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
     self.assertEqual(
         result.recommendation,
         "R-squared = -0.5000, MAPE = 0.1000, and wMAPE = 0.2000. "
-        f"{results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
+        f"{review_constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
     )
 
   def test_goodness_of_fit_check_result_review_holdout(self):
@@ -349,7 +349,7 @@ class GoodnessOfFitCheckResultTest(parameterized.TestCase):
         "R-squared = -0.5000 (All), 0.6000 (Train), 0.4000 (Test); MAPE ="
         " 0.1000 (All), 0.0900 (Train), 0.1100 (Test); wMAPE = 0.2000 (All),"
         " 0.1900 (Train), 0.2100 (Test)."
-        f" {results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
+        f" {review_constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION}",
     )
 
 
@@ -374,7 +374,7 @@ class PriorPosteriorShiftCheckResultTest(parameterized.TestCase):
               " posterior distribution did not significantly shift from the"
               " prior. This suggests the data signal for these channels was"
               " not strong enough to update the model's beliefs."
-              f" {results._PPS_REVIEW_RECOMMENDATION}"
+              f" {review_constants.PPS_REVIEW_RECOMMENDATION}"
           ),
       ),
   )
@@ -2040,6 +2040,36 @@ class ReviewConstantsTest(parameterized.TestCase):
   def test_driver_constants(self):
     self.assertEqual(review_constants.DRIVER, "Driver")
     self.assertEqual(review_constants.NON_DRIVER, "Non-Driver")
+
+  def test_recommendation_constants(self):
+    self.assertNotEmpty(review_constants.NOT_FULLY_CONVERGED_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.NOT_CONVERGED_RECOMMENDATION)
+    self.assertEqual(
+        review_constants.NOT_FULLY_CONVERGED_RECOMMENDATION,
+        review_constants.CONVERGENCE_NOT_FULLY_CONVERGED_RECOMMENDATION,
+    )
+    self.assertEqual(
+        review_constants.NOT_CONVERGED_RECOMMENDATION,
+        review_constants.CONVERGENCE_NOT_CONVERGED_RECOMMENDATION,
+    )
+    self.assertNotEmpty(review_constants.BASELINE_FAIL_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.BASELINE_REVIEW_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.BASELINE_PASS_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.BAYESIAN_PPP_FAIL_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.BAYESIAN_PPP_PASS_RECOMMENDATION)
+    self.assertNotEmpty(
+        review_constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION
+    )
+    self.assertNotEmpty(review_constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.ROI_CONSISTENCY_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.PPS_REVIEW_RECOMMENDATION)
+    self.assertEqual(
+        review_constants.PPS_REVIEW_RECOMMENDATION,
+        review_constants.PRIOR_POSTERIOR_SHIFT_REVIEW_RECOMMENDATION,
+    )
+    self.assertNotEmpty(review_constants.IMPLAUSIBLE_ROI_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.HIGH_VARIANCE_ROI_RECOMMENDATION)
+    self.assertNotEmpty(review_constants.POTENTIAL_BIAS_RECOMMENDATION)
 
 
 _CALIBRATION_LIMIT_MESSAGE = (

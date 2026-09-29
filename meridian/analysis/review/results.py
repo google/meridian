@@ -150,19 +150,6 @@ class CheckResult(BaseResultData):
 # ==============================================================================
 # Check: Convergence
 # ==============================================================================
-# TODO: Move to constants.
-NOT_FULLY_CONVERGED_RECOMMENDATION = (
-    "Manually inspect the parameters with high R-hat values to determine if the"
-    " results are acceptable for your use case, and consider increasing MCMC"
-    " iterations or investigating model misspecification."
-)
-
-NOT_CONVERGED_RECOMMENDATION = (
-    "We recommend increasing MCMC iterations or investigating model"
-    " misspecification (e.g., priors, multicollinearity) before proceeding."
-)
-
-
 @enum.unique
 class ConvergenceCases(ModelCheckCase, enum.Enum):
   """Cases for the Convergence Check."""
@@ -181,7 +168,7 @@ class ConvergenceCases(ModelCheckCase, enum.Enum):
           "The model hasn't fully converged, and the `max_r_hat` for parameter"
           " `{parameter}` is {rhat:.2f}."
       ),
-      NOT_FULLY_CONVERGED_RECOMMENDATION,
+      constants.NOT_FULLY_CONVERGED_RECOMMENDATION,
   )
   NOT_CONVERGED = (
       Status.FAIL,
@@ -189,7 +176,7 @@ class ConvergenceCases(ModelCheckCase, enum.Enum):
           "The model hasn't converged, and the `max_r_hat` for parameter"
           " `{parameter}` is {rhat:.2f}."
       ),
-      NOT_CONVERGED_RECOMMENDATION,
+      constants.NOT_CONVERGED_RECOMMENDATION,
   )
 
   def __init__(
@@ -229,25 +216,6 @@ class ConvergenceCheckResult(CheckResult):
 # ==============================================================================
 # Check: Baseline
 # ==============================================================================
-_BASELINE_FAIL_RECOMMENDATION = (
-    "This high probability points to a statistical error and is a clear signal"
-    " that the model requires adjustment. The model is likely over-crediting"
-    " your treatments. Consider adjusting the model's settings, data, or priors"
-    " to correct this issue."
-)
-_BASELINE_REVIEW_RECOMMENDATION = (
-    "This indicates that the baseline time series occasionally dips into"
-    " negative values. We recommend visually inspecting the baseline time"
-    " series in the Model Fit charts, but don't be overly concerned. An"
-    " occasional, small dip may indicate minor statistical error, which is"
-    " inherent in any model."
-)
-_BASELINE_PASS_RECOMMENDATION = (
-    "We recommend visually inspecting the baseline time series in the Model "
-    "Fit charts to confirm this."
-)
-
-
 @enum.unique
 class BaselineCases(ModelCheckCase, enum.Enum):
   """Cases for the Baseline Check."""
@@ -258,7 +226,7 @@ class BaselineCases(ModelCheckCase, enum.Enum):
           "The posterior probability that the baseline is negative is"
           " {negative_baseline_prob:.2f}."
       ),
-      _BASELINE_PASS_RECOMMENDATION,
+      constants.BASELINE_PASS_RECOMMENDATION,
   )
   REVIEW = (
       Status.REVIEW,
@@ -266,7 +234,7 @@ class BaselineCases(ModelCheckCase, enum.Enum):
           "The posterior probability that the baseline is negative is"
           " {negative_baseline_prob:.2f}."
       ),
-      _BASELINE_REVIEW_RECOMMENDATION,
+      constants.BASELINE_REVIEW_RECOMMENDATION,
   )
   FAIL = (
       Status.FAIL,
@@ -274,7 +242,7 @@ class BaselineCases(ModelCheckCase, enum.Enum):
           "The posterior probability that the baseline is negative is"
           " {negative_baseline_prob:.2f}."
       ),
-      _BASELINE_FAIL_RECOMMENDATION,
+      constants.BASELINE_FAIL_RECOMMENDATION,
   )
 
   def __init__(
@@ -312,18 +280,6 @@ class BaselineCheckResult(CheckResult):
 # ==============================================================================
 # Check: Bayesian Posterior Predictive P-value
 # ==============================================================================
-_BAYESIAN_PPP_FAIL_RECOMMENDATION = (
-    "The observed total outcome is an extreme outlier compared to the model's"
-    " expected total outcomes, which suggests a systematic lack of fit. We"
-    " recommend reviewing input data quality and re-examining the model"
-    " specification (e.g., priors, transformations) to resolve this issue."
-)
-_BAYESIAN_PPP_PASS_RECOMMENDATION = (
-    "The observed total outcome is consistent with the model's posterior"
-    " predictive distribution."
-)
-
-
 @enum.unique
 class BayesianPPPCases(ModelCheckCase, enum.Enum):
   """Cases for the Bayesian Posterior Predictive P-value Check."""
@@ -331,12 +287,12 @@ class BayesianPPPCases(ModelCheckCase, enum.Enum):
   PASS = (
       Status.PASS,
       "The Bayesian posterior predictive p-value is {bayesian_ppp:.2f}.",
-      _BAYESIAN_PPP_PASS_RECOMMENDATION,
+      constants.BAYESIAN_PPP_PASS_RECOMMENDATION,
   )
   FAIL = (
       Status.FAIL,
       "The Bayesian posterior predictive p-value is {bayesian_ppp:.2f}.",
-      _BAYESIAN_PPP_FAIL_RECOMMENDATION,
+      constants.BAYESIAN_PPP_FAIL_RECOMMENDATION,
   )
 
   def __init__(
@@ -368,19 +324,6 @@ class BayesianPPPCheckResult(CheckResult):
 # ==============================================================================
 # Check: Goodness of Fit
 # ==============================================================================
-_GOODNESS_OF_FIT_REVIEW_RECOMMENDATION = (
-    "A negative R-squared signals a potential conflict between your priors and"
-    " the data, and it warrants investigation. If this conflict is intentional"
-    " (due to an informative prior), no further action is needed. If it's"
-    " unintentional, we recommend relaxing your priors to be less restrictive."
-)
-
-_GOODNESS_OF_FIT_PASS_RECOMMENDATION = (
-    "These goodness-of-fit metrics are intended for guidance and relative"
-    " comparison."
-)
-
-
 @enum.unique
 class GoodnessOfFitCases(ModelCheckCase, enum.Enum):
   """Cases for the Goodness of Fit Check."""
@@ -388,12 +331,12 @@ class GoodnessOfFitCases(ModelCheckCase, enum.Enum):
   PASS = (
       Status.PASS,
       "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE = {wmape:.4f}",
-      _GOODNESS_OF_FIT_PASS_RECOMMENDATION,
+      constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION,
   )
   REVIEW = (
       Status.REVIEW,
       "R-squared = {r_squared:.4f}, MAPE = {mape:.4f}, and wMAPE = {wmape:.4f}",
-      _GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+      constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
   )
 
   def __init__(
@@ -490,12 +433,6 @@ class GoodnessOfFitCheckResult(CheckResult):
 # ==============================================================================
 # Check: ROI Consistency
 # ==============================================================================
-_ROI_CONSISTENCY_RECOMMENDATION = (
-    "Please review this result to determine if it is reasonable within your"
-    " business context."
-)
-
-
 @enum.unique
 class ROIConsistencyChannelCases(BaseCase, enum.Enum):
   """Cases for ROI Consistency Check per channel."""
@@ -525,7 +462,7 @@ class ROIConsistencyAggregateCases(ModelCheckCase, enum.Enum):
   REVIEW = (
       Status.REVIEW,
       "{quantile_not_defined_msg}{inf_channels_msg}{low_high_channels_msg}",
-      _ROI_CONSISTENCY_RECOMMENDATION,
+      constants.ROI_CONSISTENCY_RECOMMENDATION,
   )
 
   def __init__(
@@ -574,12 +511,6 @@ class ROIConsistencyCheckResult(CheckResult):
 # ==============================================================================
 # Check: Prior-Posterior Shift
 # ==============================================================================
-_PPS_REVIEW_RECOMMENDATION = (
-    "Please review these channels to see if this is expected (due to a strong"
-    " priors) or problematic (due to a weak signal)."
-)
-
-
 @enum.unique
 class PriorPosteriorShiftChannelCases(BaseCase, enum.Enum):
   """Cases for Prior-Posterior Shift Check per channel."""
@@ -611,7 +542,7 @@ class PriorPosteriorShiftAggregateCases(ModelCheckCase, enum.Enum):
           " suggests the data signal for these channels was not strong enough"
           " to update the model's beliefs."
       ),
-      _PPS_REVIEW_RECOMMENDATION,
+      constants.PPS_REVIEW_RECOMMENDATION,
   )
 
   def __init__(

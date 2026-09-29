@@ -23,6 +23,7 @@ from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import checks
 from meridian.analysis.review import configs
+from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
 from meridian.data import input_data
 from meridian.model import context
@@ -95,14 +96,14 @@ class ConvergenceCheckTest(parameterized.TestCase):
           result.recommendation,
           "The model hasn't fully converged, and the `max_r_hat` for parameter"
           " `mock_var` is 9.00. "
-          + results.NOT_FULLY_CONVERGED_RECOMMENDATION,
+          + review_constants.NOT_FULLY_CONVERGED_RECOMMENDATION,
       )
     elif result.case == results.ConvergenceCases.NOT_CONVERGED:
       self.assertEqual(
           result.recommendation,
           "The model hasn't converged, and the `max_r_hat` for parameter"
           " `mock_var` is 11.00. "
-          + results.NOT_CONVERGED_RECOMMENDATION,
+          + review_constants.NOT_CONVERGED_RECOMMENDATION,
       )
 
   def test_convergence_check_with_nan_rhats(self):
@@ -958,19 +959,19 @@ class BaselineCheckTest(parameterized.TestCase):
       self.assertEqual(
           result.recommendation,
           "The posterior probability that the baseline is negative is 0.10. "
-          + results._BASELINE_PASS_RECOMMENDATION,
+          + review_constants.BASELINE_PASS_RECOMMENDATION,
       )
     elif expected_case == results.BaselineCases.REVIEW:
       self.assertEqual(
           result.recommendation,
           "The posterior probability that the baseline is negative is 0.50. "
-          + results._BASELINE_REVIEW_RECOMMENDATION,
+          + review_constants.BASELINE_REVIEW_RECOMMENDATION,
       )
     else:
       self.assertEqual(
           result.recommendation,
           "The posterior probability that the baseline is negative is 0.90. "
-          + results._BASELINE_FAIL_RECOMMENDATION,
+          + review_constants.BASELINE_FAIL_RECOMMENDATION,
       )
 
   def test_baseline_check_with_selected_times_geos(self):
@@ -1590,11 +1591,13 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
     self.assertIn(f"wMAPE = {wmape:.4f} (All)", result.recommendation)
     if expected_case == results.GoodnessOfFitCases.PASS:
       self.assertEndsWith(
-          result.recommendation, results._GOODNESS_OF_FIT_PASS_RECOMMENDATION
+          result.recommendation,
+          review_constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION,
       )
     else:
       self.assertIn(
-          results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION, result.recommendation
+          review_constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+          result.recommendation,
       )
 
   @parameterized.named_parameters(
@@ -1635,11 +1638,13 @@ class GoodnessOfFitCheckTest(parameterized.TestCase):
     self.assertIn(f"wMAPE = {wmape:.4f}", result.recommendation)
     if expected_case == results.GoodnessOfFitCases.PASS:
       self.assertEndsWith(
-          result.recommendation, results._GOODNESS_OF_FIT_PASS_RECOMMENDATION
+          result.recommendation,
+          review_constants.GOODNESS_OF_FIT_PASS_RECOMMENDATION,
       )
     else:
       self.assertIn(
-          results._GOODNESS_OF_FIT_REVIEW_RECOMMENDATION, result.recommendation
+          review_constants.GOODNESS_OF_FIT_REVIEW_RECOMMENDATION,
+          result.recommendation,
       )
 
   def test_goodness_of_fit_check_with_custom_threshold(self):
