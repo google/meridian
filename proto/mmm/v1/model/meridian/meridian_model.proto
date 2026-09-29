@@ -524,7 +524,7 @@ message HoldoutConfig {
 
 // Hyperparameters for the MMM model.
 message Hyperparameters {
-  reserved 5;
+  reserved 5, 36;
 
   // Specifies the distribution of media random effects across geos.
   // This hyperparameter is ignored in a national-level model.
@@ -743,11 +743,10 @@ message Hyperparameters {
   // specified in the map default to using MIN.
   map<string, NonMediaBaselineValue> non_media_baseline_values_map = 35;
 
-  // A boolean indicating whether to allow the population-weighted aggregate
-  // baseline across time and geos to be negative.
-  // Default: `True`.
-  bool allows_negative_aggregate_baseline = 36
-      [features.field_presence = EXPLICIT];
+  // Whether to constrain the aggregate baseline, summed over all geos and time
+  // periods, to be non-negative. Unset or `false` means unconstrained, which
+  // is how models serialized before this field existed were fit.
+  bool force_nonnegative_aggregate_baseline = 37;
 }
 
 // A named tensor parameter.

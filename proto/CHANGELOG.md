@@ -23,6 +23,12 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-28
+
+*   Replace `Hyperparameters.allows_negative_aggregate_baseline` with
+    `force_nonnegative_aggregate_baseline`, so that an unset field means the
+    unconstrained behavior of earlier models.
+
 ## [1.4.1] - 2026-09-28
 
 *   Add `allows_negative_aggregate_baseline` to `Hyperparameters` proto.
@@ -107,4 +113,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.3.1]: https://github.com/google/meridian/releases/tag/proto-v1.3.1
 [1.4.0]: https://github.com/google/meridian/releases/tag/proto-v1.4.0
 [1.4.1]: https://github.com/google/meridian/releases/tag/proto-v1.4.1
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.4.1...HEAD
+[1.4.2]: https://github.com/google/meridian/releases/tag/proto-v1.4.2
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.4.2...HEAD
