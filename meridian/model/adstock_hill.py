@@ -107,20 +107,35 @@ def compute_decay_weights(
     decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
     normalize: bool = True,
 ) -> backend.Tensor:
-  """Computes decay weights using geometric and/or binomial decay.
+  r"""Computes decay weights using geometric and/or binomial decay.
+
+  For each lag \\(l\\) in `l_range`, the unnormalized weight is
+
+  $$
+  w(l; \alpha) = \alpha^l
+  $$
+
+  for geometric decay, and
+
+  $$
+  w(l; \alpha) = \left(1 - \frac{l}{W}\right)^{1 / \alpha - 1}
+  $$
+
+  for binomial decay, where \\(W\\) is `window_size`. If `normalize` is `True`,
+  each weight is divided by \\(\sum_{l'} w(l'; \alpha)\\) so that the
+  weights sum to one.
 
   This function always broadcasts the lag dimension (`l_range`) to the
   trailing axis of the output tensor.
 
   Args:
     alpha: The parameter for the adstock decay function.
-    l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
-      0]`.
+    l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ..., 0]`.
     window_size: The number of time periods that go into the adstock weighted
       average for each output time period.
     decay_functions: String or sequence of strings indicating the decay
-      function(s) to use for the Adstock calculation. Allowed values
-      are 'geometric' and 'binomial'.
+      function(s) to use for the Adstock calculation. Allowed values are
+      'geometric' and 'binomial'.
     normalize: A boolean indicating whether to normalize the weights. Default:
       `True`.
 
@@ -130,7 +145,6 @@ def compute_decay_weights(
   Raises:
     ValueError: If the shape of `decay_functions` is not broadcastable to
     the shape of `alpha`.
-
   """
 
   if isinstance(decay_functions, str):
