@@ -1300,7 +1300,13 @@ def lognormal_dist_from_mean_std(
   """Define a lognormal distribution from its mean and standard deviation.
 
   This function parameterizes lognormal distributions by their mean and
-  standard deviation.
+  standard deviation. It returns `LogNormal(mu, sigma)`, where `mu` and `sigma`
+  are the mean and standard deviation of the underlying normal distribution:
+
+  ```python
+  sigma = sqrt(log(1 + std**2 / mean**2))
+  mu = log(mean) - sigma**2 / 2
+  ```
 
   Args:
     mean: A float or array-like object defining the distribution mean. Must be
@@ -1330,7 +1336,17 @@ def lognormal_dist_from_range(
 
   This function parameterizes lognormal distributions by the bounds of a range,
   so that the specified probability mass falls within the bounds defined by
-  `low` and `high`. The probability mass is symmetric about the median. For
+  `low` and `high`. The probability mass is symmetric about the median. It
+  returns `LogNormal(mu, sigma)` with
+
+  ```python
+  z = scipy.stats.norm.ppf((1 + mass_percent) / 2)
+  sigma = log(high / low) / (2 * z)
+  mu = (log(low) + log(high)) / 2
+  ```
+
+  The resulting distribution has probability `(1 - mass_percent) / 2` below
+  `low`, the same probability above `high`, and median `sqrt(low * high)`. For
   example, to define a lognormal distribution with a 95% probability mass of
   (1, 10), use:
 
@@ -1340,9 +1356,9 @@ def lognormal_dist_from_range(
 
   Args:
     low: Float or array-like denoting the lower bound of the range. Values must
-      be non-negative.
+      be positive.
     high: Float or array-like denoting the upper bound of range. Values must be
-      non-negative.
+      greater than `low`.
     mass_percent: Float or array-like denoting the probability mass. Values must
       be between 0 and 1 (exclusive). Default: 0.95.
 

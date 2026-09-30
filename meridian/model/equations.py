@@ -218,16 +218,28 @@ class ModelEquations:
       saturation_spec: str | Sequence[str] = constants.HILL,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
-    """Transforms media or using Adstock and Hill functions in the desired order.
+    """Transforms media using Adstock and Hill functions in the desired order.
+
+    If `model_spec.hill_before_adstock` is `False` (the default), this computes
+    `Hill(Adstock(media))`. Otherwise, it computes `Adstock(Hill(media))`.
+    Adstock uses `alpha` and `model_spec.max_lag`, and Hill uses `ec` and
+    `slope`. See `AdstockTransformer` and `HillTransformer` for the definitions
+    of Adstock and Hill. Channels whose `saturation_spec` is 'none' skip the
+    Hill step.
 
     Args:
-      media: Tensor of dimensions `(n_geos, n_media_times, n_media_channels)`
-        containing non-negative media execution values. Typically this is
-        impressions, but it can be any metric, such as `media_spend`. Clicks are
-        often used for paid search ads.
-      alpha: Uniform distribution for Adstock and Hill calculations.
-      ec: Shifted half-normal distribution for Adstock and Hill calculations.
-      slope: Deterministic distribution for Adstock and Hill calculations.
+      media: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
+        containing non-negative media execution values, where `n_channels` is
+        the number of paid or organic media channels (`n_media_channels` or
+        `n_organic_media_channels`). Typically this is impressions, but it can
+        be any metric, such as `media_spend`. Clicks are often used for paid
+        search ads.
+      alpha: Tensor of Adstock decay parameters with dimensions `[...,
+        n_channels]`.
+      ec: Tensor of Hill half-saturation parameters with dimensions `[...,
+        n_channels]`.
+      slope: Tensor of Hill slope parameters with dimensions `[...,
+        n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
       saturation_spec: String or sequence of strings denoting the saturation
@@ -237,7 +249,7 @@ class ModelEquations:
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
 
     Returns:
-      Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
+      Tensor with dimensions `[..., n_geos, n_times, n_channels]`
       representing Adstock and Hill-transformed media.
     """
     n_times_output = self._resolve_n_times_output(
@@ -278,14 +290,26 @@ class ModelEquations:
   ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
 
+    This computes `Adstock(reach * Hill(frequency))`. Hill is always applied to
+    frequency before Adstock, regardless of `model_spec.hill_before_adstock`.
+    Adstock uses `alpha` and `model_spec.max_lag`, and Hill uses `ec` and
+    `slope`. See `AdstockTransformer` and `HillTransformer` for the definitions
+    of Adstock and Hill. Channels whose `saturation_spec` is 'none' skip the
+    Hill step.
+
     Args:
-      reach: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
-        containing non-negative media for reach.
-      frequency: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
+      reach: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
+        containing non-negative media for reach, where `n_channels` is the
+        number of paid or organic RF channels (`n_rf_channels` or
+        `n_organic_rf_channels`).
+      frequency: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
         containing non-negative media for frequency.
-      alpha: Uniform distribution for Adstock and Hill calculations.
-      ec: Shifted half-normal distribution for Adstock and Hill calculations.
-      slope: Deterministic distribution for Adstock and Hill calculations.
+      alpha: Tensor of Adstock decay parameters with dimensions `[...,
+        n_channels]`.
+      ec: Tensor of Hill half-saturation parameters with dimensions `[...,
+        n_channels]`.
+      slope: Tensor of Hill slope parameters with dimensions `[...,
+        n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
       saturation_spec: String or sequence of strings denoting the saturation
@@ -295,7 +319,7 @@ class ModelEquations:
         `n_media_times`, in which case `n_times_output` defaults to `n_times`.
 
     Returns:
-      Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
+      Tensor with dimensions `[..., n_geos, n_times, n_channels]`
       representing Hill and Adstock-transformed RF.
     """
     n_times_output = self._resolve_n_times_output(

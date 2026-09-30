@@ -411,8 +411,23 @@ class AdstockTransformer(AdstockHillTransformer):
   def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
 
-    For geo `g`, time period `t`, and media channel `m`, Adstock is calculated
-    as `adstock_{g,t,m} = sum_{i=0}^max_lag media_{g,t-i,m} alpha^i`.
+    For geo `g`, time period `t`, and media channel `m`, Adstock is the
+    normalized weighted sum of the current and lagged media values:
+
+    ```python
+    n_lags = min(max_lag + 1, n_media_times)
+    adstock[g, t, m] = (
+        sum(w[s] * media[g, t - s, m] for s in range(n_lags))
+        / sum(w[s] for s in range(n_lags))
+    )
+    ```
+
+    where `n_media_times` is `media.shape[-2]` and `w[s]` is the geometric or
+    binomial decay weight at lag `s` for the channel's `alpha` (see
+    `compute_decay_weights`). Media values before the first time period are
+    treated as zero. See [Set the `adstock_decay_spec`
+    parameter](https://developers.google.com/meridian/docs/advanced-modeling/set-adstock-decay-spec-parameter)
+    for the formula and decay functions.
 
     Note: The Hill function can be applied before or after Adstock. If Hill is
     applied first, then the Adstock media input can contain batch dimensions
@@ -459,8 +474,15 @@ class HillTransformer(AdstockHillTransformer):
   def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Hill transformation of a given `media` tensor.
 
-    Calculates results for the Hill function, which accounts for the diminishing
-    returns of media effects.
+    The Hill function accounts for the diminishing returns of media effects.
+    It computes, elementwise, using each media channel's `ec` and `slope`:
+
+    ```python
+    hill = media**slope / (media**slope + ec**slope)
+    ```
+
+    where `ec > 0` is the media value at which the function reaches half
+    saturation and `slope > 0` controls the shape of the curve.
 
     Args:
       media: Tensor with dimensions `[..., n_geos, n_media_times,
@@ -481,12 +503,14 @@ def transform_non_negative_reals_distribution(
 ) -> backend.tfd.TransformedDistribution:
   """Transforms a distribution with support on `[0, infinity)` to `(0, 1]`.
 
-  This allows for defining a prior on `alpha_*`, the exponent of the binomial
-  Adstock decay function, directly, and then translating it to a distribution
-  defined on the unit interval as Meridian expects. This transformation
-  `(x -> 1 / (1 + x))` is the inverse of the interval mapping the Meridian
-  performs `(x -> 1 / x - 1)` on alpha to define the binomial Adstock
-  decay function's exponent.
+  This allows for defining a prior directly on `alpha_*`, the exponent of the
+  binomial Adstock decay function, and then translating it to a prior on the
+  decay parameter `alpha`, which Meridian expects to be defined on the unit
+  interval. Meridian maps `alpha` to the binomial decay exponent with
+  `alpha_* = 1 / alpha - 1`, and this transformation applies the inverse
+  mapping, `alpha = 1 / (1 + alpha_*)`. See [Set a custom prior directly on
+  alpha](https://developers.google.com/meridian/docs/advanced-modeling/set-adstock-decay-spec-parameter#advanced_option_set_a_custom_prior_directly_on_alpha_when_using_binomial)
+  for details.
 
   For example, to define a `LogNormal(0.2, 0.9)` prior on `alpha_*`:
 

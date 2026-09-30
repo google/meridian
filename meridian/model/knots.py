@@ -80,10 +80,10 @@ def l1_distance_weights(
   given to the nearest endpoint knot.
 
   This function computes an `(n_knots, n_times)` array of weights that are used
-  to model trend and seasonality. For a given time, the array contains two
-  non-zero weights. The weights are inversely proportional to the L1 distance
-  from the given time to the neighboring knots. The two weights are normalized
-  such that they sum to 1.
+  to model trend and seasonality. For a given time, the array contains at most
+  two non-zero weights. The weights are inversely proportional to the L1
+  distance from the given time to the neighboring knots. The two weights are
+  normalized such that they sum to 1.
 
   Args:
     n_times: The number of time points.
