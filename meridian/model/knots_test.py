@@ -56,8 +56,8 @@ class L1DistanceWeightsTest(parameterized.TestCase):
       ("knots not sorted", np.array([5, 1]), "must be sorted"),
       ("at least two knots", np.array([5]), "must be greater than 1"),
       ("knots not unique", np.array([1, 5, 5]), "must be unique"),
-      ("negative knot", np.array([-1, 5]), "must be positive"),
-      ("all negative knots", np.array([-5, -1]), "must be positive"),
+      ("negative knot", np.array([-1, 5]), "must be non-negative"),
+      ("all negative knots", np.array([-5, -1]), "must be non-negative"),
       ("knot too big", np.array([5, 10]), "must be less than `n_times`"),
       ("all knots too big", np.array([10, 11]), "must be less than `n_times`"),
   )

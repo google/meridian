@@ -184,8 +184,10 @@ class CenteringAndScalingTransformer(TensorTransformer):
 class KpiTransformer(TensorTransformer):
   """Contains forward and inverse KPI transformation methods.
 
-  This class stores coefficients to scale KPI, first by geo and then
-  by mean and standard deviation of KPI.
+  This class stores coefficients to scale KPI. It first divides KPI by the
+  population of each geo, and then centers and scales the result by the mean
+  and standard deviation of the population-scaled KPI across all geos and time
+  periods.
   """
 
   def __init__(
@@ -197,9 +199,10 @@ class KpiTransformer(TensorTransformer):
 
     Args:
       kpi: A tensor of dimension `(n_geos, n_times)` containing the KPI data,
-        used to compute the mean and stddev.
+        used to compute the mean and standard deviation of the population-scaled
+        KPI.
       population: A tensor of dimension `(n_geos,)` containing the population of
-        each geo, used to to compute the population scale factors.
+        each geo, used to compute the population scale factors.
     """
     self._population = population
     self._population_scaled_kpi = backend.divide_no_nan(

@@ -121,8 +121,8 @@ class PriorDistribution:
       hierarchical mean. When `media_effects_dist` is set to `'log_normal'`, it
       is the hierarchical parameter for the mean of the underlying,
       log-transformed, `Normal` distribution. Meridian ignores this distribution
-      if `paid_media_prior_type` is `'roi'` or `'mroi'`, and uses the `roi_m` or
-      `mroi_rf` prior instead. Default distribution is `HalfNormal(5.0)`.
+      if `paid_media_prior_type` is `'roi'` or `'mroi'`, and uses the `roi_rf`
+      or `mroi_rf` prior instead. Default distribution is `HalfNormal(5.0)`.
     beta_om: Prior distribution on a parameter for the hierarchical distribution
       of geo-level media effects for organic media channels (`beta_gom`). When
       `media_effects_dist` is set to `'normal'`, it is the hierarchical mean.
@@ -237,7 +237,7 @@ class PriorDistribution:
       This parameter is only used when `paid_media_prior_type` is `'mroi'`, in
       which case `beta_rf` is calculated as a deterministic function of
       `mroi_rf`, `alpha_rf`, `ec_rf`, `slope_rf`, and the spend associated with
-      each media channel. Default distribution is `LogNormal(0.0, 0.5)`. When
+      each RF channel. Default distribution is `LogNormal(0.0, 0.5)`. When
       `kpi_type` is `'non_revenue'` and `revenue_per_kpi` is not provided, mROI
       is interpreted as the marginal incremental KPI units per monetary unit
       spent. In this case, a default distribution is not provided, so the user
@@ -1372,7 +1372,7 @@ def lognormal_dist_from_range(
 
   if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
     raise ValueError(
-        "'low' and 'high' values must be non-negative and satisfy high > low."
+        "'low' and 'high' values must be positive and satisfy high > low."
     )
 
   if not ((0.0 < mass_percent).all() and (mass_percent < 1.0).all()):  # pytype: disable=attribute-error

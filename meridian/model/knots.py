@@ -102,7 +102,7 @@ def l1_distance_weights(
   if len(knot_locations) != len(np.unique(knot_locations)):
     raise ValueError('`knot_locations` must be unique.')
   if np.any(knot_locations < 0):  # pyrefly: ignore[unsupported-operation]
-    raise ValueError('knot_locations must be positive.')
+    raise ValueError('knot_locations must be non-negative.')
   if np.any(knot_locations >= n_times):  # pyrefly: ignore[unsupported-operation]
     raise ValueError('knot_locations must be less than `n_times`.')
 

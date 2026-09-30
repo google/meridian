@@ -741,15 +741,15 @@ class Meridian:
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
     function, which is multiplied by the geo-level coefficient.
 
-    This function does the calculation efficiently by only calculating calling
-    the hill/adstock function if the prior counterfactual is not all zeros.
+    This function does the calculation efficiently by only calling the
+    hill/adstock function if the prior counterfactual is not all zeros.
 
     Args:
       media_transformed: The output of the hill/adstock function for actual
         historical media data.
       alpha_m: The adstock alpha parameter values.
-      ec_m: The adstock ec parameter values.
-      slope_m: The adstock hill slope parameter values.
+      ec_m: The Hill ec parameter values.
+      slope_m: The Hill slope parameter values.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -787,15 +787,15 @@ class Meridian:
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
     function, which is multiplied by the geo-level coefficient.
 
-    This function does the calculation efficiently by only calculating calling
-    the hill/adstock function if the prior counterfactual is not all zeros.
+    This function does the calculation efficiently by only calling the
+    hill/adstock function if the prior counterfactual is not all zeros.
 
     Args:
       rf_transformed: The output of the hill/adstock function for actual
         historical media data.
       alpha_rf: The adstock alpha parameter values.
-      ec_rf: The adstock ec parameter values.
-      slope_rf: The adstock hill slope parameter values.
+      ec_rf: The Hill ec parameter values.
+      slope_rf: The Hill slope parameter values.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -859,7 +859,7 @@ class Meridian:
 
     Returns:
       The coefficient mean parameter of the treatment variable, which has
-      dimension equal to the number of treatment channels..
+      dimension equal to the number of treatment channels.
     """
     warnings.warn(
         "Meridian.calculate_beta_x() is deprecated and will be removed in a"
@@ -886,16 +886,21 @@ class Meridian:
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
-    """Transforms media or using Adstock and Hill functions in the desired order.
+    """Transforms media using Adstock and Hill functions in the desired order.
 
     Args:
-      media: Tensor of dimensions `(n_geos, n_media_times, n_media_channels)`
-        containing non-negative media execution values. Typically this is
-        impressions, but it can be any metric, such as `media_spend`. Clicks are
-        often used for paid search ads.
-      alpha: Uniform distribution for Adstock and Hill calculations.
-      ec: Shifted half-normal distribution for Adstock and Hill calculations.
-      slope: Deterministic distribution for Adstock and Hill calculations.
+      media: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
+        containing non-negative media execution values, where `n_channels` is
+        the number of paid or organic media channels (`n_media_channels` or
+        `n_organic_media_channels`). Typically this is impressions, but it can
+        be any metric, such as `media_spend`. Clicks are often used for paid
+        search ads.
+      alpha: Tensor of Adstock decay parameters with dimensions `[...,
+        n_channels]`.
+      ec: Tensor of Hill half-saturation parameters with dimensions `[...,
+        n_channels]`.
+      slope: Tensor of Hill slope parameters with dimensions `[...,
+        n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
       n_times_output: Number of time periods to output. This argument is
@@ -904,7 +909,7 @@ class Meridian:
         `self.n_times`.
 
     Returns:
-      Tensor with dimensions `[..., n_geos, n_times, n_media_channels]`
+      Tensor with dimensions `[..., n_geos, n_times, n_channels]`
       representing Adstock and Hill-transformed media.
     """
     warnings.warn(
@@ -937,13 +942,18 @@ class Meridian:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
 
     Args:
-      reach: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
-        containing non-negative media for reach.
-      frequency: Tensor of dimensions `(n_geos, n_media_times, n_rf_channels)`
+      reach: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
+        containing non-negative media for reach, where `n_channels` is the
+        number of paid or organic RF channels (`n_rf_channels` or
+        `n_organic_rf_channels`).
+      frequency: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
         containing non-negative media for frequency.
-      alpha: Uniform distribution for Adstock and Hill calculations.
-      ec: Shifted half-normal distribution for Adstock and Hill calculations.
-      slope: Deterministic distribution for Adstock and Hill calculations.
+      alpha: Tensor of Adstock decay parameters with dimensions `[...,
+        n_channels]`.
+      ec: Tensor of Hill half-saturation parameters with dimensions `[...,
+        n_channels]`.
+      slope: Tensor of Hill slope parameters with dimensions `[...,
+        n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
       n_times_output: Number of time periods to output. This argument is
@@ -952,7 +962,7 @@ class Meridian:
         `self.n_times`.
 
     Returns:
-      Tensor with dimensions `[..., n_geos, n_times, n_rf_channels]`
+      Tensor with dimensions `[..., n_geos, n_times, n_channels]`
       representing Hill and Adstock-transformed RF.
     """
     warnings.warn(

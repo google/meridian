@@ -2972,7 +2972,7 @@ class Analyzer:
     number of impressions remains unchanged as frequency varies. Meridian solves
     for the frequency at which posterior mean ROI is optimized.
 
-    If `new_data=None`, this method calculates the opptimal frequency on the
+    If `new_data=None`, this method calculates the optimal frequency on the
     values of the paid RF variables that the Meridian object was initialized
     with. The user can override this historical data through the `new_data`
     argument. For example,

@@ -2562,7 +2562,7 @@ class TestLognormalDistFromRange(parameterized.TestCase):
   def test_out_of_bounds_low_high_raises_error(self, low, high):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "'low' and 'high' values must be non-negative and satisfy high > low.",
+        "'low' and 'high' values must be positive and satisfy high > low.",
     ):
       _ = prior_distribution.lognormal_dist_from_range(low, high)
 

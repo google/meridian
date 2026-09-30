@@ -453,15 +453,15 @@ class ModelEquations:
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
     function, which is multiplied by the geo-level coefficient.
 
-    This function does the calculation efficiently by only calculating calling
-    the hill/adstock function if the prior counterfactual is not all zeros.
+    This function does the calculation efficiently by only calling the
+    hill/adstock function if the prior counterfactual is not all zeros.
 
     Args:
       media_transformed: The output of the hill/adstock function for actual
         historical media data.
       alpha_m: The adstock alpha parameter values.
-      ec_m: The adstock ec parameter values.
-      slope_m: The adstock hill slope parameter values.
+      ec_m: The Hill ec parameter values.
+      slope_m: The Hill slope parameter values.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -497,15 +497,15 @@ class ModelEquations:
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
     function, which is multiplied by the geo-level coefficient.
 
-    This function does the calculation efficiently by only calculating calling
-    the hill/adstock function if the prior counterfactual is not all zeros.
+    This function does the calculation efficiently by only calling the
+    hill/adstock function if the prior counterfactual is not all zeros.
 
     Args:
       rf_transformed: The output of the hill/adstock function for actual
         historical media data.
       alpha_rf: The adstock alpha parameter values.
-      ec_rf: The adstock ec parameter values.
-      slope_rf: The adstock hill slope parameter values.
+      ec_rf: The Hill ec parameter values.
+      slope_rf: The Hill slope parameter values.
 
     Returns:
       The linear predictor difference between the treatment variable and its
@@ -569,7 +569,7 @@ class ModelEquations:
 
     Returns:
       The coefficient mean parameter of the treatment variable, which has
-      dimension equal to the number of treatment channels..
+      dimension equal to the number of treatment channels.
     """
     if is_non_media:
       random_effects_normal = True
