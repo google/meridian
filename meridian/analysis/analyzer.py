@@ -1630,6 +1630,12 @@ class Analyzer:
   ):
     """Validates the geo and time granularity arguments for ROI analysis.
 
+    Spend provided without geo and time dimensions is allocated across geos and
+    times proportionally to the corresponding media execution values (i.e.
+    assuming a constant cost per media unit). A warning is issued if a subset of
+    geos or times is requested for such spend, since the spend within the subset
+    relies on this allocation.
+
     Args:
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
@@ -1637,50 +1643,42 @@ class Analyzer:
         default, all time periods are included.
       aggregate_geos: If `True`, then expected revenue is summed over all
         regions.
-
-    Raises:
-      ValueError: If the geo or time granularity arguments are not valid for the
-        ROI analysis.
     """
     if self.model_context.is_national:
       _warn_if_geo_arg_in_kwargs(
           aggregate_geos=aggregate_geos,
           selected_geos=selected_geos,
       )
+    input_data = self.model_context.input_data
+    has_media_spend = self.model_context.media_tensors.media_spend is not None
+    has_rf_spend = self.model_context.rf_tensors.rf_spend is not None
+
     if selected_geos is not None or not aggregate_geos:
-      if (
-          self.model_context.media_tensors.media_spend is not None
-          and not self.model_context.input_data.media_spend_has_geo_dimension
-      ):
-        raise ValueError(
-            "`selected_geos` and `aggregate_geos=False` are not allowed because"
-            " Meridian `media_spend` data does not have a geo dimension."
+      if has_media_spend and not input_data.media_spend_has_geo_dimension:
+        warnings.warn(
+            "Because `media_spend` was not provided with a geo dimension, the"
+            " spend in `selected_geos` or with `aggregate_geos=False` will be"
+            " allocated assuming a constant cost per media unit."
         )
-      if (
-          self.model_context.rf_tensors.rf_spend is not None
-          and not self.model_context.input_data.rf_spend_has_geo_dimension
-      ):
-        raise ValueError(
-            "`selected_geos` and `aggregate_geos=False` are not allowed because"
-            " Meridian `rf_spend` data does not have a geo dimension."
+      if has_rf_spend and not input_data.rf_spend_has_geo_dimension:
+        warnings.warn(
+            "Because `rf_spend` was not provided with a geo dimension, the"
+            " spend in `selected_geos` or with `aggregate_geos=False` will be"
+            " allocated assuming a constant cost per media unit."
         )
 
     if selected_times is not None:
-      if (
-          self.model_context.media_tensors.media_spend is not None
-          and not self.model_context.input_data.media_spend_has_time_dimension
-      ):
-        raise ValueError(
-            "`selected_times` is not allowed because Meridian `media_spend`"
-            " data does not have a time dimension."
+      if has_media_spend and not input_data.media_spend_has_time_dimension:
+        warnings.warn(
+            "Because `media_spend` was not provided with a time dimension, the"
+            " spend in `selected_times` will be allocated assuming a constant"
+            " cost per media unit."
         )
-      if (
-          self.model_context.rf_tensors.rf_spend is not None
-          and not self.model_context.input_data.rf_spend_has_time_dimension
-      ):
-        raise ValueError(
-            "`selected_times` is not allowed because Meridian `rf_spend` data"
-            " does not have a time dimension."
+      if has_rf_spend and not input_data.rf_spend_has_time_dimension:
+        warnings.warn(
+            "Because `rf_spend` was not provided with a time dimension, the"
+            " spend in `selected_times` will be allocated assuming a constant"
+            " cost per media unit."
         )
 
   def marginal_roi(
@@ -1713,8 +1711,9 @@ class Analyzer:
 
     If `selected_geos` or `selected_times` is specified, then the mROI
     denominator is based on the total spend during the selected geos and time
-    periods. An exception will be thrown if the spend of the InputData used to
-    train the model does not have geo and time dimensions. (If the
+    periods. If the spend of the InputData used to train the model does not
+    have geo and time dimensions, then it is allocated across geos and times
+    assuming a constant cost per media unit, and a warning is issued. (If the
     `new_data.media_spend` and `new_data.rf_spend` arguments are used with
     different dimensions than the InputData spend, then an exception will be
     thrown since this is a likely user error.)
@@ -1835,12 +1834,13 @@ class Analyzer:
     ```
 
     If `selected_geos` or `selected_times` is specified, then the ROI
-    denominator is the total spend during the selected geos and time periods. An
-    exception will be thrown if the spend of the InputData used to train the
-    model does not have geo and time dimensions. (If the `new_data.media_spend`
-    and `new_data.rf_spend` arguments are used with different dimensions than
-    the InputData spend, then an exception will be thrown since this is a likely
-    user error.)
+    denominator is the total spend during the selected geos and time periods. If
+    the spend of the InputData used to train the model does not have geo and
+    time dimensions, then it is allocated across geos and times assuming a
+    constant cost per media unit, and a warning is issued. (If the
+    `new_data.media_spend` and `new_data.rf_spend` arguments are used with
+    different dimensions than the InputData spend, then an exception will be
+    thrown since this is a likely user error.)
 
     Args:
       use_posterior: Boolean. If `True`, then the posterior distribution is
@@ -1950,12 +1950,13 @@ class Analyzer:
     ```
 
     If `selected_geos` or `selected_times` is specified, then the CPIK
-    numerator is the total spend during the selected geos and time periods. An
-    exception will be thrown if the spend of the InputData used to train the
-    model does not have geo and time dimensions. (If the `new_data.media_spend`
-    and `new_data.rf_spend` arguments are used with different dimensions than
-    the InputData spend, then an exception will be thrown since this is a likely
-    user error.)
+    numerator is the total spend during the selected geos and time periods. If
+    the spend of the InputData used to train the model does not have geo and
+    time dimensions, then it is allocated across geos and times assuming a
+    constant cost per media unit, and a warning is issued. (If the
+    `new_data.media_spend` and `new_data.rf_spend` arguments are used with
+    different dimensions than the InputData spend, then an exception will be
+    thrown since this is a likely user error.)
 
     Note that CPIK is simply 1/ROI, where ROI is obtained from a call to the
     `roi` method with `use_kpi=True`.
