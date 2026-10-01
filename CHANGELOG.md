@@ -28,6 +28,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     in `Analyzer.get_aggregated_spend`. `summary_metrics` now supports spend
     provided with dimensions `(n_channels,)`.
 *   Fix calibrated ROI priors on the JAX backend so they match TensorFlow.
+*   Deprecate the unused `optimal_frequency` argument of
+    `Analyzer.summary_metrics`. Passing it now raises a `DeprecationWarning`
+    and has no effect.
 
 ## [2.1.0] - 2026-09-17
 
