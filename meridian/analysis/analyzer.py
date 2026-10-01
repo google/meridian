@@ -1226,10 +1226,13 @@ class Analyzer:
 
     `E(Outcome|Treatment_1, Controls)` minus `E(Outcome|Treatment_0, Controls)`
 
+    See [Incremental
+    outcome](https://developers.google.com/meridian/docs/post-modeling/roi-mroi-response-curves#incremental_outcome)
+    for the formal definition.
+
     For paid & organic channels (without reach and frequency data),
     `Treatment_1` means that media execution for a given channel is multiplied
-    by
-    `scaling_factor1` (1.0 by default) for the set of time periods specified
+    by `scaling_factor1` (1.0 by default) for the set of time periods specified
     by `media_selected_times`. Similarly, `Treatment_0` means that media
     execution is multiplied by `scaling_factor0` (0.0 by default) for these time
     periods.
@@ -1700,7 +1703,9 @@ class Analyzer:
     The marginal ROI (mROI) numerator is the change in expected outcome (`kpi`
     or `kpi * revenue_per_kpi`) when one channel's spend is increased by a small
     fraction. The mROI denominator is the corresponding small fraction of the
-    channel's total spend.
+    channel's total spend. See [Marginal ROI
+    (mROI)](https://developers.google.com/meridian/docs/post-modeling/roi-mroi-response-curves#marginal_roi_mroi)
+    for the formal definition.
 
     If `new_data=None`, this method calculates marginal ROI conditional on the
     values of the paid media variables that the Meridian object was initialized
@@ -1824,6 +1829,10 @@ class Analyzer:
     revenue_per_kpi`) when one channel's spend is set to zero, leaving all other
     channels' spend unchanged. The ROI denominator is the total spend of the
     channel.
+
+    See
+    [ROI](https://developers.google.com/meridian/docs/post-modeling/roi-mroi-response-curves#roi)
+    for the formal definition.
 
     If `new_data=None`, this method calculates ROI conditional on the values of
     the paid media variables that the Meridian object was initialized with. The
@@ -3206,10 +3215,20 @@ class Analyzer:
     """Calculates `R-Squared`, `MAPE`, and `wMAPE` goodness of fit metrics.
 
     `R-Squared`, `MAPE` (mean absolute percentage error), and `wMAPE` (weighted
-    absolute percentage error) are calculated on the revenue scale
+    mean absolute percentage error) are calculated on the revenue scale
     (`KPI * revenue_per_kpi`) when `revenue_per_kpi` is specified, or the KPI
     scale when `revenue_per_kpi = None`. This is the same scale as what is used
     in the ROI numerator (incremental outcome).
+
+    Given the actual outcome `actual` and the posterior mean of the expected
+    outcome `expected` for the observations in an evaluation set, the metrics
+    are:
+
+    ```python
+    r_squared = 1 - mean((expected - actual) ** 2) / var(actual)
+    mape = mean(abs((actual - expected) / actual))
+    wmape = sum(abs(actual - expected)) / sum(actual)
+    ```
 
     Prediction errors in `wMAPE` are weighted by the actual revenue
     (`KPI * revenue_per_kpi`) when `revenue_per_kpi` is specified, or weighted
@@ -3587,6 +3606,10 @@ class Analyzer:
     where media units in each geo and time period are scaled by the
     corresponding multiplier. (Media units for time periods prior to
     `selected_times` are also scaled by the multiplier.)
+
+    See [Response
+    curves](https://developers.google.com/meridian/docs/post-modeling/roi-mroi-response-curves#response_curves)
+    for the formal definition.
 
     Args:
       new_data: Optional `DataTensors` object with optional new tensors:
