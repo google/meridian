@@ -596,7 +596,8 @@ class ImplausibleROIChannelCases(BaseCase, enum.Enum):
   ROI_HIGH = (Status.REVIEW, enum.auto())
   ROI_LOW = (Status.REVIEW, enum.auto())
 
-  # TODO: Remove unused unique_id argument, here and elsewhere.
+  # `unique_id` receives the `enum.auto()` part of the member value, which only
+  # keeps members with the same status distinct. It is intentionally unused.
   def __init__(self, status: Status, unique_id: Any):
     """Initializes the instance."""
     super().__init__(status)
@@ -690,7 +691,8 @@ class HighVarianceChannelCases(BaseCase, enum.Enum):
   ROI_PASS = (Status.PASS, enum.auto())
   HIGH_VARIANCE = (Status.REVIEW, enum.auto())
 
-  # TODO: Remove unused unique_id argument, here and elsewhere.
+  # `unique_id` receives the `enum.auto()` part of the member value, which only
+  # keeps members with the same status distinct. It is intentionally unused.
   def __init__(self, status: Status, unique_id: Any):
     super().__init__(status)
 
