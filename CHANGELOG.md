@@ -28,6 +28,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     in `Analyzer.get_aggregated_spend`. `summary_metrics` now supports spend
     provided with dimensions `(n_channels,)`.
 *   Fix calibrated ROI priors on the JAX backend so they match TensorFlow.
+*   Add `include_prior` and `include_posterior` arguments to
+    `Analyzer.summary_metrics` to compute metrics for only the prior or only
+    the posterior distribution. `Analyzer.optimal_freq` uses them, so
+    `optimal_freq` and budget optimization with reach and frequency channels
+    no longer require `sample_prior()` when `use_posterior=True`.
 
 ## [2.1.0] - 2026-09-17
 
