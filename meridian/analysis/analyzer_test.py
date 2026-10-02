@@ -1249,12 +1249,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   )
   def test_inverse_outcome(self, use_kpi: bool, pass_revenue_per_kpi: bool):
     scale_factor = 2.0
-    shift_factor = 5.0
     revenue_multiplier = 3.0
 
-    mock_transformer = mock.Mock()
-    mock_transformer.inverse.side_effect = (
-        lambda x: x * scale_factor + shift_factor
+    mock_transformer = mock.create_autospec(
+        self.analyzer.model_context.kpi_transformer, spec_set=True
+    )
+    mock_transformer.population_scaled_stdev = backend.to_tensor(
+        scale_factor, dtype=backend.float_dtype
     )
 
     with mock.patch.object(
@@ -1273,7 +1274,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           mock_outcome, use_kpi=use_kpi, revenue_per_kpi=revenue_per_kpi
       )
 
-      base_outcome = backend.ones((2, 3, _N_GEOS, _N_TIMES, 1)) * scale_factor
+      base_outcome = (
+          mock_outcome
+          * scale_factor
+          * self.analyzer.model_context.population[
+              :, backend.newaxis, backend.newaxis
+          ]
+      )
       expected_outcome = (
           base_outcome * revenue_multiplier if not use_kpi else base_outcome
       )
@@ -1283,6 +1290,49 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           expected_outcome,
           rtol=1e-5,
           atol=1e-5,
+      )
+
+  def test_inverse_outcome_avoids_float32_cancellation(self):
+    scale_factor = backend.to_tensor(2.0, dtype=np.float32)
+    large_mean = backend.to_tensor(1e7, dtype=np.float32)
+    small_modeled_outcome = backend.to_tensor(
+        np.full((2, 3, _N_GEOS, _N_TIMES, 1), 1e-4, dtype=np.float32),
+        dtype=np.float32,
+    )
+    population_f32 = backend.cast(
+        self.analyzer.model_context.population, np.float32
+    )
+
+    with (
+        mock.patch.object(
+            self.analyzer.model_context.kpi_transformer,
+            "_population_scaled_mean",
+            large_mean,
+        ),
+        mock.patch.object(
+            self.analyzer.model_context.kpi_transformer,
+            "_population_scaled_stdev",
+            scale_factor,
+        ),
+        mock.patch.object(
+            self.analyzer.model_context,
+            "population",
+            population_f32,
+        ),
+    ):
+      outcome = self.analyzer.inverse_outcome(
+          small_modeled_outcome, use_kpi=True, revenue_per_kpi=None
+      )
+      expected_outcome = (
+          small_modeled_outcome
+          * scale_factor
+          * population_f32[:, backend.newaxis, backend.newaxis]
+      )
+      backend_test_utils.assert_allclose(
+          outcome,
+          expected_outcome,
+          rtol=1e-6,
+          atol=0.0,
       )
 
   @parameterized.product(

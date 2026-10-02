@@ -23,6 +23,12 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Improve `BudgetOptimizer` grid generation performance by precomputing
+    batch-invariant Adstock and Hill terms and evaluating reach and frequency
+    channels in a single pass, and scale incremental KPI outcomes directly by
+    `kpi_transformer.population_scaled_stdev` and `population` in
+    `BudgetOptimizer` and `Analyzer.inverse_outcome` to avoid `float32`
+    intercept cancellation.
 *   Allocate spend that is aggregated over the geo and time dimensions once,
     when the analysis data tensors are built, instead of imputing it separately
     in `Analyzer.get_aggregated_spend`. `summary_metrics` now supports spend
