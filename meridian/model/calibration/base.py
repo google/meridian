@@ -390,7 +390,6 @@ class CalibrationOutput:
   max_lag: int = constants.DEFAULT_MAX_LAG
 
 
-# TODO: Add serde support to this class.
 class CalibratedDistribution(
     prior_distribution.IndependentMultivariateDistribution
 ):

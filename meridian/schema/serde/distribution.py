@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import types
 from typing import Any, Sequence
@@ -24,6 +25,8 @@ import warnings
 from meridian import backend
 from meridian import constants
 from meridian.model import prior_distribution as pd
+from meridian.model.calibration import base as calibration_base
+from meridian.model.calibration import roi as calibration_roi
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import constants as sc
 from meridian.schema.serde import function_registry as function_registry_utils
@@ -49,6 +52,14 @@ _CUSTOM_DISTRIBUTIONS = {
     "IndependentMultivariateDistribution": (
         pd.IndependentMultivariateDistribution
     ),
+    "CalibratedDistribution": calibration_base.CalibratedDistribution,
+    "GridDistribution": calibration_roi.GridDistribution,
+}
+
+_CALIBRATION_DATACLASSES = {
+    "CalibrationOutput": calibration_base.CalibrationOutput,
+    "CalibratedExperiment": calibration_base.CalibratedExperiment,
+    "ExperimentResult": calibration_base.ExperimentResult,
 }
 
 
@@ -167,15 +178,21 @@ class DistributionSerde(
   ) -> meridian_pb.TfpDistribution:
     """Converts a TensorFlow `Distribution` object to a `TfpDistribution` proto."""
     dist_name = type(dist).__name__
+    params = dist.parameters
     if dist_name in _CUSTOM_DISTRIBUTIONS:
       dist_class = _CUSTOM_DISTRIBUTIONS[dist_name]
+      params = {
+          k: v
+          for k, v in params.items()
+          if k not in ("self", "__class__", "dtype")
+      }
     else:
       dist_class = getattr(backend.tfd, dist_name)
     return meridian_pb.TfpDistribution(
         distribution_type=dist_name,
         parameters={
             name: self._to_parameter_value_proto(name, value, dist_class)
-            for name, value in dist.parameters.items()
+            for name, value in params.items()
         },
     )
 
@@ -215,7 +232,7 @@ class DistributionSerde(
         return meridian_pb.TfpParameterValue(string_value=value)
       case None:
         return meridian_pb.TfpParameterValue(none_value=True)
-      case list():
+      case list() | tuple():
         value_generator = (
             self._to_parameter_value_proto(param_name, v, dist) for v in value
         )
@@ -224,6 +241,16 @@ class DistributionSerde(
                 values=value_generator
             )
         )
+      case (
+          calibration_base.CalibrationOutput()
+          | calibration_base.CalibratedExperiment()
+          | calibration_base.ExperimentResult()
+      ):
+        payload = {
+            f.name: getattr(value, f.name) for f in dataclasses.fields(value)
+        }
+        payload["__class__"] = type(value).__name__
+        return self._to_parameter_value_proto(param_name, payload, dist)
       case dict():
         dict_value = {
             k: self._to_parameter_value_proto(param_name, v, dist)
@@ -338,10 +365,23 @@ class DistributionSerde(
         ]
       case "dict_value":
         items = param_value.dict_value.value_map.items()
-        return {
+        unpacked_dict = {
             key: self._unpack_tfp_parameters(key, value, dist_class)
             for key, value in items
         }
+        class_tag = unpacked_dict.get("__class__")
+        if class_tag in _CALIBRATION_DATACLASSES:
+          kwargs: dict[str, Any] = {
+              k: float(v) if isinstance(v, np.floating) else v
+              for k, v in unpacked_dict.items()
+              if k != "__class__"
+          }
+          if "source_type" in kwargs:
+            kwargs["source_type"] = calibration_base.SourceType(
+                kwargs["source_type"]
+            )
+          return _CALIBRATION_DATACLASSES[class_tag](**kwargs)
+        return unpacked_dict
 
       # Handle custom types.
       case "tensor_value":
