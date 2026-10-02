@@ -799,11 +799,19 @@ class DataTensorsBuilder:
                 f" {self.model_context.n_times} time periods. Found"
                 f" {len(new_tensor)} time periods."
             )
-        elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
-              f" time periods. Found {new_tensor.shape[1]} time periods."
+        elif new_tensor.ndim > 1:
+          # Spend in the input data can have only 1 dimension of (n_channels),
+          # in which case it is allocated over `n_times` time periods.
+          expected_n_times = (
+              old_tensor.shape[1]
+              if old_tensor.ndim > 1
+              else self.model_context.n_times
           )
+          if new_tensor.shape[1] != expected_n_times:
+            raise ValueError(
+                f"New `{var_name}` is expected to have {expected_n_times}"
+                f" time periods. Found {new_tensor.shape[1]} time periods."
+            )
 
   def _validate_time_dims_flexible_times(
       self,
