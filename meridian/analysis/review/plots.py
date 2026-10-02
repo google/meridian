@@ -52,13 +52,35 @@ def generate_implausible_roi_chart_json(
   if result is None or not result.channel_results:
     return None
 
+  # The plotted layout is fixed: [0, GAP) is the bottom band, GAP is the axis
+  # break where ROIs in [lower_break, upper_break) are clustered, and
+  # [GAP, MAX] is the top band. The mapping from real ROI to plotted position
+  # is derived from the configured thresholds.
+  gap_plotted = constants.IMPLAUSIBLE_ROI_GAP_PLOTTED
+  max_plotted = constants.IMPLAUSIBLE_ROI_MAX_PLOTTED
+  lower_break = result.plot_cluster_lower_bound
+  upper_break = result.plot_cluster_upper_bound
+  max_real = result.roi_upper_bound * constants.IMPLAUSIBLE_ROI_MAX_RATIO
+  bottom_scale = gap_plotted / lower_break if lower_break > 0 else 0.0
+  top_scale = (
+      (max_plotted - gap_plotted) / (max_real - upper_break)
+      if max_real > upper_break
+      else 1.0
+  )
+
+  def _is_bottom(y: float) -> bool:
+    return y < lower_break
+
+  def _is_top(y: float) -> bool:
+    return not _is_bottom(y) and y >= upper_break
+
   def _scale_roi(y: float) -> float:
-    if y < constants.IMPLAUSIBLE_ROI_THRESHOLD_LOWER:
-      return y * constants.IMPLAUSIBLE_ROI_SCALE_FACTOR
-    elif y < constants.IMPLAUSIBLE_ROI_GAP_PLOTTED:
-      return constants.IMPLAUSIBLE_ROI_GAP_PLOTTED
+    if _is_bottom(y):
+      return y * bottom_scale
+    elif not _is_top(y):
+      return gap_plotted
     else:
-      return min(y, constants.IMPLAUSIBLE_ROI_MAX_PLOTTED)
+      return gap_plotted + (min(y, max_real) - upper_break) * top_scale
 
   rows = []
   for idx, cr in enumerate(result.channel_results, start=1):
@@ -103,16 +125,11 @@ def generate_implausible_roi_chart_json(
       titleFontSize=12,
   )
 
-  df_top = df[
-      df[constants.ROI_MEAN] >= constants.IMPLAUSIBLE_ROI_GAP_PLOTTED
-  ].copy()
-  df_bottom = df[
-      df[constants.ROI_MEAN] < constants.IMPLAUSIBLE_ROI_THRESHOLD_LOWER
-  ].copy()
-  df_gap = df[
-      (df[constants.ROI_MEAN] >= constants.IMPLAUSIBLE_ROI_THRESHOLD_LOWER)
-      & (df[constants.ROI_MEAN] < constants.IMPLAUSIBLE_ROI_GAP_PLOTTED)
-  ].copy()
+  is_bottom = df[constants.ROI_MEAN].map(_is_bottom).astype(bool)
+  is_top = df[constants.ROI_MEAN].map(_is_top).astype(bool)
+  df_top = df[is_top].copy()
+  df_bottom = df[is_bottom].copy()
+  df_gap = df[~is_bottom & ~is_top].copy()
 
   x_curve = np.linspace(0.01, 1.0, 100)
   y_upper_true = result.roi_upper_bound / x_curve
@@ -158,30 +175,30 @@ def generate_implausible_roi_chart_json(
       symbolType="square",
   )
 
-  unified_y_scale = alt.Scale(
-      domain=[0.0, constants.IMPLAUSIBLE_ROI_MAX_PLOTTED], clamp=True
+  unified_y_scale = alt.Scale(domain=[0.0, max_plotted], clamp=True)
+  y_ticks: list[tuple[float, str]] = [(0.0, "0.0")]
+  if lower_break > 0:
+    for ratio in constants.IMPLAUSIBLE_ROI_LOWER_TICK_RATIOS:
+      tick_roi = ratio * result.roi_lower_bound
+      if _is_bottom(tick_roi):
+        y_ticks.append((_scale_roi(tick_roi), f"{tick_roi:g}"))
+  y_ticks.append((gap_plotted, constants.BREAK_MARK_TEXT))
+  num_upper_ticks = constants.IMPLAUSIBLE_ROI_NUM_UPPER_TICKS
+  for k in range(1, num_upper_ticks + 1):
+    tick_roi = k * result.roi_upper_bound
+    if not _is_top(tick_roi):
+      continue
+    label = f"{tick_roi:g}"
+    if k == num_upper_ticks:
+      label += "+"
+    y_ticks.append((_scale_roi(tick_roi), label))
+  y_ticks = [(round(float(pos), 6), label) for pos, label in y_ticks]
+  label_expr = "".join(
+      f"datum.value == {pos} ? '{label}' : " for pos, label in y_ticks
   )
   unified_y_axis = alt.Axis(
-      values=[
-          0,
-          5,
-          10,
-          constants.IMPLAUSIBLE_ROI_GAP_PLOTTED,
-          20,
-          40,
-          60,
-          80,
-          constants.IMPLAUSIBLE_ROI_MAX_PLOTTED,
-      ],
-      labelExpr=(
-          "datum.value == 0 ? '0.0' : datum.value == 5 ? '0.2' : datum.value"
-          " == 10 ? '0.4' : datum.value =="
-          f" {constants.IMPLAUSIBLE_ROI_GAP_PLOTTED} ?"
-          f" '{constants.BREAK_MARK_TEXT}' : datum.value == 20 ? '20' :"
-          " datum.value == 40 ? '40' : datum.value == 60 ? '60' : datum.value"
-          " == 80 ? '80' : datum.value =="
-          f" {constants.IMPLAUSIBLE_ROI_MAX_PLOTTED} ? '100+' : ''"
-      ),
+      values=[pos for pos, _ in y_ticks],
+      labelExpr=f"{label_expr}''",
   )
 
   area_upper = (
@@ -427,7 +444,7 @@ def generate_high_variance_chart_json(
   )
 
   x_curve = np.linspace(0.01, 1.0, 100)
-  threshold = 1.0
+  threshold = result.high_variance_threshold
   y_upper_curve = threshold / x_curve
   upper_spend_shares = np.concatenate(([0.0], x_curve))
   upper_y_plotted = np.concatenate((

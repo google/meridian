@@ -679,6 +679,16 @@ class ImplausibleROICheckResult(CheckResult):
     """The check result details."""
     return self.aggregate_details
 
+  @property
+  def plot_cluster_lower_bound(self) -> float:
+    """The lowest ROI clustered at the axis break of the Implausible ROI plot."""
+    return self.roi_lower_bound * constants.IMPLAUSIBLE_ROI_CLUSTER_LOWER_RATIO
+
+  @property
+  def plot_cluster_upper_bound(self) -> float:
+    """The ROI above which values are no longer clustered on the plot."""
+    return self.roi_upper_bound * constants.IMPLAUSIBLE_ROI_CLUSTER_UPPER_RATIO
+
 
 # ==============================================================================
 # Check: High Variance
@@ -755,6 +765,7 @@ class HighVarianceCheckResult(CheckResult):
     high_variance_channels: A list of channel names flagged as having high ROI
       variance.
     prior_relative_hdi_width: The prior relative HDI width threshold.
+    high_variance_threshold: The threshold for flagging high variance.
   """
 
   case: HighVarianceAggregateCases
@@ -762,6 +773,9 @@ class HighVarianceCheckResult(CheckResult):
   high_variance_channels: list[str]
   prior_relative_hdi_width: float = (
       constants.PRIOR_RELATIVE_HDI_WIDTH_FOR_80_PERCENT
+  )
+  high_variance_threshold: float = (
+      configs.HighVarianceConfig.high_variance_threshold
   )
 
   @property
@@ -1481,6 +1495,18 @@ class ReviewSummary:
         if flagged:
           desc += f" We recommend reviewing {_format_list_with_and(flagged)}."
           implausible_roi_is_warning = True
+      # The plot clusters ROIs slightly inside the thresholds (see
+      # `ImplausibleROICheckResult.plot_cluster_lower_bound` and
+      # `plot_cluster_upper_bound`), but the message refers to the configured
+      # thresholds themselves.
+      if implausible_roi_result is not None:
+        roi_lower_bound = implausible_roi_result.roi_lower_bound
+        roi_upper_bound = implausible_roi_result.roi_upper_bound
+      else:
+        roi_lower_bound = configs.ImplausibleROIConfig.roi_lower_bound
+        roi_upper_bound = configs.ImplausibleROIConfig.roi_upper_bound
+      roi_low_text = f"{roi_lower_bound:g}"
+      roi_high_text = f"{roi_upper_bound:g}"
       if implausible_roi_is_warning:
         desc += (
             " In general, the deeper the channels are into their respective"
@@ -1488,8 +1514,9 @@ class ReviewSummary:
             " may gain from an incrementality experiment for that channel."
             " Conversely, channels outside of the regions but close to the"
             " boundary may also be strong candidates for calibration. For"
-            " readability, ROIs between 0.6 and 19 are clustered together on"
-            " this plot. Please hover over points or use <a"
+            f" readability, ROIs between {roi_low_text} and {roi_high_text} are"
+            " clustered together on this plot. Please hover over points or use"
+            " <a"
             ' href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
             ' target="_blank">MeridianAnalyzer.roi</a> to view the exact ROI'
             " for specific channels."
@@ -1498,9 +1525,10 @@ class ReviewSummary:
         desc += (
             " Channels closer to the boundaries of the Implausible High ROI and"
             " Implausible Low ROI regions may be strong candidates for"
-            " calibration. For readability, ROIs between 0.6 and 19 are"
-            " clustered together on this plot. Please hover over points or use"
-            ' <a href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
+            f" calibration. For readability, ROIs between {roi_low_text} and"
+            f" {roi_high_text} are clustered together on this plot. Please"
+            " hover over points or use <a"
+            ' href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
             ' target="_blank">MeridianAnalyzer.roi</a> to view the exact ROI'
             " for specific channels."
         )

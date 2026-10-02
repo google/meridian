@@ -1735,14 +1735,16 @@ class ImplausibleROICheckTest(parameterized.TestCase):
         ["ch1", "ch2"]
     )
     # Mean ROI: [2.0, 4.0]
-    # Spend weighted: [1.0, 2.0] (< 20.0 upper bound)
-    # Reciprocal spend weighted: [4.0, 8.0] (> 0.5 lower bound)
+    # Spend weighted: [1.0, 2.0] (< 45.0 upper bound)
+    # Reciprocal spend weighted: [4.0, 8.0] (> 1.25 lower bound)
     self.inference_data.posterior.roi_m.values = np.array([
         [[2.0, 4.0]],
     ])  # (chain=1, draw=1, channel=2)
     self.inference_data.posterior.coords = [constants.MEDIA_CHANNEL]
 
-    config = configs.ImplausibleROIConfig()
+    config = configs.ImplausibleROIConfig(
+        roi_lower_bound=1.25, roi_upper_bound=45.0
+    )
     check = checks.ImplausibleROICheck(
         model_context=self.model_context,
         inference_data=self.inference_data,
@@ -1755,6 +1757,8 @@ class ImplausibleROICheckTest(parameterized.TestCase):
     self.assertEmpty(result.low_roi_channels)
     self.assertAlmostEqual(result.channel_results[0].spend_share, 0.5)
     self.assertAlmostEqual(result.channel_results[1].spend_share, 0.5)
+    self.assertEqual(result.roi_lower_bound, 1.25)
+    self.assertEqual(result.roi_upper_bound, 45.0)
 
   def test_implausible_roi_check_spend_share_calculation(self):
     # Spend share for [10.0, 30.0] is [0.25, 0.75]
@@ -2086,12 +2090,14 @@ class HighVarianceCheckTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
+          # Ratio = (3.0 / 1.0) / 2.0 = 1.5, which is not above the custom
+          # threshold of 1.5 (it would be flagged with the default of 1.0).
           testcase_name="boundary_pass",
           roi_m_values=np.array([[[1.0]]]),
-          hdi_return_value=np.array([[0.0, 2.0]]),
+          hdi_return_value=np.array([[0.0, 3.0]]),
           prior_relative_hdi_width=2.0,
-          high_variance_threshold=1.0,
-          expected_relative_width_ratio=1.0,
+          high_variance_threshold=1.5,
+          expected_relative_width_ratio=1.5,
       ),
       dict(
           testcase_name="zero_mean_roi_pass",
@@ -2145,6 +2151,8 @@ class HighVarianceCheckTest(parameterized.TestCase):
         result.channel_results[0].relative_width_ratio,
         expected_relative_width_ratio,
     )
+    self.assertEqual(result.prior_relative_hdi_width, prior_relative_hdi_width)
+    self.assertEqual(result.high_variance_threshold, high_variance_threshold)
 
   def test_is_relevant_true_when_using_roi_priors(self):
     self.model_context.n_media_channels = 1
@@ -2316,6 +2324,8 @@ class PotentialBiasCheckTest(parameterized.TestCase):
 
     result = check.run()
     self.assertEqual(result.case, expected_aggregate_case)
+    # Custom threshold from setUp (the default is 0.1).
+    self.assertEqual(result.correlation_threshold, 0.03)
     self.assertEqual(
         result.low_correlation_channels, expected_low_correlation_channels
     )
