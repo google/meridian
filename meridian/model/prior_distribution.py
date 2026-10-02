@@ -49,9 +49,16 @@ class PriorDistribution:
   either `batch_shape=[]` or `batch_shape` equal to the number of media
   channels. In the case of the former, each media channel gets the same prior.
 
-  An error is raised upon Meridian construction if any prior distribution
-  has a shape that cannot be broadcast to the shape designated by the model
-  specification.
+  An error is raised when the priors are first broadcast, for example during
+  sampling, if any prior distribution has a shape that cannot be broadcast to
+  the shape designated by the model specification.
+
+  Warning: `PriorDistribution` is not a frozen dataclass, but treat it as
+  immutable. `PriorDistribution`, `ModelSpec`, and `Meridian` validate priors
+  when they are constructed. Later changes might skip validation or have no
+  effect. Don't assign to its fields, as in `model_spec.prior.roi_m = ...`.
+  Instead, create a new `PriorDistribution` and a new `ModelSpec`, for example
+  with `dataclasses.replace`.
 
   The parameter batch shapes are as follows:
 
