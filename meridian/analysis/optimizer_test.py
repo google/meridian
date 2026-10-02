@@ -485,6 +485,67 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           use_posterior=use_posterior,
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='posterior_only',
+          use_posterior=True,
+          file_name='sample_posterior_media_and_rf.nc',
+      ),
+      dict(
+          testcase_name='prior_only',
+          use_posterior=False,
+          file_name='sample_prior_media_and_rf.nc',
+      ),
+  )
+  def test_optimal_frequency_requires_only_selected_distribution(
+      self, use_posterior: bool, file_name: str
+  ):
+    dataset = xr.open_dataset(os.path.join(_TEST_DATA_DIR, file_name))
+    inference_data = (
+        az.InferenceData(posterior=dataset)
+        if use_posterior
+        else az.InferenceData(prior=dataset)
+    )
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            'inference_data',
+            new=property(lambda unused_self: inference_data),
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'inference_data',
+            new=property(lambda unused_self: inference_data),
+        )
+    )
+    # `summary_metrics` is already mocked in `setUp`; replace it with a fresh
+    # mock to inspect how it's called.
+    mock_summary_metrics = self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            'summary_metrics',
+            return_value=analysis_test_utils.generate_paid_summary_metrics(),
+        )
+    )
+
+    optimization_grid = (
+        self.budget_optimizer_media_and_rf.create_optimization_grid(
+            use_posterior=use_posterior,
+            use_optimal_frequency=True,
+        )
+    )
+
+    # `summary_metrics` must only compute the selected distribution, so that
+    # the other distribution doesn't need to be sampled.
+    self.assertNotEmpty(mock_summary_metrics.call_args_list)
+    for call in mock_summary_metrics.call_args_list:
+      self.assertIs(call.kwargs['include_prior'], not use_posterior)
+      self.assertIs(call.kwargs['include_posterior'], use_posterior)
+    self.assertIsNotNone(optimization_grid.optimal_frequency)
+    self.assertLen(optimization_grid.optimal_frequency, _N_RF_CHANNELS)
+
   def test_create_optimization_grid_empty_selected_geos_raises_exception(self):
     with self.assertRaisesRegex(
         ValueError,

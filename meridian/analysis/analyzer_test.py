@@ -3672,6 +3672,90 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     self.assertFalse(result.attrs[constants.IS_REVENUE_KPI])
 
+  def _single_distribution_analyzer(
+      self, use_posterior: bool
+  ) -> analyzer.Analyzer:
+    """Returns an `Analyzer` with only the prior or only the posterior."""
+    inference_data = (
+        az.InferenceData(posterior=self.inference_data[constants.POSTERIOR])
+        if use_posterior
+        else az.InferenceData(prior=self.inference_data[constants.PRIOR])
+    )
+    return analyzer.Analyzer(
+        model_context=self.meridian.model_context,
+        inference_data=inference_data,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="posterior_paid",
+          use_posterior=True,
+          include_non_paid_channels=False,
+      ),
+      dict(
+          testcase_name="prior_paid",
+          use_posterior=False,
+          include_non_paid_channels=False,
+      ),
+      dict(
+          testcase_name="posterior_non_paid",
+          use_posterior=True,
+          include_non_paid_channels=True,
+      ),
+      dict(
+          testcase_name="prior_non_paid",
+          use_posterior=False,
+          include_non_paid_channels=True,
+      ),
+  )
+  def test_summary_metrics_single_distribution(
+      self, use_posterior: bool, include_non_paid_channels: bool
+  ):
+    dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
+    expected = self.analyzer.summary_metrics(
+        include_non_paid_channels=include_non_paid_channels
+    ).sel({constants.DISTRIBUTION: [dist_type]})
+
+    # Only the selected distribution is sampled, so this would raise if the
+    # other distribution were computed.
+    actual = self._single_distribution_analyzer(use_posterior).summary_metrics(
+        include_non_paid_channels=include_non_paid_channels,
+        include_prior=not use_posterior,
+        include_posterior=use_posterior,
+    )
+
+    self.assertEqual(
+        list(actual[constants.DISTRIBUTION].values), [dist_type]
+    )
+    xr.testing.assert_allclose(actual, expected)
+
+  def test_summary_metrics_no_distribution_raises_exception(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "At least one of `include_prior` or `include_posterior` must be True.",
+    ):
+      self.analyzer.summary_metrics(
+          include_prior=False, include_posterior=False
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="posterior_only", use_posterior=True),
+      dict(testcase_name="prior_only", use_posterior=False),
+  )
+  def test_optimal_freq_requires_only_selected_distribution(
+      self, use_posterior: bool
+  ):
+    freq_grid = [1.0, 2.0, 3.0]
+    expected = self.analyzer.optimal_freq(
+        freq_grid=freq_grid, use_posterior=use_posterior
+    )
+
+    actual = self._single_distribution_analyzer(use_posterior).optimal_freq(
+        freq_grid=freq_grid, use_posterior=use_posterior
+    )
+
+    xr.testing.assert_allclose(actual, expected)
+
   def test_optimal_freq_new_times_data_correct(self):
     max_lag = 15
     n_new_times = 15
