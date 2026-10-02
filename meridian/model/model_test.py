@@ -473,6 +473,55 @@ class ModelTest(
         ),
     )
     self.assertIsNotNone(meridian)
+    # `Analyzer` and posterior sampling evaluate every cached property.
+    meridian.model_context.populate_cached_properties()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_type="geo",
+      ),
+      dict(
+          testcase_name="national",
+          input_data_type="national",
+      ),
+  )
+  def test_init_validate_kpi_transformer_allows_negative_aggregate_baseline_false(
+      self, input_data_type
+  ):
+    valid_input_data = (
+        self.national_input_data_non_media_and_organic
+        if input_data_type == "national"
+        else self.input_data_non_media_and_organic
+    )
+    kpi = valid_input_data.kpi.copy(deep=True)
+    kpi.data = np.zeros_like(kpi.data)
+    zero_kpi_input_data = dataclasses.replace(
+        valid_input_data,
+        kpi=kpi,
+    )
+
+    prior_type = constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`kpi_scaled` cannot be constant when"
+        " `allows_negative_aggregate_baseline=False` because standardizing"
+        " the baseline threshold requires non-zero KPI variability"
+        " (`population_scaled_stdev > 0`). Please verify that `kpi` varies"
+        " across geos or time periods, or set"
+        " `allows_negative_aggregate_baseline=True`.",
+    ):
+      model.Meridian(
+          input_data=zero_kpi_input_data,
+          model_spec=spec.ModelSpec(
+              media_prior_type=prior_type,
+              rf_prior_type=prior_type,
+              organic_media_prior_type=prior_type,
+              organic_rf_prior_type=prior_type,
+              non_media_treatments_prior_type=prior_type,
+              allows_negative_aggregate_baseline=False,
+          ),
+      )
 
   @parameterized.named_parameters(
       dict(testcase_name="geo", is_national=False),

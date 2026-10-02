@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `allows_negative_aggregate_baseline` to `ModelSpec` to optionally
+    constrain the population-weighted aggregate baseline across time and geos to
+    be non-negative.
+*   Update `mmm-proto-schema` dependency to >= 1.4.2.
 *   Allocate spend that is aggregated over the geo and time dimensions once,
     when the analysis data tensors are built, instead of imputing it separately
     in `Analyzer.get_aggregated_spend`. `summary_metrics` now supports spend

@@ -725,6 +725,15 @@ class Meridian:
           " `non_media_treatments_prior_type` ="
           f' "{self.model_spec.non_media_treatments_prior_type}".'
       )
+    if not self.model_spec.allows_negative_aggregate_baseline:
+      raise ValueError(
+          f"`{kpi}` cannot be constant when"
+          " `allows_negative_aggregate_baseline=False` because standardizing"
+          " the baseline threshold requires non-zero KPI variability"
+          " (`population_scaled_stdev > 0`). Please verify that `kpi` varies"
+          " across geos or time periods, or set"
+          " `allows_negative_aggregate_baseline=True`."
+      )
 
   # TODO: Remove this method.
   def linear_predictor_counterfactual_difference_media(
