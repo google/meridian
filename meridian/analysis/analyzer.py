@@ -2377,10 +2377,9 @@ class Analyzer:
         all of the time periods. Note that if `False`, ROI, mROI, Effectiveness,
         and CPIK are not reported because they do not have a clear
         interpretation by time period.
-      optimal_frequency: An optional list with dimension `n_rf_channels`,
-        containing the optimal frequency per channel, that maximizes posterior
-        mean ROI. Default value is `None`, and historical frequency is used for
-        the metrics calculation.
+      optimal_frequency: Deprecated. This argument is unused and will be removed
+        in a future version. Historical frequency is always used for the
+        metrics calculation.
       use_kpi: Boolean. If `True`, the summary metrics are calculated using KPI.
         If `False`, the metrics are calculated using revenue.
       confidence_level: Confidence level for summary metrics credible intervals,
@@ -2415,6 +2414,15 @@ class Analyzer:
       when `aggregate_times=False` because they do not have a clear
       interpretation by time period.
     """
+    if optimal_frequency is not None:
+      # TODO: Remove the deprecated `optimal_frequency` argument.
+      warnings.warn(
+          "The `optimal_frequency` argument of `summary_metrics` is unused and"
+          " will be removed in a future version. Historical frequency is used"
+          " for the metrics calculation.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
     use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -2429,7 +2437,6 @@ class Analyzer:
         new_data=new_data.filter_fields(
             list(constants.IMPRESSIONS_DATA) + [constants.TIME]
         ),
-        optimal_frequency=optimal_frequency,
         include_non_paid_channels=include_non_paid_channels,
         **dim_kwargs,
     )

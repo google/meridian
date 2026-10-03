@@ -2841,6 +2841,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           selected_times=None, include_media=True, include_rf=True
       )
 
+  def test_summary_metrics_optimal_frequency_deprecated_warning(self):
+    with self.assertWarnsRegex(
+        DeprecationWarning,
+        "The `optimal_frequency` argument of `summary_metrics` is unused",
+    ):
+      self.analyzer.summary_metrics(optimal_frequency=[1.0])
+
   def test_get_historical_spend_calls_get_aggregated_spend(self):
     with mock.patch.object(
         self.analyzer,
