@@ -728,10 +728,8 @@ class PosteriorMCMCSamplerTest(
         constants.GAMMA_GC,
     ]
     latents_only_states = {
-        # pytype: disable=attribute-error
         k: v
         for k, v in full_states._asdict().items()
-        # pytype: enable=attribute-error
         if k not in deterministics_to_remove
     }
     self.assertNotIn(constants.BETA_GM, latents_only_states)

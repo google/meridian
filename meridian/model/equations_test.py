@@ -195,7 +195,7 @@ class ComputeAdstockHillsTest(
     ec = backend.ones(shape=(n_channels,))
     slope = backend.ones(shape=(n_channels,))
 
-    mock_output = media * 2.0  # pyrefly: ignore[unsupported-operation]
+    mock_output = media * 2.0
 
     if hill_before_adstock:
       self.enter_context(
@@ -372,7 +372,7 @@ class ComputeAdstockHillsTest(
             adstock_hill.AdstockTransformer,
             "forward",
             autospec=True,
-            return_value=reach * frequency,  # pyrefly: ignore[unsupported-operation]
+            return_value=reach * frequency,
         )
     )
     manager = mock.Mock()

@@ -339,7 +339,7 @@ class ModelEquations:
     mask = self.get_saturation_mask(saturation_spec, frequency.shape[-1])
 
     selected_frequency = backend.where(mask, adj_frequency, frequency)  # pyrefly: ignore[bad-argument-type]
-    rf_out = adstock_transformer.forward(reach * selected_frequency)  # pyrefly: ignore[unsupported-operation]
+    rf_out = adstock_transformer.forward(reach * selected_frequency)
 
     return rf_out
 
@@ -479,7 +479,7 @@ class ModelEquations:
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
     return backend.absolute(
-        media_transformed - media_transformed_counterfactual  # pyrefly: ignore[unsupported-operation]
+        media_transformed - media_transformed_counterfactual
     )
 
   def linear_predictor_counterfactual_difference_rf(
@@ -523,7 +523,7 @@ class ModelEquations:
     )
     # Absolute values is needed because the difference is negative for mROI
     # priors and positive for ROI and contribution priors.
-    return backend.absolute(rf_transformed - rf_transformed_counterfactual)  # pyrefly: ignore[unsupported-operation]
+    return backend.absolute(rf_transformed - rf_transformed_counterfactual)
 
   def calculate_beta_x(
       self,
@@ -601,12 +601,12 @@ class ModelEquations:
       denominator_term_x = backend.einsum(
           "...gx->...x", incremental_outcome_gx_over_beta_gx
       )
-      return (incremental_outcome_x - numerator_term_x) / denominator_term_x  # pyrefly: ignore[unsupported-operation]
+      return (incremental_outcome_x - numerator_term_x) / denominator_term_x
     # For log-normal random effects, beta_x and eta_x are not mean & std.
     # The parameterization is beta_gx ~ exp(beta_x + eta_x * N(0, 1)).
     denominator_term_x = backend.einsum(
         "...gx,...gx->...x",
         incremental_outcome_gx_over_beta_gx,
-        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),  # pyrefly: ignore[unsupported-operation]
+        backend.exp(beta_gx_dev * eta_x[..., backend.newaxis, :]),
     )
     return backend.log(incremental_outcome_x) - backend.log(denominator_term_x)  # pyrefly: ignore[bad-argument-type]

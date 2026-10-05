@@ -990,7 +990,7 @@ class ModelContext:
   def controls_scaled(self) -> backend.Tensor | None:
     if self.controls is not None:
       # If `controls` is defined, then `controls_transformer` is also defined.
-      return self.controls_transformer.forward(self.controls)  # pytype: disable=attribute-error
+      return self.controls_transformer.forward(self.controls)  # pyrefly: ignore[missing-attribute]
     else:
       return None
 
@@ -1005,7 +1005,7 @@ class ModelContext:
     if self.non_media_transformer is not None:
       return self.non_media_transformer.forward(
           self.non_media_treatments
-      )  # pytype: disable=attribute-error
+      )
     else:
       return None
 
@@ -1016,7 +1016,7 @@ class ModelContext:
   @functools.cached_property
   def media_effects_dist(self) -> str:
     if self.is_national:
-      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]  # pytype: disable=bad-return-type
+      return constants.NATIONAL_MODEL_SPEC_ARGS[constants.MEDIA_EFFECTS_DIST]  # pyrefly: ignore[bad-return]
     else:
       return self._model_spec.media_effects_dist
 
@@ -1024,7 +1024,7 @@ class ModelContext:
   def unique_sigma_for_each_geo(self) -> bool:
     if self.is_national:
       # Should evaluate to False.
-      return constants.NATIONAL_MODEL_SPEC_ARGS[  # pytype: disable=bad-return-type
+      return constants.NATIONAL_MODEL_SPEC_ARGS[  # pyrefly: ignore[bad-return]
           constants.UNIQUE_SIGMA_FOR_EACH_GEO
       ]
     else:
@@ -1763,7 +1763,7 @@ class ModelContext:
         if self.input_data.control_variable is not None
         else np.array([])
     )
-    return {  # pyrefly: ignore[bad-return]
+    return {
         constants.CHAIN: np.arange(n_chains),
         constants.DRAW: np.arange(n_draws),
         constants.GEO: self.input_data.geo,  # pyrefly: ignore[bad-assignment]

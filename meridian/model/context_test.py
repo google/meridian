@@ -310,8 +310,8 @@ class ContextTest(
     )
     self.assertIsNotNone(data.media_channel)
     self.assertIsNotNone(data.organic_media_channel)
-    media_channels = data.media_channel.values.tolist()  # pytype: disable=attribute-error
-    organic_media_channels = data.organic_media_channel.values.tolist()  # pytype: disable=attribute-error
+    media_channels = data.media_channel.values.tolist()
+    organic_media_channels = data.organic_media_channel.values.tolist()
 
     mapping = {
         media_channels[0]: "none",
@@ -733,7 +733,7 @@ class ContextTest(
     self.assertIsNotNone(model_context.controls_scaled)
     self.assertIsNotNone(controls)
     test_utils.assert_allequal(
-        model_context.controls_scaled.shape,  # pytype: disable=attribute-error
+        model_context.controls_scaled.shape,
         controls.shape,
         err_msg=(
             "Shape of `_controls_scaled` does not match the shape of `controls`"
@@ -742,7 +742,6 @@ class ContextTest(
     )
     self.assertIsNotNone(model_context.non_media_treatments_normalized)
     self.assertIsNotNone(data.non_media_treatments)
-    # pytype: disable=attribute-error
     test_utils.assert_allequal(
         model_context.non_media_treatments_normalized.shape,
         data.non_media_treatments.shape,
@@ -751,7 +750,6 @@ class ContextTest(
             " of `non_media_treatments` from the input data."
         ),
     )
-    # pytype: enable=attribute-error
     test_utils.assert_allequal(
         model_context.kpi_scaled.shape,
         data.kpi.shape,
@@ -790,14 +788,14 @@ class ContextTest(
     model_context = context.ModelContext(input_data=data, model_spec=model_spec)
     self.assertIsNotNone(model_context.controls_transformer)
     self.assertIsNotNone(
-        model_context.controls_transformer._population_scaling_factors,  # pytype: disable=attribute-error
+        model_context.controls_transformer._population_scaling_factors,
         msg=(
             "`_population_scaling_factors` not set for the controls"
             " transformer."
         ),
     )
     test_utils.assert_allequal(
-        model_context.controls_transformer._population_scaling_factors.shape,  # pytype: disable=attribute-error
+        model_context.controls_transformer._population_scaling_factors.shape,
         [len(data.geo), len(data.control_variable)],  # pyrefly: ignore[bad-argument-type]
         err_msg=(
             "Shape of `controls_transformer._population_scaling_factors` does"
@@ -814,7 +812,6 @@ class ContextTest(
     )
     model_context = context.ModelContext(input_data=data, model_spec=model_spec)
     self.assertIsNotNone(model_context.non_media_transformer)
-    # pytype: disable=attribute-error
     self.assertIsNotNone(
         model_context.non_media_transformer._population_scaling_factors,
         msg=(
@@ -826,7 +823,7 @@ class ContextTest(
         model_context.non_media_transformer._population_scaling_factors.shape,
         [
             len(data.geo),
-            len(data.non_media_channel),
+            len(data.non_media_channel),  # pyrefly: ignore[bad-argument-type]
         ],
         err_msg=(
             "Shape of"
@@ -834,7 +831,6 @@ class ContextTest(
             " not match (`n_geos`, `n_non_media_channels`)."
         ),
     )
-    # pytype: enable=attribute-error
 
   def test_scaled_data_inverse_is_identity(self):
     data = self.input_data_non_media_and_organic
@@ -846,20 +842,18 @@ class ContextTest(
     # errors.
     atol = np.finfo(backend.np_float_dtype).eps * 100
     test_utils.assert_allclose(
-        model_context.controls_transformer.inverse(model_context.controls_scaled),  # pytype: disable=attribute-error
+        model_context.controls_transformer.inverse(model_context.controls_scaled),  # pyrefly: ignore[missing-attribute]
         data.controls,
         atol=atol,  # pyrefly: ignore[bad-argument-type]
     )
     self.assertIsNotNone(model_context.non_media_transformer)
-    # pytype: disable=attribute-error
     test_utils.assert_allclose(
         model_context.non_media_transformer.inverse(
             model_context.non_media_treatments_normalized
         ),
         data.non_media_treatments,
-        atol=atol,
+        atol=atol,  # pyrefly: ignore[bad-argument-type]
     )
-    # pytype: enable=attribute-error
     test_utils.assert_allclose(
         model_context.kpi_transformer.inverse(model_context.kpi_scaled),
         data.kpi,

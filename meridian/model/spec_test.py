@@ -119,7 +119,7 @@ class ModelSpecTest(parameterized.TestCase):
         ValueError,
         r"Unsupported type for `saturation_spec` parameter: <class 'int'>",
     ):
-      spec.ModelSpec(saturation_spec=123)  # pytype: disable=wrong-arg-types
+      spec.ModelSpec(saturation_spec=123)  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.named_parameters(
       dict(
@@ -518,7 +518,7 @@ class ModelSpecTest(parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "Unsupported type for `knots` parameter"
     ):
-      spec.ModelSpec(knots=3.5)  # pytype: disable=wrong-arg-types
+      spec.ModelSpec(knots=3.5)  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.named_parameters(
       ("geometric", constants.GEOMETRIC_DECAY),
@@ -575,7 +575,7 @@ class ModelSpecTest(parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, r"'max_lag' must be a non-negative integer\."
     ):
-      spec.ModelSpec(max_lag=max_lag)  # pyrefly: ignore[bad-argument-type]
+      spec.ModelSpec(max_lag=max_lag)
 
   @parameterized.named_parameters(
       (
@@ -962,7 +962,7 @@ class ModelSpecTest(parameterized.TestCase):
         "`population_scaled_controls` must be a sequence of strings, not a"
         " single string.",
     ):
-      spec.ModelSpec(population_scaled_controls="c1")  # pyrefly: ignore[bad-argument-type]
+      spec.ModelSpec(population_scaled_controls="c1")
 
   def test_spec_inits_valid_population_scaled_non_media_channels_works(self):
     model_spec = spec.ModelSpec(
@@ -1011,7 +1011,7 @@ class ModelSpecTest(parameterized.TestCase):
         " strings, not a single string.",
     ):
       spec.ModelSpec(
-          population_scaled_non_media_channels="nm1"  # pyrefly: ignore[bad-argument-type]
+          population_scaled_non_media_channels="nm1"
       )
 
   def test_spec_inits_valid_non_media_baseline_values_mapping_works(self):
@@ -1144,7 +1144,7 @@ class ChannelCalibrationSpecTest(parameterized.TestCase):
         "`channels` must be a sequence of strings, not a single string.",
     ):
       spec.ChannelCalibrationSpec(
-          channels="Search",  # pyrefly: ignore[bad-argument-type]
+          channels="Search",
           date_ranges=[dr],
       )
 
@@ -1216,7 +1216,7 @@ class GeoHoldoutSpecTest(parameterized.TestCase):
         "`geos` must be a sequence of strings, not a single string.",
     ):
       spec.GeoHoldoutSpec(
-          geos="US",  # pyrefly: ignore[bad-argument-type]
+          geos="US",
           date_ranges=[dr],
       )
 

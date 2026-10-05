@@ -620,7 +620,7 @@ class PriorDistributionSampler:
           non_media_treatments_vars[constants.CONTRIBUTION_N]
           * ctx.total_outcome
       )
-      baseline_scaled = ctx.non_media_transformer.forward(  # pytype: disable=attribute-error
+      baseline_scaled = ctx.non_media_transformer.forward(  # pyrefly: ignore[missing-attribute]
           self._model_equations.compute_non_media_treatments_baseline()
       )
       linear_predictor_counterfactual_difference = (
@@ -744,7 +744,7 @@ class PriorDistributionSampler:
       ).sample(seed=rng_handler.get_next_seed())
 
     if ctx.media_tensors.media is not None:
-      base_vars |= self._sample_media_priors(  # pyrefly: ignore[unsupported-operation]
+      base_vars |= self._sample_media_priors(
           n_draws, rng_handler, batch_size=batch_size
       )
     if ctx.rf_tensors.reach is not None:

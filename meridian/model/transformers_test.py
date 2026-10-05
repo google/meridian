@@ -319,7 +319,7 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     )
     test_utils.assert_allclose(
         transformer.population_scaled_mean,
-        backend.reduce_mean(self._kpi1 / self._population[:, backend.newaxis]),  # pyrefly: ignore[unsupported-operation]
+        backend.reduce_mean(self._kpi1 / self._population[:, backend.newaxis]),
     )
 
   def test_population_scaled_stdev(self):
@@ -328,7 +328,7 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     )
     test_utils.assert_allclose(
         transformer.population_scaled_stdev,
-        backend.reduce_std(self._kpi1 / self._population[:, backend.newaxis]),  # pyrefly: ignore[unsupported-operation]
+        backend.reduce_std(self._kpi1 / self._population[:, backend.newaxis]),
     )
 
   def test_output_shape_and_range(self):

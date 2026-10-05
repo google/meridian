@@ -583,7 +583,7 @@ def _joint_dist_base_logic(
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_n = yield prior_broadcast.contribution_n
       incremental_outcome_n = contribution_n * total_outcome
-      baseline_scaled = model_context.non_media_transformer.forward(  # pytype: disable=attribute-error
+      baseline_scaled = model_context.non_media_transformer.forward(  # pyrefly: ignore[missing-attribute]
           model_equations.compute_non_media_treatments_baseline()
       )
       linear_predictor_counterfactual_difference = (

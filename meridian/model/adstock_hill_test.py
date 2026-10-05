@@ -154,7 +154,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
       )
       test_utils.assert_allclose(backend.reduce_sum(weights), 1.0, rtol=1e-5)  # pyrefly: ignore[bad-argument-type]
       test_utils.assert_allclose(
-          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+          weights / backend.reduce_max(weights), expected_weights, rtol=1e-5  # pyrefly: ignore[bad-argument-type]
       )
 
   @parameterized.named_parameters(
@@ -224,7 +224,7 @@ class TestComputeDecayWeights(test_utils.MeridianTestCase):
           backend.reduce_sum(weights, axis=1), [1.0] * len(alpha), rtol=1e-5  # pyrefly: ignore[bad-argument-type]
       )
       test_utils.assert_allclose(
-          weights / backend.reduce_max(weights, axis=1, keepdims=True),  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+          weights / backend.reduce_max(weights, axis=1, keepdims=True),  # pyrefly: ignore[bad-argument-type]
           expected_weights,
           rtol=1e-5,
       )
@@ -450,7 +450,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     # `term1` has dimensions (n_chains, n_draws, n_output_times, n_channels).
     term1 = 1 - self._alpha[:, :, None, :] ** n_nonzero_terms[:, None]
     # `term2` has dimensions (n_chains, n_draws, n_channels).
-    term2 = 1 - self._alpha ** (self._MAX_LAG + 1)  # pyrefly: ignore[unsupported-operation]
+    term2 = 1 - self._alpha ** (self._MAX_LAG + 1)
     # `result` has dimensions (n_chains, n_draws, n_output_times, n_channels).
     result = term1 / term2[:, :, None, :]
     # Broadcast `result` across geos.

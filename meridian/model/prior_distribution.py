@@ -1377,12 +1377,12 @@ def lognormal_dist_from_range(
   high = np.asarray(high, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
   mass_percent = np.asarray(mass_percent, dtype=backend.np_float_dtype)  # pyrefly: ignore[bad-assignment]
 
-  if not ((0.0 < low).all() and (low < high).all()):  # pytype: disable=attribute-error
+  if not ((0.0 < low).all() and (low < high).all()):  # pyrefly: ignore[missing-attribute, unsupported-operation]
     raise ValueError(
         "'low' and 'high' values must be positive and satisfy high > low."
     )
 
-  if not ((0.0 < mass_percent).all() and (mass_percent < 1.0).all()):  # pytype: disable=attribute-error
+  if not ((0.0 < mass_percent).all() and (mass_percent < 1.0).all()):  # pyrefly: ignore[missing-attribute, unsupported-operation]
     raise ValueError(
         "'mass_percent' values must be between 0 and 1, exclusive."
     )

@@ -167,11 +167,9 @@ def compute_decay_weights(
   )
 
   try:
-    # pytype: disable=bad-return-type
     return backend.where(
-        binomial_decay_mask, binomial_weights, geometric_weights
+        binomial_decay_mask, binomial_weights, geometric_weights  # pyrefly: ignore[bad-argument-type]
     )
-    # pytype: enable=bad-return-type
   except (backend.errors.InvalidArgumentError, ValueError) as e:
     raise ValueError(
         f'The shape of `alpha` ({alpha.shape}) is incompatible with the length'
@@ -207,10 +205,10 @@ def _compute_single_decay_function_weights(
   expanded_alpha = backend.expand_dims(alpha, -1)  # pyrefly: ignore[bad-argument-type]
 
   if decay_function == constants.GEOMETRIC_DECAY:
-    weights = expanded_alpha**l_range  # pyrefly: ignore[unsupported-operation]
+    weights = expanded_alpha**l_range
   elif decay_function == constants.BINOMIAL_DECAY:
     mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
-    weights = (1 - l_range / window_size) ** mapped_alpha_binomial  # pyrefly: ignore[unsupported-operation]
+    weights = (1 - l_range / window_size) ** mapped_alpha_binomial
   else:
     raise ValueError(f'Unsupported decay function: {decay_function}')
 
@@ -313,7 +311,7 @@ def _map_alpha_for_binomial_decay(x: backend.Tensor):
   # Map x -> 1/x - 1 to map [0, 1] to [0, +inf].
   # 0 -> +inf is a valid mapping and reflects the "no adstock" case.
 
-  return 1 / x - 1  # pyrefly: ignore[unsupported-operation]
+  return 1 / x - 1
 
 
 def compute_hill_powers(
@@ -334,8 +332,8 @@ def compute_hill_powers(
     `[..., n_geos, n_media_times, n_media_channels]` and `ec ** slope` with
     dimensions `[..., 1, 1, n_media_channels]`.
   """
-  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
-  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]  # pyrefly: ignore[unsupported-operation]
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]
   return t1, t2
 
 
