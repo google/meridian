@@ -4232,6 +4232,125 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=1e-3,
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_times",
+          selected_geos=None,
+          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+          aggregate_geos=True,
+          expected_subset="`selected_times`",
+      ),
+      dict(
+          testcase_name="selected_geos",
+          selected_geos=["geo_1", "geo_3"],
+          selected_times=None,
+          aggregate_geos=True,
+          expected_subset="`selected_geos` or `aggregate_geos=False`",
+      ),
+      dict(
+          testcase_name="no_aggregate_geos",
+          selected_geos=None,
+          selected_times=None,
+          aggregate_geos=False,
+          expected_subset="`selected_geos` or `aggregate_geos=False`",
+      ),
+  )
+  def test_roi_input_data_spend_1d_with_subset_warns_and_allocates(
+      self,
+      selected_geos: Sequence[str] | None,
+      selected_times: Sequence[str] | None,
+      aggregate_geos: bool,
+      expected_subset: str,
+  ):
+    assert self.input_data.media_spend is not None
+    assert self.input_data.rf_spend is not None
+
+    input_data_1d_spend = dataclasses.replace(
+        self.input_data,
+        media_spend=self.input_data.media_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+        rf_spend=self.input_data.rf_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+    )
+    # Patch validation to avoid errors due to mismatched inference data.
+    with mock.patch.object(
+        model.Meridian,
+        "_validate_injected_inference_data",
+        autospec=True,
+        spec_set=True,
+    ):
+      meridian_1d_spend = model.Meridian(
+          input_data=input_data_1d_spend,
+          model_spec=spec.ModelSpec(max_lag=15),
+      )
+    analyzer_1d_spend = analyzer.Analyzer(
+        model_context=meridian_1d_spend.model_context,
+        inference_data=self.inference_data,
+    )
+    dim_kwargs = dict(
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=aggregate_geos,
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "does not have geo and time dimensions, so it is allocated across all"
+        " geos and times assuming a constant cost per media unit, and then"
+        f" filtered by {expected_subset}",
+    ):
+      actual = analyzer_1d_spend.roi(**dim_kwargs)
+
+    # Aggregated spend is allocated assuming a constant cost per media unit, so
+    # the ROI matches the one computed with the explicitly allocated spend. No
+    # warning is expected, since the spend in `new_data` has geo and time
+    # dimensions.
+    with warnings.catch_warnings(record=True) as caught_warnings:
+      warnings.simplefilter("always")
+      expected = analyzer_1d_spend.roi(
+          new_data=tensors.DataTensors(
+              media_spend=backend.to_tensor(
+                  input_data_1d_spend.allocated_media_spend,
+                  dtype=backend.float_dtype,
+              ),
+              rf_spend=backend.to_tensor(
+                  input_data_1d_spend.allocated_rf_spend,
+                  dtype=backend.float_dtype,
+              ),
+          ),
+          **dim_kwargs,
+      )
+    self.assertFalse(
+        any(
+            "does not have geo and time dimensions" in str(warning.message)
+            for warning in caught_warnings
+        )
+    )
+    backend_test_utils.assert_allclose(actual, expected, rtol=1e-5)
+
+  def test_roi_new_data_spend_1d_with_selected_times_warns(self):
+    total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.media_tensors.media_spend  # pyrefly: ignore[bad-argument-type]
+    )
+    total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "`media_spend` does not have geo and time dimensions.*filtered by"
+        " `selected_times`",
+    ):
+      self.analyzer.roi(
+          new_data=tensors.DataTensors(
+              media_spend=total_media_spend,
+              rf_spend=total_rf_spend,
+          ),
+          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+      )
+
   def test_media_summary_new_data_spend_1d_returns_correct_values(self):
     """Verifies support for `new_data` spend with dimensions `(n_channels,)`."""
     total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(

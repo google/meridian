@@ -893,19 +893,6 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         )
     )
 
-    # TODO: Remove this mock once the bug is fixed.
-    self.enter_context(
-        mock.patch.object(
-            analyzer.Analyzer,
-            'marginal_roi',
-            autospec=True,
-            spec_set=True,
-            return_value=backend.to_tensor(
-                [[[1.0, 1.0, 1.0, 1.0, 1.0]]], backend.float_dtype
-            ),
-        )
-    )
-
     media_spend_da = data_test_utils.random_media_spend_nd_da(
         n_geos=None,
         n_times=None,
@@ -934,13 +921,20 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     budget_optimizer_media_and_rf = optimizer.BudgetOptimizer(
         meridian_media_and_rf
     )
-    optimization_results = budget_optimizer_media_and_rf.optimize(
-        start_date='2021-01-25',
-        end_date='2021-03-08',
-        # TODO: set optimal frequency back to true once the bug is
-        # fixed.
-        use_optimal_frequency=False,
-    )
+    with warnings.catch_warnings(record=True) as caught_warnings:
+      warnings.simplefilter('always')
+      optimization_results = budget_optimizer_media_and_rf.optimize(
+          start_date='2021-01-25',
+          end_date='2021-03-08',
+      )
+    warning_messages = [str(warning.message) for warning in caught_warnings]
+    for spend_name in ('media_spend', 'rf_spend'):
+      self.assertIn(
+          f'`{spend_name}` does not have geo and time dimensions, so it is'
+          ' allocated across all geos and times assuming a constant cost per'
+          ' media unit, and then filtered by `selected_times`.',
+          warning_messages,
+      )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
     self.assertIsNotNone(meridian_media_and_rf.media_tensors.media_spend)
     assert meridian_media_and_rf.media_tensors.media_spend is not None
