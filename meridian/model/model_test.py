@@ -806,6 +806,19 @@ class ModelTest(
         parallel_iterations=10,
         seed=None,
         reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+        method=constants.METHOD_MCMC,
+        n_restarts=constants.DEFAULT_MAP_N_RESTARTS,
+        n_candidates=constants.DEFAULT_MAP_N_CANDIDATES,
+        maxiter=constants.DEFAULT_MAP_MAXITER,
+        ftol=constants.DEFAULT_MAP_FTOL,
+        gtol=constants.DEFAULT_MAP_GTOL,
+        use_adm=False,
+        adm_family_overrides=None,
+        include_jacobian=False,
+        compute_hessian=False,
+        n_draws=0,
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        hessian_batch_size=constants.DEFAULT_HESSIAN_BATCH_SIZE,
         test=kwarg,
     )
     mock_review.assert_called_once_with(
@@ -842,6 +855,179 @@ class ModelTest(
         post_convergence_checks=custom_checks,
     )
 
+  def test_sample_posterior_map_method_delegates_to_fit_map(self):
+    mock_fit_map = self.enter_context(
+        mock.patch.object(model.Meridian, "fit_map", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian.sample_posterior(
+        method=constants.METHOD_MAP,
+        n_restarts=2,
+        n_candidates=10,
+        maxiter=100,
+        seed=7,
+    )
+    mock_fit_map.assert_called_once_with(
+        meridian,
+        n_restarts=2,
+        n_candidates=10,
+        maxiter=100,
+        ftol=constants.DEFAULT_MAP_FTOL,
+        gtol=constants.DEFAULT_MAP_GTOL,
+        init_state=None,
+        use_adm=False,
+        adm_family_overrides=None,
+        include_jacobian=False,
+        compute_hessian=False,
+        n_draws=0,
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        hessian_batch_size=constants.DEFAULT_HESSIAN_BATCH_SIZE,
+        seed=7,
+        reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+    )
+
+  def test_sample_posterior_adm_method_delegates_to_fit_map(self):
+    mock_fit_map = self.enter_context(
+        mock.patch.object(model.Meridian, "fit_map", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    overrides = {constants.ROI_M: "lognormal"}
+    meridian.sample_posterior(
+        method=constants.METHOD_ADM,
+        n_restarts=3,
+        n_candidates=20,
+        maxiter=200,
+        adm_family_overrides=overrides,
+        n_draws=250,
+        confidence_level=0.8,
+        seed=11,
+    )
+    mock_fit_map.assert_called_once_with(
+        meridian,
+        n_restarts=3,
+        n_candidates=20,
+        maxiter=200,
+        ftol=constants.DEFAULT_MAP_FTOL,
+        gtol=constants.DEFAULT_MAP_GTOL,
+        init_state=None,
+        use_adm=True,
+        adm_family_overrides=overrides,
+        include_jacobian=False,
+        compute_hessian=False,
+        n_draws=250,
+        confidence_level=0.8,
+        hessian_batch_size=constants.DEFAULT_HESSIAN_BATCH_SIZE,
+        seed=11,
+        reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+    )
+
+  def test_fit_adm_delegates_to_fit_map(self):
+    mock_fit_map = self.enter_context(
+        mock.patch.object(model.Meridian, "fit_map", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian.fit_adm(
+        n_restarts=2,
+        maxiter=150,
+        compute_hessian=True,
+        hessian_batch_size=8,
+        seed=5,
+    )
+    mock_fit_map.assert_called_once_with(
+        meridian,
+        n_restarts=2,
+        n_candidates=constants.DEFAULT_MAP_N_CANDIDATES,
+        maxiter=150,
+        ftol=constants.DEFAULT_MAP_FTOL,
+        gtol=constants.DEFAULT_MAP_GTOL,
+        init_state=None,
+        use_adm=True,
+        adm_family_overrides=None,
+        compute_hessian=True,
+        n_draws=0,
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+        hessian_batch_size=8,
+        seed=5,
+        reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+    )
+
+  def test_fit_map_removes_stale_adm_groups(self):
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian, "_run_model_fitting_guardrail", autospec=True
+        )
+    )
+    posterior = xr.Dataset(
+        {constants.SIGMA: ([constants.CHAIN, constants.DRAW], np.ones((1, 2)))}
+    )
+    marginals = xr.Dataset(
+        {constants.SIGMA: ([constants.METRIC], np.ones(5))},
+        coords={constants.METRIC: list(range(5))},
+    )
+    with_adm_groups = az.InferenceData(posterior=posterior)
+    with_adm_groups.add_groups({
+        constants.ADM_MARGINALS: marginals,
+        constants.POINT_ESTIMATE: posterior,
+    })
+    without_adm_groups = az.InferenceData(posterior=posterior)
+    mock_optimizer = mock.Mock(
+        side_effect=[with_adm_groups, without_adm_groups]
+    )
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "posterior_map_callable",
+            new_callable=mock.PropertyMock,
+            return_value=mock_optimizer,
+        )
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    meridian.fit_adm(n_draws=2)
+    self.assertTrue(hasattr(meridian.inference_data, constants.ADM_MARGINALS))
+    self.assertTrue(hasattr(meridian.inference_data, constants.POINT_ESTIMATE))
+
+    meridian.fit_map()
+    self.assertTrue(hasattr(meridian.inference_data, constants.POSTERIOR))
+    self.assertFalse(hasattr(meridian.inference_data, constants.ADM_MARGINALS))
+    self.assertFalse(hasattr(meridian.inference_data, constants.POINT_ESTIMATE))
+
+  def test_sample_posterior_invalid_method_raises(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    with self.assertRaisesRegex(
+        ValueError, "Unsupported posterior estimation method"
+    ):
+      meridian.sample_posterior(method="invalid")
+
+  def test_sample_posterior_mcmc_missing_required_args_raises(self):
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    with self.assertRaisesRegex(
+        ValueError,
+        "`n_chains`, `n_adapt`, `n_burnin`, and `n_keep` must all be specified",
+    ):
+      meridian.sample_posterior(method=constants.METHOD_MCMC)
+
+  def test_sample_posterior_and_review_map_method(self):
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(model.Meridian, "sample_posterior", autospec=True)
+    )
+    mock_review = self.enter_context(
+        mock.patch.object(model.Meridian, "review", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    meridian.sample_posterior_and_review(
+        method=constants.METHOD_MAP,
+        n_restarts=2,
+        maxiter=50,
+    )
+    mock_sample_posterior.assert_called_once()
+    self.assertEqual(
+        mock_sample_posterior.call_args.kwargs["method"], constants.METHOD_MAP
+    )
+    self.assertEqual(mock_sample_posterior.call_args.kwargs["n_restarts"], 2)
+    self.assertEqual(mock_sample_posterior.call_args.kwargs["maxiter"], 50)
+    mock_review.assert_called_once()
+
   def _meridian_with_posterior(self, posterior: xr.Dataset) -> model.Meridian:
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
     meridian.inference_data.posterior = posterior  # pyrefly: ignore[missing-attribute]
@@ -849,23 +1035,25 @@ class ModelTest(
 
   def test_posterior_thinning_preserves_chains(self):
     values = np.arange(3 * 10 * 2).reshape((3, 10, 2))
-    meridian = self._meridian_with_posterior(xr.Dataset(
-        data_vars={
-            "param": (
-                (constants.CHAIN, constants.DRAW, "channel"),
-                values,
-            ),
-            "draw_id": (
-                (constants.CHAIN, constants.DRAW),
-                np.tile(np.arange(10), (3, 1)),
-            ),
-        },
-        coords={
-            constants.CHAIN: np.arange(3),
-            constants.DRAW: np.arange(10),
-            "channel": ["a", "b"],
-        },
-    ))
+    meridian = self._meridian_with_posterior(
+        xr.Dataset(
+            data_vars={
+                "param": (
+                    (constants.CHAIN, constants.DRAW, "channel"),
+                    values,
+                ),
+                "draw_id": (
+                    (constants.CHAIN, constants.DRAW),
+                    np.tile(np.arange(10), (3, 1)),
+                ),
+            },
+            coords={
+                constants.CHAIN: np.arange(3),
+                constants.DRAW: np.arange(10),
+                "channel": ["a", "b"],
+            },
+        )
+    )
 
     thinned = meridian.posterior_thinning(n_draws=4, seed=7)
 
@@ -876,9 +1064,7 @@ class ModelTest(
         thinned.attrs["posterior_selected_draw_count_per_chain"], 4
     )
     self.assertTrue(thinned.attrs["posterior_is_thinned"])
-    self.assertEqual(
-        thinned.attrs["posterior_thinning_method"], "systematic"
-    )
+    self.assertEqual(thinned.attrs["posterior_thinning_method"], "systematic")
     for chain in range(3):
       with self.subTest(chain=chain):
         selected_draws = thinned["draw_id"].sel(chain=chain).values
@@ -903,25 +1089,25 @@ class ModelTest(
         n_draws=4, method=model.ThinningMethod.SYSTEMATIC, seed=7
     )
 
-    self.assertEqual(
-        thinned.attrs["posterior_thinning_method"], "systematic"
-    )
+    self.assertEqual(thinned.attrs["posterior_thinning_method"], "systematic")
 
   def test_posterior_thinning_supports_non_leading_draw_dimension(self):
     values = np.arange(2 * 3 * 10).reshape((2, 3, 10))
-    meridian = self._meridian_with_posterior(xr.Dataset(
-        data_vars={
-            "param": (
-                ("channel", constants.CHAIN, constants.DRAW),
-                values,
-            ),
-        },
-        coords={
-            "channel": ["a", "b"],
-            constants.CHAIN: np.arange(3),
-            constants.DRAW: np.arange(10),
-        },
-    ))
+    meridian = self._meridian_with_posterior(
+        xr.Dataset(
+            data_vars={
+                "param": (
+                    ("channel", constants.CHAIN, constants.DRAW),
+                    values,
+                ),
+            },
+            coords={
+                "channel": ["a", "b"],
+                constants.CHAIN: np.arange(3),
+                constants.DRAW: np.arange(10),
+            },
+        )
+    )
 
     thinned = meridian.posterior_thinning(n_draws=4, seed=7)
 
@@ -958,18 +1144,20 @@ class ModelTest(
 
   def test_posterior_thinning_seed_reproducible(self):
     values = np.arange(2 * 30).reshape((2, 30))
-    first_meridian = self._meridian_with_posterior(xr.Dataset(
-        data_vars={
-            "param": (
-                (constants.CHAIN, constants.DRAW),
-                values,
-            ),
-        },
-        coords={
-            constants.CHAIN: np.arange(2),
-            constants.DRAW: np.arange(30),
-        },
-    ))
+    first_meridian = self._meridian_with_posterior(
+        xr.Dataset(
+            data_vars={
+                "param": (
+                    (constants.CHAIN, constants.DRAW),
+                    values,
+                ),
+            },
+            coords={
+                constants.CHAIN: np.arange(2),
+                constants.DRAW: np.arange(30),
+            },
+        )
+    )
     second_meridian = self._meridian_with_posterior(
         first_meridian.inference_data.posterior.copy(deep=True)  # pyrefly: ignore[missing-attribute]
     )
@@ -990,9 +1178,7 @@ class ModelTest(
       dict(testcase_name="missing", kwargs={}),
       dict(testcase_name="both", kwargs={"sampling_rate": 0.1, "n_draws": 2}),
   )
-  def test_posterior_thinning_requires_exactly_one_draw_argument(
-      self, kwargs
-  ):
+  def test_posterior_thinning_requires_exactly_one_draw_argument(self, kwargs):
     meridian = self._meridian_with_posterior(_simple_posterior())
 
     with self.assertRaisesRegex(ValueError, "Exactly one"):
