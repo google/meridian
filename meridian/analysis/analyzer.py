@@ -14,7 +14,7 @@
 
 """Methods to compute analysis metrics of the model and the data."""
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 import dataclasses
 import functools
 import itertools
@@ -108,8 +108,8 @@ def _warn_if_geo_arg_in_kwargs(**kwargs):
 
 
 def _central_tendency_and_ci_by_prior_and_posterior(
-    prior: backend.Tensor,
-    posterior: backend.Tensor,
+    prior: backend.Tensor | None,
+    posterior: backend.Tensor | None,
     metric_name: str,
     xr_dims: Sequence[str],
     xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
@@ -119,11 +119,15 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   """Calculates central tendency and CI of prior/posterior data for a metric.
 
   Args:
-    prior: A tensor with the prior data for the metric.
-    posterior: A tensor with the posterior data for the metric.
+    prior: A tensor with the prior data for the metric, or `None` to exclude
+      the prior distribution from the output.
+    posterior: A tensor with the posterior data for the metric, or `None` to
+      exclude the posterior distribution from the output.
     metric_name: The name of the input metric for the computations.
     xr_dims: A list of dimensions for the output dataset.
-    xr_coords: A dictionary with the coordinates for the output dataset.
+    xr_coords: A dictionary with the coordinates for the output dataset. The
+      `distribution` coordinate must list only the distributions that are not
+      `None`, in the order prior, posterior.
     confidence_level: Confidence level for computing credible intervals,
       represented as a value between zero and one.
     include_median: A boolean flag indicating whether to calculate and include
@@ -131,21 +135,47 @@ def _central_tendency_and_ci_by_prior_and_posterior(
 
   Returns:
     An xarray Dataset containing central tendency and confidence intervals for
-    prior and posterior data for the metric.
+    prior and/or posterior data for the metric.
   """
   metrics = np.stack(
       [
           get_central_tendency_and_ci(
-              prior, confidence_level, include_median=include_median
-          ),
-          get_central_tendency_and_ci(
-              posterior, confidence_level, include_median=include_median
-          ),
+              dist, confidence_level, include_median=include_median
+          )
+          for dist in (prior, posterior)
+          if dist is not None
       ],
       axis=-1,
   )
   xr_data = {metric_name: (xr_dims, metrics)}
   return xr.Dataset(data_vars=xr_data, coords=xr_coords)
+
+
+def _pct_of_contribution(
+    incremental_outcome: backend.Tensor | None,
+    expected_outcome: backend.Tensor | None,
+) -> backend.Tensor | None:
+  """Returns incremental outcome as a % of mean expected outcome.
+
+  Args:
+    incremental_outcome: Incremental outcome draws, or `None` if the
+      distribution is not computed.
+    expected_outcome: Expected outcome draws, or `None` if the distribution is
+      not computed.
+
+  Returns:
+    The percentage of contribution, or `None` if either input is `None`.
+  """
+  if incremental_outcome is None or expected_outcome is None:
+    return None
+  mean_expected_outcome = backend.reduce_mean(
+      expected_outcome, (0, 1)  # pyrefly: ignore[bad-argument-type]
+  )
+  return (
+      incremental_outcome  # pyrefly: ignore[unsupported-operation]
+      / mean_expected_outcome[..., None]
+      * 100
+  )
 
 
 class RhatSummaryDataFrame(pd.DataFrame):
@@ -2341,6 +2371,8 @@ class Analyzer:
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
       include_non_paid_channels: bool = False,
       non_media_baseline_values: Sequence[float] | None = None,
+      include_prior: bool = True,
+      include_posterior: bool = True,
   ) -> xr.Dataset:
     """Returns summary metrics.
 
@@ -2421,10 +2453,17 @@ class Analyzer:
         `model_spec.non_media_population_scaling_id` is `True`. If `None`, the
         `model_spec.non_media_baseline_values` is used, which defaults to the
         minimum value for each non_media treatment channel.
+      include_prior: Whether to calculate metrics for the prior distribution,
+        which requires `sample_prior()` to have been called. At least one of
+        `include_prior` and `include_posterior` must be `True`.
+      include_posterior: Whether to calculate metrics for the posterior
+        distribution, which requires `sample_posterior()` to have been called.
+        At least one of `include_prior` and `include_posterior` must be `True`.
 
     Returns:
       An `xr.Dataset` with coordinates: `channel`, `metric` (`mean`, `median`,
-      `ci_low`, `ci_high`), `distribution` (prior, posterior) and contains the
+      `ci_low`, `ci_high`), `distribution` (`prior` and/or `posterior`, as
+      selected by `include_prior` and `include_posterior`) and contains the
       following non-paid data variables: `incremental_outcome`,
       `pct_of_contribution`, `effectiveness`, and the following paid
       data variables: `impressions`, `pct_of_impressions`, `spend`,
@@ -2433,6 +2472,9 @@ class Analyzer:
       `roi`, `mroi`, `cpik`, and `effectiveness` metrics are not reported
       when `aggregate_times=False` because they do not have a clear
       interpretation by time period.
+
+    Raises:
+      ValueError: If both `include_prior` and `include_posterior` are `False`.
     """
     if optimal_frequency is not None:
       # TODO: Remove the deprecated `optimal_frequency` argument.
@@ -2442,6 +2484,10 @@ class Analyzer:
           " for the metrics calculation.",
           DeprecationWarning,
           stacklevel=2,
+      )
+    if not (include_prior or include_posterior):
+      raise ValueError(
+          "At least one of `include_prior` or `include_posterior` must be True."
       )
     use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
@@ -2468,51 +2514,47 @@ class Analyzer:
         axis=-1,
     )
 
+    distributions = []
+    if include_prior:
+      distributions.append(constants.PRIOR)
+    if include_posterior:
+      distributions.append(constants.POSTERIOR)
+
+    def compute_by_distribution(
+        compute_fn: Callable[..., backend.Tensor], **kwargs
+    ) -> tuple[backend.Tensor | None, backend.Tensor | None]:
+      """Returns `compute_fn` results for (prior, posterior); `None` if skipped."""
+      prior = compute_fn(use_posterior=False, **kwargs) if include_prior else None
+      posterior = (
+          compute_fn(use_posterior=True, **kwargs) if include_posterior else None
+      )
+      return prior, posterior
+
     incremental_outcome_fields = list(
         constants.PAID_DATA + constants.NON_PAID_DATA
     ) + [constants.TIME]
-    incremental_outcome_prior = self.compute_incremental_outcome_aggregate(
-        use_posterior=False,
-        new_data=new_data.filter_fields(incremental_outcome_fields),
-        use_kpi=use_kpi,
-        include_non_paid_channels=include_non_paid_channels,
-        non_media_baseline_values=non_media_baseline_values,
+    incremental_outcome_kwargs = {
+        "new_data": new_data.filter_fields(incremental_outcome_fields),
+        "include_non_paid_channels": include_non_paid_channels,
+        "non_media_baseline_values": non_media_baseline_values,
         **dim_kwargs,
         **batched_kwargs,
+    }
+    incremental_outcome_prior, incremental_outcome_posterior = (
+        compute_by_distribution(
+            self.compute_incremental_outcome_aggregate,
+            use_kpi=use_kpi,
+            **incremental_outcome_kwargs,
+        )
     )
-    incremental_outcome_posterior = self.compute_incremental_outcome_aggregate(
-        use_posterior=True,
-        new_data=new_data.filter_fields(incremental_outcome_fields),
-        use_kpi=use_kpi,
-        include_non_paid_channels=include_non_paid_channels,
-        non_media_baseline_values=non_media_baseline_values,
-        **dim_kwargs,
-        **batched_kwargs,
-    )
-    incremental_outcome_mroi_prior = self.compute_incremental_outcome_aggregate(
-        use_posterior=False,
-        new_data=new_data.filter_fields(incremental_outcome_fields),
-        use_kpi=use_kpi,
-        by_reach=marginal_roi_by_reach,
-        scaling_factor0=1,
-        scaling_factor1=1 + marginal_roi_incremental_increase,
-        include_non_paid_channels=include_non_paid_channels,
-        non_media_baseline_values=non_media_baseline_values,
-        **dim_kwargs,
-        **batched_kwargs,
-    )
-    incremental_outcome_mroi_posterior = (
-        self.compute_incremental_outcome_aggregate(
-            use_posterior=True,
-            new_data=new_data.filter_fields(incremental_outcome_fields),
+    incremental_outcome_mroi_prior, incremental_outcome_mroi_posterior = (
+        compute_by_distribution(
+            self.compute_incremental_outcome_aggregate,
             use_kpi=use_kpi,
             by_reach=marginal_roi_by_reach,
             scaling_factor0=1,
             scaling_factor1=1 + marginal_roi_incremental_increase,
-            include_non_paid_channels=include_non_paid_channels,
-            non_media_baseline_values=non_media_baseline_values,
-            **dim_kwargs,
-            **batched_kwargs,
+            **incremental_outcome_kwargs,
         )
     )
 
@@ -2561,7 +2603,7 @@ class Analyzer:
             constants.CI_LO,
             constants.CI_HI,
         ],
-        constants.DISTRIBUTION: [constants.PRIOR, constants.POSTERIOR],
+        constants.DISTRIBUTION: distributions,
         **xr_coords,
     }
     incremental_outcome = _central_tendency_and_ci_by_prior_and_posterior(
@@ -2591,19 +2633,14 @@ class Analyzer:
       expected_outcome_fields = list(
           constants.PAID_DATA + constants.NON_PAID_DATA + (constants.CONTROLS,)
       ) + [constants.TIME]
-      expected_outcome_prior = self.expected_outcome(
-          use_posterior=False,
-          new_data=new_data.filter_fields(expected_outcome_fields),
-          use_kpi=use_kpi,
-          **dim_kwargs,  # pyrefly: ignore[bad-argument-type]
-          **batched_kwargs,
-      )
-      expected_outcome_posterior = self.expected_outcome(
-          use_posterior=True,
-          new_data=new_data.filter_fields(expected_outcome_fields),
-          use_kpi=use_kpi,
-          **dim_kwargs,  # pyrefly: ignore[bad-argument-type]
-          **batched_kwargs,
+      expected_outcome_prior, expected_outcome_posterior = (
+          compute_by_distribution(
+              self.expected_outcome,
+              new_data=new_data.filter_fields(expected_outcome_fields),
+              use_kpi=use_kpi,
+              **dim_kwargs,
+              **batched_kwargs,
+          )
       )
       pct_of_contribution = self._compute_pct_of_contribution(
           incremental_outcome_prior=incremental_outcome_prior,
@@ -2719,23 +2756,19 @@ class Analyzer:
             # this case, which may cause confusion in Meridian model and does
             # not have much practical usefulness, anyway.
         ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
+        incremental_kpi_prior, incremental_kpi_posterior = (
+            compute_by_distribution(
+                self.compute_incremental_outcome_aggregate,
+                new_data=new_data.filter_fields(incremental_outcome_fields),
+                use_kpi=True,
+                include_non_paid_channels=False,
+                **dim_kwargs,
+                **batched_kwargs,
+            )
+        )
         cpik = self._compute_cpik_aggregate(
-            incremental_kpi_prior=self.compute_incremental_outcome_aggregate(
-                use_posterior=False,
-                new_data=new_data.filter_fields(incremental_outcome_fields),
-                use_kpi=True,
-                include_non_paid_channels=False,
-                **dim_kwargs,
-                **batched_kwargs,
-            ),
-            incremental_kpi_posterior=self.compute_incremental_outcome_aggregate(
-                use_posterior=True,
-                new_data=new_data.filter_fields(incremental_outcome_fields),
-                use_kpi=True,
-                include_non_paid_channels=False,
-                **dim_kwargs,
-                **batched_kwargs,
-            ),
+            incremental_kpi_prior=incremental_kpi_prior,
+            incremental_kpi_posterior=incremental_kpi_posterior,
             spend_with_total=spend_with_total,
             xr_dims=xr_dims_with_ci_and_distribution,
             xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
@@ -3156,13 +3189,17 @@ class Analyzer:
     )
     new_summary_metrics_data = inputs.tensors
 
-    # Compute the optimized metrics based on the optimal frequency.
+    # Compute the optimized metrics based on the optimal frequency. Only the
+    # selected distribution is computed, so that e.g. `sample_prior()` is not
+    # required when `use_posterior=True`.
     optimized_metrics_by_reach = self.summary_metrics(
         new_data=new_summary_metrics_data,
         marginal_roi_by_reach=True,
         selected_geos=selected_geos,
         selected_times=selected_times,
         use_kpi=use_kpi,
+        include_prior=not use_posterior,
+        include_posterior=use_posterior,
     ).sel({
         constants.CHANNEL: rf_channel_values,
         constants.DISTRIBUTION: dist_type,
@@ -3173,6 +3210,8 @@ class Analyzer:
         selected_geos=selected_geos,
         selected_times=selected_times,
         use_kpi=use_kpi,
+        include_prior=not use_posterior,
+        include_posterior=use_posterior,
     ).sel({
         constants.CHANNEL: rf_channel_values,
         constants.DISTRIBUTION: dist_type,
@@ -4308,18 +4347,23 @@ class Analyzer:
 
   def _compute_roi_aggregate(
       self,
-      incremental_outcome_prior: backend.Tensor,
-      incremental_outcome_posterior: backend.Tensor,
+      incremental_outcome_prior: backend.Tensor | None,
+      incremental_outcome_posterior: backend.Tensor | None,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       spend_with_total: backend.Tensor,
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
       metric_name: str = constants.ROI,
   ) -> xr.Dataset:
+    """Computes the ROI or mROI metric for the prior and/or posterior."""
     # TODO: Support calibration_period_bool.
+    prior, posterior = (
+        None if outcome is None else outcome / spend_with_total  # pyrefly: ignore[unsupported-operation]
+        for outcome in (incremental_outcome_prior, incremental_outcome_posterior)
+    )
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=incremental_outcome_prior / spend_with_total,  # pyrefly: ignore[unsupported-operation]
-        posterior=incremental_outcome_posterior / spend_with_total,  # pyrefly: ignore[unsupported-operation]
+        prior=prior,
+        posterior=posterior,
         metric_name=metric_name,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4374,16 +4418,21 @@ class Analyzer:
 
   def _compute_effectiveness_aggregate(
       self,
-      incremental_outcome_prior: backend.Tensor,
-      incremental_outcome_posterior: backend.Tensor,
+      incremental_outcome_prior: backend.Tensor | None,
+      incremental_outcome_posterior: backend.Tensor | None,
       impressions_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
+    """Computes the effectiveness metric for the prior and/or posterior."""
+    prior, posterior = (
+        None if outcome is None else outcome / impressions_with_total  # pyrefly: ignore[unsupported-operation]
+        for outcome in (incremental_outcome_prior, incremental_outcome_posterior)
+    )
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=incremental_outcome_prior / impressions_with_total,  # pyrefly: ignore[unsupported-operation]
-        posterior=incremental_outcome_posterior / impressions_with_total,  # pyrefly: ignore[unsupported-operation]
+        prior=prior,
+        posterior=posterior,
         metric_name=constants.EFFECTIVENESS,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4393,16 +4442,21 @@ class Analyzer:
 
   def _compute_cpik_aggregate(
       self,
-      incremental_kpi_prior: backend.Tensor,
-      incremental_kpi_posterior: backend.Tensor,
+      incremental_kpi_prior: backend.Tensor | None,
+      incremental_kpi_posterior: backend.Tensor | None,
       spend_with_total: backend.Tensor,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
+    """Computes the CPIK metric for the prior and/or posterior."""
+    prior, posterior = (
+        None if kpi is None else spend_with_total / kpi  # pyrefly: ignore[unsupported-operation]
+        for kpi in (incremental_kpi_prior, incremental_kpi_posterior)
+    )
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=spend_with_total / incremental_kpi_prior,  # pyrefly: ignore[unsupported-operation]
-        posterior=spend_with_total / incremental_kpi_posterior,  # pyrefly: ignore[unsupported-operation]
+        prior=prior,
+        posterior=posterior,
         metric_name=constants.CPIK,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
@@ -4412,32 +4466,21 @@ class Analyzer:
 
   def _compute_pct_of_contribution(
       self,
-      incremental_outcome_prior: backend.Tensor,
-      incremental_outcome_posterior: backend.Tensor,
-      expected_outcome_prior: backend.Tensor,
-      expected_outcome_posterior: backend.Tensor,
+      incremental_outcome_prior: backend.Tensor | None,
+      incremental_outcome_posterior: backend.Tensor | None,
+      expected_outcome_prior: backend.Tensor | None,
+      expected_outcome_posterior: backend.Tensor | None,
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
   ) -> xr.Dataset:
     """Computes the parts of `MediaSummary` related to mean expected outcome."""
-    mean_expected_outcome_prior = backend.reduce_mean(
-        expected_outcome_prior, (0, 1)  # pyrefly: ignore[bad-argument-type]
-    )
-    mean_expected_outcome_posterior = backend.reduce_mean(
-        expected_outcome_posterior, (0, 1)  # pyrefly: ignore[bad-argument-type]
-    )
-
     return _central_tendency_and_ci_by_prior_and_posterior(
-        prior=(
-            incremental_outcome_prior  # pyrefly: ignore[unsupported-operation]
-            / mean_expected_outcome_prior[..., None]
-            * 100
+        prior=_pct_of_contribution(
+            incremental_outcome_prior, expected_outcome_prior
         ),
-        posterior=(
-            incremental_outcome_posterior  # pyrefly: ignore[unsupported-operation]
-            / mean_expected_outcome_posterior[..., None]
-            * 100
+        posterior=_pct_of_contribution(
+            incremental_outcome_posterior, expected_outcome_posterior
         ),
         metric_name=constants.PCT_OF_CONTRIBUTION,
         xr_dims=xr_dims,

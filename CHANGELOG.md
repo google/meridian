@@ -31,6 +31,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Deprecate the unused `optimal_frequency` argument of
     `Analyzer.summary_metrics`. Passing it now raises a `DeprecationWarning`
     and has no effect.
+*   Add `include_prior` and `include_posterior` arguments to
+    `Analyzer.summary_metrics` to compute metrics for only the prior or only
+    the posterior distribution. `Analyzer.optimal_freq` uses them, so
+    `optimal_freq` and budget optimization with reach and frequency channels
+    no longer require `sample_prior()` when `use_posterior=True`.
 
 ## [2.1.0] - 2026-09-17
 
