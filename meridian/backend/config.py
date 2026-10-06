@@ -112,7 +112,7 @@ _TRUTHY_JAX_X64_VALUES = ("1", "true")
 def _configure_jax_precision() -> None:
   """Configures JAX 64-bit precision based on the MERIDIAN_ENABLE_JAX_X64 env var."""
   _enable_jax_x64_str = os.environ.get("MERIDIAN_ENABLE_JAX_X64", "true")
-  import jax  # pylint: disable=g-import-not-at-top,unused-import # pytype: disable=import-error
+  import jax  # pylint: disable=g-import-not-at-top,unused-import  # pyrefly: ignore[missing-import]
 
   if _enable_jax_x64_str.lower() in _TRUTHY_JAX_X64_VALUES:
     jax.config.update("jax_enable_x64", True)

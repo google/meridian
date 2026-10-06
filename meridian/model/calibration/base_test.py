@@ -462,7 +462,7 @@ class CalibrationInputTest(parameterized.TestCase):
   ) -> None:
     with self.assertRaisesRegex(ValueError, error_msg):
       base.CalibrationInput(
-          channel_name="Search", total_spend=total_spend  # pyrefly: ignore[bad-argument-type]
+          channel_name="Search", total_spend=total_spend
       )
 
   def test_calibration_input_creation_with_non_default_decay_args(self) -> None:

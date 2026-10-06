@@ -187,7 +187,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
   ):
     new_param = {k: backend.ones(v) for k, v in new_param_shapes.items()}
     with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
-      tensors.DataTensors(**new_param)  # pyrefly: ignore[bad-argument-type]
+      tensors.DataTensors(**new_param)
 
   def test_validate_wrong_geos_media(self):
     new_data = tensors.DataTensors(
@@ -641,7 +641,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     else:
       tensor = getattr(self.meridian_media_and_rf.input_data, param_name)
 
-    new_data = tensors.DataTensors(**{  # pyrefly: ignore[bad-argument-type]
+    new_data = tensors.DataTensors(**{
         param_name: tensor,
     })
     required = [constants.MEDIA]
@@ -809,7 +809,7 @@ class DataTensorsBuilderTest(backend_test_utils.MeridianTestCase):
     historical_frequency = self.meridian.model_context.rf_tensors.frequency
     historical_impressions = historical_reach * historical_frequency  # pyrefly: ignore[unsupported-operation]
 
-    expected_frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
+    expected_frequency = backend.ones_like(
         historical_impressions
     ) * backend.to_tensor(optimal_frequency, dtype=backend.float_dtype)
     expected_reach = historical_impressions / expected_frequency
@@ -1535,7 +1535,7 @@ class DataTensorsBuilderBaselineTest(backend_test_utils.MeridianTestCase):
     times = ("2021-01-04", "2021-01-11", "2021-01-18")
     data = tensors.DataTensors(time=times)
     self.assertIsNotNone(data.time_coordinates)
-    self.assertEqual(data.time_coordinates.all_dates_str, list(times))  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(data.time_coordinates.all_dates_str, list(times))
 
   def test_expand_selected_time_dims_returns_none_when_time_is_none(self):
     data = tensors.DataTensors()

@@ -1516,7 +1516,7 @@ class InputDataTest(parameterized.TestCase):
 
     # 1. Verify dimensions
     self.assertEqual(
-        allocated_spend.dims,  # pytype: disable=attribute-error
+        allocated_spend.dims,  # pyrefly: ignore[missing-attribute]
         (constants.GEO, constants.TIME, constants.MEDIA_CHANNEL),
     )
     self.assertLen(allocated_spend[constants.GEO], self.n_geos)  # pyrefly: ignore[unsupported-operation]
@@ -1530,7 +1530,7 @@ class InputDataTest(parameterized.TestCase):
     )
 
     # 2. Verify total spend conservation per channel
-    total_allocated = allocated_spend.sum(dim=[constants.GEO, constants.TIME])  # pytype: disable=attribute-error
+    total_allocated = allocated_spend.sum(dim=[constants.GEO, constants.TIME])  # pyrefly: ignore[missing-attribute]
     xr.testing.assert_allclose(total_allocated, data.media_spend)
 
   def test_allocate_rf_spend_all_zero_media(self):
@@ -1567,7 +1567,7 @@ class InputDataTest(parameterized.TestCase):
 
     # Verify dimensions are still correct
     self.assertEqual(
-        allocated_spend.dims,  # pytype: disable=attribute-error
+        allocated_spend.dims,  # pyrefly: ignore[missing-attribute]
         (constants.GEO, constants.TIME, constants.RF_CHANNEL),
     )
 

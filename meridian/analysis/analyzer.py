@@ -65,12 +65,12 @@ def get_central_tendency_and_ci(
     A numpy array or backend.Tensor containing the mean and credible intervals
     for the given data. Optionally, it also includes the median.
   """
-  mean = np.mean(data, axis=axis, keepdims=False)  # pyrefly: ignore[no-matching-overload]
-  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)  # pyrefly: ignore[no-matching-overload]
-  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)  # pyrefly: ignore[no-matching-overload]
+  mean = np.mean(data, axis=axis, keepdims=False)
+  ci_lo = np.quantile(data, (1 - confidence_level) / 2, axis=axis)
+  ci_hi = np.quantile(data, (1 + confidence_level) / 2, axis=axis)
 
   if include_median:
-    median = np.median(data, axis=axis, keepdims=False)  # pyrefly: ignore[no-matching-overload]
+    median = np.median(data, axis=axis, keepdims=False)
     return np.stack([mean, median, ci_lo, ci_hi], axis=-1)
   else:
     return np.stack([mean, ci_lo, ci_hi], axis=-1)
@@ -1053,10 +1053,10 @@ class Analyzer:
       )
     n_media_times = self.model_context.n_media_times
     if data_tensors.media is not None:
-      n_times = data_tensors.media.shape[1]  # pyrefly: ignore[missing-attribute]
+      n_times = data_tensors.media.shape[1]
       n_times_output = n_times if n_times != n_media_times else None
     elif data_tensors.reach is not None:
-      n_times = data_tensors.reach.shape[1]  # pyrefly: ignore[missing-attribute]
+      n_times = data_tensors.reach.shape[1]
       n_times_output = n_times if n_times != n_media_times else None
     else:
       raise ValueError("Both media_scaled and reach_scaled cannot be None.")
@@ -2108,7 +2108,7 @@ class Analyzer:
     test_draws = np.where(  # pyrefly: ignore[no-matching-overload]
         self.model_context.compiled_holdout_id, draws, np.nan
     )
-    draws_by_evaluation_set = np.stack(  # pyrefly: ignore[no-matching-overload]
+    draws_by_evaluation_set = np.stack(
         [train_draws, test_draws, draws], axis=0
     )  # shape (n_evaluation_sets(=3), n_chains, n_draws, n_geos, n_times)
     draws_by_evaluation_set = self.filter_and_aggregate_by_indices(
@@ -3146,7 +3146,7 @@ class Analyzer:
         (len(freq_grid), self.model_context.n_rf_channels, 4)  # pyrefly: ignore[bad-argument-type]
     )
 
-    for i, freq in enumerate(freq_grid):  # pyrefly: ignore[bad-argument-type, not-iterable]
+    for i, freq in enumerate(freq_grid):  # pyrefly: ignore[not-iterable]
       inputs = builder.build_unscaled_inputs(
           new_data=new_data,
           required_tensors_names=[
@@ -3370,7 +3370,7 @@ class Analyzer:
             aggregate_times=False,
         )
     )
-    expected = np.mean(  # pyrefly: ignore[no-matching-overload]
+    expected = np.mean(
         self.expected_outcome(
             batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
         ),
@@ -3622,9 +3622,9 @@ class Analyzer:
         continue
 
       if rhat[param].ndim == 2:
-        row_idx, col_idx = np.where(rhat[param] > bad_rhat_threshold)  # pyrefly: ignore[unsupported-operation]
+        row_idx, col_idx = np.where(rhat[param] > bad_rhat_threshold)
       elif rhat[param].ndim == 1:
-        row_idx = np.where(rhat[param] > bad_rhat_threshold)[0]  # pyrefly: ignore[unsupported-operation]
+        row_idx = np.where(rhat[param] > bad_rhat_threshold)[0]
         col_idx = []
       elif rhat[param].ndim == 0:
         row_idx = col_idx = []
@@ -3635,10 +3635,10 @@ class Analyzer:
           pd.Series({
               constants.PARAM: param,
               constants.N_PARAMS: np.prod(rhat[param].shape),
-              constants.AVG_R_HAT: np.nanmean(rhat[param]),  # pyrefly: ignore[no-matching-overload]
-              constants.MAX_R_HAT: np.nanmax(rhat[param]),  # pyrefly: ignore[no-matching-overload]
+              constants.AVG_R_HAT: np.nanmean(rhat[param]),
+              constants.MAX_R_HAT: np.nanmax(rhat[param]),
               constants.PERCENT_BAD_R_HAT: np.nanmean(
-                  rhat[param] > bad_rhat_threshold  # pyrefly: ignore[unsupported-operation]
+                  rhat[param] > bad_rhat_threshold
               ),
               constants.ROW_IDX_BAD_R_HAT: row_idx,
               constants.COL_IDX_BAD_R_HAT: col_idx,
@@ -3747,7 +3747,7 @@ class Analyzer:
           revenue_per_kpi=filled_data.revenue_per_kpi,
           time=filled_data.time,
       )
-      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+      frequency = backend.ones_like(filled_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type]
           self.optimal_freq(
               new_data=opt_freq_data,
               selected_geos=selected_geos,
@@ -3936,7 +3936,7 @@ class Analyzer:
     final_df[constants.IS_INT_TIME_UNIT] = final_df[constants.TIME_UNITS].apply(
         lambda x: x.is_integer()
     )
-    return final_df  # pyrefly: ignore[bad-return]
+    return final_df
 
   def _get_hill_curves_dataframe(
       self,
@@ -4282,7 +4282,7 @@ class Analyzer:
             n_bins=n_bins,
         )
         df_list.append(pd.DataFrame(organic_rf_hist_data))
-    return pd.concat(df_list, ignore_index=True)  # pyrefly: ignore[bad-return]
+    return pd.concat(df_list, ignore_index=True)
 
   def hill_curves(
       self,
@@ -4398,9 +4398,9 @@ class Analyzer:
       * `cpm` (spend for every 1,000 impressions)
     """
     pct_of_impressions = (
-        impressions_with_total / impressions_with_total[..., -1:] * 100  # pyrefly: ignore[unsupported-operation]
+        impressions_with_total / impressions_with_total[..., -1:] * 100
     )
-    pct_of_spend = spend_with_total / spend_with_total[..., -1:] * 100  # pyrefly: ignore[unsupported-operation]
+    pct_of_spend = spend_with_total / spend_with_total[..., -1:] * 100
 
     return xr.Dataset(
         data_vars={
@@ -4410,7 +4410,7 @@ class Analyzer:
             constants.PCT_OF_SPEND: (xr_dims, pct_of_spend),
             constants.CPM: (
                 xr_dims,
-                spend_with_total / impressions_with_total * 1000,  # pyrefly: ignore[unsupported-operation]
+                spend_with_total / impressions_with_total * 1000,
             ),
         },
         coords=xr_coords,
@@ -4779,4 +4779,4 @@ class Analyzer:
         use_kpi=use_kpi,
         batch_size=batch_size,
     )
-    return np.mean(baseline_draws < 0)  # pyrefly: ignore[unsupported-operation]
+    return np.mean(baseline_draws < 0)

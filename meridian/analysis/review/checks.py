@@ -148,7 +148,7 @@ class ConvergenceCheck(
     rhats = self._analyzer.get_rhat()
     with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=RuntimeWarning)
-      max_r_hats = {k: np.nanmax(v) for k, v in rhats.items()}  # pyrefly: ignore[no-matching-overload]
+      max_r_hats = {k: np.nanmax(v) for k, v in rhats.items()}
 
     valid_rhat_items = [
         item for item in max_r_hats.items() if not np.isnan(item[1])
@@ -318,7 +318,7 @@ class BayesianPPPCheck(
             aggregate_times=False,
         )
     )
-    total_outcome_actual = np.sum(total_actual_outcome_filtered)  # pyrefly: ignore[no-matching-overload]
+    total_outcome_actual = np.sum(total_actual_outcome_filtered)
 
     total_outcome_posterior = analyzer.expected_outcome(
         aggregate_times=True,

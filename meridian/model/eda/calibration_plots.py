@@ -226,7 +226,7 @@ def make_density_line_chart(
           x=f'{constants.ROI}:Q',
           y=f'{eda_constants.DENSITY}:Q',
           color=alt.Color(f'{eda_constants.LABEL}:N', scale=color_scale),
-          opacity=alt.condition(  # pyrefly: ignore[no-matching-overload]
+          opacity=alt.condition(
               legend_selection, alt.value(1.0), alt.value(0.15)
           ),
           tooltip=tooltips,
@@ -360,7 +360,7 @@ def build_calibration_chart(
         make_density_line_chart(
             plot_data.baseline_df,
             unified_color_scale,
-            legend_selection,  # pyrefly: ignore[bad-argument-type]
+            legend_selection,
             tooltips,
             stroke_dash=[5, 5],
         )
@@ -373,7 +373,7 @@ def build_calibration_chart(
         make_density_line_chart(
             combined_exp_df,
             unified_color_scale,
-            legend_selection,  # pyrefly: ignore[bad-argument-type]
+            legend_selection,
             tooltips,
         )
     )
@@ -401,7 +401,7 @@ def build_calibration_chart(
   calibrated_line_chart = make_density_line_chart(
       plot_data.calibrated_df,
       unified_color_scale,
-      legend_selection,  # pyrefly: ignore[bad-argument-type]
+      legend_selection,
       tooltips,
       stroke_width=2.5,
   )

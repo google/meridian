@@ -865,14 +865,14 @@ class EDAEngine:
     """The raw reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_raw_da  # pytype: disable=attribute-error
+    return self._rf_data.reach_raw_da
 
   @property
   def reach_scaled_da(self) -> xr.DataArray | None:
     """The scaled reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.reach_scaled_da  # pytype: disable=attribute-error
+    return self._rf_data.reach_scaled_da
 
   @property
   def national_reach_raw_da(self) -> xr.DataArray | None:
@@ -886,35 +886,35 @@ class EDAEngine:
     """The national scaled reach data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_reach_scaled_da  # pytype: disable=attribute-error
+    return self._rf_data.national_reach_scaled_da
 
   @property
   def frequency_da(self) -> xr.DataArray | None:
     """The frequency data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.frequency_da  # pytype: disable=attribute-error
+    return self._rf_data.frequency_da
 
   @property
   def national_frequency_da(self) -> xr.DataArray | None:
     """The national frequency data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_frequency_da  # pytype: disable=attribute-error
+    return self._rf_data.national_frequency_da
 
   @property
   def rf_impressions_raw_da(self) -> xr.DataArray | None:
     """The raw RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.rf_impressions_raw_da  # pytype: disable=attribute-error
+    return self._rf_data.rf_impressions_raw_da
 
   @property
   def national_rf_impressions_raw_da(self) -> xr.DataArray | None:
     """The national raw RF impressions data array."""
     if self._rf_data is None:
       return None
-    return self._rf_data.national_rf_impressions_raw_da  # pytype: disable=attribute-error
+    return self._rf_data.national_rf_impressions_raw_da
 
   @property
   def rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -945,14 +945,14 @@ class EDAEngine:
     """The raw organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_raw_da  # pytype: disable=attribute-error
+    return self._organic_rf_data.reach_raw_da
 
   @property
   def organic_reach_scaled_da(self) -> xr.DataArray | None:
     """The scaled organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.reach_scaled_da  # pytype: disable=attribute-error
+    return self._organic_rf_data.reach_scaled_da
 
   @property
   def national_organic_reach_raw_da(self) -> xr.DataArray | None:
@@ -966,7 +966,7 @@ class EDAEngine:
     """The national scaled organic reach data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.national_reach_scaled_da  # pytype: disable=attribute-error
+    return self._organic_rf_data.national_reach_scaled_da
 
   @property
   def organic_rf_impressions_scaled_da(self) -> xr.DataArray | None:
@@ -987,14 +987,14 @@ class EDAEngine:
     """The organic frequency data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.frequency_da  # pytype: disable=attribute-error
+    return self._organic_rf_data.frequency_da
 
   @property
   def national_organic_frequency_da(self) -> xr.DataArray | None:
     """The national organic frequency data array."""
     if self._organic_rf_data is None:
       return None
-    return self._organic_rf_data.national_frequency_da  # pytype: disable=attribute-error
+    return self._organic_rf_data.national_frequency_da
 
   @property
   def organic_rf_impressions_raw_da(self) -> xr.DataArray | None:

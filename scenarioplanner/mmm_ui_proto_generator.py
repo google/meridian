@@ -342,7 +342,7 @@ def _create_subspecs(
   specs.append(all_period_spec)
 
   for generator_class in time_breakdown_generators:
-    generator = generator_class(date_range)  # pytype: disable=not-instantiable
+    generator = generator_class(date_range)
     date_intervals = generator.generate_date_intervals()
     for start_date, end_date in date_intervals:
       date_interval_tag = create_tag(generator_class, start_date)

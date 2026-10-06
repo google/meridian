@@ -58,7 +58,7 @@ class TrainedModel(abc.ABC):
     """
     # Ideally, this could be encoded in the model type itself, and we won't need
     # this extra runtime check.
-    if mmm.inference_data.prior is None or mmm.inference_data.posterior is None:  # pytype: disable=attribute-error
+    if mmm.inference_data.prior is None or mmm.inference_data.posterior is None:  # pyrefly: ignore[missing-attribute]
       raise ValueError('MMM model has not been fitted.')
     self._mmm = mmm
 

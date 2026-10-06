@@ -61,7 +61,7 @@ class DataFrameModelConverter(mmm_converter.ModelConverter[pd.DataFrame]):
     output = {}
 
     for converter_class in self._converters:
-      converter_instance = converter_class(self.mmm)  # pytype: disable=not-instantiable
+      converter_instance = converter_class(self.mmm)
       for table_name, table_data in converter_instance():
         if output.get(table_name) is not None:
           raise ValueError(f"Duplicate table name: {table_name}")

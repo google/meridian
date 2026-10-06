@@ -362,7 +362,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
-    self.assertEqual(plot.data[c.TIME].nunique(), 3)  # pyrefly: ignore[bad-index, missing-attribute]
+    self.assertEqual(plot.data[c.TIME].nunique(), 3)  # pyrefly: ignore[bad-index]
 
   def test_distribution_selected_time_dim(self):
     plot = self.model_diagnostics.plot_prior_and_posterior_distribution(
@@ -373,7 +373,7 @@ class ModelDiagnosticsTest(parameterized.TestCase):
         list(plot.data.columns),  # pyrefly: ignore[missing-attribute]
         [c.TIME, c.MU_T, c.DISTRIBUTION],
     )
-    self.assertEqual(plot.data[c.TIME].nunique(), 2)  # pyrefly: ignore[bad-index, missing-attribute]
+    self.assertEqual(plot.data[c.TIME].nunique(), 2)  # pyrefly: ignore[bad-index]
 
   def test_plot_rhat_boxplot_pre_fitting_raises_exception(self):
     not_fitted_mmm = mock.create_autospec(model.Meridian, instance=True)

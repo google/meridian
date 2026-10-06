@@ -180,7 +180,7 @@ class WeeklyOptimizationGrid:
     )
     if selected_times_opt is not None:
       selected_times_list = [
-          t.strftime(c.DATE_FORMAT) if not isinstance(t, str) else t  # pyrefly: ignore[missing-attribute]
+          t.strftime(c.DATE_FORMAT) if not isinstance(t, str) else t
           for t in selected_times_opt
       ]
       time_indices = backend.to_tensor(
@@ -359,7 +359,7 @@ class WeeklyOptimizationGrid:
         return tensor
       return tensor[start:stop, ...]
 
-    for i in range(0, len(all_multipliers_array), multiplier_batch_size):  # pyrefly: ignore[bad-argument-type]
+    for i in range(0, len(all_multipliers_array), multiplier_batch_size):
       batch = all_multipliers_array[i : i + multiplier_batch_size]
       chain_outcomes = []
       chain_weights = []
@@ -484,7 +484,7 @@ class WeeklyOptimizationGrid:
       betas = []
       if media_base_scaled is not None:
         media_t1 = eqs.adstock_hill_media(
-            media=media_base_scaled * multiplier_float,  # pyrefly: ignore[unsupported-operation]
+            media=media_base_scaled * multiplier_float,
             alpha=alpha_m,
             ec=ec_m,
             slope=slope_m,
@@ -493,7 +493,7 @@ class WeeklyOptimizationGrid:
             n_times_output=n_times,
         )
         media_t0 = eqs.adstock_hill_media(
-            media=media_base_scaled * 0.0,  # pyrefly: ignore[unsupported-operation]
+            media=media_base_scaled * 0.0,
             alpha=alpha_m,
             ec=ec_m,
             slope=slope_m,
@@ -506,7 +506,7 @@ class WeeklyOptimizationGrid:
 
       if reach_base_scaled is not None:
         rf_t1 = eqs.adstock_hill_rf(
-            reach=reach_base_scaled * multiplier_float,  # pyrefly: ignore[unsupported-operation]
+            reach=reach_base_scaled * multiplier_float,
             frequency=frequency_base,
             alpha=alpha_rf,
             ec=ec_rf,
@@ -516,7 +516,7 @@ class WeeklyOptimizationGrid:
             n_times_output=n_times,
         )
         rf_t0 = eqs.adstock_hill_rf(
-            reach=reach_base_scaled * 0.0,  # pyrefly: ignore[unsupported-operation]
+            reach=reach_base_scaled * 0.0,
             frequency=frequency_base,
             alpha=alpha_rf,
             ec=ec_rf,

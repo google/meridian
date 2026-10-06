@@ -881,7 +881,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
   def test_default_hist_spend_with_time_geo_dims(self):
     expected_spend = np.round(
-        np.sum(self.meridian_media_and_rf.total_spend, axis=(0, 1))  # pyrefly: ignore[no-matching-overload]
+        np.sum(self.meridian_media_and_rf.total_spend, axis=(0, 1))
     )
 
     optimization_results = self.budget_optimizer_media_and_rf.optimize()
@@ -1093,7 +1093,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimal_frequency,
     )
     expected_frequency = (
-        backend.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+        backend.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)  # pyrefly: ignore[bad-argument-type]
         * optimal_frequency
     )
     backend_test_utils.assert_allclose(new_media, expected_media)
@@ -2061,7 +2061,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, np.nan, np.nan, np.nan, np.nan],
         ],
     )
-    new_frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
+    new_frequency = backend.ones_like(
         self.meridian_media_and_rf.rf_tensors.frequency  # pyrefly: ignore[bad-argument-type]
     ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float_dtype)
     mock_incremental_outcome.assert_called_with(
@@ -2159,7 +2159,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             [1.0, np.nan],
         ],
     )
-    new_frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
+    new_frequency = backend.ones_like(
         self.meridian_media_and_rf.rf_tensors.frequency  # pyrefly: ignore[bad-argument-type]
     ) * backend.to_tensor(optimal_frequency.values, dtype=backend.float_dtype)
     mock_incremental_outcome.assert_called_with(
@@ -5693,7 +5693,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time, cpmu=self.cpmu, media=media
     )
-    expected_spend = media * self.cpmu  # pyrefly: ignore[unsupported-operation]
+    expected_spend = media * self.cpmu
     backend_test_utils.assert_allclose(result.media, media)
     backend_test_utils.assert_allclose(result.media_spend, expected_spend)
 
@@ -5708,7 +5708,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     result = self.budget_optimizer.create_optimization_tensors(
         time=self.time, cpmu=self.cpmu, media_spend=media_spend
     )
-    expected_media = media_spend / self.cpmu  # pyrefly: ignore[unsupported-operation]
+    expected_media = media_spend / self.cpmu
     # Avoid the pytype check complaint.
     assert result.media is not None and result.media_spend is not None
     backend_test_utils.assert_allclose(result.media_spend, media_spend)
@@ -5765,7 +5765,7 @@ class OptimizerNewDataTensorsTest(parameterized.TestCase):
     self.assertEqual(result.frequency.shape, (2, 2, 1))
     self.assertEqual(result.reach.shape, (2, 2, 1))
 
-    calculated_rf_spend = result.reach * result.frequency * self.cprf  # pyrefly: ignore[unsupported-operation]
+    calculated_rf_spend = result.reach * result.frequency * self.cprf
     backend_test_utils.assert_allclose(
         result.frequency, backend.ones((2, 2, 1))
     )

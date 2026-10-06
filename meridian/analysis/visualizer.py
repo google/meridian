@@ -279,7 +279,7 @@ class ModelDiagnostics:
         upper=parameter_99_max * c.OUTLIER_CLIP_FACTOR
     )
     plot = (
-        alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)  # pyrefly: ignore[bad-argument-type]
+        alt.Chart(prior_posterior_df, width=c.VEGALITE_FACET_DEFAULT_WIDTH)
         .transform_density(
             parameter, groupby=groupby, as_=[parameter, 'density']
         )

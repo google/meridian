@@ -2681,7 +2681,7 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
     assert plot is not None
     subplot = plot.vconcat[0] if hasattr(plot, 'vconcat') else plot
     labels = []
-    for layer in subplot.hconcat[0].layer:  # pyrefly: ignore[missing-attribute]
+    for layer in subplot.hconcat[0].layer:
       if (
           getattr(layer, 'data', None) is not None
           and layer.data is not alt.Undefined

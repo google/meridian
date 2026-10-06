@@ -1363,13 +1363,13 @@ class InputDataLoaderTest(parameterized.TestCase):
 
     self.assertIsNotNone(data.revenue_per_kpi)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
-        (data.revenue_per_kpi.values == expected_revenue_per_kpi).all()  # pytype: disable=attribute-error
+        (data.revenue_per_kpi.values == expected_revenue_per_kpi).all()  # pyrefly: ignore[missing-attribute]
     )
 
     self.assertIsNotNone(data.media)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
-            np.sort(data.media.values, axis=None)  # pytype: disable=attribute-error
+            np.sort(data.media.values, axis=None)  # pyrefly: ignore[missing-attribute]
             == np.sort(expected_media, axis=None)
         ).all()
     )
@@ -1377,7 +1377,7 @@ class InputDataLoaderTest(parameterized.TestCase):
     self.assertIsNotNone(data.media_spend)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
-            np.sort(data.media_spend.values, axis=None)  # pytype: disable=attribute-error
+            np.sort(data.media_spend.values, axis=None)  # pyrefly: ignore[missing-attribute]
             == np.sort(expected_media_spend, axis=None)
         ).all()
     )
@@ -1385,7 +1385,7 @@ class InputDataLoaderTest(parameterized.TestCase):
     self.assertIsNotNone(data.controls)  # pyrefly: ignore[missing-attribute]
     self.assertTrue(
         (
-            np.sort(data.controls.values, axis=None)  # pytype: disable=attribute-error
+            np.sort(data.controls.values, axis=None)  # pyrefly: ignore[missing-attribute]
             == np.sort(expected_controls, axis=None)
         ).all()
     )
@@ -3005,8 +3005,8 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
     data = loader.load()
 
     expected_channel_coords = ['yt', 'ads', 'tv']
-    self.assertEqual(list(data.media.media_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
-    self.assertEqual(list(data.media_spend.media_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+    self.assertEqual(list(data.media.media_channel.values), expected_channel_coords)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(list(data.media_spend.media_channel.values), expected_channel_coords)  # pyrefly: ignore[missing-attribute]
 
   def test_csv_loader_maintains_user_rf_channel_order(self):
     coord_to_columns = load.CoordToColumns(
@@ -3039,9 +3039,9 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
     data = loader.load()
 
     expected_channel_coords = ['yt', 'ads']
-    self.assertEqual(list(data.reach.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
-    self.assertEqual(list(data.frequency.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
-    self.assertEqual(list(data.rf_spend.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+    self.assertEqual(list(data.reach.rf_channel.values), expected_channel_coords)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(list(data.frequency.rf_channel.values), expected_channel_coords)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(list(data.rf_spend.rf_channel.values), expected_channel_coords)  # pyrefly: ignore[missing-attribute]
 
 
 if __name__ == '__main__':

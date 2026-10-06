@@ -539,7 +539,7 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
             media_spend=new_media_spend,
         )
     )
-    np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))  # pyrefly: ignore[no-matching-overload]
+    np.testing.assert_array_equal(np.isinf(mroi), np.full(mroi.shape, True))
 
   def test_cpik_zero_media_spend_returns_zero(self):
     new_media_spend = backend.zeros_like(
@@ -1353,7 +1353,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     backend_test_utils.assert_allclose(
         outcome,
-        default * 2.0,  # pyrefly: ignore[unsupported-operation]
+        default * 2.0,
         rtol=1e-3,
         atol=1e-3,
     )
@@ -1494,7 +1494,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
   ):
     with self.assertRaisesRegex(ValueError, expected_message):
       self.analyzer.incremental_outcome(
-          media_selected_times=media_selected_times  # pyrefly: ignore[bad-argument-type]
+          media_selected_times=media_selected_times
       )
 
   def test_incremental_outcome_new_revenue_per_kpi_correct_shape(self):
@@ -1743,7 +1743,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     ):
       self.analyzer.incremental_outcome_xr(
           include_non_paid_channels=False,
-          selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+          selected_times=selected_times,
           aggregate_geos=False,
           aggregate_times=False,
       )
@@ -4021,7 +4021,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         self.meridian.total_spend
     )
     expected_roi = (
-        self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)
         / total_spend
     )
     backend_test_utils.assert_allclose(expected_roi, roi)
@@ -4068,7 +4068,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 rf_spend=total_rf_spend,
             )
         ),
-        self.analyzer.incremental_outcome(include_non_paid_channels=False)  # pyrefly: ignore[unsupported-operation]
+        self.analyzer.incremental_outcome(include_non_paid_channels=False)
         / backend.concatenate([total_media_spend, total_rf_spend], axis=-1),  # pyrefly: ignore[bad-argument-type]
         rtol=1e-5,
     )
@@ -4104,7 +4104,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         )
     )
 
-    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))  # pyrefly: ignore[no-matching-overload]
+    np.testing.assert_array_equal(np.isinf(roi), np.full(roi.shape, True))
 
   @parameterized.product(
       use_posterior=[False, True],
@@ -4138,7 +4138,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     total_spend = self.analyzer.filter_and_aggregate_geos_and_times(
         self.meridian.total_spend
     )
-    expected_cpik = total_spend / self.analyzer.incremental_outcome(  # pyrefly: ignore[unsupported-operation]
+    expected_cpik = total_spend / self.analyzer.incremental_outcome(
         use_kpi=True, include_non_paid_channels=False
     )
     backend_test_utils.assert_allclose(expected_cpik, cpik)
@@ -5422,13 +5422,13 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     expected_actual_values = (
         meridian.kpi
         if self.input_data.revenue_per_kpi is None
-        else meridian.kpi * self.input_data.revenue_per_kpi  # pyrefly: ignore[unsupported-operation]
+        else meridian.kpi * self.input_data.revenue_per_kpi
     )  # shape (n_geos, n_times)
 
     axis_to_sum = tuple(
         ([0] if aggregate_geos else []) + ([1] if aggregate_times else [])
     )
-    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)  # pyrefly: ignore[no-matching-overload]
+    expected_actual_values = np.sum(expected_actual_values, axis=axis_to_sum)
 
     if aggregate_geos:
       self.assertNotIn(constants.GEO, ds.coords)
@@ -5669,7 +5669,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       optimal_frequency = self.analyzer.optimal_freq(
           new_data=opt_freq_data,
       ).optimal_frequency
-      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+      frequency = backend.ones_like(new_data.frequency) * backend.to_tensor(  # pyrefly: ignore[bad-argument-type]
           optimal_frequency, dtype=backend.float_dtype
       )
       reach = backend.divide_no_nan(
@@ -5700,7 +5700,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         constants.INCREMENTAL_OUTCOME
     ].sel(spend_multiplier=1.0, metric="mean")
     backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),  # pyrefly: ignore[no-matching-overload]
+        np.mean(expected_inc_outcome, axis=(0, 1)),
         inc_outcome_multiplier_1.values,
         rtol=1e-3,
         atol=1e-3,
@@ -5789,7 +5789,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       optimal_frequency = self.analyzer.optimal_freq(
           new_data=opt_freq_data,
       ).optimal_frequency
-      frequency = backend.ones_like(  # pyrefly: ignore[unsupported-operation]
+      frequency = backend.ones_like(
           self.meridian.rf_tensors.frequency  # pyrefly: ignore[bad-argument-type]
       ) * backend.to_tensor(optimal_frequency, dtype=backend.float_dtype)
       reach = backend.divide_no_nan(
@@ -5813,7 +5813,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         constants.INCREMENTAL_OUTCOME
     ].sel(spend_multiplier=1.0, metric="mean")
     backend_test_utils.assert_allclose(
-        np.mean(expected_inc_outcome, axis=(0, 1)),  # pyrefly: ignore[no-matching-overload]
+        np.mean(expected_inc_outcome, axis=(0, 1)),
         inc_outcome_multiplier_1.values,
         rtol=1e-3,
         atol=1e-3,

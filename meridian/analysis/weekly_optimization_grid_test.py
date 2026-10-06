@@ -872,7 +872,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         end_date=model_times[5],
     )
     combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-        [grid1, grid2]  # pyrefly: ignore[bad-argument-type]
+        [grid1, grid2]
     )
     self.assertIsNotNone(combined)
     expected_times = model_times[:6]
@@ -887,12 +887,12 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
 
     # Test single grid
     self.assertEqual(
-        weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1]), grid1  # pyrefly: ignore[bad-argument-type]
+        weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1]), grid1
     )
 
     # Test duplicate dates
     with self.assertRaisesRegex(ValueError, 'duplicate dates'):
-      weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1, grid1])  # pyrefly: ignore[bad-argument-type]
+      weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1, grid1])
 
     # Test non-contiguous gap
     grid_gap = weekly_optimization_grid.WeeklyOptimizationGrid.create(
@@ -903,7 +903,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         end_date=model_times[5],
     )
     with self.assertRaisesRegex(ValueError, 'contiguous'):
-      weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1, grid_gap])  # pyrefly: ignore[bad-argument-type]
+      weekly_optimization_grid.WeeklyOptimizationGrid.combine([grid1, grid_gap])
 
     # Test mismatched attributes
     grid_mismatch = weekly_optimization_grid.WeeklyOptimizationGrid.create(
@@ -915,7 +915,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     with self.assertRaisesRegex(ValueError, 'multiplier_step'):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1, grid_mismatch]  # pyrefly: ignore[bad-argument-type]
+          [grid1, grid_mismatch]
       )
 
   def test_combine_three_weekly_grids(self):
@@ -946,7 +946,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         end_date=model_times[5],
     )
     combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-        [grid1, grid2, grid3]  # pyrefly: ignore[bad-argument-type]
+        [grid1, grid2, grid3]
     )
     self.assertIsNotNone(combined)
     expected_times = model_times[:6]
@@ -979,7 +979,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     self.assertIsNotNone(grid2.opt_freq_ds)
 
     combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-        [grid1, grid2]  # pyrefly: ignore[bad-argument-type]
+        [grid1, grid2]
     )
     self.assertIsNotNone(combined)
     expected_times = model_times[:6]
@@ -994,14 +994,14 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     grid2_no_opt_freq_ds = dataclasses.replace(grid2, opt_freq_ds=None)
     with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1, grid2_no_opt_freq_ds]  # pyrefly: ignore[bad-argument-type]
+          [grid1, grid2_no_opt_freq_ds]
       )
 
     # Test mismatched opt_freq_ds presence: first grid missing opt_freq_ds
     grid1_no_opt_freq_ds = dataclasses.replace(grid1, opt_freq_ds=None)
     with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1_no_opt_freq_ds, grid2]  # pyrefly: ignore[bad-argument-type]
+          [grid1_no_opt_freq_ds, grid2]
       )
 
     # Test mismatched opt_freq_ds values
@@ -1014,7 +1014,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     with self.assertRaisesRegex(ValueError, 'different opt_freq_ds values'):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1, grid2_diff_opt_freq_ds]  # pyrefly: ignore[bad-argument-type]
+          [grid1, grid2_diff_opt_freq_ds]
       )
 
 

@@ -810,7 +810,6 @@ class InputData:
         if channel not in from_channel_to_type:
           from_channel_to_type[channel] = []
 
-      # pytype: disable=attribute-error
       if self.media_channel is not None:
         for channel in self.media_channel.values:
           from_channel_to_type[channel].append(constants.MEDIA_CHANNEL)
@@ -826,7 +825,6 @@ class InputData:
       if self.non_media_channel is not None:
         for channel in self.non_media_channel.values:
           from_channel_to_type[channel].append(constants.NON_MEDIA_CHANNEL)
-      # pytype: enable=attribute-error
 
       for channel, types in from_channel_to_type.items():
         if len(types) > 1:
@@ -963,7 +961,6 @@ class InputData:
     If both media and RF channels are present, then the RF channels are
     concatenated to the end of the media channels.
     """
-    # pytype: disable=attribute-error
     if self.media_channel is not None and self.rf_channel is not None:
       return np.concatenate(
           [self.media_channel.values, self.rf_channel.values],
@@ -975,7 +972,6 @@ class InputData:
       return self.media_channel.values
     else:
       raise ValueError("Both RF and media channel values are missing.")
-    # pytype: enable=attribute-error
 
   def get_all_adstock_hill_channels(self) -> np.ndarray:
     """Returns all channel dimensions that adstock hill is applied to.
@@ -1052,14 +1048,12 @@ class InputData:
     channel names, concatenated into a single array in that order.
     """
     channels = [self.get_all_paid_channels()]
-    # pytype: disable=attribute-error
     if self.organic_media_channel is not None:
       channels.append(self.organic_media_channel.values)
     if self.organic_rf_channel is not None:
       channels.append(self.organic_rf_channel.values)
     if self.non_media_channel is not None:
       channels.append(self.non_media_channel.values)
-    # pytype: enable=attribute-error
 
     return np.concatenate(channels)
 

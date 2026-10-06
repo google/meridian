@@ -1055,7 +1055,7 @@ class OptimizationResults:
         spend_multipliers=spend_multiplier,  # pyrefly: ignore[bad-argument-type]
         use_posterior=self.optimization_grid.use_posterior,
         selected_geos=self.optimization_grid.selected_geos,
-        selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+        selected_times=selected_times,
         by_reach=True,
         use_kpi=not self.nonoptimized_data.attrs[c.IS_REVENUE_KPI],
         use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
@@ -1149,7 +1149,7 @@ class OptimizationResults:
     if c.METRIC in delta.dims:
       delta = delta.sel(metric=c.MEAN, drop=True)
     df = delta.to_dataframe().reset_index()
-    return pd.concat([  # pyrefly: ignore[bad-return]
+    return pd.concat([
         df[df[metric] < 0].sort_values([metric]),
         df[df[metric] >= 0].sort_values([metric], ascending=False),
     ]).reset_index(drop=True)
@@ -1734,7 +1734,7 @@ class BudgetOptimizer:
         end_date=end_date,
         confidence_level=confidence_level,
         batch_size=batch_size,
-        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
+        use_historical_budget=use_historical_budget,
     )
     if optimization_grid.optimal_frequency is None:
       nonoptimized_data_with_optimal_freq = nonoptimized_data
@@ -1751,7 +1751,7 @@ class BudgetOptimizer:
           optimal_frequency=optimization_grid.optimal_frequency,  # pyrefly: ignore[bad-argument-type]
           confidence_level=confidence_level,
           batch_size=batch_size,
-          use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
+          use_historical_budget=use_historical_budget,
       )
     constraints = {
         c.FIXED_BUDGET: fixed_budget,
@@ -1773,7 +1773,7 @@ class BudgetOptimizer:
         attrs=constraints,
         confidence_level=confidence_level,
         batch_size=batch_size,
-        use_historical_budget=use_historical_budget,  # pyrefly: ignore[bad-argument-type]
+        use_historical_budget=use_historical_budget,
     )
 
     if not fixed_budget:
@@ -2487,7 +2487,7 @@ class BudgetOptimizer:
         new_data=filled_data.filter_fields(c.PAID_CHANNELS),
         optimal_frequency=optimal_frequency,
     )
-    budget = np.sum(spend_tensor)  # pyrefly: ignore[no-matching-overload]
+    budget = np.sum(spend_tensor)
     inc_outcome_data = tensors.DataTensors(
         media=new_media,
         reach=new_reach,
@@ -2563,7 +2563,7 @@ class BudgetOptimizer:
     )
     marginal_roi = analyzer_module.get_central_tendency_and_ci(
         data=backend.divide(
-            mroi_numerator, spend_tensor * incremental_increase  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+            mroi_numerator, spend_tensor * incremental_increase  # pyrefly: ignore[bad-argument-type]
         ),
         confidence_level=confidence_level,
         include_median=True,
@@ -2728,7 +2728,7 @@ class BudgetOptimizer:
     if model_context.n_media_channels > 0:
       incremental_outcome_grid[:, : model_context.n_media_channels] = (
           self._compute_media_incremental_outcome_grid(
-              multipliers_grid=multipliers_grid,  # pyrefly: ignore[bad-argument-type]
+              multipliers_grid=multipliers_grid,
               filled_data=filled_data,
               selected_geos=selected_geos,
               selected_times=selected_times,
@@ -2760,12 +2760,12 @@ class BudgetOptimizer:
               backend.ones_like(filled_data.frequency) * optimal_frequency  # pyrefly: ignore[bad-argument-type]
           )
           new_reach = backend.divide_no_nan(
-              rf_multipliers * filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
+              rf_multipliers * filled_data.reach * filled_data.frequency,
               new_frequency,
           )
         else:
           new_frequency = filled_data.frequency
-          new_reach = rf_multipliers * filled_data.reach  # pyrefly: ignore[unsupported-operation]
+          new_reach = rf_multipliers * filled_data.reach
         rf_reference_outcome = np.mean(
             np.asarray(
                 self._analyzer.incremental_outcome(
@@ -2960,9 +2960,9 @@ class BudgetOptimizer:
       )
       for i in range(n_grid_rows):
         row_outcome = self._eval_media_grid_row(
-            multiplier_row=media_multipliers[i],  # pyrefly: ignore[unsupported-operation]
-            alpha_m=dist_tensors.alpha_m,  # pyrefly: ignore[bad-argument-type]
-            slope_m=dist_tensors.slope_m,  # pyrefly: ignore[bad-argument-type]
+            multiplier_row=media_multipliers[i],
+            alpha_m=dist_tensors.alpha_m,
+            slope_m=dist_tensors.slope_m,
             media_base=media_base,
             base_t1=base_t1,
             t2=t2,

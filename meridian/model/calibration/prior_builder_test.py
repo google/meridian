@@ -241,7 +241,7 @@ class CalibrationBuilderTest(parameterized.TestCase):
     ):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          adstock_decay_spec=123,  # pytype: disable=wrong-arg-types
+          adstock_decay_spec=123,  # pyrefly: ignore[bad-argument-type]
       )
 
   def test_init_adstock_decay_spec_invalid_channel_mapping_raises_value_error(
@@ -271,7 +271,7 @@ class CalibrationBuilderTest(parameterized.TestCase):
     ):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          max_lag="invalid",  # pytype: disable=wrong-arg-types
+          max_lag="invalid",  # pyrefly: ignore[bad-argument-type]
       )
 
     with self.assertRaisesRegex(
@@ -279,7 +279,7 @@ class CalibrationBuilderTest(parameterized.TestCase):
     ):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          max_lag=True,  # pytype: disable=wrong-arg-types
+          max_lag=True,
       )
 
   def test_init_invalid_max_lag_bounds_raises_value_error(
@@ -308,28 +308,28 @@ class CalibrationBuilderTest(parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, "Alpha values must be numeric"):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          alpha={"Search": "invalid"},  # pytype: disable=wrong-arg-types
+          alpha={"Search": "invalid"},  # pyrefly: ignore[bad-assignment]
       )
 
   def test_init_invalid_alpha_type_raises_type_error(self) -> None:
     with self.assertRaisesRegex(TypeError, "alpha must be either a float"):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          alpha=[0.5],  # pytype: disable=wrong-arg-types
+          alpha=[0.5],  # pyrefly: ignore[bad-argument-type]
       )
 
   def test_init_alpha_boolean_value_raises_type_error(self) -> None:
     with self.assertRaisesRegex(TypeError, "alpha must be either a float"):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          alpha=True,  # pytype: disable=wrong-arg-types
+          alpha=True,
       )
 
   def test_init_alpha_mapping_boolean_value_raises_type_error(self) -> None:
     with self.assertRaisesRegex(TypeError, "Alpha values must be numeric"):
       prior_builder.CalibrationBuilder(
           self.mock_input_data,
-          alpha={"Search": False},  # pytype: disable=wrong-arg-types
+          alpha={"Search": False},
       )
 
   def _create_mock_distribution(self) -> mock.Mock:
@@ -779,9 +779,9 @@ class CalibrationBuilderTest(parameterized.TestCase):
           point_estimates=[1.0, 1.2],
           standard_errors=[0.1, 0.1],
           experiment_kpi_types=[constants.REVENUE, constants.REVENUE],
-          experiment_total_spends=experiment_total_spends,  # pyrefly: ignore[bad-argument-type]
-          experiment_start_dates=experiment_start_dates,  # pyrefly: ignore[bad-argument-type]
-          experiment_end_dates=experiment_end_dates,  # pyrefly: ignore[bad-argument-type]
+          experiment_total_spends=experiment_total_spends,
+          experiment_start_dates=experiment_start_dates,
+          experiment_end_dates=experiment_end_dates,
       )
 
   @parameterized.named_parameters(
@@ -828,9 +828,9 @@ class CalibrationBuilderTest(parameterized.TestCase):
           point_estimates=[1.0, 1.2],
           standard_errors=[0.1, 0.1],
           experiment_kpi_types=[constants.REVENUE, constants.REVENUE],
-          experiment_total_spends=experiment_total_spends,  # pyrefly: ignore[bad-argument-type]
-          experiment_start_dates=experiment_start_dates,  # pyrefly: ignore[bad-argument-type]
-          experiment_end_dates=experiment_end_dates,  # pyrefly: ignore[bad-argument-type]
+          experiment_total_spends=experiment_total_spends,
+          experiment_start_dates=experiment_start_dates,
+          experiment_end_dates=experiment_end_dates,
       )
 
   @parameterized.named_parameters(
@@ -1083,10 +1083,10 @@ class CalibrationBuilderTest(parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, "None/Booleans are not allowed"):
       builder.with_incrementality_experiment_result(
           channel_name="Search",
-          point_estimates=point_estimates,  # pyrefly: ignore[bad-argument-type]
-          standard_errors=standard_errors,  # pyrefly: ignore[bad-argument-type]
+          point_estimates=point_estimates,
+          standard_errors=standard_errors,
           experiment_kpi_types=kpis,
-          experiment_total_spends=experiment_total_spends,  # pyrefly: ignore[bad-argument-type]
+          experiment_total_spends=experiment_total_spends,
           experiment_start_dates=start_dates,
           experiment_end_dates=end_dates,
       )
@@ -1475,7 +1475,7 @@ class CalibrationBuilderTest(parameterized.TestCase):
   ):
     # Verify raises TypeError on booleans or invalid types.
     with self.assertRaisesRegex(TypeError, expected_regex):
-      prior_builder._coerce_optional_floats(value)  # pyrefly: ignore[bad-argument-type]
+      prior_builder._coerce_optional_floats(value)
 
   def test_coerce_required_floats_valid_cases(self):
     # Single float/int input.

@@ -51,13 +51,13 @@ class InferenceDataSerde(
   def serialize(self, obj: az.InferenceData) -> meridian_pb.InferenceData:  # pyrefly: ignore[bad-override]
     """Serializes the given Meridian inference data container into an `InferenceData` proto."""
     if hasattr(obj, _PRIOR_FIELD):
-      prior_dataset_copy = _remove_created_at_attribute(obj.prior)  # pytype: disable=attribute-error
+      prior_dataset_copy = _remove_created_at_attribute(obj.prior)  # pyrefly: ignore[missing-attribute]
       prior_bytes = bytes(prior_dataset_copy.to_netcdf(format=_NETCDF_FORMAT))
     else:
       prior_bytes = None
 
     if hasattr(obj, _POSTERIOR_FIELD):
-      posterior_dataset_copy = _remove_created_at_attribute(obj.posterior)  # pytype: disable=attribute-error
+      posterior_dataset_copy = _remove_created_at_attribute(obj.posterior)  # pyrefly: ignore[missing-attribute]
       posterior_bytes = bytes(
           posterior_dataset_copy.to_netcdf(format=_NETCDF_FORMAT)
       )
