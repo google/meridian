@@ -35,6 +35,7 @@ from meridian.model import transformers
 import numpy as np
 
 __all__ = [
+    "AggregateBaselineConstraint",
     "ChannelParameters",
     "ModelContext",
     "SaturationSpec",
@@ -56,6 +57,38 @@ class ChannelParameters:
   prefix: str
   decay_spec: str
   is_rf: bool
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class AggregateBaselineConstraint:
+  """Precomputed terms for the aggregate baseline constraint.
+
+  Used to truncate the aggregate baseline across geos and time periods at zero
+  when `ModelSpec.allows_negative_aggregate_baseline` is `False`. See
+  `ModelContext.aggregate_baseline_constraint`.
+
+  Attributes:
+    outcome_weights: Normalized `(n_geos, n_times)` outcome weights summing to
+      `n_times`. Weights are proportional to `population * revenue_per_kpi`
+      when `revenue_per_kpi` is provided, or `population` otherwise.
+    geo_weights: Normalized `(n_geos,)` outcome weights per geo summing to `1`.
+    controls_weights: Outcome-weighted `(n_geos, n_controls)` sum of scaled
+      controls over time, or `None` if the model has no control variables.
+    knot_rotation_matrix: Orthonormal `(n_knots, n_knots)` rotation matrix for
+      knots, computed from `knot_info.weights` weighted by the outcome weights
+      summed over geos.
+    knot_norm_w: Euclidean L2 norm of the outcome-weighted knot weight sums.
+    threshold_l: Scalar threshold `-n_times * mean / stdev` on the scaled KPI
+      scale. Corresponds to a zero aggregate baseline on the original outcome
+      scale.
+  """
+
+  outcome_weights: backend.Tensor
+  geo_weights: backend.Tensor
+  controls_weights: backend.Tensor | None
+  knot_rotation_matrix: np.ndarray
+  knot_norm_w: float
+  threshold_l: backend.Tensor
 
 
 def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
@@ -425,6 +458,7 @@ class ModelContext:
     self._input_data = input_data
     self._model_spec = model_spec
 
+    self._model_spec.validate_knot_values_prior()
     self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
     self._resolve_declarative_model_spec()
@@ -1012,6 +1046,95 @@ class ModelContext:
   @functools.cached_property
   def kpi_scaled(self) -> backend.Tensor:
     return self.kpi_transformer.forward(self.kpi)
+
+  @functools.cached_property
+  def aggregate_baseline_constraint(
+      self,
+  ) -> AggregateBaselineConstraint | None:
+    """Precomputed terms for the aggregate baseline constraint.
+
+    These terms are only needed when `allows_negative_aggregate_baseline` is
+    `False`. Otherwise, they are neither computed nor validated, so models that
+    don't constrain the aggregate baseline are unaffected by them.
+
+    Returns:
+      An `AggregateBaselineConstraint`, or `None` if
+      `allows_negative_aggregate_baseline` is `True`.
+
+    Raises:
+      ValueError: If the outcome weights are negative or don't have a strictly
+        positive sum, or if the population-scaled KPI is constant.
+    """
+    if self._model_spec.allows_negative_aggregate_baseline:
+      return None
+
+    pop_col = backend.expand_dims(self.population, axis=-1)  # pyrefly: ignore[bad-argument-type]
+    if self.revenue_per_kpi is not None:
+      raw_weights = pop_col * self.revenue_per_kpi
+    else:
+      raw_weights = backend.broadcast_to(pop_col, [self.n_geos, self.n_times])
+    raw_weights_np = np.asarray(raw_weights)
+    total_weight = float(np.sum(raw_weights_np))
+    if (
+        np.any(raw_weights_np < 0.0)
+        or total_weight <= 0.0
+        or not np.isfinite(total_weight)
+    ):
+      raise ValueError(
+          "Outcome weights (`population * revenue_per_kpi` or `population`)"
+          " must be non-negative and have a strictly positive sum across geos"
+          " and time periods when `allows_negative_aggregate_baseline=False`."
+          " Please ensure `population` contains positive values and has"
+          " non-zero overlap with `revenue_per_kpi`, or set"
+          " `allows_negative_aggregate_baseline=True`."
+      )
+    outcome_weights = backend.divide(
+        float(self.n_times) * raw_weights,
+        backend.reduce_sum(raw_weights),  # pyrefly: ignore[bad-argument-type]
+    )
+
+    stdev = float(np.asarray(self.kpi_transformer.population_scaled_stdev))
+    if stdev <= 0.0 or not np.isfinite(stdev):
+      kpi = self._input_data.kpi.name
+      raise ValueError(
+          f"`{kpi}` cannot be constant when"
+          " `allows_negative_aggregate_baseline=False` because standardizing"
+          " the baseline threshold requires non-zero KPI variability"
+          " (`population_scaled_stdev > 0`). Please verify that `kpi` varies"
+          " across geos or time periods, or set"
+          " `allows_negative_aggregate_baseline=True`."
+      )
+    threshold_l = backend.to_tensor(
+        -float(self.n_times)
+        * self.kpi_transformer.population_scaled_mean
+        / self.kpi_transformer.population_scaled_stdev,
+        dtype=backend.float_dtype,
+    )
+
+    time_weights = backend.reduce_sum(outcome_weights, axis=0)  # pyrefly: ignore[bad-argument-type]
+    knot_rotation_matrix, knot_norm_w = knots.compute_knot_rotation_matrix(
+        self.knot_info.weights,  # pyrefly: ignore[bad-argument-type]
+        np.asarray(time_weights),
+    )
+
+    if self.controls_scaled is None:
+      controls_weights = None
+    else:
+      controls_weights = backend.einsum(
+          "gt,gtc->gc", outcome_weights, self.controls_scaled
+      )
+
+    return AggregateBaselineConstraint(
+        outcome_weights=outcome_weights,
+        geo_weights=backend.divide(
+            backend.reduce_sum(outcome_weights, axis=-1),  # pyrefly: ignore[bad-argument-type]
+            float(self.n_times),
+        ),
+        controls_weights=controls_weights,
+        knot_rotation_matrix=knot_rotation_matrix,
+        knot_norm_w=knot_norm_w,
+        threshold_l=threshold_l,
+    )
 
   @functools.cached_property
   def media_effects_dist(self) -> str:

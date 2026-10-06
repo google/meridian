@@ -23,6 +23,7 @@ from meridian import backend
 from meridian import constants
 from meridian.model import context
 from meridian.model import equations
+import numpy as np
 
 # TODO: Break this circular dependency.
 if TYPE_CHECKING:
@@ -689,58 +690,203 @@ class PriorDistributionSampler:
     # `sample_shape` is prepended to the shape of each BatchBroadcast in `prior`
     # when it is sampled.
     sample_shape = [1, n_draws]
-
-    tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(
-        sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-    )
-    base_vars = {
-        constants.KNOT_VALUES: prior.knot_values.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        ),
-        constants.SIGMA: prior.sigma.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        ),
-        constants.TAU_G: (
-            _get_tau_g(
-                tau_g_excl_baseline=tau_g_excl_baseline,
-                baseline_geo_idx=ctx.baseline_geo_idx,
-            ).sample(seed=rng_handler.get_next_seed())
-        ),
-    }
-
-    base_vars[constants.MU_T] = backend.tfd.Deterministic(
-        backend.einsum(
-            "...k,kt->...t",
-            base_vars[constants.KNOT_VALUES],
-            backend.to_tensor(ctx.knot_info.weights),
-        ),
-        name=constants.MU_T,
-    ).sample(seed=rng_handler.get_next_seed())
-
-    # Omit gamma_c, xi_c, and gamma_gc parameters from sampled distributions if
-    # there are no control variables in the model.
-    if ctx.n_controls:
-      base_vars |= {
-          constants.GAMMA_C: prior.gamma_c.sample(
+    # TODO
+    if ctx.model_spec.allows_negative_aggregate_baseline:
+      tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
+      base_vars = {
+          constants.KNOT_VALUES: prior.knot_values.sample(
               sample_shape=sample_shape, seed=rng_handler.get_next_seed()
           ),
-          constants.XI_C: prior.xi_c.sample(
+          constants.SIGMA: prior.sigma.sample(
               sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          ),
+          constants.TAU_G: (
+              _get_tau_g(
+                  tau_g_excl_baseline=tau_g_excl_baseline,
+                  baseline_geo_idx=ctx.baseline_geo_idx,
+              ).sample(seed=rng_handler.get_next_seed())
           ),
       }
 
-      gamma_gc_dev = backend.tfd.Sample(
-          backend.tfd.Normal(
-              loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
-              scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+      base_vars[constants.MU_T] = backend.tfd.Deterministic(
+          backend.einsum(
+              "...k,kt->...t",
+              base_vars[constants.KNOT_VALUES],
+              backend.to_tensor(ctx.knot_info.weights),
           ),
-          [ctx.n_geos, ctx.n_controls],
-          name=constants.GAMMA_GC_DEV,
-      ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
-      base_vars[constants.GAMMA_GC] = backend.tfd.Deterministic(
-          base_vars[constants.GAMMA_C][..., backend.newaxis, :]
-          + base_vars[constants.XI_C][..., backend.newaxis, :] * gamma_gc_dev,
-          name=constants.GAMMA_GC,
+          name=constants.MU_T,
+      ).sample(seed=rng_handler.get_next_seed())
+
+      # Omit gamma_c, xi_c, and gamma_gc parameters from sampled distributions
+      # if there are no control variables in the model.
+      if ctx.n_controls:
+        base_vars |= {
+            constants.GAMMA_C: prior.gamma_c.sample(
+                sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+            ),
+            constants.XI_C: prior.xi_c.sample(
+                sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+            ),
+        }
+
+        gamma_gc_dev = backend.tfd.Sample(
+            backend.tfd.Normal(
+                loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+                scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+            ),
+            [ctx.n_geos, ctx.n_controls],
+            name=constants.GAMMA_GC_DEV,
+        ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+        base_vars[constants.GAMMA_GC] = backend.tfd.Deterministic(
+            base_vars[constants.GAMMA_C][..., backend.newaxis, :]
+            + base_vars[constants.XI_C][..., backend.newaxis, :] * gamma_gc_dev,
+            name=constants.GAMMA_GC,
+        ).sample(seed=rng_handler.get_next_seed())
+
+    else:
+      tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(
+          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+      )
+      base_vars = {
+          constants.SIGMA: prior.sigma.sample(
+              sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+          ),
+          constants.TAU_G: (
+              _get_tau_g(
+                  tau_g_excl_baseline=tau_g_excl_baseline,
+                  baseline_geo_idx=ctx.baseline_geo_idx,
+              ).sample(seed=rng_handler.get_next_seed())
+          ),
+      }
+
+      if ctx.n_controls:
+        base_vars |= {
+            constants.GAMMA_C: prior.gamma_c.sample(
+                sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+            ),
+            constants.XI_C: prior.xi_c.sample(
+                sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+            ),
+        }
+
+        gamma_gc_dev = backend.tfd.Sample(
+            backend.tfd.Normal(
+                loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+                scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+            ),
+            [ctx.n_geos, ctx.n_controls],
+            name=constants.GAMMA_GC_DEV,
+        ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+        base_vars[constants.GAMMA_GC] = backend.tfd.Deterministic(
+            base_vars[constants.GAMMA_C][..., backend.newaxis, :]
+            + base_vars[constants.XI_C][..., backend.newaxis, :] * gamma_gc_dev,
+            name=constants.GAMMA_GC,
+        ).sample(seed=rng_handler.get_next_seed())
+
+      if ctx.non_media_treatments_normalized is not None:
+        base_vars |= self._sample_non_media_treatments_priors(  # pyrefly: ignore[unsupported-operation]
+            n_draws, rng_handler, batch_size=batch_size
+        )
+
+      baseline_constraint = ctx.aggregate_baseline_constraint
+      assert baseline_constraint is not None
+      geo_offset = float(ctx.n_times) * backend.einsum(
+          "g,...g->...",
+          baseline_constraint.geo_weights,
+          base_vars[constants.TAU_G],
+      )
+      offset = geo_offset
+      if ctx.n_controls:
+        controls_offset = backend.einsum(
+            "gc,...gc->...",
+            baseline_constraint.controls_weights,
+            base_vars[constants.GAMMA_GC],
+        )
+        offset = offset + controls_offset
+      if (
+          ctx.non_media_treatments_normalized is not None
+          and ctx.non_media_transformer is not None
+      ):
+        non_media_baseline = (
+            self._model_equations.compute_non_media_treatments_baseline()
+        )
+        # The baseline values are already population-scaled.
+        non_media_baseline_scaled = ctx.non_media_transformer.forward(
+            non_media_baseline, apply_population_scaling=False
+        )
+        broadcast_non_media = backend.broadcast_to(
+            non_media_baseline_scaled,
+            [ctx.n_geos, ctx.n_times, ctx.n_non_media_channels],
+        )
+        non_media_offset = backend.einsum(
+            "gt,gtn,...gn->...",
+            baseline_constraint.outcome_weights,
+            broadcast_non_media,
+            base_vars[constants.GAMMA_GN],
+        )
+        offset = offset + non_media_offset
+
+      knot_dist = prior.knot_values
+      while isinstance(knot_dist, backend.tfd.BatchBroadcast):
+        knot_dist = knot_dist.distribution
+      assert isinstance(knot_dist, backend.tfd.Normal)
+      knot_dtype = knot_dist.dtype
+      knot_scale_val = float(np.reshape(np.asarray(knot_dist.scale), -1)[0])
+      knot_loc_val = float(np.reshape(np.asarray(knot_dist.loc), -1)[0])
+      knot_scale = backend.to_tensor(knot_scale_val, dtype=knot_dtype)
+      knot_loc = backend.to_tensor(knot_loc_val, dtype=knot_dtype)
+
+      low = backend.cast(
+          backend.divide(
+              baseline_constraint.threshold_l - offset,
+              baseline_constraint.knot_norm_w,
+          ),
+          dtype=knot_dtype,
+      )
+      high = backend.cast(
+          backend.maximum(low + 50.0 * knot_scale, 50.0 * knot_scale),
+          dtype=knot_dtype,
+      )
+      rotated_knot_0 = backend.tfd.TruncatedNormal(
+          loc=knot_loc,
+          scale=knot_scale,
+          low=low,
+          high=high,
+          name=constants.ROTATED_KNOT_0,
+      ).sample(seed=rng_handler.get_next_seed())
+
+      if ctx.knot_info.n_knots > 1:
+        rotated_knot_rest = backend.tfd.Sample(
+            backend.tfd.Normal(loc=knot_loc, scale=knot_scale),
+            [ctx.knot_info.n_knots - 1],
+            name=constants.ROTATED_KNOT_REST,
+        ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+        rotated_knots = backend.concatenate(
+            [backend.expand_dims(rotated_knot_0, -1), rotated_knot_rest],
+            axis=-1,
+        )
+        knot_values = backend.einsum(
+            "...k,kl->...l",
+            rotated_knots,
+            backend.to_tensor(
+                baseline_constraint.knot_rotation_matrix, dtype=knot_dtype
+            ),
+        )
+      else:
+        knot_values = backend.expand_dims(rotated_knot_0, -1)
+
+      base_vars[constants.KNOT_VALUES] = knot_values
+      base_vars[constants.MU_T] = backend.tfd.Deterministic(
+          backend.einsum(
+              "...k,kt->...t",
+              knot_values,
+              backend.to_tensor(
+                  ctx.knot_info.weights, dtype=knot_dtype
+              ),
+          ),
+          name=constants.MU_T,
       ).sample(seed=rng_handler.get_next_seed())
 
     if ctx.media_tensors.media is not None:
@@ -759,7 +905,10 @@ class PriorDistributionSampler:
       base_vars |= self._sample_organic_rf_priors(
           n_draws, rng_handler, batch_size=batch_size
       )
-    if ctx.non_media_treatments_normalized is not None:
+    if (
+        ctx.model_spec.allows_negative_aggregate_baseline
+        and ctx.non_media_treatments_normalized is not None
+    ):
       base_vars |= self._sample_non_media_treatments_priors(
           n_draws, rng_handler, batch_size=batch_size
       )

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Collection, Mapping, Sequence
+import dataclasses
 import datetime
 import types
 from typing import Any
@@ -2166,6 +2167,196 @@ class InferenceDataTest(
 
     expected = backend.to_tensor([[0.2]])
     test_utils.assert_allclose(tensor, expected)
+
+  def test_aggregate_baseline_constraint(self):
+    data = self.input_data_with_media_and_rf
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+    constraint = model_context.aggregate_baseline_constraint
+    assert constraint is not None
+
+    # Test outcome_weights and geo_weights
+    outcome_weights = constraint.outcome_weights
+    self.assertEqual(
+        outcome_weights.shape, (model_context.n_geos, model_context.n_times)
+    )
+    np.testing.assert_allclose(
+        np.sum(np.asarray(outcome_weights)),
+        float(model_context.n_times),
+        rtol=1e-5,
+    )
+
+    geo_weights = constraint.geo_weights
+    self.assertEqual(geo_weights.shape, (model_context.n_geos,))
+    np.testing.assert_allclose(
+        np.sum(np.asarray(geo_weights)),
+        1.0,
+        atol=1e-5,
+    )
+    raw_weights = np.asarray(model_context.population)[
+        :, np.newaxis
+    ] * np.asarray(model_context.revenue_per_kpi)
+    expected_geo_weights = np.sum(raw_weights, axis=-1) / np.sum(raw_weights)
+    np.testing.assert_allclose(
+        np.asarray(geo_weights),
+        expected_geo_weights,
+        rtol=1e-5,
+    )
+
+    # Test without revenue_per_kpi reduces to pure population weights
+    data_no_rpk = self.input_data_non_revenue_no_revenue_per_kpi
+    mc_no_rpk = context.ModelContext(
+        input_data=data_no_rpk,
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+    constraint_no_rpk = mc_no_rpk.aggregate_baseline_constraint
+    assert constraint_no_rpk is not None
+    np.testing.assert_allclose(
+        np.asarray(constraint_no_rpk.geo_weights),
+        np.asarray(mc_no_rpk.population)
+        / np.sum(np.asarray(mc_no_rpk.population)),
+        rtol=1e-5,
+    )
+
+    # Test knot_rotation_matrix and knot_norm_w
+    knot_weight_sums = model_context.knot_info.weights @ np.sum(
+        np.asarray(outcome_weights), axis=0
+    )
+    expected_norm_w = np.linalg.norm(knot_weight_sums)
+    np.testing.assert_allclose(
+        constraint.knot_norm_w, expected_norm_w, rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        constraint.knot_rotation_matrix[0],
+        knot_weight_sums / expected_norm_w,
+        rtol=1e-5,
+        atol=1e-6,
+    )
+
+    # Test threshold_l
+    kpi_transformer = model_context.kpi_transformer
+    expected_l = (
+        -float(model_context.n_times)
+        * float(np.asarray(kpi_transformer.population_scaled_mean))
+        / float(np.asarray(kpi_transformer.population_scaled_stdev))
+    )
+    test_utils.assert_allclose(
+        constraint.threshold_l,
+        backend.to_tensor(expected_l, dtype=backend.float_dtype),
+        atol=1e-4,
+    )
+
+    # Test controls_weights
+    if model_context.controls_scaled is not None:
+      c_weights = constraint.controls_weights
+      self.assertIsNotNone(c_weights)
+      assert c_weights is not None
+      self.assertEqual(
+          c_weights.shape, (model_context.n_geos, model_context.n_controls)
+      )
+      expected_c_weights = np.einsum(
+          "gt,gtc->gc",
+          np.asarray(outcome_weights),
+          np.asarray(model_context.controls_scaled),
+      )
+      np.testing.assert_allclose(
+          np.asarray(c_weights), expected_c_weights, rtol=1e-5, atol=1e-5
+      )
+
+  def test_init_revalidates_mutated_knot_values_prior(self):
+    model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
+    model_spec.prior.knot_values = backend.tfd.Uniform(
+        backend.np_float_dtype(-1.0), backend.np_float_dtype(1.0)
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "When `allows_negative_aggregate_baseline` is `False`,"
+        " `prior.knot_values` must be a `Normal` distribution",
+    ):
+      context.ModelContext(
+          input_data=self.input_data_with_media_and_rf,
+          model_spec=model_spec,
+      )
+
+  def _input_data_with_constant_kpi(self) -> input_data.InputData:
+    return dataclasses.replace(
+        self.input_data_with_media_and_rf,
+        kpi=self.input_data_with_media_and_rf.kpi * 0.0,
+    )
+
+  def _input_data_with_zero_outcome_weights(self) -> input_data.InputData:
+    # `population` and `revenue_per_kpi` are each valid, but don't overlap.
+    base_data = self.input_data_with_media_and_rf
+    pop = base_data.population.copy(deep=True)
+    pop.data = pop.data.copy()
+    pop.data[0] = 0.0
+    assert base_data.revenue_per_kpi is not None
+    rpk = base_data.revenue_per_kpi.copy(deep=True)
+    rpk.data = np.zeros_like(rpk.data)
+    rpk.data[0, :] = 1.0
+    return dataclasses.replace(
+        base_data,
+        population=pop,
+        revenue_per_kpi=rpk,
+    )
+
+  def test_aggregate_baseline_constraint_zero_weights_raises_value_error(self):
+    mc = context.ModelContext(
+        input_data=self._input_data_with_zero_outcome_weights(),
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Outcome weights (`population * revenue_per_kpi` or `population`)"
+        " must be non-negative and have a strictly positive sum across geos"
+        " and time periods when `allows_negative_aggregate_baseline=False`."
+        " Please ensure `population` contains positive values and has"
+        " non-zero overlap with `revenue_per_kpi`, or set"
+        " `allows_negative_aggregate_baseline=True`.",
+    ):
+      _ = mc.aggregate_baseline_constraint
+
+  def test_aggregate_baseline_constraint_constant_kpi_raises_value_error(self):
+    mc = context.ModelContext(
+        input_data=self._input_data_with_constant_kpi(),
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`kpi` cannot be constant when"
+        " `allows_negative_aggregate_baseline=False` because standardizing"
+        " the baseline threshold requires non-zero KPI variability"
+        " (`population_scaled_stdev > 0`). Please verify that `kpi` varies"
+        " across geos or time periods, or set"
+        " `allows_negative_aggregate_baseline=True`.",
+    ):
+      _ = mc.aggregate_baseline_constraint
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="constant_kpi",
+          input_data_fn="_input_data_with_constant_kpi",
+      ),
+      dict(
+          testcase_name="zero_outcome_weights",
+          input_data_fn="_input_data_with_zero_outcome_weights",
+      ),
+  )
+  def test_populate_cached_properties_default_spec_succeeds(
+      self, input_data_fn: str
+  ):
+    # `populate_cached_properties()` evaluates every cached property, and runs
+    # in `Analyzer.__init__` and posterior sampling. Models that don't opt into
+    # the aggregate baseline constraint must not fail there, even if their data
+    # couldn't satisfy it.
+    model_context = context.ModelContext(
+        input_data=getattr(self, input_data_fn)(),
+        model_spec=spec.ModelSpec(),
+    )
+    model_context.populate_cached_properties()
+    self.assertIsNone(model_context.aggregate_baseline_constraint)
 
 
 class CompiledModelSpecTest(

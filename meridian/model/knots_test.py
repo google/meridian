@@ -1442,5 +1442,95 @@ class AKSTest(parameterized.TestCase):
     self.assertGreaterEqual(added_to_underfit, added_to_saturated)
 
 
+class ComputeKnotRotationMatrixTest(parameterized.TestCase):
+  """Tests for compute_knot_rotation_matrix and KnotInfo rotation properties."""
+
+  def test_single_knot(self):
+    weights = np.ones((1, 10), dtype=np.float32)
+    q, norm_w = knots.compute_knot_rotation_matrix(weights)
+    self.assertEqual(q.shape, (1, 1))
+    self.assertEqual(q[0, 0], 1.0)
+    self.assertAlmostEqual(norm_w, 10.0)
+
+    # W^T b = norm_w * b_tilde_0
+    b_tilde = np.array([2.5], dtype=np.float32)
+    b = b_tilde @ q
+    w = np.sum(weights, axis=-1)
+    self.assertAlmostEqual(float(np.dot(w, b)), float(norm_w * b_tilde[0]))
+
+  @parameterized.parameters(2, 3, 5, 10)
+  def test_multiple_knots_orthonormality_and_decoupling(self, n_knots):
+    n_times = 50
+    knot_info = knots.get_knot_info(n_times=n_times, knots=n_knots)
+    q = knot_info.rotation_matrix
+    norm_w = knot_info.norm_w
+
+    self.assertEqual(q.shape, (n_knots, n_knots))
+
+    # Test Q is orthonormal: Q @ Q^T = I
+    identity = np.eye(n_knots)
+    np.testing.assert_allclose(q @ q.T, identity, atol=1e-5)
+
+    # Test row 0 is unit vector u = W / ||W||_2
+    w = np.sum(np.asarray(knot_info.weights), axis=-1)
+    expected_norm_w = np.linalg.norm(w)
+    self.assertAlmostEqual(norm_w, expected_norm_w, places=5)
+    u = w / expected_norm_w
+    np.testing.assert_allclose(q[0, :], u, atol=1e-5)
+
+    # Test decoupling: W^T b = norm_w * b_tilde_0 for random b_tilde
+    rng = np.random.default_rng(42)
+    for _ in range(5):
+      b_tilde = rng.standard_normal(size=(n_knots,))
+      b = b_tilde @ q
+      np.testing.assert_allclose(np.dot(w, b), norm_w * b_tilde[0], atol=1e-5)
+
+  def test_individual_knots_can_be_negative_while_aggregate_positive(self):
+    n_knots = 4
+    n_times = 20
+    knot_info = knots.get_knot_info(n_times=n_times, knots=n_knots)
+    q = knot_info.rotation_matrix
+    norm_w = knot_info.norm_w
+
+    # Choose b_tilde_0 positive, but large fluctuations in other components
+    b_tilde = np.array([1.0, -5.0, 3.0, -2.0], dtype=np.float64)
+    b = b_tilde @ q
+
+    # Total W^T b is positive because b_tilde_0 > 0
+    w = np.sum(np.asarray(knot_info.weights), axis=-1)
+    aggregate_baseline = np.dot(w, b)
+    self.assertAlmostEqual(aggregate_baseline, norm_w * b_tilde[0], places=4)
+    self.assertGreater(aggregate_baseline, 0.0)
+
+    # But at least one knot is negative (capturing time effect dips)
+    self.assertTrue(np.any(b < 0.0))
+
+  def test_aligned_with_first_basis_vector_returns_identity(self):
+    weights = np.eye(4, dtype=np.float32)
+    time_weights = np.array([4.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    q, norm_w = knots.compute_knot_rotation_matrix(weights, time_weights)
+    np.testing.assert_allclose(q, np.eye(4, dtype=np.float32))
+    self.assertAlmostEqual(norm_w, 4.0)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="all_zero_time_weights",
+          time_weights=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+      ),
+      dict(
+          testcase_name="negative_time_weights",
+          time_weights=np.array([1.0, -2.0, 1.0], dtype=np.float32),
+      ),
+  )
+  def test_invalid_knot_weights_raises_value_error(self, time_weights):
+    weights = np.eye(3, dtype=np.float32)
+    with self.assertRaisesRegex(
+        ValueError,
+        "Weighted knot sums must be non-negative with a strictly positive L2"
+        " norm",
+    ):
+      knots.compute_knot_rotation_matrix(weights, time_weights)
+
+
 if __name__ == "__main__":
   absltest.main()

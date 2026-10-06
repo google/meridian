@@ -228,6 +228,172 @@ class PosteriorMCMCSamplerTest(
     # deterministics) must yield mathematically identical log probabilities.
     test_utils.assert_allclose(log_prob_full, log_prob_sampling, atol=1e-5)
 
+  def test_get_joint_dist_sampling_structure_with_allows_negative_aggregate_baseline_false(
+      self,
+  ):
+    """Verifies that the sampling graph uses rotated knot latents."""
+    model_spec = spec.ModelSpec(
+        allows_negative_aggregate_baseline=False,
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+    )
+    input_data = self.short_input_data_with_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+
+    sampling_dist = (
+        meridian.posterior_sampler_callable._get_joint_dist_sampling_unpinned()
+    )
+    sample = sampling_dist.sample(seed=self.get_next_rng_seed_or_key())
+    sample_dict = sample._asdict()
+
+    # Rotated latent parameters must be present.
+    with self.subTest("rotated_knot_latents_present"):
+      self.assertIn(constants.ROTATED_KNOT_0, sample_dict)
+      self.assertIn(constants.ROTATED_KNOT_REST, sample_dict)
+      self.assertIn(constants.SIGMA, sample_dict)
+
+    # Deterministic knot values and mu_t must be absent in sampling graph.
+    with self.subTest("deterministic_knot_variables_absent"):
+      self.assertNotIn(constants.KNOT_VALUES, sample_dict)
+      self.assertNotIn(constants.MU_T, sample_dict)
+
+    # Full unpinned distribution includes both rotated latents and
+    # deterministics.
+    full_dist = meridian.posterior_sampler_callable._get_joint_dist_unpinned()
+    full_sample = full_dist.sample(seed=self.get_next_rng_seed_or_key())
+    full_sample_dict = full_sample._asdict()
+    with self.subTest("full_distribution_includes_rotated_and_knots"):
+      self.assertIn(constants.ROTATED_KNOT_0, full_sample_dict)
+      self.assertIn(constants.ROTATED_KNOT_REST, full_sample_dict)
+      self.assertIn(constants.KNOT_VALUES, full_sample_dict)
+      self.assertIn(constants.MU_T, full_sample_dict)
+
+  def test_sampling_log_prob_matches_full_distribution_with_allows_negative_aggregate_baseline_false(
+      self,
+  ):
+    """Verifies sampling and full graphs produce identical log prob."""
+    model_spec = spec.ModelSpec(
+        allows_negative_aggregate_baseline=False,
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+    )
+    input_data = self.short_input_data_with_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    sampler = meridian.posterior_sampler_callable
+
+    full_unpinned = sampler._get_joint_dist_unpinned()
+    full_sample = full_unpinned.sample(seed=self.get_next_rng_seed_or_key())
+    full_state = full_sample._asdict()
+
+    sampling_unpinned = sampler._get_joint_dist_sampling_unpinned()
+    sampling_keys = sampling_unpinned.dtype._fields
+    sampling_state = {k: full_state[k] for k in sampling_keys}
+
+    del full_state["y"]
+    del sampling_state["y"]
+
+    full_dist = sampler._get_joint_dist()
+    log_prob_full = full_dist.log_prob(full_state)
+
+    sampling_dist = sampler._get_joint_dist_sampling()
+    log_prob_sampling = sampling_dist.log_prob(sampling_state)
+
+    test_utils.assert_allclose(log_prob_full, log_prob_sampling, atol=1e-5)
+
+  def test_sampling_bijector_and_latent_dtypes_with_allows_negative_aggregate_baseline_false(
+      self,
+  ):
+    """Verifies uniform latent dtypes and bijector functions without error."""
+    model_spec = spec.ModelSpec(
+        allows_negative_aggregate_baseline=False,
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+        knots=5,
+    )
+    input_data = self.short_input_data_with_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    sampler = meridian.posterior_sampler_callable
+    sampling_dist = sampler._get_joint_dist_sampling_unpinned()
+    sample = sampling_dist.sample(seed=self.get_next_rng_seed_or_key())
+    sample_dict = sample._asdict()
+
+    for k, v in sample_dict.items():
+      self.assertEqual(
+          v.dtype,
+          backend.float_dtype,
+          f"Latent '{k}' has dtype {v.dtype} but expected"
+          f" {backend.float_dtype}",
+      )
+
+    pinned_sampling_dist = sampler._get_joint_dist_sampling()
+    bijector = pinned_sampling_dist.experimental_default_event_space_bijector()
+    latent_sample = {k: v for k, v in sample_dict.items() if k != "y"}
+    ldj = bijector.inverse_log_det_jacobian(
+        latent_sample, event_ndims=bijector.inverse_min_event_ndims
+    )
+    self.assertIsNotNone(ldj)
+
+  def test_get_joint_dist_allows_negative_aggregate_baseline_false_population_scaled_non_media(
+      self,
+  ):
+    """Verifies the truncation binds at zero with population-scaled non-media.
+
+    Geo and control coefficients are fixed at zero, and `gamma_gn` is fixed so
+    that the non-media treatments at their population-scaled baseline values
+    offset the mean population-scaled KPI. The aggregate baseline is then
+    proportional to the outcome-weighted sum of `mu_t`, which the constraint
+    must truncate exactly at zero.
+    """
+    input_data = self.short_input_data_non_media_and_organic
+    non_media_treatments = input_data.non_media_treatments
+    revenue_per_kpi = input_data.revenue_per_kpi
+    assert non_media_treatments is not None and revenue_per_kpi is not None
+    population = np.asarray(input_data.population)[:, np.newaxis]
+    kpi_scaled = np.asarray(input_data.kpi) / population
+    non_media_scaled = np.asarray(non_media_treatments) / population[..., None]
+    # Default (minimum) baseline value of each non-media channel, normalized.
+    non_media_baseline = (
+        non_media_scaled.min(axis=(0, 1)) - non_media_scaled.mean(axis=(0, 1))
+    ) / non_media_scaled.std(axis=(0, 1))
+    gamma_n = -kpi_scaled.mean() / kpi_scaled.std() / np.sum(non_media_baseline)
+    zero = backend.np_float_dtype(0.0)
+    model_spec = spec.ModelSpec(
+        allows_negative_aggregate_baseline=False,
+        population_scaled_non_media_channels=[
+            str(channel)
+            for channel in non_media_treatments[
+                constants.NON_MEDIA_CHANNEL
+            ].values
+        ],
+        non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+        prior=prior_distribution.PriorDistribution(
+            tau_g_excl_baseline=backend.tfd.Deterministic(zero),
+            gamma_c=backend.tfd.Deterministic(zero),
+            xi_c=backend.tfd.Deterministic(zero),
+            gamma_n=backend.tfd.Deterministic(backend.np_float_dtype(gamma_n)),
+            xi_n=backend.tfd.Deterministic(zero),
+        ),
+    )
+    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
+    sample = (
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            200, seed=self.get_next_rng_seed_or_key()
+        )
+    )
+
+    mu_t = np.asarray(sample.mu_t)  # (n_draws, n_times)
+    outcome_weights = population * np.asarray(revenue_per_kpi)
+    aggregate_baseline = np.einsum("gt,dt->d", outcome_weights, mu_t)
+    median = np.median(aggregate_baseline)
+    self.assertGreaterEqual(np.min(aggregate_baseline), -1e-3 * median)
+    self.assertLess(np.min(aggregate_baseline), 0.2 * median)
+
   @parameterized.product(
       paid_media_prior_type=[
           constants.TREATMENT_PRIOR_TYPE_ROI,
@@ -2126,6 +2292,101 @@ class PosteriorMCMCSamplerTest(
         "y", posterior, "Likelihood node 'y' must be filtered out."
     )
     self.assertNotIn("log_likelihood", posterior)
+
+  def test_sample_posterior_with_allows_negative_aggregate_baseline_false_reconstructs_knots(
+      self,
+  ):
+    """Ensures rotated knots are reconstructed and excluded from output."""
+    n_chains = 2
+    n_keep = 10
+    n_burnin = 1
+    total_mcmc_draws = n_burnin + n_keep
+
+    latent_raw_samples = {
+        constants.ROTATED_KNOT_0: backend.zeros(
+            (total_mcmc_draws, n_chains, 1)
+        ),
+        constants.ROTATED_KNOT_REST: backend.zeros(
+            (total_mcmc_draws, n_chains, self._N_TIMES_SHORT - 1)
+        ),
+    }
+
+    reconstructed_samples = {
+        constants.KNOT_VALUES: backend.zeros(
+            (n_chains, n_keep, self._N_TIMES_SHORT)
+        ),
+        constants.MU_T: backend.zeros((n_chains, n_keep, self._N_TIMES_SHORT)),
+        constants.ROTATED_KNOT_0: backend.zeros((n_chains, n_keep, 1)),
+        constants.ROTATED_KNOT_REST: backend.zeros(
+            (n_chains, n_keep, self._N_TIMES_SHORT - 1)
+        ),
+    }
+
+    mock_trace = {
+        k: backend.zeros((total_mcmc_draws, n_chains))
+        for k in [
+            "target_log_prob",
+            "diverging",
+            "accept_ratio",
+            "variance_scaling",
+            "n_steps",
+            "is_accepted",
+        ]
+    }
+    mock_trace["step_size"] = backend.ones((total_mcmc_draws, n_chains))
+    mock_trace["tune"] = backend.zeros((total_mcmc_draws, n_chains))
+
+    self.enter_context(
+        mock.patch.object(
+            backend,
+            "xla_windowed_adaptive_nuts",
+            return_value=collections.namedtuple(
+                "States", ["all_states", "trace"]
+            )(
+                all_states=collections.namedtuple(
+                    "L", latent_raw_samples.keys()  # pyrefly: ignore[bad-class-definition]
+                )(**latent_raw_samples),
+                trace=mock_trace,
+            ),
+        )
+    )
+
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "_reconstruct_posteriors",
+            return_value=reconstructed_samples,
+        )
+    )
+
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+
+    meridian.sample_posterior(
+        n_chains=n_chains, n_adapt=1, n_burnin=n_burnin, n_keep=n_keep
+    )
+
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertIn(
+        constants.KNOT_VALUES,
+        posterior,
+        "knot_values must be present in posterior.",
+    )
+    self.assertIn(
+        constants.MU_T, posterior, "mu_t must be present in posterior."
+    )
+    self.assertNotIn(
+        constants.ROTATED_KNOT_0,
+        posterior,
+        "rotated_knot_0 must not be saved to InferenceData.",
+    )
+    self.assertNotIn(
+        constants.ROTATED_KNOT_REST,
+        posterior,
+        "rotated_knot_rest must not be saved to InferenceData.",
+    )
 
 
 class PosteriorMCMCSamplerInitTest(

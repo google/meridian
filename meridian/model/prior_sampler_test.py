@@ -22,6 +22,7 @@ from meridian import constants
 from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
+from meridian.model import prior_distribution
 from meridian.model import prior_sampler
 from meridian.model import spec
 import numpy as np
@@ -766,6 +767,169 @@ class PriorDistributionSamplerTest(
         ValueError, "`batch_size` must be at least 1"
     ):
       meridian.sample_prior(n_draws=5, seed=42, batch_size=batch_size)
+
+  def _compute_aggregate_raw_baseline(
+      self,
+      meridian_instance: model.Meridian,
+      prior_dataset: az.InferenceData,
+  ) -> np.ndarray:
+    """Computes aggregate raw baseline for each prior draw."""
+    ctx = meridian_instance.model_context
+    prior = prior_dataset.prior  # pyrefly: ignore[missing-attribute]
+    mu_t = np.asarray(prior.mu_t.values[0])  # shape: (n_draws, n_times)
+
+    if ctx.is_national:
+      baseline_scaled = np.expand_dims(mu_t, 1)  # (n_draws, 1, n_times)
+      if ctx.n_controls > 0 and ctx.controls_scaled is not None:
+        gamma_c = np.asarray(prior.gamma_c.values[0])  # (n_draws, n_controls)
+        z_controls = np.asarray(ctx.controls_scaled)  # (1, n_times, n_controls)
+        baseline_scaled = baseline_scaled + np.einsum(
+            "gtc,dc->dgt", z_controls, gamma_c
+        )
+    else:
+      tau_g = np.asarray(prior.tau_g.values[0])  # (n_draws, n_geos)
+      baseline_scaled = np.expand_dims(tau_g, -1) + np.expand_dims(mu_t, -2)
+      if ctx.n_controls > 0 and ctx.controls_scaled is not None:
+        gamma_gc = np.asarray(
+            prior.gamma_gc.values[0]
+        )  # (n_draws, n_geos, n_controls)
+        z_controls = np.asarray(
+            ctx.controls_scaled
+        )  # (n_geos, n_times, n_controls)
+        baseline_scaled = baseline_scaled + np.einsum(
+            "gtc,dgc->dgt", z_controls, gamma_gc
+        )
+
+    # KpiTransformer.inverse convertsscaled baseline back to raw KPI
+    baseline_raw = np.asarray(
+        ctx.kpi_transformer.inverse(backend.to_tensor(baseline_scaled))
+    )
+    if ctx.revenue_per_kpi is not None:
+      baseline_raw = baseline_raw * np.asarray(ctx.revenue_per_kpi)
+    return np.sum(baseline_raw, axis=(-2, -1))
+
+  def test_sample_prior_allows_negative_aggregate_baseline_false_strictly_positive(
+      self,
+  ):
+    """Verifies positive aggregate baseline while allowing negative knots."""
+    n_draws = 100
+    model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
+    input_data = self.short_input_data_with_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian.sample_prior(n_draws=n_draws, seed=42)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    total_raw_baseline = self._compute_aggregate_raw_baseline(
+        meridian, meridian.inference_data
+    )
+
+    # 1. Total aggregate outcome baseline must be strictly positive across all
+    # draws.
+    self.assertTrue(np.all(total_raw_baseline > 0.0))
+
+    # 2. Individual knots are not forced positive (can take negative values for
+    # time effects).
+    knot_values = prior.knot_values.values[0]
+    self.assertTrue(np.any(knot_values < 0.0))
+
+    # 3. Rotated parameters must not be present in prior InferenceData.
+    self.assertFalse(hasattr(prior, constants.ROTATED_KNOT_0))
+    self.assertFalse(hasattr(prior, constants.ROTATED_KNOT_REST))
+
+  def test_sample_prior_allows_negative_aggregate_baseline_false_no_revenue_per_kpi(
+      self,
+  ):
+    """Verifies positive aggregate KPI when revenue_per_kpi is None."""
+    n_draws = 50
+    model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
+    input_data = self.input_data_non_revenue_no_revenue_per_kpi
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian.sample_prior(n_draws=n_draws, seed=42)
+
+    total_raw_baseline = self._compute_aggregate_raw_baseline(
+        meridian, meridian.inference_data
+    )
+    self.assertTrue(np.all(total_raw_baseline > 0.0))
+
+  def test_sample_prior_allows_negative_aggregate_baseline_false_national_model(
+      self,
+  ):
+    """Verifies positive aggregate baseline on a national model."""
+    n_draws = 50
+    model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
+    input_data = self.national_input_data_media_only
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=model_spec,
+    )
+    meridian.sample_prior(n_draws=n_draws, seed=42)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    total_raw_baseline = self._compute_aggregate_raw_baseline(
+        meridian, meridian.inference_data
+    )
+
+    self.assertTrue(np.all(total_raw_baseline > 0.0))
+    self.assertFalse(hasattr(prior, constants.ROTATED_KNOT_0))
+    self.assertFalse(hasattr(prior, constants.ROTATED_KNOT_REST))
+
+  def test_sample_prior_allows_negative_aggregate_baseline_false_population_scaled_non_media(
+      self,
+  ):
+    """Verifies the truncation binds at zero with population-scaled non-media.
+
+    Geo and control coefficients are fixed at zero, and `gamma_gn` is fixed so
+    that the non-media treatments at their population-scaled baseline values
+    offset the mean population-scaled KPI. The aggregate baseline is then
+    proportional to the outcome-weighted sum of `mu_t`, which the constraint
+    must truncate exactly at zero.
+    """
+    input_data = self.short_input_data_non_media_and_organic
+    non_media_treatments = input_data.non_media_treatments
+    revenue_per_kpi = input_data.revenue_per_kpi
+    assert non_media_treatments is not None and revenue_per_kpi is not None
+    population = np.asarray(input_data.population)[:, np.newaxis]
+    kpi_scaled = np.asarray(input_data.kpi) / population
+    non_media_scaled = np.asarray(non_media_treatments) / population[..., None]
+    # Default (minimum) baseline value of each non-media channel, normalized.
+    non_media_baseline = (
+        non_media_scaled.min(axis=(0, 1)) - non_media_scaled.mean(axis=(0, 1))
+    ) / non_media_scaled.std(axis=(0, 1))
+    gamma_n = -kpi_scaled.mean() / kpi_scaled.std() / np.sum(non_media_baseline)
+    zero = backend.np_float_dtype(0.0)
+    model_spec = spec.ModelSpec(
+        allows_negative_aggregate_baseline=False,
+        population_scaled_non_media_channels=[
+            str(channel)
+            for channel in non_media_treatments[
+                constants.NON_MEDIA_CHANNEL
+            ].values
+        ],
+        non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+        prior=prior_distribution.PriorDistribution(
+            tau_g_excl_baseline=backend.tfd.Deterministic(zero),
+            gamma_c=backend.tfd.Deterministic(zero),
+            xi_c=backend.tfd.Deterministic(zero),
+            gamma_n=backend.tfd.Deterministic(backend.np_float_dtype(gamma_n)),
+            xi_n=backend.tfd.Deterministic(zero),
+        ),
+    )
+    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
+    meridian.sample_prior(n_draws=200, seed=42)
+
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    mu_t = np.asarray(prior.mu_t.values[0])  # (n_draws, n_times)
+    outcome_weights = population * np.asarray(revenue_per_kpi)
+    aggregate_baseline = np.einsum("gt,dt->d", outcome_weights, mu_t)
+    median = np.median(aggregate_baseline)
+    self.assertGreaterEqual(np.min(aggregate_baseline), -1e-3 * median)
+    self.assertLess(np.min(aggregate_baseline), 0.2 * median)
 
 
 class PriorDistributionSamplerInitTest(
