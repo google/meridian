@@ -509,7 +509,10 @@ def _jax_split(value, num_or_size_splits, axis=0):
   import jax.numpy as jnp
 
   if not isinstance(num_or_size_splits, int):
-    indices = jnp.cumsum(jnp.array(num_or_size_splits))[:-1]
+    # `jnp.split` requires concrete (static) indices. Computing them with
+    # `jnp.cumsum` yields tracers under `jax.jit`, which raises a
+    # `ConcretizationTypeError`. Use NumPy so the indices stay static.
+    indices = np.cumsum(np.asarray(num_or_size_splits))[:-1].tolist()
     return jnp.split(value, indices, axis=axis)
 
   return jnp.split(value, num_or_size_splits, axis=axis)

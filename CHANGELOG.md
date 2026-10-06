@@ -40,6 +40,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     the posterior distribution. `Analyzer.optimal_freq` uses them, so
     `optimal_freq` and budget optimization with reach and frequency channels
     no longer require `sample_prior()` when `use_posterior=True`.
+*   Fix `ConcretizationTypeError` in `sample_posterior` on the JAX backend when
+    using `IndependentMultivariateDistribution` priors (e.g. from
+    `CalibrationBuilder`) by computing `backend.split` indices statically.
 
 ## [2.1.0] - 2026-09-17
 

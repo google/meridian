@@ -1207,6 +1207,21 @@ class BackendTest(parameterized.TestCase):
       self.assertIsInstance(result, backend.Tensor)
       test_utils.assert_allclose(result, expected)
 
+  @parameterized.named_parameters(*_split_test_cases)
+  def test_split_under_jax_jit(self, tensor_in, split_arg, kwargs, expected):
+    # Regression test for b/569843768: split indices must be static under jit.
+    self._set_backend_for_test(_JAX)
+
+    @jax.jit
+    def f(x):
+      return backend.split(x, split_arg, **kwargs)
+
+    result_list = f(jnp.asarray(tensor_in))
+
+    self.assertLen(result_list, len(expected))
+    for result, exp in zip(result_list, expected):
+      test_utils.assert_allclose(result, exp)
+
   def test_jax_extension_type_is_pytree(self):
     self._set_backend_for_test(_JAX)
 
