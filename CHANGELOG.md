@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `WeeklyOptimizationGrid` resolves the optimal frequency of reach and
+    frequency channels per optimization period, matching
+    `create_optimization_grid`.
 *   Fix `spend_share` in `ReachFrequencyOptimizationProcessor` output, which
     was reported as a percentage instead of a fraction of the total spend.
 *   `Analyzer.expected_vs_actual_data` now always returns an `evaluation_set`
