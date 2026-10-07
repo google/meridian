@@ -3603,8 +3603,10 @@ def generate_model_fit_data(
     n_time = len(time)
   else:
     n_time = 52
-    time = pd.date_range("2023-01-01", freq="W-SUN", periods=n_time).format(
-        formatter=lambda x: x.strftime("%Y-%m-%d")
+    time = (
+        pd.date_range("2023-01-01", freq="W-SUN", periods=n_time)
+        .strftime("%Y-%m-%d")
+        .tolist()
     )
 
   np.random.seed(0)
@@ -3759,8 +3761,10 @@ def generate_all_summary_metrics(aggregate_times: bool = True) -> xr.Dataset:
   channel.append(c.ALL_CHANNELS)
   metric = [c.MEAN, c.MEDIAN, c.CI_LO, c.CI_HI]
   distribution = [c.PRIOR, c.POSTERIOR]
-  time = pd.date_range("2023-01-01", freq="W-SUN", periods=5).format(
-      formatter=lambda x: x.strftime("%Y-%m-%d")
+  time = (
+      pd.date_range("2023-01-01", freq="W-SUN", periods=5)
+      .strftime("%Y-%m-%d")
+      .tolist()
   )
 
   np.random.seed(0)
@@ -4103,6 +4107,8 @@ def get_table_row_values(
 
 
 def generate_selected_times(start: str, periods: int) -> Sequence[str]:
-  return pd.date_range(start, freq="W-SUN", periods=periods).format(
-      formatter=lambda x: x.strftime("%Y-%m-%d")
+  return (
+      pd.date_range(start, freq="W-SUN", periods=periods)
+      .strftime("%Y-%m-%d")
+      .tolist()
   )

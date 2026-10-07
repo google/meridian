@@ -602,7 +602,8 @@ def generate_potential_bias_chart_json(
       on=[constants.GEO, constants.CHANNEL, constants.CONTROL_VARIABLE],
       how="left",
   )
-  df[constants.IS_MAX] = df[constants.IS_MAX].fillna(False)
+  # After the left merge, the column holds True or NaN; map NaN to False.
+  df[constants.IS_MAX] = df[constants.IS_MAX].eq(True)
 
   threshold = result.correlation_threshold
   max_abs_corr = (

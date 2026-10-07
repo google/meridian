@@ -214,6 +214,20 @@ def assert_all_non_negative(a: ArrayLike, err_msg: str = ""):
 
 
 # --- Proto Utilities ---
+def _is_repeated_field(field: FieldDescriptor) -> bool:
+  """Returns whether a field is repeated.
+
+  Newer protobuf releases deprecate `FieldDescriptor.label` in favor of
+  `is_repeated`; older runtimes only provide `label`.
+
+  Args:
+    field: The field descriptor to check.
+  """
+  if hasattr(field, "is_repeated"):
+    return field.is_repeated
+  return field.label == FieldDescriptor.LABEL_REPEATED
+
+
 def normalize_tensor_protos(proto: message.Message):
   """Recursively normalizes TensorProto messages within a proto (In-place).
 
@@ -236,7 +250,7 @@ def normalize_tensor_protos(proto: message.Message):
     # A map is defined as a repeated field whose message type has the
     # map_entry option set.
     is_map = (
-        desc.label == FieldDescriptor.LABEL_REPEATED
+        _is_repeated_field(desc)
         and desc.message_type.has_options
         and desc.message_type.GetOptions().map_entry
     )
@@ -246,7 +260,7 @@ def normalize_tensor_protos(proto: message.Message):
         # Helper checks if values are scalars or messages.
         _process_message_for_normalization(item)
 
-    elif desc.label == FieldDescriptor.LABEL_REPEATED:
+    elif _is_repeated_field(desc):
       # Handle standard repeated message fields.
       for item in value:
         _process_message_for_normalization(item)
@@ -337,8 +351,10 @@ class MeridianTestCase(parameterized.TestCase):
   def setUpClass(cls):
     super().setUpClass()
     # Enforce determinism for TensorFlow tests before any tests are run.
-    # This is a no-op with a warning for the JAX backend.
-    backend.enable_op_determinism()
+    # Op determinism is a TensorFlow-only concept (JAX is deterministic via
+    # stateless PRNGKeys), so skip it for JAX to avoid a spurious warning.
+    if config.get_backend() == config.Backend.TENSORFLOW:
+      backend.enable_op_determinism()
 
   def setUp(self):
     super().setUp()

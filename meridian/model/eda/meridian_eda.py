@@ -407,9 +407,15 @@ def _prepare_boxplot_sorting_metrics(
       outlier_df.index.get_level_values(var_dim_name).isin(unique_variables)
   ]
 
-  outlier_info = filtered_outlier_df.groupby(group_keys)[
-      eda_constants.ABS_OUTLIERS_COL_NAME
-  ].max()
+  # Cast to float: an empty groupby yields an object-dtype Series, and
+  # `fillna` on object columns triggers a pandas downcasting deprecation.
+  outlier_info = (
+      filtered_outlier_df.groupby(group_keys)[
+          eda_constants.ABS_OUTLIERS_COL_NAME
+      ]
+      .max()
+      .astype(float)
+  )
 
   return (
       std_df.join(outlier_info, how='left')
@@ -1417,7 +1423,7 @@ class MeridianEDA:
         geo_mask = pd.Series(True, index=plot_data_df.index)
       else:
         geo_mask = plot_data_df[constants.GEO] == geo_to_plot
-      plot_data = plot_data_df[sorting_mask & geo_mask]
+      plot_data = plot_data_df[sorting_mask & geo_mask].copy()
 
       color_variable = eda_constants.VARIABLE
       color_scale = None

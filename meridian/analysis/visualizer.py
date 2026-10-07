@@ -1806,7 +1806,7 @@ class MediaSummary:
     input_data = [k for k, v in data_vars.items() if len(v.shape) == 1]
     return (
         df.groupby(index_vars + input_data, sort=False)
-        .aggregate(lambda g: f'{g[0]} ({g[1]}, {g[2]})')
+        .aggregate(lambda g: f'{g.iloc[0]} ({g.iloc[1]}, {g.iloc[2]})')
         .reset_index()
         .rename(columns=columns_rename_dict)
     )

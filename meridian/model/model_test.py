@@ -435,6 +435,8 @@ class ModelTest(
               organic_media_prior_type=organic_media_prior_type,
               organic_rf_prior_type=organic_rf_prior_type,
               non_media_treatments_prior_type=non_media_treatments_prior_type,
+              # National models always use normal media effects.
+              media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
           ),
       )
 
@@ -1094,15 +1096,13 @@ class ModelPersistenceTest(
   def test_get_joint_dist_constants(self):
     zero = backend.np_float_dtype(0.0)
     model_spec = spec.ModelSpec(
+        # `beta_m`, `beta_rf`, `contribution_m`, and `contribution_rf` are
+        # omitted because they are ignored with the default ROI prior types.
         prior=prior_distribution.PriorDistribution(
             knot_values=backend.tfd.Deterministic(zero),
             tau_g_excl_baseline=backend.tfd.Deterministic(zero),
-            beta_m=backend.tfd.Deterministic(zero),
-            beta_rf=backend.tfd.Deterministic(zero),
             beta_om=backend.tfd.Deterministic(zero),
             beta_orf=backend.tfd.Deterministic(zero),
-            contribution_m=backend.tfd.Deterministic(zero),
-            contribution_rf=backend.tfd.Deterministic(zero),
             contribution_om=backend.tfd.Deterministic(zero),
             contribution_orf=backend.tfd.Deterministic(zero),
             contribution_n=backend.tfd.Deterministic(zero),
@@ -1342,14 +1342,14 @@ class ModelPersistenceTest(
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
-    transformed_media = meridian.adstock_hill_media(
+    transformed_media = meridian.model_equations.adstock_hill_media(
         media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
         decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
-    transformed_reach = meridian.adstock_hill_rf(
+    transformed_reach = meridian.model_equations.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
         frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],
@@ -1357,14 +1357,14 @@ class ModelPersistenceTest(
         slope=par[constants.SLOPE_RF],
         decay_functions=meridian.adstock_decay_spec.rf,
     )[0, :, :, :]
-    transformed_organic_media = meridian.adstock_hill_media(
+    transformed_organic_media = meridian.model_equations.adstock_hill_media(
         media=meridian.organic_media_tensors.organic_media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_OM],
         ec=par[constants.EC_OM],
         slope=par[constants.SLOPE_OM],
         decay_functions=meridian.adstock_decay_spec.organic_media,
     )[0, :, :, :]
-    transformed_organic_reach = meridian.adstock_hill_rf(
+    transformed_organic_reach = meridian.model_equations.adstock_hill_rf(
         reach=meridian.organic_rf_tensors.organic_reach_scaled,  # pyrefly: ignore[bad-argument-type]
         frequency=meridian.organic_rf_tensors.organic_frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_ORF],
@@ -1451,8 +1451,10 @@ class ModelPersistenceTest(
     n_chains = 1
     n_draws = 10
     prior_samples = meridian.prior_sampler_callable(n_draws, seed=1)
-    prior_coords = meridian.create_inference_data_coords(n_chains, n_draws)
-    prior_dims = meridian.create_inference_data_dims()
+    prior_coords = meridian.model_context.create_inference_data_coords(
+        n_chains, n_draws
+    )
+    prior_dims = meridian.model_context.create_inference_data_dims()
     inference_data = az.convert_to_inference_data(
         prior_samples,
         coords=prior_coords,
@@ -1558,8 +1560,10 @@ class ModelPersistenceTest(
         model_spec=model_spec,
     )
     prior_samples = meridian.prior_sampler_callable(self._N_DRAWS, seed=1)
-    prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
-    prior_dims = meridian.create_inference_data_dims()
+    prior_coords = meridian.model_context.create_inference_data_coords(
+        1, self._N_DRAWS
+    )
+    prior_dims = meridian.model_context.create_inference_data_dims()
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
@@ -1689,8 +1693,10 @@ class ModelPersistenceTest(
         model_spec=model_spec,
     )
     prior_samples = meridian.prior_sampler_callable(self._N_DRAWS, seed=1)
-    prior_coords = meridian.create_inference_data_coords(1, self._N_DRAWS)
-    prior_dims = meridian.create_inference_data_dims()
+    prior_coords = meridian.model_context.create_inference_data_coords(
+        1, self._N_DRAWS
+    )
+    prior_dims = meridian.model_context.create_inference_data_dims()
 
     prior_samples = dict(prior_samples)
     for param in mismatched_priors:
