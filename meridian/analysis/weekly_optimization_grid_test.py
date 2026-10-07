@@ -204,6 +204,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         weekly_grid, weekly_optimization_grid.WeeklyOptimizationGrid
     )
     assert weekly_grid is not None
+    assert weekly_grid.incremental_outcome is not None
     self.assertEqual(
         list(weekly_grid.incremental_outcome.dims),
         [c.CHANNEL, c.SPEND_MULTIPLIER, c.TIME],
@@ -345,13 +346,18 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     first_time = model_times[0]
     last_time = model_times[-1]
+    assert weekly_grid.incremental_outcome is not None
 
     # Shorten time by removing the first week so start date is missing
-    new_da_start = weekly_grid.incremental_outcome.sel(
-        time=weekly_grid.incremental_outcome.time[1:]
-    )
+    times_without_first = weekly_grid.incremental_outcome.time[1:]
     invalid_weekly_grid_start = dataclasses.replace(
-        weekly_grid, incremental_outcome=new_da_start
+        weekly_grid,
+        incremental_outcome=weekly_grid.incremental_outcome.sel(
+            time=times_without_first
+        ),
+        nonoptimized_spend=weekly_grid.nonoptimized_spend.sel(
+            time=times_without_first
+        ),
     )
     with self.assertWarnsRegex(
         UserWarning,
@@ -366,11 +372,15 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     self.assertIsNotNone(results)
 
     # Shorten time by removing the last week so end date is missing
-    new_da_end = weekly_grid.incremental_outcome.sel(
-        time=weekly_grid.incremental_outcome.time[:-1]
-    )
+    times_without_last = weekly_grid.incremental_outcome.time[:-1]
     invalid_weekly_grid_end = dataclasses.replace(
-        weekly_grid, incremental_outcome=new_da_end
+        weekly_grid,
+        incremental_outcome=weekly_grid.incremental_outcome.sel(
+            time=times_without_last
+        ),
+        nonoptimized_spend=weekly_grid.nonoptimized_spend.sel(
+            time=times_without_last
+        ),
     )
     with self.assertWarnsRegex(
         UserWarning,
@@ -436,8 +446,32 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     self.assertIsNotNone(weekly_grid_opt)
     self.assertTrue(weekly_grid_opt.use_optimal_frequency)
-    self.assertIsNotNone(weekly_grid_opt.opt_freq_ds)
-    self.assertIsInstance(weekly_grid_opt.opt_freq_ds, xr.Dataset)
+    self.assertIsInstance(weekly_grid_opt.rf_incremental_outcome, xr.DataArray)
+    self.assertEqual(
+        list(weekly_grid_opt.rf_incremental_outcome.dims),
+        [c.CHANNEL, c.FREQUENCY, c.TIME],
+    )
+    max_freq = np.max(
+        np.array(self.meridian_media_and_rf.model_context.rf_tensors.frequency)
+    )
+    np.testing.assert_allclose(
+        weekly_grid_opt.rf_incremental_outcome[c.FREQUENCY].values,
+        np.arange(1, max_freq, 0.1),
+    )
+    paid_channels = list(
+        self.meridian_media_and_rf.input_data.get_all_paid_channels()
+    )
+    self.assertEqual(
+        weekly_grid_opt.media_channels, paid_channels[:_N_MEDIA_CHANNELS]
+    )
+    self.assertEqual(
+        weekly_grid_opt.rf_channels, paid_channels[_N_MEDIA_CHANNELS:]
+    )
+    self.assertEqual(weekly_grid_opt.channels, paid_channels)
+    grid_opt = weekly_grid_opt.to_optimization_grid()
+    self.assertIsNotNone(grid_opt)
+    self.assertIsNotNone(grid_opt.optimal_frequency)
+    self.assertLen(grid_opt.optimal_frequency, _N_RF_CHANNELS)
 
     # Case 2: use_optimal_frequency=False
     weekly_grid_no_opt = weekly_optimization_grid.WeeklyOptimizationGrid.create(
@@ -448,7 +482,207 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     self.assertIsNotNone(weekly_grid_no_opt)
     self.assertFalse(weekly_grid_no_opt.use_optimal_frequency)
+    assert weekly_grid_no_opt.rf_incremental_outcome is not None
+    self.assertEqual(
+        weekly_grid_no_opt.rf_incremental_outcome.sizes[c.FREQUENCY], 1
+    )
+    grid_no_opt = weekly_grid_no_opt.to_optimization_grid()
+    self.assertIsNotNone(grid_no_opt)
+    self.assertIsNone(grid_no_opt.optimal_frequency)
     self.assertIsNone(weekly_grid_no_opt.opt_freq_ds)
+
+  def test_create_media_only_has_no_rf_outcome(self):
+    weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_only._analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+    )
+    self.assertIsNone(weekly_grid.rf_incremental_outcome)
+    self.assertEqual(weekly_grid.rf_channels, [])
+    self.assertIsNone(weekly_grid.opt_freq_ds)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='posterior_revenue',
+          use_posterior=True,
+          use_kpi=False,
+          max_frequency=None,
+      ),
+      dict(
+          testcase_name='prior',
+          use_posterior=False,
+          use_kpi=False,
+          max_frequency=None,
+      ),
+      dict(
+          testcase_name='kpi',
+          use_posterior=True,
+          use_kpi=True,
+          max_frequency=None,
+      ),
+      dict(
+          testcase_name='custom_max_frequency',
+          use_posterior=True,
+          use_kpi=False,
+          max_frequency=4.0,
+      ),
+  )
+  def test_opt_freq_ds_matches_analyzer(
+      self,
+      use_posterior: bool,
+      use_kpi: bool,
+      max_frequency: float | None,
+  ):
+    meridian_analyzer = self.budget_optimizer_media_and_rf._analyzer
+    weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        meridian_analyzer,
+        multiplier_step=0.5,
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        max_frequency=max_frequency,
+    )
+    opt_freq_ds = weekly_grid.opt_freq_ds
+    assert opt_freq_ds is not None
+    expected = meridian_analyzer.optimal_freq(
+        use_posterior=use_posterior,
+        use_kpi=use_kpi,
+        max_frequency=max_frequency,
+    ).sel(metric=c.MEAN)
+
+    self.assertEqual(
+        list(opt_freq_ds[c.ROI].dims), [c.FREQUENCY, c.RF_CHANNEL, c.METRIC]
+    )
+    self.assertEqual(opt_freq_ds[c.METRIC].values.tolist(), [c.MEAN])
+    np.testing.assert_array_equal(
+        opt_freq_ds[c.RF_CHANNEL].values, expected[c.RF_CHANNEL].values
+    )
+    np.testing.assert_allclose(
+        opt_freq_ds[c.FREQUENCY].values, expected[c.FREQUENCY].values
+    )
+    np.testing.assert_allclose(
+        opt_freq_ds.optimal_frequency.values,
+        expected.optimal_frequency.values,
+    )
+    np.testing.assert_allclose(
+        opt_freq_ds[c.ROI].sel(metric=c.MEAN).values,
+        expected[c.ROI].values,
+        rtol=1e-4,
+    )
+    # `Analyzer.optimal_freq` computes `optimized_*` via `summary_metrics`,
+    # which is mocked in this test class, so compare against its ROI curve.
+    expected_optimized_roi = (
+        expected[c.ROI].sel(frequency=expected.optimal_frequency).values
+    )
+    np.testing.assert_allclose(
+        opt_freq_ds.optimized_roi.sel(metric=c.MEAN).values,
+        expected_optimized_roi,
+        rtol=1e-4,
+    )
+    rf_spend = (
+        weekly_grid.nonoptimized_spend.sel(channel=weekly_grid.rf_channels)
+        .sum(dim=c.TIME)
+        .values
+    )
+    np.testing.assert_allclose(
+        opt_freq_ds.optimized_incremental_outcome.sel(metric=c.MEAN).values,
+        expected_optimized_roi * rf_spend,
+        rtol=1e-4,
+    )
+    self.assertEqual(opt_freq_ds.attrs[c.IS_REVENUE_KPI], not use_kpi)
+    self.assertEqual(opt_freq_ds.attrs[c.USE_POSTERIOR], use_posterior)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='all_dates', start_offset=0, end_offset=-1),
+      dict(testcase_name='custom_dates', start_offset=5, end_offset=-10),
+  )
+  def test_rf_optimal_frequency_matches_analyzer(
+      self, start_offset: int, end_offset: int
+  ):
+    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    start_date = times[start_offset]
+    end_date = times[end_offset]
+    selected_times = times[
+        start_offset : (None if end_offset == -1 else end_offset + 1)
+    ]
+    weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_and_rf._analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+    )
+    grid = weekly_grid.to_optimization_grid(
+        start_date=start_date, end_date=end_date
+    )
+    assert grid is not None
+    expected = self.budget_optimizer_media_and_rf._analyzer.optimal_freq(
+        use_posterior=True,
+        selected_times=selected_times,
+    ).optimal_frequency.values
+    assert grid.optimal_frequency is not None
+    np.testing.assert_allclose(grid.optimal_frequency, expected)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='default_dates_default_budget',
+          start_offset=0,
+          end_offset=-1,
+          budget_factor=1.0,
+      ),
+      dict(
+          testcase_name='custom_dates_reduced_budget',
+          start_offset=5,
+          end_offset=-5,
+          budget_factor=0.9,
+      ),
+  )
+  def test_compare_weekly_and_standard_grid_optimization_with_rf(
+      self, start_offset: int, end_offset: int, budget_factor: float
+  ):
+    times = self.meridian_media_and_rf.input_data.time.to_numpy().tolist()
+    start_date = times[start_offset] if start_offset > 0 else None
+    end_date = times[end_offset] if end_offset < -1 else None
+
+    weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_and_rf._analyzer,
+        multiplier_step=0.0001,
+        use_posterior=True,
+        batch_size=10,
+    )
+    hist_spend = np.sum(
+        self.budget_optimizer_media_and_rf.create_optimization_grid(
+            start_date=start_date, end_date=end_date
+        ).historical_spend
+    )
+    budget = hist_spend * budget_factor
+
+    grid = weekly_grid.to_optimization_grid(
+        start_date=start_date,
+        end_date=end_date,
+    )
+    results_weekly = self.budget_optimizer_media_and_rf.optimize(
+        optimization_grid=grid,
+        spend_constraint_lower=0.1,
+        spend_constraint_upper=0.1,
+        start_date=start_date,
+        end_date=end_date,
+        budget=budget,
+    )
+    results_standard = self.budget_optimizer_media_and_rf.optimize(
+        spend_constraint_lower=0.1,
+        spend_constraint_upper=0.1,
+        start_date=start_date,
+        end_date=end_date,
+        budget=budget,
+    )
+    weekly_opt_freq = results_weekly.optimization_grid.optimal_frequency
+    standard_opt_freq = results_standard.optimization_grid.optimal_frequency
+    assert weekly_opt_freq is not None
+    assert standard_opt_freq is not None
+    np.testing.assert_allclose(weekly_opt_freq, standard_opt_freq)
+    _verify_actual_vs_expected_budget_data(
+        results_weekly.optimized_data,
+        results_standard.optimized_data,
+        rtol=0.05,
+    )
 
   @parameterized.named_parameters(
       dict(
@@ -537,6 +771,11 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
           batched_grid.incremental_outcome,
           expected_grid.incremental_outcome,
       )
+      if expected_grid.rf_incremental_outcome is not None:
+        xr.testing.assert_allclose(
+            batched_grid.rf_incremental_outcome,
+            expected_grid.rf_incremental_outcome,
+        )
 
   @parameterized.named_parameters(
       dict(
@@ -977,8 +1216,8 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         start_date=model_times[3],
         end_date=model_times[5],
     )
-    self.assertIsNotNone(grid1.opt_freq_ds)
-    self.assertIsNotNone(grid2.opt_freq_ds)
+    self.assertIsNotNone(grid1.rf_incremental_outcome)
+    self.assertIsNotNone(grid2.rf_incremental_outcome)
 
     combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
         [grid1, grid2]
@@ -989,34 +1228,56 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     self.assertEqual(
         combined.nonoptimized_spend[c.TIME].data.tolist(), expected_times
     )
-    self.assertIsNotNone(combined.opt_freq_ds)
-    self.assertTrue(combined.opt_freq_ds.equals(grid1.opt_freq_ds))
+    assert combined.rf_incremental_outcome is not None
+    assert grid1.rf_incremental_outcome is not None
+    assert grid2.rf_incremental_outcome is not None
+    self.assertEqual(
+        combined.rf_incremental_outcome[c.TIME].data.tolist(), expected_times
+    )
+    xr.testing.assert_allclose(
+        combined.rf_incremental_outcome.isel({c.TIME: slice(0, 3)}),
+        grid1.rf_incremental_outcome,
+    )
 
-    # Test mismatched opt_freq_ds presence: second grid missing opt_freq_ds
-    grid2_no_opt_freq_ds = dataclasses.replace(grid2, opt_freq_ds=None)
-    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
+    # Combined grid resolves the same optimal frequency as a single grid
+    # computed over the full period.
+    full_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_and_rf._analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+        start_date=model_times[0],
+        end_date=model_times[5],
+    )
+    combined_opt_grid = combined.to_optimization_grid()
+    full_opt_grid = full_grid.to_optimization_grid()
+    assert combined_opt_grid is not None
+    assert full_opt_grid is not None
+    assert combined_opt_grid.optimal_frequency is not None
+    assert full_opt_grid.optimal_frequency is not None
+    np.testing.assert_allclose(
+        combined_opt_grid.optimal_frequency,
+        full_opt_grid.optimal_frequency,
+    )
+
+    # Test mismatched rf_incremental_outcome presence.
+    grid2_no_rf = dataclasses.replace(grid2, rf_incremental_outcome=None)
+    with self.assertRaisesRegex(
+        ValueError, 'different rf_incremental_outcome presence'
+    ):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1, grid2_no_opt_freq_ds]
+          [grid1, grid2_no_rf]
       )
 
-    # Test mismatched opt_freq_ds presence: first grid missing opt_freq_ds
-    grid1_no_opt_freq_ds = dataclasses.replace(grid1, opt_freq_ds=None)
-    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds presence'):
-      weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1_no_opt_freq_ds, grid2]
-      )
-
-    # Test mismatched opt_freq_ds values
-    diff_opt_freq_ds = grid2.opt_freq_ds.copy(deep=True)
-    diff_opt_freq_ds = diff_opt_freq_ds.assign(
-        dummy_var=(['channel'], np.ones(grid2.n_rf_channels))
+    # Test mismatched frequency grids.
+    grid2_diff_freq = dataclasses.replace(
+        grid2,
+        rf_incremental_outcome=grid2.rf_incremental_outcome.assign_coords({
+            c.FREQUENCY: grid2.rf_incremental_outcome[c.FREQUENCY].values + 0.05
+        }),
     )
-    grid2_diff_opt_freq_ds = dataclasses.replace(
-        grid2, opt_freq_ds=diff_opt_freq_ds
-    )
-    with self.assertRaisesRegex(ValueError, 'different opt_freq_ds values'):
+    with self.assertRaisesRegex(ValueError, 'different frequency grids'):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
-          [grid1, grid2_diff_opt_freq_ds]
+          [grid1, grid2_diff_freq]
       )
 
   @parameterized.named_parameters(

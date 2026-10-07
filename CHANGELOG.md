@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `WeeklyOptimizationGrid` resolves the optimal frequency of reach and
+    frequency channels per optimization period, matching
+    `create_optimization_grid`.
 *   Fix budget optimization stopping early and leaving part of a fixed budget
     unspent. The search can move a channel's spend several grid points at
     once. Previously, if the best such move needed more than the remaining

@@ -14,7 +14,7 @@
 
 """Weekly optimization grid information."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 import dataclasses
 from typing import Any
 import warnings
@@ -38,9 +38,22 @@ class WeeklyOptimizationGrid:
   """Weekly optimization grid information.
 
   Attributes:
-    incremental_outcome: xr.DataArray of shape `(n_channels,
-      n_spend_multipliers, n_times)` containing incremental outcome for all paid
+    incremental_outcome: xr.DataArray of shape `(n_media_channels,
+      n_spend_multipliers, n_times)` containing incremental outcome for all
+      impression-based paid media channels. `None` if the model has no media
       channels.
+    rf_incremental_outcome: xr.DataArray of shape `(n_rf_channels,
+      n_frequencies, n_times)` containing the incremental outcome of every
+      reach and frequency channel at historical spend (spend multiplier `1.0`)
+      for each candidate frequency. Impressions are held fixed as frequency
+      varies, so reach is `impressions / frequency`. Since the RF incremental
+      outcome is linear in reach (and therefore spend) for a fixed frequency,
+      the outcome at any spend multiplier `M` is `M` times this value. The
+      optimal frequency for an optimization period is resolved at
+      `to_optimization_grid` time by maximizing the outcome summed over the
+      selected weeks. If `use_optimal_frequency` is `False`, the frequency
+      dimension has a single `NaN` coordinate and holds the outcome at
+      historical frequency. `None` if the model has no RF channels.
     nonoptimized_spend: xr.DataArray of shape `(n_paid_channels, n_times)`
       containing non-aggregated spend allocation for all paid channels.
     use_kpi: Whether using generic KPI or revenue.
@@ -49,13 +62,12 @@ class WeeklyOptimizationGrid:
     max_budget_percent_decrease: Maximum percentage decrease in budget allowed.
     max_budget_percent_increase: Maximum percentage increase in budget allowed.
     max_constraint_variation: Maximum constraint variation allowed.
-    n_rf_channels: Number of reach and frequency channels in the grid.
     use_optimal_frequency: Whether optimal frequency was used.
     max_frequency: Maximum frequency value used for optimal frequency.
-    opt_freq_ds: Optional[xr.Dataset] containing Frequency vs ROI grid data.
   """
 
-  incremental_outcome: xr.DataArray
+  incremental_outcome: xr.DataArray | None
+  rf_incremental_outcome: xr.DataArray | None
   nonoptimized_spend: xr.DataArray
   use_kpi: bool
   use_posterior: bool
@@ -63,10 +75,8 @@ class WeeklyOptimizationGrid:
   max_budget_percent_decrease: float
   max_budget_percent_increase: float
   max_constraint_variation: float
-  n_rf_channels: int = 0
   use_optimal_frequency: bool = True
   max_frequency: float | None = None
-  opt_freq_ds: xr.Dataset | None = None
 
   @classmethod
   def create(
@@ -117,12 +127,17 @@ class WeeklyOptimizationGrid:
       multiplier_step: Multiplier step size (delta) for the spend multiplier
         grid. If None, it is dynamically computed based on default tolerance.
         Defaults to None.
-      batch_size: Maximum number of spend multipliers to process in each batch
-        to avoid memory exhaustion. Defaults to 10.
-      use_optimal_frequency: Whether to compute and use optimal frequency for RF
-        channels during grid creation. Defaults to True.
-      max_frequency: Maximum frequency value used for optimal frequency grid.
-        Defaults to None.
+      batch_size: Maximum number of grid points to process in each batch to
+        avoid memory exhaustion. Grid points are spend multipliers for
+        impression-based media channels and candidate frequencies for reach and
+        frequency channels. Defaults to 10.
+      use_optimal_frequency: Whether to precompute RF outcomes over a grid of
+        candidate frequencies so that the optimal frequency can be resolved
+        for any optimization period. If `False`, RF outcomes are computed at
+        historical frequency. Defaults to True.
+      max_frequency: Maximum frequency value used for the candidate frequency
+        grid. If `None`, the maximum historical frequency of the model input
+        data is used, matching `Analyzer.optimal_freq`. Defaults to None.
       chains_per_batch: Maximum number of MCMC chains to process in each batch.
         The computation is split over the chain dimension of the posterior (or
         prior) parameters and the per-batch means are averaged back together,
@@ -170,6 +185,9 @@ class WeeklyOptimizationGrid:
     )
     assert filled_data.time is not None
     channels = model_context.input_data.get_all_paid_channels()
+    # Paid channels are ordered as media channels followed by RF channels.
+    media_channels = list(channels[: model_context.n_media_channels])
+    rf_channels = list(channels[model_context.n_media_channels :])
     all_times = list(filled_data.time)
 
     selected_times_opt = optimizer._expand_selected_times(  # pylint: disable=protected-access
@@ -270,50 +288,35 @@ class WeeklyOptimizationGrid:
       decay_m = None
       sat_m = None
 
-    opt_freq_ds = None
     if model_context.n_rf_channels > 0:
-      if use_optimal_frequency:
-        opt_freq_data = analyzer_module.DataTensors(
-            rf_impressions=filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
-            rf_spend=filled_data.rf_spend,
-            revenue_per_kpi=filled_data.revenue_per_kpi,
-            time=filled_data.time,
-        )
-        opt_freq_ds = analyzer.optimal_freq(
-            new_data=opt_freq_data,
-            use_posterior=use_posterior,
-            use_kpi=use_kpi,
-            max_frequency=max_frequency,
-        )
-        optimal_frequency_tensor = backend.to_tensor(
-            opt_freq_ds.optimal_frequency,
-            dtype=backend.float_dtype,
-        )
-        frequency_base = to_float(
-            backend.ones_like(filled_data.frequency) * optimal_frequency_tensor  # pyrefly: ignore[bad-argument-type]
-        )
-        reach_at_opt_freq = backend.divide_no_nan(
-            filled_data.reach * filled_data.frequency,  # pyrefly: ignore[unsupported-operation]
-            frequency_base,
-        )
-        if model_context.rf_tensors.reach_transformer is None:
-          reach_base_scaled = to_float(reach_at_opt_freq)
-        else:
-          reach_base_scaled = to_float(
-              model_context.rf_tensors.reach_transformer.forward(
-                  reach_at_opt_freq
-              )
-          )
+      # Impressions are held fixed while frequency varies, so that
+      # `reach = impressions / frequency`. The reach transformer is a per-geo,
+      # per-channel scaling, so scaling impressions once and dividing by the
+      # frequency inside the jitted computation is equivalent to scaling reach.
+      rf_impressions = filled_data.reach * filled_data.frequency  # pyrefly: ignore[unsupported-operation]
+      if model_context.rf_tensors.reach_transformer is None:
+        rf_impressions_scaled = to_float(rf_impressions)
       else:
-        frequency_base = to_float(filled_data.frequency)  # pyrefly: ignore[bad-argument-type]
-        if model_context.rf_tensors.reach_transformer is None:
-          reach_base_scaled = to_float(model_context.rf_tensors.reach_scaled)  # pyrefly: ignore[bad-argument-type]
-        else:
-          reach_base_scaled = to_float(
-              model_context.rf_tensors.reach_transformer.forward(
-                  filled_data.reach
-              )
+        rf_impressions_scaled = to_float(
+            model_context.rf_tensors.reach_transformer.forward(rf_impressions)
+        )
+      if use_optimal_frequency:
+        # Match the frequency grid used by `Analyzer.optimal_freq`.
+        max_freq = max_frequency or np.max(
+            np.array(model_context.rf_tensors.frequency)
+        )
+        freq_grid = np.arange(1, max_freq, 0.1)
+        if freq_grid.size == 0:
+          raise ValueError(
+              'The optimal frequency grid is empty. `max_frequency` must be'
+              f' greater than 1. Got {max_freq}.'
           )
+        historical_frequency = None
+      else:
+        # A single placeholder frequency; outcomes are computed at historical
+        # frequency.
+        freq_grid = np.array([np.nan])
+        historical_frequency = to_float(filled_data.frequency)  # pyrefly: ignore[bad-argument-type]
       alpha_rf = to_float(inf_data.alpha_rf)
       ec_rf = to_float(inf_data.ec_rf)
       slope_rf = to_float(inf_data.slope_rf)
@@ -321,8 +324,9 @@ class WeeklyOptimizationGrid:
       decay_rf = model_context.adstock_decay_spec.rf
       sat_rf = model_context.saturation_spec.rf
     else:
-      reach_base_scaled = None
-      frequency_base = None
+      rf_impressions_scaled = None
+      freq_grid = None
+      historical_frequency = None
       alpha_rf = None
       ec_rf = None
       slope_rf = None
@@ -330,11 +334,7 @@ class WeeklyOptimizationGrid:
       decay_rf = None
       sat_rf = None
 
-    all_multipliers_array = backend.to_tensor(
-        unique_multipliers, dtype=backend.float_dtype
-    )
-    all_outcomes = []
-    multiplier_batch_size = max(1, batch_size)
+    grid_batch_size = max(1, batch_size)
 
     # MCMC parameters are shaped `(n_chains, n_draws, ...)`. Splitting the
     # computation over the chain dimension lowers the peak memory footprint.
@@ -361,63 +361,117 @@ class WeeklyOptimizationGrid:
         return tensor
       return tensor[start:stop, ...]
 
-    for i in range(0, len(all_multipliers_array), multiplier_batch_size):
-      batch = all_multipliers_array[i : i + multiplier_batch_size]
-      chain_outcomes = []
-      chain_weights = []
-      for chain_start, chain_stop in chain_ranges:
-        chain_outcome = cls._compute_batch(
+    def run_in_batches(
+        values: backend.Tensor,
+        compute_fn: Callable[[backend.Tensor, int, int], backend.Tensor],
+    ) -> np.ndarray:
+      """Runs `compute_fn` over batches of `values` and chain ranges."""
+      all_outcomes = []
+      for i in range(0, len(values), grid_batch_size):
+        batch = values[i : i + grid_batch_size]
+        chain_outcomes = []
+        chain_weights = []
+        for chain_start, chain_stop in chain_ranges:
+          chain_outcome = compute_fn(batch, chain_start, chain_stop)
+          chain_outcomes.append(np.asarray(chain_outcome))
+          chain_weights.append(chain_stop - chain_start)
+
+        if len(chain_outcomes) == 1:
+          batch_outcomes = chain_outcomes[0]
+        else:
+          # The batch computations average over the chain and draw dimensions.
+          # Every chain has the same number of draws, so the global mean is the
+          # mean of the per-batch means weighted by the number of chains in
+          # each batch.
+          batch_outcomes = np.average(
+              np.stack(chain_outcomes, axis=0), axis=0, weights=chain_weights
+          )
+        all_outcomes.append(batch_outcomes)
+      return np.concatenate(all_outcomes, axis=0)
+
+    incremental_outcome = None
+    if model_context.n_media_channels > 0:
+      all_multipliers_array = backend.to_tensor(
+          unique_multipliers, dtype=backend.float_dtype
+      )
+
+      def compute_media(
+          batch: backend.Tensor, chain_start: int, chain_stop: int
+      ) -> backend.Tensor:
+        return cls._compute_batch(
             multiplier_batch=batch,
             media_base_scaled=media_base_scaled,
             alpha_m=slice_chains(alpha_m, chain_start, chain_stop),
             ec_m=slice_chains(ec_m, chain_start, chain_stop),
             slope_m=slice_chains(slope_m, chain_start, chain_stop),
             beta_gm=slice_chains(beta_gm, chain_start, chain_stop),
-            reach_base_scaled=reach_base_scaled,
-            frequency_base=frequency_base,
-            alpha_rf=slice_chains(alpha_rf, chain_start, chain_stop),
-            ec_rf=slice_chains(ec_rf, chain_start, chain_stop),
-            slope_rf=slice_chains(slope_rf, chain_start, chain_stop),
-            beta_grf=slice_chains(beta_grf, chain_start, chain_stop),
             revenue_per_kpi=revenue_per_kpi,
             population=population,
             time_indices=time_indices,
             eqs=eqs,
             decay_m=decay_m,
             sat_m=sat_m,
+            n_times=n_times,
+            kpi_transformer=kpi_transformer,
+            use_kpi=use_kpi,
+        )
+
+      outcomes = run_in_batches(all_multipliers_array, compute_media)
+
+      final_outcomes = np.transpose(outcomes, (2, 0, 1))
+
+      incremental_outcome = xr.DataArray(
+          final_outcomes,
+          coords={
+              c.CHANNEL: media_channels,
+              c.SPEND_MULTIPLIER: unique_multipliers,
+              c.TIME: selected_times_list,
+          },
+          dims=[c.CHANNEL, c.SPEND_MULTIPLIER, c.TIME],
+      )
+
+    rf_incremental_outcome = None
+    if model_context.n_rf_channels > 0:
+      assert freq_grid is not None
+      # For the historical frequency case the value is a placeholder that is
+      # ignored by `_compute_rf_batch`.
+      all_frequencies_array = backend.to_tensor(
+          np.nan_to_num(freq_grid, nan=1.0), dtype=backend.float_dtype
+      )
+
+      def compute_rf(
+          batch: backend.Tensor, chain_start: int, chain_stop: int
+      ) -> backend.Tensor:
+        return cls._compute_rf_batch(
+            batch,
+            rf_impressions_scaled,
+            historical_frequency,
+            slice_chains(alpha_rf, chain_start, chain_stop),
+            slice_chains(ec_rf, chain_start, chain_stop),
+            slice_chains(slope_rf, chain_start, chain_stop),
+            slice_chains(beta_grf, chain_start, chain_stop),
+            revenue_per_kpi,
+            population,
+            time_indices=time_indices,
+            eqs=eqs,
             decay_rf=decay_rf,
             sat_rf=sat_rf,
             n_times=n_times,
             kpi_transformer=kpi_transformer,
             use_kpi=use_kpi,
         )
-        chain_outcomes.append(np.asarray(chain_outcome))
-        chain_weights.append(chain_stop - chain_start)
 
-      if len(chain_outcomes) == 1:
-        batch_outcomes = chain_outcomes[0]
-      else:
-        # `_compute_batch` averages over the chain and draw dimensions. Every
-        # chain has the same number of draws, so the global mean is the mean of
-        # the per-batch means weighted by the number of chains in each batch.
-        batch_outcomes = np.average(
-            np.stack(chain_outcomes, axis=0), axis=0, weights=chain_weights
-        )
-      all_outcomes.append(batch_outcomes)
+      rf_outcomes = run_in_batches(all_frequencies_array, compute_rf)
 
-    outcomes = np.concatenate(all_outcomes, axis=0)
-
-    final_outcomes = np.transpose(outcomes, (2, 0, 1))
-
-    incremental_outcome = xr.DataArray(
-        final_outcomes,
-        coords={
-            c.CHANNEL: channels,
-            c.SPEND_MULTIPLIER: unique_multipliers,
-            c.TIME: selected_times_list,
-        },
-        dims=[c.CHANNEL, c.SPEND_MULTIPLIER, c.TIME],
-    )
+      rf_incremental_outcome = xr.DataArray(
+          np.transpose(rf_outcomes, (2, 0, 1)),
+          coords={
+              c.CHANNEL: rf_channels,
+              c.FREQUENCY: freq_grid,
+              c.TIME: selected_times_list,
+          },
+          dims=[c.CHANNEL, c.FREQUENCY, c.TIME],
+      )
 
     if selected_times_opt is not None:
       nonoptimized_spend = nonoptimized_spend.sel({c.TIME: selected_times_list})
@@ -431,11 +485,69 @@ class WeeklyOptimizationGrid:
         max_budget_percent_decrease=max_budget_percent_decrease,
         max_budget_percent_increase=max_budget_percent_increase,
         max_constraint_variation=max_constraint_variation,
-        n_rf_channels=model_context.n_rf_channels,
         use_optimal_frequency=use_optimal_frequency,
         max_frequency=max_frequency,
-        opt_freq_ds=opt_freq_ds,
+        rf_incremental_outcome=rf_incremental_outcome,
     )
+
+  @staticmethod
+  def _aggregate_incremental_outcome(
+      effect_diff: backend.Tensor,
+      beta: backend.Tensor,
+      revenue_per_kpi: backend.Tensor,
+      time_indices: backend.Tensor | None,
+      population: backend.Tensor,
+      kpi_transformer: Any,
+      use_kpi: bool,
+  ) -> backend.Tensor:
+    """Converts transformed media effects into a per-week incremental outcome.
+
+    Args:
+      effect_diff: Tensor of shape `(n_chains, n_draws, n_geos, n_times,
+        n_channels)` with the difference of the adstock/Hill transformed
+        effects between the scenario and the zero-media counterfactual.
+      beta: Tensor of shape `(n_chains, n_draws, n_geos, n_channels)` with the
+        channel coefficients.
+      revenue_per_kpi: Tensor of shape `(n_geos, n_selected_times)`.
+      time_indices: Optional indices of the selected time periods.
+      population: Tensor of shape `(n_geos,)` with the population of each geo.
+      kpi_transformer: The KPI transformer of the model.
+      use_kpi: Whether to return the outcome in KPI units instead of revenue.
+
+    Returns:
+      Tensor of shape `(n_selected_times, n_channels)` with the incremental
+      outcome averaged over chains and draws and summed over geos.
+    """
+    if time_indices is not None:
+      effect_diff = backend.gather(effect_diff, time_indices, axis=3)
+
+    incremental_kpi = backend.einsum('...gtm,...gm->...gtm', effect_diff, beta)
+    # Inverse transform incremental KPI to the natural scale. Because
+    # `kpi_transformer.inverse` adds `population_scaled_mean`, we scale only
+    # by `population_scaled_stdev` and `population` to omit the mean
+    # intercept/offset and obtain the uncentered incremental KPI on the
+    # natural scale.
+    incremental_kpi_natural = (
+        incremental_kpi
+        * kpi_transformer.population_scaled_stdev
+        * population[:, backend.newaxis, backend.newaxis]
+    )
+
+    if use_kpi:
+      incremental_outcome = incremental_kpi_natural
+    else:
+      incremental_outcome = backend.einsum(
+          'gt,...gtm->...gtm', revenue_per_kpi, incremental_kpi_natural
+      )
+
+    incremental_outcome_f64 = backend.cast(
+        incremental_outcome, backend.np_float_dtype
+    )
+    mean_incremental_outcome = backend.reduce_mean(
+        incremental_outcome_f64, axis=(0, 1)
+    )
+
+    return backend.reduce_sum(mean_incremental_outcome, axis=0)
 
   @classmethod
   @backend.function(
@@ -444,8 +556,6 @@ class WeeklyOptimizationGrid:
           'eqs',
           'decay_m',
           'sat_m',
-          'decay_rf',
-          'sat_rf',
           'n_times',
           'kpi_transformer',
           'use_kpi',
@@ -455,135 +565,310 @@ class WeeklyOptimizationGrid:
       cls,
       *,
       multiplier_batch: backend.Tensor,
-      media_base_scaled: backend.Tensor | None,
-      alpha_m: backend.Tensor | None,
-      ec_m: backend.Tensor | None,
-      slope_m: backend.Tensor | None,
-      beta_gm: backend.Tensor | None,
-      reach_base_scaled: backend.Tensor | None,
-      frequency_base: backend.Tensor | None,
-      alpha_rf: backend.Tensor | None,
-      ec_rf: backend.Tensor | None,
-      slope_rf: backend.Tensor | None,
-      beta_grf: backend.Tensor | None,
+      media_base_scaled: backend.Tensor,
+      alpha_m: backend.Tensor,
+      ec_m: backend.Tensor,
+      slope_m: backend.Tensor,
+      beta_gm: backend.Tensor,
       revenue_per_kpi: backend.Tensor,
       population: backend.Tensor,
       time_indices: backend.Tensor | None,
       eqs: Any,
       decay_m: Any,
       sat_m: Any,
-      decay_rf: Any,
-      sat_rf: Any,
       n_times: int,
       kpi_transformer: Any,
       use_kpi: bool,
   ) -> backend.Tensor:
-    """Computes incremental outcome for a batch of spend multipliers."""
+    """Computes media incremental outcome for a batch of spend multipliers."""
 
     def _compute_kpi_for_multiplier(
         multiplier: backend.Tensor,
     ) -> backend.Tensor:
       multiplier_float = backend.cast(multiplier, backend.float_dtype)
 
-      diffs = []
-      betas = []
-      if media_base_scaled is not None:
-        media_t1 = eqs.adstock_hill_media(
-            media=media_base_scaled * multiplier_float,
-            alpha=alpha_m,
-            ec=ec_m,
-            slope=slope_m,
-            decay_functions=decay_m,
-            saturation_spec=sat_m,
-            n_times_output=n_times,
-        )
-        media_t0 = eqs.adstock_hill_media(
-            media=media_base_scaled * 0.0,
-            alpha=alpha_m,
-            ec=ec_m,
-            slope=slope_m,
-            decay_functions=decay_m,
-            saturation_spec=sat_m,
-            n_times_output=n_times,
-        )
-        diffs.append(media_t1 - media_t0)
-        betas.append(beta_gm)
-
-      if reach_base_scaled is not None:
-        rf_t1 = eqs.adstock_hill_rf(
-            reach=reach_base_scaled * multiplier_float,
-            frequency=frequency_base,
-            alpha=alpha_rf,
-            ec=ec_rf,
-            slope=slope_rf,
-            decay_functions=decay_rf,
-            saturation_spec=sat_rf,
-            n_times_output=n_times,
-        )
-        rf_t0 = eqs.adstock_hill_rf(
-            reach=reach_base_scaled * 0.0,
-            frequency=frequency_base,
-            alpha=alpha_rf,
-            ec=ec_rf,
-            slope=slope_rf,
-            decay_functions=decay_rf,
-            saturation_spec=sat_rf,
-            n_times_output=n_times,
-        )
-        diffs.append(rf_t1 - rf_t0)
-        betas.append(beta_grf)
-
-      if len(diffs) > 1:
-        media_diff = backend.concatenate(diffs, axis=-1)
-        combined_beta = backend.concatenate(betas, axis=-1)
-      else:
-        media_diff = diffs[0]
-        combined_beta = betas[0]
-
-      if time_indices is not None:
-        media_diff = backend.gather(media_diff, time_indices, axis=3)
-
-      incremental_kpi = backend.einsum(
-          '...gtm,...gm->...gtm', media_diff, combined_beta
+      media_t1 = eqs.adstock_hill_media(
+          media=media_base_scaled * multiplier_float,
+          alpha=alpha_m,
+          ec=ec_m,
+          slope=slope_m,
+          decay_functions=decay_m,
+          saturation_spec=sat_m,
+          n_times_output=n_times,
       )
-      # Inverse transform incremental KPI to the natural scale. Because
-      # `kpi_transformer.inverse` adds `population_scaled_mean`, we scale only
-      # by `population_scaled_stdev` and `population` to omit the mean
-      # intercept/offset and obtain the uncentered incremental KPI on the
-      # natural scale.
-      incremental_kpi_natural = (
-          incremental_kpi
-          * kpi_transformer.population_scaled_stdev
-          * population[:, backend.newaxis, backend.newaxis]
+      media_t0 = eqs.adstock_hill_media(
+          media=media_base_scaled * 0.0,
+          alpha=alpha_m,
+          ec=ec_m,
+          slope=slope_m,
+          decay_functions=decay_m,
+          saturation_spec=sat_m,
+          n_times_output=n_times,
       )
-
-      if use_kpi:
-        incremental_outcome = incremental_kpi_natural
-      else:
-        incremental_outcome = backend.einsum(
-            'gt,...gtm->...gtm', revenue_per_kpi, incremental_kpi_natural
-        )
-
-      incremental_outcome_f64 = backend.cast(
-          incremental_outcome, backend.np_float_dtype
+      return cls._aggregate_incremental_outcome(
+          media_t1 - media_t0,
+          beta_gm,
+          revenue_per_kpi=revenue_per_kpi,
+          time_indices=time_indices,
+          population=population,
+          kpi_transformer=kpi_transformer,
+          use_kpi=use_kpi,
       )
-      mean_incremental_outcome = backend.reduce_mean(
-          incremental_outcome_f64, axis=(0, 1)
-      )
-
-      return backend.reduce_sum(mean_incremental_outcome, axis=0)
 
     return backend.vectorized_map(_compute_kpi_for_multiplier, multiplier_batch)
 
+  @classmethod
+  @backend.function(
+      jit_compile=True,
+      static_argnames=[
+          'eqs',
+          'decay_rf',
+          'sat_rf',
+          'n_times',
+          'kpi_transformer',
+          'use_kpi',
+      ],
+  )
+  def _compute_rf_batch(
+      cls,
+      frequency_batch: backend.Tensor,
+      rf_impressions_scaled: backend.Tensor,
+      historical_frequency: backend.Tensor | None,
+      alpha_rf: backend.Tensor,
+      ec_rf: backend.Tensor,
+      slope_rf: backend.Tensor,
+      beta_grf: backend.Tensor,
+      revenue_per_kpi: backend.Tensor,
+      population: backend.Tensor,
+      time_indices: backend.Tensor | None,
+      eqs: Any,
+      decay_rf: Any,
+      sat_rf: Any,
+      n_times: int,
+      kpi_transformer: Any,
+      use_kpi: bool,
+  ) -> backend.Tensor:
+    """Computes RF incremental outcome at historical spend for frequencies.
+
+    For each candidate frequency `f`, frequency is set to `f` for all geos and
+    times while impressions are held fixed, i.e. `reach = impressions / f`. If
+    `historical_frequency` is provided, the candidate frequency is ignored and
+    the historical frequency is used instead.
+
+    Args:
+      frequency_batch: Tensor of shape `(n_batch,)` with candidate frequencies.
+      rf_impressions_scaled: Tensor of shape `(n_geos, n_media_times,
+        n_rf_channels)` with impressions scaled by the reach transformer.
+      historical_frequency: Optional tensor of shape `(n_geos, n_media_times,
+        n_rf_channels)` with historical frequency.
+      alpha_rf: Adstock parameter.
+      ec_rf: Hill half-saturation parameter.
+      slope_rf: Hill slope parameter.
+      beta_grf: RF channel coefficients.
+      revenue_per_kpi: Tensor of shape `(n_geos, n_selected_times)`.
+      population: Tensor of shape `(n_geos,)` with the population of each geo.
+      time_indices: Optional indices of the selected time periods.
+      eqs: Model equations.
+      decay_rf: RF adstock decay functions.
+      sat_rf: RF saturation spec.
+      n_times: Number of output time periods.
+      kpi_transformer: The KPI transformer of the model.
+      use_kpi: Whether to return the outcome in KPI units instead of revenue.
+
+    Returns:
+      Tensor of shape `(n_batch, n_selected_times, n_rf_channels)`.
+    """
+
+    def _compute_kpi_for_frequency(
+        frequency_value: backend.Tensor,
+    ) -> backend.Tensor:
+      if historical_frequency is None:
+        frequency = backend.ones_like(rf_impressions_scaled) * backend.cast(
+            frequency_value, backend.float_dtype
+        )
+      else:
+        frequency = historical_frequency
+      reach = backend.divide_no_nan(rf_impressions_scaled, frequency)
+
+      rf_t1 = eqs.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=alpha_rf,
+          ec=ec_rf,
+          slope=slope_rf,
+          decay_functions=decay_rf,
+          saturation_spec=sat_rf,
+          n_times_output=n_times,
+      )
+      rf_t0 = eqs.adstock_hill_rf(
+          reach=reach * 0.0,
+          frequency=frequency,
+          alpha=alpha_rf,
+          ec=ec_rf,
+          slope=slope_rf,
+          decay_functions=decay_rf,
+          saturation_spec=sat_rf,
+          n_times_output=n_times,
+      )
+      return cls._aggregate_incremental_outcome(
+          rf_t1 - rf_t0,
+          beta_grf,
+          revenue_per_kpi=revenue_per_kpi,
+          time_indices=time_indices,
+          population=population,
+          kpi_transformer=kpi_transformer,
+          use_kpi=use_kpi,
+      )
+
+    return backend.vectorized_map(_compute_kpi_for_frequency, frequency_batch)
+
+  @property
+  def media_channels(self) -> list[str]:
+    """The impression-based media channels in the weekly grid."""
+    if self.incremental_outcome is None:
+      return []
+    return self.incremental_outcome.channel.data.tolist()
+
+  @property
+  def rf_channels(self) -> list[str]:
+    """The reach and frequency channels in the weekly grid."""
+    if self.rf_incremental_outcome is None:
+      return []
+    return self.rf_incremental_outcome.channel.data.tolist()
+
+  @property
+  def n_rf_channels(self) -> int:
+    """The number of reach and frequency channels in the weekly grid."""
+    return len(self.rf_channels)
+
   @property
   def channels(self) -> list[str]:
-    """The spend channels in the weekly grid."""
-    return self.incremental_outcome.channel.data.tolist()
+    """The spend channels in the weekly grid (media followed by RF)."""
+    return self.media_channels + self.rf_channels
 
   @property
   def time(self) -> list[str]:
     """The spend times in the weekly grid."""
-    return self.incremental_outcome.time.data.tolist()
+    return self.nonoptimized_spend.time.data.tolist()
+
+  @property
+  def opt_freq_ds(self) -> xr.Dataset | None:
+    """Optimal frequency results over the full grid period.
+
+    Derived from `rf_incremental_outcome` without additional model evaluation.
+    The schema follows `Analyzer.optimal_freq`, restricted to the variables
+    that can be computed from the grid, and with only the `mean` metric (the
+    grid stores the mean incremental outcome over draws):
+
+    * `roi`: `(frequency, rf_channel, metric)` ROI curve over the candidate
+      frequencies.
+    * `optimal_frequency`: `(rf_channel,)` frequency maximizing ROI.
+    * `optimized_incremental_outcome`: `(rf_channel, metric)` incremental
+      outcome at historical spend and optimal frequency.
+    * `optimized_roi`: `(rf_channel, metric)` ROI at optimal frequency.
+
+    The optimal frequency is resolved over all weeks of the grid. Use
+    `to_optimization_grid` to resolve it for a sub-period.
+
+    Returns:
+      An `xr.Dataset` as described above, or `None` if the grid has no RF
+      channels or was created with `use_optimal_frequency=False`.
+    """
+    if self.rf_incremental_outcome is None or not self.use_optimal_frequency:
+      return None
+
+    rf_outcome = self.rf_incremental_outcome
+    rf_times = rf_outcome[c.TIME].values
+    optimal_frequency, optimized_outcome = self._resolve_rf_outcomes(
+        list(rf_times)
+    )
+    assert optimal_frequency is not None
+
+    rf_spend = (
+        self.nonoptimized_spend.sel({c.CHANNEL: rf_outcome[c.CHANNEL].values})
+        .sel({c.TIME: rf_times})
+        .sum(dim=c.TIME)
+        .values
+    )
+    # Zero historical spend yields NaN ROI, consistent with `Analyzer`.
+    safe_spend = np.where(rf_spend == 0, np.nan, rf_spend)
+    # Shape `(n_frequencies, n_rf_channels)`.
+    summed_outcome = (
+        rf_outcome.sum(dim=c.TIME).transpose(c.FREQUENCY, c.CHANNEL).values
+    )
+    roi = summed_outcome / safe_spend
+    optimized_roi = optimized_outcome / safe_spend
+
+    return xr.Dataset(
+        data_vars={
+            c.ROI: (
+                [c.FREQUENCY, c.RF_CHANNEL, c.METRIC],
+                roi[..., np.newaxis],
+            ),
+            c.OPTIMAL_FREQUENCY: ([c.RF_CHANNEL], optimal_frequency),
+            c.OPTIMIZED_INCREMENTAL_OUTCOME: (
+                [c.RF_CHANNEL, c.METRIC],
+                optimized_outcome[:, np.newaxis],
+            ),
+            c.OPTIMIZED_ROI: (
+                [c.RF_CHANNEL, c.METRIC],
+                optimized_roi[:, np.newaxis],
+            ),
+        },
+        coords={
+            c.FREQUENCY: rf_outcome[c.FREQUENCY].values,
+            c.RF_CHANNEL: rf_outcome[c.CHANNEL].values,
+            c.METRIC: [c.MEAN],
+        },
+        attrs={
+            c.USE_POSTERIOR: self.use_posterior,
+            c.IS_REVENUE_KPI: not self.use_kpi,
+        },
+    )
+
+  def _resolve_rf_outcomes(
+      self, selected_times: Sequence[str]
+  ) -> tuple[np.ndarray | None, np.ndarray]:
+    """Resolves RF optimal frequency and outcome for the selected weeks.
+
+    The optimal frequency maximizes the RF incremental outcome at historical
+    spend summed over the selected weeks. Since spend is fixed across
+    candidate frequencies, this is equivalent to maximizing ROI as done in
+    `Analyzer.optimal_freq`.
+
+    Args:
+      selected_times: The weeks of the optimization period.
+
+    Returns:
+      A tuple `(optimal_frequency, rf_outcome)`. `optimal_frequency` is an
+      array of shape `(n_rf_channels,)` or `None` if historical frequency is
+      used. `rf_outcome` is an array of shape `(n_rf_channels,)` with the
+      incremental outcome of each RF channel at historical spend, summed over
+      the selected weeks, at the resolved frequency.
+    """
+    if self.rf_incremental_outcome is None:
+      return None, np.zeros(0)
+
+    week_mask = np.isin(
+        self.rf_incremental_outcome[c.TIME].values, selected_times
+    )
+    # Shape `(n_rf_channels, n_frequencies)`.
+    summed_outcomes = (
+        self.rf_incremental_outcome.isel({c.TIME: week_mask})
+        .sum(dim=c.TIME)
+        .transpose(c.CHANNEL, c.FREQUENCY)
+        .values
+    )
+    if not self.use_optimal_frequency:
+      return None, summed_outcomes[:, 0]
+
+    optimal_freq_idx = np.nanargmax(summed_outcomes, axis=1)
+    freq_grid = self.rf_incremental_outcome[c.FREQUENCY].values
+    rf_channel_indices = np.arange(len(optimal_freq_idx))
+    return (
+        np.asarray(freq_grid[optimal_freq_idx], dtype=float),
+        summed_outcomes[rf_channel_indices, optimal_freq_idx],
+    )
 
   def _validate_dates(
       self,
@@ -643,14 +928,16 @@ class WeeklyOptimizationGrid:
       True if the weekly grid covers the optimization bounds, False otherwise.
     """
     errors = []
+    rf_channels = set(self.rf_channels)
     rounded_hist_spend = np.round(hist_spend, round_factor).astype(int)
     for i, (channel, channel_spend) in enumerate(
         zip(self.channels, rounded_hist_spend)
     ):
-      if channel_spend == 0:
+      # RF outcomes are linear in spend, so any bounds are covered.
+      if channel_spend == 0 or channel in rf_channels:
         continue
 
-      channel_grid = self.incremental_outcome.sel({c.CHANNEL: channel}).dropna(
+      channel_grid = self.incremental_outcome.sel({c.CHANNEL: channel}).dropna(  # pyrefly: ignore[missing-attribute]
           dim=c.SPEND_MULTIPLIER, how='all'
       )
       channel_mults = channel_grid[c.SPEND_MULTIPLIER].values
@@ -791,11 +1078,7 @@ class WeeklyOptimizationGrid:
         attrs={c.SPEND_STEP_SIZE: step_size},
     )
 
-    optimal_frequency = None
-    if self.opt_freq_ds is not None and c.OPTIMAL_FREQUENCY in self.opt_freq_ds:
-      optimal_frequency = np.asarray(
-          self.opt_freq_ds.optimal_frequency.data, dtype=float
-      )
+    optimal_frequency, _ = self._resolve_rf_outcomes(selected_times)
 
     return optimizer.OptimizationGrid(
         _grid_dataset=grid_dataset,
@@ -842,7 +1125,11 @@ class WeeklyOptimizationGrid:
 
     incremental_outcome_grid = np.full([n_grid_rows, n_grid_columns], np.nan)
 
-    week_indices = np.where(np.isin(self.time, selected_times))[0]  # pyrefly: ignore[bad-argument-type]
+    if selected_times is None:
+      selected_times = self.time
+
+    _, rf_outcomes = self._resolve_rf_outcomes(selected_times)
+    rf_outcome_by_channel = dict(zip(self.rf_channels, rf_outcomes))
 
     nonoptimized_spend = spend if spend is not None else self.nonoptimized_spend
     if isinstance(nonoptimized_spend, xr.DataArray):
@@ -858,13 +1145,24 @@ class WeeklyOptimizationGrid:
 
       multipliers = spend_column[valid_mask] / channel_spend
 
-      channel_grid = self.incremental_outcome.sel({c.CHANNEL: channel}).dropna(
+      if channel in rf_outcome_by_channel:
+        # RF outcome is linear in spend at a fixed frequency.
+        incremental_outcome_grid[valid_mask, i] = (
+            multipliers * rf_outcome_by_channel[channel]
+        )
+        continue
+
+      channel_grid = self.incremental_outcome.sel({c.CHANNEL: channel}).dropna(  # pyrefly: ignore[missing-attribute]
           dim=c.SPEND_MULTIPLIER, how='all'
       )
       channel_mults = channel_grid[c.SPEND_MULTIPLIER].values
-      channel_outcomes = channel_grid.values
-
-      summed_outcomes = np.sum(channel_outcomes[:, week_indices], axis=1)
+      week_mask = np.isin(channel_grid[c.TIME].values, selected_times)
+      summed_outcomes = (
+          channel_grid.isel({c.TIME: week_mask})
+          .sum(dim=c.TIME)
+          .transpose(c.SPEND_MULTIPLIER)
+          .values
+      )
 
       # Linear interpolation lookup.
       incremental_outcome_grid[valid_mask, i] = np.interp(
@@ -928,10 +1226,6 @@ class WeeklyOptimizationGrid:
         raise ValueError(
             f'Grid at index {i} has a different max_constraint_variation value.'
         )
-      if grid.n_rf_channels != first.n_rf_channels:
-        raise ValueError(
-            f'Grid at index {i} has a different n_rf_channels value.'
-        )
       if grid.use_optimal_frequency != first.use_optimal_frequency:
         raise ValueError(
             f'Grid at index {i} has a different use_optimal_frequency value.'
@@ -940,42 +1234,70 @@ class WeeklyOptimizationGrid:
         raise ValueError(
             f'Grid at index {i} has a different max_frequency value.'
         )
-      if (grid.opt_freq_ds is None) != (first.opt_freq_ds is None):
+      if (grid.rf_incremental_outcome is None) != (
+          first.rf_incremental_outcome is None
+      ):
         raise ValueError(
-            f'Grid at index {i} has different opt_freq_ds presence.'
+            f'Grid at index {i} has different rf_incremental_outcome presence.'
         )
-      if grid.opt_freq_ds is not None and first.opt_freq_ds is not None:
-        if not grid.opt_freq_ds.equals(first.opt_freq_ds):
-          raise ValueError(
-              f'Grid at index {i} has different opt_freq_ds values.'
+      if (
+          grid.rf_incremental_outcome is not None
+          and first.rf_incremental_outcome is not None
+          and not np.array_equal(
+              grid.rf_incremental_outcome[c.FREQUENCY].values,
+              first.rf_incremental_outcome[c.FREQUENCY].values,
+              equal_nan=True,
           )
+      ):
+        raise ValueError(f'Grid at index {i} has different frequency grids.')
+      if (grid.incremental_outcome is None) != (
+          first.incremental_outcome is None
+      ):
+        raise ValueError(
+            f'Grid at index {i} has different incremental_outcome presence.'
+        )
       if not np.array_equal(grid.channels, first.channels):
         raise ValueError(f'Grid at index {i} has different channels.')
-      if not np.array_equal(
-          grid.incremental_outcome[c.SPEND_MULTIPLIER].values,
-          first.incremental_outcome[c.SPEND_MULTIPLIER].values,
+      if (
+          grid.incremental_outcome is not None
+          and first.incremental_outcome is not None
+          and not np.array_equal(
+              grid.incremental_outcome[c.SPEND_MULTIPLIER].values,
+              first.incremental_outcome[c.SPEND_MULTIPLIER].values,
+          )
       ):
         raise ValueError(f'Grid at index {i} has different spend multipliers.')
 
-    combined_outcome = xr.concat(
-        [g.incremental_outcome for g in grids], dim=c.TIME
+    def concat_over_time(
+        arrays: Sequence[xr.DataArray | None],
+    ) -> xr.DataArray | None:
+      if arrays[0] is None:
+        return None
+      return xr.concat([a for a in arrays if a is not None], dim=c.TIME)
+
+    combined_outcome = concat_over_time([g.incremental_outcome for g in grids])
+    combined_rf_outcome = concat_over_time(
+        [g.rf_incremental_outcome for g in grids]
     )
     combined_spend = xr.concat(
         [g.nonoptimized_spend for g in grids], dim=c.TIME
     )
 
     # Check for duplicate dates.
-    combined_times = combined_outcome[c.TIME].values
+    combined_times = combined_spend[c.TIME].values
     if len(combined_times) != len(set(combined_times)):
       raise ValueError('Combined grids contain duplicate dates.')
 
     # Sort by time dimension to ensure chronological order.
     sorted_indices = np.argsort(combined_times)
-    combined_outcome = combined_outcome.isel({c.TIME: sorted_indices})
+    if combined_outcome is not None:
+      combined_outcome = combined_outcome.isel({c.TIME: sorted_indices})
+    if combined_rf_outcome is not None:
+      combined_rf_outcome = combined_rf_outcome.isel({c.TIME: sorted_indices})
     combined_spend = combined_spend.isel({c.TIME: sorted_indices})
 
     # Check that dates form a contiguous weekly period.
-    sorted_times = combined_outcome[c.TIME].values
+    sorted_times = combined_spend[c.TIME].values
     sorted_dates = [tc.normalize_date(t) for t in sorted_times]
     for i in range(len(sorted_dates) - 1):
       if (sorted_dates[i + 1] - sorted_dates[i]).days != 7:
@@ -993,8 +1315,7 @@ class WeeklyOptimizationGrid:
         max_budget_percent_decrease=first.max_budget_percent_decrease,
         max_budget_percent_increase=first.max_budget_percent_increase,
         max_constraint_variation=first.max_constraint_variation,
-        n_rf_channels=first.n_rf_channels,
         use_optimal_frequency=first.use_optimal_frequency,
         max_frequency=first.max_frequency,
-        opt_freq_ds=first.opt_freq_ds,
+        rf_incremental_outcome=combined_rf_outcome,
     )
