@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import dataclasses
 import os
 from unittest import mock
@@ -19,6 +20,7 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
+from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import optimizer
@@ -1016,6 +1018,80 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
       weekly_optimization_grid.WeeklyOptimizationGrid.combine(
           [grid1, grid2_diff_opt_freq_ds]
       )
+
+  @parameterized.named_parameters(
+      dict(testcase_name='geo', is_national=False),
+      dict(testcase_name='national', is_national=True),
+  )
+  def test_create_avoids_float32_cancellation(self, is_national: bool):
+    if is_national:
+      dataset = data_test_utils.random_dataset(
+          n_geos=1,
+          n_times=_N_TIMES,
+          n_media_times=_N_MEDIA_TIMES,
+          n_controls=_N_CONTROLS,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          seed=0,
+          constant_population_value=1.0,
+      )
+      input_data_national = data_test_utils.sample_input_data_from_dataset(
+          dataset, c.NON_REVENUE
+      )
+      inference_data_national = az.InferenceData(
+          prior=xr.open_dataset(
+              os.path.join(_TEST_DATA_DIR, 'sample_prior_national.nc')
+          ),
+          posterior=xr.open_dataset(
+              os.path.join(_TEST_DATA_DIR, 'sample_posterior_national.nc')
+          ),
+      )
+      with mock.patch.object(
+          model.Meridian, '_validate_injected_inference_data', autospec=True
+      ):
+        meridian_national = model.Meridian(input_data=input_data_national)
+      self.enter_context(
+          mock.patch.object(
+              analyzer.Analyzer,
+              'inference_data',
+              new=property(lambda unused_self: inference_data_national),
+          )
+      )
+      target_analyzer = analyzer.Analyzer(
+          model_context=meridian_national.model_context,
+          inference_data=inference_data_national,
+      )
+    else:
+      target_analyzer = self.budget_optimizer_media_only._analyzer
+
+    model_context = target_analyzer.model_context
+    baseline_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        target_analyzer,
+        multiplier_step=0.5,
+        use_posterior=True,
+        use_kpi=True,
+    )
+
+    large_mean_transformer = copy.copy(model_context.kpi_transformer)
+    large_mean_transformer._population_scaled_mean = backend.to_tensor(
+        1e9, dtype=np.float32
+    )
+
+    with mock.patch.object(
+        model_context, 'kpi_transformer', large_mean_transformer
+    ):
+      large_mean_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+          target_analyzer,
+          multiplier_step=0.5,
+          use_posterior=True,
+          use_kpi=True,
+      )
+
+    xr.testing.assert_allclose(
+        large_mean_grid.incremental_outcome,
+        baseline_grid.incremental_outcome,
+        rtol=1e-6,
+        atol=0.0,
+    )
 
 
 if __name__ == '__main__':
