@@ -390,7 +390,6 @@ class CalibrationOutput:
   max_lag: int = constants.DEFAULT_MAX_LAG
 
 
-# TODO: Add serde support to this class.
 class CalibratedDistribution(
     prior_distribution.IndependentMultivariateDistribution
 ):
@@ -493,7 +492,7 @@ class CalibratedDistribution(
             " is False."
         )
 
-    self._is_calibrated = tuple(is_calibrated)
+    self._is_calibrated = tuple(bool(x) for x in is_calibrated)
     self._calibration_outputs = tuple(calibration_outputs)
     self._parameters.update({
         constants.IS_CALIBRATED: self._is_calibrated,

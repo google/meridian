@@ -24,6 +24,7 @@ import warnings
 from meridian import backend
 from meridian import constants
 from meridian.model import prior_distribution as pd
+from meridian.model.calibration import base as calibration_base
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import constants as sc
 from meridian.schema.serde import function_registry as function_registry_utils
@@ -49,6 +50,7 @@ _CUSTOM_DISTRIBUTIONS = {
     "IndependentMultivariateDistribution": (
         pd.IndependentMultivariateDistribution
     ),
+    "CalibratedDistribution": calibration_base.CalibratedDistribution,
 }
 
 
@@ -167,15 +169,25 @@ class DistributionSerde(
   ) -> meridian_pb.TfpDistribution:
     """Converts a TensorFlow `Distribution` object to a `TfpDistribution` proto."""
     dist_name = type(dist).__name__
+    params = dist.parameters
     if dist_name in _CUSTOM_DISTRIBUTIONS:
       dist_class = _CUSTOM_DISTRIBUTIONS[dist_name]
+      if dist_class is calibration_base.CalibratedDistribution:
+        # Only the prior is persisted. Calibration records have no at-rest
+        # schema yet, so `calibration_outputs` is intentionally dropped; a
+        # reloaded CalibratedDistribution has None for every channel.
+        params = {
+            k: v
+            for k, v in params.items()
+            if k != constants.CALIBRATION_OUTPUTS
+        }
     else:
       dist_class = getattr(backend.tfd, dist_name)
     return meridian_pb.TfpDistribution(
         distribution_type=dist_name,
         parameters={
             name: self._to_parameter_value_proto(name, value, dist_class)
-            for name, value in dist.parameters.items()
+            for name, value in params.items()
         },
     )
 
@@ -215,7 +227,7 @@ class DistributionSerde(
         return meridian_pb.TfpParameterValue(string_value=value)
       case None:
         return meridian_pb.TfpParameterValue(none_value=True)
-      case list():
+      case list() | tuple():
         value_generator = (
             self._to_parameter_value_proto(param_name, v, dist) for v in value
         )
