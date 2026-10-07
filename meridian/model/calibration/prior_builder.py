@@ -356,7 +356,8 @@ class CalibrationBuilder:
         adjustments. This can be either `'geometric'` or `'binomial'`, or a
         mapping from channel name to the decay function string. Default is
         `'geometric'`. This value should be consistent with the adstock decay
-        spec defined in the Meridian model's `ModelSpec` object.
+        spec defined in the Meridian model's `ModelSpec` object. Entries for
+        organic media and organic reach & frequency channels are filtered out.
       alpha: The decay rate parameter (between 0 and 1 inclusive) used for
         duration adjustments. It determines the proportion of the total media
         effect captured during the experiment window. This can be either a float
@@ -377,7 +378,7 @@ class CalibrationBuilder:
     """
     self._input_data = data
 
-    _validate_adstock_decay_spec(adstock_decay_spec, self._valid_channels)
+    _validate_adstock_decay_spec(adstock_decay_spec, self._adstock_channels)
     _validate_alpha(alpha, self._valid_channels)
 
     if (
@@ -448,6 +449,11 @@ class CalibrationBuilder:
   def _valid_channels(self) -> frozenset[str]:
     """A cached set of all valid paid media and RF channels."""
     return frozenset(self._input_data.get_all_paid_channels())
+
+  @functools.cached_property
+  def _adstock_channels(self) -> frozenset[str]:
+    """A cached set of all valid adstock-eligible (paid and organic) channels."""
+    return frozenset(self._input_data.get_all_adstock_hill_channels())
 
   def with_meridian_geox_experiment_result(
       self,
