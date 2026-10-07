@@ -43,6 +43,12 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 *   Fix `ConcretizationTypeError` in `sample_posterior` on the JAX backend when
     using `IndependentMultivariateDistribution` priors (e.g. from
     `CalibrationBuilder`) by computing `backend.split` indices statically.
+*   Improve `BudgetOptimizer` grid generation performance by precomputing
+    batch-invariant Adstock and Hill terms and evaluating reach and frequency
+    channels in a single pass, and scale incremental KPI outcomes directly by
+    `kpi_transformer.population_scaled_stdev` and `population` in
+    `BudgetOptimizer` and `Analyzer.inverse_outcome` to avoid `float32`
+    intercept cancellation.
 
 ## [2.1.0] - 2026-09-17
 
