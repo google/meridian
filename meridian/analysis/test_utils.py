@@ -3610,19 +3610,19 @@ def generate_model_fit_data(
     )
 
   np.random.seed(0)
-  expected = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4)))
-  baseline = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4)))
+  expected = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4, 1)))
+  baseline = abs(np.random.lognormal(10, 1, size=(n_geos, n_time, 4, 1)))
   if not actual:
     actual = abs(np.random.lognormal(10, 1, size=(n_geos, n_time)))  # pyrefly: ignore[bad-assignment]
 
   return xr.Dataset(
       data_vars={
           c.EXPECTED: (
-              [c.GEO, c.TIME, c.METRIC],
+              [c.GEO, c.TIME, c.METRIC, c.EVALUATION_SET_VAR],
               expected,
           ),
           c.BASELINE: (
-              [c.GEO, c.TIME, c.METRIC],
+              [c.GEO, c.TIME, c.METRIC, c.EVALUATION_SET_VAR],
               baseline,
           ),
           c.ACTUAL: ([c.GEO, c.TIME], actual),
@@ -3631,6 +3631,7 @@ def generate_model_fit_data(
           c.GEO: geo,
           c.TIME: time,
           c.METRIC: metric,
+          c.EVALUATION_SET_VAR: [c.ALL_DATA],
       },
       attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
   )

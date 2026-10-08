@@ -298,7 +298,8 @@ def _create_expected_vs_actual_data(split: bool) -> xr.Dataset:
   xr_dims_expected = (
       constants.TIME,
       constants.METRIC,
-  ) + ((constants.EVALUATION_SET_VAR,) if split else ())
+      constants.EVALUATION_SET_VAR,
+  )
   xr_dims_baseline = xr_dims_expected
   xr_dims_actual = (constants.TIME,) + (
       (constants.EVALUATION_SET_VAR,) if split else ()
@@ -312,14 +313,11 @@ def _create_expected_vs_actual_data(split: bool) -> xr.Dataset:
           [constants.METRIC],
           [constants.MEAN, constants.CI_LO, constants.CI_HI],
       ),
+      constants.EVALUATION_SET_VAR: (
+          [constants.EVALUATION_SET_VAR],
+          list(constants.EVALUATION_SET) if split else [constants.ALL_DATA],
+      ),
   }
-  if split:
-    xr_coords.update({
-        constants.EVALUATION_SET_VAR: (
-            [constants.EVALUATION_SET_VAR],
-            list(constants.EVALUATION_SET),
-        )
-    })
 
   time_1_train = [0.75, 0.7, 0.85]
   time_1_test = [0.75, 0.65, 0.85]
@@ -342,16 +340,11 @@ def _create_expected_vs_actual_data(split: bool) -> xr.Dataset:
       [stacked_train, stacked_test, stacked_all_data],
       axis=-1,
   )
+  expected = stacked_total if split else stacked_all_data[..., np.newaxis]
 
   xr_data = {
-      constants.EXPECTED: (
-          xr_dims_expected,
-          stacked_total if split else stacked_all_data,
-      ),
-      constants.BASELINE: (
-          xr_dims_baseline,
-          (stacked_total if split else stacked_all_data) - 0.1,
-      ),
+      constants.EXPECTED: (xr_dims_expected, expected),
+      constants.BASELINE: (xr_dims_baseline, expected - 0.1),
       constants.ACTUAL: (
           xr_dims_actual,
           stacked_train if split else time_3_train,
