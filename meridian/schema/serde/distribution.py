@@ -121,7 +121,22 @@ class DistributionSerde(
 
     Returns:
       A deserialized `PriorDistribution` object.
+
+    Raises:
+      NotImplementedError: If `serialized` has priors for time-varying media
+        effects.
     """
+    # TODO: Deserialize the time-varying priors once
+    # `PriorDistribution` supports them.
+    if isinstance(serialized, meridian_pb.PriorTfpDistributions) and any(
+        serialized.HasField(param)
+        for param in (constants.ZETA_M, constants.ZETA_RF)
+    ):
+      raise NotImplementedError(
+          "This model has priors for time-varying media effects (`zeta_m` or"
+          " `zeta_rf`), which this version of Meridian cannot load. Upgrade"
+          " Meridian to load it."
+      )
     kwargs = {}
     for param in constants.ALL_PRIOR_DISTRIBUTION_PARAMETERS:
       if not hasattr(serialized, param):

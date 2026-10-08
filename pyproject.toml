@@ -89,7 +89,7 @@ jax = [
 
 # MMM proto schema.
 schema = [
-  "mmm-proto-schema >= 1.4.2",
+  "mmm-proto-schema >= 1.5.0",
   "semver",
 ]
 
@@ -97,7 +97,7 @@ schema = [
 scenarioplanner = [
   "google-api-python-client",
   "google-auth",
-  "mmm-proto-schema >= 1.4.2",
+  "mmm-proto-schema >= 1.5.0",
   "semver",
 ]
 
