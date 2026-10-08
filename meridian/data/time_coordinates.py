@@ -64,7 +64,9 @@ def normalize_date(date: Date) -> datetime.date:
   elif isinstance(date, datetime.date):
     return date
   elif isinstance(date, np.datetime64):
-    return date.astype(datetime.date)
+    # Convert to day precision first: at finer precisions,
+    # `astype(datetime.date)` returns a `datetime.datetime` or an int.
+    return date.astype("datetime64[D]").astype(datetime.date)
   else:
     raise ValueError(f"Unsupported date value type: {type(date)} for {date}")
 

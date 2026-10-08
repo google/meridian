@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 import dataclasses
 import datetime
 import types
@@ -3592,6 +3592,252 @@ class ResolvedRandomHoldoutTest(
 
   def test_no_holdout_has_no_draw(self):
     self.assertIsNone(self._context(spec.ModelSpec()).resolved_random_holdout)
+
+
+_ModelSpecWithChangepoints = spec._ModelSpecWithChangepoints  # pylint: disable=protected-access
+_PriorDistributionWithChangepoints = (
+    prior_distribution._PriorDistributionWithChangepoints  # pylint: disable=protected-access
+)
+
+
+class ChangepointsTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests the time-varying media effects members of `ModelContext`."""
+
+  # pylint: disable=protected-access
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    data = self.input_data_with_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    self.media = [str(name) for name in data.media_channel.values]
+    self.rf = [str(name) for name in data.rf_channel.values]
+    self.dates = data.time_coordinates.all_dates
+
+  def _context(
+      self,
+      model_spec: spec.ModelSpec,
+      data: input_data.InputData | None = None,
+  ) -> context.ModelContext:
+    return context.ModelContext(
+        input_data=(
+            data if data is not None else self.input_data_with_media_and_rf
+        ),
+        model_spec=model_spec,
+    )
+
+  @parameterized.named_parameters(
+      ("model_spec", spec.ModelSpec),
+      ("no_changepoints", _ModelSpecWithChangepoints),
+      (
+          "empty_changepoints",
+          lambda: _ModelSpecWithChangepoints(changepoints={}),
+      ),
+  )
+  def test_model_without_changepoints(
+      self, make_model_spec: Callable[[], spec.ModelSpec]
+  ):
+    model_context = self._context(make_model_spec())
+    self.assertEqual(model_context._changepoints, {})
+    self.assertEqual(model_context._changepoint_max_intervals, 0)
+    self.assertIsNone(model_context._media_changepoint_info)
+    self.assertIsNone(model_context._rf_changepoint_info)
+    self.assertIs(
+        type(model_context.prior_broadcast),
+        prior_distribution.PriorDistribution,
+    )
+
+  def test_changepoint_info_of_media_and_rf_channels(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={
+                self.rf[0]: [self.dates[100]],
+                self.media[1]: [str(self.dates[50]), self.dates[10]],
+            }
+        )
+    )
+
+    self.assertEqual(
+        model_context._changepoints,
+        {self.media[1]: (10, 50), self.rf[0]: (100,)},
+    )
+    self.assertEqual(model_context._changepoint_max_intervals, 3)
+    media_info = model_context._media_changepoint_info
+    rf_info = model_context._rf_changepoint_info
+    assert media_info is not None and rf_info is not None
+    self.assertEqual(media_info.channel_names, (self.media[1],))
+    self.assertEqual(media_info.channel_indices.tolist(), [1])
+    self.assertEqual(media_info.interval_starts, ((0, 10, 50),))
+    self.assertEqual(media_info.weights.shape, (1, 3, self._N_TIMES))
+    self.assertEqual(media_info.mask.tolist(), [[True, True, True]])
+    self.assertEqual(rf_info.channel_names, (self.rf[0],))
+    self.assertEqual(rf_info.mask.tolist(), [[True, True, False]])
+
+  def test_only_media_channels_have_changepoints(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={self.media[0]: [self.dates[5]]}
+        )
+    )
+    self.assertIsNotNone(model_context._media_changepoint_info)
+    self.assertIsNone(model_context._rf_changepoint_info)
+
+  def test_changepoints_are_validated_at_model_build(self):
+    with self.assertRaisesRegex(ValueError, "not one of the input data's time"):
+      self._context(
+          _ModelSpecWithChangepoints(
+              changepoints={self.media[0]: ["2000-01-03"]}
+          )
+      )
+
+  def test_organic_channel_raises(self):
+    data = self.input_data_non_media_and_organic
+    assert data.organic_media_channel is not None
+    organic = str(data.organic_media_channel.values[0])
+    with self.assertRaisesRegex(ValueError, "organic or non-media channel"):
+      self._context(
+          _ModelSpecWithChangepoints(
+              changepoints={organic: [data.time_coordinates.all_dates[5]]}
+          ),
+          data=data,
+      )
+
+  def test_prior_broadcast_adds_zeta_priors(self):
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={
+            self.media[0]: [self.dates[10]],
+            self.media[2]: [self.dates[20]],
+            self.rf[1]: [self.dates[30]],
+        }
+    )
+    broadcast = self._context(model_spec).prior_broadcast
+    expected = self._context(spec.ModelSpec()).prior_broadcast
+
+    self.assertIsInstance(broadcast, _PriorDistributionWithChangepoints)
+    assert isinstance(broadcast, _PriorDistributionWithChangepoints)
+    self.assertEqual(broadcast.zeta_m.batch_shape, (2,))
+    self.assertEqual(broadcast.zeta_rf.batch_shape, (1,))
+    for field in dataclasses.fields(prior_distribution.PriorDistribution):
+      self.assertTrue(
+          prior_distribution.distributions_are_equal(
+              getattr(broadcast, field.name), getattr(expected, field.name)
+          ),
+          msg=field.name,
+      )
+
+  def test_prior_with_changepoints_is_ignored_without_changepoints(self):
+    model_spec = _ModelSpecWithChangepoints(
+        prior=_PriorDistributionWithChangepoints()
+    )
+    with self.assertWarnsRegex(UserWarning, "`zeta_rf` priors are ignored"):
+      broadcast = self._context(model_spec).prior_broadcast
+    expected = self._context(spec.ModelSpec()).prior_broadcast
+
+    self.assertIs(type(broadcast), prior_distribution.PriorDistribution)
+    for field in dataclasses.fields(prior_distribution.PriorDistribution):
+      self.assertTrue(
+          prior_distribution.distributions_are_equal(
+              getattr(broadcast, field.name), getattr(expected, field.name)
+          ),
+          msg=field.name,
+      )
+
+  def test_prior_broadcast_custom_zeta_per_channel(self):
+    zeta_m = backend.tfd.HalfNormal(
+        np.array([0.2, 0.4], dtype=backend.np_float_dtype)
+    )
+    model_spec = _ModelSpecWithChangepoints(
+        prior=_PriorDistributionWithChangepoints(zeta_m=zeta_m),
+        changepoints={
+            self.media[0]: [self.dates[10]],
+            self.media[2]: [self.dates[20]],
+        },
+    )
+    broadcast = self._context(model_spec).prior_broadcast
+    assert isinstance(broadcast, _PriorDistributionWithChangepoints)
+    test_utils.assert_allclose(broadcast.zeta_m.distribution.scale, [0.2, 0.4])
+    self.assertEqual(broadcast.zeta_rf.batch_shape, (0,))
+
+  def test_prior_broadcast_custom_zeta_length_mismatch_raises(self):
+    zeta_m = backend.tfd.HalfNormal(
+        np.array([0.2, 0.4], dtype=backend.np_float_dtype)
+    )
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            prior=_PriorDistributionWithChangepoints(zeta_m=zeta_m),
+            changepoints={self.media[0]: [self.dates[10]]},
+        )
+    )
+    with self.assertRaisesRegex(ValueError, "media channels with changepoints"):
+      _ = model_context.prior_broadcast
+
+
+def _week(index: int) -> datetime.date:
+  return datetime.date(2024, 1, 1) + datetime.timedelta(weeks=index)
+
+
+class CompileChangepointsTest(parameterized.TestCase):
+
+  _DATES = [_week(i) for i in range(5)]
+
+  def _compile(
+      self, changepoints_spec: Mapping[str, Sequence[datetime.date]]
+  ) -> dict[str, tuple[int, ...]]:
+    return context._compile_changepoints(  # pylint: disable=protected-access
+        changepoints_spec,
+        dates=self._DATES,
+        paid_channels=["Search", "TV", "YouTube"],
+        other_channels=["Organic"],
+    )
+
+  def test_dates_become_sorted_indices_in_channel_order(self):
+    compiled = self._compile(
+        {"YouTube": [_week(2)], "TV": [_week(3), _week(1)]}
+    )
+    self.assertEqual(compiled, {"TV": (1, 3), "YouTube": (2,)})
+    self.assertEqual(list(compiled), ["TV", "YouTube"])
+
+  def test_three_changepoints_is_the_maximum(self):
+    # Five time periods allow at most four intervals, so three changepoints.
+    compiled = self._compile({"TV": [_week(1), _week(2), _week(3)]})
+    self.assertEqual(compiled, {"TV": (1, 2, 3)})
+
+  def test_empty_mapping_returns_empty(self):
+    self.assertEqual(self._compile({}), {})
+
+  @parameterized.named_parameters(
+      ("organic_channel", {"Organic": [_week(1)]}, "organic or non-media"),
+      ("unknown_channel", {"Radio": [_week(1)]}, "not a paid media or RF"),
+      (
+          "not_a_time_coordinate",
+          {"TV": [datetime.date(2024, 1, 9)]},
+          "time coordinates. The nearest are 2024-01-08 and 2024-01-15.",
+      ),
+      (
+          "before_the_data",
+          {"TV": [datetime.date(2023, 12, 25)]},
+          "not one of the input data's time coordinates",
+      ),
+      ("first_date", {"TV": [_week(0)]}, "is the first time coordinate"),
+      ("duplicate", {"TV": [_week(1), _week(1)]}, "more than once"),
+      (
+          "every_time_period",
+          {"TV": [_week(1), _week(2), _week(3), _week(4)]},
+          "at most 3 changepoints",
+      ),
+  )
+  def test_invalid_changepoints_raise(self, changepoints_spec, message):
+    with self.assertRaisesRegex(ValueError, message):
+      self._compile(changepoints_spec)
 
 
 if __name__ == "__main__":

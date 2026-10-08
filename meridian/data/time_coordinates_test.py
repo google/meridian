@@ -781,5 +781,35 @@ class TimeCoordinatesTest(parameterized.TestCase):
     )
 
 
+class NormalizeDateTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(testcase_name="string", date="2024-01-08"),
+      dict(testcase_name="date", date=dt.date(2024, 1, 8)),
+      dict(testcase_name="datetime", date=dt.datetime(2024, 1, 8, 12, 30)),
+      dict(testcase_name="datetime64_day", date=np.datetime64("2024-01-08")),
+      dict(
+          testcase_name="datetime64_second",
+          date=np.datetime64("2024-01-08T12:30:00"),
+      ),
+      dict(
+          testcase_name="datetime64_nanosecond",
+          date=np.datetime64("2024-01-08T12:30:00", "ns"),
+      ),
+  )
+  def test_returns_date(self, date):
+    normalized = time_coordinates.normalize_date(date)
+    self.assertIs(type(normalized), dt.date)
+    self.assertEqual(normalized, dt.date(2024, 1, 8))
+
+  @parameterized.named_parameters(
+      dict(testcase_name="integer", date=2),
+      dict(testcase_name="wrong_format", date="01/08/2024"),
+  )
+  def test_invalid_date_raises(self, date):
+    with self.assertRaises(ValueError):
+      time_coordinates.normalize_date(date)
+
+
 if __name__ == "__main__":
   absltest.main()

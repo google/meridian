@@ -66,6 +66,25 @@ class PosteriorMCMCSamplerTest(
     else:
       test_utils.assert_seed_not_allequal(seed1, seed2)
 
+  def test_sample_posterior_with_changepoints_raises(self):
+    input_data = self.short_input_data_with_media_and_rf
+    assert input_data.rf_channel is not None
+    model_spec = spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+        changepoints={
+            str(input_data.rf_channel.values[0]): [
+                input_data.time_coordinates.all_dates[10]
+            ]
+        }
+    )
+    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
+    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
+      meridian.sample_posterior(
+          n_chains=self._N_CHAINS,
+          n_adapt=self._N_ADAPT,
+          n_burnin=self._N_BURNIN,
+          n_keep=self._N_KEEP,
+      )
+
   def test_get_joint_dist_zeros(self):
     zero = backend.np_float_dtype(0.0)
     model_spec = spec.ModelSpec(
