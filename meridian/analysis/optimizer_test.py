@@ -3189,6 +3189,64 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     np.testing.assert_array_equal(spend.optimized, expected_optimal_spend)
 
+  def test_grid_search_skips_step_exceeding_budget_and_continues(self):
+    # The highest-ROI step (ch1 jumping straight to 300) exceeds the budget of
+    # 200. The search should discard that step and continue allocating the
+    # remaining budget to smaller steps, rather than stopping with the entire
+    # budget unspent.
+    channels = np.array(['ch1', 'ch2'])
+    coords = {
+        c.GRID_SPEND_INDEX: np.arange(0, 4),
+        c.CHANNEL: channels,
+    }
+    dims = [c.GRID_SPEND_INDEX, c.CHANNEL]
+    spend_grid = xr.DataArray(
+        np.array([
+            [0.0, 0.0],
+            [100.0, 100.0],
+            [200.0, 200.0],
+            [300.0, 300.0],
+        ]),
+        coords=coords,
+        dims=dims,
+    )
+    incremental_outcome_grid = xr.DataArray(
+        np.array([
+            [0.0, 0.0],
+            [0.0, 150.0],
+            [0.0, 250.0],
+            [900.0, 300.0],
+        ]),
+        coords=coords,
+        dims=dims,
+    )
+    grid = optimizer.OptimizationGrid(
+        historical_spend=np.zeros(len(channels)),
+        use_kpi=False,
+        use_posterior=True,
+        use_optimal_frequency=False,
+        max_frequency=None,
+        selected_geos=None,
+        start_date=None,
+        end_date=None,
+        gtol=0.1,
+        round_factor=-2,
+        optimal_frequency=None,
+        selected_times=None,
+        _grid_dataset=xr.Dataset({
+            c.SPEND_GRID: spend_grid,
+            c.INCREMENTAL_OUTCOME_GRID: incremental_outcome_grid,
+        }),
+    )
+
+    optimal_spend = grid._grid_search(
+        spend_grid=spend_grid,
+        incremental_outcome_grid=incremental_outcome_grid,
+        scenario=optimizer.FixedBudgetScenario(total_budget=200),
+    )
+
+    np.testing.assert_array_equal(optimal_spend, np.array([0, 200]))
+
   @mock.patch.object(analyzer.Analyzer, 'incremental_outcome', autospec=True)
   def test_optimizer_budget_with_specified_budget(
       self, mock_incremental_outcome

@@ -417,7 +417,6 @@ class OptimizationGrid:
     iterative_roi_grid = np.round(iterative_roi_grid, decimals=8)
 
     while True:
-      spend_optimal = spend.astype(int)
       # If none of the exit criteria are met roi_grid will eventually be filled
       # with all nans.
       if np.isnan(iterative_roi_grid).all():
@@ -427,6 +426,9 @@ class OptimizationGrid:
       )
       row_idx = point[0]
       media_idx = point[1]
+      # Save the previous state to revert if constraints are exceeded.
+      prev_spend = spend[media_idx]
+      prev_incremental_outcome = incremental_outcome[media_idx]
       spend[media_idx] = spend_grid_values[row_idx, media_idx]
       incremental_outcome[media_idx] = incremental_outcome_grid_values[
           row_idx, media_idx
@@ -438,6 +440,18 @@ class OptimizationGrid:
           roi_grid_point=roi_grid_point,
           scenario=scenario,
       ):
+        # Revert to the previous valid state.
+        spend[media_idx] = prev_spend
+        incremental_outcome[media_idx] = prev_incremental_outcome
+        if isinstance(scenario, FixedBudgetScenario):
+          # Invalidate this knot and all higher knots for this channel. Since
+          # spend grid values are ascending, any larger step for this channel
+          # would also exceed the total budget.
+          iterative_roi_grid[row_idx:, media_idx] = np.nan
+          continue
+        # For flexible budget scenarios, the ROI/mROI target criteria act as the
+        # termination rule: `roi_grid_point` is the global maximum of the
+        # remaining grid, so no remaining step can satisfy the target either.
         break
 
       iterative_roi_grid[0 : row_idx + 1, media_idx] = np.nan
@@ -459,7 +473,7 @@ class OptimizationGrid:
       iterative_roi_grid[row_idx + 1 :, media_idx] = np.round(
           new_roi_col, decimals=8
       )
-    return spend_optimal
+    return spend.astype(int)
 
 
 @dataclasses.dataclass(frozen=True)

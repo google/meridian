@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix budget optimization stopping early and leaving part of a fixed budget
+    unspent. The search can move a channel's spend several grid points at
+    once. Previously, if the best such move needed more than the remaining
+    budget, the search stopped. It now skips that move and continues with
+    moves that fit.
 *   Add `allows_negative_aggregate_baseline` to `ModelSpec` to optionally
     constrain the population-weighted aggregate baseline across time and geos to
     be non-negative.
