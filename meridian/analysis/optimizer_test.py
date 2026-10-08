@@ -48,6 +48,7 @@ from meridian.backend import test_utils as backend_test_utils
 from meridian.common import errors
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.data import time_coordinates as tc
 from meridian.model import context
 from meridian.model import model
 from meridian.model import prior_distribution
@@ -4543,10 +4544,14 @@ class OptimizerOutputTest(parameterized.TestCase):
     )
     model_context.input_data.kpi_type = c.REVENUE
     model_context.input_data.revenue_per_kpi = self.revenue_per_kpi
-    model_context.input_data.time_coordinates.interval_days = 7
+    model_context.input_data.time_coordinates = tc.TimeCoordinates.from_dates(
+        ['2021-12-20', '2021-12-27']
+    )
     model_context_kpi_output.input_data.kpi_type = c.NON_REVENUE
     model_context_kpi_output.input_data.revenue_per_kpi = None
-    model_context_kpi_output.input_data.time_coordinates.interval_days = 7
+    model_context_kpi_output.input_data.time_coordinates = (
+        tc.TimeCoordinates.from_dates(['2021-12-20', '2021-12-27'])
+    )
 
     meridian_mock = mock.create_autospec(
         model.Meridian,
@@ -4710,6 +4715,27 @@ class OptimizerOutputTest(parameterized.TestCase):
         [
             'Time period: Jan 25, 2021 - Jan 3, 2022',
         ],
+    )
+
+  def test_output_chips_monthly_cadence(self):
+    self.optimization_results.analyzer.model_context.input_data.time_coordinates = (
+        tc.TimeCoordinates.from_dates(
+            ['2024-01-01', '2024-02-01', '2024-03-01']
+        )
+    )
+    monthly_optimized_data = self.sample_optimized_data.copy()
+    monthly_optimized_data.attrs[c.START_DATE] = '2024-02-01'
+    monthly_optimized_data.attrs[c.END_DATE] = '2024-02-01'
+    monthly_results = dataclasses.replace(
+        self.optimization_results,
+        _optimized_data=monthly_optimized_data,
+    )
+
+    summary_html_dom = self._get_output_summary_html_dom(monthly_results)
+    chip_nodes = summary_html_dom.findall('body/chips/chip')
+    self.assertSequenceEqual(
+        [chip.text.strip() for chip in chip_nodes if chip.text is not None],
+        ['Time period: Feb 1, 2024 - Mar 1, 2024'],
     )
 
   def test_output_scenario_plan_card_text(self):

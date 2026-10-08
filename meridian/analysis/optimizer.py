@@ -1185,12 +1185,13 @@ class OptimizationResults:
     self.template_env.globals[c.START_DATE] = start_date.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {start_date.day}, %Y'
     )
-    interval_days = (
-        self.analyzer.model_context.input_data.time_coordinates.interval_days
+    time_coordinates = (
+        self.analyzer.model_context.input_data.time_coordinates
     )
-    end_date = tc.normalize_date(self.optimized_data.end_date)
-    end_date_adjusted = end_date + pd.Timedelta(days=interval_days)
-    self.template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
+    end_date_adjusted = time_coordinates.period_end(
+        self.optimized_data.end_date
+    )
+    self.template_env.globals[c.END_DATE] = end_date_adjusted.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {end_date_adjusted.day}, %Y'
     )
     self.template_env.globals[c.SELECTED_GEOS] = (

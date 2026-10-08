@@ -331,6 +331,32 @@ class SummarizerTest(parameterized.TestCase):
         ['Time period: Jan 1, 2022 - Jan 8, 2022'],
     )
 
+  def test_output_chips_monthly_cadence(self):
+    monthly_dates = ['2024-01-01', '2024-02-01', '2024-03-01']
+    response = xr.DataArray(
+        data=None,
+        dims=[c.TIME],
+        coords={c.TIME: monthly_dates},
+    )
+    self.mock_meridian_revenue.input_data.time = response[c.TIME]
+    self.mock_meridian_revenue.input_data.time_coordinates = (
+        tc.TimeCoordinates.from_dates(response[c.TIME])
+    )
+    self.mock_meridian_revenue.expand_selected_time_dims.return_value = [
+        '2024-02-01'
+    ]
+
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer_outcome=self.summarizer_revenue,
+        start_date=dt.datetime(2024, 2, 1),
+        end_date=dt.datetime(2024, 2, 1),
+    )
+    chip_nodes = summary_html_dom.findall('body/chips/chip')
+    self.assertSequenceEqual(
+        [chip.text.strip() for chip in chip_nodes if chip.text is not None],
+        ['Time period: Feb 1, 2024 - Mar 1, 2024'],
+    )
+
   def test_output_card_structure(self):
     summary_html_dom = self._get_output_model_results_summary_html_dom(
         summarizer_outcome=self.summarizer_revenue,

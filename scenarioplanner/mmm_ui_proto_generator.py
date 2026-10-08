@@ -131,8 +131,8 @@ class MmmUiProtoGenerator:
       if isinstance(spec, model_processor.DatedSpec):
         min_hist_date = min(self._time_coordinates.all_dates)
         max_hist_date = max(self._time_coordinates.all_dates)
-        max_exclusive_hist_date = max_hist_date + datetime.timedelta(
-            days=self._time_coordinates.interval_days
+        max_exclusive_hist_date = self._time_coordinates.period_end(
+            max_hist_date
         )
         if spec.start_date is not None and (
             spec.start_date < min_hist_date or spec.start_date > max_hist_date
@@ -245,8 +245,8 @@ class MmmUiProtoGenerator:
 
     # If the end date is not specified, compute the exclusive end date based on
     # the last date in the time coordinates.
-    exclusive_end_date = spec.end_date or dates[-1] + datetime.timedelta(
-        days=self._time_coordinates.interval_days
+    exclusive_end_date = (
+        spec.end_date or self._time_coordinates.period_end(dates[-1])
     )
 
     dates.append(exclusive_end_date)

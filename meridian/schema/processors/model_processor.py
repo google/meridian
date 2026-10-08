@@ -156,10 +156,6 @@ class DatedSpecResolver:
     self._time_coordinates = time_coordinates
 
   @property
-  def _interval_days(self) -> int:
-    return self._time_coordinates.interval_days
-
-  @property
   def time_coordinates(self) -> tc.TimeCoordinates:
     return self._time_coordinates
 
@@ -179,13 +175,8 @@ class DatedSpecResolver:
     if self._spec.start_date is not None:
       start = self._spec.start_date.strftime(c.DATE_FORMAT)
     if self._spec.end_date is not None:
-      period_starts_by_end = {
-          end_date: start_date
-          for start_date, end_date in self._time_coordinates.period_ends.items()
-      }
-      inclusive_end_date = period_starts_by_end.get(
-          self._spec.end_date,
-          self._spec.end_date - datetime.timedelta(days=self._interval_days),
+      inclusive_end_date = self._time_coordinates.period_start(
+          self._spec.end_date
       )
       end = inclusive_end_date.strftime(c.DATE_FORMAT)
 
@@ -246,7 +237,7 @@ class DatedSpecResolver:
       end_date = normalized_selected_times[-1]
 
     # Adjust end_date to make it exclusive.
-    end_date = self._time_coordinates.period_ends[end_date]
+    end_date = self._time_coordinates.period_end(end_date)
 
     return time_record.create_date_interval_pb(
         start_date, end_date, tag=self._spec.date_interval_tag
@@ -278,7 +269,7 @@ class DatedSpecResolver:
     for start_date in times_list:
       date_interval = time_record.create_date_interval_pb(
           start_date=start_date,
-          end_date=self._time_coordinates.period_ends[start_date],
+          end_date=self._time_coordinates.period_end(start_date),
           tag=self._spec.date_interval_tag,
       )
       date_intervals.append(date_interval)
@@ -294,9 +285,9 @@ class DatedSpecResolver:
     if end is None:
       # Adjust `end` to make it exclusive, but only if we pulled it from the
       # time coordinates.
-      end = self._time_coordinates.period_ends[
+      end = self._time_coordinates.period_end(
           self._time_coordinates.all_dates[-1]
-      ]
+      )
     return (start, end)
 
   def resolve_to_date_interval_proto(self) -> date_interval_pb2.DateInterval:

@@ -593,6 +593,54 @@ class TimeCoordinatesTest(parameterized.TestCase):
               (dt.date(2024, 1, 1), dt.date(2025, 1, 1)),
           ],
       ),
+      dict(
+          testcase_name="monthly_month_end_thirty_to_thirty_one_days",
+          dates=[
+              dt.date(2024, 9, 30),
+              dt.date(2024, 10, 31),
+              dt.date(2024, 11, 30),
+          ],
+          expected_bounds=[
+              (dt.date(2024, 9, 30), dt.date(2024, 10, 31)),
+              (dt.date(2024, 10, 31), dt.date(2024, 11, 30)),
+              (dt.date(2024, 11, 30), dt.date(2024, 12, 31)),
+          ],
+      ),
+      dict(
+          testcase_name="monthly_month_end_january_to_leap_february",
+          dates=[
+              dt.date(2023, 12, 31),
+              dt.date(2024, 1, 31),
+          ],
+          expected_bounds=[
+              (dt.date(2023, 12, 31), dt.date(2024, 1, 31)),
+              (dt.date(2024, 1, 31), dt.date(2024, 2, 29)),
+          ],
+      ),
+      dict(
+          testcase_name="quarterly_month_end",
+          dates=[
+              dt.date(2024, 3, 31),
+              dt.date(2024, 6, 30),
+              dt.date(2024, 9, 30),
+          ],
+          expected_bounds=[
+              (dt.date(2024, 3, 31), dt.date(2024, 6, 30)),
+              (dt.date(2024, 6, 30), dt.date(2024, 9, 30)),
+              (dt.date(2024, 9, 30), dt.date(2024, 12, 31)),
+          ],
+      ),
+      dict(
+          testcase_name="yearly_month_end_leap_february",
+          dates=[
+              dt.date(2023, 2, 28),
+              dt.date(2024, 2, 29),
+          ],
+          expected_bounds=[
+              (dt.date(2023, 2, 28), dt.date(2024, 2, 29)),
+              (dt.date(2024, 2, 29), dt.date(2025, 2, 28)),
+          ],
+      ),
   )
   def test_get_period_bounds_regular_cadences(self, dates, expected_bounds):
     coords = time_coordinates.TimeCoordinates.from_dates(
@@ -659,6 +707,78 @@ class TimeCoordinatesTest(parameterized.TestCase):
         ValueError, "Time coordinates are not regularly spaced!"
     ):
       _ = coords.period_ends
+
+  def test_period_end_in_sample_and_polymorphic(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 2, 1),
+            dt.date(2024, 3, 1),
+        ])
+    )
+    self.assertEqual(coords.period_end("2024-01-01"), dt.date(2024, 2, 1))
+    self.assertEqual(
+        coords.period_end(dt.date(2024, 2, 1)), dt.date(2024, 3, 1)
+    )
+    self.assertEqual(
+        coords.period_end(dt.datetime(2024, 3, 1, 12, 0)),
+        dt.date(2024, 4, 1),
+    )
+
+  def test_period_end_out_of_sample_uses_period_offset(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 2, 1),
+        ])
+    )
+    self.assertEqual(coords.period_end("2025-05-01"), dt.date(2025, 6, 1))
+
+    month_end_coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 9, 30),
+            dt.date(2024, 10, 31),
+        ])
+    )
+    self.assertEqual(
+        month_end_coords.period_end("2024-11-30"), dt.date(2024, 12, 31)
+    )
+
+  def test_period_start_in_sample_and_polymorphic(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 2, 1),
+            dt.date(2024, 3, 1),
+        ])
+    )
+    self.assertEqual(coords.period_start("2024-02-01"), dt.date(2024, 1, 1))
+    self.assertEqual(
+        coords.period_start(dt.date(2024, 3, 1)), dt.date(2024, 2, 1)
+    )
+    self.assertEqual(
+        coords.period_start(dt.datetime(2024, 4, 1, 10, 0)),
+        dt.date(2024, 3, 1),
+    )
+
+  def test_period_start_out_of_sample_uses_period_offset(self):
+    coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 1, 1),
+            dt.date(2024, 2, 1),
+        ])
+    )
+    self.assertEqual(coords.period_start("2025-06-01"), dt.date(2025, 5, 1))
+
+    month_end_coords = time_coordinates.TimeCoordinates.from_dates(
+        pd.DatetimeIndex([
+            dt.date(2024, 9, 30),
+            dt.date(2024, 10, 31),
+        ])
+    )
+    self.assertEqual(
+        month_end_coords.period_start("2024-12-31"), dt.date(2024, 11, 30)
+    )
 
 
 if __name__ == "__main__":

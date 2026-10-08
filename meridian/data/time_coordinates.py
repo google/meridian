@@ -251,6 +251,21 @@ class TimeCoordinates:
     selected_dates = self.get_selected_dates(selected_interval)
     return [d.strftime(constants.DATE_FORMAT) for d in selected_dates]
 
+  @functools.cached_property
+  def _period_offset(self) -> pd.DateOffset:
+    """One calendar period of this cadence."""
+    if np.all(np.isin(self._interval_days, [28, 29, 30, 31])):
+      months = 1
+    elif np.all(np.isin(self._interval_days, [90, 91, 92])):
+      months = 3
+    elif np.all(np.isin(self._interval_days, [365, 366])):
+      months = 12
+    else:
+      return pd.DateOffset(days=self.interval_days)
+    if self.datetime_index.is_month_end.all():  # pyrefly: ignore[missing-attribute]
+      return pd.offsets.MonthEnd(months)
+    return pd.DateOffset(months=months)
+
   def get_period_bounds(
       self,
       selected_interval: DateInterval | None = None,
@@ -295,18 +310,7 @@ class TimeCoordinates:
       else:
         # Final period boundary: step forward by exactly one period according
         # to the identified temporal cadence of the dataset.
-        if np.all(np.isin(self._interval_days, [28, 29, 30, 31])):
-          # Monthly cadence: step forward exactly 1 calendar month.
-          end_date = (pd.Timestamp(start_date) + pd.DateOffset(months=1)).date()
-        elif np.all(np.isin(self._interval_days, [90, 91, 92])):
-          # Quarterly cadence: step forward exactly 3 calendar months.
-          end_date = (pd.Timestamp(start_date) + pd.DateOffset(months=3)).date()
-        elif np.all(np.isin(self._interval_days, [365, 366])):
-          # Yearly cadence: step forward exactly 1 calendar year.
-          end_date = (pd.Timestamp(start_date) + pd.DateOffset(years=1)).date()
-        else:
-          # Daily, weekly, or other fixed-day cadences.
-          end_date = start_date + datetime.timedelta(days=self.interval_days)
+        end_date = (pd.Timestamp(start_date) + self._period_offset).date()
 
       bounds.append((start_date, end_date))
 
@@ -324,6 +328,21 @@ class TimeCoordinates:
       ValueError: If the time coordinates are not regularly spaced.
     """
     return dict(self.get_period_bounds())
+
+  def period_end(self, start_date: Date) -> datetime.date:
+    """Returns the exclusive end date for a period starting on `start_date`."""
+    start_date = normalize_date(start_date)
+    if start_date in self.period_ends:
+      return self.period_ends[start_date]
+    return (pd.Timestamp(start_date) + self._period_offset).date()
+
+  def period_start(self, end_date: Date) -> datetime.date:
+    """Returns the start date for a period ending on `end_date`."""
+    end_date = normalize_date(end_date)
+    period_starts_by_end = {v: k for k, v in self.period_ends.items()}
+    if end_date in period_starts_by_end:
+      return period_starts_by_end[end_date]
+    return (pd.Timestamp(end_date) - self._period_offset).date()
 
   def expand_selected_time_dims(
       self,

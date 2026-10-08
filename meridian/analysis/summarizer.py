@@ -139,10 +139,11 @@ class Summarizer:
         f'%b {start_date.day}, %Y'
     )
 
-    interval_days = self._meridian.input_data.time_coordinates.interval_days
-    end_date_adjusted = end_date + pd.Timedelta(days=interval_days)
+    end_date_adjusted = (
+        self._meridian.input_data.time_coordinates.period_end(end_date)
+    )
 
-    template_env.globals[c.END_DATE] = end_date_adjusted.strftime(
+    template_env.globals[c.END_DATE] = end_date_adjusted.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {end_date_adjusted.day}, %Y'
     )
 
