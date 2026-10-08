@@ -320,7 +320,7 @@ class ReachFrequencyOptimizationProcessor(
         {constants.CHANNEL: self._all_rf_channels}
     ).data
     total_spend = np.sum(aggregated_spends.data)
-    pct_of_spend = 100.0 * aggregated_rf_spend / total_spend
+    pct_of_spend = aggregated_rf_spend / total_spend
 
     xr_dims = (constants.RF_CHANNEL,)
     xr_coords = {

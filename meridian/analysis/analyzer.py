@@ -2476,7 +2476,10 @@ class Analyzer:
       only included when `include_non_paid_channels` is `False`. Note that
       `roi`, `mroi`, `cpik`, and `effectiveness` metrics are not reported
       when `aggregate_times=False` because they do not have a clear
-      interpretation by time period.
+      interpretation by time period. `pct_of_spend` is expressed as a fraction
+      of the total spend (in the range [0, 1]), whereas `pct_of_impressions`
+      and `pct_of_contribution` are expressed as percentages (in the range
+      [0, 100]).
 
     Raises:
       ValueError: If both `include_prior` and `include_posterior` are `False`.
@@ -4397,15 +4400,15 @@ class Analyzer:
       An xarray Dataset consisting of the following arrays:
 
       * `impressions`
-      * `pct_of_impressions`
+      * `pct_of_impressions` (percentage, in the range [0, 100])
       * `spend`
-      * `pct_of_spend`
+      * `pct_of_spend` (fraction of the total spend, in the range [0, 1])
       * `cpm` (spend for every 1,000 impressions)
     """
     pct_of_impressions = (
         impressions_with_total / impressions_with_total[..., -1:] * 100
     )
-    pct_of_spend = spend_with_total / spend_with_total[..., -1:] * 100
+    pct_of_spend = spend_with_total / spend_with_total[..., -1:]
 
     return xr.Dataset(
         data_vars={

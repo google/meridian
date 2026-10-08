@@ -1785,6 +1785,8 @@ class MediaSummary:
           .rename({c.MEDIAN: 'central_tendency'})
       )
       df = pd.concat([df_mean, df_median], axis=1)
+      # `pct_of_spend` is a fraction; display it as a percentage.
+      df[c.PCT_OF_SPEND] = df[c.PCT_OF_SPEND] * 100
 
     data_vars = summary_metrics.data_vars
     digits = {k: 1 if min(abs(df[k])) < 1 else 0 for k in list(data_vars)}
@@ -2772,7 +2774,6 @@ class MediaSummary:
         .reset_index()
     )
     spend_pct_df.rename(columns={c.PCT_OF_SPEND: c.PCT}, inplace=True)
-    spend_pct_df[c.PCT] = spend_pct_df[c.PCT].div(100)
     spend_pct_df['label'] = '% Spend'
 
     pct_df = pd.concat([outcome_pct_df, spend_pct_df])
