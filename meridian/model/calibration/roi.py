@@ -25,6 +25,8 @@ from meridian.model import adstock_hill
 from meridian.model.calibration import base
 from meridian.model.calibration import constants as calibration_constants
 import numpy as np
+from scipy import special
+from scipy import stats
 import scipy.optimize as opt
 
 __all__ = [
@@ -41,10 +43,7 @@ _SCOUT_POINTS = 2000
 _LOWER_PERCENTILE = 0.001
 _UPPER_PERCENTILE = 0.999  # 99.8% confidence level interval
 _FINE_GRID_POINTS = 10000
-_OPTIMIZER_MIN_BOUND = 1e-4
 _ZERO_PROBABILITY_MASK = -1e10
-_MIN_POSITIVE_MEAN_SAFE = 1e-4
-_MIN_POSITIVE_VAR_SAFE = 1e-6
 
 # The recency half-life value (in weeks) used in recency adjustments.
 _HALF_LIFE_WEEKS = 52.0
@@ -580,6 +579,46 @@ class GridDistribution(backend.tfd.Distribution):
     )
 
 
+def _normalized_grid_weights(
+    *,
+    grid_np: np.ndarray,
+    pdf_np: np.ndarray,
+    positive_only: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+  """Returns the grid and its normalized probability weights in float64.
+
+  The grid and density can be float32, for example on the TensorFlow backend.
+  The distribution fits use float64 so that they don't depend on the backend's
+  float precision.
+
+  Args:
+    grid_np: The parameter grid.
+    pdf_np: The probability density function on the grid.
+    positive_only: Whether to keep only the grid points greater than zero.
+
+  Returns:
+    A tuple (grid, weights) of float64 arrays, where the weights are
+    proportional to `pdf_np` and sum to one.
+
+  Raises:
+    ValueError: If the probability mass on the kept grid points is not finite
+      and positive.
+  """
+  grid = np.asarray(grid_np, dtype=np.float64)
+  weights = np.asarray(pdf_np, dtype=np.float64)
+  if positive_only:
+    mask = grid > 0.0
+    grid = grid[mask]
+    weights = weights[mask]
+  total = np.sum(weights)
+  if not (np.isfinite(total) and total > 0.0):
+    raise ValueError(
+        "Probability mass on the grid must be finite and positive. Got:"
+        f" {total}."
+    )
+  return grid, weights / total
+
+
 def _normal_loss(
     p: Sequence[float],
     *,
@@ -590,12 +629,13 @@ def _normal_loss(
   """Loss function for fitting Normal distribution."""
   if p[1] <= 0.0:
     return np.inf
-  log_prob = np.asarray(
-      backend.tfd.Normal(loc=float(p[0]), scale=float(p[1])).log_prob(grid_np)
+  # Same as `tfd.Normal(p[0], p[1]).log_prob`, but always in float64.
+  log_prob = stats.norm.logpdf(
+      np.asarray(grid_np, dtype=np.float64), loc=p[0], scale=p[1]
   )
   return (
       -np.sum(
-          pdf_np
+          np.asarray(pdf_np, dtype=np.float64)
           * np.where(np.isfinite(log_prob), log_prob, _ZERO_PROBABILITY_MASK)
       )
       * dx
@@ -612,15 +652,15 @@ def _lognormal_loss(
   """Loss function for fitting LogNormal distribution."""
   if p[1] <= 0.0:
     return np.inf
-  mask = grid_np > 0.0
-  log_prob = np.full_like(grid_np, _ZERO_PROBABILITY_MASK)
+  grid = np.asarray(grid_np, dtype=np.float64)
+  mask = grid > 0.0
+  log_prob = np.full_like(grid, _ZERO_PROBABILITY_MASK)
   if np.any(mask):
-    log_prob[mask] = np.asarray(
-        backend.tfd.LogNormal(loc=float(p[0]), scale=float(p[1])).log_prob(
-            grid_np[mask]
-        )
+    # Same as `tfd.LogNormal(p[0], p[1]).log_prob`, but always in float64.
+    log_prob[mask] = stats.lognorm.logpdf(
+        grid[mask], s=p[1], scale=np.exp(p[0])
     )
-  return -np.sum(pdf_np * log_prob) * dx
+  return -np.sum(np.asarray(pdf_np, dtype=np.float64) * log_prob) * dx
 
 
 def _gamma_loss(
@@ -633,15 +673,13 @@ def _gamma_loss(
   """Loss function for fitting Gamma distribution."""
   if p[0] <= 0.0 or p[1] <= 0.0:
     return np.inf
-  mask = grid_np > 0.0
-  log_prob = np.full_like(grid_np, _ZERO_PROBABILITY_MASK)
+  grid = np.asarray(grid_np, dtype=np.float64)
+  mask = grid > 0.0
+  log_prob = np.full_like(grid, _ZERO_PROBABILITY_MASK)
   if np.any(mask):
-    log_prob[mask] = np.asarray(
-        backend.tfd.Gamma(concentration=float(p[0]), rate=float(p[1])).log_prob(
-            grid_np[mask]
-        )
-    )
-  return -np.sum(pdf_np * log_prob) * dx
+    # Same as `tfd.Gamma(p[0], p[1]).log_prob`, but always in float64.
+    log_prob[mask] = stats.gamma.logpdf(grid[mask], a=p[0], scale=1.0 / p[1])
+  return -np.sum(np.asarray(pdf_np, dtype=np.float64) * log_prob) * dx
 
 
 def _fit_normal(
@@ -649,21 +687,29 @@ def _fit_normal(
     grid_np: np.ndarray,
     pdf_np: np.ndarray,
     dx: float,
-    mean_emp: float,
-    std_emp: float,
 ) -> tuple[backend.tfd.Distribution, float]:
-  """Fits Normal distribution and returns the fitted distribution and loss."""
-  res = opt.minimize(
-      lambda p: _normal_loss(p, grid_np=grid_np, pdf_np=pdf_np, dx=dx),
-      x0=[mean_emp, std_emp],
-      bounds=[(None, None), (_OPTIMIZER_MIN_BOUND, None)],
-      method="L-BFGS-B",
-  )
+  """Fits Normal distribution and returns the fitted distribution and loss.
+
+  The cross-entropy loss is minimized by the mean and standard deviation of the
+  grid posterior.
+
+  Args:
+    grid_np: The parameter grid.
+    pdf_np: The probability density function on the grid.
+    dx: The step size of the grid.
+
+  Returns:
+    A tuple (dist, loss) of the fitted distribution and its loss.
+  """
+  grid, weights = _normalized_grid_weights(grid_np=grid_np, pdf_np=pdf_np)
+  loc = np.sum(weights * grid)
+  scale = np.sqrt(np.sum(weights * (grid - loc) ** 2))
+  loss = _normal_loss([loc, scale], grid_np=grid_np, pdf_np=pdf_np, dx=dx)
   dist = backend.tfd.Normal(
-      loc=backend.cast(float(res.x[0]), backend.float_dtype),
-      scale=backend.cast(float(res.x[1]), backend.float_dtype),
+      loc=backend.cast(float(loc), backend.float_dtype),
+      scale=backend.cast(float(scale), backend.float_dtype),
   )
-  return dist, float(res.fun)
+  return dist, float(loss)
 
 
 def _fit_lognormal(
@@ -671,27 +717,36 @@ def _fit_lognormal(
     grid_np: np.ndarray,
     pdf_np: np.ndarray,
     dx: float,
-    mean_emp: float,
-    var_emp: float,
 ) -> tuple[backend.tfd.Distribution, float]:
-  """Fits LogNormal distribution and returns fitted distribution and loss."""
-  mean_emp_safe = max(mean_emp, _MIN_POSITIVE_MEAN_SAFE)
-  var_emp_safe = max(var_emp, _MIN_POSITIVE_VAR_SAFE)
-  log_var_guess = np.log(1.0 + (var_emp_safe / (mean_emp_safe**2)))
-  log_mean_guess = np.log(mean_emp_safe) - 0.5 * log_var_guess
-  log_std_guess = np.sqrt(log_var_guess)
+  """Fits LogNormal distribution and returns fitted distribution and loss.
 
-  res = opt.minimize(
-      lambda p: _lognormal_loss(p, grid_np=grid_np, pdf_np=pdf_np, dx=dx),
-      x0=[log_mean_guess, log_std_guess],
-      bounds=[(None, None), (_OPTIMIZER_MIN_BOUND, None)],
-      method="L-BFGS-B",
+  The cross-entropy loss is minimized by the mean and standard deviation of
+  log(x) over the positive part of the grid posterior. Posterior mass at
+  x <= 0 adds a penalty to the loss that doesn't depend on the parameters.
+
+  Args:
+    grid_np: The parameter grid.
+    pdf_np: The probability density function on the grid.
+    dx: The step size of the grid.
+
+  Returns:
+    A tuple (dist, loss) of the fitted distribution and its loss.
+
+  Raises:
+    ValueError: If the posterior has no probability mass at x > 0.
+  """
+  grid, weights = _normalized_grid_weights(
+      grid_np=grid_np, pdf_np=pdf_np, positive_only=True
   )
+  log_grid = np.log(grid)
+  loc = np.sum(weights * log_grid)
+  scale = np.sqrt(np.sum(weights * (log_grid - loc) ** 2))
+  loss = _lognormal_loss([loc, scale], grid_np=grid_np, pdf_np=pdf_np, dx=dx)
   dist = backend.tfd.LogNormal(
-      loc=backend.cast(float(res.x[0]), backend.float_dtype),
-      scale=backend.cast(float(res.x[1]), backend.float_dtype),
+      loc=backend.cast(float(loc), backend.float_dtype),
+      scale=backend.cast(float(scale), backend.float_dtype),
   )
-  return dist, float(res.fun)
+  return dist, float(loss)
 
 
 def _fit_gamma(
@@ -699,26 +754,54 @@ def _fit_gamma(
     grid_np: np.ndarray,
     pdf_np: np.ndarray,
     dx: float,
-    mean_emp: float,
-    var_emp: float,
 ) -> tuple[backend.tfd.Distribution, float]:
-  """Fits Gamma distribution and returns the fitted distribution and loss."""
-  mean_emp_safe = max(mean_emp, _MIN_POSITIVE_MEAN_SAFE)
-  var_emp_safe = max(var_emp, _MIN_POSITIVE_VAR_SAFE)
-  alpha_guess = (mean_emp_safe**2) / var_emp_safe
-  beta_guess = mean_emp_safe / var_emp_safe
+  """Fits Gamma distribution and returns the fitted distribution and loss.
 
-  res = opt.minimize(
-      lambda p: _gamma_loss(p, grid_np=grid_np, pdf_np=pdf_np, dx=dx),
-      x0=[alpha_guess, beta_guess],
-      bounds=[(_OPTIMIZER_MIN_BOUND, None), (_OPTIMIZER_MIN_BOUND, None)],
-      method="L-BFGS-B",
+  Over the positive part of the grid posterior, the cross-entropy loss is
+  minimized by the concentration `a` that solves
+  `log(a) - digamma(a) = log(E[x]) - E[log(x)]` and the rate `a / E[x]`.
+  Posterior mass at x <= 0 adds a penalty to the loss that doesn't depend on
+  the parameters.
+
+  Args:
+    grid_np: The parameter grid.
+    pdf_np: The probability density function on the grid.
+    dx: The step size of the grid.
+
+  Returns:
+    A tuple (dist, loss) of the fitted distribution and its loss.
+
+  Raises:
+    ValueError: If the posterior has no probability mass at x > 0, or if all
+      of that mass is on a single grid point.
+  """
+  grid, weights = _normalized_grid_weights(
+      grid_np=grid_np, pdf_np=pdf_np, positive_only=True
+  )
+  mean = np.sum(weights * grid)
+  log_mean_gap = np.log(mean) - np.sum(weights * np.log(grid))
+  if not (np.isfinite(log_mean_gap) and log_mean_gap > 0.0):
+    raise ValueError(
+        "Cannot fit a Gamma distribution when all positive posterior mass is on"
+        f" a single grid point. Got: log(E[x]) - E[log(x)] = {log_mean_gap}."
+    )
+  # log(a) - digamma(a) decreases from infinity to zero and lies between
+  # 1 / (2a) and 1 / a, so the root is between 0.5 / gap and 1 / gap. The
+  # bracket starts at 0.25 / gap, where the sign is clear despite rounding.
+  concentration = opt.brentq(
+      lambda a: np.log(a) - special.digamma(a) - log_mean_gap,
+      0.25 / log_mean_gap,
+      1.0 / log_mean_gap,
+  )
+  rate = concentration / mean
+  loss = _gamma_loss(
+      [concentration, rate], grid_np=grid_np, pdf_np=pdf_np, dx=dx
   )
   dist = backend.tfd.Gamma(
-      concentration=backend.cast(float(res.x[0]), backend.float_dtype),
-      rate=backend.cast(float(res.x[1]), backend.float_dtype),
+      concentration=backend.cast(float(concentration), backend.float_dtype),
+      rate=backend.cast(float(rate), backend.float_dtype),
   )
-  return dist, float(res.fun)
+  return dist, float(loss)
 
 
 def _has_negative_support(prior: backend.tfd.Distribution | None) -> bool:
@@ -762,6 +845,9 @@ def _fit_distribution(
 ) -> backend.tfd.Distribution:
   """Fits Normal, LogNormal, and Gamma, returning the best fit.
 
+  Each candidate minimizes the cross-entropy loss against the grid posterior,
+  and the candidate with the lowest loss is returned.
+
   Args:
     grid_np: The parameter grid.
     pdf_np: The probability density function on the grid.
@@ -773,55 +859,16 @@ def _fit_distribution(
     A fitted `backend.tfd.Distribution` corresponding to the best-fitting
     shape.
   """
-  mean_emp = np.sum(grid_np * pdf_np) * dx
-  var_emp = np.sum(((grid_np - mean_emp) ** 2) * pdf_np) * dx
-  std_emp = np.sqrt(var_emp)
-
+  candidates = [_fit_lognormal, _fit_gamma]
   if has_negative_support:
-    candidates = [
-        (
-            "Normal",
-            lambda: _fit_normal(
-                grid_np=grid_np,
-                pdf_np=pdf_np,
-                dx=dx,
-                mean_emp=mean_emp,
-                std_emp=std_emp,
-            ),
-        ),
-    ]
-  else:
-    candidates = []
-
-  candidates.extend([
-      (
-          "LogNormal",
-          lambda: _fit_lognormal(
-              grid_np=grid_np,
-              pdf_np=pdf_np,
-              dx=dx,
-              mean_emp=mean_emp,
-              var_emp=var_emp,
-          ),
-      ),
-      (
-          "Gamma",
-          lambda: _fit_gamma(
-              grid_np=grid_np,
-              pdf_np=pdf_np,
-              dx=dx,
-              mean_emp=mean_emp,
-              var_emp=var_emp,
-          ),
-      ),
-  ])
+    candidates = [_fit_normal] + candidates
 
   best_dist = None
   best_loss = np.inf
 
-  for _, fit_func in candidates:
+  for fit_func in candidates:
     try:
-      dist, loss = fit_func()
+      dist, loss = fit_func(grid_np=grid_np, pdf_np=pdf_np, dx=dx)
       if np.isfinite(loss) and loss < best_loss:
         best_loss = loss
         best_dist = dist
