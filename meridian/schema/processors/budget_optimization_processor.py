@@ -593,7 +593,6 @@ def to_marketing_analysis(
   for channel in xr_data.channel.values:
     channel_data = xr_data.sel(channel=channel)
     spend = channel_data.spend.item()
-    # TODO: Resolve conflict definition of spend share.
     spend_share = channel_data.pct_of_spend.item()
     channel_media_analysis = media_analysis_pb.MediaAnalysis(
         channel_name=channel,

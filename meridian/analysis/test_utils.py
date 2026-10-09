@@ -3151,14 +3151,14 @@ SAMPLE_SPEND_NEW_DATA = np.array([
     532.877,
     1935.360,
 ])
-SAMPLE_PCT_OF_SPEND = np.array([20.617, 20.045, 19.160, 19.789, 20.390, 100.0])
+SAMPLE_PCT_OF_SPEND = np.array([0.20617, 0.20045, 0.19160, 0.19789, 0.20390, 1.0])
 SAMPLE_PCT_OF_SPEND_NEW_DATA = np.array([
-    14.564,
-    16.257,
-    14.923,
-    26.722,
-    27.534,
-    100.0,
+    0.14564,
+    0.16257,
+    0.14923,
+    0.26722,
+    0.27534,
+    1.0,
 ])
 
 SAMPLE_INCREMENTAL_OUTCOME = np.array([
@@ -3696,7 +3696,7 @@ def generate_paid_summary_metrics() -> xr.Dataset:
 
   np.random.seed(0)
   shape = (len(channel), len(metric), len(distribution))
-  pct_of_spend = np.random.randint(low=0, high=100, size=len(channel))
+  pct_of_spend = np.random.randint(low=0, high=100, size=len(channel)) / 100
   spend = np.random.randint(low=10, high=1000, size=len(channel))
   impressions = np.random.randint(low=10, high=1000, size=len(channel))
   cpm = np.random.random(size=len(channel))

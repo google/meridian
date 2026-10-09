@@ -23,11 +23,15 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
-*   Fix budget optimization stopping early and leaving part of a fixed budget
-    unspent. The search can move a channel's spend several grid points at
-    once. Previously, if the best such move needed more than the remaining
-    budget, the search stopped. It now skips that move and continues with
-    moves that fit.
+*   `pct_of_spend` returned by `Analyzer.summary_metrics` (and
+    `MediaSummary.get_paid_summary_metrics`) is now a fraction of the total
+    spend in the range [0, 1], instead of a percentage in the range [0, 100].
+    This matches `BudgetOptimizer` results and the `pct_of_spend` argument of
+    `BudgetOptimizer.optimize`. `pct_of_impressions` and `pct_of_contribution`
+    are unchanged. `MediaSummary.summary_table` still displays `% spend` as a
+    percentage.
+*   Fix `spend_share` in `ReachFrequencyOptimizationProcessor` output, which
+    was reported as a percentage instead of a fraction of the total spend.
 *   Add `allows_negative_aggregate_baseline` to `ModelSpec` to optionally
     constrain the population-weighted aggregate baseline across time and geos to
     be non-negative.

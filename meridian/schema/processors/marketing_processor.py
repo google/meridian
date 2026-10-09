@@ -1123,7 +1123,7 @@ def _compute_spend(
     return None
 
   spend = media_summary_metrics[constants.SPEND].item()
-  spend_share = media_summary_metrics[constants.PCT_OF_SPEND].data.item() / 100
+  spend_share = media_summary_metrics[constants.PCT_OF_SPEND].data.item()
 
   return media_analysis_pb2.SpendInfo(
       spend=spend,
