@@ -992,6 +992,143 @@ class PriorDistribution:
     )
 
 
+def _default_zeta(name: str) -> backend.tfd.Distribution:
+  return backend.tfd.HalfNormal(backend.np_float_dtype(0.5), name=name)
+
+
+# TODO: Move `zeta_m` and `zeta_rf` to `PriorDistribution` when
+# time-varying media effects are released.
+@dataclasses.dataclass(kw_only=True)
+class _PriorDistributionWithChangepoints(PriorDistribution):
+  """A `PriorDistribution` with time-varying media effects priors.
+
+  Internal only. `ModelContext` uses it for models with changepoints.
+
+  The parameter batch shapes are as follows:
+
+  | Parameter | Batch shape                                 |
+  |-----------|---------------------------------------------|
+  | `zeta_m`  | Number of media channels with changepoints. |
+  | `zeta_rf` | Number of RF channels with changepoints.    |
+
+  Attributes:
+    zeta_m: Prior distribution on the scale of the time variation of the effect
+      of each media channel with changepoints. Default: `HalfNormal(0.5)`.
+    zeta_rf: Prior distribution on the scale of the time variation of the effect
+      of each RF channel with changepoints. Default: `HalfNormal(0.5)`.
+  """
+
+  zeta_m: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: _default_zeta(constants.ZETA_M),
+  )
+  zeta_rf: backend.tfd.Distribution = dataclasses.field(
+      default_factory=lambda: _default_zeta(constants.ZETA_RF),
+  )
+
+  def __post_init__(self):
+    super().__post_init__()
+    for param in (constants.ZETA_M, constants.ZETA_RF):
+      _validate_support(
+          param, getattr(self, param), (0, np.inf), (False, False)
+      )
+
+  @classmethod
+  def from_prior(
+      cls, prior: PriorDistribution
+  ) -> _PriorDistributionWithChangepoints:
+    """Returns `prior` with the default time-varying priors if it has none."""
+    if isinstance(prior, cls):
+      return prior
+    return cls(**{
+        field.name: getattr(prior, field.name)
+        for field in dataclasses.fields(PriorDistribution)
+    })
+
+  def broadcast(
+      self,
+      n_geos: int,
+      n_media_channels: int,
+      n_rf_channels: int,
+      n_organic_media_channels: int,
+      n_organic_rf_channels: int,
+      n_controls: int,
+      n_non_media_channels: int,
+      unique_sigma_for_each_geo: bool,
+      n_knots: int,
+      is_national: bool,
+      set_total_media_contribution_prior: bool,
+      kpi: float,
+      total_spend: np.ndarray,
+      *,
+      n_changepoint_media_channels: int = 0,
+      n_changepoint_rf_channels: int = 0,
+  ) -> _PriorDistributionWithChangepoints:
+    """Returns a new prior with broadcast distribution attributes.
+
+    Args:
+      n_geos: Number of geos.
+      n_media_channels: Number of media channels used.
+      n_rf_channels: Number of reach and frequency channels used.
+      n_organic_media_channels: Number of organic media channels used.
+      n_organic_rf_channels: Number of organic reach and frequency channels
+        used.
+      n_controls: Number of controls used.
+      n_non_media_channels: Number of non-media channels used.
+      unique_sigma_for_each_geo: Whether each geo has its own sigma.
+      n_knots: Number of knots used.
+      is_national: Whether the model is national.
+      set_total_media_contribution_prior: Whether to set the ROI priors from a
+        total media contribution prior.
+      kpi: Sum of the entire KPI across geos and time.
+      total_spend: Spend per media channel summed across geos and time.
+      n_changepoint_media_channels: Number of media channels with changepoints.
+      n_changepoint_rf_channels: Number of RF channels with changepoints.
+
+    Returns:
+      A new `_PriorDistributionWithChangepoints` broadcast from this one.
+
+    Raises:
+      ValueError: If custom priors are not set for all channels.
+    """
+    for name, param, n_channels, channel_type in (
+        (constants.ZETA_M, self.zeta_m, n_changepoint_media_channels, 'media'),
+        (constants.ZETA_RF, self.zeta_rf, n_changepoint_rf_channels, 'RF'),
+    ):
+      if param.batch_shape.as_list() and n_channels != param.batch_shape[0]:
+        raise ValueError(
+            f'Custom priors length ({param.batch_shape[0]}) of `{name}` must'
+            f' match the number of {channel_type} channels with changepoints'
+            f' ({n_channels}).'
+        )
+    broadcast_prior = super().broadcast(
+        n_geos=n_geos,
+        n_media_channels=n_media_channels,
+        n_rf_channels=n_rf_channels,
+        n_organic_media_channels=n_organic_media_channels,
+        n_organic_rf_channels=n_organic_rf_channels,
+        n_controls=n_controls,
+        n_non_media_channels=n_non_media_channels,
+        unique_sigma_for_each_geo=unique_sigma_for_each_geo,
+        n_knots=n_knots,
+        is_national=is_national,
+        set_total_media_contribution_prior=set_total_media_contribution_prior,
+        kpi=kpi,
+        total_spend=total_spend,
+    )
+    return _PriorDistributionWithChangepoints(
+        **{
+            field.name: getattr(broadcast_prior, field.name)
+            for field in dataclasses.fields(PriorDistribution)
+        },
+        zeta_m=backend.tfd.BatchBroadcast(
+            self.zeta_m, n_changepoint_media_channels, name=constants.ZETA_M
+        ),
+        zeta_rf=backend.tfd.BatchBroadcast(
+            self.zeta_rf, n_changepoint_rf_channels, name=constants.ZETA_RF
+        ),
+    )
+
+
 class IndependentMultivariateDistribution(backend.tfd.Distribution):
   """Container for a joint distribution created from independent distributions.
 

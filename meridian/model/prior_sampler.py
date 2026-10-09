@@ -678,6 +678,11 @@ class PriorDistributionSampler:
     if batch_size < 1:
       raise ValueError(f"`batch_size` must be at least 1, got {batch_size}.")
     ctx = self._model_context
+    # TODO: Sample time-varying media effects.
+    if getattr(ctx.model_spec, "changepoints", None):
+      raise NotImplementedError(
+          "Sampling models with changepoints is not supported yet."
+      )
 
     # For stateful sampling, the random seed must be set to ensure that any
     # random numbers that are generated are deterministic.

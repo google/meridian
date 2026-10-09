@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import datetime
 import types
 from typing import Any
@@ -1522,6 +1523,81 @@ class HoldoutSpecTest(parameterized.TestCase):
         "`resolved` cannot be empty.",
     ):
       spec.HoldoutSpec(rhs, resolved=[])
+
+
+_ModelSpecWithChangepoints = spec._ModelSpecWithChangepoints  # pylint: disable=protected-access
+_DEC_30 = datetime.date(2024, 12, 30)
+
+
+class ModelSpecWithChangepointsTest(parameterized.TestCase):
+
+  def test_model_spec_has_no_changepoints_field(self):
+    self.assertNotIn(
+        "changepoints", [f.name for f in dataclasses.fields(spec.ModelSpec)]
+    )
+
+  def test_default_is_none(self):
+    model_spec = _ModelSpecWithChangepoints()
+    self.assertIsNone(model_spec.changepoints)
+    self.assertIsInstance(model_spec, spec.ModelSpec)
+
+  @parameterized.named_parameters(
+      ("strings", {"TV": ["2024-12-30"]}, {"TV": (_DEC_30,)}),
+      (
+          "dates",
+          {"TV": [_DEC_30], "YouTube": ("2025-03-03",)},
+          {"TV": (_DEC_30,), "YouTube": (datetime.date(2025, 3, 3),)},
+      ),
+      (
+          "datetimes",
+          {"TV": [datetime.datetime(2024, 12, 30, 0, 0)]},
+          {"TV": (_DEC_30,)},
+      ),
+      (
+          "datetime64",
+          {"TV": [np.datetime64("2024-12-30T00:00:00", "ns")]},
+          {"TV": (_DEC_30,)},
+      ),
+      ("numpy_array", {"TV": np.array(["2024-12-30"])}, {"TV": (_DEC_30,)}),
+      ("empty_mapping", {}, {}),
+  )
+  def test_changepoints_are_normalized_to_dates(self, changepoints, expected):
+    model_spec = _ModelSpecWithChangepoints(changepoints=changepoints)
+    self.assertEqual(model_spec.changepoints, expected)
+    assert model_spec.changepoints is not None
+    for dates in model_spec.changepoints.values():
+      for date in dates:
+        self.assertIs(type(date), datetime.date)
+
+  def test_replace_keeps_changepoints(self):
+    model_spec = _ModelSpecWithChangepoints(changepoints={"TV": ["2024-12-30"]})
+    replaced = dataclasses.replace(model_spec, max_lag=4)
+    self.assertIsInstance(replaced, _ModelSpecWithChangepoints)
+    self.assertEqual(replaced.changepoints, {"TV": (_DEC_30,)})
+
+  def test_base_validation_still_runs(self):
+    with self.assertRaisesRegex(ValueError, "media_effects_dist"):
+      _ModelSpecWithChangepoints(
+          media_effects_dist="bad", changepoints={"TV": ["2024-12-30"]}
+      )
+
+  @parameterized.named_parameters(
+      ("not_a_mapping", ["2024-12-30"], "must map channel names"),
+      ("single_string", {"TV": "2024-12-30"}, "must be a list of dates"),
+      (
+          "single_date",
+          {"TV": datetime.date(2024, 12, 30)},
+          "must be a list of dates",
+      ),
+      ("single_int", {"TV": 52}, "must be a list of dates"),
+      ("empty_list", {"TV": []}, "is empty"),
+      ("empty_array", {"TV": np.array([])}, "is empty"),
+      ("integer_position", {"TV": [52]}, "52 of channel 'TV' is not a date"),
+      ("wrong_format", {"TV": ["12/30/2024"]}, "is not a date"),
+  )
+  def test_invalid_changepoints_raise(self, changepoints, message):
+    with self.assertRaisesRegex(ValueError, message):
+      _ModelSpecWithChangepoints(changepoints=changepoints)
 
 
 if __name__ == "__main__":

@@ -1067,3 +1067,61 @@ class ModelSpec:
       return self.paid_media_prior_type
     else:
       return constants.TREATMENT_PRIOR_TYPE_ROI
+
+
+# TODO: Move `changepoints` to `ModelSpec` when time-varying media
+# effects are released.
+@dataclasses.dataclass(frozen=True)
+class _ModelSpecWithChangepoints(ModelSpec):
+  """A `ModelSpec` with time-varying media effects. Internal only.
+
+  Sampling a model with changepoints raises `NotImplementedError` until
+  time-varying media effects are fully supported.
+
+  Attributes:
+    changepoints: Maps a paid media or reach and frequency channel name to the
+      dates where its effect may change. Each date must be a time coordinate of
+      the input data other than the first, and starts a new interval. For
+      example, `{'TV': ['2024-12-30']}` gives TV one effect before 2024-12-30
+      and another from then on. Channels that aren't listed keep one effect for
+      all time periods. Dates can be `datetime.date`, `datetime.datetime`,
+      `np.datetime64` or 'YYYY-MM-DD' strings, and are stored as tuples of
+      `datetime.date`. Default: `None`, which means no time-varying effects.
+  """
+
+  changepoints: Mapping[str, Collection[time_coordinates.Date]] | None = None
+
+  def __post_init__(self) -> None:
+    super().__post_init__()
+    if self.changepoints is None:
+      return
+    if not isinstance(self.changepoints, Mapping):
+      raise ValueError(
+          "`changepoints` must map channel names to lists of dates, for"
+          f" example {{'TV': ['2024-12-30']}}, got {self.changepoints!r}."
+      )
+    normalized = {}
+    for channel, dates in self.changepoints.items():
+      if isinstance(dates, (str, datetime.date, np.datetime64)) or (
+          not isinstance(dates, Collection)
+      ):
+        raise ValueError(
+            f"`changepoints[{channel!r}]` must be a list of dates, got"
+            f" {dates!r}."
+        )
+      if not list(dates):  # `list` so that numpy arrays work too.
+        raise ValueError(
+            f"`changepoints[{channel!r}]` is empty. List at least one date, or"
+            " remove the channel to keep one effect for all time periods."
+        )
+      normalized_dates = []
+      for date in dates:
+        try:
+          normalized_dates.append(time_coordinates.normalize_date(date))
+        except ValueError as e:
+          raise ValueError(
+              f"The changepoint {date!r} of channel {channel!r} is not a date."
+              " Use 'YYYY-MM-DD' strings or `datetime.date` values."
+          ) from e
+      normalized[channel] = tuple(normalized_dates)
+    object.__setattr__(self, "changepoints", normalized)

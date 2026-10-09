@@ -40,6 +40,20 @@ class PriorDistributionSamplerTest(
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
 
+  def test_sample_prior_with_changepoints_raises(self):
+    input_data = self.short_input_data_with_media_and_rf
+    assert input_data.media_channel is not None
+    model_spec = spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+        changepoints={
+            str(input_data.media_channel.values[0]): [
+                input_data.time_coordinates.all_dates[10]
+            ]
+        }
+    )
+    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
+    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
+      meridian.sample_prior(n_draws=self._N_DRAWS)
+
   def test_sample_prior_seed_same_seed(self):
     model_spec = spec.ModelSpec()
     input_data = self.short_input_data_with_media_and_rf

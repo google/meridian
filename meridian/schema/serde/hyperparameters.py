@@ -546,6 +546,46 @@ def _serialize_declarative_specs(
     )
 
 
+# TODO: Replace these checks with serialization of the
+# time-varying fields once `ModelSpec` supports them.
+_TIME_VARYING_OPTIONAL_FIELDS = (
+    "changepoint_media_prior_type",
+    "changepoint_rf_prior_type",
+    "changepoint_media_effects_dist",
+)
+
+
+def _check_saveable(obj: spec.ModelSpec) -> None:
+  """Raises if `obj` uses time-varying media effects, not saveable yet."""
+  if getattr(obj, "changepoints", None):
+    raise NotImplementedError(
+        "Saving a model with `changepoints` is not supported yet."
+    )
+
+
+def _check_loadable(serialized: meridian_pb.Hyperparameters) -> None:
+  """Raises if `serialized` uses time-varying media effects.
+
+  This version of Meridian ignores the time-varying fields, so loading such a
+  model would silently give results that differ from the saved one.
+
+  Args:
+    serialized: The `Hyperparameters` proto to check.
+
+  Raises:
+    NotImplementedError: If any time-varying field is set.
+  """
+  if serialized.changepoints or any(
+      serialized.HasField(field) for field in _TIME_VARYING_OPTIONAL_FIELDS
+  ):
+    raise NotImplementedError(
+        "This model uses time-varying media effects (`changepoints`), which"
+        " this version of Meridian cannot load. Loading it without them would"
+        " give different results from the saved model. Upgrade Meridian to"
+        " load it."
+    )
+
+
 class HyperparametersSerde(
     serde.Serde[meridian_pb.Hyperparameters, spec.ModelSpec]
 ):
@@ -591,7 +631,9 @@ class HyperparametersSerde(
       ValueError: If `obj` carries a declarative date-range specification but
         `model_context` is `None`, or if a date range bound is not one of the
         input data's time coordinates.
+      NotImplementedError: If `obj` sets `changepoints`.
     """
+    _check_saveable(obj)
 
     hyperparameters_proto = meridian_pb.Hyperparameters(
         media_effects_dist=media_effects_converter.to_proto(
@@ -718,7 +760,9 @@ class HyperparametersSerde(
     Raises:
       ValueError: If `serialized` carries a declarative date-range
         configuration but `input_data` is `None`.
+      NotImplementedError: If `serialized` uses time-varying media effects.
     """
+    _check_loadable(serialized)
 
     baseline_geo = None
     baseline_geo_field = serialized.WhichOneof(sc.BASELINE_GEO_ONEOF)

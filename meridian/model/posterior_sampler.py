@@ -1439,6 +1439,11 @@ class PosteriorMCMCSampler:
           "`reconstruction_batch_size` must be a positive integer, got"
           f" {reconstruction_batch_size}."
       )
+    # TODO: Sample time-varying media effects.
+    if getattr(self._model_context.model_spec, "changepoints", None):
+      raise NotImplementedError(
+          "Sampling models with changepoints is not supported yet."
+      )
 
     # Initialize the backend-agnostic RNG handler. This handles differences
     # between JAX (explicit PRNG keys) and TF (stateless/stateful seeds)

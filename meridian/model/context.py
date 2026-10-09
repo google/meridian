@@ -15,7 +15,7 @@
 """Defines ModelContext class for Meridian."""
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import dataclasses
 import datetime
 import functools
@@ -27,6 +27,7 @@ from meridian import constants
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
+from meridian.model import changepoints
 from meridian.model import knots
 from meridian.model import media
 from meridian.model import prior_distribution
@@ -422,6 +423,79 @@ def _mask_to_geo_holdout_specs(
   return geo_specs
 
 
+def _compile_changepoints(
+    changepoints_spec: Mapping[str, Sequence[datetime.date]],
+    *,
+    dates: Sequence[datetime.date],
+    paid_channels: Sequence[str],
+    other_channels: Sequence[str],
+) -> dict[str, tuple[int, ...]]:
+  """Compiles `changepoints` into time period indices.
+
+  Args:
+    changepoints_spec: Maps a paid media or RF channel name to its changepoint
+      dates, as normalized by `spec._ModelSpecWithChangepoints`.
+    dates: The time coordinates of the input data, in order.
+    paid_channels: The names of the paid media and RF channels.
+    other_channels: The names of the organic media, organic RF and non-media
+      channels. Only used for error messages.
+
+  Returns:
+    Maps each channel in `changepoints_spec` to the sorted indices of its
+    changepoints in `dates`, in the order of `paid_channels`.
+
+  Raises:
+    ValueError: If a channel is not a paid media or RF channel, or a
+      changepoint is not one of `dates`, is the first date, or is listed twice,
+      or if a channel has a changepoint at every time period after the first.
+  """
+  for channel in changepoints_spec:
+    if channel in paid_channels:
+      continue
+    if channel in other_channels:
+      raise ValueError(
+          f"Channel {channel!r} is an organic or non-media channel. Only paid"
+          " media and RF channels can have changepoints."
+      )
+    raise ValueError(
+        f"Channel {channel!r} in `changepoints` is not a paid media or RF"
+        f" channel of the input data. Paid channels: {sorted(paid_channels)}."
+    )
+
+  index_of = {date: index for index, date in enumerate(dates)}
+  compiled = {}
+  for channel in paid_channels:
+    if channel not in changepoints_spec:
+      continue
+    indices = []
+    for date in changepoints_spec[channel]:
+      if date not in index_of:
+        raise ValueError(
+            f"The changepoint {date} of channel {channel!r} is not one of the"
+            " input data's time coordinates."
+            + _nearest_coordinates_hint(date, dates)
+        )
+      if index_of[date] == 0:
+        raise ValueError(
+            f"The changepoint {date} of channel {channel!r} is the first time"
+            " coordinate. The first time period always starts the first"
+            " interval, so remove it."
+        )
+      indices.append(index_of[date])
+    if len(set(indices)) != len(indices):
+      raise ValueError(
+          f"Channel {channel!r} lists the same changepoint more than once."
+      )
+    if len(indices) > len(dates) - 2:
+      raise ValueError(
+          f"Channel {channel!r} has {len(indices)} changepoints, so every time"
+          " period would start its own interval. List at most"
+          f" {len(dates) - 2} changepoints."
+      )
+    compiled[channel] = tuple(sorted(indices))
+  return compiled
+
+
 @dataclasses.dataclass(frozen=True)
 class SaturationSpec:
   """Specification for each channel's saturation function.
@@ -496,6 +570,8 @@ class ModelContext:
     _ = self.compiled_control_population_scaling_id
     _ = self.compiled_non_media_population_scaling_id
     _ = self.compiled_non_media_baseline_values
+    _ = self._media_changepoint_info
+    _ = self._rf_changepoint_info
 
   # TODO: Deduplicate with `_validate_model_spec_shapes`. Both
   # methods run from `__init__` and validate the same legacy `ModelSpec`
@@ -1678,6 +1754,75 @@ class ModelContext:
           f" distribution support for {dist.name}."
       )
 
+  # --------------------------------------------------------------------------
+  # Time-varying media effects.
+  #
+  # Only `spec._ModelSpecWithChangepoints` has `changepoints`, so it is read
+  # with `getattr`. These members are private until the feature is released.
+  # --------------------------------------------------------------------------
+
+  @functools.cached_property
+  def _changepoints(self) -> Mapping[str, tuple[int, ...]]:
+    """The model spec's changepoints, as time period indices.
+
+    Returns:
+      Maps each paid media or RF channel with changepoints to the sorted
+      indices of its changepoints in the time coordinates. Empty if the model
+      has no changepoints.
+
+    Raises:
+      ValueError: If a channel is not a paid media or RF channel, or a
+        changepoint is not a valid date for the input data.
+    """
+    # TODO: Read `self._model_spec.changepoints` directly once
+    # `changepoints` moves to `ModelSpec`.
+    changepoints_spec = getattr(self._model_spec, "changepoints", None)
+    if not changepoints_spec:
+      return {}
+    return _compile_changepoints(
+        changepoints_spec,
+        dates=self._input_data.time_coordinates.all_dates,
+        paid_channels=(
+            self._coordinate_names(self._input_data.media_channel)
+            + self._coordinate_names(self._input_data.rf_channel)
+        ),
+        other_channels=(
+            self._coordinate_names(self._input_data.organic_media_channel)
+            + self._coordinate_names(self._input_data.organic_rf_channel)
+            + self._coordinate_names(self._input_data.non_media_channel)
+        ),
+    )
+
+  @functools.cached_property
+  def _changepoint_max_intervals(self) -> int:
+    """The length of the interval axis shared by media and RF channels."""
+    if not self._changepoints:
+      return 0
+    return 1 + max(len(indices) for indices in self._changepoints.values())
+
+  def _get_changepoint_info(
+      self, channel_coordinate: Any
+  ) -> changepoints.ChangepointInfo | None:
+    """Returns the `ChangepointInfo` of the channels in `channel_coordinate`."""
+    if not self._changepoints or channel_coordinate is None:
+      return None
+    return changepoints.get_changepoint_info(
+        n_times=self.n_times,
+        changepoints=self._changepoints,
+        channel_names=self._coordinate_names(channel_coordinate),
+        max_intervals=self._changepoint_max_intervals,
+    )
+
+  @functools.cached_property
+  def _media_changepoint_info(self) -> changepoints.ChangepointInfo | None:
+    """The changepoints of the media channels, or `None` if they have none."""
+    return self._get_changepoint_info(self._input_data.media_channel)
+
+  @functools.cached_property
+  def _rf_changepoint_info(self) -> changepoints.ChangepointInfo | None:
+    """The changepoints of the RF channels, or `None` if they have none."""
+    return self._get_changepoint_info(self._input_data.rf_channel)
+
   @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
     """Returns broadcasted `PriorDistribution` object."""
@@ -1691,7 +1836,37 @@ class ModelContext:
     else:
       agg_total_spend = np.sum(total_spend, axis=(0, 1))
 
-    return self._model_spec.prior.broadcast(
+    prior_with_changepoints_cls = (
+        prior_distribution._PriorDistributionWithChangepoints  # pylint: disable=protected-access
+    )
+    broadcast: Callable[..., prior_distribution.PriorDistribution] = (
+        self._model_spec.prior.broadcast
+    )
+    if self._changepoints:
+      # Models with changepoints also need the time-varying priors.
+      prior = prior_with_changepoints_cls.from_prior(self._model_spec.prior)
+      media_info = self._media_changepoint_info
+      rf_info = self._rf_changepoint_info
+      broadcast = functools.partial(
+          prior.broadcast,
+          n_changepoint_media_channels=(
+              media_info.n_channels if media_info else 0
+          ),
+          n_changepoint_rf_channels=rf_info.n_channels if rf_info else 0,
+      )
+    elif isinstance(self._model_spec.prior, prior_with_changepoints_cls):
+      # Without changepoints, broadcast like a regular prior so that the model
+      # is the same as one built from a `PriorDistribution`.
+      warnings.warn(
+          "The `zeta_m` and `zeta_rf` priors are ignored because the model has"
+          " no `changepoints`."
+      )
+      broadcast = functools.partial(
+          prior_distribution.PriorDistribution.broadcast,
+          self._model_spec.prior,
+      )
+
+    return broadcast(
         n_geos=self.n_geos,
         n_media_channels=self.n_media_channels,
         n_rf_channels=self.n_rf_channels,

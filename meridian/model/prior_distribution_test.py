@@ -14,6 +14,7 @@
 
 from collections.abc import Callable, Iterable, MutableMapping
 import copy
+import dataclasses
 from typing import Any
 import warnings
 from absl.testing import absltest
@@ -2134,6 +2135,126 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     dist = get_dist()
     priors = prior_distribution.PriorDistribution(**{param_name: dist})
     self.assertEqual(getattr(priors, param_name), dist)
+
+
+_PriorDistributionWithChangepoints = (
+    prior_distribution._PriorDistributionWithChangepoints  # pylint: disable=protected-access
+)
+
+
+class PriorDistributionWithChangepointsTest(test_utils.MeridianTestCase):
+
+  def _broadcast(self, prior, n_changepoint_media_channels, **kwargs):
+    return prior.broadcast(
+        n_geos=_N_GEOS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        unique_sigma_for_each_geo=False,
+        n_knots=_N_KNOTS,
+        is_national=False,
+        set_total_media_contribution_prior=False,
+        kpi=1.0,
+        total_spend=np.array([]),
+        n_changepoint_media_channels=n_changepoint_media_channels,
+        **kwargs,
+    )
+
+  def test_prior_distribution_has_no_zeta_fields(self):
+    names = [
+        f.name for f in dataclasses.fields(prior_distribution.PriorDistribution)
+    ]
+    self.assertNotIn(c.ZETA_M, names)
+    self.assertNotIn(c.ZETA_RF, names)
+
+  def test_default_zeta_priors(self):
+    prior = _PriorDistributionWithChangepoints()
+    for name in (c.ZETA_M, c.ZETA_RF):
+      zeta = getattr(prior, name)
+      self.assertIsInstance(zeta, backend.tfd.HalfNormal)
+      test_utils.assert_allclose(zeta.scale, 0.5)
+      self.assertEqual(zeta.name, name)
+
+  def test_negative_zeta_support_raises(self):
+    with self.assertRaisesRegex(ValueError, 'zeta_m was assigned a prior'):
+      _PriorDistributionWithChangepoints(
+          zeta_m=backend.tfd.Normal(
+              backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+          )
+      )
+
+  def test_from_prior_keeps_the_other_priors(self):
+    roi_m = backend.tfd.LogNormal(
+        backend.np_float_dtype(0.1), backend.np_float_dtype(0.5)
+    )
+    prior = _PriorDistributionWithChangepoints.from_prior(
+        prior_distribution.PriorDistribution(roi_m=roi_m)
+    )
+    self.assertIsInstance(prior, _PriorDistributionWithChangepoints)
+    self.assertIs(prior.roi_m, roi_m)
+    self.assertIsInstance(prior.zeta_m, backend.tfd.HalfNormal)
+
+  def test_from_prior_returns_a_prior_with_changepoints_unchanged(self):
+    prior = _PriorDistributionWithChangepoints()
+    self.assertIs(_PriorDistributionWithChangepoints.from_prior(prior), prior)
+
+  def test_broadcast_shapes(self):
+    zeta_m = backend.tfd.HalfNormal(
+        np.array([0.3, 0.6], dtype=backend.np_float_dtype)
+    )
+    broadcast = self._broadcast(
+        _PriorDistributionWithChangepoints(zeta_m=zeta_m),
+        n_changepoint_media_channels=2,
+        n_changepoint_rf_channels=1,
+    )
+    self.assertIsInstance(broadcast, _PriorDistributionWithChangepoints)
+    self.assertEqual(broadcast.zeta_m.batch_shape, (2,))
+    self.assertEqual(broadcast.zeta_rf.batch_shape, (1,))
+    self.assertEqual(broadcast.roi_m.batch_shape, (_N_MEDIA_CHANNELS,))
+    test_utils.assert_allclose(broadcast.zeta_m.distribution.scale, [0.3, 0.6])
+
+  def test_broadcast_matches_prior_distribution(self):
+    expected = prior_distribution.PriorDistribution().broadcast(
+        n_geos=_N_GEOS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        unique_sigma_for_each_geo=False,
+        n_knots=_N_KNOTS,
+        is_national=False,
+        set_total_media_contribution_prior=False,
+        kpi=1.0,
+        total_spend=np.array([]),
+    )
+    broadcast = self._broadcast(
+        _PriorDistributionWithChangepoints(), n_changepoint_media_channels=1
+    )
+    for field in dataclasses.fields(prior_distribution.PriorDistribution):
+      self.assertTrue(
+          prior_distribution.distributions_are_equal(
+              getattr(broadcast, field.name), getattr(expected, field.name)
+          ),
+          msg=field.name,
+      )
+
+  def test_broadcast_custom_zeta_length_mismatch_raises(self):
+    prior = _PriorDistributionWithChangepoints(
+        zeta_m=backend.tfd.HalfNormal(
+            np.array([0.3, 0.6], dtype=backend.np_float_dtype)
+        )
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Custom priors length \(2\) of `zeta_m` must match the number of'
+        r' media channels with changepoints \(3\)',
+    ):
+      self._broadcast(prior, n_changepoint_media_channels=3)
 
 
 class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
