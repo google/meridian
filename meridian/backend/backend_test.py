@@ -1800,6 +1800,39 @@ class BackendFunctionWrappersTest(parameterized.TestCase):
     result2 = adder.add_bias(backend.to_tensor(10.0))
     test_utils.assert_allclose(result2, 15.0)
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_compile_temporary_function(self, backend_name):
+    self._set_backend_for_test(backend_name)
+
+    def add_one(x):
+      return x + 1
+
+    add_one_compiled = backend.compile_temporary_function(add_one)
+    test_utils.assert_allclose(add_one_compiled(backend.to_tensor(5)), 6)
+
+  def test_tf_compile_temporary_function_returns_func_unchanged(self):
+    self._set_backend_for_test(_TF)
+
+    def add_one(x):
+      return x + 1
+
+    self.assertIs(backend.compile_temporary_function(add_one), add_one)
+
+  def test_jax_compile_temporary_function_compiles(self):
+    self._set_backend_for_test(_JAX)
+    n_python_calls = 0
+
+    def add_one(x):
+      nonlocal n_python_calls
+      n_python_calls += 1
+      return x + 1
+
+    add_one_compiled = backend.compile_temporary_function(add_one)
+    add_one_compiled(backend.to_tensor(5))
+    add_one_compiled(backend.to_tensor(6))
+    # A compiled function runs its Python body once, when it's compiled.
+    self.assertEqual(n_python_calls, 1)
+
 
 class RNGHandlerTest(BackendTest):
 

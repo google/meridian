@@ -1260,6 +1260,13 @@ class PosteriorMCMCSampler:
     next batch runs. Peak device memory is therefore O(`batch_size`) and
     independent of the total number of posterior draws.
 
+    Each batch runs through `backend.compile_temporary_function`, because a
+    compiled function is faster and uses less device memory than running
+    operation by operation. All batches have the same size so that the function
+    is compiled only once. When the draws don't divide evenly, the last batch
+    is shifted back to end at the final draw, and the draws it shares with the
+    previous batch are skipped.
+
     Args:
       latents: Latent samples keyed by parameter name, each shaped `[n_chains,
         n_draws, ...]`. Must already be normalized by
@@ -1287,30 +1294,51 @@ class PosteriorMCMCSampler:
     joint_dist = self._get_joint_dist_unpinned()
     flat_latents, n_chains, n_draws = _flatten_chain_and_draw_dims(latents)
     n_total_draws = n_chains * n_draws
-    observed_kpi = self._model_context.kpi_scaled
+    if n_total_draws == 0:
+      return {}
+    batch_len = min(batch_size, n_total_draws)
 
-    results = _HostResultAccumulator(total_size=n_total_draws)
-    for start in range(0, n_total_draws, batch_size):
-      stop = min(start + batch_size, n_total_draws)
-      latent_chunk = {
-          name: value[start:stop] for name, value in flat_latents.items()
-      }
+    def _forward(
+        latent_chunk: Mapping[str, backend.Tensor],
+        observed_kpi: backend.Tensor,
+        seed: Any,
+    ) -> dict[str, backend.Tensor]:
       pinned_likelihood = backend.broadcast_to(
-          observed_kpi, (stop - start,) + tuple(observed_kpi.shape)  # pyrefly: ignore[bad-argument-type]
+          observed_kpi, (batch_len,) + tuple(observed_kpi.shape)  # pyrefly: ignore[bad-argument-type]
       )
       values = _build_reconstruction_values(
           joint_dist, latent_chunk, pinned_likelihood
       )
-      sampled = joint_dist.sample(
-          value=values, seed=rng_handler.get_next_seed()
-      )
+      sampled = joint_dist.sample(value=values, seed=seed)
       sampled_by_name = (
           sampled._asdict() if hasattr(sampled, "_asdict") else dict(sampled)
       )
-      for name, tensor in sampled_by_name.items():
-        if name in flat_latents or name == _LIKELIHOOD_NODE_NAME:
-          continue  # Latents pass through unchanged; likelihood is unused.
-        results.write(name, np.asarray(tensor), start=start)
+      # Latents are already known and the likelihood is unused, so returning
+      # them would only take up device memory.
+      return {
+          name: tensor
+          for name, tensor in sampled_by_name.items()
+          if name not in latent_chunk and name != _LIKELIHOOD_NODE_NAME
+      }
+
+    forward = backend.compile_temporary_function(_forward)
+    observed_kpi = self._model_context.kpi_scaled
+
+    results = _HostResultAccumulator(total_size=n_total_draws)
+    for start in range(0, n_total_draws, batch_len):
+      # A smaller last batch would trigger a recompile, so shift it back to
+      # keep it full and skip the draws already written.
+      batch_start = min(start, n_total_draws - batch_len)
+      n_overlap = start - batch_start
+      latent_chunk = {
+          name: value[batch_start : batch_start + batch_len]
+          for name, value in flat_latents.items()
+      }
+      reconstructed = forward(
+          latent_chunk, observed_kpi, rng_handler.get_next_seed()
+      )
+      for name, tensor in reconstructed.items():
+        results.write(name, np.asarray(tensor)[n_overlap:], start=start)
 
     return results.to_arrays(leading_shape=(n_chains, n_draws))
 

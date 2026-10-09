@@ -317,6 +317,38 @@ def _tf_function_wrapper(func=None, **kwargs):
   return decorator
 
 
+def _jax_compile_temporary_function(func):
+  """Compiles a function that its caller creates anew on every call.
+
+  On TensorFlow, `func` is returned uncompiled, because a discarded compiled
+  function isn't freed and repeated calls would leak memory.
+
+  Args:
+    func: The function to compile.
+
+  Returns:
+    The compiled function, or `func` itself on TensorFlow.
+  """
+  import jax  # pylint: disable=redefined-outer-name
+
+  return jax.jit(func)
+
+
+def _tf_compile_temporary_function(func):
+  """Compiles a function that its caller creates anew on every call.
+
+  On TensorFlow, `func` is returned uncompiled, because a discarded compiled
+  function isn't freed and repeated calls would leak memory.
+
+  Args:
+    func: The function to compile.
+
+  Returns:
+    The compiled function, or `func` itself on TensorFlow.
+  """
+  return func
+
+
 def _jax_nanmedian(a, axis=None):
   """JAX implementation for nanmedian."""
   import jax.numpy as jnp
@@ -1099,6 +1131,7 @@ if _BACKEND == config.Backend.JAX:
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _jax_cast
+  compile_temporary_function = _jax_compile_temporary_function
   concatenate = _ops.concatenate
   cumsum = _ops.cumsum
   divide = _ops.divide
@@ -1290,6 +1323,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _ops.cast
+  compile_temporary_function = _tf_compile_temporary_function
   concatenate = _ops.concat
   cumsum = _ops.cumsum
   divide = _ops.divide
