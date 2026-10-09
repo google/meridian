@@ -417,8 +417,10 @@ class ModelFit:
         inference_data=meridian.inference_data,
     )
     self._use_kpi = self._analyzer._use_kpi(use_kpi)
-    self._model_fit_data = self._analyzer.expected_vs_actual_data(
-        use_kpi=self._use_kpi, confidence_level=confidence_level
+    self._model_fit_data = self._select_all_data(
+        self._analyzer.expected_vs_actual_data(
+            use_kpi=self._use_kpi, confidence_level=confidence_level
+        )
     )
     currency_code = getattr(self._meridian.input_data, 'currency_code', None)
     self._currency = currency_module.get_currency_symbol(currency_code)
@@ -435,8 +437,17 @@ class ModelFit:
     return self._model_fit_data
 
   def update_confidence_level(self, confidence_level: float):
-    self._model_fit_data = self._analyzer.expected_vs_actual_data(
-        confidence_level=confidence_level
+    self._model_fit_data = self._select_all_data(
+        self._analyzer.expected_vs_actual_data(
+            confidence_level=confidence_level
+        )
+    )
+
+  @staticmethod
+  def _select_all_data(expected_vs_actual: xr.Dataset) -> xr.Dataset:
+    """Selects the `'All Data'` evaluation set and drops its coordinate."""
+    return expected_vs_actual.sel(
+        {c.EVALUATION_SET_VAR: c.ALL_DATA}, drop=True
     )
 
   def plot_model_fit(

@@ -5339,6 +5339,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
               _N_GEOS,
               _N_TIMES,
               3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
           ),
           expected_actual_shape=(_N_GEOS, _N_TIMES),
       ),
@@ -5352,6 +5353,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
               _N_GEOS,
               _N_TIMES,
               3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
           ),
           expected_actual_shape=(_N_GEOS, _N_TIMES),
       ),
@@ -5379,6 +5381,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
               _N_GEOS,
               _N_TIMES,
               3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
           ),
           expected_actual_shape=(_N_GEOS, _N_TIMES),
       ),
@@ -5391,6 +5394,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           expected_shape=(
               _N_TIMES,
               3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
           ),
           expected_actual_shape=(_N_TIMES,),
       ),
@@ -5416,6 +5420,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           expected_shape=(
               _N_GEOS,
               3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
           ),
           expected_actual_shape=(_N_GEOS,),
       ),
@@ -5438,7 +5443,10 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           aggregate_times=True,
           holdout_id=None,
           split_by_holdout_id=False,
-          expected_shape=(3,),  # [mean, ci_lo, ci_hi]
+          expected_shape=(
+              3,  # [mean, ci_lo, ci_hi]
+              1,  # [all]
+          ),
           expected_actual_shape=(),
       ),
       dict(
@@ -5505,6 +5513,17 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         list(ds.metric.values),
         [constants.MEAN, constants.CI_LO, constants.CI_HI],
     )
+
+    expected_evaluation_sets = (
+        list(constants.EVALUATION_SET)
+        if split_by_holdout_id and holdout_id is not None
+        else [constants.ALL_DATA]
+    )
+    self.assertListEqual(
+        list(ds.coords[constants.EVALUATION_SET_VAR].values),
+        expected_evaluation_sets,
+    )
+    self.assertNotIn(constants.EVALUATION_SET_VAR, ds.actual.dims)
 
     self.assertEqual(ds.expected.shape, expected_shape)
     self.assertEqual(ds.baseline.shape, expected_shape)

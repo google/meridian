@@ -150,7 +150,13 @@ class ModelFitProcessor(
 
     results: list[model_fit_pb2.Result] = []
 
-    if constants.EVALUATION_SET_VAR in expected_vs_actual.coords:
+    # `expected_vs_actual_data` always has an evaluation set coordinate. It is
+    # `[ALL_DATA]` if the data is not split by holdout, and
+    # `[TRAIN, TEST, ALL_DATA]` otherwise.
+    is_split = (
+        len(expected_vs_actual.coords[constants.EVALUATION_SET_VAR]) > 1
+    )
+    if is_split:
       results.append(
           self._create_result(
               result_type=constants.TRAIN,
@@ -188,7 +194,9 @@ class ModelFitProcessor(
       results.append(
           self._create_result(
               result_type=constants.ALL_DATA,
-              expected_vs_actual=expected_vs_actual,
+              expected_vs_actual=expected_vs_actual.sel(
+                  evaluation_set=constants.ALL_DATA
+              ),
               metrics=metrics,
               model_fit_spec=model_fit_spec,
               time_to_date_interval=time_to_date_interval,

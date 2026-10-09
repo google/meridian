@@ -625,6 +625,15 @@ class ModelFitTest(absltest.TestCase):
     self.model_fit_kpi_type_revenue.update_confidence_level(0.8)
     self.mock_analyzer_method.assert_called_with(confidence_level=0.8)
 
+  def test_model_fit_data_drops_evaluation_set(self):
+    model_fit_data = self.model_fit_kpi_type_revenue.model_fit_data
+
+    self.assertNotIn(c.EVALUATION_SET_VAR, model_fit_data.dims)
+    self.assertNotIn(c.EVALUATION_SET_VAR, model_fit_data.coords)
+    self.assertEqual(
+        model_fit_data.expected.dims, (c.GEO, c.TIME, c.METRIC)
+    )
+
   def test_model_fit_plots_selected_times(self):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(selected_times=times)
@@ -705,7 +714,7 @@ class ModelFitTest(absltest.TestCase):
     actual = [[1, 2], [3, 4], [5, 6], [7, 8]]
     model_fit_data = test_utils.generate_model_fit_data(
         geo=geo, time=time, actual=actual
-    )
+    ).sel({c.EVALUATION_SET_VAR: c.ALL_DATA}, drop=True)
 
     with mock.patch.object(
         visualizer.ModelFit,
@@ -729,7 +738,7 @@ class ModelFitTest(absltest.TestCase):
     actual = [[1, 2], [3, 4], [5, 6], [7, 8]]
     model_fit_data = test_utils.generate_model_fit_data(
         geo=geo, time=time, actual=actual
-    )
+    ).sel({c.EVALUATION_SET_VAR: c.ALL_DATA}, drop=True)
 
     with mock.patch.object(
         visualizer.ModelFit,

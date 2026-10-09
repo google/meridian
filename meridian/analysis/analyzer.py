@@ -2076,23 +2076,22 @@ class Analyzer:
     Args:
       draws: A tensor of a set of draws with dimensions `(n_chains, n_draws,
         n_geos, n_times)`.
-      split_by_holdout: Boolean. If `True` and `holdout_id` exists, the data is
-        split into `'Train'`, `'Test'`, and `'All Data'` subsections.
+      split_by_holdout: Boolean. If `True`, the data is split into `'Train'`,
+        `'Test'`, and `'All Data'` evaluation sets. If `False`, the data has a
+        single `'All Data'` evaluation set. Must only be `True` if `holdout_id`
+        exists.
       aggregate_geos: If `True`, the draws tensor is summed over all regions.
       aggregate_times: If `True`, the draws tensor is summed over all times.
       confidence_level: Confidence level for computing credible intervals,
         represented as a value between zero and one.
 
     Returns:
-      The mean and CI of the draws with dimensions that could be
-       * `(n_geos, n_times, n_metrics, n_evaluation_sets)` if
-       `split_by_holdout=True`, and no aggregations.
-       * `(n_geos, n_times, n_metrics)` if `split_by_holdout=False`, and no
-       aggregations.
-       * `(n_metrics, n_evaluation_sets)` if `split_by_holdout=True`, and
-        `aggregate_geos=True` or `aggregate_times=True`.
-       * `(n_metrics)` if `split_by_holdout=False`, and `aggregate_geos=True` or
-        `aggregate_times=True`.
+      The mean and CI of the draws with dimensions `(n_geos, n_times,
+      n_metrics, n_evaluation_sets)`, where the `n_geos` and `n_times`
+      dimensions are dropped if `aggregate_geos=True` and
+      `aggregate_times=True`, respectively. `n_evaluation_sets` is `3`
+      (`'Train'`, `'Test'`, `'All Data'`) if `split_by_holdout=True`, and `1`
+      (`'All Data'`) otherwise.
     """
 
     if not split_by_holdout:
@@ -2103,9 +2102,11 @@ class Analyzer:
           aggregate_geos=aggregate_geos,
           aggregate_times=aggregate_times,
       )
-      return get_central_tendency_and_ci(
+      mean_and_ci = get_central_tendency_and_ci(
           draws, confidence_level=confidence_level
       )
+      # Add a trailing `n_evaluation_sets(=1)` axis for `'All Data'`.
+      return np.expand_dims(mean_and_ci, axis=-1)
 
     train_draws = np.where(  # pyrefly: ignore[no-matching-overload]
         self.model_context.compiled_holdout_id, np.nan, draws
@@ -2164,7 +2165,8 @@ class Analyzer:
       use_kpi: If `True`, calculate the incremental KPI. Otherwise, calculate
         the incremental revenue using the revenue per KPI (if available).
       split_by_holdout_id: Boolean. If `True` and `holdout_id` exists, the data
-        is split into `'Train'`, `'Test'`, and `'All Data'` subsections.
+        is split into `'Train'`, `'Test'`, and `'All Data'` evaluation sets.
+        Otherwise, the data has a single `'All Data'` evaluation set.
       non_media_baseline_values: Optional list of shape
         `(n_non_media_channels,)`. Each element is a float which means that the
         fixed value will be used as baseline for the given channel. It is
@@ -2176,7 +2178,11 @@ class Analyzer:
         intervals, represented as a value between zero and one. Default: `0.9`.
 
     Returns:
-      A dataset with the expected, baseline, and actual outcome metrics.
+      A dataset with the expected, baseline, and actual outcome metrics. The
+      `expected` and `baseline` data variables always have an `evaluation_set`
+      dimension, with coordinates `['Train', 'Test', 'All Data']` if the data
+      is split by `holdout_id`, and `['All Data']` otherwise. The `actual` data
+      variable does not have an `evaluation_set` dimension.
     """
     use_kpi = self._use_kpi(use_kpi)
     m_context = self.model_context
@@ -2227,17 +2233,19 @@ class Analyzer:
       coords[constants.GEO] = m_context.input_data.geo.data
     if not aggregate_times:
       coords[constants.TIME] = m_context.input_data.time.data
-    if can_split_by_holdout:
-      coords[constants.EVALUATION_SET_VAR] = list(constants.EVALUATION_SET)
+    coords[constants.EVALUATION_SET_VAR] = (
+        list(constants.EVALUATION_SET)
+        if can_split_by_holdout
+        else [constants.ALL_DATA]
+    )
 
     # Set up the dimensions.
     actual_dims = ((constants.GEO,) if not aggregate_geos else ()) + (
         (constants.TIME,) if not aggregate_times else ()
     )
-    expected_and_baseline_dims = (
-        actual_dims
-        + (constants.METRIC,)
-        + ((constants.EVALUATION_SET_VAR,) if can_split_by_holdout else ())
+    expected_and_baseline_dims = actual_dims + (
+        constants.METRIC,
+        constants.EVALUATION_SET_VAR,
     )
 
     data_vars = {
