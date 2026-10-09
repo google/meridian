@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `contribution_n` priors for population-scaled non-media channels with a
+    nonzero baseline value. The baseline was divided by population twice when
+    converting `contribution_n` to `gamma_n`, so `contribution_n` did not match
+    the contribution computed by `Analyzer`. Refit affected models to get the
+    intended prior.
 *   Fix budget optimization stopping early and leaving part of a fixed budget
     unspent. The search can move a channel's spend several grid points at
     once. Previously, if the best such move needed more than the remaining

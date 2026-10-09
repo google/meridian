@@ -6423,6 +6423,67 @@ class AnalyzerCustomPriorTest(backend_test_utils.MeridianTestCase):
     check_treatment_parameters(mmm, use_posterior=False)
     check_treatment_parameters(mmm, use_posterior=True)
 
+  @parameterized.product(
+      allows_negative_aggregate_baseline=[True, False],
+      non_media_baseline_value=["min", "max"],
+  )
+  def test_contribution_n_accuracy_population_scaled_non_media(
+      self,
+      allows_negative_aggregate_baseline,
+      non_media_baseline_value,
+  ):
+    """Checks `contribution_n` for population-scaled non-media channels.
+
+    The non-media baseline values are already population-scaled, so the prior
+    and posterior samplers must not divide them by population again when they
+    derive `gamma_n` from `contribution_n`. The populations in the test data are
+    far from one and the baseline values are nonzero, so dividing by population
+    twice would make `contribution_n` disagree with `Analyzer`.
+    """
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=10,
+        n_media_times=15,
+        n_controls=1,
+        n_media_channels=1,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        n_organic_rf_channels=1,
+        n_non_media_channels=2,
+        seed=1,
+        nonzero_shift=1.0,
+    )
+
+    non_media_treatments = input_data.non_media_treatments
+    assert non_media_treatments is not None
+    non_media_channels = [
+        str(channel)
+        for channel in non_media_treatments[constants.NON_MEDIA_CHANNEL].values
+    ]
+    # Contribution priors for the paid channels keep their checks independent
+    # of spend.
+    model_spec = spec.ModelSpec(
+        media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+        rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+        allows_negative_aggregate_baseline=allows_negative_aggregate_baseline,
+        population_scaled_non_media_channels=non_media_channels,
+        non_media_baseline_values={
+            channel: non_media_baseline_value for channel in non_media_channels
+        },
+    )
+
+    model.Meridian.sample_joint_dist_unpinned_as_posterior = (
+        helper_sample_joint_dist_unpinned_as_posterior
+    )
+
+    mmm = model.Meridian(input_data=input_data, model_spec=model_spec)
+    mmm.sample_prior(5, seed=self.get_next_rng_seed_or_key())
+    mmm.sample_joint_dist_unpinned_as_posterior(  # pyrefly: ignore[missing-attribute]
+        5, seed=self.get_next_rng_seed_or_key()
+    )
+    check_treatment_parameters(mmm, use_posterior=False)
+    check_treatment_parameters(mmm, use_posterior=True)
+
 
 if __name__ == "__main__":
   absltest.main()

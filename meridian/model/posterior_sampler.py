@@ -320,8 +320,10 @@ def _joint_dist_base_logic(
       elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
         contribution_n = yield prior_broadcast.contribution_n
         incremental_outcome_n = contribution_n * total_outcome
+        # The baseline values are already population-scaled.
         baseline_scaled = model_context.non_media_transformer.forward(
-            model_equations.compute_non_media_treatments_baseline()
+            model_equations.compute_non_media_treatments_baseline(),
+            apply_population_scaling=False,
         )
         linear_predictor_counterfactual_difference = (
             non_media_treatments_normalized - baseline_scaled
@@ -1040,8 +1042,10 @@ def _joint_dist_base_logic(
     elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
       contribution_n = yield prior_broadcast.contribution_n
       incremental_outcome_n = contribution_n * total_outcome
+      # The baseline values are already population-scaled.
       baseline_scaled = model_context.non_media_transformer.forward(  # pyrefly: ignore[missing-attribute]
-          model_equations.compute_non_media_treatments_baseline()
+          model_equations.compute_non_media_treatments_baseline(),
+          apply_population_scaling=False,
       )
       linear_predictor_counterfactual_difference = (
           non_media_treatments_normalized - baseline_scaled

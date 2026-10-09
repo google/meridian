@@ -621,8 +621,10 @@ class PriorDistributionSampler:
           non_media_treatments_vars[constants.CONTRIBUTION_N]
           * ctx.total_outcome
       )
+      # The baseline values are already population-scaled.
       baseline_scaled = ctx.non_media_transformer.forward(  # pyrefly: ignore[missing-attribute]
-          self._model_equations.compute_non_media_treatments_baseline()
+          self._model_equations.compute_non_media_treatments_baseline(),
+          apply_population_scaling=False,
       )
       linear_predictor_counterfactual_difference = (
           ctx.non_media_treatments_normalized - baseline_scaled
