@@ -23,6 +23,14 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-09
+
+*   Add the `Changepoints` proto, together with the `changepoints`,
+    `changepoint_media_prior_type`, `changepoint_rf_prior_type` and
+    `changepoint_media_effects_dist` fields in `Hyperparameters`, and the
+    `zeta_m` and `zeta_rf` fields in `PriorTfpDistributions`, for time-varying
+    media effects.
+
 ## [1.4.2] - 2026-09-28
 
 *   Replace `Hyperparameters.allows_negative_aggregate_baseline` with
@@ -114,4 +122,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.4.0]: https://github.com/google/meridian/releases/tag/proto-v1.4.0
 [1.4.1]: https://github.com/google/meridian/releases/tag/proto-v1.4.1
 [1.4.2]: https://github.com/google/meridian/releases/tag/proto-v1.4.2
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.4.2...HEAD
+[1.5.0]: https://github.com/google/meridian/releases/tag/proto-v1.5.0
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.5.0...HEAD
