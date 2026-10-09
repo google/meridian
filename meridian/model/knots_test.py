@@ -786,6 +786,23 @@ class AKSTest(parameterized.TestCase):
         actual_knot_info.weights, expected_knot_info.weights
     )
 
+  def test_aks_no_internal_knots_selected_returns_empty(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=3,
+            n_times=50,
+            n_media_times=50,
+            n_controls=2,
+            n_media_channels=2,
+        ),
+        "non_revenue",
+    )
+    # A large base penalty forces all internal knots to be dropped.
+    huge_penalty = np.array([1e6, 1e7, 1e8])
+    aks_obj = knots.AKS(data)
+    result = aks_obj.automatic_knot_selection(base_penalty=huge_penalty)
+    self.assertEmpty(result.knots)
+
   def test_aspline(self):
     x = np.array([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     y = np.array([10, 2, 3, 4, 50, 6, 30, 4, 5, 6, 3, 4, 5, 6, 6])
