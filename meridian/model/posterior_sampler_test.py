@@ -2475,8 +2475,8 @@ class ReconstructionBatchingTest(
   @parameterized.parameters(
       {"batch_size": 1},
       {"batch_size": 7},
-      {"batch_size": 40},  # n_total
-      {"batch_size": 53},  # n_total + 13
+      {"batch_size": 20},  # n_total
+      {"batch_size": 33},  # n_total + 13
   )
   def test_equivalence_with_chunking(self, batch_size):
     # Single-shot reference run
@@ -2513,6 +2513,78 @@ class ReconstructionBatchingTest(
           posterior_ref[var_name].values,
           err_msg=f"Mismatch for {var_name}",
       )
+
+  def test_every_batch_has_the_same_size(self):
+    # 20 draws in batches of 7: the last batch covers draws 13-19, not 14-19.
+    with mock.patch.object(
+        posterior_sampler,
+        "_build_reconstruction_values",
+        wraps=posterior_sampler._build_reconstruction_values,
+    ) as mock_build_values:
+      self.meridian.sample_posterior(
+          n_chains=self.n_chains,
+          n_adapt=0,
+          n_burnin=self.n_burnin,
+          n_keep=self.n_keep,
+          reconstruction_batch_size=7,
+      )
+    mock_build_values.assert_called()
+    for call in mock_build_values.call_args_list:
+      _, latent_chunk, pinned_likelihood = call.args
+      self.assertEqual(pinned_likelihood.shape[0], 7)
+      for value in latent_chunk.values():
+        self.assertEqual(value.shape[0], 7)
+
+  def test_compiled_reconstruction_matches_uncompiled(self):
+    meridian_uncompiled = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(),
+    )
+    with mock.patch.object(
+        backend, "compile_temporary_function", side_effect=lambda func: func
+    ) as mock_compile:
+      meridian_uncompiled.sample_posterior(
+          n_chains=self.n_chains,
+          n_adapt=0,
+          n_burnin=self.n_burnin,
+          n_keep=self.n_keep,
+          reconstruction_batch_size=7,
+      )
+    mock_compile.assert_called_once()
+    posterior_uncompiled = meridian_uncompiled.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+
+    self.meridian.sample_posterior(
+        n_chains=self.n_chains,
+        n_adapt=0,
+        n_burnin=self.n_burnin,
+        n_keep=self.n_keep,
+        reconstruction_batch_size=7,
+    )
+    posterior_compiled = self.meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+
+    self.assertEqual(
+        set(posterior_uncompiled.data_vars), set(posterior_compiled.data_vars)
+    )
+    for var_name in posterior_uncompiled.data_vars:
+      # Compilation can change the order of floating-point operations.
+      np.testing.assert_allclose(
+          posterior_compiled[var_name].values,
+          posterior_uncompiled[var_name].values,
+          rtol=1e-5,
+          atol=1e-6,
+          err_msg=f"Mismatch for {var_name}",
+      )
+
+  def test_reconstruct_posteriors_with_no_draws_returns_empty(self):
+    sampler = posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.meridian.model_context
+    )
+    reconstructed = sampler._reconstruct_posteriors(
+        latents={constants.SIGMA: backend.zeros([2, 0])},
+        rng_handler=backend.RNGHandler(0),
+        batch_size=10,
+    )
+    self.assertEmpty(reconstructed)
 
   def test_fail_fast_reconstruction_batch_size(self):
     with self.assertRaisesRegex(ValueError, "must be a positive integer"):

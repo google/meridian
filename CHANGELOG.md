@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   On the JAX backend, compile the posterior reconstruction step once per
+    `sample_posterior` call, which lowers its peak device memory and wall time.
 *   Fix budget optimization stopping early and leaving part of a fixed budget
     unspent. The search can move a channel's spend several grid points at
     once. Previously, if the best such move needed more than the remaining
