@@ -468,6 +468,11 @@ ALL_PRIOR_DISTRIBUTION_PARAMETERS = (
     *TIME_PARAMETERS,
 )
 
+# Time-varying media effects parameters. They are kept out of the tuples above
+# until the feature is released.
+ZETA_M = 'zeta_m'
+ZETA_RF = 'zeta_rf'
+
 ROTATED_KNOT_0 = 'rotated_knot_0'
 ROTATED_KNOT_REST = 'rotated_knot_rest'
 UNSAVED_PARAMETERS = (

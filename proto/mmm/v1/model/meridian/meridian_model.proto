@@ -16,6 +16,7 @@ edition = "2023";
 
 package mmm.v1.model.meridian;
 
+import "google/type/date.proto";
 import "mmm/v1/common/date_interval.proto";
 import "mmm/v1/model/meridian/eda/eda_spec.proto";
 import "mmm/v1/model/meridian/review/results.proto";
@@ -292,6 +293,11 @@ message PriorTfpDistributions {
   TfpDistribution ec_orf = 27;
   TfpDistribution slope_om = 28;
   TfpDistribution slope_orf = 29;
+  // Priors on the scale of the time-varying effect of paid media and RF
+  // channels with changepoints. Only set when `Hyperparameters.changepoints` is
+  // not empty.
+  TfpDistribution zeta_m = 38;
+  TfpDistribution zeta_rf = 39;
 
   // Lookup table that contains function names mapped to hashed functions used
   // by various `tfp.distributions`.
@@ -522,6 +528,13 @@ message HoldoutConfig {
   GeoDateRanges resolved = 4;
 }
 
+// The changepoints of one paid media or reach and frequency channel.
+message Changepoints {
+  // Dates where the channel's effect may change. Each date is a time
+  // coordinate of the input data and starts a new interval.
+  repeated google.type.Date dates = 1;
+}
+
 // Hyperparameters for the MMM model.
 message Hyperparameters {
   reserved 5, 36;
@@ -747,6 +760,26 @@ message Hyperparameters {
   // periods, to be non-negative. Unset or `false` means unconstrained, which
   // is how models serialized before this field existed were fit.
   bool force_nonnegative_aggregate_baseline = 37;
+
+  // Time-varying effects: maps a paid media or reach and frequency channel name
+  // to its changepoints. Empty means no time-varying effects, which is how
+  // models serialized before this field existed were fit.
+  map<string, Changepoints> changepoints = 38;
+
+  // Prior type of the paid media channels in `changepoints`. Unset means ROI.
+  PaidMediaPriorType changepoint_media_prior_type = 39
+      [features.field_presence = EXPLICIT];
+
+  // Prior type of the reach and frequency channels in `changepoints`. Unset
+  // means ROI.
+  PaidMediaPriorType changepoint_rf_prior_type = 40
+      [features.field_presence = EXPLICIT];
+
+  // Distribution of the media random effects of the channels in
+  // `changepoints`. Unlike `media_effects_dist`, it also applies to national
+  // models. Unset means log-normal.
+  MediaEffectsDistribution changepoint_media_effects_dist = 41
+      [features.field_presence = EXPLICIT];
 }
 
 // A named tensor parameter.
