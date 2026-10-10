@@ -187,6 +187,10 @@ class CalibrationBuilderTest(parameterized.TestCase):
         "Search",
         "YouTube",
     ]
+    self.mock_input_data.get_all_adstock_hill_channels.return_value = [
+        "Search",
+        "YouTube",
+    ]
 
     mock_media_channel = mock.create_autospec(
         xr.DataArray, instance=True, spec_set=True
@@ -395,6 +399,53 @@ class CalibrationBuilderTest(parameterized.TestCase):
         builder._resolved_adstock_decay_specs["YouTube"],
         constants.GEOMETRIC_DECAY,
     )
+
+  def test_builder_resolves_decay_specs_mapping_filters_organic_channels(
+      self,
+  ) -> None:
+    self.mock_input_data.get_all_adstock_hill_channels.return_value = [
+        "Search",
+        "YouTube",
+        "Organic_Blog",
+        "Organic_RF",
+    ]
+
+    builder = prior_builder.CalibrationBuilder(
+        self.mock_input_data,
+        adstock_decay_spec={
+            "Search": "binomial",
+            "Organic_Blog": "binomial",
+            "Organic_RF": "geometric",
+        },
+    )
+    self.assertEqual(
+        builder._resolved_adstock_decay_specs,
+        {
+            "Search": "binomial",
+            "YouTube": constants.GEOMETRIC_DECAY,
+        },
+    )
+
+    organic_only_builder = prior_builder.CalibrationBuilder(
+        self.mock_input_data,
+        adstock_decay_spec={"Organic_Blog": "binomial"},
+    )
+    self.assertEqual(
+        organic_only_builder._resolved_adstock_decay_specs,
+        {
+            "Search": constants.GEOMETRIC_DECAY,
+            "YouTube": constants.GEOMETRIC_DECAY,
+        },
+    )
+
+    with self.assertRaisesRegex(ValueError, "Invalid 'adstock_decay_spec'"):
+      prior_builder.CalibrationBuilder(
+          self.mock_input_data,
+          adstock_decay_spec={
+              "Search": "binomial",
+              "Organic_Blog": "invalid_decay",
+          },
+      )
 
   def test_builder_initializes_with_channels_baseline_prior_map(self) -> None:
     mock_baseline = self._create_mock_distribution()
