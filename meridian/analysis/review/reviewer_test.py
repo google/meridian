@@ -1818,6 +1818,10 @@ class CalibrationOverviewDataTest(CalibrationRecommendationReviewerTest):
       self.assertIn(
           review_constants.CALIBRATION_LEFT_PLOT_TITLE, item.chart_json
       )
+      self.assertIsNotNone(item.details_chart_json)
+      self.assertIn(
+          f'Experiment Adjustments: {exp_name}', item.details_chart_json
+      )
       np.testing.assert_array_equal(item.posterior_samples, exp_post)
 
 if __name__ == '__main__':
