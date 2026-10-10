@@ -1,0 +1,129 @@
+name: Publish mmm-proto-schema to PyPI  # For tagging and publishing releases.
+
+on:
+  push:
+    branches:
+      - main  # This entire workflow only runs on a push to the `main` branch (i.e. POST SUBMIT).
+    paths:
+      - 'proto/**'
+    tags:
+      - 'mmm-proto-schema/v*'  # Trigger only on pushed tags whose names start with 'v'.
+  workflow_dispatch:  # For triggering publication workflows manually, on demend, from GitHub UI.
+    inputs:
+      publish_proto_schema_to_pypi:  # Creates a boolean `github.event.inputs.publish_proto_schema_to_pypi` variable.
+        description: 'Publish proto schema to PyPI'
+        required: false
+        type: boolean
+        default: false
+      publish_proto_schema_to_testpypi:
+        description: 'Publish proto schema to TestPyPI'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  USE_PYTHON_VERSION: "3.11"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: ./.github/actions/build
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          src_dir: proto
+          artifact_name: mmm-proto-schema-distributions
+
+  # Check if the current `meridian.__version__` semver has been incremented. If so, set a
+  # `new_version` output.
+  check-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      new_version: ${{ steps.version_check.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version_check
+        uses: ./.github/actions/mmm-proto-schema-version-check
+        with:
+          python_version: ${{ env.USE_PYTHON_VERSION }}
+          version_file_path: proto/__init__.py
+          tag_match: mmm-proto-schema/v*
+          tag_prefix: mmm-proto-schema/v
+
+  create-tag:
+    needs: check-version
+    # Only run if new_version was discovered, and do this only on the main branch.
+    if: >
+      github.ref == 'refs/heads/main'
+      && needs.check-version.outputs.new_version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allow to create tags
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mmm-proto-schema-create-version-tag
+        with:
+          new_version: ${{ needs.check-version.outputs.new_version }}
+          tag_prefix: mmm-proto-schema/v
+
+  publish-proto-schema-to-pypi:
+    name: Publish MMM proto schema to PyPI
+    needs:
+      - build
+      - check-version
+    # Check if it's a tag push, or the `publish_proto_schema_to_pypi` workflow is selected in a manual trigger.
+    # or if a new version was discovered in a push to the `main` branch.
+    if: >
+      github.repository == 'google/meridian' && (
+        (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/'))
+        || (github.event_name == 'workflow_dispatch'
+            && github.event.inputs.publish_proto_schema_to_pypi == 'true')
+        || needs.check-version.outputs.new_version != ''
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mmm-proto-schema
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: mmm-proto-schema-distributions
+          path: dist/
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+
+  publish-proto-schema-to-testpypi:
+    name: Publish MMM proto schema to TestPyPI
+    needs:
+      - build
+      - check-version
+    # Check if the `publish_proto_schema_to_testpypi` workflow is selected in a manual trigger.
+    if: >
+      github.repository == 'google/meridian' && (
+        (github.event_name == 'workflow_dispatch'
+            && github.event.inputs.publish_proto_schema_to_testpypi == 'true')
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/mmm-proto-schema
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: mmm-proto-schema-distributions
+          path: dist/
+      - name: Publish distribution to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          verbose: true
