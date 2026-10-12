@@ -104,6 +104,9 @@ cards {
   flex-direction: column;
   row-gap: 32px;
   margin: 32px 32px 0px 50px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 card {
@@ -113,6 +116,10 @@ card {
 
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 
   > card-title {
     padding: 22px 32px;
@@ -191,6 +198,9 @@ charts {
 
   gap: 50px;
   padding: 59px 69px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 
   @mixin chart-style {
     display: flex;
@@ -220,6 +230,7 @@ charts {
   chart-embed {
     display: block;
     width: 100%;
+    box-sizing: border-box;
 
     overflow-x: auto;
     padding: 10px 5px 20px 2px;

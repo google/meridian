@@ -27,6 +27,10 @@ limitations under the License.
 <script type="text/javascript">
   (() => {
     const spec = JSON.parse({{ chart_json|tojson }});
-    vegaEmbed('#{{ id }}', spec).catch(console.error);
+    const chartEl =
+        document.currentScript?.previousElementSibling?.querySelector(
+            'chart-embed'
+        ) || '#{{ id }}';
+    vegaEmbed(chartEl, spec).catch(console.error);
   })();
 </script>

@@ -218,10 +218,19 @@ class FormatterTest(parameterized.TestCase):
     self.assertEqual(chart_html.tag, 'charts')
     self.assertEqual(chart_html[0].tag, 'chart')
     self.assertEqual(chart_html[0][0].tag, 'chart-embed')
+    self.assertEqual(chart_html[0][0].attrib.get('id'), 'test_chart_id')
     self.assertEqual(chart_html[0][1].tag, 'chart-description')
     self.assertContainsSubset('test_chart_description', chart_html[0][1].text)
     self.assertEqual(chart_html[1].tag, 'script')
-    self.assertContainsSubset('test_chart_json', chart_html[1].text)
+    script_text = chart_html[1].text or ''
+    self.assertIn('test_chart_json', script_text)
+    self.assertIn(
+        "document.currentScript?.previousElementSibling?.querySelector(\n"
+        "            'chart-embed'\n"
+        "        ) || '#test_chart_id'",
+        script_text,
+    )
+    self.assertIn('vegaEmbed(chartEl, spec)', script_text)
 
   def test_create_card_html_mulitple_stats(self):
     template_env = formatter.create_template_env()
