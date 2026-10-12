@@ -497,7 +497,7 @@ class PosteriorMCMCSamplerTest(
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
-    transformed_media = meridian.adstock_hill_media(
+    transformed_media = meridian.model_equations.adstock_hill_media(
         media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
@@ -647,7 +647,7 @@ class PosteriorMCMCSamplerTest(
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
-    transformed_reach = meridian.adstock_hill_rf(
+    transformed_reach = meridian.model_equations.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
         frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],
@@ -810,14 +810,14 @@ class PosteriorMCMCSamplerTest(
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
       )
-    transformed_media = meridian.adstock_hill_media(
+    transformed_media = meridian.model_equations.adstock_hill_media(
         media=meridian.media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_M],
         ec=par[constants.EC_M],
         slope=par[constants.SLOPE_M],
         decay_functions=meridian.adstock_decay_spec.media,
     )[0, :, :, :]
-    transformed_reach = meridian.adstock_hill_rf(
+    transformed_reach = meridian.model_equations.adstock_hill_rf(
         reach=meridian.rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
         frequency=meridian.rf_tensors.frequency,  # pyrefly: ignore[bad-argument-type]
         alpha=par[constants.ALPHA_RF],

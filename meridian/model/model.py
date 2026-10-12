@@ -490,15 +490,21 @@ class Meridian:
   # TODO: Remove this method.
   def compute_non_media_treatments_baseline(
       self,
-      non_media_baseline_values: Sequence[str | float] | None = None,
+      non_media_baseline_values: (
+          Mapping[str, str | float] | Sequence[str | float] | None
+      ) = None,
   ) -> backend.Tensor:
     """Computes the baseline for each non-media treatment channel.
 
+    Deprecated: Use `ModelEquations.compute_non_media_treatments_baseline`
+    instead.
+
     Args:
       non_media_baseline_values: Optional list of shape
-        `(n_non_media_channels,)`. Each element is either a float (which means
-        that the fixed value will be used as baseline for the given channel) or
-        one of the strings "min" or "max" (which mean that the global minimum or
+        `(n_non_media_channels,)`, or mapping from non-media channel names to
+        baseline values. Each element is either a float (which means that the
+        fixed value will be used as baseline for the given channel) or one of
+        the strings "min" or "max" (which mean that the global minimum or
         maximum value will be used as baseline for the values of the given
         non_media treatment channel). If float values are provided, it is
         expected that they are scaled by population for the channels where
@@ -745,6 +751,9 @@ class Meridian:
   ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for non-RF media.
 
+    Deprecated: Use
+    `ModelEquations.linear_predictor_counterfactual_difference_media` instead.
+
     For non-RF media variables (paid or organic), this function calculates the
     linear predictor difference between the treatment variable and its
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
@@ -791,6 +800,9 @@ class Meridian:
   ) -> backend.Tensor:
     """Calculates linear predictor counterfactual difference for RF media.
 
+    Deprecated: Use
+    `ModelEquations.linear_predictor_counterfactual_difference_rf` instead.
+
     For RF media variables (paid or organic), this function calculates the
     linear predictor difference between the treatment variable and its
     counterfactual. "Linear predictor" refers to the output of the hill/adstock
@@ -834,6 +846,8 @@ class Meridian:
       beta_gx_dev: backend.Tensor,
   ) -> backend.Tensor:
     """Calculates coefficient mean parameter for any treatment variable type.
+
+    Deprecated: Use `ModelEquations.calculate_beta_x` instead.
 
     The "beta_x" in the function name refers to the coefficient mean parameter
     of any treatment variable. The "x" can represent "m", "rf", "om", or "orf".
@@ -893,9 +907,12 @@ class Meridian:
       ec: backend.Tensor,
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      saturation_spec: str | Sequence[str] = constants.HILL,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms media using Adstock and Hill functions in the desired order.
+
+    Deprecated: Use `ModelEquations.adstock_hill_media` instead.
 
     Args:
       media: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
@@ -912,6 +929,8 @@ class Meridian:
         n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
+      saturation_spec: String or sequence of strings denoting the saturation
+        function(s) for each channel. Default: 'hill'.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `media` equals
         `self.n_media_times`, in which case `n_times_output` defaults to
@@ -934,6 +953,7 @@ class Meridian:
         ec=ec,
         slope=slope,
         decay_functions=decay_functions,
+        saturation_spec=saturation_spec,
         n_times_output=n_times_output,
     )
 
@@ -946,9 +966,12 @@ class Meridian:
       ec: backend.Tensor,
       slope: backend.Tensor,
       decay_functions: str | Sequence[str] = constants.GEOMETRIC_DECAY,
+      saturation_spec: str | Sequence[str] = constants.HILL,
       n_times_output: int | None = None,
   ) -> backend.Tensor:
     """Transforms reach and frequency (RF) using Hill and Adstock functions.
+
+    Deprecated: Use `ModelEquations.adstock_hill_rf` instead.
 
     Args:
       reach: Tensor of dimensions `(n_geos, n_media_times, n_channels)`
@@ -965,6 +988,8 @@ class Meridian:
         n_channels]`.
       decay_functions: String or sequence of strings denoting the adstock decay
         function(s) for each channel. Default: 'geometric'.
+      saturation_spec: String or sequence of strings denoting the saturation
+        function(s) for each channel. Default: 'hill'.
       n_times_output: Number of time periods to output. This argument is
         optional when the number of time periods in `reach` equals
         `self.n_media_times`, in which case `n_times_output` defaults to
@@ -988,6 +1013,7 @@ class Meridian:
         ec=ec,
         slope=slope,
         decay_functions=decay_functions,
+        saturation_spec=saturation_spec,
         n_times_output=n_times_output,
     )
 
