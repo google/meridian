@@ -23,6 +23,7 @@ from meridian.analysis import analyzer
 from meridian.data import test_utils
 from meridian.mlflow import autolog
 import mlflow
+from meridian.model import context
 from meridian.model import model
 from meridian.model import posterior_sampler
 from meridian.model import prior_sampler
@@ -140,7 +141,13 @@ class AutologTest(parameterized.TestCase):
     cls.mock_analyzer_method = cls.enter_context(
         mock.patch.object(analyzer.Analyzer, "predictive_accuracy")
     )
-    cls.enter_context(
+
+  def setUp(self):
+    super().setUp()
+    self.mock_log_param.reset_mock()
+    self.mock_log_metric.reset_mock()
+    self.mock_analyzer_method.reset_mock()
+    self.enter_context(
         mock.patch.object(
             prior_sampler.PriorDistributionSampler,
             "__call__",
@@ -148,7 +155,7 @@ class AutologTest(parameterized.TestCase):
             return_value={},
         )
     )
-    posterior_sampler.PosteriorMCMCSampler.__call__ = cls.enter_context(
+    posterior_sampler.PosteriorMCMCSampler.__call__ = self.enter_context(
         mock.patch.object(
             posterior_sampler.PosteriorMCMCSampler,
             "__call__",
@@ -205,21 +212,40 @@ class AutologTest(parameterized.TestCase):
     for key, value in expected_log_param_calls:
       self.mock_log_param.assert_any_call(key, value)
 
-  def test_autolog_log_metrics_warning(self):
+  def test_autolog_log_metrics_enabled(self):
     autolog.autolog(log_metrics=True)
     mmm = model.Meridian(input_data=_get_input_data())
     mmm.sample_prior(n_draws=100, seed=1)
-    with mock.patch("warnings.warn") as mock_warn:
-      mmm.sample_posterior(
-          n_chains=1,
-          n_adapt=1,
-          n_burnin=1,
-          n_keep=1,
-      )
-      mock_warn.assert_called_with(
-          "log_metrics=True is not supported when PosteriorMCMCSampler is"
-          " initialized with model_context."
-      )
+    mmm.sample_posterior(
+        n_chains=1,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=1,
+    )
+
+    self.mock_analyzer_method.assert_called_once()
+    for metric in ["R_Squared", "MAPE", "wMAPE"]:
+      self.mock_log_metric.assert_any_call(metric, mock.ANY)
+
+  def test_autolog_log_metrics_enabled_direct_sampler(self):
+    autolog.autolog(log_metrics=True)
+    model_context = context.ModelContext(
+        input_data=_get_input_data(),
+        model_spec=spec.ModelSpec(),
+    )
+    sampler = posterior_sampler.PosteriorMCMCSampler(
+        model_context=model_context
+    )
+    sampler(
+        n_chains=1,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=1,
+    )
+
+    self.mock_analyzer_method.assert_called_once()
+    for metric in ["R_Squared", "MAPE", "wMAPE"]:
+      self.mock_log_metric.assert_any_call(metric, mock.ANY)
 
   def test_autolog_disabled_after_initially_enabled(self):
     autolog.autolog()

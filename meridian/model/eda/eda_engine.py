@@ -19,8 +19,7 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 import dataclasses
 import functools
-import typing
-from typing import Protocol
+from typing import Any, Protocol
 import warnings
 
 from meridian import backend
@@ -36,10 +35,6 @@ from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats import outliers_influence
 import xarray as xr
-
-
-if typing.TYPE_CHECKING:
-  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 __all__ = ['EDAEngine', 'GeoLevelCheckOnNationalModelError']
 
@@ -569,7 +564,7 @@ class EDAEngine:
   def __init__(
       self,
       # TODO: Remove meridian arg.
-      meridian: model.Meridian | None = None,
+      meridian: Any | None = None,
       spec: eda_spec.EDASpec = eda_spec.EDASpec(),
       *,
       model_context: context.ModelContext | None = None,

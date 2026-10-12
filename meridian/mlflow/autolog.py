@@ -70,11 +70,10 @@ import dataclasses
 import inspect
 import json
 from typing import Any, Callable
-import warnings
 
 import arviz as az
 from meridian import backend
-from meridian.analysis import visualizer
+from meridian.analysis import analyzer
 import mlflow
 from mlflow.utils.autologging_utils import autologging_integration, safe_patch
 from meridian.model import model
@@ -183,22 +182,22 @@ def autolog(
 
     result = original(self, *args, **kwargs)
     if log_metrics:
-      # TODO: Direct injection of `model.Meridian` object into
-      # `PosteriorMCMCSampler` is deprecated. Revisit patching method here.
-      if self.model is not None:
-        model_diagnostics = visualizer.ModelDiagnostics(self.model)
-        df_diag = model_diagnostics.predictive_accuracy_table()
+      model_context = getattr(self, "_model_context", None)
+      if model_context is None and self.model is not None:
+        model_context = self.model.model_context
+      meridian_analyzer = analyzer.Analyzer(
+          model_context=model_context,
+          inference_data=result,
+      )
+      df_diag = (
+          meridian_analyzer.predictive_accuracy().to_dataframe().reset_index()
+      )
 
-        get_metric = lambda n: df_diag[df_diag.metric == n].value.to_list()[0]
+      get_metric = lambda n: df_diag[df_diag.metric == n].value.to_list()[0]
 
-        mlflow.log_metric("R_Squared", get_metric("R_Squared"))
-        mlflow.log_metric("MAPE", get_metric("MAPE"))
-        mlflow.log_metric("wMAPE", get_metric("wMAPE"))
-      else:
-        warnings.warn(
-            "log_metrics=True is not supported when PosteriorMCMCSampler is"
-            " initialized with model_context."
-        )
+      mlflow.log_metric("R_Squared", get_metric("R_Squared"))
+      mlflow.log_metric("MAPE", get_metric("MAPE"))
+      mlflow.log_metric("wMAPE", get_metric("wMAPE"))
     return result
 
   safe_patch(FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init)

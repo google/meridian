@@ -16,7 +16,7 @@
 
 from collections.abc import Callable, Mapping
 import functools
-from typing import Optional, TYPE_CHECKING
+from typing import Any
 import warnings
 
 from meridian import backend
@@ -24,10 +24,6 @@ from meridian import constants
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
-
-# TODO: Break this circular dependency.
-if TYPE_CHECKING:
-  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 
 __all__ = [
@@ -86,7 +82,7 @@ class PriorDistributionSampler:
   # TODO: Deprecate direct injection of `model.Meridian`.
   def __init__(
       self,
-      meridian: Optional["model.Meridian"] = None,
+      meridian: Any | None = None,
       *,
       model_context: context.ModelContext | None = None,
   ):
