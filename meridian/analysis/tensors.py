@@ -825,22 +825,21 @@ class DataTensorsBuilder:
       self._validate_time_dims(data=data, required_fields=required_fields)
       return
 
-    if data.time is None:
+    if data.time is not None:
+      if len(data.time) != new_n_times:
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is "
+            "modified, then all variables must be provided with the same "
+            f"number of time periods. `time` has {len(data.time)} "
+            "time periods, which does not match the modified number of time "
+            f"periods, {new_n_times}."
+        )
+      _validate_time_coordinates(data.time)
+    elif constants.TIME in required_fields:
       raise ValueError(
           "`time` must be provided in `new_data` if any time dimension in"
           " `new_data` is modified."
       )
-
-    if len(data.time) != new_n_times:
-      raise ValueError(
-          "If the time dimension of any variable in `new_data` is "
-          "modified, then all variables must be provided with the same "
-          f"number of time periods. `time` has {len(data.time)} "
-          "time periods, which does not match the modified number of time "
-          f"periods, {new_n_times}."
-      )
-
-    _validate_time_coordinates(data.time)
 
     missing_params = []
     for var_name in required_fields:
@@ -892,11 +891,13 @@ class DataTensorsBuilder:
     output = {}
     if data.time is not None:
       output[constants.TIME] = data.time
-    else:
+    elif self.get_modified_times(data) is None:
       output[constants.TIME] = tuple(
           normalize_date_str(t)
           for t in self.model_context.input_data.time.values
       )
+    else:
+      output[constants.TIME] = None
     for field in dataclasses.fields(data):
       var_name = field.name
       if var_name == constants.TIME:
@@ -1066,13 +1067,23 @@ class DataTensorsBuilder:
     geo_indices = self._resolve_geo_indices(selected_geos)
     if tensors.time is not None:
       input_times = tensors.time
-    else:
+    elif self.get_modified_times(tensors) is None:
       input_times = self.model_context.input_data.time
+    else:
+      input_times = None
 
-    time_indices = self._resolve_time_indices(
-        selected_times=selected_times,
-        input_times=input_times,
-    )
+    if input_times is None:
+      if selected_times is not None:
+        raise ValueError(
+            "`time` must be provided in `new_data` if any time dimension in"
+            " `new_data` is modified."
+        )
+      time_indices = None
+    else:
+      time_indices = self._resolve_time_indices(
+          selected_times=selected_times,
+          input_times=input_times,
+      )
 
     return payload_cls(
         tensors=tensors,
@@ -1275,6 +1286,8 @@ class DataTensorsBuilder:
       required_params += list(constants.NON_PAID_DATA)
     if not times_modified:
       required_params.append(constants.CONTROLS)
+    elif selected_times is not None or media_selected_times is not None:
+      required_params.append(constants.TIME)
 
     base_unscaled = self._build_unscaled_data_tensors(
         new_data=new_data, required_tensors_names=required_params
@@ -1283,23 +1296,24 @@ class DataTensorsBuilder:
     new_n_media_times = self.get_modified_times(base_unscaled)
 
     if new_n_media_times is not None:
-      assert base_unscaled.time is not None
       time_coords = base_unscaled.time
       media_time_coords = base_unscaled.time
     else:
       time_coords = self.model_context.input_data.time
       media_time_coords = self.model_context.input_data.media_time
 
-    _validate_selected_times(
-        selected_times=selected_times,
-        input_times=time_coords,
-        arg_name="selected_times",
-    )
-    _validate_selected_times(
-        selected_times=media_selected_times,
-        input_times=media_time_coords,
-        arg_name="media_selected_times",
-    )
+    if time_coords is not None:
+      _validate_selected_times(
+          selected_times=selected_times,
+          input_times=time_coords,
+          arg_name="selected_times",
+      )
+    if media_time_coords is not None:
+      _validate_selected_times(
+          selected_times=media_selected_times,
+          input_times=media_time_coords,
+          arg_name="media_selected_times",
+      )
     return base_unscaled, new_n_media_times
 
   def build_counterfactual_inputs(

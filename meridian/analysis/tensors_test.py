@@ -235,9 +235,19 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         " `new_data` is modified.",
     ):
       new_data.validate_and_fill_missing_data(
-          required_tensors_names=[constants.MEDIA],
+          required_tensors_names=[constants.MEDIA, constants.TIME],
           model_context=self.meridian_media_and_rf.model_context,
       )
+
+  def test_validate_no_time_modified_times_optional_time(self):
+    new_data = tensors.DataTensors(
+        media=backend.ones((_N_GEOS, 10, _N_MEDIA_CHANNELS)),
+    )
+    filled_data = new_data.validate_and_fill_missing_data(
+        required_tensors_names=[constants.MEDIA],
+        model_context=self.meridian_media_and_rf.model_context,
+    )
+    self.assertIsNone(filled_data.time)
 
   def test_validate_wrong_times_controls(self):
     new_data = tensors.DataTensors(
@@ -1344,6 +1354,87 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
       tensors.DataTensors(
           media=backend.ones((_N_GEOS, 1, _N_MEDIA_CHANNELS)),
           time=[12345],  # pyrefly: ignore[bad-argument-type]
+      )
+
+  def _make_modified_times_new_data_without_time(
+      self, n_new_times: int = 10
+  ) -> tensors.DataTensors:
+    ctx = self.meridian.model_context
+    return tensors.DataTensors(
+        media=ctx.media_tensors.media[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        media_spend=ctx.media_tensors.media_spend[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=ctx.rf_tensors.reach[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=ctx.rf_tensors.frequency[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        rf_spend=ctx.rf_tensors.rf_spend[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=ctx.revenue_per_kpi[..., -n_new_times:],  # pyrefly: ignore[unsupported-operation]
+        non_media_treatments=ctx.non_media_treatments[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+    )
+
+  def test_build_unscaled_inputs_modified_times_no_time_succeeds(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    new_data = self._make_modified_times_new_data_without_time(n_new_times=10)
+    inputs = builder.build_unscaled_inputs(
+        new_data=new_data,
+        required_tensors_names=constants.PERFORMANCE_DATA,
+    )
+    self.assertIsNone(inputs.tensors.time)
+    self.assertIsNone(inputs.time_indices)
+
+  def test_build_unscaled_inputs_modified_times_no_time_raises_when_required(
+      self,
+  ):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    new_data = self._make_modified_times_new_data_without_time(n_new_times=10)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      builder.build_unscaled_inputs(
+          new_data=new_data,
+          required_tensors_names=constants.PERFORMANCE_DATA + (constants.TIME,),
+      )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      builder.build_unscaled_inputs(
+          new_data=new_data,
+          required_tensors_names=constants.PERFORMANCE_DATA,
+          selected_times=["2021-01-25"],
+      )
+
+  def test_build_counterfactual_inputs_modified_times_no_time_succeeds(self):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    new_data = self._make_modified_times_new_data_without_time(n_new_times=10)
+    inputs = builder.build_counterfactual_inputs(new_data=new_data)
+    self.assertIsNone(inputs.tensors.time)
+    self.assertIsNone(inputs.time_indices)
+    self.assertEqual(inputs.media_selected_times_mask, tuple([True] * 10))
+
+  def test_build_counterfactual_inputs_modified_times_no_time_raises_with_selected_times(
+      self,
+  ):
+    builder = tensors.DataTensorsBuilder(self.meridian.model_context)
+    new_data = self._make_modified_times_new_data_without_time(n_new_times=10)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      builder.build_counterfactual_inputs(
+          new_data=new_data,
+          selected_times=["2021-01-25"],
+      )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      builder.build_counterfactual_inputs(
+          new_data=new_data,
+          media_selected_times=["2021-01-25"],
       )
 
 

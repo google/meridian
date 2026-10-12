@@ -2512,6 +2512,15 @@ class Analyzer:
     batched_kwargs = {"batch_size": batch_size}
     new_data = new_data or DataTensors()
     builder = tensors.DataTensorsBuilder(self.model_context)
+    if (
+        not aggregate_times
+        and builder.get_modified_times(new_data) is not None
+        and new_data.time is None
+    ):
+      raise ValueError(
+          "`time` must be provided in `new_data` if any time dimension in"
+          " `new_data` is modified."
+      )
     aggregated_impressions = self.get_aggregated_impressions(
         new_data=new_data.filter_fields(
             list(constants.IMPRESSIONS_DATA) + [constants.TIME]
@@ -3693,13 +3702,14 @@ class Analyzer:
     Args:
       new_data: Optional `DataTensors` object with optional new tensors:
         `media`, `reach`, `frequency`, `media_spend`, `rf_spend`,
-        `revenue_per_kpi`, `times`. If provided, the response curves are
+        `revenue_per_kpi`, `time`. If provided, the response curves are
         calculated using the values of the tensors passed in `new_data` and the
         original values of all the remaining tensors. If `None`, the response
         curves are calculated using the original values of all the tensors. If
         any of the tensors in `new_data` is provided with a different number of
         time periods than in `InputData`, then all tensors must be provided with
-        the same number of time periods and the `time` tensor must be provided.
+        the same number of time periods, and the `time` tensor must be provided
+        if `selected_times` is specified.
       spend_multipliers: List of multipliers. Each channel's total spend is
         multiplied by these factors to obtain the values at which the curve is
         calculated for that channel.
@@ -3709,7 +3719,7 @@ class Analyzer:
         default, all geos are included.
       selected_times: Optional list containing a subset of dates to include. If
         `new_data` is provided with modified time periods, then `selected_times`
-        must be a subset of `new_data.times`. Otherwise, `selected_times` must
+        must be a subset of `new_data.time`. Otherwise, `selected_times` must
         be a subset of `self._model_context.input_data.time`. By default, all
         time periods are included.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
@@ -3742,8 +3752,9 @@ class Analyzer:
     }
     if new_data is None:
       new_data = DataTensors()
-    # TODO: Support flexible time without providing exact dates.
-    required_tensors_names = constants.PERFORMANCE_DATA + (constants.TIME,)
+    required_tensors_names = constants.PERFORMANCE_DATA
+    if selected_times is not None:
+      required_tensors_names += (constants.TIME,)
     builder = tensors.DataTensorsBuilder(self.model_context)
     filled_data = builder.build_unscaled_inputs(
         new_data=new_data,
