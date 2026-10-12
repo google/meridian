@@ -5668,10 +5668,28 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       )
 
   @parameterized.named_parameters(
-      dict(testcase_name="historical_frequency", use_optimal_frequency=False),
-      dict(testcase_name="optimal_frequency", use_optimal_frequency=True),
+      dict(
+          testcase_name="historical_frequency_with_time",
+          use_optimal_frequency=False,
+          include_time=True,
+      ),
+      dict(
+          testcase_name="optimal_frequency_with_time",
+          use_optimal_frequency=True,
+          include_time=True,
+      ),
+      dict(
+          testcase_name="historical_frequency_without_time",
+          use_optimal_frequency=False,
+          include_time=False,
+      ),
+      dict(
+          testcase_name="optimal_frequency_without_time",
+          use_optimal_frequency=True,
+          include_time=False,
+      ),
   )
-  def test_response_curves_new_times(self, use_optimal_frequency):
+  def test_response_curves_new_times(self, use_optimal_frequency, include_time):
     n_new_times = 15
     new_data = tensors.DataTensors(
         media=self.meridian.media_tensors.media[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
@@ -5694,7 +5712,11 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         non_media_treatments=self.meridian.non_media_treatments[  # pyrefly: ignore[unsupported-operation]
             ..., -n_new_times:, :
         ],
-        time=self.meridian.input_data.time.values[-n_new_times:],  # pyrefly: ignore[bad-argument-type]
+        time=(
+            self.meridian.input_data.time.values[-n_new_times:]  # pyrefly: ignore[bad-argument-type]
+            if include_time
+            else None
+        ),
     )
     response_curve_data = self.analyzer.response_curves(
         new_data=new_data,
@@ -5781,6 +5803,28 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=1e-3,
         atol=1e-3,
     )
+
+  def test_response_curves_new_times_no_time_with_selected_times_raises(self):
+    n_new_times = 15
+    new_data = tensors.DataTensors(
+        media=self.meridian.media_tensors.media[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        reach=self.meridian.rf_tensors.reach[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        frequency=self.meridian.rf_tensors.frequency[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+        revenue_per_kpi=self.meridian.revenue_per_kpi[..., -n_new_times:],  # pyrefly: ignore[unsupported-operation]
+        media_spend=self.meridian.media_tensors.media_spend[  # pyrefly: ignore[unsupported-operation]
+            ..., -n_new_times:, :
+        ],
+        rf_spend=self.meridian.rf_tensors.rf_spend[..., -n_new_times:, :],  # pyrefly: ignore[unsupported-operation]
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`time` must be provided in `new_data` if any time dimension in"
+        " `new_data` is modified.",
+    ):
+      self.analyzer.response_curves(
+          new_data=new_data,
+          selected_times=["2021-01-25"],
+      )
 
   def test_response_curves_new_times_data_correct(self):
     max_lag = self.meridian.model_spec.max_lag

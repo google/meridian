@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Support modified time dimensions in `Analyzer.response_curves` without
+    requiring `new_data.time` when `selected_times` is not specified.
 *   Fix `spend_share` in `ReachFrequencyOptimizationProcessor` output, which
     was reported as a percentage instead of a fraction of the total spend.
 *   `Analyzer.expected_vs_actual_data` now always returns an `evaluation_set`
