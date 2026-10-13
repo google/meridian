@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `ModelContext` now warns when a control variable that is not
+    population-scaled is highly correlated with population across geos,
+    suggesting it be listed in `ModelSpec.population_scaled_controls`.
+
 *   Fix `spend_share` in `ReachFrequencyOptimizationProcessor` output, which
     was reported as a percentage instead of a fraction of the total spend.
 *   `Analyzer.expected_vs_actual_data` now always returns an `evaluation_set`

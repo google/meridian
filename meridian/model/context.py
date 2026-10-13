@@ -472,6 +472,7 @@ class ModelContext:
     self._validate_time_invariants()
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
+    self._warn_controls_correlated_with_population()
 
   def _resolve_declarative_model_spec(self) -> None:
     """Resolves every declarative `ModelSpec` attribute against the input data.
@@ -783,6 +784,63 @@ class ModelContext:
           "Zero total spend detected for paid channels:"
           f" {', '.join(zero_spend_channels)}. If data is correct and this is"
           " expected, please consider modeling the data as organic media."
+      )
+
+  def _warn_controls_correlated_with_population(self) -> None:
+    """Warns if unscaled controls are highly correlated with population.
+
+    A control variable whose per-geo mean (over time) is highly correlated with
+    geo population is likely a population-driven quantity (e.g., a count) that
+    should be population-scaled via `ModelSpec.population_scaled_controls`.
+    Leaving such controls unscaled can hurt convergence and bias the results.
+
+    Only controls that are not already population-scaled are checked. The
+    check is skipped for national models and for geo models with fewer than
+    three geos, where the correlation is not informative.
+    """
+    controls = self._input_data.controls
+    if controls is None or self.n_geos < 3:
+      return
+
+    population = np.asarray(
+        self._input_data.population.values, dtype=np.float64
+    )
+    if np.std(population) == 0:
+      return
+
+    scaling_id = self.compiled_control_population_scaling_id
+    if scaling_id is None:
+      scaling_id = np.zeros(self.n_controls, dtype=bool)
+
+    # Shape: (n_geos, n_controls).
+    geo_means = np.asarray(
+        controls.mean(dim=constants.TIME)
+        .transpose(constants.GEO, constants.CONTROL_VARIABLE)
+        .values,
+        dtype=np.float64,
+    )
+    control_names = self._coordinate_names(self._input_data.control_variable)
+
+    flagged = []
+    for index, name in enumerate(control_names):
+      if scaling_id[index]:
+        continue
+      geo_mean = geo_means[:, index]
+      if not np.all(np.isfinite(geo_mean)) or np.std(geo_mean) == 0:
+        continue
+      correlation = np.corrcoef(population, geo_mean)[0, 1]
+      if correlation >= constants.CONTROL_POPULATION_CORRELATION_THRESHOLD:
+        flagged.append(f"{name} ({correlation:.2f})")
+
+    if flagged:
+      warnings.warn(
+          "The following control variables are highly correlated with"
+          " population across geos (correlation coefficient in parentheses):"
+          f" {', '.join(flagged)}. If these variables scale with population"
+          " (e.g., counts), consider population-scaling them by listing them"
+          " in `ModelSpec.population_scaled_controls`. Leaving them unscaled"
+          " can lead to poor model convergence and biased results.",
+          UserWarning,
       )
 
   def _check_if_no_time_variation(

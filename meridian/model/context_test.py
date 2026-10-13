@@ -1445,6 +1445,70 @@ class ContextTest(
       # xi_c, eta_om, eta_orf, xi_n).
       self.assertLen(w, 7)
 
+  def _input_data_with_population_correlated_control(
+      self,
+  ) -> input_data.InputData:
+    """Returns geo data whose first control is proportional to population."""
+    base_data = self.input_data_with_media_and_rf
+    assert base_data.controls is not None
+    controls = base_data.controls.copy(deep=True).transpose(
+        constants.GEO, constants.TIME, constants.CONTROL_VARIABLE
+    )
+    population = base_data.population.values
+    n_geos = controls.sizes[constants.GEO]
+    n_times = controls.sizes[constants.TIME]
+    # A geo-specific phase keeps the control varying across geos even after
+    # population scaling, so the geo-invariance validation does not fail.
+    time_factor = 1.0 + 0.1 * np.sin(
+        np.arange(n_times)[np.newaxis, :] + np.arange(n_geos)[:, np.newaxis]
+    )
+    controls.data = controls.data.copy()
+    controls.data[:, :, 0] = population[:, np.newaxis] * time_factor
+    return dataclasses.replace(base_data, controls=controls)
+
+  def test_init_warns_if_control_correlated_with_population(self):
+    data = self._input_data_with_population_correlated_control()
+    assert data.control_variable is not None
+    control_name = str(data.control_variable.values[0])
+    with self.assertWarnsRegex(
+        UserWarning,
+        "The following control variables are highly correlated with"
+        rf" population across geos .*{control_name} \(\d\.\d\d\).*"
+        "population_scaled_controls",
+    ):
+      context.ModelContext(input_data=data, model_spec=spec.ModelSpec())
+
+  def test_init_no_correlation_warning_if_control_population_scaled(self):
+    data = self._input_data_with_population_correlated_control()
+    assert data.control_variable is not None
+    control_name = str(data.control_variable.values[0])
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter("always")
+      context.ModelContext(
+          input_data=data,
+          model_spec=spec.ModelSpec(population_scaled_controls=[control_name]),
+      )
+    self.assertFalse(
+        any(
+            "highly correlated with population" in str(w.message)
+            for w in warns
+        )
+    )
+
+  def test_init_no_correlation_warning_for_national_model(self):
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter("always")
+      context.ModelContext(
+          input_data=self.national_input_data_media_and_rf,
+          model_spec=spec.ModelSpec(),
+      )
+    self.assertFalse(
+        any(
+            "highly correlated with population" in str(w.message)
+            for w in warns
+        )
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="1d",

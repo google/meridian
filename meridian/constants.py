@@ -850,3 +850,9 @@ POSTERIOR_THINNING_SEED = 'posterior_thinning_seed'
 # Calibration constants.
 IS_CALIBRATED = 'is_calibrated'
 CALIBRATION_OUTPUTS = 'calibration_outputs'
+
+
+# Correlation across geos between population and a control variable's per-geo
+# mean, above which the control is likely a population-driven quantity that
+# should be population-scaled.
+CONTROL_POPULATION_CORRELATION_THRESHOLD = 0.9
