@@ -60,6 +60,13 @@ class ChannelParameters:
   is_rf: bool
 
 
+# NUTS samples the first rotated knot through the sigmoid bijector of
+# `TruncatedNormal`, which needs a finite upper bound. The bound is at least
+# this many knot prior scales above both zero and the lower bound, so it leaves
+# out a negligible amount of prior probability.
+_ROTATED_KNOT_0_UPPER_BOUND_SCALES = 50.0
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class AggregateBaselineConstraint:
   """Precomputed terms for the aggregate baseline constraint.
@@ -82,6 +89,8 @@ class AggregateBaselineConstraint:
     threshold_l: Scalar threshold `-n_times * mean / stdev` on the scaled KPI
       scale. Corresponds to a zero aggregate baseline on the original outcome
       scale.
+    knot_loc: Scalar `loc` of the `knot_values` prior, in the prior's dtype.
+    knot_scale: Scalar `scale` of the `knot_values` prior, in the prior's dtype.
   """
 
   outcome_weights: backend.Tensor
@@ -90,6 +99,110 @@ class AggregateBaselineConstraint:
   knot_rotation_matrix: np.ndarray
   knot_norm_w: float
   threshold_l: backend.Tensor
+  knot_loc: backend.Tensor
+  knot_scale: backend.Tensor
+
+  def offset(
+      self,
+      *,
+      tau_g: backend.Tensor,
+      gamma_gc: backend.Tensor | None = None,
+      gamma_gn: backend.Tensor | None = None,
+      non_media_baseline_normalized: backend.Tensor | None = None,
+  ) -> backend.Tensor:
+    """Computes the terms of the aggregate baseline that don't depend on knots.
+
+    On the scaled KPI scale, the aggregate baseline is this offset plus
+    `knot_norm_w` times the first coordinate of the knots rotated by
+    `knot_rotation_matrix`.
+
+    Args:
+      tau_g: Geo effects of shape `(..., n_geos)`.
+      gamma_gc: Geo-level control coefficients of shape `(..., n_geos,
+        n_controls)`, if the model has control variables.
+      gamma_gn: Geo-level non-media treatment coefficients of shape `(...,
+        n_geos, n_non_media_channels)`, if the model has non-media treatments.
+      non_media_baseline_normalized: The non-media treatment baseline values,
+        normalized like the non-media treatments and broadcastable to
+        `(n_geos, n_times, n_non_media_channels)`. Required with `gamma_gn`.
+
+    Returns:
+      The outcome-weighted sum of the geo, control, and non-media treatment
+      terms of the baseline, of shape `(...)`.
+
+    Raises:
+      ValueError: If `gamma_gn` is passed without
+        `non_media_baseline_normalized`.
+    """
+    n_geos, n_times = self.outcome_weights.shape
+    offset = float(n_times) * backend.einsum(
+        "g,...g->...", self.geo_weights, tau_g
+    )
+    if gamma_gc is not None:
+      offset += backend.einsum("gc,...gc->...", self.controls_weights, gamma_gc)
+    if gamma_gn is not None:
+      if non_media_baseline_normalized is None:
+        raise ValueError(
+            "`non_media_baseline_normalized` is required with `gamma_gn`."
+        )
+      broadcast_non_media = backend.broadcast_to(
+          non_media_baseline_normalized,  # pyrefly: ignore[bad-argument-type]
+          [n_geos, n_times, gamma_gn.shape[-1]],
+      )
+      offset += backend.einsum(
+          "gt,gtn,...gn->...",
+          self.outcome_weights,
+          broadcast_non_media,
+          gamma_gn,
+      )
+    return offset
+
+  def rotated_knot_0_prior(
+      self, offset: backend.Tensor
+  ) -> backend.tfd.Distribution:
+    """Returns the prior of the first rotated knot.
+
+    This is the knot prior, truncated from below where the aggregate baseline
+    equals `threshold_l`.
+
+    Args:
+      offset: The output of `offset`, of shape `(...)`.
+
+    Returns:
+      A `TruncatedNormal` distribution with batch shape `(...)`.
+    """
+    knot_dtype = self.knot_scale.dtype
+    low = backend.cast(
+        backend.divide(self.threshold_l - offset, self.knot_norm_w),
+        dtype=knot_dtype,
+    )
+    upper_margin = _ROTATED_KNOT_0_UPPER_BOUND_SCALES * self.knot_scale
+    high = backend.cast(
+        backend.maximum(low + upper_margin, upper_margin), dtype=knot_dtype
+    )
+    return backend.tfd.TruncatedNormal(
+        loc=self.knot_loc,
+        scale=self.knot_scale,
+        low=low,
+        high=high,
+        name=constants.ROTATED_KNOT_0,
+    )
+
+  def rotated_knot_rest_prior(self) -> backend.tfd.Distribution | None:
+    """Returns the prior of the rotated knots after the first one.
+
+    Returns:
+      The knot prior for each of the other `n_knots - 1` rotated knots, or
+      `None` if there is only one knot.
+    """
+    n_knots = self.knot_rotation_matrix.shape[0]
+    if n_knots == 1:
+      return None
+    return backend.tfd.Sample(
+        backend.tfd.Normal(loc=self.knot_loc, scale=self.knot_scale),
+        [n_knots - 1],
+        name=constants.ROTATED_KNOT_REST,
+    )
 
 
 def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
@@ -1200,6 +1313,15 @@ class ModelContext:
           "gt,gtc->gc", outcome_weights, self.controls_scaled
       )
 
+    # `validate_knot_values_prior` checks that the knot prior is a `Normal`
+    # distribution with the same `loc` and `scale` for all knots.
+    knot_prior = self.prior_broadcast.knot_values
+    while isinstance(knot_prior, backend.tfd.BatchBroadcast):
+      knot_prior = knot_prior.distribution
+    assert isinstance(knot_prior, backend.tfd.Normal)
+    knot_loc = float(np.reshape(np.asarray(knot_prior.loc), -1)[0])
+    knot_scale = float(np.reshape(np.asarray(knot_prior.scale), -1)[0])
+
     return AggregateBaselineConstraint(
         outcome_weights=outcome_weights,
         geo_weights=backend.divide(
@@ -1210,6 +1332,8 @@ class ModelContext:
         knot_rotation_matrix=knot_rotation_matrix,
         knot_norm_w=knot_norm_w,
         threshold_l=threshold_l,
+        knot_loc=backend.to_tensor(knot_loc, dtype=knot_prior.dtype),
+        knot_scale=backend.to_tensor(knot_scale, dtype=knot_prior.dtype),
     )
 
   @functools.cached_property
