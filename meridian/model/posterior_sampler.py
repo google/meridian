@@ -349,7 +349,6 @@ def _joint_dist_base_logic(
   n_rf_channels = model_context.n_rf_channels
   n_organic_media_channels = model_context.n_organic_media_channels
   n_organic_rf_channels = model_context.n_organic_rf_channels
-  n_non_media_channels = model_context.n_non_media_channels
   holdout_id = model_context.holdout_id
   media_tensors = model_context.media_tensors
   rf_tensors = model_context.rf_tensors
@@ -380,45 +379,29 @@ def _joint_dist_base_logic(
 
     # 2. Controls
     gamma_gc = yield from _sample_controls(model_context, yield_deterministics)
-    if gamma_gc is not None:
-      controls_offset = backend.einsum(
-          "gc,...gc->...",
-          baseline_constraint.controls_weights,
-          gamma_gc,
-      )
-    else:
-      controls_offset = backend.to_tensor(0.0, dtype=backend.float_dtype)
 
     # 3. Non-media treatments
     gamma_gn = yield from _sample_non_media_treatments(
         model_context, model_equations, yield_deterministics
     )
     if gamma_gn is not None and model_context.non_media_transformer is not None:
-      non_media_baseline = (
-          model_equations.compute_non_media_treatments_baseline()
-      )
       # The baseline values are already population-scaled.
-      non_media_baseline_scaled = model_context.non_media_transformer.forward(
-          non_media_baseline, apply_population_scaling=False
-      )
-      broadcast_non_media = backend.broadcast_to(
-          non_media_baseline_scaled,
-          [n_geos, n_times, n_non_media_channels],
-      )
-      non_media_offset = backend.einsum(
-          "gt,gtn,...gn->...",
-          baseline_constraint.outcome_weights,
-          broadcast_non_media,
-          gamma_gn,
+      non_media_baseline_normalized = (
+          model_context.non_media_transformer.forward(
+              model_equations.compute_non_media_treatments_baseline(),
+              apply_population_scaling=False,
+          )
       )
     else:
-      non_media_offset = backend.to_tensor(0.0, dtype=backend.float_dtype)
+      non_media_baseline_normalized = None
 
     # 4. Offsets and knots rotation
-    geo_offset = float(n_times) * backend.einsum(
-        "g,...g->...", baseline_constraint.geo_weights, tau_g
+    offset = baseline_constraint.offset(
+        tau_g=tau_g,
+        gamma_gc=gamma_gc,
+        gamma_gn=gamma_gn,
+        non_media_baseline_normalized=non_media_baseline_normalized,
     )
-    offset = geo_offset + controls_offset + non_media_offset
 
     knot_dist = prior_broadcast.knot_values
     while isinstance(knot_dist, backend.tfd.BatchBroadcast):

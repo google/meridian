@@ -898,41 +898,20 @@ class PriorDistributionSampler:
             n_draws, rng_handler, batch_size=batch_size
         )
 
-      geo_offset = float(ctx.n_times) * backend.einsum(
-          "g,...g->...",
-          baseline_constraint.geo_weights,
-          base_vars[constants.TAU_G],
-      )
-      offset = geo_offset
-      if ctx.n_controls:
-        controls_offset = backend.einsum(
-            "gc,...gc->...",
-            baseline_constraint.controls_weights,
-            base_vars[constants.GAMMA_GC],
-        )
-        offset = offset + controls_offset
-      if (
-          ctx.non_media_treatments_normalized is not None
-          and ctx.non_media_transformer is not None
-      ):
-        non_media_baseline = (
-            self._model_equations.compute_non_media_treatments_baseline()
-        )
+      if ctx.non_media_transformer is not None:
         # The baseline values are already population-scaled.
-        non_media_baseline_scaled = ctx.non_media_transformer.forward(
-            non_media_baseline, apply_population_scaling=False
+        non_media_baseline_normalized = ctx.non_media_transformer.forward(
+            self._model_equations.compute_non_media_treatments_baseline(),
+            apply_population_scaling=False,
         )
-        broadcast_non_media = backend.broadcast_to(
-            non_media_baseline_scaled,
-            [ctx.n_geos, ctx.n_times, ctx.n_non_media_channels],
-        )
-        non_media_offset = backend.einsum(
-            "gt,gtn,...gn->...",
-            baseline_constraint.outcome_weights,
-            broadcast_non_media,
-            base_vars[constants.GAMMA_GN],
-        )
-        offset = offset + non_media_offset
+      else:
+        non_media_baseline_normalized = None
+      offset = baseline_constraint.offset(
+          tau_g=base_vars[constants.TAU_G],
+          gamma_gc=base_vars.get(constants.GAMMA_GC),
+          gamma_gn=base_vars.get(constants.GAMMA_GN),
+          non_media_baseline_normalized=non_media_baseline_normalized,
+      )
 
       knot_dist = prior.knot_values
       while isinstance(knot_dist, backend.tfd.BatchBroadcast):

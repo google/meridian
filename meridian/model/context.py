@@ -91,6 +91,61 @@ class AggregateBaselineConstraint:
   knot_norm_w: float
   threshold_l: backend.Tensor
 
+  def offset(
+      self,
+      *,
+      tau_g: backend.Tensor,
+      gamma_gc: backend.Tensor | None = None,
+      gamma_gn: backend.Tensor | None = None,
+      non_media_baseline_normalized: backend.Tensor | None = None,
+  ) -> backend.Tensor:
+    """Computes the terms of the aggregate baseline that don't depend on knots.
+
+    On the scaled KPI scale, the aggregate baseline is this offset plus
+    `knot_norm_w` times the first coordinate of the knots rotated by
+    `knot_rotation_matrix`.
+
+    Args:
+      tau_g: Geo effects of shape `(..., n_geos)`.
+      gamma_gc: Geo-level control coefficients of shape `(..., n_geos,
+        n_controls)`, if the model has control variables.
+      gamma_gn: Geo-level non-media treatment coefficients of shape `(...,
+        n_geos, n_non_media_channels)`, if the model has non-media treatments.
+      non_media_baseline_normalized: The non-media treatment baseline values,
+        normalized like the non-media treatments and broadcastable to
+        `(n_geos, n_times, n_non_media_channels)`. Required with `gamma_gn`.
+
+    Returns:
+      The outcome-weighted sum of the geo, control, and non-media treatment
+      terms of the baseline, of shape `(...)`.
+
+    Raises:
+      ValueError: If `gamma_gn` is passed without
+        `non_media_baseline_normalized`.
+    """
+    n_geos, n_times = self.outcome_weights.shape
+    offset = float(n_times) * backend.einsum(
+        "g,...g->...", self.geo_weights, tau_g
+    )
+    if gamma_gc is not None:
+      offset += backend.einsum("gc,...gc->...", self.controls_weights, gamma_gc)
+    if gamma_gn is not None:
+      if non_media_baseline_normalized is None:
+        raise ValueError(
+            "`non_media_baseline_normalized` is required with `gamma_gn`."
+        )
+      broadcast_non_media = backend.broadcast_to(
+          non_media_baseline_normalized,  # pyrefly: ignore[bad-argument-type]
+          [n_geos, n_times, gamma_gn.shape[-1]],
+      )
+      offset += backend.einsum(
+          "gt,gtn,...gn->...",
+          self.outcome_weights,
+          broadcast_non_media,
+          gamma_gn,
+      )
+    return offset
+
 
 def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
   return decay_spec[index] if not isinstance(decay_spec, str) else decay_spec
