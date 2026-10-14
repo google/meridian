@@ -15,6 +15,7 @@
 import collections
 from typing import cast
 from unittest import mock
+import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -227,6 +228,68 @@ class PosteriorMCMCSamplerTest(
     # The sampling graph (latents only) and full graph (latents +
     # deterministics) must yield mathematically identical log probabilities.
     test_utils.assert_allclose(log_prob_full, log_prob_sampling, atol=1e-5)
+
+  def test_get_joint_dist_with_holdout_id_log_prob(self):
+    """Verifies that held-out observations do not contribute to log_prob.
+
+    For a holdout mask `A`, the likelihood term of the pinned joint distribution
+    only sums over the observations not in `A`. Hence for complementary masks
+    `A` and `B`, `lp(A) + lp(B) == lp(no holdout) + lp(all held out)`, and with
+    every observation held out, the log_prob equals the prior log_prob alone.
+    """
+    input_data = self.short_input_data_with_media_only
+    shape = (self._N_GEOS, self._N_TIMES_SHORT)
+    rng = np.random.default_rng(0)
+    mask_a = rng.random(shape) < 0.5
+    mask_b = ~mask_a
+
+    def _sampler(holdout_id):
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # Deprecation of `holdout_id`.
+        model_spec = spec.ModelSpec(holdout_id=holdout_id)
+      return model.Meridian(
+          input_data=input_data, model_spec=model_spec
+      ).posterior_sampler_callable
+
+    sampler_none = _sampler(None)
+    sampler_a = _sampler(mask_a)
+    sampler_b = _sampler(mask_b)
+    sampler_all = _sampler(np.ones(shape, dtype=bool))
+
+    state = sampler_none._get_joint_dist_unpinned().sample(
+        seed=self.get_next_rng_seed_or_key()
+    )._asdict()
+    del state["y"]
+
+    lp_none = sampler_none._get_joint_dist().log_prob(state)
+    lp_a = sampler_a._get_joint_dist().log_prob(state)
+    lp_b = sampler_b._get_joint_dist().log_prob(state)
+    lp_all = sampler_all._get_joint_dist().log_prob(state)
+
+    # With everything held out, only the prior terms remain.
+    unpinned = sampler_none._get_joint_dist_unpinned()
+    prior_parts = unpinned.log_prob_parts(
+        **state, y=sampler_none._model_context.kpi_scaled
+    )
+    lp_prior = backend.reduce_sum(
+        backend.stack([
+            v for k, v in prior_parts._asdict().items() if k != "y"
+        ])
+    )
+    test_utils.assert_allclose(lp_all, lp_prior, rtol=1e-5, atol=1e-3)
+    test_utils.assert_allclose(
+        lp_a + lp_b, lp_none + lp_all, rtol=1e-5, atol=1e-3
+    )
+    # A partial holdout must actually change the log_prob.
+    self.assertFalse(np.allclose(lp_a, lp_none))
+    # Sampling graph agrees with the full graph under holdout.
+    sampling_keys = sampler_a._get_joint_dist_sampling_unpinned().dtype._fields
+    sampling_state = {k: state[k] for k in sampling_keys if k != "y"}
+    test_utils.assert_allclose(
+        sampler_a._get_joint_dist_sampling().log_prob(sampling_state),
+        lp_a,
+        atol=1e-5,
+    )
 
   def test_get_joint_dist_sampling_structure_with_allows_negative_aggregate_baseline_false(
       self,
