@@ -3656,6 +3656,13 @@ class ChangepointsTest(
         type(model_context.prior_broadcast),
         prior_distribution.PriorDistribution,
     )
+    self.assertNotIn(
+        constants.CHANGEPOINT_INTERVAL,
+        model_context.create_inference_data_coords(n_chains=1, n_draws=1),
+    )
+    self.assertNotIn(
+        constants.VARPHI_M, model_context.create_inference_data_dims()
+    )
 
   def test_changepoint_info_of_media_and_rf_channels(self):
     model_context = self._context(
@@ -3682,6 +3689,40 @@ class ChangepointsTest(
     self.assertEqual(media_info.mask.tolist(), [[True, True, True]])
     self.assertEqual(rf_info.channel_names, (self.rf[0],))
     self.assertEqual(rf_info.mask.tolist(), [[True, True, False]])
+
+  def test_inference_data_coords_and_dims(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={
+                self.rf[0]: [self.dates[100]],
+                self.media[1]: [self.dates[50], self.dates[10]],
+            }
+        )
+    )
+    coords = model_context.create_inference_data_coords(n_chains=1, n_draws=1)
+    self.assertEqual(
+        list(coords[constants.CHANGEPOINT_MEDIA_CHANNEL]), [self.media[1]]
+    )
+    self.assertEqual(
+        list(coords[constants.CHANGEPOINT_RF_CHANNEL]), [self.rf[0]]
+    )
+    np.testing.assert_array_equal(
+        coords[constants.CHANGEPOINT_INTERVAL], [0, 1, 2]
+    )
+    dims = model_context.create_inference_data_dims()
+    self.assertEqual(
+        dims[constants.ZETA_RF],
+        [constants.CHAIN, constants.DRAW, constants.CHANGEPOINT_RF_CHANNEL],
+    )
+    self.assertEqual(
+        dims[constants.VARPHI_M],
+        [
+            constants.CHAIN,
+            constants.DRAW,
+            constants.CHANGEPOINT_MEDIA_CHANNEL,
+            constants.CHANGEPOINT_INTERVAL,
+        ],
+    )
 
   def test_only_media_channels_have_changepoints(self):
     model_context = self._context(
