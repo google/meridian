@@ -1800,6 +1800,56 @@ class BackendFunctionWrappersTest(parameterized.TestCase):
     result2 = adder.add_bias(backend.to_tensor(10.0))
     test_utils.assert_allclose(result2, 15.0)
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_value_and_grad(self, backend_name):
+    self._set_backend_for_test(backend_name)
+
+    def quadratic(x):
+      return backend.reduce_sum(x * x * backend.to_tensor([1.0, 2.0, 3.0]))
+
+    x = backend.to_tensor([1.0, -2.0, 0.5])
+    value, grad = backend.value_and_grad(quadratic)(x)
+    test_utils.assert_allclose(value, 1.0 + 8.0 + 0.75)
+    test_utils.assert_allclose(grad, [2.0, -8.0, 3.0])
+
+  @parameterized.named_parameters(
+      ("tensorflow_batch_1", _TF, 1),
+      ("tensorflow_batch_2", _TF, 2),
+      ("tensorflow_batch_5", _TF, 5),
+      ("jax_batch_1", _JAX, 1),
+      ("jax_batch_2", _JAX, 2),
+      ("jax_batch_5", _JAX, 5),
+  )
+  def test_hessian(self, backend_name, batch_size):
+    self._set_backend_for_test(backend_name)
+    matrix = np.array(
+        [[4.0, 1.0, 0.5], [1.0, 3.0, -1.0], [0.5, -1.0, 2.0]], dtype=np.float32
+    )
+
+    def quadratic(x):
+      # 0.5 * x^T A x + sum(x^3) has Hessian A + diag(6 x).
+      return 0.5 * backend.reduce_sum(
+          x * backend.einsum("ij,j->i", backend.to_tensor(matrix), x)
+      ) + backend.reduce_sum(x * x * x)
+
+    point = np.array([1.0, -2.0, 0.5], dtype=np.float32)
+    hessian = backend.hessian(
+        quadratic, backend.to_tensor(point), batch_size=batch_size
+    )
+    test_utils.assert_allclose(
+        hessian, matrix + np.diag(6.0 * point), rtol=1e-5, atol=1e-5
+    )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_hessian_of_empty_vector(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    hessian = backend.hessian(
+        backend.reduce_sum,
+        backend.to_tensor(np.zeros((0,), dtype=np.float32)),
+        batch_size=4,
+    )
+    self.assertEqual(tuple(hessian.shape), (0, 0))
+
 
 class RNGHandlerTest(BackendTest):
 

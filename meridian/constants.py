@@ -609,6 +609,9 @@ INDEPENDENT_MULTIVARIATE = 'IndependentMultivariate'
 CALIBRATED = 'Calibrated'
 PRIOR = 'prior'
 POSTERIOR = 'posterior'
+# Additional `InferenceData` groups written by Hessian-based ADM estimation.
+POINT_ESTIMATE = 'point_estimate'
+ADM_MARGINALS = 'adm_marginals'
 # Prior mean proportion of KPI incremental due to all media.
 P_MEAN = 0.4
 # Prior standard deviation proportion of KPI incremental to all media.
@@ -621,6 +624,7 @@ MEAN = 'mean'
 MEDIAN = 'median'
 CI_LO = 'ci_lo'
 CI_HI = 'ci_hi'
+SD = 'sd'
 RHAT = 'rhat'
 PCT = 'pct'
 CONFIDENCE_LEVEL = 'confidence_level'
@@ -855,3 +859,16 @@ POSTERIOR_THINNING_SEED = 'posterior_thinning_seed'
 # Calibration constants.
 IS_CALIBRATED = 'is_calibrated'
 CALIBRATION_OUTPUTS = 'calibration_outputs'
+
+# Posterior estimation methods and MAP defaults.
+METHOD_MCMC = 'mcmc'
+METHOD_MAP = 'map'
+METHOD_ADM = 'adm'
+POSTERIOR_METHODS = frozenset({METHOD_MCMC, METHOD_MAP, METHOD_ADM})
+DEFAULT_MAP_N_RESTARTS = 3
+DEFAULT_MAP_N_CANDIDATES = 50
+DEFAULT_MAP_MAXITER = 5000
+DEFAULT_MAP_FTOL = 1e-7
+DEFAULT_MAP_GTOL = 1e-5
+# Number of Hessian rows evaluated per autodiff pass by ADM interval estimation.
+DEFAULT_HESSIAN_BATCH_SIZE = 32

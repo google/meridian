@@ -22,6 +22,7 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
+from meridian.model import adm
 from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
@@ -2602,6 +2603,331 @@ class ReconstructionBatchingTest(
     self.assertEqual(arrays["a"].shape, (2, 5, 2))
     self.assertEqual(arrays["a"][0, 0, 0], 1.0)
     self.assertEqual(arrays["a"][1, 4, 1], 2.0)
+
+
+class PosteriorMAPOptimizerTest(
+    test_utils.MeridianTestCase,
+    model_test_data.WithInputDataSamples,
+):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "_run_model_fitting_guardrail",
+            autospec=True,
+            return_value=None,
+        )
+    )
+
+  def test_full_map_optimizes_all_stochastic_parameters_and_reconstructs(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=15,
+        seed=42,
+    )
+    self.assertIn(constants.POSTERIOR, infdata.groups())
+    self.assertIn("trace", infdata.groups())
+    self.assertIn("sample_stats", infdata.groups())
+
+    posterior = infdata.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(posterior.sizes[constants.CHAIN], 1)
+    self.assertEqual(posterior.sizes[constants.DRAW], 1)
+    self.assertEqual(
+        posterior.attrs.get("inference_method"), constants.METHOD_MAP
+    )
+
+    # Verify both latent and deterministic variables are present and finite.
+    expected_vars = [
+        constants.KNOT_VALUES,
+        constants.TAU_G,
+        constants.MU_T,
+        constants.ALPHA_M,
+        constants.EC_M,
+        constants.ETA_M,
+        constants.SLOPE_M,
+        constants.ROI_M,
+        constants.BETA_M,
+        constants.BETA_GM,
+        constants.ALPHA_RF,
+        constants.EC_RF,
+        constants.ETA_RF,
+        constants.SLOPE_RF,
+        constants.ROI_RF,
+        constants.BETA_RF,
+        constants.BETA_GRF,
+        constants.GAMMA_C,
+        constants.XI_C,
+        constants.GAMMA_GC,
+        constants.SIGMA,
+    ]
+    for var_name in expected_vars:
+      self.assertIn(var_name, posterior.data_vars)
+      self.assertTrue(
+          np.all(np.isfinite(posterior[var_name].values)),
+          msg=f"Non-finite values in {var_name}",
+      )
+
+    # Verify that alpha_m and ec_m were actively optimized away from their
+    # initial prior mean (0.5 for Uniform(0,1) alpha_m).
+    self.assertFalse(
+        np.allclose(posterior[constants.ALPHA_M].values, 0.5, atol=1e-4)
+    )
+
+  def test_full_map_national_model(self):
+    meridian = model.Meridian(
+        input_data=self.national_input_data_media_only,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=10,
+        seed=0,
+    )
+    posterior = infdata.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(posterior[constants.TAU_G].shape, (1, 1, 1))
+    self.assertAlmostEqual(
+        float(posterior[constants.TAU_G].values[0, 0, 0]), 0.0, places=6
+    )
+
+  def test_full_adm_records_metadata_and_shifts_skewed_parameters_upward(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata_map = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=80,
+        use_adm=False,
+        seed=7,
+    )
+    infdata_adm = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=80,
+        use_adm=True,
+        seed=7,
+    )
+
+    post_map = infdata_map.posterior  # pyrefly: ignore[missing-attribute]
+    post_adm = infdata_adm.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(
+        post_map.attrs.get("inference_method"), constants.METHOD_MAP
+    )
+    self.assertFalse(post_map.attrs.get("use_adm"))
+    self.assertEqual(
+        post_adm.attrs.get("inference_method"), constants.METHOD_ADM
+    )
+    self.assertTrue(post_adm.attrs.get("use_adm"))
+    self.assertIn(constants.ROI_M, post_adm.attrs.get("adm_adjustments", {}))
+
+    roi_map = np.asarray(post_map[constants.ROI_M].values).ravel()
+    roi_adm = np.asarray(post_adm[constants.ROI_M].values).ravel()
+    eta_map = np.asarray(post_map[constants.ETA_M].values).ravel()
+    eta_adm = np.asarray(post_adm[constants.ETA_M].values).ravel()
+    self.assertTrue(
+        np.all(roi_adm > roi_map),
+        msg=f"Expected ADM roi_m {roi_adm} > plain MAP roi_m {roi_map}",
+    )
+    self.assertTrue(
+        np.all(eta_adm > eta_map),
+        msg=f"Expected ADM eta_m {eta_adm} > plain MAP eta_m {eta_map}",
+    )
+
+  def test_full_map_invalid_arguments_raise(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    with self.assertRaisesRegex(ValueError, "reconstruction_batch_size"):
+      meridian.posterior_map_callable(reconstruction_batch_size=0)
+    with self.assertRaisesRegex(ValueError, "n_restarts"):
+      meridian.posterior_map_callable(n_restarts=0)
+    with self.assertRaisesRegex(ValueError, "n_candidates"):
+      meridian.posterior_map_callable(n_candidates=-1)
+    with self.assertRaisesRegex(ValueError, "maxiter"):
+      meridian.posterior_map_callable(maxiter=0)
+    with self.assertRaisesRegex(
+        ValueError, "`adm_family_overrides` cannot be set when `use_adm`"
+    ):
+      meridian.posterior_map_callable(
+          use_adm=False, adm_family_overrides={constants.ROI_M: "lognormal"}
+      )
+    with self.assertRaisesRegex(ValueError, "`n_draws`"):
+      meridian.posterior_map_callable(use_adm=True, n_draws=-1)
+    with self.assertRaisesRegex(ValueError, "`hessian_batch_size`"):
+      meridian.posterior_map_callable(use_adm=True, hessian_batch_size=0)
+    with self.assertRaisesRegex(ValueError, "`confidence_level`"):
+      meridian.posterior_map_callable(use_adm=True, confidence_level=1.0)
+    with self.assertRaisesRegex(ValueError, "require `use_adm=True`"):
+      meridian.posterior_map_callable(use_adm=False, compute_hessian=True)
+    with self.assertRaisesRegex(ValueError, "require `use_adm=True`"):
+      meridian.posterior_map_callable(use_adm=False, n_draws=10)
+
+  def test_adm_draws_populate_posterior_and_approximation_groups(self):
+    n_draws = 6
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=80,
+        use_adm=True,
+        n_draws=n_draws,
+        confidence_level=0.8,
+        hessian_batch_size=16,
+        seed=3,
+    )
+    self.assertIn(constants.ADM_MARGINALS, infdata.groups())
+    self.assertIn(constants.POINT_ESTIMATE, infdata.groups())
+
+    posterior = infdata.posterior  # pyrefly: ignore[missing-attribute]
+    point_estimate = getattr(infdata, constants.POINT_ESTIMATE)
+    marginals = getattr(infdata, constants.ADM_MARGINALS)
+    self.assertEqual(posterior.sizes[constants.CHAIN], 1)
+    self.assertEqual(posterior.sizes[constants.DRAW], n_draws)
+    self.assertEqual(point_estimate.sizes[constants.CHAIN], 1)
+    self.assertEqual(point_estimate.sizes[constants.DRAW], 1)
+    self.assertEqual(set(posterior.data_vars), set(point_estimate.data_vars))
+    self.assertEqual(
+        list(marginals.coords[constants.METRIC].values),
+        list(adm.SUMMARY_METRICS),
+    )
+    self.assertEqual(marginals.attrs[constants.CONFIDENCE_LEVEL], 0.8)
+    for var_name in (
+        constants.KNOT_VALUES,
+        constants.ALPHA_M,
+        constants.EC_M,
+        constants.ETA_M,
+        constants.ROI_M,
+        constants.ROI_RF,
+        constants.GAMMA_C,
+        constants.XI_C,
+        constants.SIGMA,
+    ):
+      self.assertIn(var_name, marginals.data_vars)
+      self.assertEqual(
+          marginals[var_name].dims,
+          (constants.METRIC,) + tuple(posterior[var_name].dims[2:]),
+      )
+      self.assertTrue(np.all(np.isfinite(marginals[var_name].values)))
+      self.assertTrue(np.all(np.isfinite(posterior[var_name].values)))
+    self.assertNotIn(constants.BETA_GM_DEV, marginals.data_vars)
+
+    # Interval metrics are ordered and the standard deviation is positive.
+    for var_name in (constants.ROI_M, constants.ALPHA_M, constants.SIGMA):
+      summary = marginals[var_name]
+      self.assertTrue(
+          np.all(summary.sel(metric=constants.SD).values > 0.0), msg=var_name
+      )
+      self.assertTrue(
+          np.all(
+              summary.sel(metric=constants.CI_LO).values
+              < summary.sel(metric=constants.MEDIAN).values
+          ),
+          msg=var_name,
+      )
+      self.assertTrue(
+          np.all(
+              summary.sel(metric=constants.MEDIAN).values
+              < summary.sel(metric=constants.CI_HI).values
+          ),
+          msg=var_name,
+      )
+    # Marginal means of parameters untouched by geo re-normalization equal the
+    # reported point estimate.
+    for var_name in (constants.ROI_M, constants.ALPHA_M, constants.EC_M):
+      np.testing.assert_allclose(
+          marginals[var_name].sel(metric=constants.MEAN).values,
+          point_estimate[var_name].values[0, 0],
+          rtol=1e-5,
+          atol=1e-6,
+      )
+
+    # Draws respect the parameter supports.
+    self.assertTrue(np.all(posterior[constants.ALPHA_M].values > 0.0))
+    self.assertTrue(np.all(posterior[constants.ALPHA_M].values < 1.0))
+    self.assertTrue(np.all(posterior[constants.ROI_M].values > 0.0))
+    self.assertTrue(np.all(posterior[constants.EC_M].values > 0.1))
+    self.assertTrue(np.all(posterior[constants.SIGMA].values > 0.0))
+    self.assertGreater(np.std(posterior[constants.ROI_M].values), 0.0)
+
+    attrs = posterior.attrs
+    self.assertEqual(attrs["inference_method"], constants.METHOD_ADM)
+    self.assertEqual(attrs["n_draws"], n_draws)
+    self.assertEqual(
+        attrs["hessian_dimension"], marginals.attrs["hessian_dimension"]
+    )
+    self.assertIn("hessian_is_positive_definite", attrs)
+
+    # Per-draw target log probabilities are finite and populate the trace.
+    trace = infdata.trace  # pyrefly: ignore[missing-attribute]
+    target_log_prob = trace[constants.TARGET_LOG_PROBABILITY_TF].values
+    self.assertEqual(target_log_prob.shape, (1, n_draws))
+    self.assertTrue(np.all(np.isfinite(target_log_prob)))
+    # The optimum has the highest adjusted log posterior.
+    self.assertLessEqual(
+        float(np.max(target_log_prob)), attrs["map_objective"] + 1e-3
+    )
+
+  def test_adm_compute_hessian_without_draws_keeps_point_estimate(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_only,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=40,
+        use_adm=True,
+        compute_hessian=True,
+        seed=5,
+    )
+    self.assertIn(constants.ADM_MARGINALS, infdata.groups())
+    self.assertNotIn(constants.POINT_ESTIMATE, infdata.groups())
+    posterior = infdata.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(posterior.sizes[constants.DRAW], 1)
+    self.assertEqual(posterior.attrs["n_draws"], 0)
+    marginals = getattr(infdata, constants.ADM_MARGINALS)
+    np.testing.assert_allclose(
+        marginals[constants.ROI_M].sel(metric=constants.MEAN).values,
+        posterior[constants.ROI_M].values[0, 0],
+        rtol=1e-5,
+        atol=1e-6,
+    )
+
+  def test_adm_draws_national_model(self):
+    meridian = model.Meridian(
+        input_data=self.national_input_data_media_only,
+        model_spec=spec.ModelSpec(knots=5),
+    )
+    infdata = meridian.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=40,
+        use_adm=True,
+        n_draws=4,
+        seed=0,
+    )
+    posterior = infdata.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(posterior[constants.TAU_G].shape, (1, 4, 1))
+    self.assertTrue(np.all(np.isfinite(posterior[constants.ROI_M].values)))
+    self.assertIn(constants.ADM_MARGINALS, infdata.groups())
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from meridian.analysis.review import reviewer
 from meridian.common import errors
 from meridian.data import input_data as data
 from meridian.data import time_coordinates as tc
+from meridian.model import adm
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
@@ -49,6 +50,7 @@ import numpy as np
 import xarray as xr
 
 __all__ = [
+    "MAPOptimizationError",
     "MCMCSamplingError",
     "MCMCOOMError",
     "Meridian",
@@ -69,6 +71,7 @@ class ModelFittingError(Exception):
   """Model has critical issues preventing fitting."""
 
 
+MAPOptimizationError = posterior_sampler.MAPOptimizationError
 MCMCSamplingError = posterior_sampler.MCMCSamplingError
 MCMCOOMError = posterior_sampler.MCMCOOMError
 
@@ -484,6 +487,15 @@ class Meridian:
   ) -> posterior_sampler.PosteriorMCMCSampler:
     """A `PosteriorMCMCSampler` callable bound to this model."""
     return posterior_sampler.PosteriorMCMCSampler(
+        model_context=self.model_context,
+    )
+
+  @functools.cached_property
+  def posterior_map_callable(
+      self,
+  ) -> posterior_sampler.PosteriorMAPOptimizer:
+    """A `PosteriorMAPOptimizer` callable bound to this model."""
+    return posterior_sampler.PosteriorMAPOptimizer(
         model_context=self.model_context,
     )
 
@@ -1083,10 +1095,10 @@ class Meridian:
   # TODO: Require keyword-only arguments.
   def sample_posterior(
       self,
-      n_chains: Sequence[int] | int,
-      n_adapt: int,
-      n_burnin: int,
-      n_keep: int,
+      n_chains: Sequence[int] | int | None = None,
+      n_adapt: int | None = None,
+      n_burnin: int | None = None,
+      n_keep: int | None = None,
       current_state: Mapping[str, backend.Tensor] | None = None,
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
@@ -1096,17 +1108,39 @@ class Meridian:
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
       reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      *,
+      method: str = constants.METHOD_MCMC,
+      n_restarts: int = constants.DEFAULT_MAP_N_RESTARTS,
+      n_candidates: int = constants.DEFAULT_MAP_N_CANDIDATES,
+      maxiter: int = constants.DEFAULT_MAP_MAXITER,
+      ftol: float = constants.DEFAULT_MAP_FTOL,
+      gtol: float = constants.DEFAULT_MAP_GTOL,
+      use_adm: bool = False,
+      adm_family_overrides: (
+          Mapping[str, adm.AdjustmentFamily | str] | None
+      ) = None,
+      include_jacobian: bool = False,
+      compute_hessian: bool = False,
+      n_draws: int = 0,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      hessian_batch_size: int = constants.DEFAULT_HESSIAN_BATCH_SIZE,
       **pins,
   ):
-    """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
+    """Estimates the posterior distribution using MCMC, Full MAP, or ADM.
 
-    For more information about the arguments, see [`windowed_adaptive_nuts`]
+    For more information about the MCMC arguments, see
+    [`windowed_adaptive_nuts`]
     (https://www.tensorflow.org/probability/api_docs/python/tfp/experimental/mcmc/windowed_adaptive_nuts).
 
-    Drawn samples are merged into this model's Arviz `inference_data` property.
+    Estimated posterior draws (or the MAP / ADM point estimate stored as a
+    1-chain, 1-draw posterior) are merged into this model's Arviz
+    `inference_data` property so all downstream Meridian analysis,
+    visualization, summarization, review, and optimization methods work
+    seamlessly.
 
     Args:
-      n_chains: Number of MCMC chains. Given a sequence of integers,
+      n_chains: Number of MCMC chains. Required when `method="mcmc"`; ignored
+        when `method` is `"map"` or `"adm"`. Given a sequence of integers,
         `windowed_adaptive_nuts` will be called once for each element. The
         `n_chains` argument of each `windowed_adaptive_nuts` call will be equal
         to the respective integer element. Using a list of integers, one can
@@ -1114,13 +1148,16 @@ class Meridian:
         with fewer chains per call. This can reduce memory usage. This might
         require an increased number of adaptation steps for convergence, as the
         optimization is occurring across fewer chains per sampling call.
-      n_adapt: Number of adaptation draws per chain.
+      n_adapt: Number of adaptation draws per chain. Required when
+        `method="mcmc"`; ignored when `method` is `"map"` or `"adm"`.
       n_burnin: Number of burn-in draws per chain. Burn-in draws occur after
-        adaptation draws and before the kept draws.
-      n_keep: Integer number of draws per chain to keep for inference.
+        adaptation draws and before the kept draws. Required when
+        `method="mcmc"`; ignored when `method` is `"map"` or `"adm"`.
+      n_keep: Integer number of draws per chain to keep for inference. Required
+        when `method="mcmc"`; ignored when `method` is `"map"` or `"adm"`.
       current_state: Optional structure of tensors at which to initialize
-        sampling. Use the same shape and structure as
-        `model.experimental_pin(**pins).sample(n_chains)`.
+        sampling (or MAP / ADM optimization when `method` is `"map"` or
+        `"adm"`).
       init_step_size: Optional integer determining where to initialize the step
         size for the leapfrog integrator. The structure must broadcast with
         `current_state`. For example, if the initial state is:  ``` { 'a':
@@ -1152,10 +1189,49 @@ class Meridian:
       reconstruction_batch_size: Maximum number of combined chain-and-draw
         samples to reconstruct in a single forward pass. Limits device OOMs
         caused by wide vectorized models.
+      method: Posterior estimation method, one of `"mcmc"` (default) for
+        No-U-Turn Sampler MCMC, `"map"` for Full Maximum A Posteriori
+        optimization, or `"adm"` for Full MAP with Adjustment for Density
+        Maximization.
+      n_restarts: Number of L-BFGS-B optimization restarts when `method` is
+        `"map"` or `"adm"`.
+      n_candidates: Number of random prior draws evaluated to select starting
+        points when `method` is `"map"` or `"adm"` and `n_restarts > 1`.
+      maxiter: Maximum number of L-BFGS-B iterations per restart when `method`
+        is `"map"` or `"adm"`.
+      ftol: Relative function value tolerance for L-BFGS-B when `method` is
+        `"map"` or `"adm"`.
+      gtol: Projected gradient norm tolerance for L-BFGS-B when `method` is
+        `"map"` or `"adm"`.
+      use_adm: Whether to apply Adjustment for Density Maximization when
+        `method="map"`. Automatically `True` when `method="adm"`.
+      adm_family_overrides: Optional mapping from parameter name to an
+        `adm.AdjustmentFamily` (or its string value) overriding the default
+        approximating family when ADM is enabled.
+      include_jacobian: Whether to include the bijector log-det-Jacobian for
+        half-line and bounded parameters when `method="map"` and
+        `use_adm=False`.
+      compute_hessian: Whether to compute the Hessian at the ADM optimum and
+        store curvature-matched approximating marginals (mean, standard
+        deviation, median and credible interval of every parameter) in an
+        `adm_marginals` group of `inference_data`. Requires ADM (`method="adm"`
+        or `use_adm=True`). Implied by `n_draws > 0`.
+      n_draws: Number of approximate posterior draws to generate from the
+        Hessian-based ADM approximation. When positive, the `posterior` group
+        holds `n_draws` draws (so all downstream credible intervals work as with
+        MCMC) and the ADM point estimate is stored in a `point_estimate` group.
+        Requires ADM.
+      confidence_level: Confidence level of the credible intervals reported in
+        the `adm_marginals` group.
+      hessian_batch_size: Number of Hessian rows evaluated per automatic
+        differentiation pass; lower values reduce peak memory.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
     Throws:
+      ValueError: If `method` is not `"mcmc"`, `"map"`, or `"adm"`, or if
+        `method="mcmc"` and any of `n_chains`, `n_adapt`, `n_burnin`, or
+        `n_keep` is None.
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep`, pass
         a list of integers as `n_chains` to sample chains serially, or lower
         `reconstruction_batch_size` to reduce forward pass memory footprint.
@@ -1163,6 +1239,48 @@ class Meridian:
         [ResourceExhaustedError when running Meridian.sample_posterior]
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
+    method_normalized = method.lower() if isinstance(method, str) else method
+    if method_normalized not in constants.POSTERIOR_METHODS:
+      raise ValueError(
+          f"Unsupported posterior estimation method: {method!r}. Expected one"
+          f" of {sorted(constants.POSTERIOR_METHODS)}."
+      )
+
+    if method_normalized in (constants.METHOD_MAP, constants.METHOD_ADM):
+      effective_use_adm = (
+          True if method_normalized == constants.METHOD_ADM else use_adm
+      )
+      self.fit_map(
+          n_restarts=n_restarts,
+          n_candidates=n_candidates,
+          maxiter=maxiter,
+          ftol=ftol,
+          gtol=gtol,
+          init_state=current_state,
+          use_adm=effective_use_adm,
+          adm_family_overrides=adm_family_overrides,
+          include_jacobian=include_jacobian,
+          compute_hessian=compute_hessian,
+          n_draws=n_draws,
+          confidence_level=confidence_level,
+          hessian_batch_size=hessian_batch_size,
+          seed=seed,
+          reconstruction_batch_size=reconstruction_batch_size,
+          **pins,
+      )
+      return
+
+    if (
+        n_chains is None
+        or n_adapt is None
+        or n_burnin is None
+        or n_keep is None
+    ):
+      raise ValueError(
+          "`n_chains`, `n_adapt`, `n_burnin`, and `n_keep` must all be"
+          " specified when `method='mcmc'`."
+      )
+
     self._run_model_fitting_guardrail()
 
     posterior_inference_data = self.posterior_sampler_callable(
@@ -1181,7 +1299,185 @@ class Meridian:
         reconstruction_batch_size=reconstruction_batch_size,
         **pins,
     )
+    self._replace_posterior_inference_data(posterior_inference_data)
+
+  def _replace_posterior_inference_data(
+      self, posterior_inference_data: az.InferenceData
+  ) -> None:
+    """Replaces the posterior groups of `inference_data` with new results.
+
+    Groups that are only produced by Hessian-based ADM estimation
+    (`adm_marginals` and `point_estimate`) are removed first so that a later
+    fit without them does not leave stale results behind.
+
+    Args:
+      posterior_inference_data: Posterior groups returned by a sampler or
+        optimizer callable.
+    """
+    for group in (constants.ADM_MARGINALS, constants.POINT_ESTIMATE):
+      if hasattr(self.inference_data, group):
+        delattr(self.inference_data, group)
     self.inference_data.extend(posterior_inference_data, join="right")
+
+  def fit_map(
+      self,
+      *,
+      n_restarts: int = constants.DEFAULT_MAP_N_RESTARTS,
+      n_candidates: int = constants.DEFAULT_MAP_N_CANDIDATES,
+      maxiter: int = constants.DEFAULT_MAP_MAXITER,
+      ftol: float = constants.DEFAULT_MAP_FTOL,
+      gtol: float = constants.DEFAULT_MAP_GTOL,
+      init_state: Mapping[str, backend.Tensor] | None = None,
+      use_adm: bool = False,
+      adm_family_overrides: (
+          Mapping[str, adm.AdjustmentFamily | str] | None
+      ) = None,
+      include_jacobian: bool = False,
+      compute_hessian: bool = False,
+      n_draws: int = 0,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      hessian_batch_size: int = constants.DEFAULT_HESSIAN_BATCH_SIZE,
+      seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      **pins,
+  ) -> None:
+    """Fits the Meridian model via Full MAP or ADM optimization.
+
+    All stochastic parameters in the joint Meridian model are optimized
+    simultaneously via L-BFGS-B, and all deterministic variables are
+    reconstructed into `self.inference_data` with shape `(chain=1, draw=1, ...)`
+    so that all downstream Meridian methods use the MAP or ADM estimates. With
+    `use_adm=True`, `compute_hessian=True` additionally stores curvature-matched
+    approximating marginals in an `adm_marginals` group, and `n_draws > 0`
+    replaces the single-draw posterior with `n_draws` approximate posterior
+    draws (keeping the point estimate in a `point_estimate` group).
+
+    Args:
+      n_restarts: Number of L-BFGS-B optimization restarts from distinct
+        starting points.
+      n_candidates: Number of random prior draws evaluated to select starting
+        points when `n_restarts > 1`.
+      maxiter: Maximum number of L-BFGS-B iterations per restart.
+      ftol: Relative function value tolerance (`ftol`) for L-BFGS-B.
+      gtol: Projected gradient norm tolerance (`gtol`) for L-BFGS-B.
+      init_state: Optional mapping of constrained parameter values to initialize
+        the first optimization restart.
+      use_adm: Whether to apply Adjustment for Density Maximization (ADM) in
+        constrained space so the maximizer targets the posterior mean rather
+        than the posterior mode.
+      adm_family_overrides: Optional mapping from parameter name to an
+        `adm.AdjustmentFamily` (or its string value) overriding the default
+        approximating family when `use_adm=True`.
+      include_jacobian: Whether to include the bijector log-det-Jacobian for
+        half-line (`HalfNormal`, `LogNormal`) and bounded (`Uniform`, `Beta`)
+        parameters when `use_adm=False`.
+      compute_hessian: Whether to compute the Hessian at the ADM optimum and
+        report the approximating marginals. Requires `use_adm=True`. Implied by
+        `n_draws > 0`.
+      n_draws: Number of approximate posterior draws to generate from the
+        Hessian-based ADM approximation. Requires `use_adm=True`.
+      confidence_level: Confidence level of the credible intervals reported in
+        the `adm_marginals` group.
+      hessian_batch_size: Number of Hessian rows evaluated per automatic
+        differentiation pass; lower values reduce peak memory.
+      seed: Random seed for candidate generation, approximate posterior draws,
+        and reconstruction.
+      reconstruction_batch_size: Maximum batch size for reconstructing
+        deterministic parameters.
+      **pins: Optional parameter values to pin during optimization.
+    """
+    self._run_model_fitting_guardrail()
+
+    posterior_inference_data = self.posterior_map_callable(
+        n_restarts=n_restarts,
+        n_candidates=n_candidates,
+        maxiter=maxiter,
+        ftol=ftol,
+        gtol=gtol,
+        init_state=init_state,
+        use_adm=use_adm,
+        adm_family_overrides=adm_family_overrides,
+        include_jacobian=include_jacobian,
+        compute_hessian=compute_hessian,
+        n_draws=n_draws,
+        confidence_level=confidence_level,
+        hessian_batch_size=hessian_batch_size,
+        seed=seed,
+        reconstruction_batch_size=reconstruction_batch_size,
+        **pins,
+    )
+    self._replace_posterior_inference_data(posterior_inference_data)
+
+  def fit_adm(
+      self,
+      *,
+      n_restarts: int = constants.DEFAULT_MAP_N_RESTARTS,
+      n_candidates: int = constants.DEFAULT_MAP_N_CANDIDATES,
+      maxiter: int = constants.DEFAULT_MAP_MAXITER,
+      ftol: float = constants.DEFAULT_MAP_FTOL,
+      gtol: float = constants.DEFAULT_MAP_GTOL,
+      init_state: Mapping[str, backend.Tensor] | None = None,
+      adm_family_overrides: (
+          Mapping[str, adm.AdjustmentFamily | str] | None
+      ) = None,
+      compute_hessian: bool = False,
+      n_draws: int = 0,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      hessian_batch_size: int = constants.DEFAULT_HESSIAN_BATCH_SIZE,
+      seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      **pins,
+  ) -> None:
+    """Fits the Meridian model via Adjustment for Density Maximization (ADM).
+
+    Args:
+      n_restarts: Number of L-BFGS-B optimization restarts from distinct
+        starting points.
+      n_candidates: Number of random prior draws evaluated to select starting
+        points when `n_restarts > 1`.
+      maxiter: Maximum number of L-BFGS-B iterations per restart.
+      ftol: Relative function value tolerance (`ftol`) for L-BFGS-B.
+      gtol: Projected gradient norm tolerance (`gtol`) for L-BFGS-B.
+      init_state: Optional mapping of constrained parameter values to initialize
+        the first optimization restart.
+      adm_family_overrides: Optional mapping from parameter name to an
+        `adm.AdjustmentFamily` (or its string value) overriding the default
+        approximating family.
+      compute_hessian: Whether to compute the Hessian at the ADM optimum and
+        store curvature-matched approximating marginals (mean, standard
+        deviation, median and credible interval of every parameter) in an
+        `adm_marginals` group of `inference_data`. Implied by `n_draws > 0`.
+      n_draws: Number of approximate posterior draws to generate from the
+        Hessian-based approximation. When positive, the `posterior` group holds
+        `n_draws` draws (so all downstream credible intervals work as with MCMC)
+        and the ADM point estimate is stored in a `point_estimate` group.
+      confidence_level: Confidence level of the credible intervals reported in
+        the `adm_marginals` group.
+      hessian_batch_size: Number of Hessian rows evaluated per automatic
+        differentiation pass; lower values reduce peak memory.
+      seed: Random seed for candidate generation, approximate posterior draws,
+        and reconstruction.
+      reconstruction_batch_size: Maximum batch size for reconstructing
+        deterministic parameters.
+      **pins: Optional parameter values to pin during optimization.
+    """
+    self.fit_map(
+        n_restarts=n_restarts,
+        n_candidates=n_candidates,
+        maxiter=maxiter,
+        ftol=ftol,
+        gtol=gtol,
+        init_state=init_state,
+        use_adm=True,
+        adm_family_overrides=adm_family_overrides,
+        compute_hessian=compute_hessian,
+        n_draws=n_draws,
+        confidence_level=confidence_level,
+        hessian_batch_size=hessian_batch_size,
+        seed=seed,
+        reconstruction_batch_size=reconstruction_batch_size,
+        **pins,
+    )
 
   def review(
       self,
@@ -1219,10 +1515,10 @@ class Meridian:
   def sample_posterior_and_review(
       self,
       *,
-      n_chains: Sequence[int] | int,
-      n_adapt: int,
-      n_burnin: int,
-      n_keep: int,
+      n_chains: Sequence[int] | int | None = None,
+      n_adapt: int | None = None,
+      n_burnin: int | None = None,
+      n_keep: int | None = None,
       current_state: Mapping[str, backend.Tensor] | None = None,
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
@@ -1232,11 +1528,26 @@ class Meridian:
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
       reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      method: str = constants.METHOD_MCMC,
+      n_restarts: int = constants.DEFAULT_MAP_N_RESTARTS,
+      n_candidates: int = constants.DEFAULT_MAP_N_CANDIDATES,
+      maxiter: int = constants.DEFAULT_MAP_MAXITER,
+      ftol: float = constants.DEFAULT_MAP_FTOL,
+      gtol: float = constants.DEFAULT_MAP_GTOL,
+      use_adm: bool = False,
+      adm_family_overrides: (
+          Mapping[str, adm.AdjustmentFamily | str] | None
+      ) = None,
+      include_jacobian: bool = False,
+      compute_hessian: bool = False,
+      n_draws: int = 0,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      hessian_batch_size: int = constants.DEFAULT_HESSIAN_BATCH_SIZE,
       convergence_check_config: configs.ConvergenceConfig | None = None,
       post_convergence_checks: reviewer.ChecksBattery | None = None,
       **pins,
   ) -> None:
-    """Runs MCMC sampling and then the model health checks."""
+    """Runs posterior estimation (MCMC, MAP, or ADM) and then health checks."""
     self.sample_posterior(
         n_chains=n_chains,
         n_adapt=n_adapt,
@@ -1251,6 +1562,19 @@ class Meridian:
         parallel_iterations=parallel_iterations,
         seed=seed,
         reconstruction_batch_size=reconstruction_batch_size,
+        method=method,
+        n_restarts=n_restarts,
+        n_candidates=n_candidates,
+        maxiter=maxiter,
+        ftol=ftol,
+        gtol=gtol,
+        use_adm=use_adm,
+        adm_family_overrides=adm_family_overrides,
+        include_jacobian=include_jacobian,
+        compute_hessian=compute_hessian,
+        n_draws=n_draws,
+        confidence_level=confidence_level,
+        hessian_batch_size=hessian_batch_size,
         **pins,
     )
     self.review(
@@ -1288,8 +1612,8 @@ class Meridian:
       n_draws: Number of draws to keep per chain. Must be in `[1,
         original_n_draws]`. Exactly one of `sampling_rate` or `n_draws` must be
         provided.
-      method: Draw selection method. Currently only
-        `ThinningMethod.SYSTEMATIC` is supported.
+      method: Draw selection method. Currently only `ThinningMethod.SYSTEMATIC`
+        is supported.
       seed: Optional random seed for reproducible draw selection. This is used
         only for selecting posterior draw indices.
       preserve_original: If `True`, stores a copy of the full posterior on this

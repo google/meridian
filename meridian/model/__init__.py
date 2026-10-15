@@ -14,6 +14,7 @@
 
 """The Meridian API module that models the data."""
 
+from meridian.model import adm
 from meridian.model import adstock_hill
 from meridian.model import calibration
 from meridian.model import context

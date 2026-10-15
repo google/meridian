@@ -285,9 +285,7 @@ class BayesianPPPCheck(
         self._inference_data.posterior[constants.SIGMA]  # pyrefly: ignore[missing-attribute]
     )
     if sigma.ndim == 2:
-      return sigma.flatten() * (
-          stdev * np.sqrt(np.sum(weight_sq_filtered))
-      )
+      return sigma.flatten() * (stdev * np.sqrt(np.sum(weight_sq_filtered)))
     if self._selected_geos is not None:
       sigma_selected = np.asarray(
           self._inference_data.posterior[constants.SIGMA].sel(  # pyrefly: ignore[missing-attribute]
@@ -329,9 +327,14 @@ class BayesianPPPCheck(
     total_outcome_expected = np.asarray(total_outcome_posterior).flatten()
     total_sigma = self._calculate_total_sigma()
 
-    total_outcome_posterior_predictive = np.random.normal(
-        total_outcome_expected, total_sigma
-    )
+    if total_outcome_expected.size == 1:
+      total_outcome_posterior_predictive = np.random.normal(
+          total_outcome_expected, total_sigma, size=1000
+      )
+    else:
+      total_outcome_posterior_predictive = np.random.normal(
+          total_outcome_expected, total_sigma
+      )
     total_outcome_posterior_predictive_mean = np.mean(
         total_outcome_posterior_predictive
     )
@@ -1214,8 +1217,13 @@ class HighVarianceCheck(
     roi_medians = np.median(posterior_roi_concat, axis=(0, 1))
 
     # 3. Compute credible intervals using az.hdi
-    hdi = az.hdi(posterior_roi_concat, hdi_prob=self._config.hdi_prob)
+    with warnings.catch_warnings():
+      warnings.filterwarnings("ignore", category=UserWarning)
+      hdi = az.hdi(posterior_roi_concat, hdi_prob=self._config.hdi_prob)
     hdi_lower, hdi_upper = hdi.T
+    if np.all(np.isnan(hdi)):
+      hdi_lower = roi_medians
+      hdi_upper = roi_medians
 
     rel_width_post = np.divide(
         hdi_upper - hdi_lower,

@@ -93,6 +93,23 @@ def _calc_weighted_mape(expected, actual):
   )
 
 
+def _nan_like(tensor: backend.Tensor) -> backend.Tensor:
+  """Returns a NaN-filled float tensor with the same shape as `tensor`.
+
+  Used as the prior-side placeholder for metrics when the inference data has no
+  `prior` group (for example, after MAP estimation).
+
+  Args:
+    tensor: The tensor whose shape the placeholder should match.
+
+  Returns:
+    A float tensor of the same shape as `tensor` filled with `NaN`.
+  """
+  return backend.to_tensor(
+      np.full(tensor.shape, np.nan), dtype=backend.float_dtype
+  )
+
+
 def _warn_if_geo_arg_in_kwargs(**kwargs):
   """Raises warning if a geo-level argument is used with national model."""
   for kwarg, value in kwargs.items():
@@ -2468,7 +2485,9 @@ class Analyzer:
         minimum value for each non_media treatment channel.
       include_prior: Whether to calculate metrics for the prior distribution,
         which requires `sample_prior()` to have been called. At least one of
-        `include_prior` and `include_posterior` must be `True`.
+        `include_prior` and `include_posterior` must be `True`. Ignored (treated
+        as `False`) when the posterior is a MAP or ADM point estimate and no
+        prior has been sampled.
       include_posterior: Whether to calculate metrics for the posterior
         distribution, which requires `sample_posterior()` to have been called.
         At least one of `include_prior` and `include_posterior` must be `True`.
@@ -2502,6 +2521,19 @@ class Analyzer:
       raise ValueError(
           "At least one of `include_prior` or `include_posterior` must be True."
       )
+    if include_prior and constants.PRIOR not in self.inference_data.groups():
+      # Point estimates (`fit_map()` / `fit_adm()`) carry no prior draws to
+      # summarize; report posterior metrics only instead of failing.
+      posterior_attrs = getattr(
+          getattr(self.inference_data, constants.POSTERIOR, None),
+          "attrs",
+          {},
+      )
+      if (
+          posterior_attrs.get("inference_method", constants.METHOD_MCMC)
+          != constants.METHOD_MCMC
+      ):
+        include_prior = False
     use_kpi = self._use_kpi(use_kpi)
     dim_kwargs = {
         "selected_geos": selected_geos,
@@ -2981,22 +3013,17 @@ class Analyzer:
         **xr_coords,
     }
 
-    expected_outcome_prior = self.expected_outcome(
-        use_posterior=False, use_kpi=use_kpi, **outcome_kwargs
-    )
+    has_prior = constants.PRIOR in self.inference_data.groups()
     expected_outcome_posterior = self.expected_outcome(
         use_posterior=True, use_kpi=use_kpi, **outcome_kwargs
     )
+    if has_prior:
+      expected_outcome_prior = self.expected_outcome(
+          use_posterior=False, use_kpi=use_kpi, **outcome_kwargs
+      )
+    else:
+      expected_outcome_prior = _nan_like(expected_outcome_posterior)
 
-    baseline_expected_outcome_prior = backend.expand_dims(
-        self._calculate_baseline_expected_outcome(  # pyrefly: ignore[bad-argument-type]
-            use_posterior=False,
-            use_kpi=use_kpi,
-            non_media_baseline_values=non_media_baseline_values,
-            **outcome_kwargs,
-        ),
-        axis=-1,
-    )
     baseline_expected_outcome_posterior = backend.expand_dims(
         self._calculate_baseline_expected_outcome(  # pyrefly: ignore[bad-argument-type]
             use_posterior=True,
@@ -3006,6 +3033,20 @@ class Analyzer:
         ),
         axis=-1,
     )
+    if has_prior:
+      baseline_expected_outcome_prior = backend.expand_dims(
+          self._calculate_baseline_expected_outcome(  # pyrefly: ignore[bad-argument-type]
+              use_posterior=False,
+              use_kpi=use_kpi,
+              non_media_baseline_values=non_media_baseline_values,
+              **outcome_kwargs,
+          ),
+          axis=-1,
+      )
+    else:
+      baseline_expected_outcome_prior = _nan_like(
+          baseline_expected_outcome_posterior
+      )
 
     baseline_outcome = _central_tendency_and_ci_by_prior_and_posterior(
         prior=baseline_expected_outcome_prior,
@@ -3509,16 +3550,26 @@ class Analyzer:
           "sample_posterior() must be called prior to calling this method."
       )
 
+    data_vars = self._inference_data.posterior.data_vars  # pyrefly: ignore[missing-attribute]
+    if data_vars:
+      first_var = next(iter(data_vars.values()))
+      if len(first_var.shape) >= 2 and (
+          first_var.shape[0] < 2 or first_var.shape[1] < 2
+      ):
+        rhat = {
+            k: backend.fill(v.shape[2:], np.nan) for k, v in data_vars.items()
+        }
+        return self._mask_hill_parameters_for_linear_channels(rhat)
+
     def _transpose_first_two_dims(x: Any) -> backend.Tensor:
       x_tensor = backend.to_tensor(x)
       n_dim = len(x_tensor.shape)
       perm = [1, 0] + list(range(2, n_dim))
       return backend.transpose(x_tensor, perm)
 
-    rhat = backend.mcmc.potential_scale_reduction({
-        k: _transpose_first_two_dims(v)
-        for k, v in self._inference_data.posterior.data_vars.items()  # pyrefly: ignore[missing-attribute]
-    })
+    rhat = backend.mcmc.potential_scale_reduction(
+        {k: _transpose_first_two_dims(v) for k, v in data_vars.items()}
+    )
 
     return self._mask_hill_parameters_for_linear_channels(rhat)
 
@@ -3644,15 +3695,19 @@ class Analyzer:
       else:
         raise ValueError(f"Unexpected dimension for parameter {param}.")
 
+      with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        avg_r_hat = np.nanmean(rhat[param])
+        max_r_hat = np.nanmax(rhat[param])
+        percent_bad_r_hat = np.nanmean(rhat[param] > bad_rhat_threshold)
+
       rhat_summary.append(
           pd.Series({
               constants.PARAM: param,
               constants.N_PARAMS: np.prod(rhat[param].shape),
-              constants.AVG_R_HAT: np.nanmean(rhat[param]),
-              constants.MAX_R_HAT: np.nanmax(rhat[param]),
-              constants.PERCENT_BAD_R_HAT: np.nanmean(
-                  rhat[param] > bad_rhat_threshold
-              ),
+              constants.AVG_R_HAT: avg_r_hat,
+              constants.MAX_R_HAT: max_r_hat,
+              constants.PERCENT_BAD_R_HAT: percent_bad_r_hat,
               constants.ROW_IDX_BAD_R_HAT: row_idx,
               constants.COL_IDX_BAD_R_HAT: col_idx,
           })

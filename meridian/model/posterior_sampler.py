@@ -15,6 +15,7 @@
 """Module for MCMC sampling of posterior distributions in a Meridian model."""
 
 from collections.abc import Generator, Mapping, Sequence
+import dataclasses
 import functools
 from typing import Any, Optional, TYPE_CHECKING
 import warnings
@@ -22,17 +23,22 @@ import warnings
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import adm
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
+from scipy import optimize
+import xarray as xr
 
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 
 __all__ = [
+    "MAPOptimizationError",
     "MCMCSamplingError",
     "MCMCOOMError",
+    "PosteriorMAPOptimizer",
     "PosteriorMCMCSampler",
 ]
 
@@ -43,6 +49,10 @@ class MCMCSamplingError(Exception):
 
 class MCMCOOMError(Exception):
   """The Markov Chain Monte Carlo (MCMC) sampling exceeds memory limits."""
+
+
+class MAPOptimizationError(Exception):
+  """The Maximum A Posteriori (MAP) optimization failed."""
 
 
 # Name of the likelihood node yielded by the joint distribution coroutine.
@@ -1594,3 +1604,1142 @@ class PosteriorMCMCSampler:
     )
 
     return az.concat(infdata_posterior, infdata_trace, infdata_sample_stats)  # pyrefly: ignore[no-matching-overload]
+
+
+def _is_deterministic_distribution(dist: backend.tfd.Distribution) -> bool:
+  """Returns True if `dist` (or its unwrapped base) is `tfd.Deterministic`."""
+  return isinstance(adm.unwrap_distribution(dist), backend.tfd.Deterministic)
+
+
+def _needs_jacobian_adjustment(dist: backend.tfd.Distribution) -> bool:
+  """Returns True if unconstrained MAP requires the bijector log-det-Jacobian.
+
+  Normal distributions have an identity bijector, and TruncatedNormal
+  distributions already possess an interior Gaussian mode on their bounded
+  support. Half-line (`HalfNormal`, `LogNormal`) and beta/uniform bounded
+  distributions (`Uniform`, `Beta`) have boundary or skewed constrained-space
+  modes (`0` for `HalfNormal`), so optimizing in unconstrained space (which
+  adds `forward_log_det_jacobian`) prevents boundary collapse and places the
+  prior mode in the interior.
+
+  Args:
+    dist: A TFP distribution node from the joint model coroutine.
+  """
+  base = adm.unwrap_distribution(dist)
+  return not isinstance(
+      base,
+      (
+          backend.tfd.Normal,
+          backend.tfd.TruncatedNormal,
+          backend.tfd.Deterministic,
+      ),
+  )
+
+
+def _default_unconstrained_init_for_dist(
+    dist: backend.tfd.Distribution,
+    shape: tuple[int, ...],
+    bijector: Any,
+) -> backend.Tensor:
+  """Computes a finite interior initial value in unconstrained space."""
+  base = adm.unwrap_distribution(dist)
+  try:
+    if isinstance(base, backend.tfd.LogNormal):
+      half = backend.to_tensor(0.5, dtype=backend.float_dtype)
+      constrained_val = backend.broadcast_to(base.quantile(half), shape)  # pyrefly: ignore[bad-argument-type]
+    else:
+      constrained_val = backend.broadcast_to(dist.mean(), shape)  # pyrefly: ignore[bad-argument-type]
+    z = backend.cast(bijector.inverse(constrained_val), backend.float_dtype)
+    z_np = np.asarray(z)
+    if np.all(np.isfinite(z_np)):
+      return z
+  except Exception:  # pylint: disable=broad-except
+    pass
+  return backend.zeros(shape, dtype=backend.float_dtype)
+
+
+@dataclasses.dataclass(frozen=True)
+class _FreeParameterSpec:
+  """Describes one stochastic parameter optimized by `PosteriorMAPOptimizer`.
+
+  Attributes:
+    name: Parameter name, as yielded by the joint sampling coroutine.
+    shape: Constrained parameter shape (batch shape followed by event shape).
+    size: Number of scalar elements in the parameter (`prod(shape)`).
+    bijector: Default event-space bijector of the parameter's base distribution,
+      mapping the unconstrained optimization space onto the constrained
+      parameter space.
+    use_jac: Whether the bijector log-det-Jacobian is added to the objective
+      when `include_jacobian=True`.
+    dist: The distribution node yielded by the coroutine for this parameter.
+  """
+
+  name: str
+  shape: tuple[int, ...]
+  size: int
+  bijector: Any
+  use_jac: bool
+  dist: backend.tfd.Distribution
+
+
+def _split_free_vector(
+    vector: backend.Tensor, free_specs: Sequence[_FreeParameterSpec]
+) -> dict[str, backend.Tensor]:
+  """Splits a flat parameter vector into per-parameter tensors.
+
+  Args:
+    vector: 1D tensor laid out in `free_specs` order, with length equal to the
+      sum of `spec.size` over `free_specs`.
+    free_specs: Free parameter specifications.
+
+  Returns:
+    Mapping from parameter name to the corresponding slice of `vector`,
+    reshaped to `spec.shape`.
+  """
+  parts: dict[str, backend.Tensor] = {}
+  offset = 0
+  for spec in free_specs:
+    parts[spec.name] = backend.reshape(
+        vector[offset : offset + spec.size], spec.shape
+    )
+    offset += spec.size
+  return parts
+
+
+def _constrain_free_parameters(
+    z_parts: Mapping[str, backend.Tensor],
+    free_specs: Sequence[_FreeParameterSpec],
+) -> dict[str, backend.Tensor]:
+  """Maps per-parameter unconstrained tensors to constrained parameter space."""
+  return {
+      spec.name: backend.cast(
+          spec.bijector.forward(z_parts[spec.name]), backend.float_dtype
+      )
+      for spec in free_specs
+  }
+
+
+# `(scale, deviation)` parameter pairs of the non-centered geo random-effect
+# parameterization `delta_gx = scale_x * dev_gx`.
+_GEO_RANDOM_EFFECT_PAIRS: tuple[tuple[str, str], ...] = (
+    (constants.ETA_M, constants.BETA_GM_DEV),
+    (constants.ETA_RF, constants.BETA_GRF_DEV),
+    (constants.ETA_OM, constants.BETA_GOM_DEV),
+    (constants.ETA_ORF, constants.BETA_GORF_DEV),
+    (constants.XI_C, constants.GAMMA_GC_DEV),
+    (constants.XI_N, constants.GAMMA_GN_DEV),
+)
+
+# Geo random-effect pairs whose empirical RMS does not exceed this threshold are
+# left as-is by `_renormalize_geo_random_effects`.
+_RMS_RENORMALIZATION_THRESHOLD = 1e-12
+# Under ADM the scale parameters are held away from zero by the adjustment, so
+# only random effects with non-negligible empirical spread are re-normalized.
+_ADM_RMS_RENORMALIZATION_THRESHOLD = 1e-2
+
+
+def _renormalize_geo_random_effects(
+    latents: Mapping[str, backend.Tensor],
+    threshold: float = _RMS_RENORMALIZATION_THRESHOLD,
+) -> dict[str, backend.Tensor]:
+  """Rescales geo random-effect factors so deviations have unit RMS over geos.
+
+  In the non-centered parameterization `delta_gx = scale_x * dev_gx`
+  (`dev_gx ~ Normal(0, 1)`), the likelihood and all deterministic model
+  equations depend only on the product `scale_x * dev_gx`. Re-normalizing the
+  factorization so `dev_gx` has unit RMS across geos preserves the product
+  identically while ensuring `scale_x` equals the empirical geo-level standard
+  deviation of the random effects.
+
+  Args:
+    latents: Mapping from parameter name to constrained value. Deviation
+      parameters carry the geo axis second-to-last and scale parameters share
+      the remaining axes, so any number of leading batch (e.g. draw) axes is
+      supported.
+    threshold: Pairs whose empirical RMS does not exceed this value are left
+      unchanged, which avoids dividing by (near) zero when a random effect has
+      collapsed.
+
+  Returns:
+    A copy of `latents` in which every `(scale, dev)` pair from
+    `_GEO_RANDOM_EFFECT_PAIRS` that is present has been re-normalized.
+  """
+  result = dict(latents)
+  for scale_name, dev_name in _GEO_RANDOM_EFFECT_PAIRS:
+    if scale_name not in result or dev_name not in result:
+      continue
+    scale = np.asarray(result[scale_name], dtype=np.float64)
+    dev = np.asarray(result[dev_name], dtype=np.float64)
+    delta = np.expand_dims(scale, axis=-2) * dev
+    rms = np.sqrt(np.mean(np.square(delta), axis=-2))
+    valid = rms > threshold
+    safe_rms = np.expand_dims(np.where(valid, rms, 1.0), axis=-2)
+    result[scale_name] = backend.to_tensor(
+        np.where(valid, rms, scale), dtype=backend.float_dtype
+    )
+    result[dev_name] = backend.to_tensor(
+        np.where(np.expand_dims(valid, axis=-2), delta / safe_rms, dev),
+        dtype=backend.float_dtype,
+    )
+  return result
+
+
+def _resolve_adm_adjustments(
+    free_specs: Sequence[_FreeParameterSpec],
+    family_overrides: Mapping[str, adm.AdjustmentFamily | str] | None,
+) -> dict[str, adm.ParameterAdjustment]:
+  """Resolves the ADM adjustment of every free parameter."""
+  return adm.resolve_adjustments(
+      param_specs={
+          spec.name: (spec.bijector, spec.dist) for spec in free_specs
+      },
+      family_overrides=family_overrides,
+  )
+
+
+class PosteriorMAPOptimizer(PosteriorMCMCSampler):
+  """A callable that estimates full posterior modes or ADM means via L-BFGS-B.
+
+  Unlike simplified MAP approximations that fix nonlinear media parameters
+  (such as `alpha_m` or `ec_m`) or geo random effects, `PosteriorMAPOptimizer`
+  jointly optimizes all non-deterministic stochastic parameters in the Meridian
+  model simultaneously using L-BFGS-B with exact automatic differentiation
+  gradients and multi-start initialization. When `use_adm=True`, Adjustment for
+  Density Maximization (Morris, 1988; Morris & Tang, 2011) is applied in
+  constrained parameter space so the maximizer targets the posterior mean rather
+  than the posterior mode.
+  """
+
+  def _build_optimization_spec(
+      self,
+      rng_handler: backend.RNGHandler,
+      **pins,
+  ) -> tuple[
+      list[_FreeParameterSpec],
+      dict[str, backend.Tensor],
+      set[str],
+      backend.Tensor,
+      backend.Tensor,
+  ]:
+    """Inspects the sampling coroutine and partitions free vs fixed parameters.
+
+    Also warms all cached properties on `ModelContext` and `ModelEquations`
+    prior to JIT compilation.
+
+    Args:
+      rng_handler: Random number generator handler for initializing any
+        deterministic distributions.
+      **pins: Optional pinned parameter values.
+
+    Returns:
+      A tuple `(free_specs, fixed_params, pinned_names, default_init_z,
+      observed_y)` where:
+        * `free_specs` is a list of `_FreeParameterSpec` for each stochastic
+          parameter to be optimized.
+        * `fixed_params` maps deterministic, zero-sized, or user-pinned
+          parameter names to their constant tensors.
+        * `pinned_names` is the set of user-supplied pin names (which are
+          excluded from the returned posterior `InferenceData`, matching MCMC).
+        * `default_init_z` is the 1D unconstrained initialization vector built
+          from each prior distribution's interior central tendency.
+        * `observed_y` is the scaled (and holdout-masked) observed KPI tensor.
+    """
+    # Warm cached properties eagerly before tracing inside `value_and_grad`.
+    self._model_context.populate_cached_properties()
+    _ = self._get_joint_dist_unpinned()
+    _ = self._get_joint_dist_sampling_unpinned()
+
+    if self._model_context.holdout_id is not None:
+      observed_y = backend.where(
+          self._model_context.holdout_id,  # pyrefly: ignore[bad-argument-type]
+          0.0,
+          self._model_context.kpi_scaled,  # pyrefly: ignore[bad-argument-type]
+      )
+    else:
+      observed_y = self._model_context.kpi_scaled
+
+    pinned_names = set(pins.keys())
+    free_specs: list[_FreeParameterSpec] = []
+    fixed_params: dict[str, backend.Tensor] = {}
+    default_init_parts: list[backend.Tensor] = []
+
+    gen = self._joint_dist_sampling_fn()
+    dist = next(gen)
+    while True:
+      name = dist.name
+      if name == _LIKELIHOOD_NODE_NAME:
+        break
+
+      shape = tuple(int(d) for d in dist.batch_shape) + tuple(
+          int(d) for d in dist.event_shape
+      )
+      size = int(np.prod(shape)) if shape else 1
+
+      if name in pins:
+        val = backend.cast(
+            backend.broadcast_to(backend.to_tensor(pins[name]), shape),  # pyrefly: ignore[bad-argument-type]
+            backend.float_dtype,
+        )
+        fixed_params[name] = val
+      elif _is_deterministic_distribution(dist) or size == 0:
+        val = backend.cast(
+            dist.sample(seed=rng_handler.get_next_seed()),
+            backend.float_dtype,
+        )
+        fixed_params[name] = val
+      else:
+        base_dist = adm.unwrap_distribution(dist)
+        bijector = base_dist.experimental_default_event_space_bijector()
+        use_jac = _needs_jacobian_adjustment(dist)
+        z_init = _default_unconstrained_init_for_dist(dist, shape, bijector)
+        default_init_parts.append(
+            backend.reshape(z_init, (-1,))  # pyrefly: ignore[bad-argument-type]
+        )
+        val = backend.cast(bijector.forward(z_init), backend.float_dtype)
+        free_specs.append(
+            _FreeParameterSpec(
+                name=name,
+                shape=shape,
+                size=size,
+                bijector=bijector,
+                use_jac=use_jac,
+                dist=dist,
+            )
+        )
+
+      dist = gen.send(val)
+
+    if default_init_parts:
+      default_init_z = backend.concatenate(
+          default_init_parts, axis=0  # pyrefly: ignore[bad-argument-type]
+      )
+    else:
+      default_init_z = backend.zeros((0,), dtype=backend.float_dtype)
+
+    return free_specs, fixed_params, pinned_names, default_init_z, observed_y
+
+  def _log_joint_density(
+      self,
+      theta: Mapping[str, backend.Tensor],
+      fixed_params: Mapping[str, backend.Tensor],
+      observed_y: backend.Tensor,
+  ) -> backend.Tensor:
+    """Evaluates the unnormalized log posterior at constrained parameters.
+
+    Walks the joint sampling coroutine, feeding every stochastic node its value
+    from `theta` (free parameters) or `fixed_params` (deterministic, pinned, or
+    zero-sized parameters), and accumulates the log prior density of the free
+    parameters plus the log likelihood of `observed_y`.
+
+    Args:
+      theta: Constrained values of the free parameters, keyed by name.
+      fixed_params: Constant values of all non-free parameters, keyed by name.
+      observed_y: Scaled (and holdout-masked) observed KPI tensor.
+
+    Returns:
+      Scalar `log p(theta) + log p(y | theta)`, up to an additive constant.
+    """
+    gen = self._joint_dist_sampling_fn()
+    dist = next(gen)
+    log_prob_terms: list[backend.Tensor] = []
+    while True:
+      name = dist.name
+      if name == _LIKELIHOOD_NODE_NAME:
+        log_prob_terms.append(
+            backend.reduce_sum(dist.log_prob(observed_y))  # pyrefly: ignore[bad-argument-type]
+        )
+        break
+      if name in fixed_params:
+        val = fixed_params[name]
+      else:
+        val = theta[name]
+        log_prob_terms.append(
+            backend.reduce_sum(dist.log_prob(val))  # pyrefly: ignore[bad-argument-type]
+        )
+      dist = gen.send(val)
+    return sum(
+        log_prob_terms, backend.to_tensor(0.0, dtype=backend.float_dtype)
+    )
+
+  def _adjusted_log_posterior(
+      self,
+      theta: Mapping[str, backend.Tensor],
+      fixed_params: Mapping[str, backend.Tensor],
+      observed_y: backend.Tensor,
+      adjustments: Mapping[str, adm.ParameterAdjustment],
+  ) -> backend.Tensor:
+    """Evaluates the ADM-adjusted log posterior `log a(theta) + log p(theta, y)`.
+
+    Args:
+      theta: Constrained values of the free parameters, keyed by name.
+      fixed_params: Constant values of all non-free parameters, keyed by name.
+      observed_y: Scaled (and holdout-masked) observed KPI tensor.
+      adjustments: Resolved ADM adjustment of every free parameter.
+
+    Returns:
+      Scalar adjusted log posterior, up to an additive constant.
+    """
+    log_density = self._log_joint_density(theta, fixed_params, observed_y)
+    for name, value in theta.items():
+      adjustment = adjustments[name]
+      if adjustment.is_trivial:
+        continue
+      log_density += backend.reduce_sum(
+          adm.log_adjustment(value, adjustment.family, adjustment.support)
+      )
+    return log_density
+
+  def resolve_adm_adjustments(
+      self,
+      family_overrides: Mapping[str, adm.AdjustmentFamily | str] | None = None,
+      **pins,
+  ) -> dict[str, adm.ParameterAdjustment]:
+    """Resolves the ADM adjustment family and support for each free parameter.
+
+    Args:
+      family_overrides: Optional mapping from parameter name to an
+        `adm.AdjustmentFamily` (or its string value) overriding the default.
+      **pins: Optional pinned parameter values (which are excluded from the free
+        parameter set).
+
+    Returns:
+      Mapping from free parameter name to its resolved `ParameterAdjustment`.
+    """
+    rng_handler = backend.RNGHandler(0)
+    free_specs, _, _, _, _ = self._build_optimization_spec(
+        rng_handler=rng_handler, **pins
+    )
+    return _resolve_adm_adjustments(free_specs, family_overrides)
+
+  def _sample_candidate_vectors(
+      self,
+      n_candidates: int,
+      free_specs: Sequence[_FreeParameterSpec],
+      fixed_params: Mapping[str, backend.Tensor],
+      rng_handler: backend.RNGHandler,
+  ) -> np.ndarray:
+    """Samples `n_candidates` prior draws mapped to unconstrained vectors."""
+    gen = self._joint_dist_sampling_fn()
+    dist = next(gen)
+    sample_by_name: dict[str, backend.Tensor] = {}
+
+    while True:
+      name = dist.name
+      if name == _LIKELIHOOD_NODE_NAME:
+        break
+      if name in fixed_params:
+        val = fixed_params[name]
+      else:
+        sampled = backend.cast(
+            dist.sample(n_candidates, seed=rng_handler.get_next_seed()),
+            backend.float_dtype,
+        )
+        sample_by_name[name] = sampled
+        val = sampled[0]
+      dist = gen.send(val)
+
+    z_columns = []
+    for spec in free_specs:
+      z_part = backend.cast(
+          spec.bijector.inverse(sample_by_name[spec.name]), backend.float_dtype
+      )
+      z_columns.append(
+          np.asarray(
+              backend.reshape(z_part, (n_candidates, spec.size)),
+              dtype=np.float64,
+          )
+      )
+    return np.concatenate(z_columns, axis=1)
+
+  def _fit_approximate_posterior(
+      self,
+      theta_star: Mapping[str, backend.Tensor],
+      free_specs: Sequence[_FreeParameterSpec],
+      fixed_params: Mapping[str, backend.Tensor],
+      observed_y: backend.Tensor,
+      adjustments: Mapping[str, adm.ParameterAdjustment],
+      batch_size: int,
+  ) -> adm.ApproximatePosterior:
+    """Fits the Hessian-based approximate posterior at the ADM optimum.
+
+    The Hessian of the negative adjusted log posterior is evaluated in
+    constrained parameter space at `theta_star` (the stationary point returned
+    by the optimizer, before any geo random-effect re-normalization) and
+    converted into curvature-matched approximating marginals coupled by a
+    Gaussian copula; see `adm.fit_approximate_posterior`.
+
+    Args:
+      theta_star: Constrained ADM estimates keyed by free parameter name.
+      free_specs: Free parameter specifications, in optimization order.
+      fixed_params: Constant values of all non-free parameters.
+      observed_y: Scaled (and holdout-masked) observed KPI tensor.
+      adjustments: Resolved ADM adjustment of every free parameter.
+      batch_size: Number of Hessian rows evaluated per autodiff pass.
+
+    Returns:
+      The fitted `adm.ApproximatePosterior`.
+    """
+    theta_vector = backend.concatenate(
+        [
+            backend.reshape(theta_star[spec.name], (-1,))  # pyrefly: ignore[bad-argument-type]
+            for spec in free_specs
+        ],
+        axis=0,  # pyrefly: ignore[bad-argument-type]
+    )
+
+    def negative_adjusted_log_posterior(
+        vector: backend.Tensor,
+    ) -> backend.Tensor:
+      return -self._adjusted_log_posterior(
+          _split_free_vector(vector, free_specs),
+          fixed_params,
+          observed_y,
+          adjustments,
+      )
+
+    hessian = backend.hessian(
+        negative_adjusted_log_posterior, theta_vector, batch_size
+    )
+    return adm.fit_approximate_posterior(
+        estimates={
+            spec.name: np.asarray(theta_star[spec.name], dtype=np.float64)
+            for spec in free_specs
+        },
+        hessian=np.asarray(hessian, dtype=np.float64),
+        adjustments=adjustments,
+    )
+
+  def _evaluate_adjusted_log_posterior(
+      self,
+      draws: Mapping[str, np.ndarray],
+      free_specs: Sequence[_FreeParameterSpec],
+      fixed_params: Mapping[str, backend.Tensor],
+      observed_y: backend.Tensor,
+      adjustments: Mapping[str, adm.ParameterAdjustment],
+      batch_size: int,
+  ) -> np.ndarray:
+    """Evaluates the adjusted log posterior at each of a set of draws.
+
+    The model coroutine is written for a single parameter set (it is
+    vectorized by `JointDistributionCoroutineAutoBatched` during sampling), so
+    draws are evaluated through `backend.vectorized_map` in chunks.
+
+    Args:
+      draws: Constrained parameter draws keyed by free parameter name, each
+        shaped `(n_draws, *shape)`.
+      free_specs: Free parameter specifications.
+      fixed_params: Constant values of all non-free parameters.
+      observed_y: Scaled (and holdout-masked) observed KPI tensor.
+      adjustments: Resolved ADM adjustment of every free parameter.
+      batch_size: Maximum number of draws evaluated per vectorized pass.
+
+    Returns:
+      Array of shape `(n_draws,)` holding the adjusted log posterior of each
+      draw, up to an additive constant.
+    """
+
+    def _single_draw(theta: Mapping[str, backend.Tensor]) -> backend.Tensor:
+      return self._adjusted_log_posterior(
+          theta, fixed_params, observed_y, adjustments
+      )
+
+    n_draws = int(next(iter(draws.values())).shape[0])
+    log_probs = np.empty((n_draws,), dtype=np.float64)
+    for start in range(0, n_draws, batch_size):
+      stop = min(start + batch_size, n_draws)
+      theta_batch = {
+          spec.name: backend.to_tensor(
+              draws[spec.name][start:stop], dtype=backend.float_dtype
+          )
+          for spec in free_specs
+      }
+      log_probs[start:stop] = np.asarray(
+          backend.vectorized_map(_single_draw, theta_batch), dtype=np.float64
+      )
+    return log_probs
+
+  def _free_latents_with_sample_axes(
+      self,
+      values: Mapping[str, Any],
+      free_specs: Sequence[_FreeParameterSpec],
+      n_draws: int,
+      use_adm: bool,
+  ) -> dict[str, backend.Tensor]:
+    """Shapes free parameter values as `(chain=1, draw=n_draws, *shape)`.
+
+    Geo random effects are re-normalized so that deviations have unit RMS
+    across geos (see `_renormalize_geo_random_effects`), which is only
+    meaningful when there is more than one geo.
+
+    Args:
+      values: Constrained values keyed by free parameter name, each holding
+        `n_draws * spec.size` elements (a single estimate when `n_draws=1`, or
+        draws stacked on a leading axis).
+      free_specs: Free parameter specifications.
+      n_draws: Number of draws held by `values`.
+      use_adm: Whether the values come from ADM estimation, which selects the
+        re-normalization threshold.
+
+    Returns:
+      Mapping from free parameter name to a `(1, n_draws, *shape)` tensor.
+    """
+    latents = {
+        spec.name: backend.reshape(
+            backend.to_tensor(  # pyrefly: ignore[bad-argument-type]
+                values[spec.name], dtype=backend.float_dtype
+            ),
+            (1, n_draws) + spec.shape,
+        )
+        for spec in free_specs
+    }
+    if self._model_context.n_geos > 1:
+      latents = _renormalize_geo_random_effects(
+          latents,
+          threshold=(
+              _ADM_RMS_RENORMALIZATION_THRESHOLD
+              if use_adm
+              else _RMS_RENORMALIZATION_THRESHOLD
+          ),
+      )
+    return latents
+
+  def _reconstruct_states(
+      self,
+      free_latents: Mapping[str, backend.Tensor],
+      fixed_params: Mapping[str, backend.Tensor],
+      pinned_names: set[str],
+      n_draws: int,
+      rng_handler: backend.RNGHandler,
+      batch_size: int,
+  ) -> Mapping[str, Any]:
+    """Reconstructs all posterior variables from `(1, n_draws, ...)` latents.
+
+    Args:
+      free_latents: Free parameter values shaped `(1, n_draws, *shape)`.
+      fixed_params: Constant values of all non-free parameters; those that were
+        not pinned by the caller are broadcast to the draw axes and included in
+        the output, matching MCMC.
+      pinned_names: Names of user-pinned parameters (excluded from the output).
+      n_draws: Number of draws along the draw axis.
+      rng_handler: Seed source for the (deterministic) reconstruction pass.
+      batch_size: Maximum number of draws reconstructed per forward pass.
+
+    Returns:
+      Mapping from variable name to its `(1, n_draws, ...)` values, ready for
+      conversion into an `InferenceData` posterior group.
+    """
+    all_latents: dict[str, backend.Tensor] = dict(free_latents)
+    for name, val in fixed_params.items():
+      if name not in pinned_names:
+        shape = tuple(int(d) for d in val.shape)
+        all_latents[name] = backend.broadcast_to(
+            val, (1, n_draws) + shape  # pyrefly: ignore[bad-argument-type]
+        )
+    reconstructed = self._reconstruct_posteriors(
+        latents=self._prepare_latents_for_reconstruction(all_latents),
+        rng_handler=rng_handler,
+        batch_size=batch_size,
+    )
+    return self._prepare_mcmc_states(all_latents, reconstructed)
+
+  def _build_trace_groups(
+      self,
+      log_probs: np.ndarray,
+      n_iterations: int,
+      converged: bool,
+  ) -> az.InferenceData:
+    """Builds `trace` and `sample_stats` groups for `(1, n_draws)` estimates.
+
+    Args:
+      log_probs: Target (adjusted) log posterior of each draw, shape
+        `(n_draws,)`.
+      n_iterations: Number of L-BFGS-B iterations of the best restart.
+      converged: Whether the best restart reported convergence.
+
+    Returns:
+      An `InferenceData` holding the `trace` and `sample_stats` groups.
+    """
+    n_draws = int(log_probs.shape[0])
+    trace_coords = {
+        constants.CHAIN: np.arange(1),
+        constants.DRAW: np.arange(n_draws),
+    }
+
+    def _filled(value: Any, dtype: Any) -> backend.Tensor:
+      return backend.to_tensor(np.full((1, n_draws), value), dtype=dtype)
+
+    trace = {
+        constants.STEP_SIZE: _filled(1.0, backend.float_dtype),
+        constants.TUNE: _filled(False, backend.bool_),
+        constants.TARGET_LOG_PROBABILITY_TF: backend.to_tensor(
+            log_probs[np.newaxis, :], dtype=backend.float_dtype
+        ),
+        constants.DIVERGING: _filled(False, backend.bool_),
+        constants.ACCEPT_RATIO: _filled(1.0, backend.float_dtype),
+        constants.N_STEPS: _filled(n_iterations, backend.int32),
+        "is_accepted": _filled(converged, backend.bool_),
+    }
+    trace_dims = {k: [constants.CHAIN, constants.DRAW] for k in trace}
+    infdata_trace = az.convert_to_inference_data(
+        trace, coords=trace_coords, dims=trace_dims, group="trace"
+    )
+
+    sample_stats = {
+        constants.SAMPLE_STATS_METRICS[k]: v
+        for k, v in trace.items()
+        if k in constants.SAMPLE_STATS_METRICS
+    }
+    sample_stats_dims = {
+        constants.SAMPLE_STATS_METRICS[k]: v
+        for k, v in trace_dims.items()
+        if k in constants.SAMPLE_STATS_METRICS
+    }
+    infdata_sample_stats = az.convert_to_inference_data(
+        sample_stats,
+        coords=trace_coords,
+        dims=sample_stats_dims,
+        group="sample_stats",
+    )
+    return az.concat([infdata_trace, infdata_sample_stats], inplace=False)
+
+  def _build_adm_marginals_dataset(
+      self,
+      approximate_posterior: adm.ApproximatePosterior,
+      confidence_level: float,
+  ) -> xr.Dataset:
+    """Summarizes the approximating marginals as an xarray dataset.
+
+    Args:
+      approximate_posterior: Fitted approximate posterior.
+      confidence_level: Confidence level of the reported credible intervals.
+
+    Returns:
+      A dataset with one variable per saved free parameter, dimensioned
+      `(metric, *parameter_dims)` where `metric` enumerates
+      `adm.SUMMARY_METRICS`.
+    """
+    posterior_dims = self._model_context.create_inference_data_dims()
+    coords = {
+        name: values
+        for name, values in self._model_context.create_inference_data_coords(
+            1, 1
+        ).items()
+        if name not in (constants.CHAIN, constants.DRAW)
+    }
+    coords[constants.METRIC] = list(adm.SUMMARY_METRICS)
+
+    data: dict[str, np.ndarray] = {}
+    dims: dict[str, list[str]] = {}
+    for name, summary in approximate_posterior.summary(
+        confidence_level
+    ).items():
+      if name in constants.UNSAVED_PARAMETERS or name not in posterior_dims:
+        continue
+      data[name] = summary
+      dims[name] = [constants.METRIC] + [
+          dim
+          for dim in posterior_dims[name]
+          if dim not in (constants.CHAIN, constants.DRAW)
+      ]
+    dataset = az.dict_to_dataset(
+        data, coords=coords, dims=dims, default_dims=[]
+    )
+    dataset.attrs.update({
+        constants.CONFIDENCE_LEVEL: float(confidence_level),
+        **approximate_posterior.diagnostics.as_attrs(),
+    })
+    return dataset
+
+  def __call__(  # pyrefly: ignore[bad-override]
+      self,
+      n_restarts: int = constants.DEFAULT_MAP_N_RESTARTS,
+      n_candidates: int = constants.DEFAULT_MAP_N_CANDIDATES,
+      maxiter: int = constants.DEFAULT_MAP_MAXITER,
+      ftol: float = constants.DEFAULT_MAP_FTOL,
+      gtol: float = constants.DEFAULT_MAP_GTOL,
+      init_state: Mapping[str, backend.Tensor] | None = None,
+      use_adm: bool = False,
+      adm_family_overrides: (
+          Mapping[str, adm.AdjustmentFamily | str] | None
+      ) = None,
+      include_jacobian: bool = False,
+      compute_hessian: bool = False,
+      n_draws: int = 0,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      hessian_batch_size: int = constants.DEFAULT_HESSIAN_BATCH_SIZE,
+      seed: Sequence[int] | int | None = None,
+      reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      **pins,
+  ) -> az.InferenceData:
+    """Runs Full MAP or ADM estimation for the Meridian model.
+
+    All stochastic model parameters (including adstock decay `alpha_*`, Hill
+    saturation `ec_*`, geo random-effect standard deviations `eta_*`/`xi_*`,
+    and geo-level deviations `beta_g*_dev`/`gamma_g*_dev`) are jointly
+    optimized using L-BFGS-B. All deterministic parameters are then
+    reconstructed via the full model graph so that downstream analysis,
+    summarization, visualization, and budget optimization work seamlessly.
+
+    When `use_adm=True`, the Hessian of the adjusted negative log posterior at
+    the optimum can additionally be used to quantify uncertainty
+    (`compute_hessian=True` or `n_draws > 0`). Each free parameter receives a
+    curvature-matched member of its ADM approximating family (see
+    `adm.ApproximatingMarginal`), summarized in an `adm_marginals` group, and
+    `n_draws` joint draws can be generated from these marginals through a
+    Gaussian copula that preserves the local posterior correlations. The draws
+    populate the `posterior` group so that downstream credible intervals work
+    exactly as with MCMC, while the point estimate is preserved in a
+    `point_estimate` group.
+
+    Args:
+      n_restarts: Number of L-BFGS-B optimization restarts from distinct
+        starting points. Must be at least 1.
+      n_candidates: Number of random prior draws evaluated to select the best
+        starting points when `n_restarts > 1`. Must be non-negative.
+      maxiter: Maximum number of L-BFGS-B iterations per restart.
+      ftol: Relative function value tolerance (`ftol`) for L-BFGS-B.
+      gtol: Projected gradient norm tolerance (`gtol`) for L-BFGS-B.
+      init_state: Optional mapping of constrained parameter values to use for
+        initializing the first optimization run. Any unspecified parameters fall
+        back to their default interior prior initialization.
+      use_adm: Whether to apply Adjustment for Density Maximization (ADM) in
+        constrained parameter space so that optimization targets the posterior
+        mean rather than the posterior mode. Defaults to `False` (plain MAP in
+        constrained space).
+      adm_family_overrides: Optional mapping from parameter name to an
+        `adm.AdjustmentFamily` (or its string value) overriding the default
+        approximating family when `use_adm=True`.
+      include_jacobian: Whether to include the bijector log-det-Jacobian for
+        half-line (`HalfNormal`, `LogNormal`) and bounded (`Uniform`, `Beta`)
+        parameters when `use_adm=False`. Ignored when `use_adm=True`.
+      compute_hessian: Whether to compute the Hessian at the ADM optimum and
+        report the approximating marginals in an `adm_marginals` group. Requires
+        `use_adm=True`. Implied by `n_draws > 0`.
+      n_draws: Number of approximate posterior draws to generate from the
+        Hessian-based approximation. When positive, the `posterior` group has
+        `draw=n_draws` and the point estimate is stored in a `point_estimate`
+        group. Requires `use_adm=True`. Defaults to `0` (point estimate only).
+      confidence_level: Confidence level of the credible intervals reported in
+        the `adm_marginals` group.
+      hessian_batch_size: Number of Hessian rows evaluated per automatic
+        differentiation pass. Lower values reduce peak memory.
+      seed: Random seed for candidate generation, approximate posterior draws,
+        and deterministic reconstruction.
+      reconstruction_batch_size: Batch size for reconstructing deterministic
+        parameters and for evaluating the log posterior of the draws.
+      **pins: Optional parameter values to pin during optimization.
+
+    Returns:
+      An `arviz.InferenceData` object containing the `posterior`, `trace`, and
+      `sample_stats` groups with dimensions `(chain=1, draw=max(n_draws, 1),
+      ...)`, plus an `adm_marginals` group when the Hessian is computed and a
+      `point_estimate` group when `n_draws > 0`.
+
+    Raises:
+      ValueError: If `reconstruction_batch_size < 1`, `n_restarts < 1`,
+        `n_candidates < 0`, `maxiter < 1`, `n_draws < 0`,
+        `hessian_batch_size < 1`, `confidence_level` is not in `(0, 1)`, or
+        `adm_family_overrides`, `compute_hessian`, or `n_draws > 0` is used
+        when `use_adm=False`.
+      MAPOptimizationError: If all optimization restarts fail to produce a
+        finite parameter vector.
+    """
+    if reconstruction_batch_size < 1:
+      raise ValueError(
+          "`reconstruction_batch_size` must be a positive integer, got"
+          f" {reconstruction_batch_size}."
+      )
+    if n_restarts < 1:
+      raise ValueError(
+          f"`n_restarts` must be a positive integer, got {n_restarts}."
+      )
+    if n_candidates < 0:
+      raise ValueError(
+          f"`n_candidates` must be a non-negative integer, got {n_candidates}."
+      )
+    if maxiter < 1:
+      raise ValueError(f"`maxiter` must be a positive integer, got {maxiter}.")
+    if adm_family_overrides is not None and not use_adm:
+      raise ValueError(
+          "`adm_family_overrides` cannot be set when `use_adm` is False."
+      )
+    if n_draws < 0:
+      raise ValueError(
+          f"`n_draws` must be a non-negative integer, got {n_draws}."
+      )
+    if hessian_batch_size < 1:
+      raise ValueError(
+          "`hessian_batch_size` must be a positive integer, got"
+          f" {hessian_batch_size}."
+      )
+    if not 0.0 < confidence_level < 1.0:
+      raise ValueError(
+          f"`confidence_level` must be in (0, 1), got {confidence_level}."
+      )
+    fit_approximation = compute_hessian or n_draws > 0
+    if fit_approximation and not use_adm:
+      raise ValueError(
+          "Hessian-based approximating marginals and draws (`compute_hessian`,"
+          " `n_draws > 0`) require `use_adm=True`."
+      )
+
+    rng_handler = backend.RNGHandler(seed)
+    self._joint_dist = None
+    self._joint_dist_sampling = None
+
+    (
+        free_specs,
+        fixed_params,
+        pinned_names,
+        default_init_z,
+        observed_y,
+    ) = self._build_optimization_spec(rng_handler=rng_handler, **pins)
+
+    adm_adjustments: dict[str, adm.ParameterAdjustment] = {}
+    if use_adm:
+      adm_adjustments = _resolve_adm_adjustments(
+          free_specs, adm_family_overrides
+      )
+
+    total_dim = sum(spec.size for spec in free_specs)
+
+    def neg_log_posterior(z: backend.Tensor) -> backend.Tensor:
+      z_parts = _split_free_vector(z, free_specs)
+      theta = _constrain_free_parameters(z_parts, free_specs)
+      if use_adm:
+        return -self._adjusted_log_posterior(
+            theta, fixed_params, observed_y, adm_adjustments
+        )
+      log_density = self._log_joint_density(theta, fixed_params, observed_y)
+      if include_jacobian:
+        for spec in free_specs:
+          if spec.use_jac:
+            log_density += backend.reduce_sum(
+                spec.bijector.forward_log_det_jacobian(
+                    z_parts[spec.name], event_ndims=0
+                )
+            )
+      return -log_density
+
+    if total_dim > 0:
+      val_and_grad_fn = backend.value_and_grad(neg_log_posterior)
+
+      def scipy_objective(z_np: np.ndarray) -> tuple[float, np.ndarray]:
+        z_tensor = backend.to_tensor(z_np, dtype=backend.float_dtype)
+        loss, grad = val_and_grad_fn(z_tensor)
+        loss_f = float(np.asarray(loss))
+        grad_np = np.asarray(grad, dtype=np.float64)
+        if not np.isfinite(loss_f) or not np.all(np.isfinite(grad_np)):
+          return 1e30, np.zeros_like(z_np, dtype=np.float64)
+        return loss_f, grad_np
+
+      # Build starting point 0 from `init_state` or `default_init_z`.
+      if init_state is not None:
+        init_parts = []
+        offset = 0
+        for spec in free_specs:
+          if spec.name in init_state:
+            constrained_val = backend.cast(
+                backend.broadcast_to(
+                    backend.to_tensor(init_state[spec.name]), spec.shape  # pyrefly: ignore[bad-argument-type]
+                ),
+                backend.float_dtype,
+            )
+            z_part = backend.reshape(
+                backend.cast(
+                    spec.bijector.inverse(constrained_val), backend.float_dtype
+                ),
+                (spec.size,),
+            )
+          else:
+            z_part = default_init_z[offset : offset + spec.size]
+          init_parts.append(np.asarray(z_part, dtype=np.float64))
+          offset += spec.size
+        z0_primary = np.concatenate(init_parts, axis=0)
+      else:
+        z0_primary = np.asarray(default_init_z, dtype=np.float64)
+
+      if not use_adm and not include_jacobian:
+        # When optimizing in constrained space without ADM or the HalfNormal
+        # log-det Jacobian, (eta_x=0, beta_gx_dev=0) is a saddle point when dev
+        # starts at identically zero. Add a small deterministic perturbation to
+        # break symmetry on Restart 0.
+        offset = 0
+        z0_primary = z0_primary.copy()
+        for spec in free_specs:
+          if spec.name.endswith("_dev") and np.all(
+              z0_primary[offset : offset + spec.size] == 0.0
+          ):
+            z0_primary[offset : offset + spec.size] = np.linspace(
+                -0.05, 0.05, spec.size, dtype=np.float64
+            )
+          offset += spec.size
+
+      start_vectors: list[np.ndarray] = [z0_primary]
+      if n_restarts > 1 and n_candidates > 0:
+        n_pool = max(n_candidates, n_restarts - 1)
+        cand_matrix = self._sample_candidate_vectors(
+            n_candidates=n_pool,
+            free_specs=free_specs,
+            fixed_params=fixed_params,
+            rng_handler=rng_handler,
+        )
+        scored_candidates: list[tuple[float, np.ndarray]] = []
+        for idx in range(n_pool):
+          cand_vec = cand_matrix[idx]
+          if not np.all(np.isfinite(cand_vec)):
+            continue
+          cand_loss, _ = scipy_objective(cand_vec)
+          if cand_loss < 1e29:
+            scored_candidates.append((cand_loss, cand_vec))
+        scored_candidates.sort(key=lambda item: item[0])
+        for _, cand_vec in scored_candidates[: n_restarts - 1]:
+          start_vectors.append(cand_vec)
+
+      best_loss = float("inf")
+      best_z: np.ndarray | None = None
+      best_nit = 0
+      best_converged = False
+
+      for z0 in start_vectors:
+        res = optimize.minimize(
+            scipy_objective,
+            z0,
+            method="L-BFGS-B",
+            jac=True,
+            options={
+                "maxiter": maxiter,
+                "ftol": ftol,
+                "gtol": gtol,
+            },
+        )
+        res_loss = float(res.fun)
+        if np.isfinite(res_loss) and res_loss < best_loss:
+          best_loss = res_loss
+          best_z = np.asarray(res.x, dtype=np.float64)
+          best_nit = int(getattr(res, "nit", 0))
+          best_converged = bool(res.success)
+
+      if best_z is None or not np.all(np.isfinite(best_z)):
+        raise MAPOptimizationError(
+            "MAP optimization failed to produce finite parameter estimates"
+            f" across {len(start_vectors)} start(s)."
+        )
+      best_z_tensor = backend.to_tensor(best_z, dtype=backend.float_dtype)
+    else:
+      best_z_tensor = backend.zeros((0,), dtype=backend.float_dtype)
+      best_loss = float(np.asarray(neg_log_posterior(best_z_tensor)))
+      best_nit = 0
+      best_converged = True
+
+    # Stationary point in constrained space, before geo random-effect
+    # re-normalization (which preserves the likelihood but not the Hessian).
+    theta_star = _constrain_free_parameters(
+        _split_free_vector(best_z_tensor, free_specs), free_specs
+    )
+    approximate_posterior: adm.ApproximatePosterior | None = None
+    if fit_approximation and total_dim > 0:
+      approximate_posterior = self._fit_approximate_posterior(
+          theta_star,
+          free_specs,
+          fixed_params,
+          observed_y,
+          adm_adjustments,
+          batch_size=hessian_batch_size,
+      )
+
+    point_latents = self._free_latents_with_sample_axes(
+        theta_star, free_specs, n_draws=1, use_adm=use_adm
+    )
+    point_states = self._reconstruct_states(
+        point_latents,
+        fixed_params,
+        pinned_names,
+        n_draws=1,
+        rng_handler=rng_handler,
+        batch_size=reconstruction_batch_size,
+    )
+
+    if approximate_posterior is not None and n_draws > 0:
+      standard_normals = backend.tfd.Normal(0.0, 1.0).sample(
+          (n_draws, total_dim), seed=rng_handler.get_next_seed()
+      )
+      draws = approximate_posterior.sample(
+          np.asarray(standard_normals, dtype=np.float64)
+      )
+      target_log_probs = self._evaluate_adjusted_log_posterior(
+          draws,
+          free_specs,
+          fixed_params,
+          observed_y,
+          adm_adjustments,
+          batch_size=reconstruction_batch_size,
+      )
+      draw_latents = self._free_latents_with_sample_axes(
+          draws, free_specs, n_draws=n_draws, use_adm=use_adm
+      )
+      posterior_states = self._reconstruct_states(
+          draw_latents,
+          fixed_params,
+          pinned_names,
+          n_draws=n_draws,
+          rng_handler=rng_handler,
+          batch_size=reconstruction_batch_size,
+      )
+      n_posterior_draws = n_draws
+    else:
+      posterior_states = point_states
+      target_log_probs = np.array([-best_loss], dtype=np.float64)
+      n_posterior_draws = 1
+
+    posterior_dims = self._model_context.create_inference_data_dims()
+    infdata_posterior = az.convert_to_inference_data(
+        posterior_states,
+        coords=self._model_context.create_inference_data_coords(
+            1, n_posterior_draws
+        ),
+        dims=posterior_dims,
+    )
+    posterior_attrs = {
+        "inference_method": (
+            constants.METHOD_ADM if use_adm else constants.METHOD_MAP
+        ),
+        "use_adm": bool(use_adm),
+        "adm_adjustments": (
+            {name: adj.family.value for name, adj in adm_adjustments.items()}
+            if use_adm
+            else {}
+        ),
+        "map_converged": best_converged,
+        "map_n_iterations": best_nit,
+        "map_objective": float(-best_loss),
+        "n_draws": int(n_draws if approximate_posterior is not None else 0),
+    }
+    if approximate_posterior is not None:
+      posterior_attrs.update(approximate_posterior.diagnostics.as_attrs())
+    infdata_posterior.posterior.attrs.update(posterior_attrs)
+
+    inference_data = az.concat(
+        [
+            infdata_posterior,
+            self._build_trace_groups(
+                target_log_probs, best_nit, best_converged
+            ),
+        ],
+        inplace=False,
+    )
+    if approximate_posterior is not None:
+      inference_data.add_groups({
+          constants.ADM_MARGINALS: self._build_adm_marginals_dataset(
+              approximate_posterior, confidence_level
+          )
+      })
+      if n_draws > 0:
+        inference_data.add_groups({
+            constants.POINT_ESTIMATE: az.dict_to_dataset(
+                point_states,
+                coords=self._model_context.create_inference_data_coords(1, 1),
+                dims=posterior_dims,
+            )
+        })
+    return inference_data

@@ -605,6 +605,44 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         np.isnan(np.asarray(rhat[constants.SLOPE_M])), [True, False, False]
     )
 
+  def test_get_rhat_and_summary_metrics_with_map_posterior(self):
+    map_idata = self.meridian_media_only.posterior_map_callable(
+        n_restarts=1,
+        n_candidates=0,
+        maxiter=10,
+        seed=0,
+    )
+    analyzer_obj = analyzer.Analyzer(
+        model_context=self.meridian_media_only.model_context,
+        inference_data=map_idata,
+    )
+    rhat = analyzer_obj.get_rhat()
+    for val in rhat.values():
+      self.assertTrue(np.all(np.isnan(np.asarray(val))))
+    rhat_summary_df = analyzer_obj.rhat_summary()
+    self.assertTrue(np.all(np.isnan(rhat_summary_df[constants.AVG_R_HAT])))
+    summary_ds = analyzer_obj.summary_metrics()
+    self.assertIn(constants.ROI, summary_ds.data_vars)
+    # For a 1-draw MAP estimate, mean and median equal the MAP estimate.
+    np.testing.assert_allclose(
+        summary_ds[constants.ROI]
+        .sel(metric=constants.MEAN, distribution=constants.POSTERIOR)
+        .values,
+        summary_ds[constants.ROI]
+        .sel(metric=constants.MEDIAN, distribution=constants.POSTERIOR)
+        .values,
+    )
+    baseline_ds = analyzer_obj.baseline_summary_metrics()
+    self.assertIn(constants.BASELINE_OUTCOME, baseline_ds.data_vars)
+    np.testing.assert_allclose(
+        baseline_ds[constants.BASELINE_OUTCOME]
+        .sel(metric=constants.MEAN, distribution=constants.POSTERIOR)
+        .values,
+        baseline_ds[constants.BASELINE_OUTCOME]
+        .sel(metric=constants.MEDIAN, distribution=constants.POSTERIOR)
+        .values,
+    )
+
   def test_rhat_summary_media_only_correct(self):
     rhat_summary = self.analyzer_media_only.rhat_summary()
     self.assertEqual(rhat_summary.shape, (13, 7))

@@ -24,7 +24,6 @@ from meridian.backend import config
 import numpy as np
 from typing_extensions import Literal
 
-
 # The conditional imports in this module are a deliberate design choice for the
 # backend abstraction layer. The TFP-on-JAX substrate provides a nearly
 # identical API to the standard TFP library, making an alias-based approach more
@@ -63,6 +62,7 @@ __all__ = [
     "computation_backend",
     "computation_precision",
     "config",
+    "hessian",
     "make_ndarray",
     "make_tensor_proto",
     "result_type",
@@ -70,6 +70,7 @@ __all__ = [
     "stabilize_rf_roi_grid",
     "standardize_dtype",
     "to_tensor",
+    "value_and_grad",
     "vectorized_map",
     "xla_windowed_adaptive_nuts",
 ]
@@ -255,6 +256,102 @@ def _tf_vectorized_map(fn: Any, elems: Any) -> Any:
   import tensorflow as tf
 
   return tf.vectorized_map(fn, elems)
+
+
+def _jax_value_and_grad(fn: Any) -> Any:
+  """JAX implementation for compiled value_and_grad."""
+  import jax  # pylint: disable=redefined-outer-name
+
+  return jax.jit(jax.value_and_grad(fn))
+
+
+def _tf_value_and_grad(fn: Any) -> Any:
+  """TensorFlow implementation for compiled value_and_grad."""
+  import tensorflow as tf
+
+  @tf.function(autograph=False)
+  def _val_and_grad(x):
+    with tf.GradientTape() as tape:
+      tape.watch(x)
+      val = fn(x)
+    grad = tape.gradient(val, x)
+    return val, grad
+
+  return _val_and_grad
+
+
+def _jax_hessian(fn: Any, x: Any, batch_size: int) -> Any:
+  """JAX implementation of `hessian` (forward-over-reverse, in row batches)."""
+  import jax  # pylint: disable=redefined-outer-name
+  import jax.numpy as jnp
+
+  dim = int(x.shape[0])
+  if dim == 0:
+    return jnp.zeros((0, 0), dtype=x.dtype)
+  grad_fn = jax.grad(fn)
+
+  @jax.jit
+  def _hessian_rows(point, tangents):
+    return jax.vmap(lambda v: jax.jvp(grad_fn, (point,), (v,))[1])(tangents)
+
+  # Every chunk is padded to `batch_size` rows so a single compiled program
+  # serves all chunks.
+  identity = jnp.eye(dim, dtype=x.dtype)
+  rows = []
+  for start in range(0, dim, batch_size):
+    stop = min(start + batch_size, dim)
+    tangents = identity[start:stop]
+    if stop - start < batch_size:
+      tangents = jnp.concatenate(
+          [
+              tangents,
+              jnp.zeros((batch_size - (stop - start), dim), dtype=x.dtype),
+          ],
+          axis=0,
+      )
+    rows.append(_hessian_rows(x, tangents)[: stop - start])
+  return jnp.concatenate(rows, axis=0)
+
+
+def _tf_hessian(fn: Any, x: Any, batch_size: int) -> Any:
+  """TensorFlow implementation of `hessian` (nested tapes, in row batches)."""
+  import tensorflow as tf
+
+  dim = int(x.shape[0])
+  if dim == 0:
+    return tf.zeros((0, 0), dtype=x.dtype)
+
+  @tf.function(autograph=False)
+  def _hessian_rows(point, row_indices):
+    with tf.GradientTape() as outer_tape:
+      outer_tape.watch(point)
+      with tf.GradientTape() as inner_tape:
+        inner_tape.watch(point)
+        value = fn(point)
+      gradient = inner_tape.gradient(
+          value, point, unconnected_gradients=tf.UnconnectedGradients.ZERO
+      )
+      gradient_rows = tf.gather(gradient, row_indices)
+    # Only the selected rows are vectorized, which bounds peak memory.
+    return outer_tape.jacobian(
+        gradient_rows,
+        point,
+        unconnected_gradients=tf.UnconnectedGradients.ZERO,
+        experimental_use_pfor=True,
+    )
+
+  # Every chunk is padded to `batch_size` rows (repeating the last row) so a
+  # single traced graph serves all chunks.
+  rows = []
+  for start in range(0, dim, batch_size):
+    stop = min(start + batch_size, dim)
+    row_indices = np.minimum(np.arange(start, start + batch_size), dim - 1)
+    rows.append(
+        _hessian_rows(x, tf.constant(row_indices, dtype=tf.int32))[
+            : stop - start
+        ]
+    )
+  return tf.concat(rows, axis=0)
 
 
 def _jax_divide_no_nan(x, y):
@@ -1110,6 +1207,8 @@ if _BACKEND == config.Backend.JAX:
   expand_dims = _ops.expand_dims
   fill = _jax_fill
   function = _jax_function_wrapper
+  value_and_grad = _jax_value_and_grad
+  hessian = _jax_hessian
   vectorized_map = _jax_vectorized_map
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
@@ -1301,6 +1400,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   expand_dims = _ops.expand_dims
   fill = _tf_fill
   function = _tf_function_wrapper
+  value_and_grad = _tf_value_and_grad
+  hessian = _tf_hessian
   vectorized_map = _tf_vectorized_map
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
