@@ -280,6 +280,17 @@ class TimeVaryingMathTest(test_utils.MeridianTestCase, parameterized.TestCase):
     expected[:, [0, 2]] = sub
     test_utils.assert_allclose(result, expected)
 
+  def test_interval_adjustments_distribution(self):
+    distribution = changepoints.interval_adjustments_distribution(
+        self._info, constants.VARPHI_M
+    )
+    self.assertEqual(distribution.name, constants.VARPHI_M)
+    self.assertEqual(
+        list(distribution.event_shape),
+        [self._info.n_channels, self._info.max_intervals],
+    )
+    self.assertEqual(list(distribution.batch_shape), [])
+
 
 if __name__ == '__main__':
   absltest.main()

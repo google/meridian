@@ -669,6 +669,25 @@ class Meridian:
         constants.NON_MEDIA_CHANNEL,
         self.n_non_media_channels,
     )
+    # A model without changepoints expects none of these coordinates.
+    # pylint: disable=protected-access
+    changepoint_coords = (
+        self._model_context._changepoint_inference_data_coords()
+        if self._model_context._changepoints
+        else {}
+    )
+    # pylint: enable=protected-access
+    for coord in (
+        constants.CHANGEPOINT_MEDIA_CHANNEL,
+        constants.CHANGEPOINT_RF_CHANNEL,
+        constants.CHANGEPOINT_INTERVAL,
+    ):
+      self._validate_injected_inference_data_group_coord(
+          inference_data,
+          group,
+          coord,
+          len(changepoint_coords.get(coord, ())),
+      )
 
   def _validate_kpi_variability(self):
     """Validates the KPI variability."""
