@@ -280,6 +280,27 @@ class TimeVaryingMathTest(test_utils.MeridianTestCase, parameterized.TestCase):
     expected[:, [0, 2]] = sub
     test_utils.assert_allclose(result, expected)
 
+  def test_interval_adjustments_distribution(self):
+    distribution = changepoints.interval_adjustments_distribution(
+        self._info, constants.VARPHI_M
+    )
+    self.assertEqual(distribution.name, constants.VARPHI_M)
+    # TV has 2 intervals and Search 3; padding isn't sampled.
+    self.assertEqual(self._info.n_intervals, 5)
+    self.assertEqual(list(distribution.event_shape), [5])
+    self.assertEqual(list(distribution.batch_shape), [])
+
+  @parameterized.named_parameters(('zero', 0.0), ('nan', np.nan))
+  def test_pad_intervals(self, fill: float):
+    varphi = self._normal(2, 5)  # (chains, real intervals)
+    padded = np.asarray(
+        changepoints.pad_intervals(_tensor(varphi), self._info, fill=fill)
+    )
+    expected = np.full((2, 2, 3), fill, dtype=varphi.dtype)
+    expected[:, 0, :2] = varphi[:, :2]  # TV
+    expected[:, 1, :] = varphi[:, 2:]  # Search
+    np.testing.assert_array_equal(padded, expected)
+
 
 if __name__ == '__main__':
   absltest.main()

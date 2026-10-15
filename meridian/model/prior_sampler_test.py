@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Mapping
+import itertools
 from unittest import mock
 
 from absl.testing import absltest
@@ -19,6 +21,9 @@ from absl.testing import parameterized
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.backend import test_utils
+from meridian.model import changepoints
+from meridian.model import context
 from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
@@ -39,20 +44,6 @@ class PriorDistributionSamplerTest(
   def setUpClass(cls):
     super().setUpClass()
     model_test_data.WithInputDataSamples.setup()
-
-  def test_sample_prior_with_changepoints_raises(self):
-    input_data = self.short_input_data_with_media_and_rf
-    assert input_data.media_channel is not None
-    model_spec = spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
-        changepoints={
-            str(input_data.media_channel.values[0]): [
-                input_data.time_coordinates.all_dates[10]
-            ]
-        }
-    )
-    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
-    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
-      meridian.sample_prior(n_draws=self._N_DRAWS)
 
   def test_sample_prior_seed_same_seed(self):
     model_spec = spec.ModelSpec()
@@ -944,6 +935,475 @@ class PriorDistributionSamplerTest(
     median = np.median(aggregate_baseline)
     self.assertGreaterEqual(np.min(aggregate_baseline), -1e-3 * median)
     self.assertLess(np.min(aggregate_baseline), 0.2 * median)
+
+
+_ModelSpecWithChangepoints = spec._ModelSpecWithChangepoints  # pylint: disable=protected-access
+
+
+class TimeVaryingPriorSamplingTest(
+    test_utils.MeridianTestCase,
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests prior sampling of models with changepoints."""
+
+  # TODO: Add an end-to-end test that fits a model with
+  # changepoints on simulated data with a known change in effect, and checks the
+  # recovered per-interval ROI, once `Analyzer` supports changepoints.
+
+  # pylint: disable=protected-access
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    data = self.short_input_data_with_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    self._media = [str(name) for name in data.media_channel.values]
+    self._rf = [str(name) for name in data.rf_channel.values]
+    dates = data.time_coordinates.all_dates
+    self._changepoints = {
+        self._media[1]: [dates[20]],
+        self._rf[0]: [dates[10], dates[30]],
+    }
+
+  def _context(self, **spec_kwargs) -> context.ModelContext:
+    return context.ModelContext(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints=self._changepoints, **spec_kwargs
+        ),
+    )
+
+  def test_stores_time_varying_parameters(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(changepoints=self._changepoints),
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(
+        prior[constants.ZETA_RF].dims,
+        (constants.CHAIN, constants.DRAW, constants.CHANGEPOINT_RF_CHANNEL),
+    )
+    self.assertEqual(
+        prior[constants.VARPHI_M].dims,
+        (
+            constants.CHAIN,
+            constants.DRAW,
+            constants.CHANGEPOINT_MEDIA_CHANNEL,
+            constants.CHANGEPOINT_INTERVAL,
+        ),
+    )
+    # The RF channel has 3 intervals, so both types share an axis of 3.
+    self.assertEqual(prior[constants.VARPHI_M].shape, (1, self._N_DRAWS, 1, 3))
+    # The media channel has 2 intervals; its padded third interval is NaN.
+    varphi_m = prior[constants.VARPHI_M].values
+    self.assertTrue(np.all(np.isnan(varphi_m[..., 0, 2])))
+    self.assertTrue(np.all(np.isfinite(varphi_m[..., 0, :2])))
+    self.assertEqual(
+        list(prior[constants.CHANGEPOINT_MEDIA_CHANNEL].values),
+        [self._media[1]],
+    )
+
+  def test_stores_time_varying_parameters_of_media_only(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={self._media[1]: self._changepoints[self._media[1]]}
+        ),
+    )
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    prior = meridian.inference_data.prior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(prior[constants.VARPHI_M].shape, (1, self._N_DRAWS, 1, 2))
+    self.assertNotIn(constants.ZETA_RF, prior)
+    self.assertNotIn(constants.VARPHI_RF, prior)
+    self.assertEqual(prior.sizes.get(constants.CHANGEPOINT_RF_CHANNEL, 0), 0)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="other_changepoints",
+          has_changepoints=True,
+          coord=constants.CHANGEPOINT_RF_CHANNEL,
+          expected=1,
+          got=0,
+      ),
+      dict(
+          testcase_name="no_changepoints",
+          has_changepoints=False,
+          coord=constants.CHANGEPOINT_MEDIA_CHANNEL,
+          expected=0,
+          got=1,
+      ),
+  )
+  def test_injected_inference_data_must_match_changepoints(
+      self, has_changepoints: bool, coord: str, expected: int, got: int
+  ):
+    data = self.short_input_data_with_media_and_rf
+    # Only a media channel has changepoints, so the RF coordinate is empty.
+    media_only_spec = _ModelSpecWithChangepoints(
+        changepoints={self._media[1]: self._changepoints[self._media[1]]}
+    )
+    meridian = model.Meridian(input_data=data, model_spec=media_only_spec)
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    inference_data = meridian.inference_data
+    # The same changepoints accept it.
+    model.Meridian(
+        input_data=data,
+        model_spec=media_only_spec,
+        inference_data=inference_data,
+    )
+
+    with self.assertRaisesRegex(
+        ValueError,
+        f"Injected inference data {constants.PRIOR} has incorrect coordinate"
+        f" '{coord}': expected {expected}, got {got}",
+    ):
+      model.Meridian(
+          input_data=data,
+          model_spec=(
+              _ModelSpecWithChangepoints(changepoints=self._changepoints)
+              if has_changepoints
+              else spec.ModelSpec()
+          ),
+          inference_data=inference_data,
+      )
+
+  def test_model_without_changepoints_matches_model_spec(self):
+    data = self.short_input_data_with_media_and_rf
+    draws = prior_sampler.PriorDistributionSampler(
+        model_context=context.ModelContext(
+            input_data=data, model_spec=_ModelSpecWithChangepoints()
+        )
+    )(n_draws=self._N_DRAWS, seed=1)
+    expected = prior_sampler.PriorDistributionSampler(
+        model_context=context.ModelContext(
+            input_data=data, model_spec=spec.ModelSpec()
+        )
+    )(n_draws=self._N_DRAWS, seed=1)
+    self.assertEqual(set(draws), set(expected))
+    for name, value in expected.items():
+      test_utils.assert_allequal(draws[name], value, err_msg=name)
+
+  @parameterized.product(
+      prior_type=(
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+      ),
+      changepoint_media_effects_dist=(
+          constants.MEDIA_EFFECTS_LOG_NORMAL,
+          constants.MEDIA_EFFECTS_NORMAL,
+      ),
+  )
+  def test_prior_keeps_its_whole_history_meaning(
+      self, prior_type: str, changepoint_media_effects_dist: str
+  ):
+    # The other channels use the other distribution.
+    media_effects_dist = (
+        constants.MEDIA_EFFECTS_NORMAL
+        if changepoint_media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
+        else constants.MEDIA_EFFECTS_LOG_NORMAL
+    )
+    model_context = self._context(
+        media_prior_type=prior_type,
+        rf_prior_type=prior_type,
+        changepoint_media_prior_type=prior_type,
+        changepoint_rf_prior_type=prior_type,
+        media_effects_dist=media_effects_dist,
+        changepoint_media_effects_dist=changepoint_media_effects_dist,
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=4, seed=1
+    )
+    for is_rf, time_varying in itertools.product((False, True), repeat=2):
+      with self.subTest(is_rf=is_rf, time_varying=time_varying):
+        self._assert_whole_history_meaning(
+            model_context=model_context,
+            draws=draws,
+            prior_type=prior_type,
+            media_effects_dist=(
+                changepoint_media_effects_dist
+                if time_varying
+                else media_effects_dist
+            ),
+            is_rf=is_rf,
+            time_varying=time_varying,
+        )
+
+  @parameterized.named_parameters(
+      ("coefficient_and_roi", "coefficient", "roi"),
+      ("roi_and_coefficient", "roi", "coefficient"),
+      ("roi_and_mroi", "roi", "mroi"),
+      ("contribution_and_roi", "contribution", "roi"),
+  )
+  def test_channels_with_changepoints_use_their_prior_type(
+      self, prior_type: str, changepoint_prior_type: str
+  ):
+    model_context = self._context(
+        media_prior_type=prior_type,
+        rf_prior_type=prior_type,
+        changepoint_media_prior_type=changepoint_prior_type,
+        changepoint_rf_prior_type=changepoint_prior_type,
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=4, seed=1
+    )
+    for is_rf, time_varying in itertools.product((False, True), repeat=2):
+      channel_prior_type = (
+          changepoint_prior_type if time_varying else prior_type
+      )
+      with self.subTest(is_rf=is_rf, time_varying=time_varying):
+        if channel_prior_type != constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          self._assert_whole_history_meaning(
+              model_context=model_context,
+              draws=draws,
+              prior_type=channel_prior_type,
+              media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+              is_rf=is_rf,
+              time_varying=time_varying,
+          )
+    # A treatment parameter is NaN for the channels that don't use it.
+    for name, info in (
+        (constants.ROI_M, model_context._media_changepoint_info),
+        (constants.ROI_RF, model_context._rf_changepoint_info),
+    ):
+      assert info is not None
+      if name in draws:
+        is_changepoint_channel = np.isin(
+            np.arange(info.n_channels_total), info.channel_indices
+        )
+        uses_roi = is_changepoint_channel == (changepoint_prior_type == "roi")
+        np.testing.assert_array_equal(
+            np.isnan(np.asarray(draws[name])),
+            np.broadcast_to(~uses_roi, np.shape(draws[name])),
+        )
+    for beta in (constants.BETA_M, constants.BETA_RF):
+      self.assertTrue(np.all(np.isfinite(np.asarray(draws[beta]))))
+
+  def _assert_whole_history_meaning(
+      self,
+      *,
+      model_context: context.ModelContext,
+      draws: Mapping[str, backend.Tensor],
+      prior_type: str,
+      media_effects_dist: str,
+      is_rf: bool,
+      time_varying: bool,
+  ):
+    """Asserts that a channel's draws imply its drawn prior quantity."""
+    eqn = equations.ModelEquations(model_context)
+    if is_rf:
+      changepoint_info = model_context._rf_changepoint_info
+      tensors = model_context.rf_tensors
+      assert tensors.reach_scaled is not None
+      assert tensors.frequency is not None
+      alpha, ec, slope = (
+          draws[constants.ALPHA_RF],
+          draws[constants.EC_RF],
+          draws[constants.SLOPE_RF],
+      )
+      transformed = eqn.adstock_hill_rf(
+          reach=tensors.reach_scaled,
+          frequency=tensors.frequency,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=model_context.adstock_decay_spec.rf,
+          saturation_spec=model_context.saturation_spec.rf,
+      )
+      counterfactual_difference = (
+          eqn.linear_predictor_counterfactual_difference_rf(
+              rf_transformed=transformed,
+              alpha_rf=alpha,
+              ec_rf=ec,
+              slope_rf=slope,
+          )
+      )
+      beta_gx, zeta, varphi = (
+          draws[constants.BETA_GRF],
+          draws[constants.ZETA_RF],
+          draws[constants.VARPHI_RF],
+      )
+      treatment_parameter = {
+          constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_RF,
+          constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_RF,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: (
+              constants.CONTRIBUTION_RF
+          ),
+      }[prior_type]
+    else:
+      changepoint_info = model_context._media_changepoint_info
+      tensors = model_context.media_tensors
+      assert tensors.media_scaled is not None
+      alpha, ec, slope = (
+          draws[constants.ALPHA_M],
+          draws[constants.EC_M],
+          draws[constants.SLOPE_M],
+      )
+      transformed = eqn.adstock_hill_media(
+          media=tensors.media_scaled,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=model_context.adstock_decay_spec.media,
+          saturation_spec=model_context.saturation_spec.media,
+      )
+      counterfactual_difference = (
+          eqn.linear_predictor_counterfactual_difference_media(
+              media_transformed=transformed,
+              alpha_m=alpha,
+              ec_m=ec,
+              slope_m=slope,
+          )
+      )
+      beta_gx, zeta, varphi = (
+          draws[constants.BETA_GM],
+          draws[constants.ZETA_M],
+          draws[constants.VARPHI_M],
+      )
+      treatment_parameter = {
+          constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_M,
+          constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_M,
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: constants.CONTRIBUTION_M,
+      }[prior_type]
+    assert changepoint_info is not None
+    beta_gx = np.asarray(beta_gx)
+    if time_varying:
+      channel = int(changepoint_info.channel_indices[0])
+      # The incremental outcome over all geos and time periods, using each
+      # time period's coefficient, matches the prior draw.
+      coefficients = changepoints.time_varying_coefficients(
+          beta_gx=backend.to_tensor(
+              beta_gx[..., channel : channel + 1], dtype=backend.float_dtype
+          ),
+          zeta=zeta,
+          # Padded intervals are NaN and have zero weight.
+          phi=changepoints.expand_intervals(
+              backend.to_tensor(
+                  np.nan_to_num(np.asarray(varphi)), dtype=backend.float_dtype
+              ),
+              changepoint_info.weights,
+          ),
+          media_effects_dist=media_effects_dist,
+      )
+    else:
+      channel = min(
+          set(range(beta_gx.shape[-1]))
+          - set(changepoint_info.channel_indices.tolist())
+      )
+      coefficients = np.broadcast_to(
+          beta_gx[..., np.newaxis, channel : channel + 1],
+          beta_gx.shape[:-1] + (self._N_TIMES_SHORT, 1),
+      )
+    revenue_per_kpi = (
+        np.ones((self._N_GEOS, self._N_TIMES_SHORT))
+        if model_context.revenue_per_kpi is None
+        else np.asarray(model_context.revenue_per_kpi)
+    )
+    incremental_outcome = np.einsum(
+        "...gtx,gt,g,...gtx->...x",
+        np.asarray(counterfactual_difference)[..., channel : channel + 1],
+        revenue_per_kpi,
+        np.asarray(model_context.population),
+        np.asarray(coefficients),
+    ) * float(model_context.kpi_transformer.population_scaled_stdev)
+    expected = (
+        np.asarray(draws[treatment_parameter])[..., channel : channel + 1]
+        * np.asarray(tensors.prior_denominator)[channel]
+    )
+    test_utils.assert_allclose(incremental_outcome, expected, rtol=1e-3)
+
+  @parameterized.product(
+      data_name=(
+          "short_input_data_with_media_only",
+          "short_input_data_with_rf_only",
+          "national_input_data_media_and_rf",
+      ),
+      prior_type=(
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+      ),
+  )
+  def test_samples_each_channel_type(self, data_name: str, prior_type: str):
+    data = getattr(self, data_name)
+    dates = data.time_coordinates.all_dates
+    channels = {
+        constants.MEDIA_CHANNEL: data.media_channel,
+        constants.RF_CHANNEL: data.rf_channel,
+    }
+    changepoint_channels = {
+        channel_type: str(names.values[0])
+        for channel_type, names in channels.items()
+        if names is not None
+    }
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={
+                channel: [dates[len(dates) // 2]]
+                for channel in changepoint_channels.values()
+            },
+            media_prior_type=prior_type,
+            rf_prior_type=prior_type,
+            changepoint_media_prior_type=prior_type,
+            changepoint_rf_prior_type=prior_type,
+        ),
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=self._N_DRAWS, seed=1
+    )
+    for channel_type, zeta, varphi, beta in (
+        (
+            constants.MEDIA_CHANNEL,
+            constants.ZETA_M,
+            constants.VARPHI_M,
+            constants.BETA_GM,
+        ),
+        (
+            constants.RF_CHANNEL,
+            constants.ZETA_RF,
+            constants.VARPHI_RF,
+            constants.BETA_GRF,
+        ),
+    ):
+      if channel_type not in changepoint_channels:
+        self.assertNotIn(zeta, draws)
+        self.assertNotIn(varphi, draws)
+        continue
+      self.assertEqual(draws[zeta].shape, (1, self._N_DRAWS, 1))
+      self.assertEqual(draws[varphi].shape, (1, self._N_DRAWS, 1, 2))
+      self.assertTrue(np.all(np.isfinite(np.asarray(draws[beta]))))
+
+  def test_custom_zeta_prior_per_channel(self):
+    model_context = context.ModelContext(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={
+                self._media[0]: self._changepoints[self._media[1]],
+                self._media[1]: self._changepoints[self._media[1]],
+            },
+            prior=prior_distribution._PriorDistributionWithChangepoints(
+                zeta_m=backend.tfd.HalfNormal(
+                    backend.to_tensor([0.01, 10.0], dtype=backend.float_dtype),
+                    name=constants.ZETA_M,
+                ),
+            ),
+        ),
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=200, seed=1
+    )
+    zeta_m = np.asarray(draws[constants.ZETA_M])
+    self.assertEqual(zeta_m.shape, (1, 200, 2))
+    self.assertLess(np.max(zeta_m[..., 0]), 0.1)
+    self.assertGreater(np.mean(zeta_m[..., 1]), 1.0)
+    self.assertNotIn(constants.ZETA_RF, draws)
 
 
 class PriorDistributionSamplerInitTest(
