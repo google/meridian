@@ -223,6 +223,16 @@ class Analyzer:
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
     self._model_context = tensors.get_model_context(meridian, model_context)
+    # TODO: Use each time period's coefficient for the channels
+    # with changepoints. Only the private `spec._ModelSpecWithChangepoints` has
+    # `changepoints`, so it is read with `getattr`. The `Mapping` check is
+    # needed because tests here and downstream often pass mock models, whose
+    # attributes are always truthy.
+    changepoints = getattr(self._model_context.model_spec, "changepoints", None)
+    if isinstance(changepoints, Mapping) and changepoints:
+      raise NotImplementedError(
+          "`Analyzer` doesn't support models with `changepoints` yet."
+      )
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data

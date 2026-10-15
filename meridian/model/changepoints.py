@@ -32,7 +32,8 @@ share one tensor. Padded intervals have zero weight in every time period, so
 their values never reach the model.
 
 `ModelContext` uses this module to build each channel type's
-`ChangepointInfo`. Sampling doesn't use it yet.
+`ChangepointInfo`, and the samplers use it to draw the interval adjustments and
+build each time period's coefficient.
 """
 
 from collections.abc import Collection, Mapping, Sequence
@@ -49,6 +50,7 @@ __all__ = [
     'changepoint_knot_overlaps',
     'expand_intervals',
     'get_changepoint_info',
+    'interval_adjustments_distribution',
     'interval_weights',
     'merge_channels',
     'time_varying_coefficients',
@@ -264,6 +266,31 @@ def changepoint_knot_overlaps(
     if hits:
       overlaps[name] = hits
   return overlaps
+
+
+def interval_adjustments_distribution(
+    info: ChangepointInfo, name: str
+) -> backend.tfd.Distribution:
+  """Returns the distribution of the interval adjustments `varphi`.
+
+  The adjustments are standard normal, so they have no prior distribution to
+  set. Prior and posterior sampling both use this distribution.
+
+  Args:
+    info: The `ChangepointInfo` of the channel type.
+    name: The parameter name, `constants.VARPHI_M` or `constants.VARPHI_RF`.
+
+  Returns:
+    A distribution with event shape `(n_channels, max_intervals)`.
+  """
+  return backend.tfd.Sample(
+      backend.tfd.Normal(
+          loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+          scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+      ),
+      [info.n_channels, info.max_intervals],
+      name=name,
+  )
 
 
 def expand_intervals(

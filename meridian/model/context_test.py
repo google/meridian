@@ -15,6 +15,7 @@
 from collections.abc import Callable, Collection, Mapping, Sequence
 import dataclasses
 import datetime
+import re
 import types
 from typing import Any
 from unittest import mock
@@ -3601,6 +3602,13 @@ _PriorDistributionWithChangepoints = (
 )
 
 
+def _normal_prior() -> backend.tfd.Distribution:
+  """A prior with negative support."""
+  return backend.tfd.Normal(
+      backend.np_float_dtype(0.5), backend.np_float_dtype(1.0)
+  )
+
+
 class ChangepointsTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -3656,6 +3664,13 @@ class ChangepointsTest(
         type(model_context.prior_broadcast),
         prior_distribution.PriorDistribution,
     )
+    self.assertNotIn(
+        constants.CHANGEPOINT_INTERVAL,
+        model_context.create_inference_data_coords(n_chains=1, n_draws=1),
+    )
+    self.assertNotIn(
+        constants.VARPHI_M, model_context.create_inference_data_dims()
+    )
 
   def test_changepoint_info_of_media_and_rf_channels(self):
     model_context = self._context(
@@ -3682,6 +3697,113 @@ class ChangepointsTest(
     self.assertEqual(media_info.mask.tolist(), [[True, True, True]])
     self.assertEqual(rf_info.channel_names, (self.rf[0],))
     self.assertEqual(rf_info.mask.tolist(), [[True, True, False]])
+
+  def test_inference_data_coords_and_dims(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={
+                self.rf[0]: [self.dates[100]],
+                self.media[1]: [self.dates[50], self.dates[10]],
+            }
+        )
+    )
+    coords = model_context.create_inference_data_coords(n_chains=1, n_draws=1)
+    self.assertEqual(
+        list(coords[constants.CHANGEPOINT_MEDIA_CHANNEL]), [self.media[1]]
+    )
+    self.assertEqual(
+        list(coords[constants.CHANGEPOINT_RF_CHANNEL]), [self.rf[0]]
+    )
+    np.testing.assert_array_equal(
+        coords[constants.CHANGEPOINT_INTERVAL], [0, 1, 2]
+    )
+    dims = model_context.create_inference_data_dims()
+    self.assertEqual(
+        dims[constants.ZETA_RF],
+        [constants.CHAIN, constants.DRAW, constants.CHANGEPOINT_RF_CHANNEL],
+    )
+    self.assertEqual(
+        dims[constants.VARPHI_M],
+        [
+            constants.CHAIN,
+            constants.DRAW,
+            constants.CHANGEPOINT_MEDIA_CHANNEL,
+            constants.CHANGEPOINT_INTERVAL,
+        ],
+    )
+
+  def _calibration(self, *channels: str) -> spec.CalibrationSpec:
+    """Calibrates `channels`, or every channel if none, on part of the data."""
+    dates = self.input_data_with_media_and_rf.media_time_coordinates.all_dates
+    date_ranges = [spec.DateRange(dates[10], dates[20])]
+    if not channels:
+      return spec.CalibrationSpec(spec=date_ranges)
+    return spec.CalibrationSpec(
+        spec=[spec.ChannelCalibrationSpec(list(channels), date_ranges)]
+    )
+
+  @parameterized.named_parameters(
+      ("media_channel", "roi_calibration", "media"),
+      ("all_channels", "roi_calibration", None),
+      ("rf_channel", "rf_roi_calibration", "rf"),
+  )
+  def test_roi_calibration_of_channel_with_changepoints_raises(
+      self, attribute: str, channel_type: str | None
+  ):
+    if channel_type is None:
+      calibration = self._calibration()
+      expected = [self.media[1]]
+    else:
+      channel = self.media[1] if channel_type == "media" else self.rf[0]
+      calibration = self._calibration(channel)
+      expected = [channel]
+    changepoints_spec = {
+        self.media[1]: [self.dates[50]],
+        self.rf[0]: [self.dates[50]],
+    }
+    if attribute == "roi_calibration":
+      model_spec = _ModelSpecWithChangepoints(
+          changepoints=changepoints_spec, roi_calibration=calibration
+      )
+    else:
+      model_spec = _ModelSpecWithChangepoints(
+          changepoints=changepoints_spec, rf_roi_calibration=calibration
+      )
+    with self.assertRaisesRegex(
+        ValueError,
+        "ROI calibration is not supported for channels with `changepoints`.*"
+        + re.escape(f"`{attribute}` sets a calibration period for {expected}"),
+    ):
+      self._context(model_spec)
+
+  def test_legacy_roi_calibration_period_of_channel_with_changepoints_raises(
+      self,
+  ):
+    data = self.input_data_with_media_and_rf
+    period = np.ones((len(data.media_time), len(self.media)), dtype=bool)
+    period[:10, 1] = False
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={self.media[1]: [self.dates[50]]},
+        roi_calibration_period=period,
+    )
+    with self.assertRaisesRegex(
+        ValueError, "`roi_calibration_period` sets a calibration period"
+    ):
+      self._context(model_spec)
+
+  def test_roi_calibration_of_other_channels_is_allowed(self):
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={self.media[1]: [self.dates[50]]},
+        roi_calibration=self._calibration(self.media[0]),
+        # A period that covers every media time period doesn't restrict it.
+        rf_roi_calibration=spec.CalibrationSpec(spec=[spec.DateRange()]),
+    )
+    calibration_period = self._context(
+        model_spec
+    ).compiled_roi_calibration_period
+    assert calibration_period is not None
+    self.assertFalse(np.all(calibration_period[:, 0]))
+    self.assertTrue(np.all(calibration_period[:, 1]))
 
   def test_only_media_channels_have_changepoints(self):
     model_context = self._context(
@@ -3781,6 +3903,112 @@ class ChangepointsTest(
     with self.assertRaisesRegex(ValueError, "media channels with changepoints"):
       _ = model_context.prior_broadcast
 
+  def _national_context(
+      self,
+      prior: prior_distribution.PriorDistribution,
+      *,
+      rf: bool,
+      changepoint_media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL,
+      prior_type: str = constants.TREATMENT_PRIOR_TYPE_ROI,
+  ) -> context.ModelContext:
+    """Builds a national model with changepoints on one media or RF channel."""
+    data = self.national_input_data_media_and_rf
+    channels = data.rf_channel if rf else data.media_channel
+    assert channels is not None
+    return self._context(
+        _ModelSpecWithChangepoints(
+            prior=prior,
+            changepoints={
+                str(channels.values[0]): [data.time_coordinates.all_dates[50]]
+            },
+            changepoint_media_effects_dist=changepoint_media_effects_dist,
+            media_prior_type=prior_type,
+            changepoint_media_prior_type=prior_type,
+        ),
+        data=data,
+    )
+
+  def test_changepoint_media_effects_dist_applies_to_national_models(self):
+    model_context = self._national_context(
+        prior_distribution.PriorDistribution(), rf=False
+    )
+    self.assertEqual(
+        model_context.media_effects_dist, constants.MEDIA_EFFECTS_NORMAL
+    )
+    self.assertEqual(
+        model_context._changepoint_media_effects_dist,
+        constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  @parameterized.named_parameters(("media", False), ("rf", True))
+  def test_negative_prior_of_log_normal_channel_with_changepoints_raises(
+      self, rf: bool
+  ):
+    normal = _normal_prior()
+    if rf:
+      field = constants.ROI_RF
+      prior = prior_distribution.PriorDistribution(roi_rf=normal)
+      channel = self.national_input_data_media_and_rf.rf_channel
+    else:
+      field = constants.ROI_M
+      prior = prior_distribution.PriorDistribution(roi_m=normal)
+      channel = self.national_input_data_media_and_rf.media_channel
+    assert channel is not None
+    with self.assertRaisesRegex(
+        ValueError,
+        re.escape(f"Channels ['{channel.values[0]}'] have `changepoints`")
+        + f".*`{field}` prior must have non-negative support",
+    ):
+      self._national_context(prior, rf=rf)
+
+  def test_negative_prior_of_normal_channel_with_changepoints_is_allowed(
+      self,
+  ):
+    model_context = self._national_context(
+        prior_distribution.PriorDistribution(roi_m=_normal_prior()),
+        rf=False,
+        changepoint_media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+    )
+    self.assertIsNotNone(model_context._media_changepoint_info)
+
+  @parameterized.named_parameters(("media", False), ("rf", True))
+  def test_other_prior_type_for_channels_with_changepoints_raises(
+      self, rf: bool
+  ):
+    name = "rf" if rf else "media"
+    channel = self.rf[0] if rf else self.media[0]
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        re.escape(
+            f"`changepoint_{name}_prior_type` ('roi') must equal"
+            f" `{name}_prior_type` ('coefficient')"
+        ),
+    ):
+      self._context(
+          _ModelSpecWithChangepoints(
+              changepoints={channel: [self.dates[10]]},
+              media_prior_type="coefficient",
+              rf_prior_type="coefficient",
+          )
+      )
+
+  def test_prior_type_of_type_without_changepoints_is_ignored(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={self.media[0]: [self.dates[10]]},
+            rf_prior_type="coefficient",
+        )
+    )
+    self.assertIsNone(model_context._rf_changepoint_info)
+
+  def test_prior_support_uses_changepoint_prior_type(self):
+    with self.assertRaisesRegex(ValueError, "`mroi_m` prior must have"):
+      self._national_context(
+          prior_distribution.PriorDistribution(mroi_m=_normal_prior()),
+          rf=False,
+          prior_type="mroi",
+      )
+
 
 def _week(index: int) -> datetime.date:
   return datetime.date(2024, 1, 1) + datetime.timedelta(weeks=index)
@@ -3821,12 +4049,23 @@ class CompileChangepointsTest(parameterized.TestCase):
       (
           "not_a_time_coordinate",
           {"TV": [datetime.date(2024, 1, 9)]},
-          "time coordinates. The nearest are 2024-01-08 and 2024-01-15.",
+          (
+              "time coordinates. A changepoint must be the first date of a time"
+              " period exactly. The nearest are 2024-01-08 and 2024-01-15."
+          ),
       ),
       (
           "before_the_data",
           {"TV": [datetime.date(2023, 12, 25)]},
-          "not one of the input data's time coordinates",
+          (
+              "not one of the input data's time coordinates. It is before the"
+              " data, which covers 2024-01-01 to 2024-01-29."
+          ),
+      ),
+      (
+          "after_the_data",
+          {"TV": [datetime.date(2024, 2, 5)]},
+          "It is after the data, which covers 2024-01-01 to 2024-01-29.",
       ),
       ("first_date", {"TV": [_week(0)]}, "is the first time coordinate"),
       ("duplicate", {"TV": [_week(1), _week(1)]}, "more than once"),

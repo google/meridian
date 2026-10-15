@@ -423,6 +423,30 @@ def _mask_to_geo_holdout_specs(
   return geo_specs
 
 
+def _changepoint_calibration_error(
+    channels: Sequence[str], attribute: str
+) -> ValueError:
+  """Returns the error for ROI calibration of channels with changepoints."""
+  channel_list = list(channels)
+  example = channels[0]
+  verb = "has" if len(channels) == 1 else "have"
+  return ValueError(
+      "ROI calibration is not supported for channels with `changepoints`."
+      f" `{attribute}` sets a calibration period for {channel_list}, which also"
+      f" {verb} `changepoints`.\n"
+      "To calibrate ROI for channels with changepoints, first, partition the"
+      " data manually by dividing the channel into distinct periods and"
+      " modeling each as a separate channel without changepoints. For example,"
+      f" replace {example!r} with '{example}_1' and '{example}_2', each having"
+      " spend and media only during its respective period. Then, calibrate"
+      " each resulting channel with the experiment corresponding to that time"
+      " period.\n"
+      "Alternatively, if you want to model the channel with time-varying"
+      " media effectiveness without ROI calibration, keep `changepoints` and"
+      f" remove {channel_list} from `{attribute}`."
+  )
+
+
 def _compile_changepoints(
     changepoints_spec: Mapping[str, Sequence[datetime.date]],
     *,
@@ -470,10 +494,20 @@ def _compile_changepoints(
     indices = []
     for date in changepoints_spec[channel]:
       if date not in index_of:
+        if date < dates[0] or date > dates[-1]:
+          hint = (
+              f" It is {'before' if date < dates[0] else 'after'} the data,"
+              f" which covers {dates[0]} to {dates[-1]}."
+          )
+        else:
+          hint = (
+              " A changepoint must be the first date of a time period exactly."
+              + _nearest_coordinates_hint(date, dates)
+          )
         raise ValueError(
             f"The changepoint {date} of channel {channel!r} is not one of the"
             " input data's time coordinates."
-            + _nearest_coordinates_hint(date, dates)
+            + hint
         )
       if index_of[date] == 0:
         raise ValueError(
@@ -536,12 +570,15 @@ class ModelContext:
     self._validate_data_dependent_model_spec()
     self._validate_model_spec_shapes()
     self._resolve_declarative_model_spec()
+    self._validate_changepoint_calibration()
 
     self._set_total_media_contribution_prior = False
     self._warn_setting_ignored_priors()
     self._validate_mroi_priors_non_revenue()
     self._validate_roi_priors_non_revenue()
     self._check_media_prior_support()
+    self._check_changepoint_prior_types()
+    self._check_changepoint_prior_support()
     self._validate_geo_invariants()
     self._validate_time_invariants()
     self._validate_media_spend_for_paid_channels()
@@ -1793,6 +1830,170 @@ class ModelContext:
         ),
     )
 
+  def _validate_changepoint_calibration(self) -> None:
+    """Rejects ROI calibration periods for channels with changepoints.
+
+    Raises:
+      ValueError: If an ROI calibration period restricts a channel with
+        changepoints to part of the media time periods.
+    """
+    if not self._changepoints:
+      return
+    for calibration_period, channel_coordinate, legacy, declarative in (
+        (
+            self.compiled_roi_calibration_period,
+            self._input_data.media_channel,
+            "roi_calibration_period",
+            "roi_calibration",
+        ),
+        (
+            self.compiled_rf_roi_calibration_period,
+            self._input_data.rf_channel,
+            "rf_roi_calibration_period",
+            "rf_roi_calibration",
+        ),
+    ):
+      if calibration_period is None:
+        continue
+      channels = [
+          name
+          for index, name in enumerate(
+              self._coordinate_names(channel_coordinate)
+          )
+          if name in self._changepoints
+          and not np.all(calibration_period[:, index])
+      ]
+      if channels:
+        attribute = (
+            legacy
+            if getattr(self._model_spec, legacy) is not None
+            else declarative
+        )
+        raise _changepoint_calibration_error(channels, attribute)
+
+  @functools.cached_property
+  def _changepoint_media_effects_dist(self) -> str:
+    """The random effects distribution of the channels with changepoints.
+
+    Unlike `media_effects_dist`, national models use it as set.
+    """
+    # TODO: Read `self._model_spec.changepoint_media_effects_dist`
+    # directly once it moves to `ModelSpec`.
+    return getattr(
+        self._model_spec,
+        "changepoint_media_effects_dist",
+        constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  def _changepoint_prior_type(self, is_rf: bool) -> str:
+    """The prior type of the paid media or RF channels with changepoints."""
+    # TODO: Read the fields of `self._model_spec` directly once
+    # they move to `ModelSpec`.
+    return getattr(
+        self._model_spec,
+        "changepoint_rf_prior_type"
+        if is_rf
+        else "changepoint_media_prior_type",
+        constants.TREATMENT_PRIOR_TYPE_ROI,
+    )
+
+  def _check_changepoint_prior_types(self) -> None:
+    """Checks that channels with changepoints use their type's prior type.
+
+    Raises:
+      NotImplementedError: If the paid media or RF channels with changepoints
+        use another prior type than `media_prior_type` or `rf_prior_type`.
+    """
+    # TODO: Sample models whose channels with changepoints use
+    # another prior type.
+    for is_rf, changepoint_info, prior_type in (
+        (
+            False,
+            self._media_changepoint_info,
+            self._model_spec.effective_media_prior_type,
+        ),
+        (
+            True,
+            self._rf_changepoint_info,
+            self._model_spec.effective_rf_prior_type,
+        ),
+    ):
+      changepoint_prior_type = self._changepoint_prior_type(is_rf)
+      if changepoint_info is not None and changepoint_prior_type != prior_type:
+        name = "rf" if is_rf else "media"
+        raise NotImplementedError(
+            f"`changepoint_{name}_prior_type` ({changepoint_prior_type!r})"
+            f" must equal `{name}_prior_type` ({prior_type!r}). A different"
+            " prior type for the channels with `changepoints` is not supported"
+            " yet."
+        )
+
+  def _check_changepoint_prior_support(self) -> None:
+    """Checks the prior support of log-normal channels with changepoints.
+
+    `_check_media_prior_support` doesn't cover them, because their
+    distribution can differ from `media_effects_dist`, for example in national
+    models.
+
+    Raises:
+      ValueError: If a channel with changepoints has log-normal random effects
+        and its ROI, mROI or contribution prior has negative support.
+    """
+    if not self._changepoints or (
+        self._changepoint_media_effects_dist
+        != constants.MEDIA_EFFECTS_LOG_NORMAL
+    ):
+      return
+    for changepoint_info, prior_type, n_channels, fields in (
+        (
+            self._media_changepoint_info,
+            self._changepoint_prior_type(is_rf=False),
+            self.n_media_channels,
+            {
+                constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_M,
+                constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_M,
+                constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: (
+                    constants.CONTRIBUTION_M
+                ),
+            },
+        ),
+        (
+            self._rf_changepoint_info,
+            self._changepoint_prior_type(is_rf=True),
+            self.n_rf_channels,
+            {
+                constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_RF,
+                constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_RF,
+                constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: (
+                    constants.CONTRIBUTION_RF
+                ),
+            },
+        ),
+    ):
+      if changepoint_info is None or prior_type not in fields:
+        continue
+      field = fields[prior_type]
+      # The prior isn't broadcast yet, so its batch shape is `()` or
+      # `(n_channels,)`.
+      dist = getattr(self._model_spec.prior, field)
+      negative = np.broadcast_to(np.asarray(dist.cdf(0)) > 0, (n_channels,))[
+          np.asarray(changepoint_info.channel_indices)
+      ]
+      if np.any(negative):
+        names = [
+            name
+            for name, is_negative in zip(
+                changepoint_info.channel_names, negative
+            )
+            if is_negative
+        ]
+        raise ValueError(
+            f"Channels {names} have `changepoints` with log-normal effects"
+            " (`changepoint_media_effects_dist`), so their"
+            f" `{field}` prior must have non-negative support. Use a"
+            " non-negative prior or `changepoint_media_effects_dist='normal'`."
+        )
+
   @functools.cached_property
   def _changepoint_max_intervals(self) -> int:
     """The length of the interval axis shared by media and RF channels."""
@@ -1822,6 +2023,39 @@ class ModelContext:
   def _rf_changepoint_info(self) -> changepoints.ChangepointInfo | None:
     """The changepoints of the RF channels, or `None` if they have none."""
     return self._get_changepoint_info(self._input_data.rf_channel)
+
+  @property
+  def _changepoint_prior_broadcast(
+      self,
+  ) -> prior_distribution._PriorDistributionWithChangepoints:  # pylint: disable=protected-access
+    """`prior_broadcast` of a model with changepoints, with the `zeta` priors.
+
+    Raises:
+      ValueError: If the model has no changepoints.
+    """
+    prior = self.prior_broadcast
+    if not isinstance(
+        prior,
+        prior_distribution._PriorDistributionWithChangepoints,  # pylint: disable=protected-access
+    ):
+      raise ValueError("The model has no changepoints.")
+    return prior
+
+  def _changepoint_inference_data_coords(self) -> dict[str, np.ndarray]:
+    """The inference data coordinates of the time-varying parameters."""
+    media_info = self._media_changepoint_info
+    rf_info = self._rf_changepoint_info
+    return {
+        constants.CHANGEPOINT_MEDIA_CHANNEL: np.array(
+            media_info.channel_names if media_info else [], dtype=str
+        ),
+        constants.CHANGEPOINT_RF_CHANNEL: np.array(
+            rf_info.channel_names if rf_info else [], dtype=str
+        ),
+        constants.CHANGEPOINT_INTERVAL: np.arange(
+            self._changepoint_max_intervals
+        ),
+    }
 
   @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
@@ -2061,7 +2295,7 @@ class ModelContext:
         if self.input_data.control_variable is not None
         else np.array([])
     )
-    return {
+    coords: dict[str, np.ndarray | Sequence[str]] = {
         constants.CHAIN: np.arange(n_chains),
         constants.DRAW: np.arange(n_draws),
         constants.GEO: self.input_data.geo,  # pyrefly: ignore[bad-assignment]
@@ -2075,6 +2309,9 @@ class ModelContext:
         constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,  # pyrefly: ignore[bad-assignment]
         constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,  # pyrefly: ignore[bad-assignment]
     }
+    if self._changepoints:
+      coords.update(self._changepoint_inference_data_coords())
+    return coords
 
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
     """Creates data dimensions for inference data."""
@@ -2083,6 +2320,8 @@ class ModelContext:
       inference_dims[constants.SIGMA] = [constants.GEO]  # pyrefly: ignore[unsupported-operation]
     else:
       inference_dims[constants.SIGMA] = []  # pyrefly: ignore[unsupported-operation]
+    if self._changepoints:
+      inference_dims.update(constants.CHANGEPOINT_INFERENCE_DIMS)
 
     return {
         param: [constants.CHAIN, constants.DRAW] + list(dims)

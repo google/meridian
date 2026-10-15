@@ -277,6 +277,10 @@ NATIONAL_ANALYZER_PARAMETERS_DEFAULTS = immutabledict.immutabledict(
 CHAIN = 'chain'
 DRAW = 'draw'
 KNOTS = 'knots'
+# Only in the inference data of models with changepoints.
+CHANGEPOINT_MEDIA_CHANNEL = 'changepoint_media_channel'
+CHANGEPOINT_RF_CHANNEL = 'changepoint_rf_channel'
+CHANGEPOINT_INTERVAL = 'changepoint_interval'
 
 
 # Model parameters.
@@ -473,6 +477,11 @@ ALL_PRIOR_DISTRIBUTION_PARAMETERS = (
 ZETA_M = 'zeta_m'
 ZETA_RF = 'zeta_rf'
 
+# Interval adjustments of the channels with changepoints. They are standard
+# normal, so they have no prior distribution.
+VARPHI_M = 'varphi_m'
+VARPHI_RF = 'varphi_rf'
+
 ROTATED_KNOT_0 = 'rotated_knot_0'
 ROTATED_KNOT_REST = 'rotated_knot_rest'
 UNSAVED_PARAMETERS = (
@@ -564,6 +573,13 @@ INFERENCE_DIMS = immutabledict.immutabledict(
     | {param: (ORGANIC_MEDIA_CHANNEL,) for param in ORGANIC_MEDIA_PARAMETERS}
     | {param: (ORGANIC_RF_CHANNEL,) for param in ORGANIC_RF_PARAMETERS}
 )
+# Added to `INFERENCE_DIMS` only for models with changepoints.
+CHANGEPOINT_INFERENCE_DIMS = immutabledict.immutabledict({
+    ZETA_M: (CHANGEPOINT_MEDIA_CHANNEL,),
+    ZETA_RF: (CHANGEPOINT_RF_CHANNEL,),
+    VARPHI_M: (CHANGEPOINT_MEDIA_CHANNEL, CHANGEPOINT_INTERVAL),
+    VARPHI_RF: (CHANGEPOINT_RF_CHANNEL, CHANGEPOINT_INTERVAL),
+})
 
 IGNORED_TRACE_METRICS = ('variance_scaling',)
 
