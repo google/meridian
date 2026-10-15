@@ -21,6 +21,7 @@ from meridian import constants
 from meridian.backend import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import adstock_hill
+from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
 from meridian.model import model_test_data
@@ -948,6 +949,79 @@ class CalculateTimeVaryingBetaXTest(
     test_utils.assert_allclose(
         eqn._calculate_time_varying_beta_x(**tensors), expected, rtol=1e-5
     )
+
+
+class SplitTimeVaryingOutcomeTest(
+    test_utils.MeridianTestCase, parameterized.TestCase
+):
+
+  # pylint: disable=protected-access
+
+  @parameterized.named_parameters(
+      ("log_normal", constants.MEDIA_EFFECTS_LOG_NORMAL),
+      ("normal", constants.MEDIA_EFFECTS_NORMAL),
+  )
+  def test_outcome_and_remaining_coefficients(self, media_effects_dist):
+    n_draws, n_geos, n_times = 2, 4, 6
+    # Channel "a" has 2 intervals, padded to 3; channel "c" has 3; "b" has none.
+    info = changepoints.get_changepoint_info(
+        n_times=n_times,
+        changepoints={"a": [2], "c": [1, 4]},
+        channel_names=["a", "b", "c"],
+    )
+    assert info is not None
+    rng = np.random.default_rng(0)
+
+    def normal(*shape: int) -> np.ndarray:
+      return rng.normal(size=shape).astype(backend.np_float_dtype)
+
+    media_transformed = np.abs(normal(n_draws, n_geos, n_times, 3))
+    beta_gx = np.abs(normal(n_draws, n_geos, 3)) + 0.5
+    zeta = np.abs(normal(n_draws, 2)) * 0.3
+    varphi = normal(n_draws, 2, 3)
+    # The padded interval of "a" must not reach the outcome.
+    varphi[:, 0, 2] = 1e3
+    model_context = mock.create_autospec(
+        context.ModelContext, instance=True, spec_set=True
+    )
+    model_context.media_effects_dist = media_effects_dist
+
+    def to_tensor(x: np.ndarray) -> backend.Tensor:
+      return backend.to_tensor(x, dtype=backend.float_dtype)
+
+    outcome, beta_gx_without = equations.ModelEquations(
+        model_context
+    )._split_time_varying_outcome(
+        changepoint_info=info,
+        media_transformed=to_tensor(media_transformed),
+        beta_gx=to_tensor(beta_gx),
+        zeta_x=to_tensor(zeta),
+        varphi_x=to_tensor(varphi),
+    )
+
+    t = np.arange(n_times)
+    phi = {
+        0: np.where(t < 2, varphi[:, 0, 0:1], varphi[:, 0, 1:2]),
+        2: np.select(
+            [t < 1, t < 4],
+            [varphi[:, 1, 0:1], varphi[:, 1, 1:2]],
+            varphi[:, 1, 2:3],
+        ),
+    }
+    expected_outcome = np.zeros((n_draws, n_geos, n_times))
+    for slot, channel in enumerate((0, 2)):
+      time_effect = (zeta[:, slot, np.newaxis] * phi[channel])[:, np.newaxis, :]
+      base = beta_gx[:, :, channel, np.newaxis]
+      coefficient = (
+          base * np.exp(time_effect)
+          if media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
+          else base + time_effect
+      )
+      expected_outcome += media_transformed[..., channel] * coefficient
+    test_utils.assert_allclose(outcome, expected_outcome, rtol=1e-5)
+    expected_beta_gx_without = beta_gx.copy()
+    expected_beta_gx_without[..., [0, 2]] = 0.0
+    test_utils.assert_allequal(beta_gx_without, expected_beta_gx_without)
 
 
 class LinearPredictorCounterfactualDifferenceTest(
