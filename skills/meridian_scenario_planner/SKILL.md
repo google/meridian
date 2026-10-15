@@ -103,16 +103,21 @@ CHECKPOINT**s. At each checkpoint, you MUST:
 
 ### 6. Execution & Script Setup
 
-*   Write the accumulated Python script to the user-specified path. When writing
-    the file using `write_to_file`, explicitly set
-    `ArtifactMetadata.RequestFeedback=false` to avoid pausing execution.
+*   Write the accumulated Python script to the user-specified path. If your
+    file-writing tool can ask the user to review the written file, don't request
+    that review: the pre-execution checkpoint already asks for approval, and an
+    extra prompt pauses the workflow.
 *   You can use the full script template in
     [script_template.md](references/script_template.md) as a guide.
-*   Execute the script using Python: prefer the active virtual environment if
-    available (e.g. `.venv/bin/python3` or
-    `/tmp/meridian_eval_cache/bin/python3`, otherwise `python3`).
-*   When executing the script, if `run_command` runs as a background task,
-    simply end the turn and wait for the completion notification.
+*   Execute the script with the Python interpreter of the environment where
+    `google-meridian` is installed: the one the user named; else `python3` if a
+    virtual environment is already active (`VIRTUAL_ENV` or `CONDA_PREFIX` is
+    set); else the project directory's virtual environment (`.venv/` or `venv/`,
+    e.g., `.venv/bin/python3`) if there is one; else `python3`. If `import
+    meridian` fails, ask the user which environment to use instead of searching
+    the machine or installing packages unprompted.
+*   If the script keeps running in the background, wait for it to finish and
+    check its final output before reporting results.
 *   **CRITICAL**: Do **NOT** delete the generated script, output proto files, or
     deliverables at the end of the task. These are the deliverables requested by
     the user and must be preserved.

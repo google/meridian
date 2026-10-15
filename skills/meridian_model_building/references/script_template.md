@@ -14,9 +14,8 @@ from meridian.schema.serde import meridian_serde
 from meridian import backend
 
 def main():
-    # 1. Handle Output Paths
-    workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", ".")
-    output_dir = os.path.join(workspace_dir, "model_build")
+    # 1. Handle Output Paths (relative to the directory the script is run from)
+    output_dir = "model_build"
     os.makedirs(output_dir, exist_ok=True)
 
     # 2. Load Data & Build InputData

@@ -30,6 +30,30 @@ CHECKPOINT**s. At each checkpoint, you MUST:
         (e.g., "proceed", "do what you think is best"), proceed with the
         proposed defaults.
 
+### Python Environment and Meridian Source
+
+Before running any Python, pick the interpreter of the environment where
+`google-meridian` is installed, and use it for every command and script below:
+
+1.  If the user named an environment, use it. Otherwise, if a virtual
+    environment is already active (`VIRTUAL_ENV` or `CONDA_PREFIX` is set), use
+    `python3`. Otherwise, if the project directory (the current working
+    directory) has a virtual environment (`.venv/` or `venv/`), use its
+    interpreter (e.g., `.venv/bin/python3`). Otherwise use `python3`.
+2.  Check it with `<interpreter> -c "import meridian"`. If that fails, ask the
+    user which environment to use instead of searching the machine or installing
+    packages unprompted.
+
+Steps below ask you to read Meridian modules (e.g., `meridian.model.spec`) to
+confirm argument names and defaults. Users usually install Meridian from PyPI
+(`pip install google-meridian`), so its source is not in their project folder.
+Find the installed package and read the files there, or print signatures and
+docstrings with `inspect`:
+
+```shell
+<interpreter> -c "import meridian, os; print(os.path.dirname(meridian.__file__))"
+```
+
 --------------------------------------------------------------------------------
 
 ### 1. Initial Setup
@@ -48,19 +72,16 @@ CHECKPOINT**s. At each checkpoint, you MUST:
 *   **Target Module:** `meridian.data.data_frame_input_data_builder`
 *   **Action:**
     *   **Check CSV Format**: Before loading data, verify if the CSV data is in
-        the right format. Consult the `meridian-doc-consultant` skill or check
-        the documentation map in
-        `skills/meridian_doc_consultant/references/documentation_map.md` under
-        "Data Preparation & Loading" to find specific guides (like
-        `load-geo-data-without-rf.md`,
-        `load-geo-data-with-organic-and-non-media.md` based on the **columns
-        observed in the data**) to understand the expected columns and data
-        types. Consult `references/csv_format_reference.md` for details on
-        expected row/column structure and data quality guardrails. If the format
-        is incorrect or missing required columns, **attempt to autonomously
-        convert the dataset to the expected format for the user** (e.g.,
-        renaming columns, restructuring) unless you are uncertain and need user
-        input.
+        the right format. Use the `meridian-doc-consultant` skill to find the
+        data-loading guide on `developers.google.com/meridian` that matches the
+        **columns observed in the data** (e.g., the "load geo-level data without
+        reach and frequency" or "load geo-level data with organic and non-media"
+        guide) to understand the expected columns and data types. Consult
+        `references/csv_format_reference.md` for details on expected row/column
+        structure and data quality guardrails. If the format is incorrect or
+        missing required columns, **attempt to autonomously convert the dataset
+        to the expected format for the user** (e.g., renaming columns,
+        restructuring) unless you are uncertain and need user input.
     *   Read the header row of the provided CSV using Python to get the column
         names.
     *   Propose heuristic mappings based on column keywords (e.g., 'sales' ->
@@ -147,9 +168,10 @@ CHECKPOINT**s. At each checkpoint, you MUST:
 ### 7. Execution & Script Setup
 
 *   **Action:**
-    *   Write the accumulated Python script to the user-specified path. When
-        writing the file using `write_to_file`, explicitly set
-        `ArtifactMetadata.RequestFeedback=false` to avoid pausing execution.
+    *   Write the accumulated Python script to the user-specified path. If your
+        file-writing tool can ask the user to review the written file, don't
+        request that review: the next checkpoint already asks for approval, and
+        an extra prompt pauses the workflow.
     *   **CRITICAL INTERACTIVE CHECKPOINT**: Ask the user for final confirmation
         to execute the model building script now.
     *   **Artifact Preservation**: When completing a task that requires
@@ -157,18 +179,16 @@ CHECKPOINT**s. At each checkpoint, you MUST:
         these generated artifacts at the end of your turn. They are the
         deliverables requested by the user. Only clean up truly temporary
         scratch files if necessary.
-        *   **Path Handling for Outputs**: In generated scripts, construct
-            output file paths using `os.environ.get("BUILD_WORKSPACE_DIRECTORY",
-            ".")` so files land in the source workspace during script execution and
-            in the current directory during standalone OSS Python execution.
+        *   **Path Handling for Outputs**: In generated scripts, use the output
+            paths confirmed in Step 1, relative to the project directory the
+            script is run from (or absolute paths).
     *   **Execute the Script**:
-        *   Always run the script from the workspace root directory (keep `Cwd`
-            as the workspace root, do not set `Cwd` to a subdirectory).
-        *   Use Python: prefer the active virtual environment if available (e.g.
-            `.venv/bin/python3` or `/tmp/meridian_eval_cache/bin/python3`,
-            otherwise `python3`).
-        *   Example command: `/tmp/meridian_eval_cache/bin/python3
-            model_build/my_model.py`
+        *   Always run the script with the project directory as the working
+            directory (not a subdirectory), so relative paths resolve as
+            confirmed.
+        *   Use the interpreter chosen in "Python Environment and Meridian
+            Source" above.
+        *   Example command: `.venv/bin/python3 model_build/my_model.py`
     *   **Handling Long Runs**: If the command is sent to the background due to
         execution time, wait for the background task to complete and check the
         final output to catch runtime errors.
