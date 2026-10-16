@@ -357,6 +357,38 @@ def _calculate_outliers(
   )
 
 
+_VIF_CORR_COND_LIMIT = 1e10
+
+
+def _vif_from_corr_matrix(data: np.ndarray) -> np.ndarray | None:
+  """Computes VIF for each column from the inverse correlation matrix.
+
+  When an intercept is included in the regression, the VIF of column `j` equals
+  the `j`-th diagonal element of the inverse of the columns' Pearson correlation
+  matrix. Returns `None` if the correlation matrix is non-finite or
+  ill-conditioned so the caller can fall back to per-column OLS fits.
+
+  Args:
+    data: Array of shape `(n_samples, n_vars)` containing only non-constant
+      columns (`n_vars >= 1`).
+
+  Returns:
+    A 1D numpy array of VIF values of length `n_vars`, or `None` if the
+    correlation matrix is ill-conditioned.
+  """
+  if data.shape[0] <= data.shape[1]:
+    return None
+  if data.shape[1] == 1:
+    return np.ones(1, dtype=float)
+  corr = np.corrcoef(data, rowvar=False)
+  if (
+      not np.all(np.isfinite(corr))
+      or np.linalg.cond(corr) > _VIF_CORR_COND_LIMIT
+  ):
+    return None
+  return np.diag(np.linalg.inv(corr)).copy()
+
+
 def _calculate_vif(
     input_da: xr.DataArray,
     var_dim: str,
@@ -385,13 +417,18 @@ def _calculate_vif(
   (non_constant_vars_indices,) = (~is_constant).nonzero()
 
   if non_constant_vars_indices.size > 0:
-    design_matrix = sm.add_constant(
-        np_data[:, ~is_constant], prepend=True, has_constant='add'
-    )
-    for i, var_index in enumerate(non_constant_vars_indices):
-      vif_values[var_index] = outliers_influence.variance_inflation_factor(
-          design_matrix, i + 1
+    non_constant_data = np_data[:, ~is_constant]
+    fast_vif = _vif_from_corr_matrix(non_constant_data)
+    if fast_vif is not None:
+      vif_values[non_constant_vars_indices] = fast_vif
+    else:
+      design_matrix = sm.add_constant(
+          non_constant_data, prepend=True, has_constant='add'
       )
+      for i, var_index in enumerate(non_constant_vars_indices):
+        vif_values[var_index] = outliers_influence.variance_inflation_factor(
+            design_matrix, i + 1
+        )
 
   return xr.DataArray(
       vif_values,
