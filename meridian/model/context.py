@@ -1823,6 +1823,39 @@ class ModelContext:
     """The changepoints of the RF channels, or `None` if they have none."""
     return self._get_changepoint_info(self._input_data.rf_channel)
 
+  @property
+  def _changepoint_prior_broadcast(
+      self,
+  ) -> prior_distribution._PriorDistributionWithChangepoints:  # pylint: disable=protected-access
+    """`prior_broadcast` of a model with changepoints, with the `zeta` priors.
+
+    Raises:
+      ValueError: If the model has no changepoints.
+    """
+    prior = self.prior_broadcast
+    if not isinstance(
+        prior,
+        prior_distribution._PriorDistributionWithChangepoints,  # pylint: disable=protected-access
+    ):
+      raise ValueError("The model has no changepoints.")
+    return prior
+
+  def _changepoint_inference_data_coords(self) -> dict[str, np.ndarray]:
+    """The inference data coordinates of the time-varying parameters."""
+    media_info = self._media_changepoint_info
+    rf_info = self._rf_changepoint_info
+    return {
+        constants.CHANGEPOINT_MEDIA_CHANNEL: np.array(
+            media_info.channel_names if media_info else [], dtype=str
+        ),
+        constants.CHANGEPOINT_RF_CHANNEL: np.array(
+            rf_info.channel_names if rf_info else [], dtype=str
+        ),
+        constants.CHANGEPOINT_INTERVAL: np.arange(
+            self._changepoint_max_intervals
+        ),
+    }
+
   @functools.cached_property
   def prior_broadcast(self) -> prior_distribution.PriorDistribution:
     """Returns broadcasted `PriorDistribution` object."""
@@ -2061,7 +2094,7 @@ class ModelContext:
         if self.input_data.control_variable is not None
         else np.array([])
     )
-    return {
+    coords: dict[str, np.ndarray | Sequence[str]] = {
         constants.CHAIN: np.arange(n_chains),
         constants.DRAW: np.arange(n_draws),
         constants.GEO: self.input_data.geo,  # pyrefly: ignore[bad-assignment]
@@ -2075,6 +2108,9 @@ class ModelContext:
         constants.ORGANIC_MEDIA_CHANNEL: organic_media_channel_names,  # pyrefly: ignore[bad-assignment]
         constants.ORGANIC_RF_CHANNEL: organic_rf_channel_names,  # pyrefly: ignore[bad-assignment]
     }
+    if self._changepoints:
+      coords.update(self._changepoint_inference_data_coords())
+    return coords
 
   def create_inference_data_dims(self) -> Mapping[str, Sequence[str]]:
     """Creates data dimensions for inference data."""
@@ -2083,6 +2119,8 @@ class ModelContext:
       inference_dims[constants.SIGMA] = [constants.GEO]  # pyrefly: ignore[unsupported-operation]
     else:
       inference_dims[constants.SIGMA] = []  # pyrefly: ignore[unsupported-operation]
+    if self._changepoints:
+      inference_dims.update(constants.CHANGEPOINT_INFERENCE_DIMS)
 
     return {
         param: [constants.CHAIN, constants.DRAW] + list(dims)
