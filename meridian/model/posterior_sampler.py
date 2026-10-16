@@ -16,7 +16,7 @@
 
 from collections.abc import Generator, Mapping, Sequence
 import functools
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any
 import warnings
 
 import arviz as az
@@ -25,9 +25,6 @@ from meridian import constants
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
-
-if TYPE_CHECKING:
-  from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
 
 
 __all__ = [
@@ -1117,7 +1114,7 @@ class PosteriorMCMCSampler:
   # TODO: Deprecate direct injection of `model.Meridian`.
   def __init__(
       self,
-      meridian: Optional["model.Meridian"] = None,
+      meridian: Any | None = None,
       *,
       model_context: context.ModelContext | None = None,
   ):
@@ -1160,7 +1157,7 @@ class PosteriorMCMCSampler:
   # TODO: Remove this property in favor of using `model_context`
   # and `model_equations` directly.
   @property
-  def model(self) -> Optional["model.Meridian"]:
+  def model(self) -> Any | None:
     return self._meridian
 
   def _joint_dist_unpinned_fn(self):
