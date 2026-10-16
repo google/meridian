@@ -29,10 +29,12 @@ across intervals.
 Channels with changepoints are stored together, per channel type, in a padded
 `(channel, interval)` layout, so channels with different numbers of intervals
 share one tensor. Padded intervals have zero weight in every time period, so
-their values never reach the model.
+their values never reach the model. The interval adjustments are only sampled
+for real intervals, and `pad_intervals` spreads them into the padded layout.
 
 `ModelContext` uses this module to build each channel type's
-`ChangepointInfo`. Sampling doesn't use it yet.
+`ChangepointInfo`, and the samplers use it to draw the interval adjustments and
+build each time period's coefficient.
 """
 
 from collections.abc import Collection, Mapping, Sequence
@@ -49,6 +51,7 @@ __all__ = [
     'changepoint_knot_overlaps',
     'expand_intervals',
     'get_changepoint_info',
+    'interval_adjustments_distribution',
     'interval_weights',
     'merge_channels',
     'time_varying_coefficients',
@@ -131,6 +134,24 @@ class ChangepointInfo:
   def n_channels(self) -> int:
     """The number of channels with changepoints."""
     return len(self.channel_names)
+
+  @property
+  def n_intervals(self) -> int:
+    """The number of real intervals, over all channels."""
+    return int(self.mask.sum())
+
+  @property
+  def padded_indices(self) -> np.ndarray:
+    """Indices that spread the real intervals into the padded layout.
+
+    For `x` with the real intervals of all channels on its last axis, channel
+    by channel, followed by one fill value, gathering with these indices gives
+    the `(n_channels, max_intervals)` layout with the fill value in padded
+    intervals. See `pad_intervals`.
+    """
+    indices = np.full(self.mask.shape, self.n_intervals)
+    indices[self.mask] = np.arange(self.n_intervals)
+    return indices
 
   @property
   def max_intervals(self) -> int:
@@ -264,6 +285,61 @@ def changepoint_knot_overlaps(
     if hits:
       overlaps[name] = hits
   return overlaps
+
+
+def interval_adjustments_distribution(
+    info: ChangepointInfo, name: str
+) -> backend.tfd.Distribution:
+  """Returns the distribution of the interval adjustments `varphi`.
+
+  The adjustments are standard normal, so they have no prior distribution to
+  set. Prior and posterior sampling both use this distribution. It only covers
+  real intervals, so that sampling never explores padded ones.
+
+  Args:
+    info: The `ChangepointInfo` of the channel type.
+    name: The parameter name, `constants.VARPHI_M` or `constants.VARPHI_RF`.
+
+  Returns:
+    A distribution with event shape `(n_intervals,)`: the real intervals of
+    all channels, channel by channel. Use `pad_intervals` for the padded
+    layout.
+  """
+  return backend.tfd.Sample(
+      backend.tfd.Normal(
+          loc=backend.to_tensor(0.0, dtype=backend.float_dtype),
+          scale=backend.to_tensor(1.0, dtype=backend.float_dtype),
+      ),
+      [info.n_intervals],
+      name=name,
+  )
+
+
+def pad_intervals(
+    varphi: backend.Tensor, info: ChangepointInfo, fill: float = 0.0
+) -> backend.Tensor:
+  """Spreads the real interval adjustments into the padded layout.
+
+  Args:
+    varphi: The adjustments of the real intervals, shape `(..., n_intervals)`,
+      as drawn from `interval_adjustments_distribution`.
+    info: The `ChangepointInfo` of the channel type.
+    fill: The value of padded intervals. Zero for the model, which never uses
+      them, or NaN for stored results.
+
+  Returns:
+    The adjustments, shape `(..., n_channels, max_intervals)`.
+  """
+  # A product with a one-hot matrix puts each real interval in its slot.
+  one_hot = (
+      info.padded_indices[..., np.newaxis] == np.arange(info.n_intervals)
+  ).astype(backend.np_float_dtype)
+  padded = backend.einsum(
+      '...i,cki->...ck', varphi, backend.cast(one_hot, varphi.dtype)
+  )
+  if fill == 0.0:
+    return padded
+  return backend.where(info.mask, padded, fill)
 
 
 def expand_intervals(
