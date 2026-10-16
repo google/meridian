@@ -1599,6 +1599,45 @@ class ModelSpecWithChangepointsTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, message):
       _ModelSpecWithChangepoints(changepoints=changepoints)
 
+  def test_changepoint_media_effects_dist_defaults_to_log_normal(self):
+    model_spec = _ModelSpecWithChangepoints(media_effects_dist="normal")
+    self.assertEqual(
+        model_spec.changepoint_media_effects_dist,
+        constants.MEDIA_EFFECTS_LOG_NORMAL,
+    )
+
+  def test_replace_keeps_changepoint_media_effects_dist(self):
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={"TV": ["2024-12-30"]},
+        changepoint_media_effects_dist="normal",
+    )
+    replaced = dataclasses.replace(model_spec, max_lag=4)
+    self.assertEqual(replaced.changepoint_media_effects_dist, "normal")
+
+  def test_invalid_changepoint_media_effects_dist_raises(self):
+    with self.assertRaisesRegex(
+        ValueError, "`changepoint_media_effects_dist` must be one of"
+    ):
+      _ModelSpecWithChangepoints(changepoint_media_effects_dist="bad")
+
+  def test_changepoint_prior_types_default_to_roi(self):
+    model_spec = _ModelSpecWithChangepoints(
+        media_prior_type="coefficient", rf_prior_type="coefficient"
+    )
+    self.assertEqual(model_spec.changepoint_media_prior_type, "roi")
+    self.assertEqual(model_spec.changepoint_rf_prior_type, "roi")
+
+  @parameterized.named_parameters(
+      ("media", "changepoint_media_prior_type"),
+      ("rf", "changepoint_rf_prior_type"),
+  )
+  def test_invalid_changepoint_prior_type_raises(self, field: str):
+    with self.assertRaisesRegex(ValueError, f"`{field}` must be one of"):
+      if field == "changepoint_media_prior_type":
+        _ModelSpecWithChangepoints(changepoint_media_prior_type="beta")
+      else:
+        _ModelSpecWithChangepoints(changepoint_rf_prior_type="beta")
+
 
 if __name__ == "__main__":
   absltest.main()

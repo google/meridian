@@ -16,12 +16,13 @@
 
 from collections.abc import Generator, Mapping, Sequence
 import functools
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, NamedTuple, Optional, TYPE_CHECKING
 import warnings
 
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
@@ -309,6 +310,47 @@ def _sample_non_media_treatments(
   return gamma_gn
 
 
+class _TimeVaryingDraws(NamedTuple):
+  """The time effect parameters of the channels with changepoints of a type."""
+
+  changepoint_info: changepoints.ChangepointInfo
+  zeta: backend.Tensor
+  varphi: backend.Tensor
+
+
+def _sample_time_varying_latents(
+    model_context: context.ModelContext, *, is_rf: bool
+) -> Generator[backend.tfd.Distribution, Any, _TimeVaryingDraws | None]:
+  """Yields the time effect parameters of the channels with changepoints.
+
+  Use with `yield from`, which evaluates to the draws, or to `None` if no
+  channel of the type has changepoints. Yields nothing in that case, so models
+  without changepoints keep the same joint distribution.
+
+  Args:
+    model_context: The model context.
+    is_rf: Whether to use the RF channels rather than the media channels.
+
+  Yields:
+    The prior on the scale of the time effect, then the standard-normal
+    interval adjustments.
+  """
+  # pylint: disable=protected-access
+  if is_rf:
+    changepoint_info = model_context._rf_changepoint_info
+  else:
+    changepoint_info = model_context._media_changepoint_info
+  if changepoint_info is None:
+    return None
+  prior = model_context._changepoint_prior_broadcast
+  # pylint: enable=protected-access
+  zeta = yield prior.zeta_rf if is_rf else prior.zeta_m
+  varphi = yield changepoints.interval_adjustments_distribution(
+      changepoint_info, constants.VARPHI_RF if is_rf else constants.VARPHI_M
+  )
+  return _TimeVaryingDraws(changepoint_info, zeta, varphi)
+
+
 def _joint_dist_base_logic(
     model_context: context.ModelContext,
     model_equations: equations.ModelEquations,
@@ -487,6 +529,7 @@ def _joint_dist_base_logic(
 
     media_transformed_list = []
     beta_list = []
+    time_varying_outcomes = []
 
     if media_tensors.media is not None:
       alpha_m = yield prior_broadcast.alpha_m
@@ -500,6 +543,9 @@ def _joint_dist_base_logic(
           ),
           [n_geos, n_media_channels],
           name=constants.BETA_GM_DEV,
+      )
+      media_time_varying = yield from _sample_time_varying_latents(
+          model_context, is_rf=False
       )
       media_transformed = adstock_hill_media_fn(
           media=media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
@@ -541,18 +587,43 @@ def _joint_dist_base_logic(
             eta_x=eta_m,
             beta_gx_dev=beta_gm_dev,
         )
+        if media_time_varying is not None:
+          beta_m = model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+              changepoint_info=media_time_varying.changepoint_info,
+              beta_x=beta_m,
+              incremental_outcome_x=incremental_outcome_m,
+              linear_predictor_counterfactual_difference=(
+                  linear_predictor_counterfactual_difference
+              ),
+              eta_x=eta_m,
+              beta_gx_dev=beta_gm_dev,
+              zeta_x=media_time_varying.zeta,
+              varphi_x=media_time_varying.varphi,
+          )
         if yield_deterministics:
           yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
 
       beta_eta_combined = beta_m + eta_m * beta_gm_dev
-      beta_gm = (
-          beta_eta_combined
-          if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-          else backend.exp(beta_eta_combined)
+      beta_gm = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+          beta_eta_combined,
+          media_time_varying.changepoint_info
+          if media_time_varying is not None
+          else None,
       )
       if yield_deterministics:
         yield backend.tfd.Deterministic(beta_gm, name=constants.BETA_GM)
 
+      if media_time_varying is not None:
+        time_varying_outcome, beta_gm = (
+            model_equations._split_time_varying_outcome(  # pylint: disable=protected-access
+                changepoint_info=media_time_varying.changepoint_info,
+                media_transformed=media_transformed,
+                beta_gx=beta_gm,
+                zeta_x=media_time_varying.zeta,
+                varphi_x=media_time_varying.varphi,
+            )
+        )
+        time_varying_outcomes.append(time_varying_outcome)
       media_transformed_list.append(media_transformed)
       beta_list.append(beta_gm)
 
@@ -568,6 +639,9 @@ def _joint_dist_base_logic(
           ),
           [n_geos, n_rf_channels],
           name=constants.BETA_GRF_DEV,
+      )
+      rf_time_varying = yield from _sample_time_varying_latents(
+          model_context, is_rf=True
       )
       rf_transformed = adstock_hill_rf_fn(
           reach=rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
@@ -611,18 +685,43 @@ def _joint_dist_base_logic(
             eta_x=eta_rf,
             beta_gx_dev=beta_grf_dev,
         )
+        if rf_time_varying is not None:
+          beta_rf = model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+              changepoint_info=rf_time_varying.changepoint_info,
+              beta_x=beta_rf,
+              incremental_outcome_x=incremental_outcome_rf,
+              linear_predictor_counterfactual_difference=(
+                  linear_predictor_counterfactual_difference
+              ),
+              eta_x=eta_rf,
+              beta_gx_dev=beta_grf_dev,
+              zeta_x=rf_time_varying.zeta,
+              varphi_x=rf_time_varying.varphi,
+          )
         if yield_deterministics:
           yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
 
       beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-      beta_grf = (
-          beta_eta_combined
-          if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-          else backend.exp(beta_eta_combined)
+      beta_grf = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+          beta_eta_combined,
+          rf_time_varying.changepoint_info
+          if rf_time_varying is not None
+          else None,
       )
       if yield_deterministics:
         yield backend.tfd.Deterministic(beta_grf, name=constants.BETA_GRF)
 
+      if rf_time_varying is not None:
+        time_varying_outcome, beta_grf = (
+            model_equations._split_time_varying_outcome(  # pylint: disable=protected-access
+                changepoint_info=rf_time_varying.changepoint_info,
+                media_transformed=rf_transformed,
+                beta_gx=beta_grf,
+                zeta_x=rf_time_varying.zeta,
+                varphi_x=rf_time_varying.varphi,
+            )
+        )
+        time_varying_outcomes.append(time_varying_outcome)
       media_transformed_list.append(rf_transformed)
       beta_list.append(beta_grf)
 
@@ -741,6 +840,8 @@ def _joint_dist_base_logic(
       y_pred_combined_media = tau_gt + backend.einsum(
           "...gtm,...gm->...gt", combined_media_transformed, combined_beta
       )
+      for time_varying_outcome in time_varying_outcomes:
+        y_pred_combined_media += time_varying_outcome
     else:
       y_pred_combined_media = tau_gt
 
@@ -804,6 +905,7 @@ def _joint_dist_base_logic(
   # Accumulate media tensors in lists to avoid empty tensor shape/rank issues
   media_transformed_list = []
   beta_list = []
+  time_varying_outcomes = []
 
   if media_tensors.media is not None:
     alpha_m = yield prior_broadcast.alpha_m
@@ -817,6 +919,9 @@ def _joint_dist_base_logic(
         ),
         [n_geos, n_media_channels],
         name=constants.BETA_GM_DEV,
+    )
+    media_time_varying = yield from _sample_time_varying_latents(
+        model_context, is_rf=False
     )
     media_transformed = adstock_hill_media_fn(
         media=media_tensors.media_scaled,  # pyrefly: ignore[bad-argument-type]
@@ -856,18 +961,43 @@ def _joint_dist_base_logic(
           eta_x=eta_m,
           beta_gx_dev=beta_gm_dev,
       )
+      if media_time_varying is not None:
+        beta_m = model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+            changepoint_info=media_time_varying.changepoint_info,
+            beta_x=beta_m,
+            incremental_outcome_x=incremental_outcome_m,
+            linear_predictor_counterfactual_difference=(
+                linear_predictor_counterfactual_difference
+            ),
+            eta_x=eta_m,
+            beta_gx_dev=beta_gm_dev,
+            zeta_x=media_time_varying.zeta,
+            varphi_x=media_time_varying.varphi,
+        )
       if yield_deterministics:
         yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
 
     beta_eta_combined = beta_m + eta_m * beta_gm_dev
-    beta_gm = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gm = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+        beta_eta_combined,
+        media_time_varying.changepoint_info
+        if media_time_varying is not None
+        else None,
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_gm, name=constants.BETA_GM)
 
+    if media_time_varying is not None:
+      time_varying_outcome, beta_gm = (
+          model_equations._split_time_varying_outcome(  # pylint: disable=protected-access
+              changepoint_info=media_time_varying.changepoint_info,
+              media_transformed=media_transformed,
+              beta_gx=beta_gm,
+              zeta_x=media_time_varying.zeta,
+              varphi_x=media_time_varying.varphi,
+          )
+      )
+      time_varying_outcomes.append(time_varying_outcome)
     media_transformed_list.append(media_transformed)
     beta_list.append(beta_gm)
 
@@ -883,6 +1013,9 @@ def _joint_dist_base_logic(
         ),
         [n_geos, n_rf_channels],
         name=constants.BETA_GRF_DEV,
+    )
+    rf_time_varying = yield from _sample_time_varying_latents(
+        model_context, is_rf=True
     )
     rf_transformed = adstock_hill_rf_fn(
         reach=rf_tensors.reach_scaled,  # pyrefly: ignore[bad-argument-type]
@@ -924,18 +1057,43 @@ def _joint_dist_base_logic(
           eta_x=eta_rf,
           beta_gx_dev=beta_grf_dev,
       )
+      if rf_time_varying is not None:
+        beta_rf = model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+            changepoint_info=rf_time_varying.changepoint_info,
+            beta_x=beta_rf,
+            incremental_outcome_x=incremental_outcome_rf,
+            linear_predictor_counterfactual_difference=(
+                linear_predictor_counterfactual_difference
+            ),
+            eta_x=eta_rf,
+            beta_gx_dev=beta_grf_dev,
+            zeta_x=rf_time_varying.zeta,
+            varphi_x=rf_time_varying.varphi,
+        )
       if yield_deterministics:
         yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
 
     beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
-    beta_grf = (
-        beta_eta_combined
-        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_grf = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+        beta_eta_combined,
+        rf_time_varying.changepoint_info
+        if rf_time_varying is not None
+        else None,
     )
     if yield_deterministics:
       yield backend.tfd.Deterministic(beta_grf, name=constants.BETA_GRF)
 
+    if rf_time_varying is not None:
+      time_varying_outcome, beta_grf = (
+          model_equations._split_time_varying_outcome(  # pylint: disable=protected-access
+              changepoint_info=rf_time_varying.changepoint_info,
+              media_transformed=rf_transformed,
+              beta_gx=beta_grf,
+              zeta_x=rf_time_varying.zeta,
+              varphi_x=rf_time_varying.varphi,
+          )
+      )
+      time_varying_outcomes.append(time_varying_outcome)
     media_transformed_list.append(rf_transformed)
     beta_list.append(beta_grf)
 
@@ -1054,6 +1212,8 @@ def _joint_dist_base_logic(
     y_pred_combined_media = tau_gt + backend.einsum(
         "...gtm,...gm->...gt", combined_media_transformed, combined_beta
     )
+    for time_varying_outcome in time_varying_outcomes:
+      y_pred_combined_media += time_varying_outcome
   else:
     y_pred_combined_media = tau_gt
 
@@ -1172,6 +1332,7 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
     """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     self._model_context.populate_cached_properties()
+    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_unpinned_fn
     )
@@ -1179,6 +1340,7 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_sampling_unpinned(self) -> backend.tfd.Distribution:
     """Builds a sampling-optimized `JointDistributionCoroutineAutoBatched`."""
     self._model_context.populate_cached_properties()
+    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_sampling_fn
     )
@@ -1471,11 +1633,6 @@ class PosteriorMCMCSampler:
       raise ValueError(
           "`reconstruction_batch_size` must be a positive integer, got"
           f" {reconstruction_batch_size}."
-      )
-    # TODO: Sample time-varying media effects.
-    if getattr(self._model_context.model_spec, "changepoints", None):
-      raise NotImplementedError(
-          "Sampling models with changepoints is not supported yet."
       )
 
     # Initialize the backend-agnostic RNG handler. This handles differences
