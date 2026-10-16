@@ -14,13 +14,14 @@
 
 """Module for sampling prior distributions in a Meridian model."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 import functools
 from typing import Optional, TYPE_CHECKING
 import warnings
 
 from meridian import backend
 from meridian import constants
+from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
 import numpy as np
@@ -78,6 +79,43 @@ def _get_tau_g(
       axis=-1,
   )
   return backend.tfd.Deterministic(tau_g, name="tau_g")
+
+
+def _sample_time_varying_priors(
+    *,
+    changepoint_info: changepoints.ChangepointInfo,
+    zeta_prior: backend.tfd.Distribution,
+    zeta_name: str,
+    varphi_name: str,
+    sample_shape: Sequence[int],
+    rng_handler: backend.RNGHandler,
+) -> dict[str, backend.Tensor]:
+  """Draws the time effect parameters of the channels with changepoints.
+
+  With a coefficient prior, `beta` is drawn as usual and is the base coefficient
+  that the time effect adjusts. With an ROI, mROI or contribution prior, the
+  caller re-solves `beta` with `ModelEquations._merge_time_varying_beta_x`, so
+  the prior keeps its whole-history meaning.
+
+  Args:
+    changepoint_info: The `ChangepointInfo` of the channel type.
+    zeta_prior: The broadcast prior on the scale of the time effect.
+    zeta_name: The name of the scale parameter.
+    varphi_name: The name of the interval adjustments.
+    sample_shape: The sample shape, `[1, n_draws]`.
+    rng_handler: The backend-agnostic RNG handler managing the seed state.
+
+  Returns:
+    The draws of `zeta_name`, shape `[1, n_draws, n_changepoint_channels]`, and
+    `varphi_name`, shape `[1, n_draws, n_changepoint_channels, max_intervals]`.
+  """
+  zeta_draws = zeta_prior.sample(
+      sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+  )
+  varphi_draws = changepoints.interval_adjustments_distribution(
+      changepoint_info, varphi_name
+  ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+  return {zeta_name: zeta_draws, varphi_name: varphi_draws}
 
 
 class PriorDistributionSampler:
@@ -156,7 +194,19 @@ class PriorDistributionSampler:
         [ctx.n_geos, ctx.n_media_channels],
         name=constants.BETA_GM_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+    changepoint_info = ctx._media_changepoint_info  # pylint: disable=protected-access
+    if changepoint_info is not None:
+      media_vars |= _sample_time_varying_priors(
+          changepoint_info=changepoint_info,
+          zeta_prior=ctx._changepoint_prior_broadcast.zeta_m,  # pylint: disable=protected-access
+          zeta_name=constants.ZETA_M,
+          varphi_name=constants.VARPHI_M,
+          sample_shape=sample_shape,
+          rng_handler=rng_handler,
+      )
 
+    # TODO: Use `changepoint_media_prior_type` for the channels
+    # with changepoints.
     prior_type = ctx.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       media_vars[constants.BETA_M] = prior.beta_m.sample(
@@ -202,12 +252,24 @@ class PriorDistributionSampler:
             ec_m=ec_m,
             slope_m=slope_m,
         )
-        return self._model_equations.calculate_beta_x(
+        beta_m = self._model_equations.calculate_beta_x(
             is_non_media=False,
             incremental_outcome_x=incremental_outcome_m[:, draw_slice],
             linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
             eta_x=media_vars[constants.ETA_M][:, draw_slice],
             beta_gx_dev=beta_gm_dev[:, draw_slice],
+        )
+        if changepoint_info is None:
+          return beta_m
+        return self._model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+            changepoint_info=changepoint_info,
+            beta_x=beta_m,
+            incremental_outcome_x=incremental_outcome_m[:, draw_slice],
+            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+            eta_x=media_vars[constants.ETA_M][:, draw_slice],
+            beta_gx_dev=beta_gm_dev[:, draw_slice],
+            zeta_x=media_vars[constants.ZETA_M][:, draw_slice],
+            varphi_x=media_vars[constants.VARPHI_M][:, draw_slice],
         )
 
       beta_m_value = _compute_in_draw_batches(
@@ -221,10 +283,8 @@ class PriorDistributionSampler:
         media_vars[constants.BETA_M][..., backend.newaxis, :]
         + media_vars[constants.ETA_M][..., backend.newaxis, :] * beta_gm_dev
     )
-    beta_gm_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_gm_value = self._model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+        beta_eta_combined, changepoint_info
     )
     media_vars[constants.BETA_GM] = backend.tfd.Deterministic(
         beta_gm_value, name=constants.BETA_GM
@@ -278,7 +338,19 @@ class PriorDistributionSampler:
         [ctx.n_geos, ctx.n_rf_channels],
         name=constants.BETA_GRF_DEV,
     ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+    changepoint_info = ctx._rf_changepoint_info  # pylint: disable=protected-access
+    if changepoint_info is not None:
+      rf_vars |= _sample_time_varying_priors(
+          changepoint_info=changepoint_info,
+          zeta_prior=ctx._changepoint_prior_broadcast.zeta_rf,  # pylint: disable=protected-access
+          zeta_name=constants.ZETA_RF,
+          varphi_name=constants.VARPHI_RF,
+          sample_shape=sample_shape,
+          rng_handler=rng_handler,
+      )
 
+    # TODO: Use `changepoint_rf_prior_type` for the channels with
+    # changepoints.
     prior_type = ctx.model_spec.effective_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
       rf_vars[constants.BETA_RF] = prior.beta_rf.sample(
@@ -327,12 +399,24 @@ class PriorDistributionSampler:
                 slope_rf=slope_rf,
             )
         )
-        return self._model_equations.calculate_beta_x(
+        beta_rf = self._model_equations.calculate_beta_x(
             is_non_media=False,
             incremental_outcome_x=incremental_outcome_rf[:, draw_slice],
             linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
             eta_x=rf_vars[constants.ETA_RF][:, draw_slice],
             beta_gx_dev=beta_grf_dev[:, draw_slice],
+        )
+        if changepoint_info is None:
+          return beta_rf
+        return self._model_equations._merge_time_varying_beta_x(  # pylint: disable=protected-access
+            changepoint_info=changepoint_info,
+            beta_x=beta_rf,
+            incremental_outcome_x=incremental_outcome_rf[:, draw_slice],
+            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
+            eta_x=rf_vars[constants.ETA_RF][:, draw_slice],
+            beta_gx_dev=beta_grf_dev[:, draw_slice],
+            zeta_x=rf_vars[constants.ZETA_RF][:, draw_slice],
+            varphi_x=rf_vars[constants.VARPHI_RF][:, draw_slice],
         )
 
       beta_rf_value = _compute_in_draw_batches(
@@ -347,10 +431,8 @@ class PriorDistributionSampler:
         rf_vars[constants.BETA_RF][..., backend.newaxis, :]
         + rf_vars[constants.ETA_RF][..., backend.newaxis, :] * beta_grf_dev
     )
-    beta_grf_value = (
-        beta_eta_combined
-        if ctx.media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
-        else backend.exp(beta_eta_combined)
+    beta_grf_value = self._model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
+        beta_eta_combined, changepoint_info
     )
     rf_vars[constants.BETA_GRF] = backend.tfd.Deterministic(
         beta_grf_value, name=constants.BETA_GRF
@@ -723,11 +805,6 @@ class PriorDistributionSampler:
     if batch_size < 1:
       raise ValueError(f"`batch_size` must be at least 1, got {batch_size}.")
     ctx = self._model_context
-    # TODO: Sample time-varying media effects.
-    if getattr(ctx.model_spec, "changepoints", None):
-      raise NotImplementedError(
-          "Sampling models with changepoints is not supported yet."
-      )
 
     # For stateful sampling, the random seed must be set to ensure that any
     # random numbers that are generated are deterministic.
