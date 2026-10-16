@@ -5970,6 +5970,29 @@ class AnalyzerNotFittedTest(absltest.TestCase):
       not_fitted_analyzer.rhat_summary()
 
 
+class AnalyzerChangepointsTest(absltest.TestCase):
+
+  def test_model_with_changepoints_raises(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=2, n_times=10, n_media_times=10, n_media_channels=2, seed=0
+    )
+    assert data.media_channel is not None
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+            changepoints={
+                str(data.media_channel.values[0]): [
+                    data.time_coordinates.all_dates[5]
+                ]
+            }
+        ),
+    )
+    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
+      analyzer.Analyzer(
+          model_context=model_context, inference_data=az.InferenceData()
+      )
+
+
 def helper_sample_joint_dist_unpinned_as_posterior(self, n_draws, seed=None):
   """A helper function to sample joint distribution unpinned as posterior.
 
