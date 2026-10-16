@@ -10,8 +10,10 @@ This skill guides the agent in finding and consulting the right page of the
 official Meridian documentation to answer user questions token-efficiently.
 
 The documentation is published at `https://developers.google.com/meridian/`. It
-is **not** included in the Meridian GitHub repository or the `google-meridian`
-Python package, so do not look for documentation files on disk.
+covers both Meridian MMM (`/meridian/docs/...`) and Meridian GeoX geo
+experiments (`/meridian/geox/...`). It is **not** included in the Meridian
+GitHub repository or the `google-meridian` Python package, so do not look for
+documentation files on disk.
 
 ## Core Workflow
 
