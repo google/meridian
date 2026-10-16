@@ -1054,8 +1054,9 @@ class Meridian:
     error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
         collections.defaultdict(list)
     )
-    for field in dataclasses.fields(self.eda_outcomes):
-      outcome = getattr(self.eda_outcomes, field.name)
+    eda_outcomes = self.eda_outcomes
+    for field in dataclasses.fields(eda_outcomes):
+      outcome = getattr(eda_outcomes, field.name)
       error_findings = [
           finding
           for finding in outcome.findings

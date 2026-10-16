@@ -6519,7 +6519,13 @@ class EDAEngineTest(
     data = _get_low_vif_da()
     self._mock_eda_engine_property("_stacked_treatment_control_scaled_da", data)
 
-    outcome = engine.check_geo_vif()
+    with mock.patch.object(
+        outliers_influence,
+        "variance_inflation_factor",
+        wraps=outliers_influence.variance_inflation_factor,
+    ) as mock_statsmodels_vif:
+      outcome = engine.check_geo_vif()
+      mock_statsmodels_vif.assert_not_called()
 
     self.assertIsInstance(outcome, eda_outcome.EDAOutcome)
     self.assertEqual(
@@ -6566,6 +6572,80 @@ class EDAEngineTest(
     ]
     expected_geo_vif = np.stack([expected_geo0_vif, expected_geo1_vif], axis=0)
     test_utils.assert_allclose(geo_artifact.vif_da.values, expected_geo_vif)
+
+  def test_calculate_vif_single_non_constant_variable(self):
+    v1 = np.linspace(0.0, 5.0, _N_TIMES_VIF, dtype=float)
+    v2 = np.ones(_N_TIMES_VIF, dtype=float)
+    data = xr.DataArray(
+        np.stack([v1, v2], axis=-1),
+        coords={
+            constants.TIME: range(_N_TIMES_VIF),
+            eda_constants.VARIABLE: ["var_1", "var_2"],
+        },
+        dims=[constants.TIME, eda_constants.VARIABLE],
+    )
+    vif_da = eda_engine._calculate_vif(
+        data, eda_constants.VARIABLE, std_threshold=1e-4
+    )
+    self.assertAlmostEqual(vif_da.sel(var="var_1").item(), 1.0)
+    self.assertTrue(np.isnan(vif_da.sel(var="var_2").item()))
+
+  def test_calculate_vif_ill_conditioned_and_underdetermined_fallback(self):
+    rng = np.random.default_rng(0)
+    base = rng.standard_normal((20, 4))
+    # Construct near-collinear column so cond(corr) > 1e10.
+    near_collinear = np.column_stack([base, base[:, 0] + 1e-7 * base[:, 1]])
+    near_da = xr.DataArray(
+        near_collinear,
+        coords={
+            constants.TIME: range(20),
+            eda_constants.VARIABLE: [f"v{i}" for i in range(5)],
+        },
+        dims=[constants.TIME, eda_constants.VARIABLE],
+    )
+    with mock.patch.object(
+        outliers_influence,
+        "variance_inflation_factor",
+        wraps=outliers_influence.variance_inflation_factor,
+    ) as mock_statsmodels_vif:
+      vif_da = eda_engine._calculate_vif(
+          near_da, eda_constants.VARIABLE, std_threshold=1e-4
+      )
+      self.assertEqual(mock_statsmodels_vif.call_count, 5)
+    design = sm.add_constant(near_collinear, prepend=True, has_constant="add")
+    expected = [
+        outliers_influence.variance_inflation_factor(design, i + 1)
+        for i in range(5)
+    ]
+    test_utils.assert_allclose(vif_da.values, expected)
+
+    # Underdetermined case: n_samples <= n_vars.
+    underdetermined = rng.standard_normal((4, 4))
+    under_da = xr.DataArray(
+        underdetermined,
+        coords={
+            constants.TIME: range(4),
+            eda_constants.VARIABLE: [f"v{i}" for i in range(4)],
+        },
+        dims=[constants.TIME, eda_constants.VARIABLE],
+    )
+    with mock.patch.object(
+        outliers_influence,
+        "variance_inflation_factor",
+        wraps=outliers_influence.variance_inflation_factor,
+    ) as mock_statsmodels_vif:
+      vif_under_da = eda_engine._calculate_vif(
+          under_da, eda_constants.VARIABLE, std_threshold=1e-4
+      )
+      self.assertEqual(mock_statsmodels_vif.call_count, 4)
+    design_under = sm.add_constant(
+        underdetermined, prepend=True, has_constant="add"
+    )
+    expected_under = [
+        outliers_influence.variance_inflation_factor(design_under, i + 1)
+        for i in range(4)
+    ]
+    test_utils.assert_allclose(vif_under_da.values, expected_under)
 
   @parameterized.named_parameters(
       dict(

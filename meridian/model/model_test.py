@@ -582,7 +582,7 @@ class ModelTest(
         pairwise_correlation=outcome_corr,
     )
 
-    self.enter_context(
+    mock_eda_outcomes = self.enter_context(
         mock.patch.object(
             model.Meridian,
             "eda_outcomes",
@@ -611,6 +611,7 @@ class ModelTest(
         model.ModelFittingError, expected_error_message
     ):
       meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
+    mock_eda_outcomes.assert_called_once()
 
   def test_health_summary_attribute(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
