@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `ReviewSummary.plot_calibration_overview()` and
+    `ReviewSummary.plot_calibration_details()` to plot the calibration overview
+    (experiments, priors and posterior) and the per-experiment adjustments for
+    all calibrated channels and experiments.
 *   On the JAX backend, compile the posterior reconstruction step once per
     `sample_posterior` call, which lowers its peak device memory and wall time.
 *   `WeeklyOptimizationGrid` resolves the optimal frequency of reach and

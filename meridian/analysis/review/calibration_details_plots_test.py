@@ -175,7 +175,6 @@ class CalibrationDetailsPlotsTest(parameterized.TestCase):
     )
 
   @parameterized.named_parameters(
-      ("none_input", None),
       (
           "none_calibrated_output",
           _create_mock_channel_data(has_calibrated_output=False),
@@ -184,7 +183,9 @@ class CalibrationDetailsPlotsTest(parameterized.TestCase):
   )
   def test_build_calibration_details_chart_none_or_empty(self, ch_data):
     self.assertIsNone(
-        calibration_details_plots.build_calibration_details_chart(ch_data)
+        calibration_details_plots.build_calibration_details_chart(
+            ch_data.channel_name, ch_data.calibrated_output
+        )
     )
 
   @parameterized.named_parameters(
@@ -290,7 +291,9 @@ class CalibrationDetailsPlotsTest(parameterized.TestCase):
       expected_num_charts,
   ):
     ch_data = _create_mock_channel_data(experiments=experiments)
-    chart = calibration_details_plots.build_calibration_details_chart(ch_data)
+    chart = calibration_details_plots.build_calibration_details_chart(
+        ch_data.channel_name, ch_data.calibrated_output
+    )
     self.assertIsNotNone(chart)
     chart_dict = chart.to_dict()
 
@@ -328,7 +331,9 @@ class CalibrationDetailsPlotsTest(parameterized.TestCase):
         experiments=_create_mock_experiments_for_filtering()
     )
 
-    chart = calibration_details_plots.build_calibration_details_chart(ch_data)
+    chart = calibration_details_plots.build_calibration_details_chart(
+        ch_data.channel_name, ch_data.calibrated_output
+    )
     self.assertIsNotNone(chart)
     self.assertIsInstance(chart, alt.HConcatChart)
     chart_dict = chart.to_dict()
@@ -340,6 +345,30 @@ class CalibrationDetailsPlotsTest(parameterized.TestCase):
       self.assertEqual(
           chart_dict["hconcat"][i]["title"]["text"], expected_title
       )
+
+  @parameterized.named_parameters(
+      ("no_limit", None, True, 7),
+      ("no_sorting", 2, False, 2),
+  )
+  def test_build_calibration_details_chart_limit_and_sort_experiments(
+      self, limit_experiments, sort_experiments, expected_num_charts
+  ):
+    ch_data = _create_mock_channel_data(
+        experiments=_create_mock_experiments_for_filtering()
+    )
+
+    chart = calibration_details_plots.build_calibration_details_chart(
+        ch_data.channel_name,
+        ch_data.calibrated_output,
+        limit_experiments=limit_experiments,
+        sort_experiments=sort_experiments,
+    )
+    self.assertIsNotNone(chart)
+    titles = [c["title"]["text"] for c in chart.to_dict()["hconcat"]]
+    self.assertLen(titles, expected_num_charts)
+    # Experiments 1..N: all of them, or the first N when not sorting by SE.
+    for i, title in enumerate(titles, start=1):
+      self.assertIn(f"(Experiment {i} (", title)
 
   def test_compute_experiment_adjustment_stages_invalid_tau_spend(self):
     exp = _create_mock_experiment(tau_spend=-1.5)
