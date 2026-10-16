@@ -29,6 +29,7 @@ from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import prior_sampler
+from meridian.model import progress
 from meridian.model import spec
 import numpy as np
 
@@ -92,6 +93,119 @@ class PriorDistributionSamplerTest(
     ) as mock_set_seed:
       sampler(n_draws=1, seed=123)
       mock_set_seed.assert_called_once_with(123)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_and_rf",
+          input_data_name="short_input_data_with_media_and_rf",
+          allows_negative_aggregate_baseline=True,
+          expected_stages=[
+              progress.PriorSamplingStage.BASE,
+              progress.PriorSamplingStage.MEDIA,
+              progress.PriorSamplingStage.RF,
+          ],
+      ),
+      dict(
+          testcase_name="non_media_and_organic",
+          input_data_name="short_input_data_non_media_and_organic",
+          allows_negative_aggregate_baseline=True,
+          expected_stages=[
+              progress.PriorSamplingStage.BASE,
+              progress.PriorSamplingStage.MEDIA,
+              progress.PriorSamplingStage.RF,
+              progress.PriorSamplingStage.ORGANIC_MEDIA,
+              progress.PriorSamplingStage.ORGANIC_RF,
+              progress.PriorSamplingStage.NON_MEDIA_TREATMENTS,
+          ],
+      ),
+      dict(
+          testcase_name="non_media_and_organic_constrained_baseline",
+          input_data_name="short_input_data_non_media_and_organic",
+          allows_negative_aggregate_baseline=False,
+          # The constrained path samples non-media treatments in the base stage.
+          expected_stages=[
+              progress.PriorSamplingStage.BASE,
+              progress.PriorSamplingStage.MEDIA,
+              progress.PriorSamplingStage.RF,
+              progress.PriorSamplingStage.ORGANIC_MEDIA,
+              progress.PriorSamplingStage.ORGANIC_RF,
+          ],
+      ),
+  )
+  def test_sample_prior_reports_progress(
+      self, input_data_name, allows_negative_aggregate_baseline, expected_stages
+  ):
+    meridian = model.Meridian(
+        input_data=getattr(self, input_data_name),
+        model_spec=spec.ModelSpec(
+            allows_negative_aggregate_baseline=allows_negative_aggregate_baseline
+        ),
+    )
+    snapshots = []
+    block_counts_at_callback = []
+
+    def progress_callback(snapshot: progress.PriorSamplingProgress) -> None:
+      snapshots.append(snapshot)
+      block_counts_at_callback.append(mock_block_until_ready.call_count)
+
+    with mock.patch.object(
+        backend,
+        "block_until_ready",
+        wraps=backend.block_until_ready,
+    ) as mock_block_until_ready:
+      meridian.sample_prior(
+          n_draws=self._N_DRAWS,
+          seed=1,
+          progress_callback=progress_callback,
+      )
+
+    n_stages = len(expected_stages)
+    self.assertEqual(
+        snapshots,
+        [
+            progress.PriorSamplingProgress(
+                stage=stage,
+                stages_completed=stages_completed,
+                n_stages=n_stages,
+            )
+            for stages_completed, stage in enumerate(expected_stages, start=1)
+        ],
+    )
+    self.assertEqual(
+        block_counts_at_callback,
+        list(range(1, n_stages + 1)),
+    )
+    self.assertEqual(mock_block_until_ready.call_count, n_stages)
+
+  def test_sample_prior_progress_callback_does_not_change_samples(self):
+    input_data = self.short_input_data_with_media_and_rf
+    meridian = model.Meridian(input_data=input_data)
+    meridian.sample_prior(n_draws=self._N_DRAWS, seed=1)
+    meridian_with_progress = model.Meridian(input_data=input_data)
+
+    meridian_with_progress.sample_prior(
+        n_draws=self._N_DRAWS, seed=1, progress_callback=mock.Mock()
+    )
+
+    self.assertEqual(
+        meridian.inference_data.prior,  # pyrefly: ignore[missing-attribute]
+        meridian_with_progress.inference_data.prior,  # pyrefly: ignore[missing-attribute]
+    )
+
+  def test_sample_prior_progress_callback_exception_warns(self):
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf
+    )
+    progress_callback = mock.Mock(side_effect=ValueError("sink unavailable"))
+
+    with self.assertWarnsRegex(RuntimeWarning, "sink unavailable"):
+      meridian.sample_prior(
+          n_draws=self._N_DRAWS, seed=1, progress_callback=progress_callback
+      )
+
+    # Sampling completed, and the callback kept being called after failing.
+    self.assertTrue(hasattr(meridian.inference_data, constants.PRIOR))
+    self.assertEqual(progress_callback.call_count, 3)
 
   def test_sample_prior_media_and_rf_returns_correct_shape(self):
     self.enter_context(

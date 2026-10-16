@@ -33,6 +33,7 @@ from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
+from meridian.model import prior_sampler
 from meridian.model import spec
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
@@ -807,12 +808,81 @@ class ModelTest(
         parallel_iterations=10,
         seed=None,
         reconstruction_batch_size=constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+        progress_callback=None,
         test=kwarg,
     )
     mock_review.assert_called_once_with(
         meridian,
         convergence_check_config=None,
         post_convergence_checks=None,
+    )
+
+  def test_sample_posterior_and_review_passes_progress_callback(self):
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(model.Meridian, "sample_posterior", autospec=True)
+    )
+    self.enter_context(
+        mock.patch.object(model.Meridian, "review", autospec=True)
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    progress_callback = mock.Mock()
+
+    meridian.sample_posterior_and_review(
+        n_chains=1,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=1,
+        progress_callback=progress_callback,
+    )
+
+    self.assertIs(
+        mock_sample_posterior.call_args.kwargs["progress_callback"],
+        progress_callback,
+    )
+
+  def test_sample_posterior_passes_progress_callback_to_sampler(self):
+    mock_sampler = self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "posterior_sampler_callable",
+            new_callable=mock.PropertyMock,
+        )
+    )
+    mock_sampler.return_value.return_value = az.InferenceData()
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+    progress_callback = mock.Mock()
+
+    meridian.sample_posterior(
+        n_chains=1,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=1,
+        progress_callback=progress_callback,
+    )
+
+    self.assertIs(
+        mock_sampler.return_value.call_args.kwargs["progress_callback"],
+        progress_callback,
+    )
+
+  def test_sample_prior_passes_progress_callback_to_sampler(self):
+    mock_sampler = self.enter_context(
+        mock.patch.object(
+            prior_sampler.PriorDistributionSampler,
+            "__call__",
+            autospec=True,
+            return_value=self.test_dist_media_only,
+        )
+    )
+    meridian = model.Meridian(input_data=self.short_input_data_with_media_only)
+    progress_callback = mock.Mock()
+
+    meridian.sample_prior(
+        n_draws=self._N_DRAWS, progress_callback=progress_callback
+    )
+
+    self.assertIs(
+        mock_sampler.call_args.kwargs["progress_callback"], progress_callback
     )
 
   def test_sample_posterior_and_review_method_with_custom_checks(self):

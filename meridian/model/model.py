@@ -40,6 +40,7 @@ from meridian.model import media
 from meridian.model import posterior_sampler
 from meridian.model import prior_distribution
 from meridian.model import prior_sampler
+from meridian.model import progress
 from meridian.model import spec
 from meridian.model import transformers
 from meridian.model.eda import eda_engine
@@ -1040,6 +1041,8 @@ class Meridian:
       n_draws: int,
       seed: int | None = None,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
+      *,
+      progress_callback: progress.PriorProgressCallback | None = None,
   ):
     """Draws samples from the prior distributions.
 
@@ -1053,9 +1056,16 @@ class Meridian:
       batch_size: Maximum number of draws to process per batch when computing
         media/RF transformations and derived parameters. Limits device OOMs
         caused by wide vectorized models.
+      progress_callback: Optional callable that receives a
+        `progress.PriorSamplingProgress` snapshot each time a sampling stage
+        (base, media, RF, ...) completes. Exceptions it raises are reported as
+        warnings and don't interrupt sampling.
     """
     prior_draws = self.prior_sampler_callable(
-        n_draws=n_draws, seed=seed, batch_size=batch_size
+        n_draws=n_draws,
+        seed=seed,
+        batch_size=batch_size,
+        progress_callback=progress_callback,
     )
     # Create Arviz InferenceData for prior draws.
     prior_coords = self._model_context.create_inference_data_coords(1, n_draws)
@@ -1116,6 +1126,8 @@ class Meridian:
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
       reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      *,
+      progress_callback: progress.PosteriorProgressCallback | None = None,
       **pins,
   ):
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
@@ -1172,6 +1184,16 @@ class Meridian:
       reconstruction_batch_size: Maximum number of combined chain-and-draw
         samples to reconstruct in a single forward pass. Limits device OOMs
         caused by wide vectorized models.
+      progress_callback: Optional callable that receives a
+        `progress.PosteriorSamplingProgress` snapshot each time sampling
+        advances: when a chain batch starts, after every MCMC draw on the JAX
+        backend, when a chain batch finishes, and after each batch of the
+        posterior reconstruction. The callback must be fast and may run on a
+        different thread than the caller. Exceptions it raises are reported as
+        warnings and don't interrupt sampling. On the JAX backend, reporting
+        every draw holds the latent adaptation draws in device memory until the
+        chain batch finishes, which raises the latent draw-buffer memory of a
+        chain batch by `n_adapt / (n_burnin + n_keep)`.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
@@ -1199,6 +1221,7 @@ class Meridian:
         parallel_iterations=parallel_iterations,
         seed=seed,
         reconstruction_batch_size=reconstruction_batch_size,
+        progress_callback=progress_callback,
         **pins,
     )
     self.inference_data.extend(posterior_inference_data, join="right")
@@ -1254,6 +1277,7 @@ class Meridian:
       reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
       convergence_check_config: configs.ConvergenceConfig | None = None,
       post_convergence_checks: reviewer.ChecksBattery | None = None,
+      progress_callback: progress.PosteriorProgressCallback | None = None,
       **pins,
   ) -> None:
     """Runs MCMC sampling and then the model health checks."""
@@ -1271,6 +1295,7 @@ class Meridian:
         parallel_iterations=parallel_iterations,
         seed=seed,
         reconstruction_batch_size=reconstruction_batch_size,
+        progress_callback=progress_callback,
         **pins,
     )
     self.review(
