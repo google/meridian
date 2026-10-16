@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix calibrated ROI priors so that each candidate distribution minimizes the
+    cross-entropy loss against the numerical posterior, as documented.
 *   On the JAX backend, compile the posterior reconstruction step once per
     `sample_posterior` call, which lowers its peak device memory and wall time.
 *   On the JAX backend, compile the media, RF, organic, and non-media

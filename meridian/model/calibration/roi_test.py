@@ -27,11 +27,66 @@ from meridian.backend import test_utils
 from meridian.model.calibration import base
 from meridian.model.calibration import roi
 import numpy as np
+from scipy import optimize
 from scipy import stats
 
 
 def _get_seed():
   return backend.RNGHandler(42).get_next_seed()
+
+
+def _skewed_posterior(
+    dtype: type[np.floating],
+) -> tuple[np.ndarray, np.ndarray, float]:
+  """Returns a skewed posterior on a grid of the given dtype.
+
+  The posterior is a Normal(0.2, 0.5) density truncated to [0.001, 3.0]. Much of
+  its mass is near zero, so its cross-entropy fits differ from moment matching.
+
+  Args:
+    dtype: The dtype of the grid and the density. Posterior grids are float64
+      on the default JAX backend, and float32 on the TensorFlow backend or with
+      `MERIDIAN_ENABLE_JAX_X64=false`.
+
+  Returns:
+    A tuple (grid, pdf, dx) of the grid, the density on it, and the grid step.
+  """
+  grid_min, grid_max, num_points = 0.001, 3.0, 10_000
+  grid = np.linspace(grid_min, grid_max, num_points)
+  dx = (grid_max - grid_min) / (num_points - 1)
+  pdf = stats.norm.pdf(grid, loc=0.2, scale=0.5)
+  pdf /= np.sum(pdf) * dx
+  return grid.astype(dtype), pdf.astype(dtype), dx
+
+
+def _grid_mean_and_variance(
+    grid: np.ndarray, pdf: np.ndarray, dx: float
+) -> tuple[float, float]:
+  """Returns the mean and variance of a density on a grid, in float64."""
+  grid = grid.astype(np.float64)
+  mass = pdf.astype(np.float64) * dx
+  mean = np.sum(mass * grid)
+  return float(mean), float(np.sum(mass * (grid - mean) ** 2))
+
+
+def _minimize_cross_entropy_numerically(
+    logpdf: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    *,
+    grid: np.ndarray,
+    pdf: np.ndarray,
+    dx: float,
+    x0: np.ndarray,
+    bounds: Sequence[tuple[float | None, float | None]],
+) -> optimize.OptimizeResult:
+  """Minimizes the cross-entropy loss with L-BFGS-B in float64."""
+  grid = grid.astype(np.float64)
+  pdf = pdf.astype(np.float64)
+  return optimize.minimize(
+      lambda p: -np.sum(pdf * logpdf(grid, p)) * dx,
+      x0=x0,
+      bounds=bounds,
+      method="L-BFGS-B",
+  )
 
 
 class RoiTest(parameterized.TestCase):
@@ -433,9 +488,11 @@ class RoiTest(parameterized.TestCase):
         model_duration_days=63,
     )
 
+    # The cross-entropy fit keeps the posterior mean (about 2.5) and is wider
+    # than the posterior, so that it covers the posterior's mass near zero.
     self.assertIsInstance(prior, backend.tfd.Gamma)
-    self.assertAlmostEqual(float(prior.concentration), 6.7, places=1)
-    self.assertAlmostEqual(float(prior.rate), 2.7, places=1)
+    self.assertAlmostEqual(float(prior.concentration), 5.2, places=1)
+    self.assertAlmostEqual(float(prior.rate), 2.1, places=1)
 
   def test_get_calibrated_roi_prior_multiple_configs_merges_distributions(
       self,
@@ -475,8 +532,8 @@ class RoiTest(parameterized.TestCase):
     )
 
     self.assertIsInstance(prior, backend.tfd.Gamma)
-    self.assertAlmostEqual(float(prior.concentration), 18.4, places=1)
-    self.assertAlmostEqual(float(prior.rate), 7.4, places=1)
+    self.assertAlmostEqual(float(prior.concentration), 17.0, places=1)
+    self.assertAlmostEqual(float(prior.rate), 6.9, places=1)
 
   def test_get_calibrated_roi_prior_with_baseline_prior_regularizes(
       self,
@@ -549,8 +606,8 @@ class RoiTest(parameterized.TestCase):
     )
 
     self.assertIsInstance(prior, backend.tfd.Gamma)
-    self.assertAlmostEqual(float(prior.concentration), 11.5, places=1)
-    self.assertAlmostEqual(float(prior.rate), 3.1, places=1)
+    self.assertAlmostEqual(float(prior.concentration), 10.0, places=1)
+    self.assertAlmostEqual(float(prior.rate), 2.7, places=1)
 
   def test_get_calibrated_roi_prior_populates_calibration_output_metadata(
       self,
@@ -1229,8 +1286,6 @@ class RoiTest(parameterized.TestCase):
         grid_np=grid_np,
         pdf_np=pdf_np,
         dx=dx,
-        mean_emp=0.0,
-        std_emp=1.0,
     )
     self.assertIsInstance(dist, backend.tfd.Normal)
     self.assertAlmostEqual(float(dist.loc), 0.0, places=2)
@@ -1247,8 +1302,6 @@ class RoiTest(parameterized.TestCase):
         grid_np=grid_np,
         pdf_np=pdf_np,
         dx=dx,
-        mean_emp=1.0,
-        var_emp=0.5,
     )
     self.assertIsInstance(dist, backend.tfd.LogNormal)
     self.assertGreaterEqual(loss, 0.0)
@@ -1264,11 +1317,149 @@ class RoiTest(parameterized.TestCase):
         grid_np=grid_np,
         pdf_np=pdf_np,
         dx=dx,
-        mean_emp=1.0,
-        var_emp=0.5,
     )
     self.assertIsInstance(dist, backend.tfd.Gamma)
     self.assertGreaterEqual(loss, 0.0)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="float32_grid",
+          dtype=np.float32,
+      ),
+      dict(
+          testcase_name="float64_grid",
+          dtype=np.float64,
+      ),
+  )
+  def test_fit_distribution_minimizes_cross_entropy_gamma(
+      self, dtype: type[np.floating]
+  ) -> None:
+    grid_np, pdf_np, dx = _skewed_posterior(dtype)
+    mean, var = _grid_mean_and_variance(grid_np, pdf_np, dx)
+    moment_matched = np.array([mean**2 / var, mean / var])
+    expected = _minimize_cross_entropy_numerically(
+        lambda x, p: stats.gamma.logpdf(x, a=p[0], scale=1.0 / p[1]),
+        grid=grid_np,
+        pdf=pdf_np,
+        dx=dx,
+        x0=moment_matched,
+        bounds=[(1e-6, None), (1e-6, None)],
+    )
+
+    fitted = roi._fit_distribution(
+        grid_np=grid_np,
+        pdf_np=pdf_np,
+        dx=dx,
+        channel_name="Search",
+    )
+
+    self.assertIsInstance(fitted, backend.tfd.Gamma)
+    params = np.array([float(fitted.concentration), float(fitted.rate)])
+    np.testing.assert_allclose(params, expected.x, rtol=1e-3)
+    # The cross-entropy fit is far from the moment-matched Gamma distribution.
+    self.assertGreater(np.min(np.abs(params / moment_matched - 1.0)), 0.1)
+
+  def test_get_calibrated_roi_prior_selects_lognormal_for_high_variance_experiment(
+      self,
+  ) -> None:
+    # The spend adjustment doubles the standard error to 10, which is much wider
+    # than the bulk of the LogNormal baseline prior. The experiment mostly trims
+    # the baseline's heavy right tail, which shrinks the variance much more than
+    # the variance of log(x). So moment matching gives a LogNormal distribution
+    # that is too narrow and fits worse than a Gamma distribution. The
+    # cross-entropy fit is a LogNormal distribution.
+    obs = base.ExperimentResult(point_estimate=2.0, standard_error=5.0)
+    # Duration is exactly 9 weeks (max_lag + 1) so duration adjustments are
+    # inactive.
+    experiment_info = base.ExperimentInfo(
+        total_spend=1000.0,
+        experiment_start_date=datetime.date(2026, 1, 1),
+        experiment_end_date=datetime.date(2026, 3, 5),
+    )
+    cfg = base.CalibrationData(
+        experiment_result=obs, experiment_info=experiment_info
+    )
+    baseline = backend.tfd.LogNormal(
+        loc=backend.cast(0.5, backend.float_dtype),
+        scale=backend.cast(1.3, backend.float_dtype),
+    )
+
+    prior, output = roi.get_calibrated_roi_prior(
+        calibration_data=[cfg],
+        adstock_decay_function=meridian_constants.GEOMETRIC_DECAY,
+        alpha=0.5,
+        max_lag=meridian_constants.DEFAULT_MAX_LAG,
+        channel_name="Search",
+        total_channel_spend=4000.0,
+        interval_days=7,
+        last_modeled_date=datetime.date(2026, 3, 5),
+        model_duration_days=63,
+        baseline_prior=baseline,
+    )
+
+    self.assertIsInstance(prior, backend.tfd.LogNormal)
+    intermediary = output.intermediary_prior.parameters
+    grid_np = intermediary["grid"]
+    pdf_np = intermediary["pdf"]
+    dx = intermediary["dx"]
+    mean, var = _grid_mean_and_variance(grid_np, pdf_np, dx)
+    log_var = np.log1p(var / mean**2)
+    moment_matched = np.array([np.log(mean) - 0.5 * log_var, np.sqrt(log_var)])
+    expected = _minimize_cross_entropy_numerically(
+        lambda x, p: stats.lognorm.logpdf(x, s=p[1], scale=np.exp(p[0])),
+        grid=grid_np,
+        pdf=pdf_np,
+        dx=dx,
+        x0=moment_matched,
+        bounds=[(None, None), (1e-6, None)],
+    )
+    params = np.array([float(prior.loc), float(prior.scale)])
+    np.testing.assert_allclose(params, expected.x, rtol=1e-3)
+    # The cross-entropy fit is far from the moment-matched LogNormal.
+    self.assertGreater(np.min(np.abs(params / moment_matched - 1.0)), 0.1)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="float32_grid",
+          dtype=np.float32,
+      ),
+      dict(
+          testcase_name="float64_grid",
+          dtype=np.float64,
+      ),
+  )
+  def test_fit_lognormal_minimizes_cross_entropy(
+      self, dtype: type[np.floating]
+  ) -> None:
+    grid_np, pdf_np, dx = _skewed_posterior(dtype)
+    mean, var = _grid_mean_and_variance(grid_np, pdf_np, dx)
+    log_var = np.log1p(var / mean**2)
+    moment_matched = np.array([np.log(mean) - 0.5 * log_var, np.sqrt(log_var)])
+    expected = _minimize_cross_entropy_numerically(
+        lambda x, p: stats.lognorm.logpdf(x, s=p[1], scale=np.exp(p[0])),
+        grid=grid_np,
+        pdf=pdf_np,
+        dx=dx,
+        x0=moment_matched,
+        bounds=[(None, None), (1e-6, None)],
+    )
+
+    dist, loss = roi._fit_lognormal(grid_np=grid_np, pdf_np=pdf_np, dx=dx)
+
+    self.assertIsInstance(dist, backend.tfd.LogNormal)
+    params = np.array([float(dist.loc), float(dist.scale)])
+    np.testing.assert_allclose(params, expected.x, rtol=1e-3)
+    self.assertAlmostEqual(loss, expected.fun, places=6)
+    # The cross-entropy fit is far from the moment-matched LogNormal.
+    self.assertGreater(np.min(np.abs(params / moment_matched - 1.0)), 0.1)
+
+  def test_fit_gamma_raises_value_error_for_single_point_mass(self) -> None:
+    with self.assertRaisesRegex(ValueError, "single grid point"):
+      roi._fit_gamma(
+          grid_np=np.array([0.5, 1.0, 1.5]),
+          pdf_np=np.array([0.0, 10.0, 0.0]),
+          dx=0.1,
+      )
 
   @parameterized.named_parameters(
       dict(
