@@ -1075,8 +1075,8 @@ class ModelSpec:
 class _ModelSpecWithChangepoints(ModelSpec):
   """A `ModelSpec` with time-varying media effects. Internal only.
 
-  Sampling a model with changepoints raises `NotImplementedError` until
-  time-varying media effects are fully supported.
+  `Analyzer` raises `NotImplementedError` for a model with changepoints until
+  it uses each time period's coefficient.
 
   Attributes:
     changepoints: Maps a paid media or reach and frequency channel name to the
@@ -1087,12 +1087,27 @@ class _ModelSpecWithChangepoints(ModelSpec):
       all time periods. Dates can be `datetime.date`, `datetime.datetime`,
       `np.datetime64` or 'YYYY-MM-DD' strings, and are stored as tuples of
       `datetime.date`. Default: `None`, which means no time-varying effects.
+    changepoint_media_effects_dist: The distribution of the media random effects
+      of the paid media and RF channels in `changepoints`, either `'log_normal'`
+      or `'normal'`. Other channels use `media_effects_dist`. Unlike
+      `media_effects_dist`, it also applies to national models. Default:
+      `'log_normal'`.
   """
 
   changepoints: Mapping[str, Collection[time_coordinates.Date]] | None = None
+  changepoint_media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
 
   def __post_init__(self) -> None:
     super().__post_init__()
+    if (
+        self.changepoint_media_effects_dist
+        not in constants.MEDIA_EFFECTS_DISTRIBUTIONS
+    ):
+      raise ValueError(
+          "`changepoint_media_effects_dist` must be one of"
+          f" {sorted(constants.MEDIA_EFFECTS_DISTRIBUTIONS)}, got"
+          f" {self.changepoint_media_effects_dist!r}."
+      )
     if self.changepoints is None:
       return
     if not isinstance(self.changepoints, Mapping):

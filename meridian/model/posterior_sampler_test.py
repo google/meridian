@@ -66,25 +66,6 @@ class PosteriorMCMCSamplerTest(
     else:
       test_utils.assert_seed_not_allequal(seed1, seed2)
 
-  def test_sample_posterior_with_changepoints_raises(self):
-    input_data = self.short_input_data_with_media_and_rf
-    assert input_data.rf_channel is not None
-    model_spec = spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
-        changepoints={
-            str(input_data.rf_channel.values[0]): [
-                input_data.time_coordinates.all_dates[10]
-            ]
-        }
-    )
-    meridian = model.Meridian(input_data=input_data, model_spec=model_spec)
-    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
-      meridian.sample_posterior(
-          n_chains=self._N_CHAINS,
-          n_adapt=self._N_ADAPT,
-          n_burnin=self._N_BURNIN,
-          n_keep=self._N_KEEP,
-      )
-
   def test_get_joint_dist_zeros(self):
     zero = backend.np_float_dtype(0.0)
     model_spec = spec.ModelSpec(
@@ -2674,6 +2655,297 @@ class ReconstructionBatchingTest(
     self.assertEqual(arrays["a"].shape, (2, 5, 2))
     self.assertEqual(arrays["a"][0, 0, 0], 1.0)
     self.assertEqual(arrays["a"][1, 4, 1], 2.0)
+
+
+_ModelSpecWithChangepoints = spec._ModelSpecWithChangepoints  # pylint: disable=protected-access
+_PriorDistributionWithChangepoints = (
+    prior_distribution._PriorDistributionWithChangepoints  # pylint: disable=protected-access
+)
+
+
+class TimeVaryingPosteriorTest(
+    test_utils.MeridianTestCase,
+    parameterized.TestCase,
+    model_test_data.WithInputDataSamples,
+):
+  """Tests posterior sampling of models with changepoints."""
+
+  input_data_samples = model_test_data.WithInputDataSamples
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    model_test_data.WithInputDataSamples.setup()
+
+  def setUp(self):
+    super().setUp()
+    self.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "_run_model_fitting_guardrail",
+            autospec=True,
+            spec_set=True,
+            return_value=None,
+        )
+    )
+    data = self.short_input_data_with_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    self._media = [str(name) for name in data.media_channel.values]
+    self._rf = [str(name) for name in data.rf_channel.values]
+    self._dates = data.time_coordinates.all_dates
+
+  def _meridian(self, **spec_kwargs) -> model.Meridian:
+    return model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={
+                self._media[1]: [self._dates[20]],
+                self._rf[0]: [self._dates[10], self._dates[30]],
+            },
+            **spec_kwargs,
+        ),
+    )
+
+  @parameterized.named_parameters(
+      ("default_baseline", True), ("constrained_baseline", False)
+  )
+  def test_joint_dist_has_time_varying_parameters(
+      self, allows_negative_aggregate_baseline: bool
+  ):
+    meridian = self._meridian(
+        allows_negative_aggregate_baseline=allows_negative_aggregate_baseline
+    )
+    sample = (
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
+        )
+    )
+    # One media and one RF channel have changepoints; the RF channel has 3
+    # intervals, so both share an interval axis of length 3.
+    self.assertEqual(sample.zeta_m.shape, (self._N_DRAWS, 1))
+    self.assertEqual(sample.varphi_m.shape, (self._N_DRAWS, 1, 3))
+    self.assertEqual(sample.zeta_rf.shape, (self._N_DRAWS, 1))
+    self.assertEqual(sample.varphi_rf.shape, (self._N_DRAWS, 1, 3))
+    self.assertTrue(np.all(np.isfinite(np.asarray(sample.y))))
+
+  @parameterized.product(
+      data_name=(
+          "short_input_data_with_media_only",
+          "short_input_data_with_rf_only",
+          "national_input_data_media_and_rf",
+      ),
+      prior_type=(
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+      ),
+  )
+  def test_joint_dist_for_each_channel_type(
+      self, data_name: str, prior_type: str
+  ):
+    data = getattr(self, data_name)
+    dates = data.time_coordinates.all_dates
+    changepoints_spec = {
+        str(names.values[0]): [dates[len(dates) // 2]]
+        for names in (data.media_channel, data.rf_channel)
+        if names is not None
+    }
+    meridian = model.Meridian(
+        input_data=data,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints=changepoints_spec,
+            media_prior_type=prior_type,
+            rf_prior_type=prior_type,
+        ),
+    )
+    sample = (
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
+        )
+    )
+    for names, varphi in (
+        (data.media_channel, constants.VARPHI_M),
+        (data.rf_channel, constants.VARPHI_RF),
+    ):
+      if names is None:
+        self.assertFalse(hasattr(sample, varphi))
+      else:
+        self.assertEqual(getattr(sample, varphi).shape, (self._N_DRAWS, 1, 2))
+    self.assertTrue(np.all(np.isfinite(np.asarray(sample.y))))
+
+  @parameterized.product(
+      prior_type=(
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+      ),
+      allows_negative_aggregate_baseline=(True, False),
+      media_effects_dist=(
+          constants.MEDIA_EFFECTS_LOG_NORMAL,
+          constants.MEDIA_EFFECTS_NORMAL,
+      ),
+  )
+  def test_outcome_uses_each_time_periods_coefficient(
+      self,
+      prior_type: str,
+      allows_negative_aggregate_baseline: bool,
+      media_effects_dist: str,
+  ):
+    input_data = self.short_input_data_with_media_only_no_controls
+    assert input_data.media_channel is not None
+    media = [str(name) for name in input_data.media_channel.values]
+    meridian = model.Meridian(
+        input_data=input_data,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={
+                media[1]: [input_data.time_coordinates.all_dates[20]]
+            },
+            media_prior_type=prior_type,
+            allows_negative_aggregate_baseline=(
+                allows_negative_aggregate_baseline
+            ),
+            # The channel with changepoints keeps the default log-normal
+            # `changepoint_media_effects_dist`.
+            media_effects_dist=media_effects_dist,
+            # With no noise, `y` is the linear predictor.
+            prior=_PriorDistributionWithChangepoints(
+                sigma=backend.tfd.Deterministic(backend.np_float_dtype(0.0)),
+            ),
+        ),
+    )
+    model_context = meridian.model_context
+    sample = (
+        meridian.posterior_sampler_callable._get_joint_dist_unpinned().sample(
+            2, seed=self.get_next_rng_seed_or_key()
+        )
+    )
+
+    # Each channel's coefficients use its random effects distribution.
+    beta_eta_combined = np.asarray(sample.beta_m)[
+        :, np.newaxis, :
+    ] + np.asarray(sample.eta_m)[:, np.newaxis, :] * np.asarray(
+        sample.beta_gm_dev
+    )
+    expected_beta_gm = (
+        beta_eta_combined.copy()
+        if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
+        else np.exp(beta_eta_combined)
+    )
+    expected_beta_gm[..., 1] = np.exp(beta_eta_combined[..., 1])
+    test_utils.assert_allclose(sample.beta_gm, expected_beta_gm, rtol=1e-5)
+
+    # Rebuild `y` as the baseline plus the media contribution, using each time
+    # period's coefficient for the channel with changepoints.
+    eqn = equations.ModelEquations(model_context)
+    media_scaled = model_context.media_tensors.media_scaled
+    assert media_scaled is not None
+    media_transformed = eqn.adstock_hill_media(
+        media=media_scaled,
+        alpha=sample.alpha_m,
+        ec=sample.ec_m,
+        slope=sample.slope_m,
+        decay_functions=model_context.adstock_decay_spec.media,
+        saturation_spec=model_context.saturation_spec.media,
+    )
+    coefficients = np.broadcast_to(
+        np.asarray(sample.beta_gm)[:, :, np.newaxis, :],
+        media_transformed.shape,
+    ).copy()
+    time_effect = (
+        np.where(
+            np.arange(self._N_TIMES_SHORT) < 20,
+            np.asarray(sample.varphi_m)[:, 0, 0, np.newaxis],
+            np.asarray(sample.varphi_m)[:, 0, 1, np.newaxis],
+        )
+        * np.asarray(sample.zeta_m)[:, 0, np.newaxis]
+    )
+    coefficients[..., 1] *= np.exp(time_effect)[:, np.newaxis, :]
+    expected_y = (
+        np.asarray(sample.tau_g)[:, :, np.newaxis]
+        + np.asarray(sample.mu_t)[:, np.newaxis, :]
+        + np.einsum(
+            "cgtm,cgtm->cgt", np.asarray(media_transformed), coefficients
+        )
+    )
+    test_utils.assert_allclose(sample.y, expected_y, rtol=1e-4, atol=1e-6)
+
+    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+      # The incremental outcome over all geos and time periods, using each
+      # time period's coefficient, matches the ROI draw.
+      counterfactual_difference = np.asarray(
+          eqn.linear_predictor_counterfactual_difference_media(
+              media_transformed=media_transformed,
+              alpha_m=sample.alpha_m,
+              ec_m=sample.ec_m,
+              slope_m=sample.slope_m,
+          )
+      )
+      revenue_per_kpi = (
+          np.ones((self._N_GEOS, self._N_TIMES_SHORT))
+          if model_context.revenue_per_kpi is None
+          else np.asarray(model_context.revenue_per_kpi)
+      )
+      incremental_outcome = np.einsum(
+          "cgt,gt,g,cgt->c",
+          counterfactual_difference[..., 1],
+          revenue_per_kpi,
+          np.asarray(model_context.population),
+          coefficients[..., 1],
+      ) * float(model_context.kpi_transformer.population_scaled_stdev)
+      test_utils.assert_allclose(
+          incremental_outcome,
+          np.asarray(sample.roi_m)[:, 1]
+          * np.asarray(model_context.media_tensors.prior_denominator)[1],
+          rtol=1e-3,
+      )
+
+  def test_sample_posterior_stores_time_varying_parameters(self):
+    meridian = self._meridian()
+    # Stand in for MCMC with draws of the sampled joint distribution.
+    n_draws = self._N_BURNIN + self._N_KEEP
+    joint_dist = meridian.posterior_sampler_callable._get_joint_dist_sampling()
+    states = joint_dist.sample_unpinned(
+        [n_draws, self._N_CHAINS], seed=self.get_next_rng_seed_or_key()
+    )
+    mock_return = collections.namedtuple(
+        "StatesAndTrace", ["all_states", "trace"]
+    )(all_states=states, trace=self.test_trace)
+    with mock.patch.object(
+        backend,
+        "xla_windowed_adaptive_nuts",
+        autospec=True,
+        return_value=mock_return,
+    ):
+      meridian.sample_posterior(
+          n_chains=self._N_CHAINS,
+          n_adapt=self._N_ADAPT,
+          n_burnin=self._N_BURNIN,
+          n_keep=self._N_KEEP,
+          seed=1,
+      )
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(
+        posterior[constants.ZETA_M].dims,
+        (constants.CHAIN, constants.DRAW, constants.CHANGEPOINT_MEDIA_CHANNEL),
+    )
+    self.assertEqual(
+        posterior[constants.VARPHI_RF].dims,
+        (
+            constants.CHAIN,
+            constants.DRAW,
+            constants.CHANGEPOINT_RF_CHANNEL,
+            constants.CHANGEPOINT_INTERVAL,
+        ),
+    )
+    self.assertEqual(
+        list(posterior[constants.CHANGEPOINT_MEDIA_CHANNEL].values),
+        [self._media[1]],
+    )
+    self.assertEqual(
+        list(posterior[constants.CHANGEPOINT_RF_CHANNEL].values), [self._rf[0]]
+    )
+    self.assertEqual(
+        posterior[constants.VARPHI_M].shape,
+        (self._N_CHAINS, self._N_KEEP, 1, 3),
+    )
 
 
 if __name__ == "__main__":
