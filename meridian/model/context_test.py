@@ -2266,6 +2266,66 @@ class InferenceDataTest(
           np.asarray(c_weights), expected_c_weights, rtol=1e-5, atol=1e-5
       )
 
+  def test_aggregate_baseline_constraint_offset(self):
+    model_context = context.ModelContext(
+        input_data=self.short_input_data_non_media_and_organic,
+        model_spec=spec.ModelSpec(allows_negative_aggregate_baseline=False),
+    )
+    constraint = model_context.aggregate_baseline_constraint
+    assert constraint is not None
+    n_geos = model_context.n_geos
+    n_non_media_channels = model_context.n_non_media_channels
+    rng = np.random.default_rng(0)
+    tau_g = rng.normal(size=(2, n_geos))
+    gamma_gc = rng.normal(size=(2, n_geos, model_context.n_controls))
+    gamma_gn = rng.normal(size=(2, n_geos, n_non_media_channels))
+    non_media_baseline = rng.normal(size=(n_non_media_channels,))
+
+    # Each term of the baseline, summed over geos and time periods with the
+    # outcome weights.
+    weights = np.asarray(constraint.outcome_weights)
+    geo_term = np.einsum("gt,dg->d", weights, tau_g)
+    controls_term = np.einsum(
+        "gt,gtc,dgc->d",
+        weights,
+        np.asarray(model_context.controls_scaled),
+        gamma_gc,
+    )
+    non_media_term = np.einsum(
+        "gt,n,dgn->d", weights, non_media_baseline, gamma_gn
+    )
+
+    def to_tensor(array: np.ndarray) -> backend.Tensor:
+      return backend.to_tensor(array, dtype=backend.float_dtype)
+
+    with self.subTest("geo"):
+      test_utils.assert_allclose(
+          constraint.offset(tau_g=to_tensor(tau_g)),
+          geo_term,
+          rtol=1e-4,
+          atol=1e-3,
+      )
+    with self.subTest("geo_controls_and_non_media"):
+      test_utils.assert_allclose(
+          constraint.offset(
+              tau_g=to_tensor(tau_g),
+              gamma_gc=to_tensor(gamma_gc),
+              gamma_gn=to_tensor(gamma_gn),
+              non_media_baseline_normalized=to_tensor(non_media_baseline),
+          ),
+          geo_term + controls_term + non_media_term,
+          rtol=1e-4,
+          atol=1e-3,
+      )
+    with self.subTest("non_media_without_baseline_raises"):
+      with self.assertRaisesWithLiteralMatch(
+          ValueError,
+          "`non_media_baseline_normalized` is required with `gamma_gn`.",
+      ):
+        constraint.offset(
+            tau_g=to_tensor(tau_g), gamma_gn=to_tensor(gamma_gn)
+        )
+
   def test_init_revalidates_mutated_knot_values_prior(self):
     model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
     model_spec.prior.knot_values = backend.tfd.Uniform(
