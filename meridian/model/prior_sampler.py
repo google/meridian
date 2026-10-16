@@ -23,7 +23,6 @@ from meridian import backend
 from meridian import constants
 from meridian.model import context
 from meridian.model import equations
-import numpy as np
 
 # TODO: Break this circular dependency.
 if TYPE_CHECKING:
@@ -799,77 +798,30 @@ class PriorDistributionSampler:
             n_draws, rng_handler, batch_size=batch_size
         )
 
-      geo_offset = float(ctx.n_times) * backend.einsum(
-          "g,...g->...",
-          baseline_constraint.geo_weights,
-          base_vars[constants.TAU_G],
-      )
-      offset = geo_offset
-      if ctx.n_controls:
-        controls_offset = backend.einsum(
-            "gc,...gc->...",
-            baseline_constraint.controls_weights,
-            base_vars[constants.GAMMA_GC],
-        )
-        offset = offset + controls_offset
-      if (
-          ctx.non_media_treatments_normalized is not None
-          and ctx.non_media_transformer is not None
-      ):
-        non_media_baseline = (
-            self._model_equations.compute_non_media_treatments_baseline()
-        )
+      if ctx.non_media_transformer is not None:
         # The baseline values are already population-scaled.
-        non_media_baseline_scaled = ctx.non_media_transformer.forward(
-            non_media_baseline, apply_population_scaling=False
+        non_media_baseline_normalized = ctx.non_media_transformer.forward(
+            self._model_equations.compute_non_media_treatments_baseline(),
+            apply_population_scaling=False,
         )
-        broadcast_non_media = backend.broadcast_to(
-            non_media_baseline_scaled,
-            [ctx.n_geos, ctx.n_times, ctx.n_non_media_channels],
-        )
-        non_media_offset = backend.einsum(
-            "gt,gtn,...gn->...",
-            baseline_constraint.outcome_weights,
-            broadcast_non_media,
-            base_vars[constants.GAMMA_GN],
-        )
-        offset = offset + non_media_offset
-
-      knot_dist = prior.knot_values
-      while isinstance(knot_dist, backend.tfd.BatchBroadcast):
-        knot_dist = knot_dist.distribution
-      assert isinstance(knot_dist, backend.tfd.Normal)
-      knot_dtype = knot_dist.dtype
-      knot_scale_val = float(np.reshape(np.asarray(knot_dist.scale), -1)[0])
-      knot_loc_val = float(np.reshape(np.asarray(knot_dist.loc), -1)[0])
-      knot_scale = backend.to_tensor(knot_scale_val, dtype=knot_dtype)
-      knot_loc = backend.to_tensor(knot_loc_val, dtype=knot_dtype)
-
-      low = backend.cast(
-          backend.divide(
-              baseline_constraint.threshold_l - offset,
-              baseline_constraint.knot_norm_w,
-          ),
-          dtype=knot_dtype,
+      else:
+        non_media_baseline_normalized = None
+      offset = baseline_constraint.offset(
+          tau_g=base_vars[constants.TAU_G],
+          gamma_gc=base_vars.get(constants.GAMMA_GC),
+          gamma_gn=base_vars.get(constants.GAMMA_GN),
+          non_media_baseline_normalized=non_media_baseline_normalized,
       )
-      high = backend.cast(
-          backend.maximum(low + 50.0 * knot_scale, 50.0 * knot_scale),
-          dtype=knot_dtype,
-      )
-      rotated_knot_0 = backend.tfd.TruncatedNormal(
-          loc=knot_loc,
-          scale=knot_scale,
-          low=low,
-          high=high,
-          name=constants.ROTATED_KNOT_0,
-      ).sample(seed=rng_handler.get_next_seed())
 
-      if ctx.knot_info.n_knots > 1:
-        rotated_knot_rest = backend.tfd.Sample(
-            backend.tfd.Normal(loc=knot_loc, scale=knot_scale),
-            [ctx.knot_info.n_knots - 1],
-            name=constants.ROTATED_KNOT_REST,
-        ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+      knot_dtype = baseline_constraint.knot_scale.dtype
+      rotated_knot_0 = baseline_constraint.rotated_knot_0_prior(offset).sample(
+          seed=rng_handler.get_next_seed()
+      )
+      rotated_knot_rest_prior = baseline_constraint.rotated_knot_rest_prior()
+      if rotated_knot_rest_prior is not None:
+        rotated_knot_rest = rotated_knot_rest_prior.sample(
+            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
+        )
         rotated_knots = backend.concatenate(
             [backend.expand_dims(rotated_knot_0, -1), rotated_knot_rest],
             axis=-1,
