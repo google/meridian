@@ -40,6 +40,7 @@ deserialized_mmm = serde.deserialize(serialized_mmm)  # A `Meridian` object
 """
 
 import dataclasses
+import importlib.metadata
 import os
 import warnings
 
@@ -53,6 +54,7 @@ from meridian.common import errors
 from meridian.model import model
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
+from meridian.schema.serde import constants as serde_constants
 from meridian.schema.serde import distribution
 from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
@@ -72,7 +74,17 @@ __all__ = [
     'save_meridian',
 ]
 
+
+def _get_schema_version() -> str:
+  """Returns the current `mmm-proto-schema` version string."""
+  try:
+    return importlib.metadata.version('mmm-proto-schema')
+  except importlib.metadata.PackageNotFoundError:
+    return serde_constants.SCHEMA_VERSION
+
+
 _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
+_SCHEMA_VERSION_INFO = semver.VersionInfo.parse(_get_schema_version())
 _LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.0')
 _LEGACY_AKS_V1_7_1_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.1')
 
@@ -187,6 +199,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     model_proto = meridian_pb.MeridianModel(
         model_id=model_id,
         model_version=str(meridian_version),
+        schema_version=_get_schema_version(),
         hyperparameters=hyperparameters.HyperparametersSerde().serialize(
             mmm.model_spec, model_context=mmm.model_context
         ),
@@ -265,7 +278,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       serialized_version: str = '',
       distribution_function_registry: FunctionRegistry | None = None,
       eda_function_registry: FunctionRegistry | None = None,
-      force_deserialization=False,
+      force_deserialization: bool = False,
   ) -> model.Meridian:
     """Deserializes the given `MmmKernel` proto into a Meridian model.
 
@@ -278,22 +291,75 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         `tfp.distributions`.
       eda_function_registry: A lookup table containing custom functions used by
         `EDASpec` objects.
-      force_deserialization: If True, bypasses the safety check that validates
-        whether functions within a function registry have changed after
-        serialization. Use with caution. This should only be used if you have
-        intentionally modified a custom function and are confident that the
-        changes will not affect the deserialized model. A safer alternative is
-        to first deserialize the model with the original functions and then
-        serialize it with the new ones.
+      force_deserialization: If True, bypasses the `schema_version`
+        compatibility check (emitting a warning instead of raising a
+        `ValueError` when the serialized model has a newer `mmm-proto-schema`
+        version) as well as the safety check that validates whether functions
+        within a function registry have changed after serialization. Use with
+        caution. This should only be used if you have intentionally modified a
+        custom function or are loading a newer schema version and are confident
+        that the changes will not affect the deserialized model. A safer
+        alternative for function changes is to first deserialize the model with
+        the original functions and then serialize it with the new ones.
 
     Returns:
       A Meridian model object.
+
+    Raises:
+      ValueError: If `serialized.model` is not a `MeridianModel`, if the
+        serialized model's `schema_version` is newer than the supported
+        `mmm-proto-schema` version and `force_deserialization` is False, or if
+        priors are missing.
     """
     if serialized.model.Is(meridian_pb.MeridianModel.DESCRIPTOR):
       ser_meridian = meridian_pb.MeridianModel()
     else:
       raise ValueError('`serialized.model` is not a `MeridianModel`.')
     serialized.model.Unpack(ser_meridian)
+
+    if ser_meridian.schema_version:
+      try:
+        serialized_schema_version = semver.VersionInfo.parse(
+            ser_meridian.schema_version
+        )
+      except ValueError:
+        warnings.warn(
+            (
+                'Could not parse serialized model `schema_version`'
+                f' {ser_meridian.schema_version!r} as a semantic version;'
+                ' skipping schema version compatibility check.'
+            ),
+            UserWarning,
+        )
+        serialized_schema_version = None
+      if (
+          serialized_schema_version is not None
+          and serialized_schema_version > _SCHEMA_VERSION_INFO
+      ):
+        if not force_deserialization:
+          raise ValueError(
+              'This model was serialized with `mmm-proto-schema`'
+              f' {serialized_schema_version}, which is newer than the'
+              f' supported `mmm-proto-schema` {_SCHEMA_VERSION_INFO} in this'
+              ' environment. Any proto fields added after'
+              f' {_SCHEMA_VERSION_INFO} are ignored during deserialization,'
+              ' so the loaded model may differ from the one that was'
+              ' serialized. Upgrade `google-meridian` and `mmm-proto-schema`'
+              f' to >= {serialized_schema_version}, or pass'
+              ' `force_deserialization=True` to load at your own risk.'
+          )
+        warnings.warn(
+            (
+                'This model was serialized with `mmm-proto-schema`'
+                f' {serialized_schema_version}, which is newer than the'
+                f' supported `mmm-proto-schema` {_SCHEMA_VERSION_INFO} in this'
+                ' environment. Proceeding because `force_deserialization=True`'
+                ' was set; any proto fields added after'
+                f' {_SCHEMA_VERSION_INFO} are silently ignored.'
+            ),
+            UserWarning,
+        )
+
     serialized_version = semver.VersionInfo.parse(ser_meridian.model_version)
 
     if serialized_version > _VERSION_INFO:
@@ -484,7 +550,7 @@ def load_meridian(
     file_path: str,
     distribution_function_registry: FunctionRegistry | None = None,
     eda_function_registry: FunctionRegistry | None = None,
-    force_deserialization=False,
+    force_deserialization: bool = False,
 ) -> model.Meridian:
   """Load the model object from an `MmmKernel` proto file path.
 
@@ -499,11 +565,14 @@ def load_meridian(
       custom functions to be used as parameters in various `tfp.distributions`.
     eda_function_registry: A lookup table that maps string keys to custom
       functions to be used in `EDASpec`.
-    force_deserialization: If True, bypasses the safety check that validates
-      whether functions within a function registry have changed after
-      serialization. Use with caution. This should only be used if you have
-      intentionally modified a custom function and are confident that the
-      changes will not affect the deserialized model. A safer alternative is to
+    force_deserialization: If True, bypasses the `schema_version` compatibility
+      check (emitting a warning instead of raising a `ValueError` when the
+      serialized model has a newer `mmm-proto-schema` version) as well as the
+      safety check that validates whether functions within a function registry
+      have changed after serialization. Use with caution. This should only be
+      used if you have intentionally modified a custom function or are loading a
+      newer schema version and are confident that the changes will not affect
+      the deserialized model. A safer alternative for function changes is to
       first deserialize the model with the original functions and then serialize
       it with the new ones.
 

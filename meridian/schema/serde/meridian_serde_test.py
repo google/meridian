@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import pathlib
+import tomllib
 from typing import Callable
 from unittest import mock
 import warnings
@@ -39,6 +41,7 @@ from mmm.v1.marketing import marketing_data_pb2 as marketing_pb
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from mmm.v1.model.meridian.eda import eda_spec_pb2
+from meridian.schema.serde import constants as serde_constants
 from meridian.schema.serde import distribution
 from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
@@ -397,6 +400,124 @@ class MeridianSerdeTest(parameterized.TestCase):
       )
 
     self.assertEmpty([w for w in caught if 'newer than' in str(w.message)])
+
+  def _mmm_kernel_with_schema_version(
+      self, schema_version: str
+  ) -> kernel_pb.MmmKernel:
+    meridian_model_kwargs = dict(
+        model_version='1.2.3',
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+    )
+    if schema_version:
+      meridian_model_kwargs['schema_version'] = schema_version
+    meridian_model = meridian_pb.MeridianModel(**meridian_model_kwargs)
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    return kernel_pb.MmmKernel(
+        model=any_model,
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+    )
+
+  def test_schema_version_matches_proto_pyproject_toml(self):
+    candidate_parents = (
+        *pathlib.Path(__file__).parents,
+        *pathlib.Path(__file__).resolve().parents,
+    )
+    pyproject_path = next(
+        p / 'proto' / 'pyproject.toml'
+        for p in candidate_parents
+        if (p / 'proto' / 'pyproject.toml').is_file()
+    )
+    with open(pyproject_path, 'rb') as f:
+      pyproject_version = tomllib.load(f)['project']['version']
+
+    self.assertEqual(serde_constants.SCHEMA_VERSION, pyproject_version)
+    self.assertEqual(serde._get_schema_version(), pyproject_version)  # pylint: disable=protected-access
+
+  def test_serialize_sets_schema_version(self):
+    meridian_model = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=test_data.get_default_model_spec(),
+    )
+    serialized_model = self.serde.serialize(meridian_model)
+
+    unpacked_model = meridian_pb.MeridianModel()
+    serialized_model.model.Unpack(unpacked_model)
+    self.assertEqual(
+        unpacked_model.schema_version,
+        serde._get_schema_version(),  # pylint: disable=protected-access
+    )
+
+  def test_deserialize_raises_when_schema_version_exceeds_supported(self):
+    flags.FLAGS.mark_as_parsed()
+    kernel = self._mmm_kernel_with_schema_version('99.0.0')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'serialized with `mmm-proto-schema` 99\.0\.0'
+        r'.*force_deserialization=True',
+    ):
+      self.serde.deserialize(kernel)
+
+    file_path = os.path.join(self.create_tempdir().full_path, 'future.binpb')
+    with open(file_path, 'wb') as f:
+      f.write(kernel.SerializeToString())
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'serialized with `mmm-proto-schema` 99\.0\.0'
+        r'.*force_deserialization=True',
+    ):
+      serde.load_meridian(file_path)
+
+  def test_deserialize_warns_when_schema_version_exceeds_supported_and_forced(
+      self,
+  ):
+    flags.FLAGS.mark_as_parsed()
+    kernel = self._mmm_kernel_with_schema_version('99.0.0')
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        r'serialized with `mmm-proto-schema` 99\.0\.0'
+        r'.*force_deserialization=True',
+    ):
+      deserialized = self.serde.deserialize(kernel, force_deserialization=True)
+    self.assertIsInstance(deserialized, model.Meridian)
+
+    file_path = os.path.join(self.create_tempdir().full_path, 'future.binpb')
+    with open(file_path, 'wb') as f:
+      f.write(kernel.SerializeToString())
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        r'serialized with `mmm-proto-schema` 99\.0\.0'
+        r'.*force_deserialization=True',
+    ):
+      loaded = serde.load_meridian(file_path, force_deserialization=True)
+    self.assertIsInstance(loaded, model.Meridian)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='unset', schema_version=''),
+      dict(testcase_name='older', schema_version='1.5.0'),
+      dict(
+          testcase_name='current',
+          schema_version=serde_constants.SCHEMA_VERSION,
+      ),
+  )
+  def test_deserialize_succeeds_when_schema_version_unset_or_older(
+      self, schema_version: str
+  ):
+    kernel = self._mmm_kernel_with_schema_version(schema_version)
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always')
+      deserialized = self.serde.deserialize(kernel)
+
+    self.assertIsInstance(deserialized, model.Meridian)
+    self.assertEmpty(
+        [w for w in caught if 'mmm-proto-schema' in str(w.message)]
+    )
 
   def test_serialize_no_controls(self):
     meridian_model = model.Meridian(
