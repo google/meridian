@@ -24,6 +24,7 @@ from meridian import constants
 from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
+import numpy as np
 
 # TODO: Break this circular dependency.
 if TYPE_CHECKING:
@@ -230,34 +231,10 @@ class PriorDistributionSampler:
           rng_handler=rng_handler,
       )
 
-    # TODO: Use `changepoint_media_prior_type` for the channels
-    # with changepoints.
-    prior_type = ctx.model_spec.effective_media_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      media_vars[constants.BETA_M] = prior.beta_m.sample(
-          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-      )
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_m = prior.roi_m.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        media_vars[constants.ROI_M] = treatment_parameter_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_m = prior.mroi_m.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        media_vars[constants.MROI_M] = treatment_parameter_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_m = prior.contribution_m.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        media_vars[constants.CONTRIBUTION_M] = treatment_parameter_m
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_m = (
-          treatment_parameter_m * ctx.media_tensors.prior_denominator
-      )
+    def _solve_beta_m(
+        incremental_outcome_m: backend.Tensor,
+        time_varying_info: changepoints.ChangepointInfo | None,
+    ) -> backend.Tensor:
 
       def _compute_beta_m(
           alpha_m: backend.Tensor,
@@ -283,7 +260,7 @@ class PriorDistributionSampler:
             ec_m=ec_m,
             slope_m=slope_m,
         )
-        if changepoint_info is None:
+        if time_varying_info is None:
           return self._model_equations.calculate_beta_x(
               is_non_media=False,
               incremental_outcome_x=incremental_outcome,
@@ -293,7 +270,7 @@ class PriorDistributionSampler:
           )
         assert zeta_m is not None and varphi_m is not None
         return self._model_equations._calculate_beta_x_with_changepoints(  # pylint: disable=protected-access
-            changepoint_info=changepoint_info,
+            changepoint_info=time_varying_info,
             incremental_outcome_x=incremental_outcome,
             linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
             eta_x=eta_m,
@@ -310,20 +287,25 @@ class PriorDistributionSampler:
           media_vars[constants.ETA_M],
           beta_gm_dev,
       ]
-      if changepoint_info is not None:
+      if time_varying_info is not None:
         draw_args += [
             media_vars[constants.ZETA_M],
             media_vars[constants.VARPHI_M],
         ]
-      beta_m_value = _compute_in_draw_batches(
+      return _compute_in_draw_batches(
           _compute_beta_m,
           draw_args=draw_args,
           n_draws=n_draws,
           batch_size=batch_size,
       )
-      media_vars[constants.BETA_M] = backend.tfd.Deterministic(
-          beta_m_value, name=constants.BETA_M
-      ).sample(seed=rng_handler.get_next_seed())
+
+    self._sample_coefficient_means(
+        xvars=media_vars,
+        is_rf=False,
+        solve=_solve_beta_m,
+        sample_shape=sample_shape,
+        rng_handler=rng_handler,
+    )
 
     beta_eta_combined = (
         media_vars[constants.BETA_M][..., backend.newaxis, :]
@@ -337,6 +319,98 @@ class PriorDistributionSampler:
     ).sample(seed=rng_handler.get_next_seed())
 
     return media_vars
+
+  def _sample_coefficient_means(
+      self,
+      *,
+      xvars: dict[str, backend.Tensor],
+      is_rf: bool,
+      solve: Callable[
+          [backend.Tensor, changepoints.ChangepointInfo | None], backend.Tensor
+      ],
+      sample_shape: Sequence[int],
+      rng_handler: backend.RNGHandler,
+  ) -> None:
+    """Samples `beta_m` or `beta_rf` and the treatment parameters it uses.
+
+    Channels with changepoints use `changepoint_media_prior_type` or
+    `changepoint_rf_prior_type`, and the other channels `media_prior_type` or
+    `rf_prior_type`. When the two differ, the draws of a treatment parameter
+    are NaN for the channels that don't use it.
+
+    Args:
+      xvars: The draws of the channel type, updated in place.
+      is_rf: Whether to sample the RF channels rather than the media channels.
+      solve: Returns `beta_m` or `beta_rf` from the incremental outcome of each
+        channel and the `ChangepointInfo` of the channels to solve with their
+        time effects.
+      sample_shape: The sample shape of the draws.
+      rng_handler: The backend-agnostic RNG handler managing the seed state.
+    """
+    # pylint: disable=protected-access
+    ctx = self._model_context
+    if is_rf:
+      changepoint_info = ctx._rf_changepoint_info
+      prior_denominator = ctx.rf_tensors.prior_denominator
+      parameters = constants.RF_TREATMENT_PARAMETERS
+    else:
+      changepoint_info = ctx._media_changepoint_info
+      prior_denominator = ctx.media_tensors.prior_denominator
+      parameters = constants.MEDIA_TREATMENT_PARAMETERS
+    # If every channel of the type has changepoints, both are the changepoint
+    # prior type.
+    prior_types = list(ctx._paid_prior_types(is_rf).values())
+    prior_type, changepoint_prior_type = prior_types[0], prior_types[-1]
+    # pylint: enable=protected-access
+    coefficient = constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    beta = parameters[coefficient]
+    draws = {}
+    for draw_prior_type in dict.fromkeys((prior_type, changepoint_prior_type)):
+      if draw_prior_type not in parameters:
+        raise ValueError(f"Unsupported prior type: {draw_prior_type}")
+      draws[draw_prior_type] = getattr(
+          ctx.prior_broadcast, parameters[draw_prior_type]
+      ).sample(sample_shape=sample_shape, seed=rng_handler.get_next_seed())
+    if list(draws) == [coefficient]:
+      xvars[beta] = draws[coefficient]
+      return
+
+    uses_two_prior_types = len(draws) > 1
+    # A coefficient prior only replaces the solution of its channels at the end.
+    coefficient_draws = draws.pop(coefficient, None)
+    for draw_prior_type, value in draws.items():
+      if uses_two_prior_types:
+        value = backend.where(
+            ctx._channels_using_prior_type(is_rf, draw_prior_type),  # pylint: disable=protected-access
+            value,
+            np.nan,
+        )
+      xvars[parameters[draw_prior_type]] = value
+    if len(draws) > 1:
+      treatment_parameter = backend.where(
+          ctx._channels_using_prior_type(is_rf, changepoint_prior_type),  # pylint: disable=protected-access
+          draws[changepoint_prior_type],
+          draws[prior_type],
+      )
+    else:
+      treatment_parameter = next(iter(draws.values()))
+
+    assert prior_denominator is not None
+    beta_value = solve(
+        treatment_parameter * prior_denominator,
+        # Channels with changepoints and a coefficient prior don't need their
+        # time effects solved.
+        None if changepoint_prior_type == coefficient else changepoint_info,
+    )
+    if coefficient_draws is not None:
+      beta_value = backend.where(
+          ctx._channels_using_prior_type(is_rf, coefficient),  # pylint: disable=protected-access
+          coefficient_draws,
+          beta_value,  # pyrefly: ignore[bad-argument-type]
+      )
+    xvars[beta] = backend.tfd.Deterministic(beta_value, name=beta).sample(
+        seed=rng_handler.get_next_seed()
+    )
 
   def _sample_rf_priors(
       self,
@@ -395,34 +469,10 @@ class PriorDistributionSampler:
           rng_handler=rng_handler,
       )
 
-    # TODO: Use `changepoint_rf_prior_type` for the channels with
-    # changepoints.
-    prior_type = ctx.model_spec.effective_rf_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      rf_vars[constants.BETA_RF] = prior.beta_rf.sample(
-          sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-      )
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_rf = prior.roi_rf.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        rf_vars[constants.ROI_RF] = treatment_parameter_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_rf = prior.mroi_rf.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        rf_vars[constants.MROI_RF] = treatment_parameter_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_rf = prior.contribution_rf.sample(
-            sample_shape=sample_shape, seed=rng_handler.get_next_seed()
-        )
-        rf_vars[constants.CONTRIBUTION_RF] = treatment_parameter_rf
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_rf = (
-          treatment_parameter_rf * ctx.rf_tensors.prior_denominator
-      )
+    def _solve_beta_rf(
+        incremental_outcome_rf: backend.Tensor,
+        time_varying_info: changepoints.ChangepointInfo | None,
+    ) -> backend.Tensor:
 
       def _compute_beta_rf(
           alpha_rf: backend.Tensor,
@@ -451,7 +501,7 @@ class PriorDistributionSampler:
                 slope_rf=slope_rf,
             )
         )
-        if changepoint_info is None:
+        if time_varying_info is None:
           return self._model_equations.calculate_beta_x(
               is_non_media=False,
               incremental_outcome_x=incremental_outcome,
@@ -461,7 +511,7 @@ class PriorDistributionSampler:
           )
         assert zeta_rf is not None and varphi_rf is not None
         return self._model_equations._calculate_beta_x_with_changepoints(  # pylint: disable=protected-access
-            changepoint_info=changepoint_info,
+            changepoint_info=time_varying_info,
             incremental_outcome_x=incremental_outcome,
             linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
             eta_x=eta_rf,
@@ -478,18 +528,22 @@ class PriorDistributionSampler:
           rf_vars[constants.ETA_RF],
           beta_grf_dev,
       ]
-      if changepoint_info is not None:
+      if time_varying_info is not None:
         draw_args += [rf_vars[constants.ZETA_RF], rf_vars[constants.VARPHI_RF]]
-      beta_rf_value = _compute_in_draw_batches(
+      return _compute_in_draw_batches(
           _compute_beta_rf,
           draw_args=draw_args,
           n_draws=n_draws,
           batch_size=batch_size,
       )
-      rf_vars[constants.BETA_RF] = backend.tfd.Deterministic(
-          beta_rf_value,
-          name=constants.BETA_RF,
-      ).sample(seed=rng_handler.get_next_seed())
+
+    self._sample_coefficient_means(
+        xvars=rf_vars,
+        is_rf=True,
+        solve=_solve_beta_rf,
+        sample_shape=sample_shape,
+        rng_handler=rng_handler,
+    )
 
     beta_eta_combined = (
         rf_vars[constants.BETA_RF][..., backend.newaxis, :]

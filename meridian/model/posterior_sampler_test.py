@@ -2863,6 +2863,82 @@ class TimeVaryingPosteriorTest(
       changepoint_media_effects_dist: str,
       is_rf: bool,
   ):
+    self._assert_outcome_uses_each_time_periods_coefficient(
+        prior_types=(prior_type, prior_type),
+        allows_negative_aggregate_baseline=allows_negative_aggregate_baseline,
+        media_effects_dist=media_effects_dist,
+        changepoint_media_effects_dist=changepoint_media_effects_dist,
+        is_rf=is_rf,
+    )
+
+  @parameterized.product(
+      # The prior types of the channels without and with changepoints.
+      prior_types=(
+          (
+              constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+              constants.TREATMENT_PRIOR_TYPE_ROI,
+          ),
+          (
+              constants.TREATMENT_PRIOR_TYPE_ROI,
+              constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          ),
+      ),
+      media_effects_dist=(
+          constants.MEDIA_EFFECTS_LOG_NORMAL,
+          constants.MEDIA_EFFECTS_NORMAL,
+      ),
+      is_rf=(False, True),
+  )
+  def test_outcome_with_other_changepoint_prior_type(
+      self, prior_types: tuple[str, str], media_effects_dist: str, is_rf: bool
+  ):
+    # The two channels also use different distributions, so the results that
+    # each channel discards are computed with the other channel's distribution.
+    self._assert_outcome_uses_each_time_periods_coefficient(
+        prior_types=prior_types,
+        allows_negative_aggregate_baseline=True,
+        media_effects_dist=media_effects_dist,
+        changepoint_media_effects_dist=(
+            constants.MEDIA_EFFECTS_NORMAL
+            if media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL
+            else constants.MEDIA_EFFECTS_LOG_NORMAL
+        ),
+        is_rf=is_rf,
+    )
+
+  def test_outcome_with_two_non_coefficient_prior_types(self):
+    # Each channel takes the coefficients of its own treatment parameter, so
+    # the ROI draw matches the channel with changepoints.
+    self._assert_outcome_uses_each_time_periods_coefficient(
+        prior_types=(
+            constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+            constants.TREATMENT_PRIOR_TYPE_ROI,
+        ),
+        allows_negative_aggregate_baseline=True,
+        media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+        changepoint_media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+        is_rf=False,
+    )
+
+  def _assert_outcome_uses_each_time_periods_coefficient(
+      self,
+      *,
+      prior_types: tuple[str, str],
+      allows_negative_aggregate_baseline: bool,
+      media_effects_dist: str,
+      changepoint_media_effects_dist: str,
+      is_rf: bool,
+  ):
+    """Checks `y` and the treatment parameters of a joint distribution sample.
+
+    Args:
+      prior_types: The prior types of the channels without and with
+        changepoints.
+      allows_negative_aggregate_baseline: As in `ModelSpec`.
+      media_effects_dist: As in `ModelSpec`.
+      changepoint_media_effects_dist: As in `_ModelSpecWithChangepoints`.
+      is_rf: Whether to use RF channels rather than media channels.
+    """
     if is_rf:
       input_data = self.short_input_data_with_rf_only
       channels = input_data.rf_channel
@@ -2878,10 +2954,10 @@ class TimeVaryingPosteriorTest(
                     input_data.time_coordinates.all_dates[20]
                 ]
             },
-            media_prior_type=prior_type,
-            rf_prior_type=prior_type,
-            changepoint_media_prior_type=prior_type,
-            changepoint_rf_prior_type=prior_type,
+            media_prior_type=prior_types[0],
+            rf_prior_type=prior_types[0],
+            changepoint_media_prior_type=prior_types[1],
+            changepoint_rf_prior_type=prior_types[1],
             allows_negative_aggregate_baseline=(
                 allows_negative_aggregate_baseline
             ),
@@ -2926,6 +3002,7 @@ class TimeVaryingPosteriorTest(
       )
       beta_gx, zeta, varphi = sample.beta_grf, sample.zeta_rf, sample.varphi_rf
       roi_name, prior_denominator = "roi_rf", rf_tensors.prior_denominator
+      beta_from_prior_name = constants.BETA_RF_FROM_PRIOR
     else:
       media_tensors = model_context.media_tensors
       assert media_tensors.media_scaled is not None
@@ -2947,6 +3024,7 @@ class TimeVaryingPosteriorTest(
       )
       beta_gx, zeta, varphi = sample.beta_gm, sample.zeta_m, sample.varphi_m
       roi_name, prior_denominator = "roi_m", media_tensors.prior_denominator
+      beta_from_prior_name = constants.BETA_M_FROM_PRIOR
     # Each channel's coefficients use its random effects distribution.
     beta_dev = sample.beta_grf_dev if is_rf else sample.beta_gm_dev
     beta = sample.beta_rf if is_rf else sample.beta_m
@@ -2998,27 +3076,146 @@ class TimeVaryingPosteriorTest(
       )
     test_utils.assert_allclose(sample.y, expected_y, rtol=1e-4, atol=1e-6)
 
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-      # The incremental outcome over all geos and time periods, using each
-      # time period's coefficient, matches the ROI draw.
-      revenue_per_kpi = (
-          np.ones((self._N_GEOS, self._N_TIMES_SHORT))
-          if model_context.revenue_per_kpi is None
-          else np.asarray(model_context.revenue_per_kpi)
+    revenue_per_kpi = (
+        np.ones((self._N_GEOS, self._N_TIMES_SHORT))
+        if model_context.revenue_per_kpi is None
+        else np.asarray(model_context.revenue_per_kpi)
+    )
+    # Channel 0 has no changepoints, and channel 1 has a changepoint.
+    for channel, prior_type in enumerate(prior_types):
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
+        # The incremental outcome over all geos and time periods, using each
+        # time period's coefficient, matches the ROI draw.
+        incremental_outcome = np.einsum(
+            "cgt,gt,g,cgt->c",
+            np.asarray(counterfactual_difference)[..., channel],
+            revenue_per_kpi,
+            np.asarray(model_context.population),
+            coefficients[..., channel],
+        ) * float(model_context.kpi_transformer.population_scaled_stdev)
+        test_utils.assert_allclose(
+            incremental_outcome,
+            np.asarray(getattr(sample, roi_name))[:, channel]
+            * np.asarray(prior_denominator)[channel],
+            rtol=1e-3,
+        )
+      elif (
+          prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+          and prior_types[0] != prior_types[1]
+      ):
+        # The coefficient prior is sampled under another name.
+        test_utils.assert_allclose(
+            np.asarray(beta)[:, channel],
+            np.asarray(getattr(sample, beta_from_prior_name))[:, channel],
+        )
+
+  @parameterized.parameters(
+      # The prior types of the channels without and with changepoints.
+      (
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+      ),
+      (
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+      ),
+      (
+          constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          constants.TREATMENT_PRIOR_TYPE_ROI,
+      ),
+      (
+          constants.TREATMENT_PRIOR_TYPE_MROI,
+          constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+      ),
+  )
+  def test_joint_dist_samples_each_prior_type(self, *prior_types: str):
+    meridian = self._meridian(
+        media_prior_type=prior_types[0],
+        rf_prior_type=prior_types[0],
+        changepoint_media_prior_type=prior_types[1],
+        changepoint_rf_prior_type=prior_types[1],
+    )
+    sampler = meridian.posterior_sampler_callable
+    coefficient = constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+    for get_joint_dist in (
+        "_get_joint_dist_unpinned",
+        "_get_joint_dist_sampling_unpinned",
+    ):
+      joint_dist = getattr(sampler, get_joint_dist)()
+      sample = joint_dist.sample(
+          self._N_DRAWS, seed=self.get_next_rng_seed_or_key()
+      )._asdict()
+      for parameters, beta_from_prior in (
+          (constants.MEDIA_TREATMENT_PARAMETERS, constants.BETA_M_FROM_PRIOR),
+          (constants.RF_TREATMENT_PARAMETERS, constants.BETA_RF_FROM_PRIOR),
+      ):
+        # A coefficient prior is sampled under another name.
+        names = {
+            prior_type: (
+                beta_from_prior
+                if prior_type == coefficient
+                else parameters[prior_type]
+            )
+            for prior_type in parameters
+        }
+        for prior_type, name in names.items():
+          with self.subTest(get_joint_dist=get_joint_dist, name=name):
+            if prior_type in prior_types:
+              self.assertIn(name, sample)
+            else:
+              self.assertNotIn(name, sample)
+        # Only the full joint distribution has `beta_m` and `beta_rf`.
+        beta = parameters[coefficient]
+        with self.subTest(get_joint_dist=get_joint_dist, name=beta):
+          if get_joint_dist == "_get_joint_dist_unpinned":
+            self.assertIn(beta, sample)
+          else:
+            self.assertNotIn(beta, sample)
+      self.assertTrue(np.all(np.isfinite(np.asarray(sample["y"]))))
+
+  def test_sample_posterior_with_other_changepoint_prior_types(self):
+    # The channels with changepoints use the default ROI prior.
+    meridian = self._meridian(
+        media_prior_type="coefficient", rf_prior_type="mroi"
+    )
+    # Stand in for MCMC with draws of the sampled joint distribution.
+    n_draws = self._N_BURNIN + self._N_KEEP
+    joint_dist = meridian.posterior_sampler_callable._get_joint_dist_sampling()
+    states = joint_dist.sample_unpinned(
+        [n_draws, self._N_CHAINS], seed=self.get_next_rng_seed_or_key()
+    )
+    mock_return = collections.namedtuple(
+        "StatesAndTrace", ["all_states", "trace"]
+    )(all_states=states, trace=self.test_trace)
+    with mock.patch.object(
+        backend,
+        "xla_windowed_adaptive_nuts",
+        autospec=True,
+        return_value=mock_return,
+    ):
+      meridian.sample_posterior(
+          n_chains=self._N_CHAINS,
+          n_adapt=self._N_ADAPT,
+          n_burnin=self._N_BURNIN,
+          n_keep=self._N_KEEP,
+          seed=1,
       )
-      incremental_outcome = np.einsum(
-          "cgt,gt,g,cgt->c",
-          np.asarray(counterfactual_difference)[..., 1],
-          revenue_per_kpi,
-          np.asarray(model_context.population),
-          coefficients[..., 1],
-      ) * float(model_context.kpi_transformer.population_scaled_stdev)
-      test_utils.assert_allclose(
-          incremental_outcome,
-          np.asarray(getattr(sample, roi_name))[:, 1]
-          * np.asarray(prior_denominator)[1],
-          rtol=1e-3,
-      )
+    posterior = meridian.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+    self.assertNotIn(constants.BETA_M_FROM_PRIOR, posterior)
+    self.assertTrue(np.all(np.isfinite(posterior[constants.BETA_M].values)))
+    self.assertTrue(np.all(np.isfinite(posterior[constants.BETA_RF].values)))
+    # A treatment parameter is NaN for the channels that don't use it.
+    for name, channel_dim, used_by in (
+        (constants.ROI_M, constants.MEDIA_CHANNEL, [self._media[1]]),
+        (constants.ROI_RF, constants.RF_CHANNEL, [self._rf[0]]),
+        (constants.MROI_RF, constants.RF_CHANNEL, [self._rf[1]]),
+    ):
+      for channel in posterior[channel_dim].values:
+        values = posterior[name].sel({channel_dim: channel}).values
+        if channel in used_by:
+          self.assertTrue(np.all(np.isfinite(values)), msg=(name, channel))
+        else:
+          self.assertTrue(np.all(np.isnan(values)), msg=(name, channel))
 
   def test_sample_posterior_stores_time_varying_parameters(self):
     meridian = self._meridian()
