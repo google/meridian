@@ -136,20 +136,6 @@ def _sample_time_varying_priors(
   return {zeta_name: zeta_draws, varphi_name: varphi_draws}
 
 
-_MEDIA_TREATMENT_PARAMETERS = {
-    constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_M,
-    constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_M,
-    constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: constants.CONTRIBUTION_M,
-    constants.TREATMENT_PRIOR_TYPE_COEFFICIENT: constants.BETA_M,
-}
-_RF_TREATMENT_PARAMETERS = {
-    constants.TREATMENT_PRIOR_TYPE_ROI: constants.ROI_RF,
-    constants.TREATMENT_PRIOR_TYPE_MROI: constants.MROI_RF,
-    constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION: constants.CONTRIBUTION_RF,
-    constants.TREATMENT_PRIOR_TYPE_COEFFICIENT: constants.BETA_RF,
-}
-
-
 class PriorDistributionSampler:
   """A callable that samples from a model spec's prior distributions."""
 
@@ -358,11 +344,11 @@ class PriorDistributionSampler:
     if is_rf:
       changepoint_info = ctx._rf_changepoint_info
       prior_denominator = ctx.rf_tensors.prior_denominator
-      parameters = _RF_TREATMENT_PARAMETERS
+      parameters = constants.RF_TREATMENT_PARAMETERS
     else:
       changepoint_info = ctx._media_changepoint_info
       prior_denominator = ctx.media_tensors.prior_denominator
-      parameters = _MEDIA_TREATMENT_PARAMETERS
+      parameters = constants.MEDIA_TREATMENT_PARAMETERS
     # If every channel of the type has changepoints, both are the changepoint
     # prior type.
     prior_types = list(ctx._paid_prior_types(is_rf).values())
@@ -382,25 +368,19 @@ class PriorDistributionSampler:
       return
 
     uses_two_prior_types = len(draws) > 1
-    is_changepoint_channel = None
-    if uses_two_prior_types:
-      assert changepoint_info is not None
-      is_changepoint_channel = changepoint_info.is_changepoint_channel
     # A coefficient prior only replaces the solution of its channels at the end.
     coefficient_draws = draws.pop(coefficient, None)
     for draw_prior_type, value in draws.items():
       if uses_two_prior_types:
         value = backend.where(
-            is_changepoint_channel
-            == (draw_prior_type == changepoint_prior_type),
+            ctx._channels_using_prior_type(is_rf, draw_prior_type),  # pylint: disable=protected-access
             value,
             np.nan,
         )
       xvars[parameters[draw_prior_type]] = value
     if len(draws) > 1:
-      assert is_changepoint_channel is not None
       treatment_parameter = backend.where(
-          is_changepoint_channel,
+          ctx._channels_using_prior_type(is_rf, changepoint_prior_type),  # pylint: disable=protected-access
           draws[changepoint_prior_type],
           draws[prior_type],
       )
@@ -415,9 +395,8 @@ class PriorDistributionSampler:
         None if changepoint_prior_type == coefficient else changepoint_info,
     )
     if coefficient_draws is not None:
-      assert is_changepoint_channel is not None
       beta_value = backend.where(
-          is_changepoint_channel == (changepoint_prior_type == coefficient),
+          ctx._channels_using_prior_type(is_rf, coefficient),  # pylint: disable=protected-access
           coefficient_draws,
           beta_value,  # pyrefly: ignore[bad-argument-type]
       )

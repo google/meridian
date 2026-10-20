@@ -1242,11 +1242,11 @@ class TimeVaryingPriorSamplingTest(
     # A treatment parameter is NaN for the channels that don't use it.
     for parameters, info in (
         (
-            prior_sampler._MEDIA_TREATMENT_PARAMETERS,
+            constants.MEDIA_TREATMENT_PARAMETERS,
             model_context._media_changepoint_info,
         ),
         (
-            prior_sampler._RF_TREATMENT_PARAMETERS,
+            constants.RF_TREATMENT_PARAMETERS,
             model_context._rf_changepoint_info,
         ),
     ):

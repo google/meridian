@@ -14,7 +14,7 @@
 
 """Module for MCMC sampling of posterior distributions in a Meridian model."""
 
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 import functools
 from typing import Any, NamedTuple, Optional, TYPE_CHECKING
 import warnings
@@ -325,6 +325,146 @@ def _sample_time_varying_latents(
   return _TimeVaryingDraws(changepoint_info, zeta, varphi)
 
 
+def _sample_coefficient_mean(
+    model_context: context.ModelContext,
+    model_equations: equations.ModelEquations,
+    *,
+    is_rf: bool,
+    eta_x: backend.Tensor,
+    beta_gx_dev: backend.Tensor,
+    time_varying: _TimeVaryingDraws | None,
+    counterfactual_difference: Callable[[], backend.Tensor],
+    yield_deterministics: bool,
+) -> Generator[backend.tfd.Distribution, Any, backend.Tensor]:
+  """Yields the priors that `beta_m` or `beta_rf` uses.
+
+  Use with `yield from`, which evaluates to `beta_m` or `beta_rf`. Channels with
+  changepoints use `changepoint_media_prior_type` or
+  `changepoint_rf_prior_type`, and the other channels `media_prior_type` or
+  `rf_prior_type`. When the two differ, the treatment parameter of each prior
+  type is sampled for all channels of the type, and only the channels that use
+  it read it. A coefficient prior is then sampled as `beta_m_from_prior` or
+  `beta_rf_from_prior`, since `beta_m` or `beta_rf` combines it with the
+  coefficients of the other channels.
+
+  Args:
+    model_context: The model context.
+    model_equations: The model equations.
+    is_rf: Whether to use the RF channels rather than the media channels.
+    eta_x: The geo random effect standard deviation parameter values.
+    beta_gx_dev: The latent standard normal parameter values of the geo-level
+      coefficients.
+    time_varying: The time effect parameters, if some channel of the type has
+      changepoints.
+    counterfactual_difference: Returns the linear predictor counterfactual
+      difference of all channels of the type, as in `calculate_beta_x`.
+    yield_deterministics: Whether to also yield `beta_m` or `beta_rf` as a
+      `backend.tfd.Deterministic` distribution, if it isn't sampled directly.
+
+  Yields:
+    The prior of the treatment parameter of each prior type that the channels
+    use, for all channels of the type. If every channel uses a coefficient
+    prior, that is the prior of `beta_m` or `beta_rf`. Otherwise a coefficient
+    prior is named `beta_m_from_prior` or `beta_rf_from_prior`, and if
+    `yield_deterministics`, `beta_m` or `beta_rf` follows as a
+    `backend.tfd.Deterministic` distribution.
+  """
+  # pylint: disable=protected-access
+  if is_rf:
+    parameters = constants.RF_TREATMENT_PARAMETERS
+    beta_from_prior = constants.BETA_RF_FROM_PRIOR
+    prior_denominator = model_context.rf_tensors.prior_denominator
+  else:
+    parameters = constants.MEDIA_TREATMENT_PARAMETERS
+    beta_from_prior = constants.BETA_M_FROM_PRIOR
+    prior_denominator = model_context.media_tensors.prior_denominator
+  coefficient = constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+  beta = parameters[coefficient]
+  # If every channel of the type has changepoints, there is one prior type.
+  prior_types = list(
+      dict.fromkeys(model_context._paid_prior_types(is_rf).values())
+  )
+  if prior_types == [coefficient]:
+    beta_x = yield getattr(model_context.prior_broadcast, beta)
+    return beta_x
+  draws = {}
+  for prior_type in prior_types:
+    if prior_type not in parameters:
+      raise ValueError(f"Unsupported prior type: {prior_type}")
+    prior = getattr(model_context.prior_broadcast, parameters[prior_type])
+    if prior_type == coefficient:
+      prior = prior.copy(name=beta_from_prior)
+    draws[prior_type] = yield prior
+
+  uses_coefficient = None
+  if len(prior_types) == 1:
+    treatment_parameter = draws[prior_types[0]]
+  elif coefficient in draws:
+    uses_coefficient = model_context._channels_using_prior_type(
+        is_rf, coefficient
+    )
+    # The coefficient draws only replace these channels' solution at the end,
+    # so the other prior type's draws stand in for them until then.
+    (other_prior_type,) = (
+        prior_type for prior_type in prior_types if prior_type != coefficient
+    )
+    treatment_parameter = draws[other_prior_type]
+  else:
+    treatment_parameter = backend.where(
+        model_context._channels_using_prior_type(is_rf, prior_types[0]),
+        draws[prior_types[0]],
+        draws[prior_types[1]],
+    )
+  # pylint: enable=protected-access
+  assert prior_denominator is not None
+  incremental_outcome = treatment_parameter * prior_denominator
+  if uses_coefficient is not None:
+    # The coefficient prior replaces the solution of these channels. Their
+    # inputs get placeholder values, which keep those unused results finite.
+    # Infinite values would break posterior sampling even though they are
+    # unused.
+    incremental_outcome = backend.where(
+        uses_coefficient,
+        backend.ones_like(incremental_outcome),
+        incremental_outcome,
+    )
+    beta_gx_dev = backend.where(
+        uses_coefficient,
+        backend.zeros_like(beta_gx_dev),
+        beta_gx_dev,  # pyrefly: ignore[bad-argument-type]
+    )
+    if prior_types[-1] == coefficient:
+      # The channels with changepoints don't need their time effects solved.
+      time_varying = None
+  if time_varying is None:
+    beta_x = model_equations.calculate_beta_x(
+        is_non_media=False,
+        incremental_outcome_x=incremental_outcome,
+        linear_predictor_counterfactual_difference=counterfactual_difference(),
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+    )
+  else:
+    beta_x = model_equations._calculate_beta_x_with_changepoints(  # pylint: disable=protected-access
+        changepoint_info=time_varying.changepoint_info,
+        incremental_outcome_x=incremental_outcome,
+        linear_predictor_counterfactual_difference=counterfactual_difference(),
+        eta_x=eta_x,
+        beta_gx_dev=beta_gx_dev,
+        zeta_x=time_varying.zeta,
+        varphi_x=time_varying.varphi,
+    )
+  if uses_coefficient is not None:
+    beta_x = backend.where(
+        uses_coefficient,
+        draws[coefficient],
+        beta_x,  # pyrefly: ignore[bad-argument-type]
+    )
+  if yield_deterministics:
+    yield backend.tfd.Deterministic(beta_x, name=beta)
+  return beta_x
+
+
 def _joint_dist_base_logic(
     model_context: context.ModelContext,
     model_equations: equations.ModelEquations,
@@ -496,51 +636,22 @@ def _joint_dist_base_logic(
         decay_functions=model_context.adstock_decay_spec.media,
         saturation_spec=model_context.saturation_spec.media,
     )
-    prior_type = model_context.model_spec.effective_media_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_m = yield prior_broadcast.beta_m
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_m = yield prior_broadcast.roi_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_m = yield prior_broadcast.mroi_m
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_m = yield prior_broadcast.contribution_m
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_m = (
-          treatment_parameter_m * media_tensors.prior_denominator
-      )
-      linear_predictor_counterfactual_difference = (
-          model_equations.linear_predictor_counterfactual_difference_media(
-              media_transformed=media_transformed,
-              alpha_m=alpha_m,
-              ec_m=ec_m,
-              slope_m=slope_m,
-          )
-      )
-      if media_time_varying is None:
-        beta_m = model_equations.calculate_beta_x(
-            is_non_media=False,
-            incremental_outcome_x=incremental_outcome_m,
-            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-            eta_x=eta_m,
-            beta_gx_dev=beta_gm_dev,
-        )
-      else:
-        beta_m = model_equations._calculate_beta_x_with_changepoints(  # pylint: disable=protected-access
-            changepoint_info=media_time_varying.changepoint_info,
-            incremental_outcome_x=incremental_outcome_m,
-            linear_predictor_counterfactual_difference=(
-                linear_predictor_counterfactual_difference
-            ),
-            eta_x=eta_m,
-            beta_gx_dev=beta_gm_dev,
-            zeta_x=media_time_varying.zeta,
-            varphi_x=media_time_varying.varphi,
-        )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_m, name=constants.BETA_M)
+    beta_m = yield from _sample_coefficient_mean(
+        model_context,
+        model_equations,
+        is_rf=False,
+        eta_x=eta_m,
+        beta_gx_dev=beta_gm_dev,
+        time_varying=media_time_varying,
+        counterfactual_difference=functools.partial(
+            model_equations.linear_predictor_counterfactual_difference_media,
+            media_transformed=media_transformed,
+            alpha_m=alpha_m,
+            ec_m=ec_m,
+            slope_m=slope_m,
+        ),
+        yield_deterministics=yield_deterministics,
+    )
 
     beta_eta_combined = beta_m + eta_m * beta_gm_dev
     beta_gm = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
@@ -594,51 +705,22 @@ def _joint_dist_base_logic(
         saturation_spec=model_context.saturation_spec.rf,
     )
 
-    prior_type = model_context.model_spec.effective_rf_prior_type
-    if prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
-      beta_rf = yield prior_broadcast.beta_rf
-    else:
-      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
-        treatment_parameter_rf = yield prior_broadcast.roi_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_MROI:
-        treatment_parameter_rf = yield prior_broadcast.mroi_rf
-      elif prior_type == constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION:
-        treatment_parameter_rf = yield prior_broadcast.contribution_rf
-      else:
-        raise ValueError(f"Unsupported prior type: {prior_type}")
-      incremental_outcome_rf = (
-          treatment_parameter_rf * rf_tensors.prior_denominator
-      )
-      linear_predictor_counterfactual_difference = (
-          model_equations.linear_predictor_counterfactual_difference_rf(
-              rf_transformed=rf_transformed,
-              alpha_rf=alpha_rf,
-              ec_rf=ec_rf,
-              slope_rf=slope_rf,
-          )
-      )
-      if rf_time_varying is None:
-        beta_rf = model_equations.calculate_beta_x(
-            is_non_media=False,
-            incremental_outcome_x=incremental_outcome_rf,
-            linear_predictor_counterfactual_difference=linear_predictor_counterfactual_difference,
-            eta_x=eta_rf,
-            beta_gx_dev=beta_grf_dev,
-        )
-      else:
-        beta_rf = model_equations._calculate_beta_x_with_changepoints(  # pylint: disable=protected-access
-            changepoint_info=rf_time_varying.changepoint_info,
-            incremental_outcome_x=incremental_outcome_rf,
-            linear_predictor_counterfactual_difference=(
-                linear_predictor_counterfactual_difference
-            ),
-            eta_x=eta_rf,
-            beta_gx_dev=beta_grf_dev,
-            zeta_x=rf_time_varying.zeta,
-            varphi_x=rf_time_varying.varphi,
-        )
-      if yield_deterministics:
-        yield backend.tfd.Deterministic(beta_rf, name=constants.BETA_RF)
+    beta_rf = yield from _sample_coefficient_mean(
+        model_context,
+        model_equations,
+        is_rf=True,
+        eta_x=eta_rf,
+        beta_gx_dev=beta_grf_dev,
+        time_varying=rf_time_varying,
+        counterfactual_difference=functools.partial(
+            model_equations.linear_predictor_counterfactual_difference_rf,
+            rf_transformed=rf_transformed,
+            alpha_rf=alpha_rf,
+            ec_rf=ec_rf,
+            slope_rf=slope_rf,
+        ),
+        yield_deterministics=yield_deterministics,
+    )
 
     beta_eta_combined = beta_rf + eta_rf * beta_grf_dev
     beta_grf = model_equations._coefficients_from_random_effects(  # pylint: disable=protected-access
@@ -904,7 +986,6 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
     """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     self._model_context.populate_cached_properties()
-    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_unpinned_fn
     )
@@ -912,7 +993,6 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_sampling_unpinned(self) -> backend.tfd.Distribution:
     """Builds a sampling-optimized `JointDistributionCoroutineAutoBatched`."""
     self._model_context.populate_cached_properties()
-    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_sampling_fn
     )
@@ -1091,7 +1171,8 @@ class PosteriorMCMCSampler:
     This method combines the sampled latent variables (passed as `latents`) with
     the deterministic variables computed from them (passed as `reconstructed`).
     The primary goal is to produce a single dictionary of all relevant posterior
-    samples.
+    samples. The draws of a treatment parameter are NaN for the channels that
+    don't use its prior type.
 
     Args:
       latents: Sampled latent tensors.
@@ -1114,6 +1195,27 @@ class PosteriorMCMCSampler:
           and k not in mcmc_states
       ):
         mcmc_states[k] = v
+
+    # With changepoints, the channels of a type can use different prior types.
+    # A treatment parameter is sampled for all channels of the type, but the
+    # channels that don't use it get NaN, as in prior sampling.
+    for is_rf, parameters in (
+        (False, constants.MEDIA_TREATMENT_PARAMETERS),
+        (True, constants.RF_TREATMENT_PARAMETERS),
+    ):
+      for prior_type, name in parameters.items():
+        if (
+            prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+            or name not in mcmc_states
+        ):
+          continue
+        uses_prior_type = self._model_context._channels_using_prior_type(  # pylint: disable=protected-access
+            is_rf, prior_type
+        )
+        if not uses_prior_type.all():
+          mcmc_states[name] = np.where(
+              uses_prior_type, np.asarray(mcmc_states[name]), np.nan
+          )
 
     return mcmc_states
 
