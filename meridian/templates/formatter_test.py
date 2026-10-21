@@ -152,6 +152,29 @@ class FormatterTest(parameterized.TestCase):
     self.assertIn('<svg version="1.1"', html_result)
     self.assertIn('<g id="Art_layer">', html_result)
 
+  def test_create_template_env_autoescapes_jinja_templates(self):
+    template_env = formatter.create_template_env()
+    self.assertTrue(template_env.autoescape('table.html.jinja'))
+    self.assertTrue(template_env.autoescape('summary.html.jinja'))
+
+  def test_table_html_escapes_untrusted_values(self):
+    template_env = formatter.create_template_env()
+    card_spec = formatter.CardSpec(id='test_id', title='test_title')
+    payload = '<img src=x onerror=alert(1)>'
+    table_spec = formatter.TableSpec(
+        id='table_id',
+        title=payload,
+        column_headers=[payload],
+        row_values=[[payload]],
+    )
+
+    card_html = formatter.create_card_html(
+        template_env, card_spec, chart_specs=[table_spec]
+    )
+
+    self.assertIn('&lt;img', card_html)
+    self.assertNotIn(payload, card_html)
+
   def test_create_card_html_structure(self):
     template_env = formatter.create_template_env()
     card_spec = formatter.CardSpec(id='test_id', title='test_title')

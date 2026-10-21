@@ -246,7 +246,9 @@ def create_template_env() -> jinja2.Environment:
   """Creates a Jinja2 template environment."""
   return jinja2.Environment(
       loader=_template_loader,
-      autoescape=jinja2.select_autoescape(),
+      autoescape=jinja2.select_autoescape(
+          enabled_extensions=('html', 'htm', 'xml', 'jinja'),
+      ),
   )
 
 

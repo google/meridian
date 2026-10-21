@@ -19,11 +19,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 import dataclasses
 import functools
+import html
 import os
 import re
 from typing import Literal, TYPE_CHECKING
 
 import altair as alt
+import markupsafe
 from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
@@ -1743,7 +1745,7 @@ class MeridianEDA:
                 self._template_env, f'{n_reviews} review(s)', 'review'
             )
         )
-      finding_tag = (
+      finding_tag = markupsafe.Markup(
           ''.join(finding_tags)
           if finding_tags
           else formatter.create_finding_html(self._template_env, 'Info', 'info')
@@ -1984,7 +1986,7 @@ class MeridianEDA:
             row_values=formatted_table.values.tolist(),
             warnings=[
                 _format_explanation_for_html(finding.explanation)
-                + f' {display_limit_message}'
+                + markupsafe.Markup(f' {display_limit_message}')
             ],
         ),
         found_channels,
@@ -2183,8 +2185,8 @@ class MeridianEDA:
         ),
         row_values=formatted_table.values.tolist(),
         warnings=[
-            f'{_format_explanation_for_html(finding.explanation)}'
-            f'{display_limit_message}'
+            _format_explanation_for_html(finding.explanation)
+            + markupsafe.Markup(display_limit_message)
         ],
     )
 
@@ -3033,5 +3035,6 @@ def _get_plot_data_for_heatmap(
 
 def _format_explanation_for_html(explanation: str) -> str:
   """Formats an explanation string for HTML rendering using <br> tags."""
-  explanation = _BULLET_POINT_RE.sub('&#160;&#160;&#8226; ', explanation)
-  return explanation.replace('\n', '<br/>')
+  escaped = html.escape(explanation)
+  escaped = _BULLET_POINT_RE.sub('&#160;&#160;&#8226; ', escaped)
+  return markupsafe.Markup(escaped.replace('\n', '<br/>'))
