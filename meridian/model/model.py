@@ -1432,8 +1432,8 @@ def save_mmm(mmm: Meridian, file_path: str):
       stacklevel=2,
   )
 
-  if not os.path.exists(os.path.dirname(file_path)):
-    os.makedirs(os.path.dirname(file_path))
+  parent = os.path.dirname(os.path.abspath(file_path))
+  os.makedirs(parent, exist_ok=True)
 
   with open(file_path, "wb") as f:
     joblib.dump(mmm, f)

@@ -1080,6 +1080,19 @@ class ModelPersistenceTest(
         with self.subTest(name=attr):
           test_utils.assert_allclose(getattr(mmm, attr), getattr(new_mmm, attr))
 
+  def test_save_mmm_with_bare_filename(self):
+    mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
+    bare_filename = "bare_model.joblib"
+    temp_dir = self.create_tempdir().full_path
+    original_cwd = os.getcwd()
+    try:
+      os.chdir(temp_dir)
+      with self.assertWarns(DeprecationWarning):
+        model.save_mmm(mmm, bare_filename)
+      self.assertTrue(os.path.exists(bare_filename))
+    finally:
+      os.chdir(original_cwd)
+
   def test_load_error(self):
     with self.assertRaisesWithLiteralMatch(
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
