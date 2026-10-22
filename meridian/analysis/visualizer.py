@@ -1972,7 +1972,8 @@ class MediaSummary:
     This chart shows the relative rank of each channel's contribution,
     including the baseline, based on incremental outcome. Depending on the
     time_granularity, ranks are shown either weekly or at the end of each
-    quarter. Rank 1 represents the highest contribution.
+    quarter. Rank 1 represents the highest contribution. Channels with no
+    contribution in a given time period are excluded from that period's ranking.
 
     Args:
       time_granularity: The granularity for the time axis. Options are `weekly`
@@ -1994,10 +1995,6 @@ class MediaSummary:
     )
     outcome_df[c.TIME] = pd.to_datetime(outcome_df[c.TIME])
 
-    outcome_df['rank'] = outcome_df.groupby(c.TIME)[c.INCREMENTAL_OUTCOME].rank(
-        method='first', ascending=False
-    )
-
     if time_granularity == c.QUARTERLY:
       # Filter data to keep only the last available date within each quarter
       # for a quarterly view of ranking changes.
@@ -2014,14 +2011,28 @@ class MediaSummary:
       tooltip_time_format = c.DATE_FORMAT
       tooltip_time_title = 'Week'
 
-    legend_order = [c.BASELINE] + sorted([
+    # Exclude channels that have no contribution (direct or adstock carryover)
+    # in a given time period so inactive channels are not plotted or ranked.
+    filtered_plot_df = plot_df[plot_df[c.INCREMENTAL_OUTCOME] > 0].copy()
+
+    filtered_plot_df[c.RANK] = (
+        filtered_plot_df.groupby(c.TIME)[c.INCREMENTAL_OUTCOME].rank(
+            method=c.RANK_METHOD_FIRST, ascending=False
+        )
+    )
+
+    legend_order = (
+        [c.BASELINE]
+        if c.BASELINE in filtered_plot_df[c.CHANNEL].values
+        else []
+    ) + sorted([
         channel
-        for channel in plot_df[c.CHANNEL].unique()
+        for channel in filtered_plot_df[c.CHANNEL].unique()
         if channel != c.BASELINE
     ])
 
     plot = (
-        alt.Chart(plot_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
+        alt.Chart(filtered_plot_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
         .mark_line(point=True)
         .encode(
             x=alt.X(
@@ -2034,8 +2045,9 @@ class MediaSummary:
                 ),
             ),
             y=alt.Y(
-                'rank:Q',
+                f'{c.RANK}:Q',
                 title='Contribution Rank',
+                impute=alt.ImputeParams(value=None),
                 axis=alt.Axis(
                     ticks=False,
                     domain=False,
@@ -2066,7 +2078,7 @@ class MediaSummary:
                     title=tooltip_time_title,
                 ),
                 alt.Tooltip(f'{c.CHANNEL}:N', title='Channel'),
-                alt.Tooltip('rank:O', title='Rank'),
+                alt.Tooltip(f'{c.RANK}:O', title='Rank'),
                 alt.Tooltip(
                     f'{c.INCREMENTAL_OUTCOME}:Q',
                     format=',.0f',

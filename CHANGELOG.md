@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Exclude channels with zero incremental outcome from
+    `MediaSummary.plot_channel_contribution_bump_chart` per time period and
+    break line segments across zero-contribution gaps instead of ranking and
+    plotting inactive channels.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the
     cross-entropy loss against the numerical posterior, as documented.
 *   `BayesianPPPCheck` now computes the posterior predictive p-value in closed
