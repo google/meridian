@@ -2820,6 +2820,8 @@ class TimeVaryingPosteriorTest(
             changepoints=changepoints_spec,
             media_prior_type=prior_type,
             rf_prior_type=prior_type,
+            changepoint_media_prior_type=prior_type,
+            changepoint_rf_prior_type=prior_type,
         ),
     )
     sample = (
@@ -2878,6 +2880,8 @@ class TimeVaryingPosteriorTest(
             },
             media_prior_type=prior_type,
             rf_prior_type=prior_type,
+            changepoint_media_prior_type=prior_type,
+            changepoint_rf_prior_type=prior_type,
             allows_negative_aggregate_baseline=(
                 allows_negative_aggregate_baseline
             ),
