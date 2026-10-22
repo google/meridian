@@ -35,6 +35,11 @@ import xarray as xr
 
 _NUMPY_OBJECT_DTYPE = np.dtype("O")
 
+# Frequency this close below 1 is treated as rounding noise (for example, from
+# computing frequency as impressions / reach) rather than a data error. Matches
+# the absolute tolerance of the optimizer's check that `pct_of_spend` sums to 1.
+_FREQUENCY_BELOW_ONE_TOLERANCE = 1e-3
+
 
 __all__ = [
     "InputData",
@@ -302,6 +307,8 @@ class InputData:
     self._validate_times()
     self._validate_geos()
     self._validate_no_negative_values()
+    self._warn_frequency_below_one()
+    self._warn_non_positive_population()
     self._validate_currency_code()
 
   def _validate_currency_code(self):
@@ -655,6 +662,71 @@ class InputData:
       da = getattr(self, field)
       if da is not None and (da.values < 0).any():
         raise ValueError(f"{loggable_field} values must be non-negative.")
+
+  def _warn_frequency_below_one(self) -> None:
+    """Warns if frequency is below 1 where reach is positive.
+
+    Frequency is the average number of impressions per reached user, so it
+    can't be below 1 where reach is positive. Where reach is 0, frequency has no
+    effect on the model, so it isn't checked there.
+    """
+    rf_arrays = (
+        (self.reach, self.frequency, constants.RF_CHANNEL, "Frequency"),
+        (
+            self.organic_reach,
+            self.organic_frequency,
+            constants.ORGANIC_RF_CHANNEL,
+            "Organic Frequency",
+        ),
+    )
+    for reach, frequency, channel_dim, loggable_field in rf_arrays:
+      if reach is None or frequency is None:
+        continue
+      below_one = (reach > 0) & (
+          frequency < 1 - _FREQUENCY_BELOW_ONE_TOLERANCE
+      )
+      if not below_one.any():
+        continue
+      cells_per_channel = below_one.sum(
+          dim=[dim for dim in below_one.dims if dim != channel_dim]
+      )
+      counts = {
+          str(channel): int(count)
+          for channel, count in zip(
+              cells_per_channel.coords[channel_dim].values,
+              cells_per_channel.values,
+          )
+          if count
+      }
+      # TODO: Raise a `ValueError` instead in Meridian 3.0.
+      warnings.warn(
+          f"{loggable_field} is below 1 where reach is positive. Number of"
+          f" affected (geo, time) cells by channel: {counts}. Frequency is the"
+          " average number of impressions per reached user, so it should be at"
+          " least 1 wherever reach is positive; values below 1 usually mean a"
+          " data error. This will raise an error in a future major version of"
+          " Meridian.",
+          UserWarning,
+      )
+
+  def _warn_non_positive_population(self) -> None:
+    """Warns if any geo has a population of 0 or below."""
+    non_positive = self.population.values <= 0
+    if not non_positive.any():
+      return
+    geos = [
+        str(geo)
+        for geo in self.population.coords[constants.GEO].values[non_positive]
+    ]
+    # TODO: Raise a `ValueError` instead in Meridian 3.0.
+    warnings.warn(
+        "Population must be positive, but these geos have a population of 0"
+        f" or below: {geos}. Meridian scales the data by population, so this"
+        " makes the results invalid for every channel, not only for these"
+        " geos. Remove these geos or set their population. This will raise an"
+        " error in a future major version of Meridian.",
+        UserWarning,
+    )
 
   def _validate_names(self):
     """Verifies that the names of the data arrays are correct."""

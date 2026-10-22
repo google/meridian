@@ -35,6 +35,16 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     non-monotonic within the optimization bounds, or when the `slope_m`
     distribution contains values greater than one, since the optimizer may not
     find the global optimum in these cases.
+*   `InputData` warns when frequency is below 1 where reach is positive, for
+    paid and organic reach and frequency channels, and when any geo has a
+    population of 0 or below. Both usually mean a data error, and a zero or
+    negative population makes the results invalid for every channel. These
+    warnings will become errors in a future major version.
+*   Clarify two model-building errors. In a geo model, a variable that is
+    constant everywhere is now reported as not varying across time, instead of
+    as only varying across time when there's one knot per time period. A media,
+    reach, organic media, or organic reach channel that is 0 everywhere now
+    raises an error that names the channel and its type.
 *   Fix `save_meridian` and `save_mmm` raising `FileNotFoundError` on bare
     filenames.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the

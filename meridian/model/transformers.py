@@ -80,7 +80,9 @@ class MediaTransformer(TensorTransformer):
     if backend.reduce_any(backend.is_nan(self._population_scaled_median_m)):
       raise ValueError(
           "MediaTransformer has a NaN population-scaled non-zero median due to"
-          " a media channel with either all zeroes or all NaNs."
+          " a media channel with either all zeroes or all NaNs. This also"
+          " happens if population is 0 in every geo where the channel is"
+          " nonzero."
       )
     # Tensor of dimensions (`n_geos`, `n_media_channels`) of weights for scaling
     # `media`.

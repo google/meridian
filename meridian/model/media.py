@@ -21,6 +21,7 @@ from meridian.data import input_data as data
 from meridian.model import spec
 from meridian.model import transformers
 import numpy as np
+import xarray as xr
 
 
 __all__ = [
@@ -33,6 +34,42 @@ __all__ = [
     "build_organic_media_tensors",
     "build_organic_rf_tensors",
 ]
+
+
+def _validate_no_all_zero_channels(
+    array: xr.DataArray,
+    channel_dim: str,
+    channel_type: str,
+    array_name: str,
+) -> None:
+  """Raises an error naming the channels that are 0 everywhere.
+
+  `transformers.MediaTransformer` also rejects these channels, but it doesn't
+  know their names or type, so this check runs first to give a clearer error.
+
+  Args:
+    array: The media or reach array from `InputData`, with dimensions `(geo,
+      media_time, channel)`.
+    channel_dim: The channel dimension of `array`.
+    channel_type: The channel type to name in the error (e.g. "reach and
+      frequency").
+    array_name: The name of the array to use in the error (e.g. "reach").
+
+  Raises:
+    ValueError: If a channel is 0 in every geo and time period.
+  """
+  is_all_zero = np.all(np.asarray(array) == 0, axis=(0, 1))
+  if not is_all_zero.any():
+    return
+  channels = [
+      str(channel)
+      for channel in np.asarray(array.coords[channel_dim].values)[is_all_zero]
+  ]
+  raise ValueError(
+      f"The following {channel_type} channels have {array_name} of 0 in every"
+      " geo and time period, so there is no execution to model:"
+      f" {channels}. To address this, drop the listed channels."
+  )
 
 
 def _roi_calibration_scaled_counterfactual(
@@ -122,6 +159,9 @@ def build_media_tensors(
     return MediaTensors()
 
   # Derive and set media tensors from media values in the input data.
+  _validate_no_all_zero_channels(
+      input_data.media, constants.MEDIA_CHANNEL, "media", "media"
+  )
   media = backend.to_tensor(input_data.media, dtype=backend.float_dtype)
   media_spend = backend.to_tensor(
       input_data.media_spend, dtype=backend.float_dtype
@@ -209,6 +249,12 @@ def build_organic_media_tensors(
     return OrganicMediaTensors()
 
   # Derive and set media tensors from media values in the input data.
+  _validate_no_all_zero_channels(
+      input_data.organic_media,
+      constants.ORGANIC_MEDIA_CHANNEL,
+      "organic media",
+      "organic media",
+  )
   organic_media = backend.to_tensor(
       input_data.organic_media, dtype=backend.float_dtype
   )
@@ -292,6 +338,9 @@ def build_rf_tensors(
   if input_data.reach is None:
     return RfTensors()
 
+  _validate_no_all_zero_channels(
+      input_data.reach, constants.RF_CHANNEL, "reach and frequency", "reach"
+  )
   reach = backend.to_tensor(input_data.reach, dtype=backend.float_dtype)
   frequency = backend.to_tensor(input_data.frequency, dtype=backend.float_dtype)
   rf_impressions = (
@@ -380,6 +429,12 @@ def build_organic_rf_tensors(
   if input_data.organic_reach is None:
     return OrganicRfTensors()
 
+  _validate_no_all_zero_channels(
+      input_data.organic_reach,
+      constants.ORGANIC_RF_CHANNEL,
+      "organic reach and frequency",
+      "organic reach",
+  )
   organic_reach = backend.to_tensor(
       input_data.organic_reach, dtype=backend.float_dtype
   )
