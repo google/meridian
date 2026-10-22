@@ -51,7 +51,7 @@ limitations under the License.
     <cards>
       {# Each card is laid out in a grid. See; .card display layout. #}
       {% for card in cards %} {# each `card` is a pre-rendered HTML #}
-        {{ card }}
+        {{ card|safe }}
       {% endfor %}
     </cards>
   </body>

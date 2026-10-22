@@ -24,6 +24,7 @@ import re
 from typing import Literal, TYPE_CHECKING
 
 import altair as alt
+import markupsafe
 from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer as analyzer_module
@@ -1744,7 +1745,7 @@ class MeridianEDA:
             )
         )
       finding_tag = (
-          ''.join(finding_tags)
+          markupsafe.Markup('').join(finding_tags)
           if finding_tags
           else formatter.create_finding_html(self._template_env, 'Info', 'info')
       )
@@ -1752,7 +1753,7 @@ class MeridianEDA:
       rows.append({
           eda_constants.CATEGORY: category,
           eda_constants.FINDING: finding_tag,
-          eda_constants.RECOMMENDED_NEXT_STEP: (
+          eda_constants.RECOMMENDED_NEXT_STEP: markupsafe.Markup(
               eda_constants.CATEGORY_TO_MESSAGE_BY_STATUS[category][
                   bool(n_fails or n_reviews)
               ]
@@ -1984,7 +1985,8 @@ class MeridianEDA:
             row_values=formatted_table.values.tolist(),
             warnings=[
                 _format_explanation_for_html(finding.explanation)
-                + f' {display_limit_message}'
+                + markupsafe.Markup(' ')
+                + display_limit_message
             ],
         ),
         found_channels,
@@ -2183,8 +2185,8 @@ class MeridianEDA:
         ),
         row_values=formatted_table.values.tolist(),
         warnings=[
-            f'{_format_explanation_for_html(finding.explanation)}'
-            f'{display_limit_message}'
+            _format_explanation_for_html(finding.explanation)
+            + display_limit_message
         ],
     )
 
@@ -2411,7 +2413,7 @@ class MeridianEDA:
         n_geos=n_geos,
     )
     message_kwargs['additional_info'] = display_limit_message  # pyrefly: ignore[unsupported-operation]
-    final_message = message_template.format(**message_kwargs)
+    final_message = markupsafe.escape(message_template).format(**message_kwargs)
 
     return formatter.TableSpec(
         id=table_id,
@@ -2475,7 +2477,7 @@ class MeridianEDA:
                   [constants.CHANNEL, constants.R_SQUARED]
               ),
               row_values=format_df(df),
-              infos=[f'{info}{display_limit_message}'],
+              infos=[markupsafe.escape(info) + display_limit_message],
           )
       )
     return tables
@@ -2646,8 +2648,10 @@ class MeridianEDA:
         id=eda_constants.PRIOR_CHART_ID,
         chart_json=self.plot_prior_mean().to_json(),
         infos=[
-            f'{eda_constants.PRIOR_PROBABILITY_REPORT_INFO}Prior Probability of'
-            f' negative baseline: {prior_probability}'
+            markupsafe.Markup(
+                f'{eda_constants.PRIOR_PROBABILITY_REPORT_INFO}Prior'
+                f' Probability of negative baseline: {prior_probability}'
+            )
         ],
     )
 
@@ -2926,10 +2930,10 @@ def _create_display_limit_message(
     n_channels: int,
     n_times: int | None = None,
     n_geos: int | None = None,
-) -> str:
+) -> markupsafe.Markup:
   """Creates a formatted display limit message from the given arguments."""
   if len(display_table) <= eda_constants.DISPLAY_LIMIT:
-    return ''
+    return markupsafe.Markup('')
 
   to_review_suffixes = []
   if n_times:
@@ -2941,7 +2945,7 @@ def _create_display_limit_message(
       (' in ' + ' and '.join(to_review_suffixes)) if to_review_suffixes else ''
   )
   to_review = f'{to_review_prefix} for {n_channels} channels{to_review_suffix}'
-  return eda_constants.DISPLAY_LIMIT_MESSAGE.format(
+  return markupsafe.Markup(eda_constants.DISPLAY_LIMIT_MESSAGE).format(
       function=function, to_review=to_review
   )
 
@@ -3031,7 +3035,8 @@ def _get_plot_data_for_heatmap(
   )
 
 
-def _format_explanation_for_html(explanation: str) -> str:
+def _format_explanation_for_html(explanation: str) -> markupsafe.Markup:
   """Formats an explanation string for HTML rendering using <br> tags."""
-  explanation = _BULLET_POINT_RE.sub('&#160;&#160;&#8226; ', explanation)
-  return explanation.replace('\n', '<br/>')
+  escaped = str(markupsafe.escape(explanation))
+  escaped = _BULLET_POINT_RE.sub('&#160;&#160;&#8226; ', escaped)
+  return markupsafe.Markup(escaped.replace('\n', '<br/>'))

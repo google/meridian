@@ -4721,6 +4721,35 @@ class MeridianEdaTestWithMockEngine(backend_test_utils.MeridianTestCase):
 
     self.assertNotIn('Line 1\nLine 2', html_content)
 
+  def test_cpmu_finding_html_escaping(self):
+    self._stub_plotters()
+    finding_cpmu = _create_cpmu_finding(
+        severity=eda_outcome.EDASeverity.REVIEW,
+        finding_cause=eda_outcome.FindingCause.OUTLIER,
+    )
+    finding_cpmu_with_xss = eda_outcome.EDAFinding(
+        finding_cause=finding_cpmu.finding_cause,
+        severity=finding_cpmu.severity,
+        associated_artifact=finding_cpmu.associated_artifact,
+        explanation=(
+            "Channel <script>alert('xss')</script>\n* Bullet <img src=x>"
+        ),
+    )
+    self._stub_engine_checks(cpmu_findings=[finding_cpmu_with_xss])
+
+    html_content = self._eda._generate_report_html()
+
+    self.assertNotIn("<script>alert('xss')</script>", html_content)
+    self.assertNotIn('<img src=x>', html_content)
+    self.assertIn(
+        '&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;<br/>&#160;&#160;&#8226;'
+        ' Bullet &lt;img src=x&gt;',
+        html_content,
+    )
+    # Verify the generated report remains valid XML/DOM.
+    dom = self._get_output_eda_report_html_dom()
+    self.assertIsNotNone(dom)
+
 
 class MeridianEdaTest(backend_test_utils.MeridianTestCase):
 

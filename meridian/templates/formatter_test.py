@@ -354,6 +354,72 @@ class FormatterTest(parameterized.TestCase):
     self.assertIsNotNone(info_p)
     self.assertIn('Table Info', info_p.text)  # pyrefly: ignore[bad-argument-type]
 
+  def test_autoescape_escapes_html_in_card_and_table_and_stats(self):
+    template_env = formatter.create_template_env()
+    card_spec = formatter.CardSpec(
+        id='id"<script>', title='Title <script>alert(1)</script>'
+    )
+    stats_spec = formatter.StatsSpec(
+        title='Stat <img src=x onerror=alert(1)>',
+        stat='<b>100</b>',
+        delta='<script>delta</script>',
+    )
+    table_spec = formatter.TableSpec(
+        id='table_id',
+        title='Table <b>Title</b>',
+        column_headers=['Header <script>'],
+        row_values=[['Row <img src=x onerror=alert(1)>']],
+        description='Desc <script>',
+        errors=['Error <script>'],
+        warnings=['Warning <script>'],
+        infos=['Info <script>'],
+    )
+    card_html = formatter.create_card_html(
+        template_env,
+        card_spec,
+        insights='Insights <img src=x onerror=alert(1)>',
+        chart_specs=[table_spec],
+        stats_specs=[stats_spec],
+    )
+    summary_html = formatter.create_summary_html(
+        template_env,
+        title='Report <script>alert(1)</script>',
+        cards=[card_html],
+    )
+
+    self.assertNotIn('<script>alert(1)</script>', summary_html)
+    self.assertNotIn('<img src=x onerror=alert(1)>', summary_html)
+    self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', summary_html)
+    self.assertIn('&lt;img src=x onerror=alert(1)&gt;', summary_html)
+    # Pre-rendered card HTML is not double-escaped in summary_html.
+    self.assertIn('<card id="id&#34;&lt;script&gt;">', summary_html)
+
+  def test_create_finding_html_escapes_input_and_preserves_tag_in_table(self):
+    template_env = formatter.create_template_env()
+    finding_html = formatter.create_finding_html(
+        template_env,
+        text='1 <script>fail</script>',
+        finding_type='fail" onclick="alert(1)',
+    )
+    card_html = formatter.create_card_html(
+        template_env,
+        formatter.CardSpec(id='summary', title='Summary'),
+        chart_specs=[
+            formatter.TableSpec(
+                id='summary-table',
+                title='',
+                column_headers=['Finding'],
+                row_values=[[finding_html]],
+            )
+        ],
+    )
+    self.assertNotIn('<script>fail</script>', card_html)
+    self.assertIn('&lt;script&gt;fail&lt;/script&gt;', card_html)
+    self.assertIn(
+        '<finding class="fail&#34; onclick=&#34;alert(1)">',
+        card_html,
+    )
+
 
 if __name__ == '__main__':
   absltest.main()
