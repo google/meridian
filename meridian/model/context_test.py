@@ -4233,6 +4233,203 @@ class ChangepointsTest(
           prior_type="mroi",
       )
 
+  def _knot_warnings(
+      self,
+      changepoints_spec: Mapping[str, Sequence[int]],
+      data: input_data.InputData | None = None,
+      **spec_kwargs,
+  ) -> tuple[context.ModelContext, list[str]]:
+    """Builds a model and returns the knot warnings of its build.
+
+    Args:
+      changepoints_spec: Maps channels to the time periods of their
+        changepoints.
+      data: The input data. Default: a geo model with media and RF channels.
+      **spec_kwargs: Other arguments of the model spec, such as `knots`.
+
+    Returns:
+      The model context, and the messages of the warnings about knots.
+    """
+    data = data if data is not None else self.input_data_with_media_and_rf
+    dates = data.time_coordinates.all_dates
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter("always")
+      model_context = self._context(
+          _ModelSpecWithChangepoints(
+              changepoints={
+                  channel: [dates[index] for index in indices]
+                  for channel, indices in changepoints_spec.items()
+              },
+              **spec_kwargs,
+          ),
+          data=data,
+      )
+    knot_warnings = [
+        str(warning.message)
+        for warning in caught
+        if "knots" in str(warning.message)
+    ]
+    return model_context, knot_warnings
+
+  @parameterized.named_parameters(
+      ("list", [0, 10, 100], 10),
+      ("number", 5, 49),
+      ("default", None, 10),
+  )
+  def test_geo_changepoint_on_knot_warns(
+      self, knots: int | list[int] | None, changepoint: int
+  ):
+    # `knots=5` puts knots at 0, 49, 99, 149 and 199, and the default geo knots
+    # are on every time period.
+    _, knot_warnings = self._knot_warnings(
+        {self.media[0]: [changepoint]}, knots=knots
+    )
+    self.assertEqual(
+        knot_warnings,
+        [
+            "There are overlapping knots (for mu_t) and changepoints (for beta)"
+            " in a geo model. If convergence is an issue, consider dropping"
+            " either one of the overlapping knots or changepoints, or"
+            " replacing the knots with control variables.\nChangepoints on a"
+            f" knot: {self.media[0]}: {self.dates[changepoint].isoformat()}."
+        ],
+    )
+
+  def test_geo_changepoint_on_automatically_selected_knot_warns(self):
+    data, expected_knot_info = (
+        data_test_utils.sample_input_data_for_aks_with_expected_knot_info()
+    )
+    assert data.media_channel is not None
+    channel = str(data.media_channel.values[0])
+    knot = int(expected_knot_info.knot_locations[1])
+    _, knot_warnings = self._knot_warnings(
+        {channel: [knot]}, data=data, enable_aks=True
+    )
+    self.assertLen(knot_warnings, 1)
+    self.assertEndsWith(
+        knot_warnings[0],
+        "Changepoints on a knot:"
+        f" {channel}: {data.time_coordinates.all_dates[knot].isoformat()}.",
+    )
+
+  def test_knot_overlap_warning_lists_each_channel(self):
+    # The default geo knots are on every time period.
+    _, knot_warnings = self._knot_warnings(
+        {self.media[0]: [20, 10], self.rf[0]: [30]}
+    )
+    self.assertLen(knot_warnings, 1)
+    self.assertEndsWith(
+        knot_warnings[0],
+        f"Changepoints on a knot: {self.media[0]}:"
+        f" {self.dates[10].isoformat()}, {self.dates[20].isoformat()};"
+        f" {self.rf[0]}: {self.dates[30].isoformat()}.",
+    )
+
+  def test_geo_changepoint_off_knots_doesnt_warn(self):
+    model_context, knot_warnings = self._knot_warnings(
+        {self.media[0]: [50]}, knots=[0, 10, 100]
+    )
+    self.assertEmpty(knot_warnings)
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+
+  def test_geo_changepoint_on_knot_isnt_an_error(self):
+    model_context, _ = self._knot_warnings(
+        {self.media[0]: [10]}, knots=[0, 10, 100]
+    )
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+
+  def _national_knot_warnings(
+      self, changepoint: int
+  ) -> tuple[context.ModelContext, list[str], str, str]:
+    """Builds a national model with knots at 0, 50 and 100.
+
+    Args:
+      changepoint: The time period of the changepoint of the first media
+        channel.
+
+    Returns:
+      The model context, the messages of the warnings about knots, the channel
+      and the date of the changepoint.
+    """
+    data = self.national_input_data_media_and_rf
+    assert data.media_channel is not None
+    channel = str(data.media_channel.values[0])
+    model_context, knot_warnings = self._knot_warnings(
+        {channel: [changepoint]}, data=data, knots=[0, 50, 100]
+    )
+    date = data.time_coordinates.all_dates[changepoint].isoformat()
+    return model_context, knot_warnings, channel, date
+
+  @parameterized.named_parameters(("on_knot", 50), ("off_knots", 60))
+  def test_national_model_with_knots_warns(self, changepoint: int):
+    # A changepoint on a knot gets no overlap warning in a national model,
+    # because posterior sampling raises an error for it.
+    _, knot_warnings, _, _ = self._national_knot_warnings(changepoint)
+    self.assertEqual(
+        knot_warnings,
+        [
+            "You have enabled the time-varying feature with `n_knots` > 1 in a"
+            " national model. If the model doesn't converge, consider using"
+            " `n_knots=1` and/or replacing knots with control variables."
+        ],
+    )
+
+  def test_national_changepoint_on_knot_is_an_error(self):
+    model_context, _, channel, date = self._national_knot_warnings(50)
+    self.assertEqual(
+        model_context._national_changepoint_knot_error(),
+        "There are overlapping knots (for mu_t) and changepoints (for beta)"
+        " in a national model. The model is unidentifiable and hurts"
+        " convergence. Consider dropping either one of the overlapping knots"
+        " or changepoints, or replacing the knots with control variables.\n"
+        f"Changepoints on a knot: {channel}: {date}.",
+    )
+
+  def test_national_changepoint_off_knots_isnt_an_error(self):
+    model_context, _, _, _ = self._national_knot_warnings(60)
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+
+  def test_national_model_with_one_knot_doesnt_warn(self):
+    data = self.national_input_data_media_and_rf
+    assert data.rf_channel is not None
+    model_context, knot_warnings = self._knot_warnings(
+        {str(data.rf_channel.values[0]): [50]}, data=data
+    )
+    self.assertEqual(model_context.knot_info.n_knots, 1)
+    self.assertEmpty(knot_warnings)
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+
+  def test_national_knot_error_uses_loaded_knots(self):
+    data = self.national_input_data_media_and_rf
+    assert data.media_channel is not None
+    model_context, _ = self._knot_warnings(
+        {str(data.media_channel.values[0]): [50]}, data=data
+    )
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+    # Loading a saved model can replace the knots after the model is built.
+    model_context._inject_legacy_knot_info_for_serde([0, 50])
+    self.assertIsNotNone(model_context._national_changepoint_knot_error())
+
+  @parameterized.named_parameters(("geo", False), ("national", True))
+  def test_model_without_changepoints_doesnt_check_knots(self, national: bool):
+    data = (
+        self.national_input_data_media_and_rf
+        if national
+        else self.input_data_with_media_and_rf
+    )
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter("always")
+      model_context = self._context(
+          spec.ModelSpec(knots=[0, 10, 100]), data=data
+      )
+    self.assertEmpty(
+        [warning for warning in caught if "knots" in str(warning.message)]
+    )
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+    # Neither the build nor the check before posterior sampling computes the
+    # knots.
+    self.assertNotIn("knot_info", vars(model_context))
+
 
 def _week(index: int) -> datetime.date:
   return datetime.date(2024, 1, 1) + datetime.timedelta(weeks=index)
