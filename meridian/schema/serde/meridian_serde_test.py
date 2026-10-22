@@ -1030,6 +1030,22 @@ class MeridianSerdeTest(parameterized.TestCase):
               getattr(meridian_model, attr), getattr(loaded_model, attr)
           )
 
+  def test_save_load_meridian_bare_filename(self):
+    flags.FLAGS.mark_as_parsed()
+    meridian_model = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=test_data.get_default_model_spec(),
+    )
+    old_cwd = os.getcwd()
+    try:
+      os.chdir(self.create_tempdir().full_path)
+      serde.save_meridian(meridian_model, 'serde.binpb')
+      self.assertTrue(os.path.exists('serde.binpb'))
+      loaded_model = serde.load_meridian('serde.binpb')
+      self.assertEqual(meridian_model.n_geos, loaded_model.n_geos)
+    finally:
+      os.chdir(old_cwd)
+
   def test_save_load_meridian_txtpb(self):
     # The create_tempdir() method below internally uses command line flag
     # (--test_tmpdir) and such flags are not marked as parsed by default

@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `save_meridian` and `save_mmm` raising `FileNotFoundError` on bare
+    filenames.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the
     cross-entropy loss against the numerical posterior, as documented.
 *   `BayesianPPPCheck` now computes the posterior predictive p-value in closed
