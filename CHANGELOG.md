@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `ReviewSummary.plot_calibration_overview()` and
+    `ReviewSummary.plot_calibration_details()` to plot the calibration overview
+    (experiments, priors and posterior) and the per-experiment adjustments for
+    all calibrated channels and experiments.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the
     cross-entropy loss against the numerical posterior, as documented.
 *   `BayesianPPPCheck` now computes the posterior predictive p-value in closed

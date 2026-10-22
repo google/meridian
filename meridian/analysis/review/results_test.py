@@ -22,6 +22,7 @@ from unittest import mock
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
+import altair as alt
 
 from meridian import backend
 from meridian import constants
@@ -544,6 +545,8 @@ def _mock_channel_data(
     chart_json: str | None = '{"test": "json"}',
     details_chart_json: str | None = None,
     with_prior_dist: bool = False,
+    se_step: float = 0.0,
+    posterior_samples: Sequence[float] = (),
 ) -> results.CalibrationOverviewChannelData:
   prior_dist = None
   if with_prior_dist:
@@ -554,17 +557,17 @@ def _mock_channel_data(
       calibration_base.CalibratedExperiment(
           source_type=calibration_base.SourceType.MERIDIAN_GEOX,
           raw_experiment_result=calibration_base.ExperimentResult(
-              point_estimate=1.0, standard_error=0.2
+              point_estimate=1.0, standard_error=0.2 + se_step * i
           ),
           adjusted_experiment_result=calibration_base.ExperimentResult(
-              point_estimate=1.0, standard_error=0.2
+              point_estimate=1.0, standard_error=0.2 + se_step * i
           ),
           tau_spend=0.0,
           tau_recency=0.0,
           tau_duration=0.0,
           gamma_duration=1.0,
       )
-      for _ in range(num_experiments)
+      for i in range(num_experiments)
   ]
   if prior_dist is not None:
     intermediary_prior = prior_dist
@@ -584,6 +587,7 @@ def _mock_channel_data(
       calibrated_prior_dist=prior_dist,
       chart_json=chart_json,
       details_chart_json=details_chart_json,
+      posterior_samples=np.array(posterior_samples),
   )
 
 
@@ -2113,8 +2117,22 @@ _CALIBRATION_LIMIT_MESSAGE = (
     " along with their five experiments with the smallest adjusted standard"
     " error."
 )
-_OVERVIEW_LIMIT_MESSAGE = _CALIBRATION_LIMIT_MESSAGE
-_DETAILS_LIMIT_MESSAGE = _CALIBRATION_LIMIT_MESSAGE
+_OVERVIEW_LIMIT_MESSAGE = (
+    _CALIBRATION_LIMIT_MESSAGE
+    + " Please use"
+    ' <a href="https://developers.google.com/meridian/reference/api/meridian/'
+    'analysis/review/results/ReviewSummary#plot_calibration_overview"'
+    ' target="_blank">ReviewSummary.plot_calibration_overview</a> to'
+    " visualize additional channels and experiments."
+)
+_DETAILS_LIMIT_MESSAGE = (
+    _CALIBRATION_LIMIT_MESSAGE
+    + " Please use"
+    ' <a href="https://developers.google.com/meridian/reference/api/meridian/'
+    'analysis/review/results/ReviewSummary#plot_calibration_details"'
+    ' target="_blank">ReviewSummary.plot_calibration_details</a> to'
+    " visualize additional channels and experiments."
+)
 
 
 class CalibrationOverviewCardTest(parameterized.TestCase):
@@ -2265,6 +2283,148 @@ class CalibrationOverviewCardTest(parameterized.TestCase):
     html = summary._create_calibration_overview_card_html()
     self.assertIn("Calibration overview", html)
     self.assertNotIn(_OVERVIEW_LIMIT_MESSAGE, html)
+
+
+def _plot_calibration_summary() -> results.ReviewSummary:
+  """Returns 7 channels with 7 experiments each, exceeding the card limits.
+
+  Spend increases with the channel index, and the adjusted standard error
+  decreases with the experiment index.
+  """
+  return _create_test_summary(
+      channel_calibration_status={f"ch_{i}": True for i in range(7)},
+      calibration_overview_data=[
+          _mock_channel_data(
+              f"ch_{i}",
+              spend=10.0 + i,
+              num_experiments=7,
+              with_prior_dist=True,
+              se_step=-0.02,
+              posterior_samples=(0.9, 1.1),
+          )
+          for i in range(7)
+      ],
+  )
+
+
+def _overview_rows(chart: alt.VConcatChart) -> list[list[str]]:
+  """Returns the "<channel> (<experiment>)" labels of each chart row."""
+  rows = []
+  for row in chart.to_dict()["vconcat"]:
+    channel = row["title"]["text"].removesuffix(" calibration")
+    scale = row["hconcat"][0]["layer"][0]["encoding"]["color"]["scale"]
+    rows.append([
+        f"{channel} ({label})"
+        for label in scale["domain"]
+        if label.startswith("Experiment ")
+    ])
+  return rows
+
+
+def _details_rows(chart: alt.VConcatChart) -> list[list[str]]:
+  """Returns the "<channel> (<experiment>)" labels of each chart row."""
+  # A row with a single experiment is a layer chart instead of an hconcat.
+  return [
+      [
+          subplot["title"]["text"].removeprefix("Experiment Adjustments: ")
+          for subplot in row.get("hconcat", [row])
+      ]
+      for row in chart.to_dict()["vconcat"]
+  ]
+
+
+def _expected_rows(
+    channels: Sequence[int], experiments: Sequence[int]
+) -> list[list[str]]:
+  return [
+      [f"ch_{c} (Experiment {e} (Meridian GeoX))" for e in experiments]
+      for c in channels
+  ]
+
+
+_PLOT_CALIBRATION_METHODS = (
+    (
+        "overview",
+        results.ReviewSummary.plot_calibration_overview,
+        _overview_rows,
+    ),
+    (
+        "details",
+        results.ReviewSummary.plot_calibration_details,
+        _details_rows,
+    ),
+)
+
+
+class PlotCalibrationTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(*_PLOT_CALIBRATION_METHODS)
+  def test_no_data_returns_none(self, plot_fn, unused_rows_fn):
+    self.assertIsNone(plot_fn(_create_test_summary()))
+
+  @parameterized.named_parameters(*_PLOT_CALIBRATION_METHODS)
+  def test_plots_all_channels_and_experiments_by_default(
+      self, plot_fn, rows_fn
+  ):
+    chart = plot_fn(_plot_calibration_summary())
+    # Channels are sorted by spend (descending).
+    self.assertEqual(
+        rows_fn(chart), _expected_rows((6, 5, 4, 3, 2, 1, 0), range(1, 8))
+    )
+
+  def test_overview_shows_posterior(self):
+    chart = _plot_calibration_summary().plot_calibration_overview()
+    self.assertIsNotNone(chart)
+    for row in chart.to_dict()["vconcat"]:
+      scale = row["hconcat"][0]["layer"][0]["encoding"]["color"]["scale"]
+      self.assertIn(review_constants.MERIDIAN_POSTERIOR, scale["domain"])
+
+  @parameterized.named_parameters(*_PLOT_CALIBRATION_METHODS)
+  def test_limits(self, plot_fn, rows_fn):
+    summary = _plot_calibration_summary()
+    # By default, the experiments with the smallest adjusted standard error.
+    chart = plot_fn(summary, limit_channels=2, limit_experiments=2)
+    self.assertEqual(rows_fn(chart), _expected_rows((6, 5), (6, 7)))
+    chart = plot_fn(
+        summary, limit_channels=2, limit_experiments=2, sort_experiments=False
+    )
+    self.assertEqual(rows_fn(chart), _expected_rows((6, 5), (1, 2)))
+
+  @parameterized.named_parameters(*_PLOT_CALIBRATION_METHODS)
+  def test_no_sort_channels_follows_status_order(self, plot_fn, rows_fn):
+    summary = _create_test_summary(
+        channel_calibration_status={"ch_1": True, "ch_0": True},
+        calibration_overview_data=[
+            _mock_channel_data(
+                "ch_0", spend=200.0, num_experiments=1, with_prior_dist=True
+            ),
+            _mock_channel_data(
+                "ch_1", spend=100.0, num_experiments=1, with_prior_dist=True
+            ),
+        ],
+    )
+    chart = plot_fn(summary, sort_channels=False)
+    self.assertEqual(rows_fn(chart), _expected_rows((1, 0), (1,)))
+
+  @parameterized.named_parameters(*_PLOT_CALIBRATION_METHODS)
+  def test_channel_name(self, plot_fn, rows_fn):
+    chart = plot_fn(_plot_calibration_summary(), channel_name="ch_3")
+    self.assertEqual(rows_fn(chart), _expected_rows((3,), range(1, 8)))
+
+  @parameterized.product(
+      (
+          dict(plot_fn=results.ReviewSummary.plot_calibration_overview),
+          dict(plot_fn=results.ReviewSummary.plot_calibration_details),
+      ),
+      (
+          dict(kwargs=dict(channel_name="unknown"), error="not a calibrated"),
+          dict(kwargs=dict(limit_channels=0), error="limit_channels"),
+          dict(kwargs=dict(limit_experiments=-1), error="limit_experiments"),
+      ),
+  )
+  def test_invalid_arguments_raise(self, plot_fn, kwargs, error):
+    with self.assertRaisesRegex(ValueError, error):
+      plot_fn(_plot_calibration_summary(), **kwargs)
 
 
 class CalibrationDetailsCardTest(parameterized.TestCase):
