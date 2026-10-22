@@ -204,6 +204,46 @@ class AggregateBaselineConstraint:
         name=constants.ROTATED_KNOT_REST,
     )
 
+  def knot_values(
+      self,
+      rotated_knot_0: backend.Tensor,
+      rotated_knot_rest: backend.Tensor | None = None,
+  ) -> backend.Tensor:
+    """Rotates the rotated knots back to knot values.
+
+    Args:
+      rotated_knot_0: The first rotated knot, of shape `(...)`.
+      rotated_knot_rest: The other rotated knots, of shape `(..., n_knots -
+        1)`. Required if and only if there is more than one knot.
+
+    Returns:
+      The knot values, of shape `(..., n_knots)`.
+
+    Raises:
+      ValueError: If `rotated_knot_rest` is passed with one knot, or is missing
+        with more than one knot.
+    """
+    n_knots = self.knot_rotation_matrix.shape[0]
+    if (rotated_knot_rest is None) != (n_knots == 1):
+      raise ValueError(
+          "`rotated_knot_rest` must be passed if and only if there is more"
+          f" than one knot, but there are {n_knots} knots."
+      )
+    rotated_knots = backend.expand_dims(rotated_knot_0, -1)  # pyrefly: ignore[bad-argument-type]
+    if rotated_knot_rest is None:
+      return rotated_knots
+    rotated_knots = backend.concatenate(
+        [rotated_knots, rotated_knot_rest],  # pyrefly: ignore[bad-argument-type]
+        axis=-1,
+    )
+    return backend.einsum(
+        "...k,kl->...l",
+        rotated_knots,
+        backend.to_tensor(
+            self.knot_rotation_matrix, dtype=self.knot_scale.dtype
+        ),
+    )
+
 
 def _get_decay(decay_spec: str | Sequence[str], index: int) -> str:
   return decay_spec[index] if not isinstance(decay_spec, str) else decay_spec

@@ -2407,6 +2407,58 @@ class InferenceDataTest(
       self.assertEqual(prior.name, constants.ROTATED_KNOT_REST)
       self.assertEqual(tuple(prior.event_shape), (n_knots - 1,))
 
+  @parameterized.named_parameters(
+      dict(testcase_name="one_knot", n_knots=1),
+      dict(testcase_name="five_knots", n_knots=5),
+  )
+  def test_aggregate_baseline_constraint_knot_values(self, n_knots: int):
+    model_context = context.ModelContext(
+        input_data=self.input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(
+            knots=n_knots, allows_negative_aggregate_baseline=False
+        ),
+    )
+    constraint = model_context.aggregate_baseline_constraint
+    assert constraint is not None
+    rng = np.random.default_rng(0)
+    rotated_knot_0 = rng.normal(size=(2,))
+    if n_knots == 1:
+      rotated_knot_rest = None
+    else:
+      rotated_knot_rest = backend.to_tensor(
+          rng.normal(size=(2, n_knots - 1)), dtype=backend.float_dtype
+      )
+
+    knot_values = constraint.knot_values(
+        backend.to_tensor(rotated_knot_0, dtype=backend.float_dtype),
+        rotated_knot_rest,
+    )
+
+    self.assertEqual(tuple(knot_values.shape), (2, n_knots))
+    # The outcome-weighted sum of `mu_t` over time only depends on the first
+    # rotated knot.
+    mu_t = np.asarray(knot_values) @ model_context.knot_info.weights
+    time_weights = np.sum(np.asarray(constraint.outcome_weights), axis=0)
+    test_utils.assert_allclose(
+        mu_t @ time_weights,
+        constraint.knot_norm_w * rotated_knot_0,
+        rtol=1e-4,
+        atol=1e-3,
+    )
+    with self.subTest("mismatched_rotated_knot_rest_raises"):
+      mismatched_rotated_knot_rest = (
+          backend.zeros([2, 1], dtype=backend.float_dtype)
+          if n_knots == 1
+          else None
+      )
+      with self.assertRaisesRegex(
+          ValueError, "`rotated_knot_rest` must be passed if and only if"
+      ):
+        constraint.knot_values(
+            backend.zeros([2], dtype=backend.float_dtype),
+            mismatched_rotated_knot_rest,
+        )
+
   def test_init_revalidates_mutated_knot_values_prior(self):
     model_spec = spec.ModelSpec(allows_negative_aggregate_baseline=False)
     model_spec.prior.knot_values = backend.tfd.Uniform(
