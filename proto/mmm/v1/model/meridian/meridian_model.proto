@@ -857,6 +857,10 @@ message MeridianModel {
   // The semantic version of the Meridian library used to generate this model.
   string model_version = 2 [features.field_presence = EXPLICIT];
 
+  // Version of the `mmm-proto-schema` package used to serialize this model, in
+  // semantic version format (e.g. "1.6.0").
+  string schema_version = 24 [features.field_presence = EXPLICIT];
+
   // The ArviZ version used to serialize inference data.
   string arviz_version = 20 [features.field_presence = EXPLICIT];
 

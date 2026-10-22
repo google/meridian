@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-22
+
+*   Add `schema_version` field to `MeridianModel` proto to record the
+    `mmm-proto-schema` version used during serialization.
+
 ## [1.5.0] - 2026-10-09
 
 *   Add the `Changepoints` proto, together with the `changepoints`,
@@ -123,4 +128,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.4.1]: https://github.com/google/meridian/releases/tag/proto-v1.4.1
 [1.4.2]: https://github.com/google/meridian/releases/tag/proto-v1.4.2
 [1.5.0]: https://github.com/google/meridian/releases/tag/proto-v1.5.0
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.5.0...HEAD
+[1.6.0]: https://github.com/google/meridian/releases/tag/proto-v1.6.0
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.6.0...HEAD
