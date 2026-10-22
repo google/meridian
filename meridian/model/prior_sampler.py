@@ -1013,19 +1013,11 @@ class PriorDistributionSampler:
         rotated_knot_rest = rotated_knot_rest_prior.sample(
             sample_shape=sample_shape, seed=rng_handler.get_next_seed()
         )
-        rotated_knots = backend.concatenate(
-            [backend.expand_dims(rotated_knot_0, -1), rotated_knot_rest],
-            axis=-1,
-        )
-        knot_values = backend.einsum(
-            "...k,kl->...l",
-            rotated_knots,
-            backend.to_tensor(
-                baseline_constraint.knot_rotation_matrix, dtype=knot_dtype
-            ),
-        )
       else:
-        knot_values = backend.expand_dims(rotated_knot_0, -1)
+        rotated_knot_rest = None
+      knot_values = baseline_constraint.knot_values(
+          rotated_knot_0, rotated_knot_rest
+      )
 
       base_vars[constants.KNOT_VALUES] = knot_values
       base_vars[constants.MU_T] = backend.tfd.Deterministic(

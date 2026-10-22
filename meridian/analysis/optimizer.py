@@ -627,7 +627,6 @@ class OptimizationResults:
     with open(os.path.join(filepath, filename), 'w') as f:
       f.write(self._gen_optimization_summary(currency))
 
-  # TODO: Add Scuba tests for horizontal plots.
   def plot_incremental_outcome_delta(
       self, *, is_vertical: bool = True
   ) -> alt.Chart:
@@ -811,7 +810,6 @@ class OptimizationResults:
         )
     )
 
-  # TODO: Add Scuba tests for horizontal plots.
   def plot_spend_delta(
       self,
       currency: str | None = None,

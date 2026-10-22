@@ -1620,6 +1620,24 @@ class ModelSpecWithChangepointsTest(parameterized.TestCase):
     ):
       _ModelSpecWithChangepoints(changepoint_media_effects_dist="bad")
 
+  def test_changepoint_prior_types_default_to_roi(self):
+    model_spec = _ModelSpecWithChangepoints(
+        media_prior_type="coefficient", rf_prior_type="coefficient"
+    )
+    self.assertEqual(model_spec.changepoint_media_prior_type, "roi")
+    self.assertEqual(model_spec.changepoint_rf_prior_type, "roi")
+
+  @parameterized.named_parameters(
+      ("media", "changepoint_media_prior_type"),
+      ("rf", "changepoint_rf_prior_type"),
+  )
+  def test_invalid_changepoint_prior_type_raises(self, field: str):
+    with self.assertRaisesRegex(ValueError, f"`{field}` must be one of"):
+      if field == "changepoint_media_prior_type":
+        _ModelSpecWithChangepoints(changepoint_media_prior_type="beta")
+      else:
+        _ModelSpecWithChangepoints(changepoint_rf_prior_type="beta")
+
 
 if __name__ == "__main__":
   absltest.main()

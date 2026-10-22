@@ -1184,6 +1184,8 @@ class TimeVaryingPriorSamplingTest(
     model_context = self._context(
         media_prior_type=prior_type,
         rf_prior_type=prior_type,
+        changepoint_media_prior_type=prior_type,
+        changepoint_rf_prior_type=prior_type,
         media_effects_dist=media_effects_dist,
         changepoint_media_effects_dist=changepoint_media_effects_dist,
     )
@@ -1364,6 +1366,8 @@ class TimeVaryingPriorSamplingTest(
             },
             media_prior_type=prior_type,
             rf_prior_type=prior_type,
+            changepoint_media_prior_type=prior_type,
+            changepoint_rf_prior_type=prior_type,
         ),
     )
     draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
