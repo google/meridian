@@ -1107,6 +1107,39 @@ class InputDataTest(parameterized.TestCase):
           media_spend=self.media_spend,
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="kpi",
+          dim=constants.TIME,
+          error="Time coordinates must be regularly spaced.",
+      ),
+      dict(
+          testcase_name="media",
+          dim=constants.MEDIA_TIME,
+          error="Media time coordinates must be regularly spaced.",
+      ),
+  )
+  def test_identical_time_coordinates_rejected(self, dim, error):
+    kpi = self.not_lagged_kpi
+    media = self.not_lagged_media
+    if dim == constants.TIME:
+      kpi = kpi.assign_coords({dim: [kpi[dim].values[0]] * kpi.sizes[dim]})
+    else:
+      media = media.assign_coords(
+          {dim: [media[dim].values[0]] * media.sizes[dim]}
+      )
+
+    with self.assertRaisesWithLiteralMatch(ValueError, error):
+      input_data.InputData(
+          controls=self.not_lagged_controls,
+          kpi=kpi,
+          kpi_type=constants.NON_REVENUE,
+          revenue_per_kpi=self.revenue_per_kpi,
+          population=self.population,
+          media=media,
+          media_spend=self.media_spend,
+      )
+
   def test_time_interval_irregular(self):
     kpi = self.not_lagged_kpi.copy()
     # In the `kpi` data array copy, tweak one of the `time` coordinate value so
