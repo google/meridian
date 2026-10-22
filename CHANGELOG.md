@@ -70,6 +70,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     spend uses `time_col`. Rows with a missing `time_col` value are excluded
     from spend. Previously, the only way to model lagged media was to set spend
     to `NaN` in the lagged periods.
+*   Indicate zero-contribution periods with unfilled circles (with a matching
+    legend entry) in `MediaSummary.plot_channel_contribution_bump_chart` and
+    break ranking ties by total incremental outcome across the plotted time
+    periods.
 *   Budget optimization now warns when a channel's response curve is
     non-monotonic within the optimization bounds, or when the `slope_m`
     distribution contains values greater than one, since the optimizer may not

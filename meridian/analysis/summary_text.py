@@ -60,6 +60,7 @@ CHANNEL_CONTRIB_RANK_CHART_DESCRIPTION = """Note: This chart shows the relative
 rank of each channel's contribution, including the baseline, based on
 incremental {outcome} at the end of each quarter. Rank 1 represents the highest
 contribution."""
+ZERO_CONTRIBUTION_LEGEND_LABEL = 'Zero contribution'
 
 CHANNEL_DRIVERS_CHART_ID = 'channel-drivers-chart'
 CHANNEL_DRIVERS_CHART_TITLE = 'Contribution by baseline and marketing channels'
