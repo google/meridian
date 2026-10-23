@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 import dataclasses
 import functools
 import typing
@@ -26,6 +26,7 @@ import warnings
 from meridian import backend
 from meridian import constants
 from meridian.model import context
+from meridian.model import equations
 from meridian.model import transformers
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_outcome
@@ -355,6 +356,40 @@ def _calculate_outliers(
           inplace=False,
       )
   )
+
+
+def _find_variables_with_extreme_baseline(
+    input_da: xr.DataArray,
+    baseline_da: xr.DataArray,
+) -> list[str]:
+  """Finds variables whose baseline is at least as extreme as an outlier.
+
+  Outliers are identified across time for each variable (and geo, if present)
+  of `input_da`. A baseline is considered "at least as extreme" as an outlier if
+  it is less than or equal to an outlier below the lower outlier bound, or
+  greater than or equal to an outlier above the upper outlier bound.
+
+  Args:
+    input_da: A DataArray with a `VARIABLE` dimension from which outliers are
+      extracted across time.
+    baseline_da: A DataArray of baseline values with a `VARIABLE` dimension,
+      whose coordinates are a subset of those of `input_da`. The baseline values
+      must be on the same scale as `input_da`.
+
+  Returns:
+    The names of the variables in `baseline_da` whose baseline is at least as
+    extreme as an outlier in `input_da`.
+  """
+  da = input_da.sel(
+      {eda_constants.VARIABLE: baseline_da[eda_constants.VARIABLE].values}
+  )
+  lower_bound, upper_bound = _get_outlier_bounds(da)
+  is_at_least_as_extreme = ((da < lower_bound) & (baseline_da <= da)) | (
+      (da > upper_bound) & (baseline_da >= da)
+  )
+  other_dims = [d for d in da.dims if d != eda_constants.VARIABLE]
+  is_flagged = is_at_least_as_extreme.any(dim=other_dims)
+  return is_flagged[eda_constants.VARIABLE].values[is_flagged.values].tolist()
 
 
 _VIF_CORR_COND_LIMIT = 1e10
@@ -855,6 +890,78 @@ class EDAEngine:
           self._agg_config.non_media_treatments,
       )
     return national_da
+
+  @functools.cached_property
+  def _default_scaled_non_media_baseline_da(self) -> xr.DataArray | None:
+    """Default non-media baseline values on the scale of `non_media_scaled_da`.
+
+    Only the non-media channels that use the default baseline value, i.e. whose
+    baseline is not set by the user in `ModelSpec.non_media_baseline_values`,
+    are included.
+
+    Returns:
+      A DataArray with a `VARIABLE` dimension holding the non-media channel
+      names, or `None` if no non-media channel uses the default baseline value.
+    """
+    non_media_treatments = self._input_data.non_media_treatments
+    if non_media_treatments is None:
+      return None
+    channels = non_media_treatments.coords[
+        constants.NON_MEDIA_CHANNEL
+    ].values.tolist()
+    user_baseline_values = (
+        self._model_context.model_spec.non_media_baseline_values
+    )
+    if user_baseline_values is None:
+      default_channels = channels
+    elif isinstance(user_baseline_values, Mapping):
+      default_channels = [c for c in channels if c not in user_baseline_values]
+    else:
+      default_channels = []
+    if not default_channels:
+      return None
+
+    baseline = equations.ModelEquations(
+        self._model_context
+    ).compute_non_media_treatments_baseline()
+    # The baseline values are already scaled by population, so only the
+    # centering and scaling transformation is applied here.
+    scaled_baseline = self._model_context.non_media_transformer.forward(  # pyrefly: ignore[missing-attribute]
+        baseline[backend.newaxis, backend.newaxis, :],
+        apply_population_scaling=False,
+    )
+    baseline_da = xr.DataArray(
+        np.asarray(scaled_baseline).reshape(-1),
+        dims=[eda_constants.VARIABLE],
+        coords={eda_constants.VARIABLE: channels},
+    )
+    return baseline_da.sel({eda_constants.VARIABLE: default_channels})
+
+  def _get_non_media_baseline_outlier_message(
+      self, stacked_treatment_control_da: xr.DataArray
+  ) -> str | None:
+    """Returns a message about default non-media baselines that are outliers.
+
+    Args:
+      stacked_treatment_control_da: A stacked DataArray of scaled treatments and
+        controls, including the non-media treatments, on the same scale as
+        `non_media_scaled_da`.
+
+    Returns:
+      A message listing the non-media treatments whose default baseline value
+      is at least as extreme as an outlier, or `None` if there are none.
+    """
+    baseline_da = self._default_scaled_non_media_baseline_da
+    if baseline_da is None:
+      return None
+    flagged_channels = _find_variables_with_extreme_baseline(
+        stacked_treatment_control_da, baseline_da
+    )
+    if not flagged_channels:
+      return None
+    return eda_constants.NON_MEDIA_BASELINE_OUTLIER_MESSAGE.format(
+        non_media_treatments=', '.join(flagged_channels)
+    )
 
   @functools.cached_property
   def rf_spend_da(self) -> xr.DataArray | None:
@@ -1852,6 +1959,22 @@ class EDAEngine:
     findings = []
     artifacts = []
 
+    tc_outlier_message = (
+        'There are outliers in the scaled treatment or control'
+        ' variables in certain geos. Please check for any possible data'
+        ' errors.'
+    )
+    if (
+        self._stacked_treatment_control_scaled_da is not None
+        and constants.NON_MEDIA_TREATMENTS_SCALED
+        in self.treatment_control_scaled_ds.data_vars
+    ):
+      baseline_message = self._get_non_media_baseline_outlier_message(
+          self._stacked_treatment_control_scaled_da
+      )
+      if baseline_message is not None:
+        tc_outlier_message += ' ' + baseline_message
+
     checks = [
         (
             self.kpi_scaled_da,
@@ -1877,11 +2000,7 @@ class EDAEngine:
                 ' consider aggregating these variables to improve model'
                 ' stability.'
             ),
-            (
-                'There are outliers in the scaled treatment or control'
-                ' variables in certain geos. Please check for any possible data'
-                ' errors.'
-            ),
+            tc_outlier_message,
         ),
         (
             self.all_reach_scaled_da,
@@ -1952,6 +2071,25 @@ class EDAEngine:
     findings = []
     artifacts = []
 
+    tc_outlier_message = (
+        'There are outliers in the scaled treatment or control'
+        ' variables. Please check for any possible data errors.'
+    )
+    # For geo-level data, the national non-media treatments are aggregated and
+    # re-scaled, so they are not on the same scale as the non-media baseline
+    # values. The baseline check is therefore only applicable to national data.
+    if (
+        self._is_national_data
+        and self._stacked_national_treatment_control_scaled_da is not None
+        and constants.NATIONAL_NON_MEDIA_TREATMENTS_SCALED
+        in self.national_treatment_control_scaled_ds.data_vars
+    ):
+      baseline_message = self._get_non_media_baseline_outlier_message(
+          self._stacked_national_treatment_control_scaled_da
+      )
+      if baseline_message is not None:
+        tc_outlier_message += ' ' + baseline_message
+
     checks = [
         (
             self.national_kpi_scaled_da,
@@ -1977,10 +2115,7 @@ class EDAEngine:
                 ' verify if this is by design. If not, consider aggregating'
                 ' these variables to improve model stability.'
             ),
-            (
-                'There are outliers in the scaled treatment or control'
-                ' variables. Please check for any possible data errors.'
-            ),
+            tc_outlier_message,
         ),
         (
             self.national_all_reach_scaled_da,
