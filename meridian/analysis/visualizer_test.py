@@ -635,7 +635,9 @@ class ModelFitTest(absltest.TestCase):
   def test_model_fit_plots_selected_times(self):
     times = ["2023-01-01", "2023-01-08", "2023-01-15"]
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(selected_times=times)
-    self.assertListEqual(list(plot.data.time.unique()), times)
+    self.assertListEqual(
+        list(plot.data.time.unique()), list(pd.to_datetime(times))
+    )
 
   def test_model_fit_excludes_knots_by_default(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
@@ -693,7 +695,7 @@ class ModelFitTest(absltest.TestCase):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit(include_knots=True)
 
     knot_times = plot.data[plot.data[c.IS_KNOT]][c.TIME].unique()
-    self.assertCountEqual(knot_times, self.knot_times)
+    self.assertCountEqual(knot_times, pd.to_datetime(self.knot_times))
 
   def test_model_fit_include_knots_only_flags_selected_times(self):
     # Only the first knot (index 0) falls within the selected time range.
@@ -704,7 +706,7 @@ class ModelFitTest(absltest.TestCase):
     )
 
     knot_times = plot.data[plot.data[c.IS_KNOT]][c.TIME].unique()
-    self.assertCountEqual(knot_times, [self.knot_times[0]])
+    self.assertCountEqual(knot_times, pd.to_datetime([self.knot_times[0]]))
 
   def test_model_fit_national_level_aggregates_all_geos(self):
     geo = ["geo 1", "geo 2", "geo 3", "geo 4"]
@@ -2265,6 +2267,7 @@ class MediaSummaryTest(parameterized.TestCase):
         list(df.columns),
         [c.TIME, c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
     )
+    self.assertTrue(pd.api.types.is_datetime64_any_dtype(df[c.TIME]))
     self.assertIn(c.BASELINE, list(df.channel))
     self.assertEqual(
         df[c.CHANNEL].iloc[0],
