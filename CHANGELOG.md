@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Budget optimization now warns when a channel's response curve is
+    non-monotonic within the optimization bounds, or when the `slope_m`
+    distribution contains values greater than one, since the optimizer may not
+    find the global optimum in these cases.
 *   Fix `save_meridian` and `save_mmm` raising `FileNotFoundError` on bare
     filenames.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the

@@ -55,6 +55,10 @@ alt.data_transformers.disable_max_rows()
 
 _SpendConstraint: TypeAlias = float | Sequence[float]
 
+# Relative tolerance (with respect to the maximum absolute incremental outcome
+# of a channel) used when checking whether a response curve is monotonic.
+_MONOTONICITY_RTOL = 1e-5
+
 
 @dataclasses.dataclass(frozen=True)
 class FixedBudgetScenario:
@@ -212,7 +216,8 @@ class OptimizationGrid:
 
     Raises:
       UserWarning: If the budget's rounding should be different from the grid's
-        round factor.
+        round factor, or if the response curve of any channel is non-monotonic
+        within the optimization bounds.
       ValueError: If spend allocation is not within the grid coverage.
     """
     total_budget = (
@@ -257,6 +262,10 @@ class OptimizationGrid:
     spend_grid, incremental_outcome_grid = self.trim_grids(
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
+    )
+    _raise_warning_if_response_curves_non_monotonic(
+        incremental_outcome_grid=incremental_outcome_grid,
+        channels=self.channels,
     )
     rounded_spend = np.round(spend, self.round_factor).astype(int)
     if isinstance(scenario, FixedBudgetScenario):
@@ -1480,6 +1489,42 @@ class BudgetOptimizer:
           'Running budget optimization scenarios requires fitting the model.'
       )
 
+  def _raise_warning_if_slope_m_greater_than_one(self, use_posterior: bool):
+    """Raises a warning if the `slope_m` distribution contains values > 1.
+
+    A Hill `slope` parameter greater than one is a necessary (but not
+    sufficient) condition for the response curve to be non-concave. The
+    optimization algorithm assumes concave response curves and may not find the
+    global optimum otherwise. Only media channels using Hill saturation are
+    considered, since `slope_m` is not used for linear channels.
+
+    Args:
+      use_posterior: Whether the posterior (or prior) distribution is checked.
+    """
+    m_context = self._analyzer.model_context
+    n_media_channels = m_context.n_media_channels
+    if n_media_channels == 0:
+      return
+    dist_type = c.POSTERIOR if use_posterior else c.PRIOR
+    dist = getattr(self._analyzer.inference_data, dist_type)
+    if c.SLOPE_M not in dist.data_vars:
+      return
+    is_hill_mask = np.asarray(
+        equations.ModelEquations(m_context).get_saturation_mask(
+            m_context.saturation_spec.media, n_media_channels
+        ),
+        dtype=bool,
+    )
+    slope_m = np.asarray(dist[c.SLOPE_M].values, dtype=np.float64)
+    if np.any(slope_m[..., is_hill_mask] > 1):
+      warnings.warn(
+          'Optimizer may not find the global optimum due to potentially'
+          f' non-concave response curves: the {dist_type} distribution of'
+          ' `slope_m` contains values greater than 1. This issue can be avoided'
+          ' by using a prior on `slope_m` that does not have probability mass'
+          ' for values greater than one.'
+      )
+
   def optimize(
       self,
       new_data: tensors.DataTensors | None = None,
@@ -2233,6 +2278,7 @@ class BudgetOptimizer:
       An OptimizationGrid object containing the grid data for optimization.
     """
     self._validate_model_fit(use_posterior)
+    self._raise_warning_if_slope_m_greater_than_one(use_posterior=use_posterior)
     if new_data is None:
       new_data = tensors.DataTensors()
     if selected_geos is not None and not selected_geos:
@@ -3344,6 +3390,47 @@ def _exceeds_optimization_constraints(
     return cur_total_roi < target_value and roi_grid_point < cur_total_roi
   else:
     return roi_grid_point < scenario.target_value
+
+
+def _raise_warning_if_response_curves_non_monotonic(
+    incremental_outcome_grid: xr.DataArray,
+    channels: Sequence[str],
+) -> None:
+  """Raises a warning if the response curve of any channel is non-monotonic.
+
+  Response curves can be non-monotonic (that is, have regions of negative slope)
+  when `media_effects_dist='normal'`, because some geos may have negative
+  coefficient estimates and geos saturate at different rates. The hill-climbing
+  optimization algorithm assumes concave response curves and may not find the
+  global optimum when a response curve is non-monotonic.
+
+  Args:
+    incremental_outcome_grid: Discrete grid with dimensions (`grid_length` x
+      `n_channels`) containing incremental outcome by channel, where the spend
+      is increasing along the first dimension. Missing grid points are `NaN`.
+    channels: The channel names, in the same order as the grid columns.
+  """
+  outcome_grid = np.asarray(incremental_outcome_grid.values, dtype=np.float64)
+  non_monotonic_channels = []
+  for i, channel in enumerate(channels):
+    outcome = outcome_grid[:, i]
+    outcome = outcome[~np.isnan(outcome)]
+    if outcome.size < 2:
+      continue
+    # Compare each grid point to the running maximum of all preceding grid
+    # points, so that a sequence of small consecutive drops is flagged when the
+    # total drop is material. The tolerance allows for floating point noise
+    # between grid points, which is most likely to occur when the response
+    # curve is nearly saturated.
+    tolerance = _MONOTONICITY_RTOL * np.max(np.abs(outcome))
+    if np.any(np.maximum.accumulate(outcome) - outcome > tolerance):
+      non_monotonic_channels.append(channel)
+  if non_monotonic_channels:
+    warnings.warn(
+        'Optimizer may not find the global optimum due to non-monotonic'
+        f' response curves for channels: {non_monotonic_channels}. This issue'
+        " can be avoided by using `media_effects_dist='log_normal'`."
+    )
 
 
 def _raise_warning_if_target_constraints_not_met(
