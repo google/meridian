@@ -318,6 +318,7 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       media_channels: list[str],
       time_col: str | None = None,
       geo_col: str | None = None,
+      media_time_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads media and media spend data from a DataFrame.
 
@@ -330,16 +331,19 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         `media_cols` and `media_spend_cols` in length. These are also index
         mapped.
       time_col: The name of the column containing the time coordinates for media
-        spend and media time coordinates for media. If not provided,
-        `self.default_time_column` is used. Media time coordinates are inferred
-        from the same `time_col` and are potentially shorter than time
-        coordinates if media spend values are missing (NaN) for some t in
-        `time`. Media time must be equal or a subset of time.
+        spend. If not provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
         If not provided, `self.default_geo_column` is used. If the DataFrame
         provided has no geo column, a national model data is assumed and a geo
         dimension will be created internally with a single coordinate value
         `national_geo`.
+      media_time_col: (Optional) The name of the column containing the media
+        time coordinates for media execution values. If not provided, media time
+        coordinates are inferred from the same `time_col` and are potentially
+        longer than time coordinates if media spend values are missing (NaN) for
+        some lagged periods at the beginning of `time`. If provided, rows where
+        `time_col` is missing (NaN) are treated as lagged media periods and are
+        excluded from media spend. Time must be equal or a subset of media time.
 
     Returns:
       The `DataFrameInputDataBuilder` with the added media and media spend data.
@@ -353,18 +357,24 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     media_df = df.copy()
 
     time_col = time_col or self.default_time_column
+    media_time_col = media_time_col or time_col
     geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
     # For a media dataframe, media and media_spend columns may be the same
     # (e.g. if using media spend as media execution value), so here we validate
     # execution and spend columns separately when checking for duplicates.
-    self._validate_cols(media_df, media_cols + [time_col], [geo_col])
-    self._validate_cols(media_df, media_spend_cols + [time_col], [geo_col])
-    self._validate_coords(media_df, geo_col, time_col)
+    time_cols = [time_col]
+    if media_time_col != time_col:
+      time_cols.append(media_time_col)
+    self._validate_cols(media_df, media_cols + time_cols, [geo_col])
+    self._validate_cols(media_df, media_spend_cols + time_cols, [geo_col])
+    self._validate_coords(media_df, geo_col, media_time_col)
+    media_spend_df = self._get_spend_df(media_df, time_col, media_time_col)
+    self._validate_coords(media_spend_df, geo_col, time_col)
     self._validate_channel_cols(media_channels, [media_cols, media_spend_cols])
     ### Transform ###
-    media_data = media_df.set_index([geo_col, time_col])[media_cols]
+    media_data = media_df.set_index([geo_col, media_time_col])[media_cols]
     media_data.columns = media_channels
     self.media = (
         media_data.stack()
@@ -376,7 +386,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         ])
         .to_xarray()
     )
-    media_spend_data = media_df.set_index([geo_col, time_col])[media_spend_cols]
+    media_spend_data = media_spend_df.set_index([geo_col, time_col])[
+        media_spend_cols
+    ]
     media_spend_data.columns = media_channels
     self.media_spend = (
         media_spend_data.stack()
@@ -399,6 +411,7 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       rf_channels: list[str],
       time_col: str | None = None,
       geo_col: str | None = None,
+      media_time_col: str | None = None,
   ) -> 'DataFrameInputDataBuilder':
     """Reads reach, frequency, and rf spend data from a DataFrame.
 
@@ -411,16 +424,19 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         `reach_cols`, `frequency_cols`, and `rf_spend_cols` in length. These are
         also index mapped.
       time_col: The name of the column containing the time coordinates for rf
-        spend and media time coordinates for reach and frequency. If not
-        provided, `self.default_time_column` is used. Media time coordinates are
-        inferred from the same `time_col` and are potentially shorter than time
-        coordinates if media spend values are missing (NaN) for some t in
-        `time`. Media time must be equal or a subset of time.
+        spend. If not provided, `self.default_time_column` is used.
       geo_col: (Optional) The name of the column containing the geo coordinates.
         If not provided, `self.default_geo_column` is used. If the DataFrame
         provided has no geo column, a national model data is assumed and a geo
         dimension will be created internally with a single coordinate value
         `national_geo`.
+      media_time_col: (Optional) The name of the column containing the media
+        time coordinates for reach and frequency. If not provided, media time
+        coordinates are inferred from the same `time_col` and are potentially
+        longer than time coordinates if rf spend values are missing (NaN) for
+        some lagged periods at the beginning of `time`. If provided, rows where
+        `time_col` is missing (NaN) are treated as lagged media periods and are
+        excluded from rf spend. Time must be equal or a subset of media time.
 
     Returns:
       The `DataFrameInputDataBuilder` with the added reach, frequency, and rf
@@ -440,22 +456,28 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     reach_df = df.copy()
 
     time_col = time_col or self.default_time_column
+    media_time_col = media_time_col or time_col
     geo_col = geo_col or self.default_geo_column
 
     ### Validate ###
+    time_cols = [time_col]
+    if media_time_col != time_col:
+      time_cols.append(media_time_col)
     self._validate_cols(
         reach_df,
-        reach_cols + frequency_cols + rf_spend_cols + [time_col],
+        reach_cols + frequency_cols + rf_spend_cols + time_cols,
         [geo_col],
     )
-    self._validate_coords(reach_df, geo_col, time_col)
+    self._validate_coords(reach_df, geo_col, media_time_col)
+    rf_spend_df = self._get_spend_df(reach_df, time_col, media_time_col)
+    self._validate_coords(rf_spend_df, geo_col, time_col)
     self._validate_channel_cols(
         rf_channels,
         [reach_cols, frequency_cols, rf_spend_cols],
     )
 
     ### Transform ###
-    reach_data = reach_df.set_index([geo_col, time_col])[reach_cols]
+    reach_data = reach_df.set_index([geo_col, media_time_col])[reach_cols]
     reach_data.columns = rf_channels
     self.reach = (
         reach_data.stack()
@@ -468,7 +490,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         .to_xarray()
     )
 
-    frequency_data = reach_df.set_index([geo_col, time_col])[frequency_cols]
+    frequency_data = reach_df.set_index([geo_col, media_time_col])[
+        frequency_cols
+    ]
     frequency_data.columns = rf_channels
     self.frequency = (
         frequency_data.stack()
@@ -481,7 +505,7 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         .to_xarray()
     )
 
-    rf_spend_data = reach_df.set_index([geo_col, time_col])[rf_spend_cols]
+    rf_spend_data = rf_spend_df.set_index([geo_col, time_col])[rf_spend_cols]
     rf_spend_data.columns = rf_channels
     self.rf_spend = (
         rf_spend_data.stack()
@@ -751,6 +775,30 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
         raise ValueError(
             "Values in the 'time' column not consistent across different geos."
         )
+
+  def _get_spend_df(
+      self, df: pd.DataFrame, time_col: str, media_time_col: str
+  ) -> pd.DataFrame:
+    """Returns the rows of `df` that carry spend data.
+
+    When a separate `media_time_col` is used, the DataFrame may contain lagged
+    media rows (for the "burn-in" period) that have no corresponding `time`
+    coordinate. Such rows are marked by a missing (NaN) value in `time_col` and
+    are excluded from spend data. When `time_col` and `media_time_col` are the
+    same column, `df` is returned as is.
+
+    Args:
+      df: The DataFrame containing both media execution and spend data.
+      time_col: The name of the column containing the time coordinates.
+      media_time_col: The name of the column containing the media time
+        coordinates.
+
+    Returns:
+      The DataFrame rows to read spend data from.
+    """
+    if media_time_col == time_col:
+      return df
+    return df.dropna(subset=[time_col])
 
   def _check_revenue_per_kpi_defaults(
       self, df: pd.DataFrame, revenue_per_kpi_col: str
