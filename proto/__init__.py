@@ -14,6 +14,11 @@
 
 """Module for MMM Proto Schema."""
 
-# TODO: Remove `__version__` or read it from the package metadata.
-# `pyproject.toml` sets the package version, so this value is stale.
-__version__ = "1.0.0"
+import importlib.metadata
+
+_FALLBACK_SCHEMA_VERSION = "1.6.0"
+
+try:
+  __version__ = importlib.metadata.version("mmm-proto-schema")
+except importlib.metadata.PackageNotFoundError:
+  __version__ = _FALLBACK_SCHEMA_VERSION

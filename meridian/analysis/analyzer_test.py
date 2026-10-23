@@ -16,6 +16,7 @@ from collections.abc import Sequence
 import dataclasses
 import itertools
 import os
+from typing import Any
 from unittest import mock
 import warnings
 
@@ -3603,6 +3604,78 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         expected_all_spend, actual_hist_spends.data
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_times",
+          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+          aggregate_times=True,
+      ),
+      dict(
+          testcase_name="no_aggregate_times",
+          selected_times=None,
+          aggregate_times=False,
+      ),
+  )
+  def test_get_aggregated_spend_with_single_dim_spends_by_time_warns(
+      self, selected_times: Sequence[str] | None, aggregate_times: bool
+  ):
+    assert self.input_data.media_spend is not None
+    assert self.input_data.rf_spend is not None
+
+    input_data_1d_spend = dataclasses.replace(
+        self.input_data,
+        media_spend=self.input_data.media_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+        rf_spend=self.input_data.rf_spend.sum(
+            dim=[constants.GEO, constants.TIME]
+        ),
+    )
+    # Patch validation to avoid errors due to mismatched inference data.
+    with mock.patch.object(
+        model.Meridian,
+        "_validate_injected_inference_data",
+        autospec=True,
+        spec_set=True,
+    ):
+      meridian_1d_spend = model.Meridian(
+          input_data=input_data_1d_spend,
+          model_spec=spec.ModelSpec(max_lag=15),
+      )
+    analyzer_1d_spend = analyzer.Analyzer(
+        model_context=meridian_1d_spend.model_context,
+        inference_data=self.inference_data,
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "`media_spend` does not have geo and time dimensions, so it is"
+        " allocated across all geos and times assuming a constant cost per"
+        " media unit, and then filtered by `selected_times` or"
+        " `aggregate_times=False`.",
+    ):
+      actual = analyzer_1d_spend.get_aggregated_spend(
+          selected_times=selected_times, aggregate_times=aggregate_times
+      )
+
+    # The allocation of the aggregated spend matches the explicitly allocated
+    # spend of `InputData`.
+    expected = analyzer_1d_spend.get_aggregated_spend(
+        new_data=tensors.DataTensors(
+            media_spend=backend.to_tensor(
+                input_data_1d_spend.allocated_media_spend,
+                dtype=backend.float_dtype,
+            ),
+            rf_spend=backend.to_tensor(
+                input_data_1d_spend.allocated_rf_spend,
+                dtype=backend.float_dtype,
+            ),
+        ),
+        selected_times=selected_times,
+        aggregate_times=aggregate_times,
+    )
+    xr.testing.assert_allclose(actual, expected, rtol=1e-5)
+
   def test_get_aggregated_spend_with_empty_times(self):
     actual = self.analyzer.get_aggregated_spend(selected_times=[])
     backend_test_utils.assert_allequal(
@@ -4386,7 +4459,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           selected_geos=None,
           selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
           aggregate_geos=True,
-          expected_subset="`selected_times`",
+          expected_subset="`selected_times` or `aggregate_times=False`",
       ),
       dict(
           testcase_name="selected_geos",
@@ -4498,6 +4571,80 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           ),
           selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
       )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="selected_times",
+          dim_kwargs=dict(
+              selected_times=["2021-04-19", "2021-09-13", "2021-12-13"]
+          ),
+          expected_subset="`selected_times` or `aggregate_times=False`",
+      ),
+      dict(
+          testcase_name="no_aggregate_times",
+          dim_kwargs=dict(aggregate_times=False),
+          expected_subset="`selected_times` or `aggregate_times=False`",
+      ),
+      dict(
+          testcase_name="selected_geos",
+          dim_kwargs=dict(selected_geos=["geo_1", "geo_3"]),
+          expected_subset="`selected_geos` or `aggregate_geos=False`",
+      ),
+      dict(
+          testcase_name="no_aggregate_geos",
+          dim_kwargs=dict(aggregate_geos=False),
+          expected_subset="`selected_geos` or `aggregate_geos=False`",
+      ),
+  )
+  def test_summary_metrics_new_data_spend_1d_with_subset_warns(
+      self, dim_kwargs: dict[str, Any], expected_subset: str
+  ):
+    total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.media_tensors.media_spend  # pyrefly: ignore[bad-argument-type]
+    )
+    total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        "`media_spend` does not have geo and time dimensions, so it is"
+        " allocated across all geos and times assuming a constant cost per"
+        f" media unit, and then filtered by {expected_subset}.",
+    ):
+      self.analyzer.summary_metrics(
+          new_data=tensors.DataTensors(
+              media_spend=total_media_spend,
+              rf_spend=total_rf_spend,
+          ),
+          **dim_kwargs,
+      )
+
+  def test_summary_metrics_new_data_spend_1d_non_paid_does_not_warn(self):
+    total_media_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.media_tensors.media_spend  # pyrefly: ignore[bad-argument-type]
+    )
+    total_rf_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.rf_tensors.rf_spend  # pyrefly: ignore[bad-argument-type]
+    )
+
+    # Spend is not used when `include_non_paid_channels=True`.
+    with warnings.catch_warnings(record=True) as caught_warnings:
+      warnings.simplefilter("always")
+      self.analyzer.summary_metrics(
+          new_data=tensors.DataTensors(
+              media_spend=total_media_spend,
+              rf_spend=total_rf_spend,
+          ),
+          selected_times=["2021-04-19", "2021-09-13", "2021-12-13"],
+          include_non_paid_channels=True,
+      )
+    self.assertFalse(
+        any(
+            "does not have geo and time dimensions" in str(warning.message)
+            for warning in caught_warnings
+        )
+    )
 
   def test_media_summary_new_data_spend_1d_returns_correct_values(self):
     """Verifies support for `new_data` spend with dimensions `(n_channels,)`."""

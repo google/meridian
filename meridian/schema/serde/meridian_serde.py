@@ -460,8 +460,9 @@ def save_meridian(
     eda_function_registry: A lookup table that maps string keys to custom
       functions to be used in `EDASpec`.
   """
-  if not _file_exists(os.path.dirname(file_path)):
-    _make_dirs(os.path.dirname(file_path))
+  dir_name = os.path.dirname(file_path)
+  if dir_name and not _file_exists(dir_name):
+    _make_dirs(dir_name)
 
   mode = 'wb' if file_path.endswith('.binpb') else 'w'
 

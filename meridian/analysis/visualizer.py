@@ -763,6 +763,7 @@ class ModelFit:
     if not include_baseline:
       model_fit_df = model_fit_df[model_fit_df[c.TYPE] != c.BASELINE]
 
+    model_fit_df[c.TIME] = pd.to_datetime(model_fit_df[c.TIME])
     return model_fit_df
 
 
@@ -1880,6 +1881,7 @@ class MediaSummary:
     outcome_df = self.contribution_metrics(
         include_non_paid=True, aggregate_times=False
     )
+    outcome_df[c.TIME] = pd.to_datetime(outcome_df[c.TIME])
 
     # Ensure proper ordering for the stacked area chart. Baseline should be at
     # the bottom. Separate the *stacking* order from the *legend* order.

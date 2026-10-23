@@ -994,7 +994,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       self.assertIn(
           f'`{spend_name}` does not have geo and time dimensions, so it is'
           ' allocated across all geos and times assuming a constant cost per'
-          ' media unit, and then filtered by `selected_times`.',
+          ' media unit, and then filtered by `selected_times` or'
+          ' `aggregate_times=False`.',
           warning_messages,
       )
     expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]

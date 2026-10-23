@@ -142,21 +142,23 @@ class InputData:
       analysis such as response curves and budget optimization. Only the
       aggregate spend (across geos and time periods) is required for these
       calculations. However, a spend breakdown by geo and time period is
-      required if `roi_calibration_period` is specified or if conducting
-      post-modeling analysis on a specific subset of geos and/or time periods.
-      The DataArray shape can be `(n_geos, n_times, n_media_channels)` or
-      `(n_media_channels,)` if the data is aggregated over `geo` and `time`
-      dimensions. We recommend that the spend total aligns with the time window
-      of the `kpi` and `controls` data, which is the time window over which
-      incremental outcome of the ROI numerator is calculated. However, note that
-      incremental outcome is influenced by media execution prior to this time
-      window, through lagged effects, and excludes lagged effects beyond the
-      time window of media executed during the time window. `media` and
-      `media_spend` must contain the same number of media channels in the same
-      order. If either of these arguments is passed, then the other is not
-      optional. If a tensor of shape `(n_media_channels,)` is passed as
+      required if `roi_calibration_period` is specified, and is recommended if
+      conducting post-modeling analysis on a specific subset of geos and/or
+      time periods. The DataArray shape can be `(n_geos, n_times,
+      n_media_channels)` or `(n_media_channels,)` if the data is aggregated over
+      `geo` and `time` dimensions. We recommend that the spend total aligns with
+      the time window of the `kpi` and `controls` data, which is the time window
+      over which incremental outcome of the ROI numerator is calculated.
+      However, note that incremental outcome is influenced by media execution
+      prior to this time window, through lagged effects, and excludes lagged
+      effects beyond the time window of media executed during the time window.
+      `media` and `media_spend` must contain the same number of media channels
+      in the same order. If either of these arguments is passed, then the other
+      is not optional. If a tensor of shape `(n_media_channels,)` is passed as
       `media_spend`, then it will be automatically allocated across geos and
-      times proportinally to `media`.
+      times proportionally to `media`, assuming a constant cost per media unit.
+      Post-modeling analysis on a subset of geos and/or time periods is then
+      based on this allocation, and a warning is issued.
     reach: An optional `DataArray` of dimensions `(n_geos, n_media_times,
       n_rf_channels)` containing non-negative `reach` values. It is required
       that `n_media_times` ≥ `n_times`, and the final `n_times` time periods
@@ -193,13 +195,13 @@ class InputData:
       post-modeling analysis such as response curves and budget optimization.
       Only the aggregate spend (across geos and time periods) is required for
       these calculations. However, a spend breakdown by geo and time period is
-      required if `rf_roi_calibration_period` is specified or if conducting
-      post-modeling analysis on a specific subset of geos and/or time periods.
-      The DataArray shape can be `(n_rf_channels,)` or `(n_geos, n_times,
-      n_rf_channels)`. The spend should be aggregated over geo and/or time
-      dimensions that are not represented. We recommend that the spend total
-      aligns with the time window of the `kpi` and `controls` data, which is the
-      time window over which incremental outcome of the ROI numerator is
+      required if `rf_roi_calibration_period` is specified, and is recommended
+      if conducting post-modeling analysis on a specific subset of geos and/or
+      time periods. The DataArray shape can be `(n_rf_channels,)` or `(n_geos,
+      n_times, n_rf_channels)`. The spend should be aggregated over geo and/or
+      time dimensions that are not represented. We recommend that the spend
+      total aligns with the time window of the `kpi` and `controls` data, which
+      is the time window over which incremental outcome of the ROI numerator is
       calculated. However, note that incremental outcome is influenced by media
       execution prior to this time window, through lagged effects, and excludes
       lagged effects beyond the time window of media executed during the time
@@ -208,7 +210,9 @@ class InputData:
       in the same order. If any of these arguments is passed, then the others
       are not optional. If a tensor of shape `(n_rf_channels,)` is passed as
       `rf_spend`, then it will be automatically allocated across geos and times
-      proportionally to `(reach * frequency)`.
+      proportionally to `(reach * frequency)`, assuming a constant cost per
+      impression. Post-modeling analysis on a subset of geos and/or time periods
+      is then based on this allocation, and a warning is issued.
     organic_media: An optional `DataArray` of dimensions `(n_geos,
       n_media_times, n_organic_media_channels)` containing non-negative organic
       media values. Organic media variables are media activities that have no

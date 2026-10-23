@@ -1707,6 +1707,7 @@ class Analyzer:
       selected_geos: Sequence[str] | None = None,
       selected_times: Sequence[str] | None = None,
       aggregate_geos: bool = True,
+      aggregate_times: bool = True,
   ):
     """Warns if spend without geo and time dimensions is subset.
 
@@ -1714,7 +1715,8 @@ class Analyzer:
     all geos and times proportionally to the corresponding media execution
     values (i.e. assuming a constant cost per media unit), and the geo and time
     subsets are then taken from this allocation. A warning is issued if a subset
-    of geos or times is requested for such spend.
+    of geos or times is requested for such spend, or if such spend is reported
+    per geo or per time period.
 
     Args:
       new_data: Optional. `DataTensors` whose `media_spend` and `rf_spend`, if
@@ -1722,12 +1724,13 @@ class Analyzer:
       selected_geos: Optional. Contains a subset of geos to include.
       selected_times: Optional. Contains a subset of dates to include.
       aggregate_geos: If `False`, then results are reported per geo.
+      aggregate_times: If `False`, then results are reported per time period.
     """
     subset_args = []
     if selected_geos is not None or not aggregate_geos:
       subset_args.append("`selected_geos` or `aggregate_geos=False`")
-    if selected_times is not None:
-      subset_args.append("`selected_times`")
+    if selected_times is not None or not aggregate_times:
+      subset_args.append("`selected_times` or `aggregate_times=False`")
     if not subset_args:
       return
 
@@ -2420,6 +2423,14 @@ class Analyzer:
     Note that `mroi` and `effectiveness` metrics are not defined (`math.nan`)
     for the aggregate `"All Paid Channels"` channel dimension.
 
+    If `selected_geos` or `selected_times` is specified, or if
+    `aggregate_geos=False` or `aggregate_times=False`, then the spend-dependent
+    metrics are based on the spend during the selected geos and time periods.
+    Spend without geo and time dimensions (in the InputData or in `new_data`) is
+    first allocated across all geos and times assuming a constant cost per media
+    unit and then filtered to the selected geos and time periods, in which case
+    a warning is issued.
+
     Args:
       new_data: Optional `DataTensors` object with optional new tensors:
         `media`, `media_spend`, `reach`, `frequency`, `rf_spend`,
@@ -2521,6 +2532,9 @@ class Analyzer:
     }
     batched_kwargs = {"batch_size": batch_size}
     new_data = new_data or DataTensors()
+    if not include_non_paid_channels:
+      # Spend is only used for the paid channel metrics.
+      self._warn_if_allocated_spend_is_subset(new_data=new_data, **dim_kwargs)
     builder = tensors.DataTensorsBuilder(self.model_context)
     aggregated_impressions = self.get_aggregated_impressions(
         new_data=new_data.filter_fields(
@@ -4560,6 +4574,12 @@ class Analyzer:
   ) -> xr.DataArray:
     """Gets the aggregated spend based on the selected geos and time.
 
+    Spend without geo and time dimensions (in the InputData or in `new_data`) is
+    first allocated across all geos and times assuming a constant cost per media
+    unit and then filtered to the selected geos and time periods. A warning is
+    issued in this case if `selected_geos` or `selected_times` is specified, or
+    if `aggregate_times=False`.
+
     Args:
       new_data: An optional `DataTensors` object containing the new `media`,
         `media_spend`, `reach`, `frequency`, `rf_spend` tensors. If `None`, the
@@ -4599,6 +4619,7 @@ class Analyzer:
         new_data=new_data,
         selected_geos=selected_geos,
         selected_times=selected_times,
+        aggregate_times=aggregate_times,
     )
     required_tensors_names = constants.PAID_CHANNELS + constants.SPEND_DATA
     if not aggregate_times:
