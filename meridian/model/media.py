@@ -118,6 +118,20 @@ def build_media_tensors(
   Returns:
     A `MediaTensors` container.
   """
+  return _build_media_tensors(
+      input_data,
+      calibration_period=calibration_period,
+      prior_type=model_spec.effective_media_prior_type,
+  )
+
+
+def _build_media_tensors(
+    input_data: data.InputData,
+    *,
+    calibration_period: np.ndarray | None,
+    prior_type: str,
+) -> MediaTensors:
+  """Like `build_media_tensors`, with prior tensors for `prior_type`."""
   if input_data.media is None:
     return MediaTensors()
 
@@ -130,7 +144,6 @@ def build_media_tensors(
       media, backend.to_tensor(input_data.population, dtype=backend.float_dtype)
   )
   media_scaled = media_transformer.forward(media)
-  prior_type = model_spec.effective_media_prior_type
   if calibration_period is not None:
     calibration_period_tensor = backend.to_tensor(
         calibration_period, dtype=backend.bool_
@@ -289,6 +302,20 @@ def build_rf_tensors(
   Returns:
     An `RfTensors` container.
   """
+  return _build_rf_tensors(
+      input_data,
+      calibration_period=calibration_period,
+      prior_type=model_spec.effective_rf_prior_type,
+  )
+
+
+def _build_rf_tensors(
+    input_data: data.InputData,
+    *,
+    calibration_period: np.ndarray | None,
+    prior_type: str,
+) -> RfTensors:
+  """Like `build_rf_tensors`, with prior tensors for `prior_type`."""
   if input_data.reach is None:
     return RfTensors()
 
@@ -302,7 +329,6 @@ def build_rf_tensors(
       reach, backend.to_tensor(input_data.population, dtype=backend.float_dtype)
   )
   reach_scaled = reach_transformer.forward(reach)
-  prior_type = model_spec.effective_rf_prior_type
   if calibration_period is not None:
     calibration_period_tensor = backend.to_tensor(
         calibration_period, dtype=backend.bool_
