@@ -23,6 +23,7 @@ import re
 import altair as alt
 import immutabledict
 import jinja2
+import markupsafe
 from meridian import constants as c
 
 __all__ = [
@@ -246,7 +247,9 @@ def create_template_env() -> jinja2.Environment:
   """Creates a Jinja2 template environment."""
   return jinja2.Environment(
       loader=_template_loader,
-      autoescape=jinja2.select_autoescape(),
+      autoescape=jinja2.select_autoescape(
+          enabled_extensions=('html', 'htm', 'xml', 'jinja')
+      ),
   )
 
 
@@ -316,8 +319,10 @@ def _create_charts_htmls(
 
 def create_finding_html(
     template_env: jinja2.Environment, text: str, finding_type: str
-) -> str:
+) -> markupsafe.Markup:
   """Generates an HTML tag for the table finding."""
-  return template_env.get_template('finding.html.jinja').render(
-      finding_class=finding_type, text=text
+  return markupsafe.Markup(
+      template_env.get_template('finding.html.jinja').render(
+          finding_class=finding_type, text=text
+      )
   )

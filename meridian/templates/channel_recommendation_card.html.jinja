@@ -100,12 +100,12 @@ limitations under the License.
       {% if implausible_roi_is_warning or implausible_roi_has_warning %}
       <div class="status-banner-strip warning advisory-warning-banner">
         <span class="material-icons-outlined">warning</span>
-        <p>{{ implausible_roi_description|safe }}</p>
+        <p>{{ implausible_roi_description }}</p>
       </div>
       {% else %}
       <div class="status-banner-strip info advisory-warning-banner">
         <span class="material-icons-outlined">info</span>
-        <p>{{ implausible_roi_description|safe }}</p>
+        <p>{{ implausible_roi_description }}</p>
       </div>
       {% endif %}
       {% endif %}
@@ -127,12 +127,12 @@ limitations under the License.
       {% if high_variance_is_warning or high_variance_has_warning %}
       <div class="status-banner-strip warning advisory-warning-banner">
         <span class="material-icons-outlined">warning</span>
-        <p>{{ high_variance_description|safe }}</p>
+        <p>{{ high_variance_description }}</p>
       </div>
       {% else %}
       <div class="status-banner-strip info advisory-warning-banner">
         <span class="material-icons-outlined">info</span>
-        <p>{{ high_variance_description|safe }}</p>
+        <p>{{ high_variance_description }}</p>
       </div>
       {% endif %}
       {% endif %}
@@ -154,12 +154,12 @@ limitations under the License.
       {% if potential_bias_is_warning or potential_bias_has_warning %}
       <div class="status-banner-strip warning advisory-warning-banner">
         <span class="material-icons-outlined">warning</span>
-        <p>{{ potential_bias_description|safe }}</p>
+        <p>{{ potential_bias_description }}</p>
       </div>
       {% else %}
       <div class="status-banner-strip info advisory-warning-banner">
         <span class="material-icons-outlined">info</span>
-        <p>{{ potential_bias_description|safe }}</p>
+        <p>{{ potential_bias_description }}</p>
       </div>
       {% endif %}
       {% endif %}

@@ -32,6 +32,7 @@ dependencies = [
   "jax >= 0.7.2, < 1.0.0",
   "jaxlib >= 0.7.2, < 1.0.0",
   "joblib",
+  "markupsafe",
   "matplotlib < 3.11.0",
   "natsort >= 7.1.1, < 8",
   "numpy >= 2.0.2, < 2.4.0",

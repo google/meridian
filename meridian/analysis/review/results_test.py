@@ -722,7 +722,7 @@ Convergence Check:
         '<div class="stats-text">1/2 channels passed</div>', html_output
     )
     self.assertIn(
-        "We've detected channel(s) `mock_channel2` where the posterior",
+        "We&#39;ve detected channel(s) `mock_channel2` where the posterior",
         html_output,
     )
 
@@ -893,9 +893,9 @@ Convergence Check:
         "status-banner-strip warning",
         (
             "We recommend incrementality experiments to improve prior accuracy"
-            " for 'uncalibrated_channel': 'uncalibrated_channel' shows issues"
-            " with high ROI. See Channel calibration recommendation below for"
-            " more details."
+            " for &#39;uncalibrated_channel&#39;:"
+            " &#39;uncalibrated_channel&#39; shows issues with high ROI. See"
+            " Channel calibration recommendation below for more details."
         ),
     ):
       self.assertIn(s, rec_card)
@@ -909,7 +909,7 @@ Convergence Check:
         (
             "The overall calibration score is 80.3/100. We recommend"
             " incrementality experiments to improve prior accuracy for"
-            " 'uncalibrated_channel'."
+            " &#39;uncalibrated_channel&#39;."
         ),
     ):
       self.assertIn(s, health_card)
@@ -924,15 +924,15 @@ Convergence Check:
         "Prior calibration",
         '<chip class="pass">1 channel(s)</chip>',
         (
-            "Calibration has been completed for 'calibrated_channel' using"
-            " incrementality experiments"
+            "Calibration has been completed for &#39;calibrated_channel&#39;"
+            " using incrementality experiments"
         ),
         "Channel recommendation",
         (
             "We recommend incrementality experiments to improve prior accuracy"
-            " for 'uncalibrated_channel': 'uncalibrated_channel' shows issues"
-            " with high ROI. See Channel calibration recommendation below for"
-            " more details."
+            " for &#39;uncalibrated_channel&#39;:"
+            " &#39;uncalibrated_channel&#39; shows issues with high ROI. See"
+            " Channel calibration recommendation below for more details."
         ),
         '<chip class="review">1 channel(s)</chip>',
     ):
@@ -974,9 +974,9 @@ Convergence Check:
         "high-variance-chart",
         "potential-bias-chart",
         "advisory-warning-banner",
-        "We recommend reviewing 'ch1' for having high ROI.",
-        "We recommend reviewing 'ch1' for having high variance ROI.",
-        "'ch1' shows potential bias",
+        "We recommend reviewing &#39;ch1&#39; for having high ROI.",
+        "We recommend reviewing &#39;ch1&#39; for having high variance ROI.",
+        "&#39;ch1&#39; shows potential bias",
     ):
       self.assertIn(s, rec_card)
 
@@ -1003,7 +1003,7 @@ Convergence Check:
         (
             "The overall calibration score is 80.3/100. We recommend"
             " incrementality experiments to improve prior accuracy for"
-            " 'uncalibrated_channel'."
+            " &#39;uncalibrated_channel&#39;."
         ),
         '<chip class="review">Review</chip>',
         (
@@ -1028,7 +1028,7 @@ Convergence Check:
           ["search", "pmax"],
           (
               "We recommend incrementality experiments to improve prior"
-              " accuracy for 'search' and 'pmax'."
+              " accuracy for &#39;search&#39; and &#39;pmax&#39;."
           ),
           "2/2 channels recommended for calibration",
       ),
@@ -1037,7 +1037,8 @@ Convergence Check:
           ["search", "pmax", "social"],
           (
               "We recommend incrementality experiments to improve prior"
-              " accuracy for 'search', 'pmax', and 'social'."
+              " accuracy for &#39;search&#39;, &#39;pmax&#39;, and"
+              " &#39;social&#39;."
           ),
           "3/3 channels recommended for calibration",
       ),
@@ -1163,8 +1164,8 @@ Convergence Check:
     calib_summary_card = summary._create_calibration_summary_card_html()
     self.assertIn(
         "We recommend incrementality experiments to improve prior accuracy for"
-        " 'biased_channel': 'biased_channel' shows potential bias. See Channel"
-        " calibration recommendation below for more details.",
+        " &#39;biased_channel&#39;: &#39;biased_channel&#39; shows potential"
+        " bias. See Channel calibration recommendation below for more details.",
         calib_summary_card,
     )
 
@@ -1183,8 +1184,8 @@ Convergence Check:
           ["calibrated_channel"],
           '<chip class="pass">1 channel(s)</chip>',
           (
-              "Calibration has been completed for 'calibrated_channel' using"
-              " incrementality experiments"
+              "Calibration has been completed for &#39;calibrated_channel&#39;"
+              " using incrementality experiments"
           ),
       ),
       (
@@ -1192,8 +1193,8 @@ Convergence Check:
           ["channel1", "channel2"],
           '<chip class="pass">2 channel(s)</chip>',
           (
-              "Calibration has been completed for 'channel1' and 'channel2'"
-              " using incrementality experiments"
+              "Calibration has been completed for &#39;channel1&#39; and"
+              " &#39;channel2&#39; using incrementality experiments"
           ),
       ),
       (
@@ -1201,8 +1202,9 @@ Convergence Check:
           ["channel1", "channel2", "channel3"],
           '<chip class="pass">3 channel(s)</chip>',
           (
-              "Calibration has been completed for 'channel1', 'channel2', and"
-              " 'channel3' using incrementality experiments"
+              "Calibration has been completed for &#39;channel1&#39;,"
+              " &#39;channel2&#39;, and &#39;channel3&#39; using incrementality"
+              " experiments"
           ),
       ),
   )
@@ -1235,8 +1237,8 @@ Convergence Check:
     )
     card = summary._create_calibration_summary_card_html()
     self.assertIn(
-        "Calibration has been completed for 'youtube' and 'demandgen' using"
-        " incrementality experiments",
+        "Calibration has been completed for &#39;youtube&#39; and"
+        " &#39;demandgen&#39; using incrementality experiments",
         card,
     )
 
@@ -1318,9 +1320,9 @@ Convergence Check:
           expected_warning_banner=True,
           expected_warning_message=(
               "We recommend incrementality experiments to improve prior"
-              " accuracy for 'driver_channel': 'driver_channel' shows issues"
-              " with high ROI. See Channel calibration recommendation below"
-              " for more details."
+              " accuracy for &#39;driver_channel&#39;:"
+              " &#39;driver_channel&#39; shows issues with high ROI. See"
+              " Channel calibration recommendation below for more details."
           ),
       ),
       dict(
@@ -1330,8 +1332,8 @@ Convergence Check:
           expected_warning_banner=True,
           expected_warning_message=(
               "We recommend incrementality experiments to improve prior"
-              " accuracy for 'low_score_channel'. See Channel calibration"
-              " recommendation below for more details."
+              " accuracy for &#39;low_score_channel&#39;. See Channel"
+              " calibration recommendation below for more details."
           ),
       ),
       dict(
@@ -1342,11 +1344,11 @@ Convergence Check:
           channel_scores={"driver_channel": 85.0},
           expected_warning_banner=False,
           expected_warning_message=(
-              "No channels require calibration. However, 'driver_channel' shows"
-              " issues with high ROI. We recommend reviewing the table and"
-              " plots below to check if this channel may be a good candidate"
-              " for calibration via an incrementality experiment such as those"
-              " run with Meridian GeoX."
+              "No channels require calibration. However,"
+              " &#39;driver_channel&#39; shows issues with high ROI. We"
+              " recommend reviewing the table and plots below to check if this"
+              " channel may be a good candidate for calibration via an"
+              " incrementality experiment such as those run with Meridian GeoX."
           ),
       ),
       dict(
@@ -1392,10 +1394,10 @@ Convergence Check:
           expected_warning_banner=True,
           expected_warning_message=(
               "We recommend incrementality experiments to improve prior"
-              " accuracy for 'search', 'display', and 'pmax': 'search' shows"
-              " issues with high ROI and 'display' shows issues with high"
-              " variance. See Channel calibration recommendation below for"
-              " more details."
+              " accuracy for &#39;search&#39;, &#39;display&#39;, and"
+              " &#39;pmax&#39;: &#39;search&#39; shows issues with high ROI and"
+              " &#39;display&#39; shows issues with high variance. See Channel"
+              " calibration recommendation below for more details."
           ),
       ),
       dict(
@@ -1412,9 +1414,9 @@ Convergence Check:
           },
           expected_warning_banner=False,
           expected_warning_message=(
-              "No channels require calibration. However, 'search' shows"
-              " issues with high ROI and 'display' shows issues with high"
-              " variance. We recommend reviewing the table and plots below"
+              "No channels require calibration. However, &#39;search&#39; shows"
+              " issues with high ROI and &#39;display&#39; shows issues with"
+              " high variance. We recommend reviewing the table and plots below"
               " to check if these channels may be good candidates for"
               " calibration via an incrementality experiment such as those run"
               " with Meridian GeoX."
@@ -1478,22 +1480,22 @@ Convergence Check:
           expected_info_banners_count=0,
           expected_in_output=[
               (
-                  "We recommend reviewing 'uncal_high' for having high ROI and"
-                  " 'uncal_low' for having low ROI."
+                  "We recommend reviewing &#39;uncal_high&#39; for having high"
+                  " ROI and &#39;uncal_low&#39; for having low ROI."
               ),
               (
-                  "We recommend reviewing 'uncal_var' for having high variance"
-                  " ROI."
+                  "We recommend reviewing &#39;uncal_var&#39; for having high"
+                  " variance ROI."
               ),
               (
-                  "'uncal_bias_1' and 'uncal_bias_2' show potential bias as"
-                  " they have low correlation with all controls and thus may be"
-                  " missing relevant controls."
+                  "&#39;uncal_bias_1&#39; and &#39;uncal_bias_2&#39; show"
+                  " potential bias as they have low correlation with all"
+                  " controls and thus may be missing relevant controls."
               ),
           ],
           unexpected_in_output=[
-              "'calibrated_ch'",
-              "'calibrated_ch_2'",
+              "&#39;calibrated_ch&#39;",
+              "&#39;calibrated_ch_2&#39;",
           ],
       ),
       dict(
@@ -1533,7 +1535,10 @@ Convergence Check:
           expected_warning_banners_count=1,
           expected_info_banners_count=2,
           expected_in_output=[
-              "We recommend reviewing 'uncal_high' for having high ROI.",
+              (
+                  "We recommend reviewing &#39;uncal_high&#39; for having high"
+                  " ROI."
+              ),
               "Channels close to the boundary of the High Variance ROI region",
               (
                   "This plot displays your media and reach and frequency"
@@ -1555,14 +1560,17 @@ Convergence Check:
           expected_info_banners_count=0,
           expected_in_output=[
               (
-                  "We recommend reviewing 'ch_high' for having high ROI and"
-                  " 'ch_low' for having low ROI."
+                  "We recommend reviewing &#39;ch_high&#39; for having high ROI"
+                  " and &#39;ch_low&#39; for having low ROI."
               ),
-              "We recommend reviewing 'ch_var' for having high variance ROI.",
               (
-                  "'ch_bias' shows potential bias as it has low correlation"
-                  " with all controls and thus may be missing relevant"
-                  " controls."
+                  "We recommend reviewing &#39;ch_var&#39; for having high"
+                  " variance ROI."
+              ),
+              (
+                  "&#39;ch_bias&#39; shows potential bias as it has low"
+                  " correlation with all controls and thus may be missing"
+                  " relevant controls."
               ),
           ],
           unexpected_in_output=[],
@@ -1580,22 +1588,23 @@ Convergence Check:
           expected_info_banners_count=0,
           expected_in_output=[
               (
-                  "We recommend reviewing 'search' and 'display' for having"
-                  " high ROI and 'pmax' and 'demandgen' for having low ROI."
+                  "We recommend reviewing &#39;search&#39; and"
+                  " &#39;display&#39; for having high ROI and &#39;pmax&#39;"
+                  " and &#39;demandgen&#39; for having low ROI."
               ),
               (
-                  "We recommend reviewing 'search' and 'display' for having"
-                  " high variance ROI."
+                  "We recommend reviewing &#39;search&#39; and"
+                  " &#39;display&#39; for having high variance ROI."
               ),
               (
-                  "'search' and 'display' show potential bias as they have low"
-                  " correlation with all controls and thus may be missing"
-                  " relevant controls."
+                  "&#39;search&#39; and &#39;display&#39; show potential bias"
+                  " as they have low correlation with all controls and thus may"
+                  " be missing relevant controls."
               ),
           ],
           unexpected_in_output=[
-              "'display' and 'search'",
-              "'demandgen' and 'pmax'",
+              "&#39;display&#39; and &#39;search&#39;",
+              "&#39;demandgen&#39; and &#39;pmax&#39;",
           ],
       ),
   )
@@ -2128,7 +2137,7 @@ class CalibrationOverviewCardTest(parameterized.TestCase):
               "Calibration overview",
               "ch_0 calibration",
               "spec_0 = JSON.parse",
-              "for 'ch_0'.",
+              "for &#39;ch_0&#39;.",
           ],
           [_OVERVIEW_LIMIT_MESSAGE],
       ),
@@ -2150,7 +2159,10 @@ class CalibrationOverviewCardTest(parameterized.TestCase):
               "Calibration overview",
               "ch_0 calibration",
               "ch_4 calibration",
-              "for 'ch_0', 'ch_1', 'ch_2', 'ch_3', and 'ch_4'.",
+              (
+                  "for &#39;ch_0&#39;, &#39;ch_1&#39;, &#39;ch_2&#39;,"
+                  " &#39;ch_3&#39;, and &#39;ch_4&#39;."
+              ),
               _OVERVIEW_LIMIT_MESSAGE,
           ],
           ["ch_5 calibration"],
@@ -2216,7 +2228,41 @@ class CalibrationOverviewCardTest(parameterized.TestCase):
         calibration_overview_data=[ch_a, ch_b],
     )
     html = summary._create_calibration_overview_card_html()
-    self.assertIn("for 'ch_b' and 'ch_a'.", html)
+    self.assertIn("for &#39;ch_b&#39; and &#39;ch_a&#39;.", html)
+
+  def test_html_cards_escape_channel_names(self):
+    malicious_ch = "<script>alert('xss')</script>"
+    ch_data = _mock_channel_data(
+        malicious_ch,
+        100.0,
+        num_experiments=1,
+        chart_json='{"test": "json"}',
+        details_chart_json='{"test_details": "json"}',
+        with_prior_dist=True,
+    )
+    summary = _create_test_summary(
+        overall_status=results.Status.REVIEW,
+        summary_message="Summary <script>alert(1)</script>",
+        results_list=_mock_check_results(
+            high_roi_channels=[malicious_ch],
+            high_variance_channels=[malicious_ch],
+            low_correlation_channels=[malicious_ch],
+        ),
+        channel_calibration_status={malicious_ch: False},
+        calibration_overview_data=[ch_data],
+        implausible_roi_chart_json='{"spec": "implausible"}',
+        high_variance_chart_json='{"spec": "variance"}',
+        potential_bias_chart_json='{"spec": "bias"}',
+    )
+    html = summary._gen_model_health_card()
+    self.assertNotIn(malicious_ch, html)
+    self.assertNotIn("<script>alert(1)</script>", html)
+    self.assertIn("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;", html)
+    self.assertIn(
+        '<a href="https://developers.google.com/meridian/reference/api/meridian/analysis/analyzer/MeridianAnalyzer#roi"'
+        ' target="_blank">MeridianAnalyzer.roi</a>',
+        html,
+    )
 
   def test_create_calibration_overview_card_html_none_calibrated_output(self):
     ch_list = [
