@@ -68,6 +68,31 @@ class TimeCoordinatesTest(parameterized.TestCase):
     ]
     self.assertEqual(self.coordinates.all_dates, expected_dates)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="all_identical_dates",
+          dates=["2024-01-01", "2024-01-01"],
+      ),
+      dict(
+          testcase_name="adjacent_duplicate_dates",
+          dates=["2024-01-01", "2024-01-08", "2024-01-08"],
+      ),
+      dict(
+          testcase_name="datetime_index",
+          dates=pd.DatetimeIndex(["2024-01-01", "2024-01-01"]),
+      ),
+      dict(
+          testcase_name="data_array",
+          dates=xr.DataArray(["2024-01-01", "2024-01-01"]),
+      ),
+  )
+  def test_init_rejects_duplicate_dates(self, dates):
+    with self.assertRaisesRegex(
+        ValueError,
+        "Time coordinates must be strictly monotonically increasing.",
+    ):
+      time_coordinates.TimeCoordinates.from_dates(dates)
+
   def test_property_all_dates_str(self):
     self.assertEqual(self.coordinates.all_dates_str, _ALL_DATES)
 
