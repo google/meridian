@@ -407,7 +407,7 @@ class NDArrayInputDataBuilder(input_data_builder.InputDataBuilder):
             constants.MEDIA_TIME: self.media_time_coords,
             constants.ORGANIC_RF_CHANNEL: organic_rf_channels,
         },
-        name=constants.ORGANIC_REACH,
+        name=constants.ORGANIC_FREQUENCY,
     )
     return self
 
