@@ -1207,6 +1207,101 @@ class TimeVaryingPriorSamplingTest(
             time_varying=time_varying,
         )
 
+  @parameterized.named_parameters(
+      ("coefficient_and_roi", "coefficient", "roi"),
+      ("roi_and_coefficient", "roi", "coefficient"),
+      ("roi_and_mroi", "roi", "mroi"),
+      ("contribution_and_roi", "contribution", "roi"),
+  )
+  def test_channels_with_changepoints_use_their_prior_type(
+      self, prior_type: str, changepoint_prior_type: str
+  ):
+    model_context = self._context(
+        media_prior_type=prior_type,
+        rf_prior_type=prior_type,
+        changepoint_media_prior_type=changepoint_prior_type,
+        changepoint_rf_prior_type=changepoint_prior_type,
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=4, seed=1
+    )
+    for is_rf, time_varying in itertools.product((False, True), repeat=2):
+      channel_prior_type = (
+          changepoint_prior_type if time_varying else prior_type
+      )
+      with self.subTest(is_rf=is_rf, time_varying=time_varying):
+        if channel_prior_type != constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          self._assert_whole_history_meaning(
+              model_context=model_context,
+              draws=draws,
+              prior_type=channel_prior_type,
+              media_effects_dist=constants.MEDIA_EFFECTS_LOG_NORMAL,
+              is_rf=is_rf,
+              time_varying=time_varying,
+          )
+    # A treatment parameter is NaN for the channels that don't use it.
+    for parameters, info in (
+        (
+            prior_sampler._MEDIA_TREATMENT_PARAMETERS,
+            model_context._media_changepoint_info,
+        ),
+        (
+            prior_sampler._RF_TREATMENT_PARAMETERS,
+            model_context._rf_changepoint_info,
+        ),
+    ):
+      assert info is not None
+      for parameter_prior_type, name in parameters.items():
+        if parameter_prior_type == constants.TREATMENT_PRIOR_TYPE_COEFFICIENT:
+          continue
+        with self.subTest(name):
+          if parameter_prior_type not in (prior_type, changepoint_prior_type):
+            self.assertNotIn(name, draws)
+            continue
+          uses_prior_type = info.is_changepoint_channel == (
+              parameter_prior_type == changepoint_prior_type
+          )
+          np.testing.assert_array_equal(
+              np.isnan(np.asarray(draws[name])),
+              np.broadcast_to(~uses_prior_type, np.shape(draws[name])),
+          )
+    for beta in (constants.BETA_M, constants.BETA_RF):
+      self.assertTrue(np.all(np.isfinite(np.asarray(draws[beta]))))
+
+  @parameterized.named_parameters(("media", False), ("rf", True))
+  def test_type_whose_channels_all_have_changepoints_uses_their_prior_type(
+      self, is_rf: bool
+  ):
+    dates = self.short_input_data_with_media_and_rf.time_coordinates.all_dates
+    channels = self._rf if is_rf else self._media
+    # `rf_prior_type` or `media_prior_type` applies to no channel, since all
+    # channels of the type have changepoints.
+    model_context = context.ModelContext(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=_ModelSpecWithChangepoints(
+            changepoints={channel: [dates[20]] for channel in channels},
+            media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+            rf_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+        ),
+    )
+    draws = prior_sampler.PriorDistributionSampler(model_context=model_context)(
+        n_draws=4, seed=1
+    )
+    if is_rf:
+      mroi, roi = constants.MROI_RF, constants.ROI_RF
+      counterfactual = (
+          model_context.rf_tensors.prior_reach_scaled_counterfactual
+      )
+    else:
+      mroi, roi = constants.MROI_M, constants.ROI_M
+      counterfactual = (
+          model_context.media_tensors.prior_media_scaled_counterfactual
+      )
+    self.assertNotIn(mroi, draws)
+    self.assertTrue(np.all(np.isfinite(np.asarray(draws[roi]))))
+    # ROI priors without calibration don't need the counterfactual.
+    self.assertIsNone(counterfactual)
+
   def _assert_whole_history_meaning(
       self,
       *,

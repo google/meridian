@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import collections
+import re
 from typing import cast
 from unittest import mock
 import warnings
@@ -3019,6 +3020,22 @@ class TimeVaryingPosteriorTest(
           * np.asarray(prior_denominator)[1],
           rtol=1e-3,
       )
+
+  @parameterized.named_parameters(
+      ("joint_dist", "_get_joint_dist_unpinned"),
+      ("sampling_joint_dist", "_get_joint_dist_sampling_unpinned"),
+  )
+  def test_other_changepoint_prior_type_raises(self, get_joint_dist: str):
+    meridian = self._meridian(rf_prior_type="coefficient")
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        re.escape(
+            "Posterior sampling is not supported yet when"
+            " `changepoint_rf_prior_type` ('roi') differs from `rf_prior_type`"
+            " ('coefficient')."
+        ),
+    ):
+      getattr(meridian.posterior_sampler_callable, get_joint_dist)()
 
   def test_sample_posterior_stores_time_varying_parameters(self):
     meridian = self._meridian()
