@@ -1163,10 +1163,15 @@ class ContextTest(
         media_prior_type=media_prior_type,
         rf_prior_type=rf_prior_type,
     )
+    # Copying the test data outside the block keeps `InputData` warnings about
+    # the data itself out of the warnings counted below.
+    # TODO: Copy it inside the block again once the shared test
+    # data has frequency of at least 1.
+    data = self.input_data_with_media_and_rf
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("module")
       context.ModelContext(
-          input_data=self.input_data_with_media_and_rf,
+          input_data=data,
           model_spec=model_spec,
       )
       self.assertLen(w, 1)
@@ -1317,6 +1322,86 @@ class ContextTest(
       context.ModelContext(
           input_data=data_test_utils.sample_input_data_from_dataset(
               national_dataset, kpi_type=constants.NON_REVENUE
+          ),
+          model_spec=spec.ModelSpec(),
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="default_knots", knots=None),
+      dict(testcase_name="one_knot", knots=1),
+  )
+  def test_init_with_constant_controls_fails(self, knots: int | None):
+    dataset = data_test_utils.DATASET_WITHOUT_GEO_VARIATION_IN_CONTROLS.copy()
+    dataset[constants.CONTROLS] = xr.full_like(
+        dataset[constants.CONTROLS], 7.0
+    )
+    # The time check runs first, so a constant control isn't reported as
+    # varying across time, whatever the knots.
+    with self.assertRaisesRegex(
+        ValueError,
+        "The following controls variables do not vary across time.*"
+        "control_0.*control_1.*either constant or only varies across geos",
+    ):
+      context.ModelContext(
+          input_data=data_test_utils.sample_input_data_from_dataset(
+              dataset, kpi_type=constants.NON_REVENUE
+          ),
+          model_spec=spec.ModelSpec(knots=knots),
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media",
+          array_name=constants.MEDIA,
+          channel_dim=constants.MEDIA_CHANNEL,
+          message="media channels have media of 0",
+      ),
+      dict(
+          testcase_name="reach",
+          array_name=constants.REACH,
+          channel_dim=constants.RF_CHANNEL,
+          message="reach and frequency channels have reach of 0",
+      ),
+      dict(
+          testcase_name="organic_media",
+          array_name=constants.ORGANIC_MEDIA,
+          channel_dim=constants.ORGANIC_MEDIA_CHANNEL,
+          message="organic media channels have organic media of 0",
+      ),
+      dict(
+          testcase_name="organic_reach",
+          array_name=constants.ORGANIC_REACH,
+          channel_dim=constants.ORGANIC_RF_CHANNEL,
+          message=(
+              "organic reach and frequency channels have organic reach of 0"
+          ),
+      ),
+  )
+  def test_init_with_all_zero_channel_fails(
+      self, array_name: str, channel_dim: str, message: str
+  ):
+    dataset = data_test_utils.random_dataset(
+        n_geos=5,
+        n_times=20,
+        n_media_times=23,
+        n_controls=1,
+        n_media_channels=2,
+        n_rf_channels=2,
+        n_organic_media_channels=2,
+        n_organic_rf_channels=2,
+    )
+    channel = dataset.coords[channel_dim].values[1]
+    array = dataset[array_name].astype(float)
+    array.loc[{channel_dim: channel}] = 0.0
+    dataset[array_name] = array
+    with self.assertRaisesRegex(
+        ValueError,
+        f"The following {message} in every geo and time period, so there is"
+        f" no execution to model: \\['{channel}'\\]",
+    ):
+      context.ModelContext(
+          input_data=data_test_utils.sample_input_data_from_dataset(
+              dataset, kpi_type=constants.NON_REVENUE
           ),
           model_spec=spec.ModelSpec(),
       )

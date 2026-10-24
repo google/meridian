@@ -751,8 +751,11 @@ class ModelContext:
     self._validate_roi_priors_non_revenue()
     self._check_media_prior_support()
     self._check_changepoint_prior_types()
-    self._validate_geo_invariants()
+    # The time check runs first so that a variable that is constant everywhere
+    # gets its message rather than the geo check's, which says it varies over
+    # time.
     self._validate_time_invariants()
+    self._validate_geo_invariants()
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
 
@@ -1099,11 +1102,10 @@ class ModelContext:
         raise ValueError(
             f"The following {data_name} variables do not vary across time,"
             f" making a model with geo main effects unidentifiable: {dims_bad}."
-            " This can lead to poor model convergence. Since these variables"
-            " only vary across geo and not across time, they are collinear"
-            " with geo and redundant in a model with geo main effects. To"
-            " address this, drop the listed variables that do not vary across"
-            " time."
+            " This can lead to poor model convergence. A variable that doesn't"
+            " vary across time is either constant or only varies across geos,"
+            " so it's redundant with the geo main effects. To address this,"
+            " drop the listed variables that do not vary across time."
         )
 
   @property
