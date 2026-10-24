@@ -1782,6 +1782,20 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
     # Verify equations was set to our mock (sanity check of the setup)
     self.assertIs(self.mmm.model_equations, self.mock_equations)
 
+  def test_compute_non_media_treatments_baseline_delegates(self):
+    non_media_baseline_values = {"channel_0": "min", "channel_1": 1.0}
+    mock_fn = self.mock_equations.compute_non_media_treatments_baseline
+
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.compute_non_media_treatments_baseline(
+          non_media_baseline_values=non_media_baseline_values,
+      )
+
+    mock_fn.assert_called_once_with(
+        non_media_baseline_values=non_media_baseline_values,
+    )
+    self.assertIs(result, mock_fn.return_value)
+
   def test_adstock_hill_media_delegates(self):
     media_val = mock.Mock()
     alpha = mock.Mock()
@@ -1790,14 +1804,15 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
     decay_functions = "geometric"
     n_times_output = 10
 
-    self.mmm.adstock_hill_media(
-        media=media_val,
-        alpha=alpha,
-        ec=ec,
-        slope=slope,
-        decay_functions=decay_functions,
-        n_times_output=n_times_output,
-    )
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.adstock_hill_media(
+          media=media_val,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=decay_functions,
+          n_times_output=n_times_output,
+      )
 
     self.mock_equations.adstock_hill_media.assert_called_once_with(
         media=media_val,
@@ -1805,8 +1820,10 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
         ec=ec,
         slope=slope,
         decay_functions=decay_functions,
+        saturation_spec=constants.HILL,
         n_times_output=n_times_output,
     )
+    self.assertIs(result, self.mock_equations.adstock_hill_media.return_value)
 
   def test_adstock_hill_rf_delegates(self):
     reach = mock.Mock()
@@ -1817,15 +1834,16 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
     decay_functions = "geometric"
     n_times_output = 10
 
-    self.mmm.adstock_hill_rf(
-        reach=reach,
-        frequency=frequency,
-        alpha=alpha,
-        ec=ec,
-        slope=slope,
-        decay_functions=decay_functions,
-        n_times_output=n_times_output,
-    )
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.adstock_hill_rf(
+          reach=reach,
+          frequency=frequency,
+          alpha=alpha,
+          ec=ec,
+          slope=slope,
+          decay_functions=decay_functions,
+          n_times_output=n_times_output,
+      )
 
     self.mock_equations.adstock_hill_rf.assert_called_once_with(
         reach=reach,
@@ -1834,8 +1852,10 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
         ec=ec,
         slope=slope,
         decay_functions=decay_functions,
+        saturation_spec=constants.HILL,
         n_times_output=n_times_output,
     )
+    self.assertIs(result, self.mock_equations.adstock_hill_rf.return_value)
 
   def test_calculate_beta_x_delegates(self):
     is_non_media = True
@@ -1844,13 +1864,14 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
     eta_x = mock.Mock()
     beta_gx_dev = mock.Mock()
 
-    self.mmm.calculate_beta_x(
-        is_non_media=is_non_media,
-        incremental_outcome_x=incremental_outcome_x,
-        linear_predictor_counterfactual_difference=linear_predictor_diff,
-        eta_x=eta_x,
-        beta_gx_dev=beta_gx_dev,
-    )
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.calculate_beta_x(
+          is_non_media=is_non_media,
+          incremental_outcome_x=incremental_outcome_x,
+          linear_predictor_counterfactual_difference=linear_predictor_diff,
+          eta_x=eta_x,
+          beta_gx_dev=beta_gx_dev,
+      )
 
     self.mock_equations.calculate_beta_x.assert_called_once_with(
         is_non_media=is_non_media,
@@ -1859,46 +1880,55 @@ class ModelEquationsDelegateTest(test_utils.MeridianTestCase):
         eta_x=eta_x,
         beta_gx_dev=beta_gx_dev,
     )
+    self.assertIs(result, self.mock_equations.calculate_beta_x.return_value)
 
   def test_linear_predictor_counterfactual_difference_media_delegates(self):
     media_transformed = mock.Mock()
     alpha_m = mock.Mock()
     ec_m = mock.Mock()
     slope_m = mock.Mock()
+    mock_fn = (
+        self.mock_equations.linear_predictor_counterfactual_difference_media
+    )
 
-    self.mmm.linear_predictor_counterfactual_difference_media(
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.linear_predictor_counterfactual_difference_media(
+          media_transformed=media_transformed,
+          alpha_m=alpha_m,
+          ec_m=ec_m,
+          slope_m=slope_m,
+      )
+
+    mock_fn.assert_called_once_with(
         media_transformed=media_transformed,
         alpha_m=alpha_m,
         ec_m=ec_m,
         slope_m=slope_m,
     )
-
-    self.mock_equations.linear_predictor_counterfactual_difference_media.assert_called_once_with(
-        media_transformed=media_transformed,
-        alpha_m=alpha_m,
-        ec_m=ec_m,
-        slope_m=slope_m,
-    )
+    self.assertIs(result, mock_fn.return_value)
 
   def test_linear_predictor_counterfactual_difference_rf_delegates(self):
     rf_transformed = mock.Mock()
     alpha_rf = mock.Mock()
     ec_rf = mock.Mock()
     slope_rf = mock.Mock()
+    mock_fn = self.mock_equations.linear_predictor_counterfactual_difference_rf
 
-    self.mmm.linear_predictor_counterfactual_difference_rf(
+    with self.assertWarns(DeprecationWarning):
+      result = self.mmm.linear_predictor_counterfactual_difference_rf(
+          rf_transformed=rf_transformed,
+          alpha_rf=alpha_rf,
+          ec_rf=ec_rf,
+          slope_rf=slope_rf,
+      )
+
+    mock_fn.assert_called_once_with(
         rf_transformed=rf_transformed,
         alpha_rf=alpha_rf,
         ec_rf=ec_rf,
         slope_rf=slope_rf,
     )
-
-    self.mock_equations.linear_predictor_counterfactual_difference_rf.assert_called_once_with(
-        rf_transformed=rf_transformed,
-        alpha_rf=alpha_rf,
-        ec_rf=ec_rf,
-        slope_rf=slope_rf,
-    )
+    self.assertIs(result, mock_fn.return_value)
 
 
 if __name__ == "__main__":
