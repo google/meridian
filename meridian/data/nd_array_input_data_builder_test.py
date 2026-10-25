@@ -16,6 +16,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from meridian import constants
 from meridian.data import nd_array_input_data_builder
+import natsort
 import numpy as np
 import xarray as xr
 
@@ -661,9 +662,9 @@ class NdArrayInputDataBuilderTest(parameterized.TestCase):
     if isinstance(expected_da, list):
       actual_das = getter(builder)
       for i, da in enumerate(expected_da):
-        xr.testing.assert_equal(actual_das[i], da)
+        xr.testing.assert_identical(actual_das[i], da)
     else:
-      xr.testing.assert_equal(getter(builder), expected_da)
+      xr.testing.assert_identical(getter(builder), expected_da)
     self.assertEqual(builder.geos, geos)
     if times is not None:
       self.assertEqual(builder.time_coords, times)
@@ -817,9 +818,9 @@ class NdArrayInputDataBuilderTest(parameterized.TestCase):
     if isinstance(expected_da, list):
       actual_das = getter(builder)
       for i, da in enumerate(expected_da):
-        xr.testing.assert_equal(actual_das[i], da)
+        xr.testing.assert_identical(actual_das[i], da)
     else:
-      xr.testing.assert_equal(getter(builder), expected_da)
+      xr.testing.assert_identical(getter(builder), expected_da)
     self.assertEqual(builder.geos, [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME])
     if times is not None:
       self.assertEqual(builder.time_coords, times)
@@ -1414,6 +1415,47 @@ class NdArrayInputDataBuilderTest(parameterized.TestCase):
     )
     np.testing.assert_equal(
         original_nd, np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    )
+
+  def test_build_with_organic_reach_and_frequency(self):
+    builder = nd_array_input_data_builder.NDArrayInputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    )
+    builder.geos = self.GEOS
+    builder.time_coords = self.TIME_COORDS
+    builder.media_time_coords = self.TIME_COORDS
+    input_data = (
+        builder.with_kpi(self.BASIC_KPI_ND)
+        .with_population(self.BASIC_POPULATION_ND)
+        .with_media(
+            m_nd=self.BASIC_MEDIA_ND,
+            ms_nd=self.BASIC_MEDIA_SPEND_ND,
+            media_channels=['media_channel_2', 'media_channel_1'],
+        )
+        .with_organic_reach(
+            or_nd=self.BASIC_ORGANIC_REACH_ND,
+            of_nd=self.BASIC_ORGANIC_FREQUENCY_ND,
+            organic_rf_channels=[
+                'organic_rf_channel_2',
+                'organic_rf_channel_1',
+            ],
+        )
+        .build()
+    )
+
+    xr.testing.assert_identical(
+        input_data.organic_reach,
+        self.BASIC_ORGANIC_REACH_DA.reindex(
+            geo=natsort.natsorted(self.GEOS),
+            media_time=natsort.natsorted(self.TIME_COORDS),
+        ),
+    )
+    xr.testing.assert_identical(
+        input_data.organic_frequency,
+        self.BASIC_ORGANIC_FREQUENCY_DA.reindex(
+            geo=natsort.natsorted(self.GEOS),
+            media_time=natsort.natsorted(self.TIME_COORDS),
+        ),
     )
 
 

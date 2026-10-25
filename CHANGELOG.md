@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `NDArrayInputDataBuilder.with_organic_reach` setting the organic
+    frequency `DataArray` name to `organic_reach` instead of
+    `organic_frequency`, which caused `build()` to fail validation with a
+    `ValueError`.
 *   Add an optional `media_time_col` parameter to
     `DataFrameInputDataBuilder.with_media()` and `with_reach()`, mirroring
     `with_organic_media()` and `with_organic_reach()`. This lets media
