@@ -149,7 +149,10 @@ class TimeCoordinates:
       raise ValueError(
           "There must be more than one date index in the time coordinates."
       )
-    if not self.datetime_index.is_monotonic_increasing:
+    if (
+        not self.datetime_index.is_monotonic_increasing
+        or not self.datetime_index.is_unique
+    ):
       raise ValueError(
           "Time coordinates must be strictly monotonically increasing."
       )
