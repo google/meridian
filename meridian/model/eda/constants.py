@@ -46,6 +46,13 @@ STD_WITHOUT_OUTLIERS_VAR_NAME = 'std_without_outliers'
 STD_THRESHOLD = 1e-4
 OUTLIERS_COL_NAME = 'outliers'
 ABS_OUTLIERS_COL_NAME = 'abs_outliers'
+NON_MEDIA_BASELINE_OUTLIER_MESSAGE = (
+    'In addition, the `non_media_baseline_values` for {non_media_treatments}'
+    ' are at least as extreme as the outliers. While not necessarily'
+    ' erroneous, please review these baseline values for the highlighted'
+    ' non-media treatments. If you deem adjustments are required, please'
+    ' update these `non_media_baseline_values` in `ModelSpec` accordingly.'
+)
 VIF_COL_NAME = 'VIF'
 EXTREME_CORRELATION_WITH = 'extreme_correlation_with'
 TIME_AND_GEO_AGGREGATION = 'times and geos'

@@ -676,6 +676,50 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
           "lagged_sample_data_rf_only.csv",
       )
   )
+  # DataFrames with a dedicated media time column where the first (lagged)
+  # period has no `time` coordinate but still has media execution and spend.
+  _LAGGED_MEDIA_TIMES = [
+      "2024-01-01",
+      "2024-01-08",
+      "2024-01-15",
+      "2024-01-22",
+  ] * 2
+  _LAGGED_TIMES = [None, "2024-01-08", "2024-01-15", "2024-01-22"] * 2
+  LAGGED_MEDIA_TIME_MEDIA_DF = pd.DataFrame({
+      "geo": ["A"] * 4 + ["B"] * 4,
+      "my_media_time": _LAGGED_MEDIA_TIMES,
+      "time": _LAGGED_TIMES,
+      "media_1": [1, 2, 3, 4, 5, 6, 7, 8],
+      "media_spend_1": [10, 20, 30, 40, 50, 60, 70, 80],
+  })
+  LAGGED_MEDIA_TIME_MEDIA_SPEND_DA = xr.DataArray(
+      [[[20], [30], [40]], [[60], [70], [80]]],
+      dims=[constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+      coords={
+          constants.GEO: ["A", "B"],
+          constants.TIME: ["2024-01-08", "2024-01-15", "2024-01-22"],
+          constants.MEDIA_CHANNEL: ["media_channel_1"],
+      },
+      name=constants.MEDIA_SPEND,
+  )
+  LAGGED_MEDIA_TIME_REACH_DF = pd.DataFrame({
+      "geo": ["A"] * 4 + ["B"] * 4,
+      "my_media_time": _LAGGED_MEDIA_TIMES,
+      "time": _LAGGED_TIMES,
+      "reach_1": [1, 2, 3, 4, 5, 6, 7, 8],
+      "frequency_1": [1.5, 1.5, 1.5, 1.5, 2.5, 2.5, 2.5, 2.5],
+      "rf_spend_1": [10, 20, 30, 40, 50, 60, 70, 80],
+  })
+  LAGGED_MEDIA_TIME_RF_SPEND_DA = xr.DataArray(
+      [[[20], [30], [40]], [[60], [70], [80]]],
+      dims=[constants.GEO, constants.TIME, constants.RF_CHANNEL],
+      coords={
+          constants.GEO: ["A", "B"],
+          constants.TIME: ["2024-01-08", "2024-01-15", "2024-01-22"],
+          constants.RF_CHANNEL: ["rf_channel_1"],
+      },
+      name=constants.RF_SPEND,
+  )
 
   @parameterized.named_parameters(
       dict(
@@ -1794,6 +1838,149 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     setter(builder, df)
     for i, times in enumerate(getter(builder)):
       self.assertLen(times, expected_n_times[i])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media",
+          df=LAGGED_MEDIA_TIME_MEDIA_DF,
+          setter=lambda builder, df: builder.with_media(
+              df,
+              ["media_1"],
+              ["media_spend_1"],
+              ["media_channel_1"],
+              media_time_col="my_media_time",
+          ),
+          media_time_getter=lambda builder: [builder.media],
+          time_getter=lambda builder: builder.media_spend,
+          expected_spend_da=LAGGED_MEDIA_TIME_MEDIA_SPEND_DA,
+      ),
+      dict(
+          testcase_name="reach",
+          df=LAGGED_MEDIA_TIME_REACH_DF,
+          setter=lambda builder, df: builder.with_reach(
+              df,
+              ["reach_1"],
+              ["frequency_1"],
+              ["rf_spend_1"],
+              ["rf_channel_1"],
+              media_time_col="my_media_time",
+          ),
+          media_time_getter=lambda builder: [builder.reach, builder.frequency],
+          time_getter=lambda builder: builder.rf_spend,
+          expected_spend_da=LAGGED_MEDIA_TIME_RF_SPEND_DA,
+      ),
+  )
+  def test_time_and_media_time_different_columns(
+      self, df, setter, media_time_getter, time_getter, expected_spend_da
+  ):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    setter(builder, df)
+
+    self.assertEqual(
+        builder.media_time_coords,
+        ["2024-01-01", "2024-01-08", "2024-01-15", "2024-01-22"],
+    )
+    self.assertEqual(
+        builder.time_coords, ["2024-01-08", "2024-01-15", "2024-01-22"]
+    )
+    for da in media_time_getter(builder):
+      self.assertEqual(
+          da.coords[constants.MEDIA_TIME].values.tolist(),
+          builder.media_time_coords,
+      )
+    xr.testing.assert_equal(time_getter(builder), expected_spend_da)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media",
+          df=LAGGED_MEDIA_TIME_MEDIA_DF,
+          setter=lambda builder, df: builder.with_media(
+              df,
+              ["media_1"],
+              ["media_spend_1"],
+              ["media_channel_1"],
+              media_time_col="missing_media_time",
+          ),
+      ),
+      dict(
+          testcase_name="reach",
+          df=LAGGED_MEDIA_TIME_REACH_DF,
+          setter=lambda builder, df: builder.with_reach(
+              df,
+              ["reach_1"],
+              ["frequency_1"],
+              ["rf_spend_1"],
+              ["rf_channel_1"],
+              media_time_col="missing_media_time",
+          ),
+      ),
+  )
+  def test_missing_media_time_col_raises_error(self, df, setter):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertRaisesRegex(
+        ValueError, "DataFrame is missing one or more columns from"
+    ):
+      setter(builder, df)
+
+  def test_media_time_col_with_full_build(self):
+    df = self.LAGGED_MEDIA_TIME_MEDIA_DF.copy()
+    for col in ["reach_1", "frequency_1", "rf_spend_1"]:
+      df[col] = self.LAGGED_MEDIA_TIME_REACH_DF[col]
+    df["kpi"] = df["media_1"]
+    df["population"] = 100.0
+    df["revenue_per_kpi"] = 1.0
+
+    input_data = (
+        data_frame_input_data_builder.DataFrameInputDataBuilder(
+            kpi_type=constants.NON_REVENUE
+        )
+        .with_kpi(df)
+        .with_population(df)
+        .with_revenue_per_kpi(df)
+        .with_media(
+            df,
+            ["media_1"],
+            ["media_spend_1"],
+            ["media_channel_1"],
+            media_time_col="my_media_time",
+        )
+        .with_reach(
+            df,
+            ["reach_1"],
+            ["frequency_1"],
+            ["rf_spend_1"],
+            ["rf_channel_1"],
+            media_time_col="my_media_time",
+        )
+        .build()
+    )
+
+    self.assertLen(input_data.media_time, 4)
+    self.assertLen(input_data.time, 3)
+    self.assertIsNotNone(input_data.media)
+    self.assertIsNotNone(input_data.media_spend)
+    self.assertIsNotNone(input_data.reach)
+    self.assertIsNotNone(input_data.rf_spend)
+    self.assertEqual(
+        input_data.media.coords[constants.MEDIA_TIME].values.tolist(),
+        input_data.media_time.values.tolist(),
+    )
+    self.assertEqual(
+        input_data.media_spend.coords[constants.TIME].values.tolist(),
+        input_data.time.values.tolist(),
+    )
+    self.assertEqual(
+        input_data.reach.coords[constants.MEDIA_TIME].values.tolist(),
+        input_data.media_time.values.tolist(),
+    )
+    self.assertEqual(
+        input_data.rf_spend.coords[constants.TIME].values.tolist(),
+        input_data.time.values.tolist(),
+    )
 
   def test_kpi_type_revenue_and_call_revenue_per_kpi(self):
     builder = data_frame_input_data_builder.DataFrameInputDataBuilder(

@@ -23,6 +23,22 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `NDArrayInputDataBuilder.with_organic_reach` setting the organic
+    frequency `DataArray` name to `organic_reach` instead of
+    `organic_frequency`, which caused `build()` to fail validation with a
+    `ValueError`.
+*   Add an optional `media_time_col` parameter to
+    `DataFrameInputDataBuilder.with_media()` and `with_reach()`, mirroring
+    `with_organic_media()` and `with_organic_reach()`. This lets media
+    execution, reach, and frequency use a dedicated media time column that
+    extends before the first `time` period (for lagged "burn-in" media), while
+    spend uses `time_col`. Rows with a missing `time_col` value are excluded
+    from spend. Previously, the only way to model lagged media was to set spend
+    to `NaN` in the lagged periods.
+*   Budget optimization now warns when a channel's response curve is
+    non-monotonic within the optimization bounds, or when the `slope_m`
+    distribution contains values greater than one, since the optimizer may not
+    find the global optimum in these cases.
 *   Fix `save_meridian` and `save_mmm` raising `FileNotFoundError` on bare
     filenames.
 *   Fix calibrated ROI priors so that each candidate distribution minimizes the

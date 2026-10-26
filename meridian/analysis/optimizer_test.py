@@ -3518,6 +3518,231 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       # Check that no warnings were raised
       self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
 
+  def _create_grid_for_monotonicity_test(
+      self, incremental_outcome_grid: np.ndarray
+  ) -> optimizer.OptimizationGrid:
+    channels = np.array(['ch1', 'ch2'])
+    coords = {
+        c.GRID_SPEND_INDEX: np.arange(0, 4),
+        c.CHANNEL: channels,
+    }
+    dims = [c.GRID_SPEND_INDEX, c.CHANNEL]
+    spend_grid = xr.DataArray(
+        np.array([
+            [0.0, 0.0],
+            [100.0, 100.0],
+            [200.0, 200.0],
+            [300.0, 300.0],
+        ]),
+        coords=coords,
+        dims=dims,
+    )
+    return optimizer.OptimizationGrid(
+        historical_spend=np.array([100.0, 100.0]),
+        use_kpi=False,
+        use_posterior=True,
+        use_optimal_frequency=False,
+        max_frequency=None,
+        selected_geos=None,
+        start_date=None,
+        end_date=None,
+        gtol=0.1,
+        round_factor=-2,
+        optimal_frequency=None,
+        selected_times=None,
+        _grid_dataset=xr.Dataset(
+            {
+                c.SPEND_GRID: spend_grid,
+                c.INCREMENTAL_OUTCOME_GRID: xr.DataArray(
+                    incremental_outcome_grid, coords=coords, dims=dims
+                ),
+            },
+            attrs={c.SPEND_STEP_SIZE: 100.0},
+        ),
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='fixed_budget',
+          scenario=optimizer.FixedBudgetScenario(total_budget=200),
+      ),
+      dict(
+          testcase_name='flexible_budget_target_roi',
+          scenario=optimizer.FlexibleBudgetScenario(
+              target_metric=c.ROI, target_value=1.0
+          ),
+      ),
+      dict(
+          testcase_name='flexible_budget_target_mroi',
+          scenario=optimizer.FlexibleBudgetScenario(
+              target_metric=c.MROI, target_value=1.0
+          ),
+      ),
+  )
+  def test_grid_optimize_warns_when_response_curve_non_monotonic(
+      self, scenario
+  ):
+    grid = self._create_grid_for_monotonicity_test(
+        np.array([
+            [0.0, 0.0],
+            [100.0, 150.0],
+            [200.0, 120.0],
+            [300.0, 180.0],
+        ])
+    )
+    with self.assertWarnsRegex(
+        UserWarning,
+        r'Optimizer may not find the global optimum due to non-monotonic'
+        r" response curves for channels: \['ch2'\]",
+    ):
+      grid.optimize(
+          scenario=scenario,
+          spend_constraint_lower=1.0,
+          spend_constraint_upper=1.0,
+      )
+
+  def test_grid_optimize_warns_when_small_consecutive_drops_accumulate(self):
+    # Each individual drop is below the tolerance, but the cumulative drop from
+    # the running maximum is not.
+    tolerance = optimizer._MONOTONICITY_RTOL * 100.0
+    grid = self._create_grid_for_monotonicity_test(
+        np.array([
+            [0.0, 100.0],
+            [100.0, 100.0 - 0.6 * tolerance],
+            [200.0, 100.0 - 1.2 * tolerance],
+            [300.0, 100.0 - 1.8 * tolerance],
+        ])
+    )
+    with self.assertWarnsRegex(
+        UserWarning,
+        r'Optimizer may not find the global optimum due to non-monotonic'
+        r" response curves for channels: \['ch2'\]",
+    ):
+      grid.optimize(
+          scenario=optimizer.FixedBudgetScenario(total_budget=200),
+          spend_constraint_lower=1.0,
+          spend_constraint_upper=1.0,
+      )
+
+  def test_grid_optimize_no_warning_when_response_curves_monotonic(self):
+    grid = self._create_grid_for_monotonicity_test(
+        np.array([
+            [0.0, 0.0],
+            [100.0, 150.0],
+            [200.0, 250.0],
+            [300.0, 300.0],
+        ])
+    )
+    with warnings.catch_warnings(record=True) as w_list:
+      warnings.simplefilter('always')
+      grid.optimize(
+          scenario=optimizer.FixedBudgetScenario(total_budget=200),
+          spend_constraint_lower=1.0,
+          spend_constraint_upper=1.0,
+      )
+    self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
+
+  def test_grid_optimize_no_warning_when_non_monotonic_outside_bounds(self):
+    # The response curve of `ch2` decreases only between spend 200 and 300,
+    # which is outside the optimization bounds [0, 200].
+    grid = self._create_grid_for_monotonicity_test(
+        np.array([
+            [0.0, 0.0],
+            [100.0, 150.0],
+            [200.0, 250.0],
+            [300.0, 200.0],
+        ])
+    )
+    with warnings.catch_warnings(record=True) as w_list:
+      warnings.simplefilter('always')
+      grid.optimize(
+          scenario=optimizer.FixedBudgetScenario(total_budget=200),
+          spend_constraint_lower=1.0,
+          spend_constraint_upper=1.0,
+      )
+    self.assertEmpty(w_list, '\n'.join([str(w.message) for w in w_list]))
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='posterior_optimize',
+          use_posterior=True,
+          use_create_optimization_grid=False,
+      ),
+      dict(
+          testcase_name='prior_optimize',
+          use_posterior=False,
+          use_create_optimization_grid=False,
+      ),
+      dict(
+          testcase_name='posterior_create_optimization_grid',
+          use_posterior=True,
+          use_create_optimization_grid=True,
+      ),
+      dict(
+          testcase_name='prior_create_optimization_grid',
+          use_posterior=False,
+          use_create_optimization_grid=True,
+      ),
+  )
+  def test_optimize_warns_when_slope_m_greater_than_one(
+      self, use_posterior, use_create_optimization_grid
+  ):
+    dist_type = c.POSTERIOR if use_posterior else c.PRIOR
+    dist = getattr(self.inference_data_media_and_rf, dist_type)
+    slope_m = dist[c.SLOPE_M].copy()
+    slope_m.values[..., 0] = 1.5
+    dist[c.SLOPE_M] = slope_m
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Optimizer may not find the global optimum due to potentially'
+        f' non-concave response curves: the {dist_type} distribution of'
+        ' `slope_m` contains values greater than 1.',
+    ):
+      if use_create_optimization_grid:
+        self.budget_optimizer_media_and_rf.create_optimization_grid(
+            use_posterior=use_posterior
+        )
+      else:
+        self.budget_optimizer_media_and_rf.optimize(
+            use_posterior=use_posterior
+        )
+
+  def test_optimize_no_slope_m_warning_when_slope_m_at_most_one(self):
+    dist = getattr(self.inference_data_media_and_rf, c.POSTERIOR)
+    slope_m = dist[c.SLOPE_M].copy()
+    slope_m.values[...] = 1.0
+    dist[c.SLOPE_M] = slope_m
+
+    with warnings.catch_warnings(record=True) as w_list:
+      warnings.simplefilter('always')
+      self.budget_optimizer_media_and_rf.optimize()
+    self.assertEmpty([
+        str(w.message)
+        for w in w_list
+        if 'non-concave response curves' in str(w.message)
+    ])
+
+  def test_optimize_no_slope_m_warning_for_linear_media_channels(self):
+    dist = getattr(self.inference_data_media_and_rf, c.POSTERIOR)
+    slope_m = dist[c.SLOPE_M].copy()
+    slope_m.values[...] = 1.5
+    dist[c.SLOPE_M] = slope_m
+    meridian = model.Meridian(
+        input_data=self.input_data_media_and_rf,
+        model_spec=spec.ModelSpec(saturation_spec=c.NONE),
+    )
+    budget_optimizer = optimizer.BudgetOptimizer(meridian)
+
+    with warnings.catch_warnings(record=True) as w_list:
+      warnings.simplefilter('always')
+      budget_optimizer.optimize()
+    self.assertEmpty([
+        str(w.message)
+        for w in w_list
+        if 'non-concave response curves' in str(w.message)
+    ])
+
   def test_get_response_curves_new_times_data_correct(self):
     ctx = self.budget_optimizer_media_and_rf._analyzer.model_context
     max_lag = ctx.model_spec.max_lag

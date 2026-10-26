@@ -24,6 +24,7 @@ from meridian.model import context
 from meridian.model import knots
 from meridian.model import model_test_data
 from meridian.model import spec as model_spec
+from meridian.model import transformers
 from meridian.model.eda import constants as eda_constants
 from meridian.model.eda import eda_engine
 from meridian.model.eda import eda_outcome
@@ -36,6 +37,10 @@ import xarray as xr
 
 
 CONTROL_VAR = "control"
+# The real transformer class, captured before it is mocked in `setUp`.
+_REAL_CENTERING_AND_SCALING_TRANSFORMER = (
+    transformers.CenteringAndScalingTransformer
+)
 
 
 def _construct_coords(
@@ -6225,6 +6230,271 @@ class EDAEngineTest(
             constants.NATIONAL_TREATMENT_CONTROL_SCALED,
         ],
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="baseline_equal_to_low_outlier",
+          baseline_values=[-100.0, 0.0],
+          expected_flagged=["var_1"],
+      ),
+      dict(
+          testcase_name="baseline_more_extreme_than_low_outlier",
+          baseline_values=[-200.0, 0.0],
+          expected_flagged=["var_1"],
+      ),
+      dict(
+          testcase_name="baseline_less_extreme_than_low_outlier",
+          baseline_values=[-99.0, 0.0],
+          expected_flagged=[],
+      ),
+      dict(
+          testcase_name="baseline_equal_to_high_outlier",
+          baseline_values=[0.0, 100.0],
+          expected_flagged=["var_2"],
+      ),
+      dict(
+          testcase_name="baseline_more_extreme_than_high_outlier",
+          baseline_values=[0.0, 200.0],
+          expected_flagged=["var_2"],
+      ),
+      dict(
+          testcase_name="baseline_less_extreme_than_high_outlier",
+          baseline_values=[0.0, 99.0],
+          expected_flagged=[],
+      ),
+      dict(
+          testcase_name="both_baselines_extreme",
+          baseline_values=[-100.0, 100.0],
+          expected_flagged=["var_1", "var_2"],
+      ),
+  )
+  def test_find_variables_with_extreme_baseline(
+      self, baseline_values, expected_flagged
+  ):
+    # `var_1` has a low outlier (-100) in geo 0, `var_2` has a high outlier
+    # (100) in geo 1, and `var_3` has no outliers.
+    var_1 = np.array([[-100, 1, 2, 1, 2, 1, 2], [1, 2, 1, 2, 1, 2, 1]])
+    var_2 = np.array([[1, 2, 1, 2, 1, 2, 1], [1, 2, 1, 2, 1, 2, 100]])
+    var_3 = np.array([[1, 2, 1, 2, 1, 2, 1], [1, 2, 1, 2, 1, 2, 1]])
+    data = np.stack([var_1, var_2, var_3], axis=-1).astype(float)
+    input_da = _create_data_array_with_var_dim(
+        data,
+        name=constants.TREATMENT_CONTROL_SCALED,
+        var_name="var",
+        var_dim_name=eda_constants.VARIABLE,
+    )
+    baseline_da = xr.DataArray(
+        baseline_values,
+        dims=[eda_constants.VARIABLE],
+        coords={eda_constants.VARIABLE: ["var_1", "var_2"]},
+    )
+
+    flagged = eda_engine._find_variables_with_extreme_baseline(
+        input_da, baseline_da
+    )
+
+    self.assertEqual(flagged, expected_flagged)
+
+  def test_find_variables_with_extreme_baseline_without_outliers(self):
+    data = np.tile(np.array([1, 2, 1, 2, 1, 2, 1]), (2, 1, 2)).astype(float)
+    input_da = _create_data_array_with_var_dim(
+        data,
+        name=constants.TREATMENT_CONTROL_SCALED,
+        var_name="var",
+        var_dim_name=eda_constants.VARIABLE,
+    )
+    baseline_da = xr.DataArray(
+        [-1000.0, 1000.0],
+        dims=[eda_constants.VARIABLE],
+        coords={eda_constants.VARIABLE: ["var_1", "var_2"]},
+    )
+
+    flagged = eda_engine._find_variables_with_extreme_baseline(
+        input_da, baseline_da
+    )
+
+    self.assertEmpty(flagged)
+
+  def _get_treatment_control_outlier_finding(
+      self, outcome: eda_outcome.EDAOutcome, variable: str
+  ) -> eda_outcome.EDAFinding:
+    """Returns the single outlier finding for the given stacked variable."""
+    outlier_findings = [
+        finding
+        for finding in outcome.findings
+        if finding.finding_cause == eda_outcome.FindingCause.OUTLIER
+        and isinstance(
+            finding.associated_artifact, eda_outcome.StandardDeviationArtifact
+        )
+        and finding.associated_artifact.variable == variable
+    ]
+    self.assertLen(outlier_findings, 1)
+    return outlier_findings[0]
+
+  def _set_non_media_treatments_with_low_outlier(
+      self, input_data, outlier_channel_indices: Sequence[int] = (0,)
+  ):
+    """Fills non-media treatments with outlier-free data plus low outliers.
+
+    All non-media channels are set to a repeating `0, 1, 2, 3, 4` pattern over
+    time, shifted by a geo-specific offset so that the data varies across geos.
+    This pattern has no outliers under the IQR rule. A single low outlier is
+    then injected in the first geo and time period of each channel in
+    `outlier_channel_indices`, which makes it the global minimum of that
+    channel, i.e. its default baseline.
+
+    Args:
+      input_data: The `InputData` instance whose `non_media_treatments` values
+        are modified in place.
+      outlier_channel_indices: Indices of the non-media channels into which a
+        low outlier is injected.
+    """
+    non_media_da = input_data.non_media_treatments
+    n_geos = non_media_da.sizes[constants.GEO]
+    n_times = non_media_da.sizes[constants.TIME]
+    pattern = (np.arange(n_times) % 5).astype(float)
+    geo_offsets = np.arange(n_geos).astype(float)
+    non_media_da.values[:] = (
+        pattern[np.newaxis, :, np.newaxis]
+        + geo_offsets[:, np.newaxis, np.newaxis]
+    )
+    for channel_index in outlier_channel_indices:
+      non_media_da.values[0, 0, channel_index] = -100.0
+
+  def _use_real_centering_and_scaling_transformer(self):
+    """Replaces the mocked transformer with the real one for this test.
+
+    The non-media baseline check requires the baseline values and the scaled
+    non-media treatments to be on the same scale, which only holds for the real
+    transformer.
+    """
+    self.enter_context(
+        mock.patch.object(
+            eda_engine.transformers,
+            "CenteringAndScalingTransformer",
+            _REAL_CENTERING_AND_SCALING_TRANSFORMER,
+        )
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default_baseline_values",
+          outlier_channel_indices=(0,),
+          non_media_baseline_values=None,
+          expected_flagged_channels="non_media_0",
+      ),
+      dict(
+          testcase_name="multiple_outlier_channels",
+          outlier_channel_indices=(0, 1),
+          non_media_baseline_values=None,
+          expected_flagged_channels="non_media_0, non_media_1",
+      ),
+      dict(
+          testcase_name="mapping_without_outlier_channel",
+          outlier_channel_indices=(0,),
+          non_media_baseline_values={"non_media_1": "max"},
+          expected_flagged_channels="non_media_0",
+      ),
+      dict(
+          testcase_name="mapping_with_outlier_channel",
+          outlier_channel_indices=(0,),
+          non_media_baseline_values={"non_media_0": "min"},
+          expected_flagged_channels=None,
+      ),
+      dict(
+          testcase_name="sequence_baseline_values",
+          outlier_channel_indices=(0,),
+          non_media_baseline_values=["min", "min"],
+          expected_flagged_channels=None,
+      ),
+  )
+  def test_check_geo_std_flags_extreme_default_non_media_baseline(
+      self,
+      outlier_channel_indices,
+      non_media_baseline_values,
+      expected_flagged_channels,
+  ):
+    self._use_real_centering_and_scaling_transformer()
+    input_data = self.input_data_non_media_and_organic
+    self._set_non_media_treatments_with_low_outlier(
+        input_data, outlier_channel_indices=outlier_channel_indices
+    )
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(
+            non_media_baseline_values=non_media_baseline_values
+        ),
+        input_data=input_data,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context)
+
+    outcome = engine.check_geo_std()
+
+    finding = self._get_treatment_control_outlier_finding(
+        outcome, constants.TREATMENT_CONTROL_SCALED
+    )
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
+    self.assertIn(
+        "There are outliers in the scaled treatment or control variables in"
+        " certain geos.",
+        finding.explanation,
+    )
+    if expected_flagged_channels is None:
+      self.assertNotIn("non_media_baseline_values", finding.explanation)
+    else:
+      self.assertIn(
+          eda_constants.NON_MEDIA_BASELINE_OUTLIER_MESSAGE.format(
+              non_media_treatments=expected_flagged_channels
+          ),
+          finding.explanation,
+      )
+
+  def test_check_national_std_flags_extreme_default_non_media_baseline(self):
+    self._use_real_centering_and_scaling_transformer()
+    input_data = self.national_input_data_non_media_and_organic
+    self._set_non_media_treatments_with_low_outlier(
+        input_data, outlier_channel_indices=(1,)
+    )
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(),
+        input_data=input_data,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context)
+
+    outcome = engine.check_national_std()
+
+    finding = self._get_treatment_control_outlier_finding(
+        outcome, constants.NATIONAL_TREATMENT_CONTROL_SCALED
+    )
+    self.assertEqual(finding.severity, eda_outcome.EDASeverity.REVIEW)
+    self.assertIn(
+        "There are outliers in the scaled treatment or control variables.",
+        finding.explanation,
+    )
+    self.assertIn(
+        eda_constants.NON_MEDIA_BASELINE_OUTLIER_MESSAGE.format(
+            non_media_treatments="non_media_1"
+        ),
+        finding.explanation,
+    )
+
+  def test_check_national_std_skips_non_media_baseline_check_for_geo_data(
+      self,
+  ):
+    self._use_real_centering_and_scaling_transformer()
+    input_data = self.input_data_non_media_and_organic
+    self._set_non_media_treatments_with_low_outlier(
+        input_data, outlier_channel_indices=(0,)
+    )
+    model_context = context.ModelContext(
+        model_spec=model_spec.ModelSpec(),
+        input_data=input_data,
+    )
+    engine = eda_engine.EDAEngine(model_context=model_context)
+
+    outcome = engine.check_national_std()
+
+    for finding in outcome.findings:
+      self.assertNotIn("non_media_baseline_values", finding.explanation)
 
   def test_check_geo_vif_raises_error_for_national_model(self):
     model_context = context.ModelContext(

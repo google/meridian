@@ -14,6 +14,9 @@
 
 """Constants shared across the Meridian serde library."""
 
+# Current version of the `mmm-proto-schema` package.
+SCHEMA_VERSION = '1.6.0'
+
 # Constants for hyperparameters protobuf structure
 BASELINE_GEO_ONEOF = 'baseline_geo_oneof'
 BASELINE_GEO_INT = 'baseline_geo_int'

@@ -599,6 +599,15 @@ def _allows_negative_values(
   return None
 
 
+def _roi_setting(prior_types: Mapping[str, str]) -> str:
+  """The first prior type setting in `prior_types` that is `'roi'`."""
+  return next(
+      name
+      for name, prior_type in prior_types.items()
+      if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
+  )
+
+
 def _changepoint_calibration_error(
     channels: Sequence[str], attribute: str
 ) -> ValueError:
@@ -620,6 +629,43 @@ def _changepoint_calibration_error(
       "Alternatively, if you want to model the channel with time-varying"
       " media effectiveness without ROI calibration, keep `changepoints` and"
       f" remove {channel_list} from `{attribute}`."
+  )
+
+
+def _merge_prior_tensors(
+    tensor: backend.Tensor | None,
+    changepoint_tensor: backend.Tensor | None,
+    changepoint_info: changepoints.ChangepointInfo,
+    fill: backend.Tensor | None = None,
+) -> backend.Tensor | None:
+  """Uses `changepoint_tensor` for the channels with changepoints.
+
+  Args:
+    tensor: A prior tensor of all channels of a type, for their prior type.
+    changepoint_tensor: The same tensor for the prior type of the channels with
+      changepoints.
+    changepoint_info: The `ChangepointInfo` of the channel type.
+    fill: Stands in for a `None` tensor. Default: the other tensor, for tensors
+      that are `None` when their prior type doesn't use them.
+
+  Returns:
+    The merged tensor, or `None` if both tensors are `None`.
+  """
+  if tensor is None and changepoint_tensor is None:
+    return None
+  if tensor is None:
+    tensor = changepoint_tensor if fill is None else fill
+  if changepoint_tensor is None:
+    changepoint_tensor = tensor if fill is None else fill
+  assert tensor is not None and changepoint_tensor is not None
+  return changepoints.merge_channels(
+      x=tensor,
+      sub=backend.gather(
+          changepoint_tensor,
+          backend.to_tensor(changepoint_info.channel_indices),
+          axis=-1,
+      ),
+      info=changepoint_info,
   )
 
 
@@ -750,7 +796,6 @@ class ModelContext:
     self._validate_mroi_priors_non_revenue()
     self._validate_roi_priors_non_revenue()
     self._check_media_prior_support()
-    self._check_changepoint_prior_types()
     self._validate_geo_invariants()
     self._validate_time_invariants()
     self._validate_media_spend_for_paid_channels()
@@ -1116,18 +1161,66 @@ class ModelContext:
 
   @functools.cached_property
   def media_tensors(self) -> media.MediaTensors:
-    return media.build_media_tensors(
+    """The media tensors.
+
+    If the channels with changepoints use another prior type, their columns of
+    the prior tensors are for that prior type.
+    """
+    build = functools.partial(
+        media._build_media_tensors,  # pylint: disable=protected-access
         self._input_data,
-        self._model_spec,
         calibration_period=self.compiled_roi_calibration_period,
+    )
+    prior_types = list(self._paid_prior_types(is_rf=False).values())
+    tensors = build(prior_type=prior_types[0])
+    info = self._media_changepoint_info
+    if info is None or len(set(prior_types)) == 1:
+      return tensors
+    changepoint_tensors = build(prior_type=prior_types[1])
+    assert tensors.media_scaled is not None
+    return dataclasses.replace(
+        tensors,
+        prior_media_scaled_counterfactual=_merge_prior_tensors(
+            tensors.prior_media_scaled_counterfactual,
+            changepoint_tensors.prior_media_scaled_counterfactual,
+            info,
+            fill=backend.zeros_like(tensors.media_scaled),
+        ),
+        prior_denominator=_merge_prior_tensors(
+            tensors.prior_denominator,
+            changepoint_tensors.prior_denominator,
+            info,
+        ),
     )
 
   @functools.cached_property
   def rf_tensors(self) -> media.RfTensors:
-    return media.build_rf_tensors(
+    """The RF tensors, with prior tensors like `media_tensors`."""
+    build = functools.partial(
+        media._build_rf_tensors,  # pylint: disable=protected-access
         self._input_data,
-        self._model_spec,
         calibration_period=self.compiled_rf_roi_calibration_period,
+    )
+    prior_types = list(self._paid_prior_types(is_rf=True).values())
+    tensors = build(prior_type=prior_types[0])
+    info = self._rf_changepoint_info
+    if info is None or len(set(prior_types)) == 1:
+      return tensors
+    changepoint_tensors = build(prior_type=prior_types[1])
+    assert tensors.reach_scaled is not None
+    return dataclasses.replace(
+        tensors,
+        prior_reach_scaled_counterfactual=_merge_prior_tensors(
+            tensors.prior_reach_scaled_counterfactual,
+            changepoint_tensors.prior_reach_scaled_counterfactual,
+            info,
+            fill=backend.zeros_like(tensors.reach_scaled),
+        ),
+        prior_denominator=_merge_prior_tensors(
+            tensors.prior_denominator,
+            changepoint_tensors.prior_denominator,
+            info,
+        ),
     )
 
   @functools.cached_property
@@ -1768,20 +1861,24 @@ class ModelContext:
   def _warn_setting_ignored_priors(self):
     """Raises a warning if ignored priors are set."""
     default_distribution = prior_distribution.PriorDistribution()
-    for ignored_priors_dict, prior_type, prior_type_name in (
-        (
-            constants.IGNORED_PRIORS_MEDIA,
-            self._model_spec.effective_media_prior_type,
-            "media_prior_type",
-        ),
-        (
-            constants.IGNORED_PRIORS_RF,
-            self._model_spec.effective_rf_prior_type,
-            "rf_prior_type",
-        ),
+    for ignored_priors_dict, is_rf in (
+        (constants.IGNORED_PRIORS_MEDIA, False),
+        (constants.IGNORED_PRIORS_RF, True),
     ):
+      prior_types = self._paid_prior_types(is_rf)
+      # With changepoints, a prior is ignored only if no channel uses it.
+      ignored_priors = [
+          prior
+          for prior in ignored_priors_dict.get(
+              next(iter(prior_types.values())), []
+          )
+          if all(
+              prior in ignored_priors_dict.get(prior_type, [])
+              for prior_type in prior_types.values()
+          )
+      ]
       ignored_custom_priors = []
-      for prior in ignored_priors_dict.get(prior_type, []):
+      for prior in ignored_priors:
         self_prior = getattr(self._model_spec.prior, prior)
         default_prior = getattr(default_distribution, prior)
         if not prior_distribution.distributions_are_equal(
@@ -1790,9 +1887,13 @@ class ModelContext:
           ignored_custom_priors.append(prior)
       if ignored_custom_priors:
         ignored_priors_str = ", ".join(ignored_custom_priors)
+        settings = " and ".join(
+            f'`{prior_type_name}` is set to "{prior_type}"'
+            for prior_type_name, prior_type in prior_types.items()
+        )
         warnings.warn(
             f"Custom prior(s) `{ignored_priors_str}` are ignored when"
-            f' `{prior_type_name}` is set to "{prior_type}".'
+            f" {settings}."
         )
 
   def _validate_mroi_priors_non_revenue(self):
@@ -1802,36 +1903,30 @@ class ModelContext:
         and self._input_data.revenue_per_kpi is None
     ):
       default_distribution = prior_distribution.PriorDistribution()
-      if (
-          self.n_media_channels > 0
-          and (
-              self._model_spec.effective_media_prior_type
-              == constants.TREATMENT_PRIOR_TYPE_MROI
-          )
-          and prior_distribution.distributions_are_equal(
-              self._model_spec.prior.mroi_m, default_distribution.mroi_m
-          )
+      for is_rf, n_channels, field in (
+          (False, self.n_media_channels, constants.MROI_M),
+          (True, self.n_rf_channels, constants.MROI_RF),
       ):
-        raise ValueError(
-            f"Custom priors should be set on `{constants.MROI_M}` when"
-            ' `media_prior_type` is "mroi", KPI is non-revenue and revenue per'
-            " kpi data is missing."
-        )
-      if (
-          self.n_rf_channels > 0
-          and (
-              self._model_spec.effective_rf_prior_type
-              == constants.TREATMENT_PRIOR_TYPE_MROI
+        mroi_settings = [
+            prior_type_name
+            for prior_type_name, prior_type in self._paid_prior_types(
+                is_rf
+            ).items()
+            if prior_type == constants.TREATMENT_PRIOR_TYPE_MROI
+        ]
+        if (
+            n_channels > 0
+            and mroi_settings
+            and prior_distribution.distributions_are_equal(
+                getattr(self._model_spec.prior, field),
+                getattr(default_distribution, field),
+            )
+        ):
+          raise ValueError(
+              f"Custom priors should be set on `{field}` when"
+              f' `{mroi_settings[0]}` is "mroi", KPI is non-revenue and'
+              " revenue per kpi data is missing."
           )
-          and prior_distribution.distributions_are_equal(
-              self._model_spec.prior.mroi_rf, default_distribution.mroi_rf
-          )
-      ):
-        raise ValueError(
-            f"Custom priors should be set on `{constants.MROI_RF}` when"
-            ' `rf_prior_type` is "mroi", KPI is non-revenue and revenue per kpi'
-            " data is missing."
-        )
 
   def _validate_roi_priors_non_revenue(self):
     """Validates roi priors in the non-revenue outcome case."""
@@ -1840,27 +1935,34 @@ class ModelContext:
         and self._input_data.revenue_per_kpi is None
     ):
       default_distribution = prior_distribution.PriorDistribution()
-      default_roi_m_used = (
-          self._model_spec.effective_media_prior_type
-          == constants.TREATMENT_PRIOR_TYPE_ROI
-          and prior_distribution.distributions_are_equal(
-              self._model_spec.prior.roi_m, default_distribution.roi_m
-          )
+      roi = constants.TREATMENT_PRIOR_TYPE_ROI
+      media_prior_types = self._paid_prior_types(is_rf=False).values()
+      rf_prior_types = self._paid_prior_types(is_rf=True).values()
+      default_roi_m = prior_distribution.distributions_are_equal(
+          self._model_spec.prior.roi_m, default_distribution.roi_m
       )
-      default_roi_rf_used = (
-          self._model_spec.effective_rf_prior_type
-          == constants.TREATMENT_PRIOR_TYPE_ROI
-          and prior_distribution.distributions_are_equal(
-              self._model_spec.prior.roi_rf, default_distribution.roi_rf
-          )
+      default_roi_rf = prior_distribution.distributions_are_equal(
+          self._model_spec.prior.roi_rf, default_distribution.roi_rf
+      )
+      # Some channels use the default ROI prior.
+      default_roi_m_used = roi in media_prior_types and default_roi_m
+      default_roi_rf_used = roi in rf_prior_types and default_roi_rf
+      # All channels of the type use the default ROI prior.
+      default_roi_m_only = (
+          all(prior_type == roi for prior_type in media_prior_types)
+          and default_roi_m
+      )
+      default_roi_rf_only = (
+          all(prior_type == roi for prior_type in rf_prior_types)
+          and default_roi_rf
       )
       # If ROI priors are used with the default prior distribution for all paid
       # channels (media and RF), then use the "total paid media contribution
       # prior" procedure.
       if (
-          (default_roi_m_used and default_roi_rf_used)
-          or (self.n_media_channels == 0 and default_roi_rf_used)
-          or (self.n_rf_channels == 0 and default_roi_m_used)
+          (default_roi_m_only and default_roi_rf_only)
+          or (self.n_media_channels == 0 and default_roi_rf_only)
+          or (self.n_rf_channels == 0 and default_roi_m_only)
       ):
         self._set_total_media_contribution_prior = True
         warnings.warn(
@@ -1874,15 +1976,17 @@ class ModelContext:
       elif self.n_media_channels > 0 and default_roi_m_used:
         raise ValueError(
             f"Custom priors should be set on `{constants.ROI_M}` when"
-            ' `media_prior_type` is "roi", custom priors are assigned on'
-            ' `{constants.ROI_RF}` or `rf_prior_type` is not "roi", KPI is'
+            f' `{_roi_setting(self._paid_prior_types(is_rf=False))}` is "roi",'
+            " custom priors are assigned on"
+            f' `{constants.ROI_RF}` or `rf_prior_type` is not "roi", KPI is'
             " non-revenue and revenue per kpi data is missing."
         )
       elif self.n_rf_channels > 0 and default_roi_rf_used:
         raise ValueError(
             f"Custom priors should be set on `{constants.ROI_RF}` when"
-            ' `rf_prior_type` is "roi", custom priors are assigned on'
-            ' `{constants.ROI_M}` or `media_prior_type` is not "roi", KPI is'
+            f' `{_roi_setting(self._paid_prior_types(is_rf=True))}` is "roi",'
+            " custom priors are assigned on"
+            f' `{constants.ROI_M}` or `media_prior_type` is not "roi", KPI is'
             " non-revenue and revenue per kpi data is missing."
         )
 
@@ -2124,15 +2228,45 @@ class ModelContext:
         constants.TREATMENT_PRIOR_TYPE_ROI,
     )
 
+  def _paid_prior_types(self, is_rf: bool) -> dict[str, str]:
+    """The prior types that the paid media or RF channels use.
+
+    Args:
+      is_rf: Whether to use the RF channels rather than the media channels.
+
+    Returns:
+      Maps the name of each prior type setting that some channel of the type
+      uses to its value. The first is `media_prior_type` or `rf_prior_type`,
+      unless every channel of the type has changepoints. The other is
+      `changepoint_media_prior_type` or `changepoint_rf_prior_type`, if some
+      channel of the type has changepoints.
+    """
+    if is_rf:
+      name, n_channels = "rf", self.n_rf_channels
+      changepoint_info = self._rf_changepoint_info
+      prior_type = self._model_spec.effective_rf_prior_type
+    else:
+      name, n_channels = "media", self.n_media_channels
+      changepoint_info = self._media_changepoint_info
+      prior_type = self._model_spec.effective_media_prior_type
+    prior_types = {}
+    if changepoint_info is None or changepoint_info.n_channels < n_channels:
+      prior_types[f"{name}_prior_type"] = prior_type
+    if changepoint_info is not None:
+      prior_types[f"changepoint_{name}_prior_type"] = (
+          self._changepoint_prior_type(is_rf)
+      )
+    return prior_types
+
   def _check_changepoint_prior_types(self) -> None:
-    """Checks that channels with changepoints use their type's prior type.
+    """Checks that the posterior can be sampled with these prior types.
 
     Raises:
       NotImplementedError: If the paid media or RF channels with changepoints
         use another prior type than `media_prior_type` or `rf_prior_type`.
     """
-    # TODO: Sample models whose channels with changepoints use
-    # another prior type.
+    # TODO: Posterior sample models whose channels with
+    # changepoints use another prior type.
     for is_rf, changepoint_info, prior_type in (
         (
             False,
@@ -2149,10 +2283,10 @@ class ModelContext:
       if changepoint_info is not None and changepoint_prior_type != prior_type:
         name = "rf" if is_rf else "media"
         raise NotImplementedError(
-            f"`changepoint_{name}_prior_type` ({changepoint_prior_type!r})"
-            f" must equal `{name}_prior_type` ({prior_type!r}). A different"
-            " prior type for the channels with `changepoints` is not supported"
-            " yet."
+            "Posterior sampling is not supported yet when"
+            f" `changepoint_{name}_prior_type` ({changepoint_prior_type!r})"
+            f" differs from `{name}_prior_type` ({prior_type!r}). Prior"
+            " sampling is supported."
         )
 
   @functools.cached_property

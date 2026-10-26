@@ -931,6 +931,7 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_unpinned(self) -> backend.tfd.Distribution:
     """Builds a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     self._model_context.populate_cached_properties()
+    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_unpinned_fn
     )
@@ -938,6 +939,7 @@ class PosteriorMCMCSampler:
   def _get_joint_dist_sampling_unpinned(self) -> backend.tfd.Distribution:
     """Builds a sampling-optimized `JointDistributionCoroutineAutoBatched`."""
     self._model_context.populate_cached_properties()
+    self._model_context._check_changepoint_prior_types()  # pylint: disable=protected-access
     return backend.tfd.JointDistributionCoroutineAutoBatched(
         self._joint_dist_sampling_fn
     )
