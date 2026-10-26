@@ -1075,8 +1075,9 @@ class ModelSpec:
 class _ModelSpecWithChangepoints(ModelSpec):
   """A `ModelSpec` with time-varying media effects. Internal only.
 
-  `Analyzer` raises `NotImplementedError` for a model with changepoints until
-  it uses each time period's coefficient.
+  `BudgetOptimizer`, `WeeklyOptimizationGrid` and
+  `ReachFrequencyOptimizationProcessor` raise `NotImplementedError` for a model
+  with changepoints.
 
   Attributes:
     changepoints: Maps a paid media or reach and frequency channel name to the

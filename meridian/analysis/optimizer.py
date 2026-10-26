@@ -1480,6 +1480,15 @@ class BudgetOptimizer:
       self._meridian = meridian
     else:
       raise ValueError('Either `analyzer` or `meridian` must be provided.')
+    # TODO: Optimize budgets with the effects of the channels with
+    # changepoints.
+    # Mock analyzers in tests may lack the attribute or have a truthy one.
+    has_changepoints = getattr(self._analyzer, '_has_changepoints', False)
+    if isinstance(has_changepoints, bool) and has_changepoints:
+      raise NotImplementedError(
+          '`BudgetOptimizer` does not support models with `changepoints` yet:'
+          ' its results would not reflect the time-varying effects.'
+      )
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""
