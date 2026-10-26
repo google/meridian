@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Enable Jinja2 HTML autoescaping for `.html.jinja` report templates.
 *   Fix `NDArrayInputDataBuilder.with_organic_reach` setting the organic
     frequency `DataArray` name to `organic_reach` instead of
     `organic_frequency`, which caused `build()` to fail validation with a

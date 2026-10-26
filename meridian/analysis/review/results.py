@@ -24,6 +24,7 @@ import os
 from typing import Any
 
 import jinja2
+import markupsafe
 from meridian.analysis import summary_text
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants
@@ -1486,12 +1487,12 @@ class ReviewSummary:
         )
         if high_roi_channels:
           ch_text = _format_list_with_and(
-              [f"'{ch}'" for ch in high_roi_channels]
+              [str(markupsafe.escape(f"'{ch}'")) for ch in high_roi_channels]
           )
           flagged.append(f"{ch_text} for having high ROI")
         if low_roi_channels:
           ch_text = _format_list_with_and(
-              [f"'{ch}'" for ch in low_roi_channels]
+              [str(markupsafe.escape(f"'{ch}'")) for ch in low_roi_channels]
           )
           flagged.append(f"{ch_text} for having low ROI")
         if flagged:
@@ -1534,7 +1535,7 @@ class ReviewSummary:
             ' target="_blank">MeridianAnalyzer.roi</a> to view the exact ROI'
             " for specific channels."
         )
-      implausible_roi_description = desc
+      implausible_roi_description = markupsafe.Markup(desc)
 
     high_variance_result = next(
         (r for r in self.results if isinstance(r, HighVarianceCheckResult)),
@@ -1987,4 +1988,3 @@ def build_calibration_recommendation_text(
     )
 
   raise ValueError(f"Unknown location: {location}")
-
