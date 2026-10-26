@@ -814,22 +814,91 @@ class ModelEquations:
       the regular calculation leaves them out.
     """
     indices = backend.to_tensor(changepoint_info.channel_indices)
-    time_varying_beta_gx = backend.gather(beta_gx, indices, axis=-1)
-    beta_gtx = changepoints.time_varying_coefficients(
-        beta_gx=time_varying_beta_gx,
-        zeta=zeta_x,
-        phi=changepoints.expand_intervals(varphi_x, changepoint_info.weights),
-        media_effects_dist=self._context._changepoint_media_effects_dist,  # pylint: disable=protected-access
-    )
     outcome = backend.einsum(
         "...gtx,...gtx->...gt",
         backend.gather(media_transformed, indices, axis=-1),
-        beta_gtx,
+        self._changepoint_coefficients(
+            changepoint_info=changepoint_info,
+            beta_gx=beta_gx,
+            zeta_x=zeta_x,
+            varphi_x=varphi_x,
+        ),
     )
     beta_gx_without = changepoints.fill_channels(
         beta_gx, value=0.0, info=changepoint_info
     )
     return outcome, beta_gx_without
+
+  def _changepoint_coefficients(
+      self,
+      *,
+      changepoint_info: changepoints.ChangepointInfo,
+      beta_gx: backend.Tensor,
+      zeta_x: backend.Tensor,
+      varphi_x: backend.Tensor,
+  ) -> backend.Tensor:
+    """Returns the coefficients of the channels with changepoints by time.
+
+    Args:
+      changepoint_info: The `ChangepointInfo` of the channel type.
+      beta_gx: The geo coefficients of all channels of the type without the time
+        effect, shape `(..., n_geos, n_channels)`.
+      zeta_x: The time random effect standard deviation parameter values of the
+        channels with changepoints, shape `(..., n_changepoint_channels)`.
+      varphi_x: The latent standard normal parameter values of the intervals
+        between changepoints, shape `(..., n_changepoint_channels,
+        max_intervals)`.
+
+    Returns:
+      The coefficients of the channels with changepoints, shape `(..., n_geos,
+      n_times, n_changepoint_channels)`.
+    """
+    indices = backend.to_tensor(changepoint_info.channel_indices)
+    return changepoints.time_varying_coefficients(
+        beta_gx=backend.gather(beta_gx, indices, axis=-1),
+        zeta=zeta_x,
+        phi=changepoints.expand_intervals(varphi_x, changepoint_info.weights),
+        media_effects_dist=self._context._changepoint_media_effects_dist,  # pylint: disable=protected-access
+    )
+
+  def _coefficients_by_time(
+      self,
+      *,
+      changepoint_info: changepoints.ChangepointInfo,
+      beta_gx: backend.Tensor,
+      zeta_x: backend.Tensor,
+      varphi_x: backend.Tensor,
+  ) -> backend.Tensor:
+    """Returns the coefficient of each geo and time period of a channel type.
+
+    The channels without changepoints have the same coefficient in every time
+    period. "x" represents "m" or "rf".
+
+    Args:
+      changepoint_info: The `ChangepointInfo` of the channel type.
+      beta_gx: The geo coefficients of all channels of the type without the time
+        effect, shape `(..., n_geos, n_channels)`.
+      zeta_x: As in `_changepoint_coefficients`.
+      varphi_x: As in `_changepoint_coefficients`.
+
+    Returns:
+      The coefficients, shape `(..., n_geos, n_times, n_channels)`.
+    """
+    n_times = changepoint_info.weights.shape[-1]
+    regular_beta_gtx = backend.broadcast_to(
+        beta_gx[..., :, backend.newaxis, :],
+        [*beta_gx.shape[:-1], n_times, beta_gx.shape[-1]],
+    )
+    return changepoints.merge_channels(
+        x=regular_beta_gtx,
+        sub=self._changepoint_coefficients(
+            changepoint_info=changepoint_info,
+            beta_gx=beta_gx,
+            zeta_x=zeta_x,
+            varphi_x=varphi_x,
+        ),
+        info=changepoint_info,
+    )
 
   def _coefficients_from_random_effects(
       self,
