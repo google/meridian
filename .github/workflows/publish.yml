@@ -47,7 +47,7 @@ jobs:
 
       - uses: ./.github/actions/install-meridian
         with:
-          python_version: ${{ inputs.python_version }}
+          python_version: ${{ env.USE_PYTHON_VERSION }}
           extras: ''
 
       - id: get_version

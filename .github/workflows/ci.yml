@@ -41,7 +41,7 @@ jobs:
       # Check meridian version
       - uses: ./.github/actions/install-meridian
         with:
-          python_version: ${{ inputs.python_version }}
+          python_version: ${{ env.USE_PYTHON_VERSION }}
           extras: ''
 
       - name: Get meridian version
