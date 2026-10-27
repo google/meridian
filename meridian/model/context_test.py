@@ -1163,10 +1163,15 @@ class ContextTest(
         media_prior_type=media_prior_type,
         rf_prior_type=rf_prior_type,
     )
+    # Copying the test data outside the block keeps `InputData` warnings about
+    # the data itself out of the warnings counted below.
+    # TODO: Copy it inside the block again once the shared test
+    # data has frequency of at least 1.
+    data = self.input_data_with_media_and_rf
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("module")
       context.ModelContext(
-          input_data=self.input_data_with_media_and_rf,
+          input_data=data,
           model_spec=model_spec,
       )
       self.assertLen(w, 1)

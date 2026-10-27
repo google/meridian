@@ -15,6 +15,8 @@
 import dataclasses
 import datetime
 import itertools
+import re
+import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -26,6 +28,18 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import xarray.testing as xrt
+
+
+def _with_cell_value(da: xr.DataArray, value: float) -> xr.DataArray:
+  """Returns a copy of `da` with one cell (first geo and channel) set."""
+  da = da.astype(float)
+  da[{dim: 5 if dim == constants.MEDIA_TIME else 0 for dim in da.dims}] = value
+  return da
+
+
+def _at_least_one(frequency: xr.DataArray) -> xr.DataArray:
+  """Returns a copy of `frequency` with every value raised to at least 1."""
+  return frequency.copy(data=np.maximum(frequency.values, 1.0))
 
 
 class InputDataTest(parameterized.TestCase):
@@ -2237,6 +2251,116 @@ class NonpaidInputDataTest(parameterized.TestCase):
               self.lagged_organic_frequency, constants.ORGANIC_FREQUENCY
           ),
       )
+
+  def _input_data_with_rf(self, **overrides) -> input_data.InputData:
+    """Builds InputData with valid paid and organic R&F, plus `overrides`."""
+    kwargs = dict(
+        controls=self.controls,
+        kpi=self.kpi,
+        kpi_type=constants.NON_REVENUE,
+        revenue_per_kpi=self.revenue_per_kpi,
+        population=self.population,
+        media=self.lagged_media,
+        media_spend=self.media_spend,
+        reach=self.lagged_reach,
+        frequency=_at_least_one(self.lagged_frequency),
+        rf_spend=self.rf_spend,
+        organic_reach=self.lagged_organic_reach,
+        organic_frequency=_at_least_one(self.lagged_organic_frequency),
+    )
+    kwargs.update(overrides)
+    return input_data.InputData(**kwargs)
+
+  def _assert_no_warning_matching(self, regex: str, **overrides):
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter("always")
+      self._input_data_with_rf(**overrides)
+    self.assertEmpty(
+        [str(w.message) for w in caught if re.search(regex, str(w.message))]
+    )
+
+  def test_valid_rf_and_population_no_warning(self):
+    self._assert_no_warning_matching("below 1|Population must be positive")
+
+  @parameterized.named_parameters(
+      dict(testcase_name="fractional", frequency=0.5),
+      dict(testcase_name="zero", frequency=0.0),
+      dict(testcase_name="beyond_tolerance", frequency=0.998),
+  )
+  def test_frequency_below_one_with_positive_reach_warns(self, frequency):
+    with self.assertWarnsRegex(
+        UserWarning,
+        expected_regex=(
+            r"^Frequency is below 1 where reach is positive\. Number of"
+            r" affected \(geo, time\) cells by channel: \{'rf_ch_0': 1\}\."
+        ),
+    ):
+      self._input_data_with_rf(
+          reach=_with_cell_value(self.lagged_reach, 1000.0),
+          frequency=_with_cell_value(
+              _at_least_one(self.lagged_frequency), frequency
+          ),
+      )
+
+  def test_organic_frequency_below_one_with_positive_reach_warns(self):
+    with self.assertWarnsRegex(
+        UserWarning,
+        expected_regex=(
+            r"^Organic Frequency is below 1 where reach is positive\. Number of"
+            r" affected \(geo, time\) cells by channel:"
+            r" \{'organic_rf_ch_0': 1\}\."
+        ),
+    ):
+      self._input_data_with_rf(
+          organic_reach=_with_cell_value(self.lagged_organic_reach, 1000.0),
+          organic_frequency=_with_cell_value(
+              _at_least_one(self.lagged_organic_frequency), 0.5
+          ),
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="zero_reach_zero_frequency", reach=0.0, frequency=0.0),
+      dict(
+          testcase_name="zero_reach_fractional_frequency",
+          reach=0.0,
+          frequency=0.5,
+      ),
+      dict(
+          testcase_name="within_tolerance", reach=1000.0, frequency=0.9995
+      ),
+  )
+  def test_frequency_below_one_not_flagged(self, reach, frequency):
+    self._assert_no_warning_matching(
+        "below 1",
+        reach=_with_cell_value(self.lagged_reach, reach),
+        frequency=_with_cell_value(
+            _at_least_one(self.lagged_frequency), frequency
+        ),
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="zero", population=0.0),
+      dict(testcase_name="negative", population=-100.0),
+  )
+  def test_non_positive_population_warns(self, population):
+    pop = self.population.astype(float)
+    pop[1] = population
+    geo = str(pop.coords[constants.GEO].values[1])
+    with self.assertWarnsRegex(
+        UserWarning,
+        expected_regex=(
+            r"^Population must be positive, but these geos have a population"
+            rf" of 0 or below: \['{geo}'\]\."
+        ),
+    ):
+      self._input_data_with_rf(population=pop)
+
+  def test_small_positive_population_no_warning(self):
+    pop = self.population.astype(float)
+    pop[1] = 1e-6
+    self._assert_no_warning_matching(
+        "Population must be positive", population=pop
+    )
 
   def test_currency_code_default_is_none(self):
     data = input_data.InputData(
