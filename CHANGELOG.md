@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Expose `posterior_sampler._compute_tau_g` publicly as
+    `meridian.model.equations.compute_tau_g`, and fix its `TypeError` for
+    batched inputs on the JAX backend.
 *   Enable Jinja2 HTML autoescaping for `.html.jinja` report templates.
 *   Fix `NDArrayInputDataBuilder.with_organic_reach` setting the organic
     frequency `DataArray` name to `organic_reach` instead of

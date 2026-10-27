@@ -91,15 +91,7 @@ def _get_tau_g(
     parameter with zero at position `baseline_geo_idx` and matching
     `tau_g_excl_baseline` elsewhere.
   """
-  shape = tau_g_excl_baseline.shape[:-1] + (1,)
-  tau_g = backend.concatenate(
-      [
-          tau_g_excl_baseline[..., :baseline_geo_idx],
-          backend.zeros(shape, dtype=tau_g_excl_baseline.dtype),
-          tau_g_excl_baseline[..., baseline_geo_idx:],
-      ],
-      axis=-1,
-  )
+  tau_g = equations.compute_tau_g(tau_g_excl_baseline, baseline_geo_idx)
   return backend.tfd.Deterministic(tau_g, name="tau_g")
 
 

@@ -31,7 +31,37 @@ from meridian.model import context
 
 __all__ = [
     "ModelEquations",
+    "compute_tau_g",
 ]
+
+
+def compute_tau_g(
+    tau_g_excl_baseline: backend.Tensor, baseline_geo_idx: int
+) -> backend.Tensor:
+  """Computes `tau_g` from `tau_g_excl_baseline`.
+
+  This function computes `tau_g` by inserting zeros at the `baseline_geo_idx`
+  position along the last dimension of `tau_g_excl_baseline`.
+
+  Args:
+    tau_g_excl_baseline: A tensor of shape `[..., n_geos - 1]` representing the
+      `tau_g` parameters excluding the baseline geo.
+    baseline_geo_idx: The index of the baseline geo to be set to zero.
+
+  Returns:
+    A tensor of shape `[..., n_geos]` containing the `tau_g` values, with
+    zero at `baseline_geo_idx` and values from `tau_g_excl_baseline`
+    elsewhere.
+  """
+  shape = tau_g_excl_baseline.shape[:-1] + (1,)
+  return backend.concatenate(
+      [
+          tau_g_excl_baseline[..., :baseline_geo_idx],
+          backend.zeros(shape, dtype=tau_g_excl_baseline.dtype),
+          tau_g_excl_baseline[..., baseline_geo_idx:],
+      ],
+      axis=-1,
+  )
 
 
 def _solve_coefficient_mean(

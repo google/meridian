@@ -1550,5 +1550,65 @@ class ComputeNonMediaTreatmentsBaselineTest(
       context.ModelContext(data, model_spec)
 
 
+class ComputeTauGTest(test_utils.MeridianTestCase):
+
+  @parameterized.named_parameters(
+      ("first_geo", 0, [0.0, 1.5, -2.0, 3.0]),
+      ("middle_geo", 2, [1.5, -2.0, 0.0, 3.0]),
+      ("last_geo", 3, [1.5, -2.0, 3.0, 0.0]),
+  )
+  def test_compute_tau_g_1d_and_batched(
+      self, baseline_geo_idx: int, expected_1d: list[float]
+  ) -> None:
+    excl_1d = backend.to_tensor([1.5, -2.0, 3.0], dtype=backend.float_dtype)
+    actual_1d = equations.compute_tau_g(excl_1d, baseline_geo_idx)
+    test_utils.assert_allclose(
+        actual_1d, backend.to_tensor(expected_1d, dtype=backend.float_dtype)
+    )
+
+    # Three chains (the draws, doubled, tripled) of two draws each, so the
+    # leading axes have distinct sizes greater than 1: shape (3, 2, 3).
+    draws = np.array([[1.5, -2.0, 3.0], [-1.5, 2.0, -3.0]])
+    expected_draws = np.array([expected_1d, [-v for v in expected_1d]])
+    excl_batched = backend.to_tensor(
+        np.stack([draws, 2 * draws, 3 * draws]), dtype=backend.float_dtype
+    )
+    actual_batched = equations.compute_tau_g(excl_batched, baseline_geo_idx)
+    test_utils.assert_allclose(
+        actual_batched,
+        backend.to_tensor(
+            np.stack([expected_draws, 2 * expected_draws, 3 * expected_draws]),
+            dtype=backend.float_dtype,
+        ),
+    )
+
+  def test_compute_tau_g_national_model(self) -> None:
+    # A national model has one geo, so `tau_g_excl_baseline` is empty.
+    excl_1d = backend.to_tensor(np.zeros((0,)), dtype=backend.float_dtype)
+    test_utils.assert_allclose(
+        equations.compute_tau_g(excl_1d, 0),
+        backend.to_tensor([0.0], dtype=backend.float_dtype),
+    )
+
+    excl_batched = backend.to_tensor(
+        np.zeros((3, 2, 0)), dtype=backend.float_dtype
+    )
+    test_utils.assert_allclose(
+        equations.compute_tau_g(excl_batched, 0),
+        backend.to_tensor(np.zeros((3, 2, 1)), dtype=backend.float_dtype),
+    )
+
+  @parameterized.named_parameters(
+      ("float32", np.float32),
+      ("float64", np.float64),
+  )
+  def test_compute_tau_g_preserves_dtype(
+      self, dtype: type[np.floating]
+  ) -> None:
+    excl = backend.to_tensor(np.array([[1.5, -2.0, 3.0]], dtype=dtype))
+    actual = equations.compute_tau_g(excl, 1)
+    self.assertEqual(np.asarray(actual).dtype, dtype)
+
+
 if __name__ == "__main__":
   absltest.main()
