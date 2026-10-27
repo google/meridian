@@ -98,8 +98,8 @@ _N_CHAINS = 2
 _N_KEEP = 10
 _N_DRAWS = 10
 _N_GEOS = 5
-_N_TIMES = 49
-_N_MEDIA_TIMES = 52
+_N_TIMES = 52
+_N_MEDIA_TIMES = 55
 _N_CONTROLS = 2
 _N_MEDIA_CHANNELS = 3
 _N_RF_CHANNELS = 2
@@ -2650,9 +2650,12 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         np.array(analysis_test_utils.HILL_CURVES_SCALED_COUNT_HISTOGRAM),
         atol=1e-5,
     )
+    # The count histogram is derived from float32 media values, so the
+    # last digits vary slightly across backends and library builds.
     backend_test_utils.assert_allclose(
         list(hill_table[constants.COUNT_HISTOGRAM])[-5:],
         np.array(analysis_test_utils.HILL_CURVES_COUNT_HISTOGRAM),
+        rtol=1e-5,
         atol=1e-5,
     )
     backend_test_utils.assert_allclose(
@@ -3716,63 +3719,63 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
                 [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
                 [
                     [
-                        [1.87995589, 1.89611471, 0.94143367, 2.77492642],
-                        [1.54409409, 1.52347374, 1.24998319, 1.86007643],
+                        [7.69926214, 7.50245428, 0.49687046, 15.15186405],
+                        [1.99646878, 1.99435663, 0.19040687, 3.80365252],
                     ],
                     [
-                        [2.14786601, 2.11210585, 1.53225815, 2.79395390],
-                        [0.86134517, 0.84939533, 0.67261636, 1.06261110],
+                        [4.13095951, 4.02684259, 0.3445192, 8.04976273],
+                        [1.18052232, 1.17896688, 0.16128272, 2.19977045],
                     ],
                     [
-                        [2.02160525, 2.01261830, 1.07597828, 2.98439527],
-                        [0.60505420, 0.59656411, 0.46712375, 0.75177753],
+                        [2.8567369, 2.78506947, 0.25651497, 5.54798174],
+                        [0.84993601, 0.84853214, 0.13989758, 1.5599376],
                     ],
                 ],
             ),
             constants.OPTIMAL_FREQUENCY: (
                 [constants.RF_CHANNEL],
-                [2.0, 1.0],
+                [1.0, 1.0],
             ),
             constants.OPTIMIZED_INCREMENTAL_OUTCOME: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [1110.80200195, 1092.30798340, 792.43090820, 1444.93640137],
-                    [822.81188965, 811.82385254, 666.08703613, 991.19152832],
+                    [4224.161, 4116.1836, 272.60547, 8312.994],
+                    [1132.9724, 1131.774, 108.05367, 2158.5283],
                 ],
             ),
             constants.OPTIMIZED_ROI: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [2.14786601, 2.11210585, 1.53225815, 2.79395390],
-                    [1.54409409, 1.52347374, 1.24998319, 1.86007643],
+                    [7.699262, 7.5024543, 0.49687046, 15.151864],
+                    [1.9964688, 1.9943566, 0.19040687, 3.8036525],
                 ],
             ),
             constants.OPTIMIZED_EFFECTIVENESS: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [0.00027731, 0.00027270, 0.00019783, 0.00036073],
-                    [0.00019437, 0.00019178, 0.00015735, 0.00023415],
+                    [0.00098064, 0.00095557, 0.00006329, 0.00192987],
+                    [0.00025402, 0.00025375, 0.00002423, 0.00048396],
                 ],
             ),
             constants.OPTIMIZED_MROI_BY_REACH: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [2.14786744, 2.11213827, 1.53223789, 2.79396868],
-                    [1.54409289, 1.52347136, 1.24995458, 1.86003268],
+                    [7.699267, 7.5023375, 0.4968721, 15.151757],
+                    [1.9964688, 1.9943541, 0.19040592, 3.8035636],
                 ],
             ),
             constants.OPTIMIZED_MROI_BY_FREQUENCY: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [2.42458034, 2.36427331, 0.21445109, 4.69357109],
-                    [0.27252775, 0.26730531, 0.13575560, 0.41464081],
+                    [0.8291027, 0.812788, 0.3070481, 1.372371],
+                    [0.55447656, 0.5531291, 0.15496944, 0.9586987],
                 ],
             ),
             constants.OPTIMIZED_CPIK: (
                 [constants.RF_CHANNEL, constants.METRIC],
                 [
-                    [1.58747256, 1.59502435, 1.12389696, 2.04926896],
-                    [2.10803270, 2.12235498, 1.68811047, 2.51203609],
+                    [3.258358, 3.2548585, 0.20723523, 6.319555],
+                    [8.598265, 8.436527, 0.8255227, 16.491003],
                 ],
             ),
         },
@@ -3941,56 +3944,56 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           use_posterior=False,
           selected_geos=None,
           selected_times=None,
-          expected_value=0.5,
+          expected_value=0.1,
       ),
       dict(
           testcase_name="prior_selected_times",
           use_posterior=False,
           selected_geos=None,
           selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.5,
+          expected_value=0.3,
       ),
       dict(
           testcase_name="prior_selected_geos",
           use_posterior=False,
           selected_geos=("geo_1", "geo_3"),
           selected_times=None,
-          expected_value=0.5,
+          expected_value=0.6,
       ),
       dict(
           testcase_name="prior_selected_geos_times",
           use_posterior=False,
           selected_geos=("geo_1", "geo_3"),
           selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=0.5,
+          expected_value=0.7,
       ),
       dict(
           testcase_name="posterior",
           use_posterior=True,
           selected_geos=None,
           selected_times=None,
-          expected_value=1.0,
+          expected_value=0.5,
       ),
       dict(
           testcase_name="posterior_selected_times",
           use_posterior=True,
           selected_geos=None,
           selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=1.0,
+          expected_value=0.0,
       ),
       dict(
           testcase_name="posterior_selected_geos",
           use_posterior=True,
           selected_geos=("geo_1", "geo_3"),
           selected_times=None,
-          expected_value=1.0,
+          expected_value=0.5,
       ),
       dict(
           testcase_name="posterior_selected_geos_times",
           use_posterior=True,
           selected_geos=("geo_1", "geo_3"),
           selected_times=("2021-04-19", "2021-09-13", "2021-12-13"),
-          expected_value=1.0,
+          expected_value=0.5,
       ),
   )
   def test_negative_baseline_probability_returns_correct_values(
@@ -5212,11 +5215,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         | set(constants.ORGANIC_MEDIA_PARAMETER_NAMES)
         | set(constants.ORGANIC_RF_PARAMETER_NAMES)
         | set(constants.NON_MEDIA_PARAMETER_NAMES)
-    ) - {
-        constants.CONTRIBUTION_OM,
-        constants.CONTRIBUTION_ORF,
-        constants.CONTRIBUTION_N,
-    }
+    )
 
     self.assertSetEqual(set(rhat.keys()), expected_params)
 
@@ -5231,9 +5230,6 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         | set(constants.NON_MEDIA_PARAMETER_NAMES)
     )
     excluded_params = {
-        constants.CONTRIBUTION_OM,
-        constants.CONTRIBUTION_ORF,
-        constants.CONTRIBUTION_N,
         constants.SLOPE_M,
         constants.SLOPE_OM,
     }

@@ -117,7 +117,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -186,7 +186,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -247,7 +247,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
@@ -307,7 +307,7 @@ class PriorDistributionSamplerTest(
     sigma_shape = (
         (1, self._N_DRAWS, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (1, self._N_DRAWS, 1)
+        else (1, self._N_DRAWS)
     )
     geo_shape = (1, self._N_DRAWS, self._N_GEOS)
     time_shape = (1, self._N_DRAWS, self._N_TIMES_SHORT)
