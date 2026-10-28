@@ -17,6 +17,7 @@
 import abc
 from collections.abc import Callable
 import functools
+import itertools
 import os
 from typing import Any, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import warnings
@@ -856,6 +857,21 @@ def _jax_enable_op_determinism():
   )
 
 
+def _tf_block_until_ready(tensors: Any) -> Any:
+  """Returns `tensors` unchanged: TensorFlow eager execution is synchronous.
+
+  This is the TensorFlow counterpart of `jax.block_until_ready`, which waits for
+  the asynchronously dispatched computation of a structure of arrays.
+
+  Args:
+    tensors: Any structure of tensors.
+
+  Returns:
+    `tensors`, unchanged.
+  """
+  return tensors
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -986,25 +1002,138 @@ if _BACKEND == config.Backend.JAX:
 
   random = _JaxRandom()
 
-  @functools.partial(
-      jax.jit,
-      static_argnames=[
-          "joint_dist",
-          "n_chains",
-          "n_draws",
-          "num_adaptation_steps",
-          "dual_averaging_kwargs",
-          "max_tree_depth",
-          "unrolled_leapfrog_steps",
-          "parallel_iterations",
-      ],
+  # Arguments of the NUTS sampler that configure the compiled computation and
+  # must therefore be known at compile time.
+  _NUTS_STATIC_ARGNAMES = (
+      "joint_dist",
+      "n_chains",
+      "n_draws",
+      "num_adaptation_steps",
+      "dual_averaging_kwargs",
+      "max_tree_depth",
+      "unrolled_leapfrog_steps",
+      "parallel_iterations",
   )
+
+  @functools.partial(jax.jit, static_argnames=_NUTS_STATIC_ARGNAMES)
   def _jax_xla_windowed_adaptive_nuts(**kwargs):
     """JAX-specific JIT wrapper for the NUTS sampler."""
     kwargs["seed"] = random.prng_key(kwargs["seed"])
     return experimental.mcmc.windowed_adaptive_nuts(**kwargs)
 
-  xla_windowed_adaptive_nuts = _jax_xla_windowed_adaptive_nuts
+  # Step callbacks of the NUTS sampler runs in flight, keyed by the handle that
+  # `xla_windowed_adaptive_nuts` passes into the compiled sampler. Looking the
+  # callback up at run time lets one compiled sampler serve every run.
+  _nuts_step_callbacks: dict[int, Callable[[int], None]] = {}
+  _nuts_step_callback_handles = itertools.count()
+
+  def _report_nuts_step(handle, has_stepped, n_divergent) -> None:
+    """Forwards one step of the compiled NUTS sampler to its step callback.
+
+    Runs on the host, through `jax.debug.callback`, for every step that the
+    sampler traces.
+
+    Args:
+      handle: Key of the step callback in `_nuts_step_callbacks`.
+      has_stepped: Scalar boolean, whether any chain took a leapfrog step.
+      n_divergent: Scalar count of chains whose transition diverged.
+    """
+    if not has_stepped:
+      return
+    step_callback = _nuts_step_callbacks.get(int(handle))
+    if step_callback is None:
+      return
+    try:
+      step_callback(int(n_divergent))
+    except Exception as e:  # pylint: disable=broad-exception-caught
+      # An exception raised inside a JAX host callback aborts the whole
+      # sampling run. Reporting progress must never do that, so the failure is
+      # reported as a warning instead.
+      warnings.warn(
+          f"The MCMC step callback raised {e!r}; sampling continues.",
+          RuntimeWarning,
+      )
+
+  def _jax_nuts_step_reporting_trace_fn(handle):
+    """Returns the default NUTS trace function, reporting every step to host."""
+
+    def trace_fn(state, bijector, is_adapting, kernel_results):
+      trace = experimental.mcmc.default_nuts_trace_fn(
+          state, bijector, is_adapting, kernel_results
+      )
+      # TFP evaluates the trace function once on the initial state, before the
+      # first step, to allocate the trace arrays. That evaluation takes no
+      # leapfrog steps, whereas every NUTS transition takes at least one.
+      # Reducing to scalars on device avoids copying per-chain arrays to host.
+      jax.debug.callback(
+          _report_nuts_step,
+          handle,
+          jax_ops.any(trace["n_steps"] > 0),
+          jax_ops.count_nonzero(trace["diverging"]),
+      )
+      return trace
+
+    return trace_fn
+
+  @functools.partial(jax.jit, static_argnames=_NUTS_STATIC_ARGNAMES)
+  def _jax_xla_windowed_adaptive_nuts_reporting_steps(
+      step_callback_handle, **kwargs
+  ):
+    """JIT wrapper for the NUTS sampler that reports every step to the host.
+
+    TFP calls the trace function only for the draws after adaptation. To report
+    the adaptation steps too, the sampler runs with `discard_tuning=False` and
+    drops the adaptation draws itself. The kernel, the adaptation schedule, the
+    seeds and the outputs are the same as those of
+    `_jax_xla_windowed_adaptive_nuts`.
+
+    Args:
+      step_callback_handle: Key of the step callback in `_nuts_step_callbacks`.
+      **kwargs: Arguments of `tfp.experimental.mcmc.windowed_adaptive_nuts`.
+
+    Returns:
+      The sampler output, without the adaptation draws.
+    """
+    kwargs["seed"] = random.prng_key(kwargs["seed"])
+    num_adaptation_steps = kwargs.get("num_adaptation_steps", 500)
+    result = experimental.mcmc.windowed_adaptive_nuts(
+        trace_fn=_jax_nuts_step_reporting_trace_fn(step_callback_handle),
+        discard_tuning=False,
+        **kwargs,
+    )
+    return tree_util.tree_map(lambda x: x[num_adaptation_steps:], result)
+
+  def xla_windowed_adaptive_nuts(
+      *, step_callback: Optional[Callable[[int], None]] = None, **kwargs
+  ):
+    """Runs `tfp.experimental.mcmc.windowed_adaptive_nuts` compiled with XLA.
+
+    Args:
+      step_callback: Optional callable invoked on the host after every MCMC
+        step, adaptation steps included, with the number of chains whose
+        transition diverged. It runs on a JAX callback thread and must be fast;
+        exceptions it raises are reported as warnings. Reporting steps holds the
+        adaptation draws in device memory until the run finishes, which raises
+        the draw-buffer memory by `num_adaptation_steps / n_draws`.
+      **kwargs: Arguments of `tfp.experimental.mcmc.windowed_adaptive_nuts`.
+
+    Returns:
+      The sampler output, as `tfp.experimental.mcmc.windowed_adaptive_nuts`
+      returns it.
+    """
+    if step_callback is None:
+      return _jax_xla_windowed_adaptive_nuts(**kwargs)
+    handle = next(_nuts_step_callback_handles)
+    _nuts_step_callbacks[handle] = step_callback
+    try:
+      result = _jax_xla_windowed_adaptive_nuts_reporting_steps(handle, **kwargs)
+      # Wait for the run and for its pending step callbacks, so that every
+      # step has been reported by the time the sampler returns.
+      result = jax.block_until_ready(result)
+      jax.effects_barrier()
+    finally:
+      del _nuts_step_callbacks[handle]
+    return result
 
   def _jax_adstock_process_conv(
       media: "_jax.Array", weights: "_jax.Array", n_times_output: int
@@ -1129,6 +1258,7 @@ if _BACKEND == config.Backend.JAX:
   allclose = _ops.allclose
   arange = _jax_arange
   argmax = _jax_argmax
+  block_until_ready = jax.block_until_ready
   boolean_mask = _jax_boolean_mask
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
@@ -1273,7 +1403,23 @@ elif _BACKEND == config.Backend.TENSORFLOW:
     """TensorFlow-specific XLA wrapper for the NUTS sampler."""
     return experimental.mcmc.windowed_adaptive_nuts(**kwargs)
 
-  xla_windowed_adaptive_nuts = _tf_xla_windowed_adaptive_nuts
+  def xla_windowed_adaptive_nuts(
+      *, step_callback: Optional[Callable[[int], None]] = None, **kwargs
+  ):
+    """Runs `tfp.experimental.mcmc.windowed_adaptive_nuts` compiled with XLA.
+
+    Args:
+      step_callback: Accepted for compatibility with the JAX backend and
+        ignored: an XLA-compiled TensorFlow function cannot call back into
+        Python, so TensorFlow cannot report individual MCMC steps.
+      **kwargs: Arguments of `tfp.experimental.mcmc.windowed_adaptive_nuts`.
+
+    Returns:
+      The sampler output, as `tfp.experimental.mcmc.windowed_adaptive_nuts`
+      returns it.
+    """
+    del step_callback  # Unsupported on TensorFlow, see the docstring.
+    return _tf_xla_windowed_adaptive_nuts(**kwargs)
 
   def _tf_adstock_process(
       media: "_tf.Tensor", weights: "_tf.Tensor", n_times_output: int
@@ -1321,6 +1467,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   allclose = _ops.experimental.numpy.allclose
   arange = _tf_arange
   argmax = _tf_argmax
+  block_until_ready = _tf_block_until_ready
   boolean_mask = _tf_boolean_mask
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to

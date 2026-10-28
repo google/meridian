@@ -632,6 +632,22 @@ class BackendTest(parameterized.TestCase):
     self.assertEqual(tensor.dtype, backend.int32)
     test_utils.assert_allequal(tensor, np.array([1, 2], dtype=np.int32))
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_block_until_ready(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    structure = {
+        "vector": backend.to_tensor([1.0, 2.0]) + backend.to_tensor([3.0, 4.0]),
+        "pair": (backend.to_tensor(5), backend.to_tensor([6, 7])),
+    }
+
+    ready = backend.block_until_ready(structure)
+
+    self.assertEqual(ready.keys(), structure.keys())
+    self.assertIsInstance(ready["vector"], backend.Tensor)
+    test_utils.assert_allclose(ready["vector"], np.array([4.0, 6.0]))
+    test_utils.assert_allequal(ready["pair"][0], np.array(5))
+    test_utils.assert_allequal(ready["pair"][1], np.array([6, 7]))
+
   def test_to_tensor_warns_on_implicit_downcast_x64_disabled_for_jax(self):
     """Tests warning issue when float64 is cast to float32 (x64 disabled)."""
     self._set_backend_for_test(_JAX)
@@ -2365,6 +2381,105 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
             " issue with JAX JIT compilation caching the seed incorrectly."
         ),
     )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_step_callback_does_not_change_results(self, backend_name):
+    """The step-reporting sampler must draw exactly what the plain one draws."""
+    self._set_backend_for_test(backend_name)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        seed_int=123,
+    )
+
+    draws, trace = self._run_sampling(**common_args)
+    n_divergent_per_step = []
+    draws_reported, trace_reported = self._run_sampling(
+        step_callback=n_divergent_per_step.append, **common_args
+    )
+
+    test_utils.assert_allequal(draws["x"], draws_reported["x"])
+    self.assertEqual(trace.keys(), trace_reported.keys())
+    for key in trace:
+      test_utils.assert_allequal(trace[key], trace_reported[key])
+
+    if backend_name == _JAX:
+      # Every adaptation step and every draw is reported, exactly once.
+      self.assertLen(n_divergent_per_step, 3 + 5)
+      for n_divergent in n_divergent_per_step:
+        self.assertIsInstance(n_divergent, int)
+        self.assertBetween(n_divergent, 0, 2)
+    else:
+      # XLA-compiled TensorFlow functions cannot call back into Python.
+      self.assertEmpty(n_divergent_per_step)
+
+  def test_step_callback_without_num_adaptation_steps_uses_default_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=1)
+    steps = []
+    draws, trace = backend.xla_windowed_adaptive_nuts(
+        joint_dist=model,
+        n_chains=1,
+        n_draws=2,
+        seed=backend.RNGHandler(11).get_kernel_seed(),
+        step_callback=steps.append,
+    )
+
+    # Default `num_adaptation_steps` in TFP is 500.
+    self.assertLen(steps, 500 + 2)
+    self.assertEqual(tuple(draws["x"].shape), (2, 1, 1))
+    self.assertEqual(tuple(trace["step_size"].shape), (2,))
+
+  def test_step_callbacks_of_consecutive_runs_are_isolated_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=_JAX,
+        model=model,
+        n_chains=2,
+        n_draws=4,
+        num_adaptation_steps=2,
+    )
+    first_steps = []
+    second_steps = []
+
+    self._run_sampling(
+        seed_int=1, step_callback=first_steps.append, **common_args
+    )
+    self._run_sampling(
+        seed_int=2, step_callback=second_steps.append, **common_args
+    )
+
+    self.assertLen(first_steps, 6)
+    self.assertLen(second_steps, 6)
+
+  def test_step_callback_exception_does_not_abort_sampling_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    def failing_step_callback(n_divergent: int) -> None:
+      del n_divergent
+      raise ValueError("progress sink unavailable")
+
+    model = self._get_test_model(dims=2)
+    with self.assertWarnsRegex(RuntimeWarning, "progress sink unavailable"):
+      draws, _ = self._run_sampling(
+          backend_name=_JAX,
+          model=model,
+          n_chains=2,
+          n_draws=4,
+          num_adaptation_steps=2,
+          seed_int=7,
+          step_callback=failing_step_callback,
+      )
+
+    self.assertEqual(tuple(draws["x"].shape), (4, 2, 2))
 
 
 if __name__ == "__main__":

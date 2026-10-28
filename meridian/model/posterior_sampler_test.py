@@ -24,11 +24,13 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.backend import test_utils
+from meridian.data import test_utils as data_test_utils
 from meridian.model import equations
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model import posterior_sampler
 from meridian.model import prior_distribution
+from meridian.model import progress
 from meridian.model import spec
 import numpy as np
 
@@ -1062,6 +1064,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
     actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
     self._assert_seeds_equal(actual_seed, expected_seed)
@@ -1195,6 +1198,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
     actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
     self._assert_seeds_equal(actual_seed, expected_seed)
@@ -1320,6 +1324,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
     actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
     self._assert_seeds_equal(actual_seed, expected_seed)
@@ -1376,6 +1381,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
     actual_seed = mock_sample_posterior.call_args.kwargs["seed"]
     self._assert_seeds_equal(actual_seed, expected_seed)
@@ -1988,6 +1994,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
 
   def test_sample_posterior_with_none_seed_jax(self):
@@ -2037,6 +2044,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
 
   def test_sample_posterior_with_none_seed_tf(self):
@@ -2087,6 +2095,7 @@ class PosteriorMCMCSamplerTest(
         unrolled_leapfrog_steps=1,
         parallel_iterations=10,
         seed=mock.ANY,
+        step_callback=None,
     )
 
   @parameterized.named_parameters(
@@ -2452,6 +2461,316 @@ class PosteriorMCMCSamplerTest(
         constants.ROTATED_KNOT_REST,
         posterior,
         "rotated_knot_rest must not be saved to InferenceData.",
+    )
+
+  def _mock_xla_windowed_adaptive_nuts(self) -> mock.MagicMock:
+    return self.enter_context(
+        mock.patch.object(
+            backend,
+            "xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+
+  def test_sample_posterior_without_progress_callback_passes_no_step_callback(
+      self,
+  ):
+    mock_sample_posterior = self._mock_xla_windowed_adaptive_nuts()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+
+    meridian.sample_posterior(
+        n_chains=self._N_CHAINS,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+    )
+
+    self.assertIsNone(mock_sample_posterior.call_args.kwargs["step_callback"])
+
+  def test_sample_posterior_reports_progress(self):
+    mock_sample_posterior = self._mock_xla_windowed_adaptive_nuts()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+    snapshots = []
+    n_chain_batches = 2
+    # 2 batches x 2 chains x 10 kept draws = 40 draws to reconstruct.
+    reconstruction_batch_size = 15
+
+    meridian.sample_posterior(
+        n_chains=[self._N_CHAINS] * n_chain_batches,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=1,
+        reconstruction_batch_size=reconstruction_batch_size,
+        progress_callback=snapshots.append,
+    )
+
+    # The mocked sampler reports no steps, so progress advances per batch.
+    for call in mock_sample_posterior.call_args_list:
+      self.assertIsNotNone(call.kwargs["step_callback"])
+    n_draws = self._N_ADAPT + self._N_BURNIN + self._N_KEEP
+    n_divergent_per_batch = int(
+        np.count_nonzero(
+            np.asarray(self.test_trace[constants.DIVERGING])[self._N_BURNIN :]
+        )
+    )
+    common = dict(
+        n_chain_batches=n_chain_batches,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+    )
+    expected = [
+        progress.PosteriorSamplingProgress(
+            stage=progress.PosteriorSamplingStage.ADAPTATION,
+            chain_batch=0,
+            draw=0,
+            n_divergent=0,
+            **common,
+        ),
+        progress.PosteriorSamplingProgress(
+            stage=progress.PosteriorSamplingStage.KEEP,
+            chain_batch=0,
+            draw=n_draws,
+            n_divergent=n_divergent_per_batch,
+            **common,
+        ),
+        progress.PosteriorSamplingProgress(
+            stage=progress.PosteriorSamplingStage.ADAPTATION,
+            chain_batch=1,
+            draw=0,
+            n_divergent=n_divergent_per_batch,
+            **common,
+        ),
+        progress.PosteriorSamplingProgress(
+            stage=progress.PosteriorSamplingStage.KEEP,
+            chain_batch=1,
+            draw=n_draws,
+            n_divergent=2 * n_divergent_per_batch,
+            **common,
+        ),
+    ] + [
+        progress.PosteriorSamplingProgress(
+            stage=progress.PosteriorSamplingStage.RECONSTRUCTION,
+            chain_batch=1,
+            draw=n_draws,
+            n_divergent=2 * n_divergent_per_batch,
+            reconstruction_batch=batch,
+            n_reconstruction_batches=3,
+            **common,
+        )
+        for batch in (1, 2, 3)
+    ]
+    self.assertEqual(snapshots, expected)
+    self.assertEqual(
+        snapshots[-1].n_divergent,
+        int(meridian.inference_data.sample_stats.diverging.sum()),  # pyrefly: ignore[missing-attribute]
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="zero_adapt",
+          n_adapt=0,
+          n_burnin=2,
+          n_keep=2,
+          expected_stages=[
+              progress.PosteriorSamplingStage.BURNIN,
+              progress.PosteriorSamplingStage.BURNIN,
+              progress.PosteriorSamplingStage.BURNIN,
+              progress.PosteriorSamplingStage.KEEP,
+              progress.PosteriorSamplingStage.KEEP,
+          ],
+      ),
+      dict(
+          testcase_name="zero_adapt_and_burnin",
+          n_adapt=0,
+          n_burnin=0,
+          n_keep=2,
+          expected_stages=[
+              progress.PosteriorSamplingStage.KEEP,
+              progress.PosteriorSamplingStage.KEEP,
+              progress.PosteriorSamplingStage.KEEP,
+          ],
+      ),
+  )
+  def test_sample_posterior_progress_skips_empty_initial_stages(
+      self,
+      n_adapt: int,
+      n_burnin: int,
+      n_keep: int,
+      expected_stages: list[progress.PosteriorSamplingStage],
+  ):
+    n_draws = n_burnin + n_keep
+    base_states = self.test_posterior_states_media_and_rf
+    states = base_states._replace(
+        **{k: v[:n_draws] for k, v in base_states._asdict().items()}
+    )
+    trace = {k: v[:n_draws] for k, v in self.test_trace.items()}
+    trace[constants.DIVERGING] = backend.to_tensor(
+        np.ones((n_draws, self._N_CHAINS), dtype=bool)
+    )
+
+    def run_nuts(*, step_callback=None, **kwargs):
+      del kwargs
+      assert step_callback is not None
+      for _ in range(n_adapt + n_draws):
+        step_callback(self._N_CHAINS)
+      return collections.namedtuple("StatesAndTrace", ["all_states", "trace"])(
+          all_states=states, trace=trace
+      )
+
+    self.enter_context(
+        mock.patch.object(
+            backend,
+            "xla_windowed_adaptive_nuts",
+            autospec=True,
+            side_effect=run_nuts,
+        )
+    )
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+    snapshots = []
+
+    meridian.sample_posterior(
+        n_chains=self._N_CHAINS,
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        seed=1,
+        progress_callback=snapshots.append,
+    )
+
+    sampling_snapshots = [
+        s
+        for s in snapshots
+        if s.stage is not progress.PosteriorSamplingStage.RECONSTRUCTION
+    ]
+    self.assertEqual([s.stage for s in sampling_snapshots], expected_stages)
+    self.assertEqual(
+        [s.draw for s in sampling_snapshots],
+        list(range(n_adapt + n_draws + 1)),
+    )
+    # Divergences are counted only during KEEP draws, never during BURNIN.
+    expected_divergent = [
+        self._N_CHAINS * max(draw - n_adapt - n_burnin, 0)
+        for draw in range(n_adapt + n_draws + 1)
+    ]
+    self.assertEqual(
+        [s.n_divergent for s in sampling_snapshots], expected_divergent
+    )
+
+  def test_sample_posterior_progress_callback_exception_warns(self):
+    self._mock_xla_windowed_adaptive_nuts()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+    progress_callback = mock.Mock(side_effect=ValueError("sink unavailable"))
+
+    with self.assertWarnsRegex(RuntimeWarning, "sink unavailable"):
+      meridian.sample_posterior(
+          n_chains=self._N_CHAINS,
+          n_adapt=self._N_ADAPT,
+          n_burnin=self._N_BURNIN,
+          n_keep=self._N_KEEP,
+          progress_callback=progress_callback,
+      )
+
+    # Sampling completed, and the callback kept being called after failing.
+    self.assertTrue(hasattr(meridian.inference_data, constants.POSTERIOR))
+    self.assertGreater(progress_callback.call_count, 1)
+
+  def test_sample_posterior_progress_reports_every_draw_jax(self):
+    if backend.config.get_backend() != backend.config.Backend.JAX:
+      self.skipTest("Only the JAX backend reports every MCMC draw.")
+
+    input_data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=20,
+        n_media_times=23,
+        n_controls=1,
+        n_media_channels=2,
+        seed=0,
+    )
+    n_chains = [1, 1]
+    n_adapt, n_burnin, n_keep = 3, 2, 4
+    n_draws = n_adapt + n_burnin + n_keep
+    sampling_kwargs = dict(
+        n_chains=n_chains,
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        seed=1,
+    )
+
+    expected_meridian = model.Meridian(input_data=input_data)
+    expected_meridian.sample_posterior(**sampling_kwargs)
+    snapshots = []
+    meridian = model.Meridian(input_data=input_data)
+    meridian.sample_posterior(
+        progress_callback=snapshots.append, **sampling_kwargs
+    )
+
+    # Reporting progress does not change the draws.
+    for group in (constants.POSTERIOR, "sample_stats", "trace"):
+      expected_group = getattr(expected_meridian.inference_data, group)
+      actual_group = getattr(meridian.inference_data, group)
+      self.assertCountEqual(actual_group.data_vars, expected_group.data_vars)
+      for name in expected_group.data_vars:
+        test_utils.assert_allequal(
+            actual_group[name].values,
+            expected_group[name].values,
+            err_msg=f"{group}.{name}",
+        )
+
+    def expected_stage(draw: int) -> progress.PosteriorSamplingStage:
+      if max(draw, 1) <= n_adapt:
+        return progress.PosteriorSamplingStage.ADAPTATION
+      if draw <= n_adapt + n_burnin:
+        return progress.PosteriorSamplingStage.BURNIN
+      return progress.PosteriorSamplingStage.KEEP
+
+    sampling_snapshots = [
+        snapshot
+        for snapshot in snapshots
+        if snapshot.stage is not progress.PosteriorSamplingStage.RECONSTRUCTION
+    ]
+    # Each chain batch reports its start, then every single draw.
+    expected_sampling_events = []
+    for chain_batch in range(len(n_chains)):
+      for draw in range(n_draws + 1):
+        expected_sampling_events.append(
+            (chain_batch, draw, expected_stage(draw))
+        )
+    self.assertEqual(
+        [(s.chain_batch, s.draw, s.stage) for s in sampling_snapshots],
+        expected_sampling_events,
+    )
+    reconstruction_snapshots = snapshots[len(sampling_snapshots) :]
+    self.assertEqual(
+        [
+            (s.reconstruction_batch, s.n_reconstruction_batches)
+            for s in reconstruction_snapshots
+        ],
+        [(1, 1)],
+    )
+    self.assertEqual(
+        snapshots[-1].n_divergent,
+        int(meridian.inference_data.sample_stats.diverging.sum()),  # pyrefly: ignore[missing-attribute]
     )
 
 
