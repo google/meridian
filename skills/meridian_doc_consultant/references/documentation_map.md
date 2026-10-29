@@ -402,8 +402,9 @@ experiments usually span both sections.
     *   `https://developers.google.com/meridian/docs/advanced-modeling/holdout-observations`
         (Describes the `holdout` argument of `ModelSpec`, a `HoldoutSpec` that
         can be a `RandomHoldoutSpec` (same number of random time periods per
-        geo), a sequence of `DateRange` (same dates in every geo), or a sequence
-        of `GeoHoldoutSpec` (given dates in given geos). Holdout KPI data is
+        geo, balanced so per-time holdout counts differ by at most one), a
+        sequence of `DateRange` (same dates in every geo), or a sequence of
+        `GeoHoldoutSpec` (given dates in given geos). Holdout KPI data is
         ignored during MCMC training but media data is still used for adstock.
         The main use is out-of-sample goodness of fit (R-squared) to compare
         model specifications such as prior strengths. Recommends a holdout
