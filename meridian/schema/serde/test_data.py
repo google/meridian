@@ -4977,10 +4977,10 @@ def _create_tfp_param(param_name, param_value, distribution):
   match param_value:
     case float() | np.floating():
       return meridian_pb.TfpParameterValue(scalar_value=float(param_value))
-    case int() | np.integer():
-      return meridian_pb.TfpParameterValue(int_value=int(param_value))
     case bool() | np.bool_():
       return meridian_pb.TfpParameterValue(bool_value=bool(param_value))
+    case int() | np.integer():
+      return meridian_pb.TfpParameterValue(int_value=int(param_value))
     case str():
       return meridian_pb.TfpParameterValue(string_value=param_value)
     case None:

@@ -11,7 +11,7 @@ knot_values {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -35,7 +35,7 @@ knot_values {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -56,7 +56,7 @@ knot_values {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -76,7 +76,7 @@ tau_g_excl_baseline {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -100,7 +100,7 @@ tau_g_excl_baseline {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -121,7 +121,7 @@ tau_g_excl_baseline {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -141,7 +141,7 @@ beta_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -159,7 +159,7 @@ beta_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -180,7 +180,7 @@ beta_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -200,7 +200,7 @@ beta_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -218,7 +218,7 @@ beta_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -239,7 +239,7 @@ beta_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -259,7 +259,7 @@ eta_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -277,7 +277,7 @@ eta_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -298,7 +298,7 @@ eta_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -318,7 +318,7 @@ eta_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -336,7 +336,7 @@ eta_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -357,7 +357,7 @@ eta_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -377,7 +377,7 @@ gamma_c {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -401,7 +401,7 @@ gamma_c {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -422,7 +422,7 @@ gamma_c {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -442,7 +442,7 @@ xi_c {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -460,7 +460,7 @@ xi_c {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -481,7 +481,7 @@ xi_c {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -501,7 +501,7 @@ alpha_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -525,7 +525,7 @@ alpha_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -546,7 +546,7 @@ alpha_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -566,7 +566,7 @@ alpha_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -590,7 +590,7 @@ alpha_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -611,7 +611,7 @@ alpha_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -631,7 +631,7 @@ ec_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -667,7 +667,7 @@ ec_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -688,7 +688,7 @@ ec_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -725,7 +725,7 @@ ec_rf {
               parameters {
                 key: "validate_args"
                 value {
-                  int_value: 0
+                  bool_value: false
                 }
               }
             }
@@ -739,7 +739,7 @@ ec_rf {
               parameters {
                 key: "allow_nan_stats"
                 value {
-                  int_value: 1
+                  bool_value: true
                 }
               }
               parameters {
@@ -763,7 +763,7 @@ ec_rf {
               parameters {
                 key: "validate_args"
                 value {
-                  int_value: 0
+                  bool_value: false
                 }
               }
             }
@@ -792,7 +792,7 @@ ec_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -813,7 +813,7 @@ ec_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -833,7 +833,7 @@ slope_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -863,7 +863,7 @@ slope_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -884,7 +884,7 @@ slope_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -904,7 +904,7 @@ slope_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -928,7 +928,7 @@ slope_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -949,7 +949,7 @@ slope_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -969,7 +969,7 @@ sigma {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -987,7 +987,7 @@ sigma {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1008,7 +1008,7 @@ sigma {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1028,7 +1028,7 @@ roi_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1052,7 +1052,7 @@ roi_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1073,7 +1073,7 @@ roi_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1093,7 +1093,7 @@ roi_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1117,7 +1117,7 @@ roi_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1138,7 +1138,7 @@ roi_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1158,7 +1158,7 @@ beta_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1176,7 +1176,7 @@ beta_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1197,7 +1197,7 @@ beta_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1217,7 +1217,7 @@ beta_orf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1235,7 +1235,7 @@ beta_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1256,7 +1256,7 @@ beta_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1276,7 +1276,7 @@ eta_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1294,7 +1294,7 @@ eta_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1315,7 +1315,7 @@ eta_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1335,7 +1335,7 @@ eta_orf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1353,7 +1353,7 @@ eta_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1374,7 +1374,7 @@ eta_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1394,7 +1394,7 @@ gamma_n {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1418,7 +1418,7 @@ gamma_n {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1439,7 +1439,7 @@ gamma_n {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1459,7 +1459,7 @@ xi_n {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1477,7 +1477,7 @@ xi_n {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1498,7 +1498,7 @@ xi_n {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1518,7 +1518,7 @@ alpha_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1542,7 +1542,7 @@ alpha_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1563,7 +1563,7 @@ alpha_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1583,7 +1583,7 @@ alpha_orf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1607,7 +1607,7 @@ alpha_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1628,7 +1628,7 @@ alpha_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1648,7 +1648,7 @@ ec_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1684,7 +1684,7 @@ ec_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1705,7 +1705,7 @@ ec_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1742,7 +1742,7 @@ ec_orf {
               parameters {
                 key: "validate_args"
                 value {
-                  int_value: 0
+                  bool_value: false
                 }
               }
             }
@@ -1756,7 +1756,7 @@ ec_orf {
               parameters {
                 key: "allow_nan_stats"
                 value {
-                  int_value: 1
+                  bool_value: true
                 }
               }
               parameters {
@@ -1780,7 +1780,7 @@ ec_orf {
               parameters {
                 key: "validate_args"
                 value {
-                  int_value: 0
+                  bool_value: false
                 }
               }
             }
@@ -1809,7 +1809,7 @@ ec_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1830,7 +1830,7 @@ ec_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1850,7 +1850,7 @@ slope_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1880,7 +1880,7 @@ slope_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1901,7 +1901,7 @@ slope_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1921,7 +1921,7 @@ slope_orf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -1945,7 +1945,7 @@ slope_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -1966,7 +1966,7 @@ slope_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -1986,7 +1986,7 @@ mroi_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2010,7 +2010,7 @@ mroi_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2031,7 +2031,7 @@ mroi_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2051,7 +2051,7 @@ mroi_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2075,7 +2075,7 @@ mroi_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2096,7 +2096,7 @@ mroi_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2116,7 +2116,7 @@ contribution_m {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2134,7 +2134,7 @@ contribution_m {
         parameters {
           key: "force_probs_to_zero_outside_support"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
         parameters {
@@ -2146,7 +2146,7 @@ contribution_m {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2167,7 +2167,7 @@ contribution_m {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2187,7 +2187,7 @@ contribution_rf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2205,7 +2205,7 @@ contribution_rf {
         parameters {
           key: "force_probs_to_zero_outside_support"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
         parameters {
@@ -2217,7 +2217,7 @@ contribution_rf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2238,7 +2238,7 @@ contribution_rf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2258,7 +2258,7 @@ contribution_om {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2276,7 +2276,7 @@ contribution_om {
         parameters {
           key: "force_probs_to_zero_outside_support"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
         parameters {
@@ -2288,7 +2288,7 @@ contribution_om {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2309,7 +2309,7 @@ contribution_om {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2329,7 +2329,7 @@ contribution_orf {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2347,7 +2347,7 @@ contribution_orf {
         parameters {
           key: "force_probs_to_zero_outside_support"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
         parameters {
@@ -2359,7 +2359,7 @@ contribution_orf {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2380,7 +2380,7 @@ contribution_orf {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
@@ -2400,7 +2400,7 @@ contribution_n {
         parameters {
           key: "allow_nan_stats"
           value {
-            int_value: 1
+            bool_value: true
           }
         }
         parameters {
@@ -2436,7 +2436,7 @@ contribution_n {
         parameters {
           key: "validate_args"
           value {
-            int_value: 0
+            bool_value: false
           }
         }
       }
@@ -2457,7 +2457,7 @@ contribution_n {
   parameters {
     key: "validate_args"
     value {
-      int_value: 0
+      bool_value: false
     }
   }
   parameters {
