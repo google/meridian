@@ -669,6 +669,36 @@ def _merge_prior_tensors(
   )
 
 
+_NATIONAL_KNOTS_WARNING = (
+    "You have enabled the time-varying feature with more than one knot in a"
+    " national model. If the model doesn't converge, consider using"
+    " `knots=1` and/or replacing knots with control variables."
+)
+_NATIONAL_KNOT_OVERLAP_ERROR = (
+    "There are overlapping knots (for mu_t) and changepoints (for beta) in a"
+    " national model. The model is unidentifiable and hurts convergence."
+    " Consider dropping either one of the overlapping knots or changepoints,"
+    " or replacing the knots with control variables."
+)
+_GEO_KNOT_OVERLAP_WARNING = (
+    "There are overlapping knots (for mu_t) and changepoints (for beta) in a"
+    " geo model. If convergence is an issue, consider dropping either one of"
+    " the overlapping knots or changepoints, or replacing the knots with"
+    " control variables."
+)
+
+
+def _knot_overlap_message(
+    message: str, overlaps: Mapping[str, Sequence[datetime.date]]
+) -> str:
+  """Returns `message` with a line that lists the changepoints on a knot."""
+  listed = "; ".join(
+      f"{channel}: {', '.join(date.isoformat() for date in dates)}"
+      for channel, dates in overlaps.items()
+  )
+  return f"{message}\nChangepoints on a knot: {listed}."
+
+
 def _compile_changepoints(
     changepoints_spec: Mapping[str, Sequence[datetime.date]],
     *,
@@ -803,6 +833,7 @@ class ModelContext:
     self._validate_geo_invariants()
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
+    self._warn_changepoint_knots()
 
   def _resolve_declarative_model_spec(self) -> None:
     """Resolves every declarative `ModelSpec` attribute against the input data.
@@ -2203,6 +2234,70 @@ class ModelContext:
             else declarative
         )
         raise _changepoint_calibration_error(channels, attribute)
+
+  def _changepoint_knot_overlaps(self) -> dict[str, list[datetime.date]]:
+    """The changepoints that are on a knot.
+
+    With a changepoint on a knot, the model has difficulty telling a change in
+    the baseline apart from a change in the channel's effect. This reads
+    `knot_info` on every call, so it checks the final knots, wherever they come
+    from: a list, a number of knots, the default, automatic knot selection, or a
+    loaded model.
+
+    Returns:
+      Maps each channel with a changepoint on a knot to the dates of those
+      changepoints. Empty if no changepoint is on a knot.
+    """
+    if not self._changepoints:
+      return {}
+    dates = self._input_data.time_coordinates.all_dates
+    overlaps = changepoints.changepoint_knot_overlaps(
+        self.knot_info.knot_locations, self._changepoints
+    )
+    return {
+        channel: [dates[index] for index in indices]
+        for channel, indices in overlaps.items()
+    }
+
+  def _warn_changepoint_knots(self) -> None:
+    """Warns about knots that can hurt the convergence of changepoints.
+
+    A national model with changepoints and more than one knot gets a warning.
+    A geo model with a changepoint on a knot gets a warning. In a national
+    model, a changepoint on a knot makes the model unidentifiable, so
+    `Meridian.sample_posterior` raises an error
+    (`_national_changepoint_knot_error`). The model build also warns about it,
+    so users see it before sampling.
+    """
+    if not self._changepoints:
+      return
+    if self.is_national:
+      if self.knot_info.n_knots > 1:
+        warnings.warn(_NATIONAL_KNOTS_WARNING)
+      knot_error = self._national_changepoint_knot_error()
+      if knot_error is not None:
+        warnings.warn(
+            f"{knot_error}\n`sample_posterior` raises this as an error until"
+            " no changepoint is on a knot."
+        )
+      return
+    overlaps = self._changepoint_knot_overlaps()
+    if overlaps:
+      warnings.warn(_knot_overlap_message(_GEO_KNOT_OVERLAP_WARNING, overlaps))
+
+  def _national_changepoint_knot_error(self) -> str | None:
+    """The error message for a national model with a changepoint on a knot.
+
+    Returns:
+      The message, or `None` if the model is a geo model or no changepoint is
+      on a knot.
+    """
+    if not self.is_national:
+      return None
+    overlaps = self._changepoint_knot_overlaps()
+    if not overlaps:
+      return None
+    return _knot_overlap_message(_NATIONAL_KNOT_OVERLAP_ERROR, overlaps)
 
   @functools.cached_property
   def _changepoint_media_effects_dist(self) -> str:

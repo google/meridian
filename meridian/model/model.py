@@ -1069,7 +1069,15 @@ class Meridian:
     self.inference_data.extend(prior_inference_data, join="right")
 
   def _run_model_fitting_guardrail(self):
-    """Raises an error if the model has critical EDA issues."""
+    """Raises an error if the model can't be fit as specified.
+
+    Raises:
+      ModelFittingError: If a national model has a changepoint on a knot, or
+        the model has critical EDA issues.
+    """
+    knot_error = self._model_context._national_changepoint_knot_error()  # pylint: disable=protected-access
+    if knot_error is not None:
+      raise ModelFittingError(knot_error)
     error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
         collections.defaultdict(list)
     )
