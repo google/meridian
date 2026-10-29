@@ -56,6 +56,7 @@ __all__ = [
     'interval_adjustments_distribution',
     'interval_weights',
     'merge_channels',
+    'shared_changepoints',
     'time_varying_coefficients',
 ]
 
@@ -274,6 +275,30 @@ def changepoint_knot_overlaps(
     if hits:
       overlaps[name] = hits
   return overlaps
+
+
+def shared_changepoints(
+    changepoints: ChangepointIndices,
+) -> dict[int, tuple[str, ...]]:
+  """Returns the changepoints that two or more channels have in common.
+
+  Args:
+    changepoints: The changepoints of each channel.
+
+  Returns:
+    Maps each time period index where two or more channels have a changepoint
+    to those channels, in the order of `changepoints`. The indices are sorted.
+    Empty if no two channels share a changepoint.
+  """
+  channels_by_point: dict[int, list[str]] = {}
+  for name, points in changepoints.items():
+    for point in sorted({int(p) for p in points}):
+      channels_by_point.setdefault(point, []).append(name)
+  return {
+      point: tuple(names)
+      for point, names in sorted(channels_by_point.items())
+      if len(names) > 1
+  }
 
 
 def interval_adjustments_distribution(

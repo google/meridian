@@ -699,6 +699,29 @@ def _knot_overlap_message(
   return f"{message}\nChangepoints on a knot: {listed}."
 
 
+_NATIONAL_SHARED_CHANGEPOINTS_ERROR = (
+    "There are overlapping changepoints from two (or more) media channels in a"
+    " national model. The model is unidentifiable and hurts convergence."
+    " Consider dropping either one of the overlapping changepoints."
+)
+_GEO_SHARED_CHANGEPOINTS_WARNING = (
+    "There are overlapping changepoints from two (or more) media channels in a"
+    " geo model. If convergence is an issue, consider dropping either one of"
+    " the overlapping changepoints."
+)
+
+
+def _shared_changepoints_message(
+    message: str, shared: Mapping[datetime.date, Sequence[str]]
+) -> str:
+  """Returns `message` with a line that lists the shared changepoint dates."""
+  listed = "; ".join(
+      f"{date.isoformat()}: {', '.join(channels)}"
+      for date, channels in shared.items()
+  )
+  return f"{message}\nChangepoints on the same date: {listed}."
+
+
 def _compile_changepoints(
     changepoints_spec: Mapping[str, Sequence[datetime.date]],
     *,
@@ -834,6 +857,7 @@ class ModelContext:
     self._validate_media_spend_for_paid_channels()
     self._validate_rf_spend_for_paid_channels()
     self._warn_changepoint_knots()
+    self._warn_shared_changepoints()
 
   def _resolve_declarative_model_spec(self) -> None:
     """Resolves every declarative `ModelSpec` attribute against the input data.
@@ -2298,6 +2322,86 @@ class ModelContext:
     if not overlaps:
       return None
     return _knot_overlap_message(_NATIONAL_KNOT_OVERLAP_ERROR, overlaps)
+
+  def _shared_changepoints(self) -> dict[datetime.date, tuple[str, ...]]:
+    """The changepoint dates that two or more channels have in common.
+
+    When two channels' effects change on the same date, the model can't tell
+    which channel's change it sees. Paid media and RF channels are compared
+    with each other.
+
+    Returns:
+      Maps each date on which two or more channels have a changepoint to those
+      channels, in the order of the paid media and RF channels. The dates are
+      in order. Empty if no two channels have a changepoint on the same date.
+    """
+    if not self._changepoints:
+      return {}
+    shared = changepoints.shared_changepoints(self._changepoints)
+    if not shared:
+      return {}
+    dates = self._input_data.time_coordinates.all_dates
+    return {dates[index]: channels for index, channels in shared.items()}
+
+  def _warn_shared_changepoints(self) -> None:
+    """Warns when two or more channels have a changepoint on the same date.
+
+    A geo model gets a warning. In a national model, the shared changepoints
+    make the model unidentifiable, so `Meridian.sample_posterior` raises an
+    error (`_national_shared_changepoints_error`). The model build also warns
+    about it, so users see it before sampling.
+    """
+    if not self._changepoints:
+      return
+    if self.is_national:
+      shared_error = self._national_shared_changepoints_error()
+      if shared_error is not None:
+        warnings.warn(
+            f"{shared_error}\n`sample_posterior` raises this as an error until"
+            " no two channels have a changepoint on the same date."
+        )
+      return
+    shared = self._shared_changepoints()
+    if shared:
+      warnings.warn(
+          _shared_changepoints_message(_GEO_SHARED_CHANGEPOINTS_WARNING, shared)
+      )
+
+  def _national_shared_changepoints_error(self) -> str | None:
+    """The error message for a national model with shared changepoint dates.
+
+    Returns:
+      The message, or `None` if the model is a geo model or no two channels
+      have a changepoint on the same date.
+    """
+    if not self.is_national:
+      return None
+    shared = self._shared_changepoints()
+    if not shared:
+      return None
+    return _shared_changepoints_message(
+        _NATIONAL_SHARED_CHANGEPOINTS_ERROR, shared
+    )
+
+  def _national_changepoint_error(self) -> str | None:
+    """The changepoint error that stops posterior sampling of a national model.
+
+    Returns:
+      The messages of `_national_changepoint_knot_error` and
+      `_national_shared_changepoints_error`, separated by a blank line, or
+      `None` if neither applies.
+    """
+    messages = [
+        message
+        for message in (
+            self._national_changepoint_knot_error(),
+            self._national_shared_changepoints_error(),
+        )
+        if message is not None
+    ]
+    if not messages:
+      return None
+    return "\n\n".join(messages)
 
   @functools.cached_property
   def _changepoint_media_effects_dist(self) -> str:

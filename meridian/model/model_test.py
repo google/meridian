@@ -636,6 +636,30 @@ class ModelTest(
     ):
       meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
 
+  def test_sample_posterior_national_shared_changepoint_raises(self):
+    data = self.national_input_data_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    media = str(data.media_channel.values[0])
+    rf = str(data.rf_channel.values[0])
+    date = data.time_coordinates.all_dates[50]
+    meridian = model.Meridian(
+        input_data=data,
+        model_spec=spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+            changepoints={media: [date], rf: [date]}
+        ),
+    )
+    # Prior sampling still works.
+    meridian.sample_prior(n_draws=1)
+    with self.assertRaisesWithLiteralMatch(
+        model.ModelFittingError,
+        "There are overlapping changepoints from two (or more) media channels"
+        " in a national model. The model is unidentifiable and hurts"
+        " convergence. Consider dropping either one of the overlapping"
+        " changepoints.\n"
+        f"Changepoints on the same date: {date.isoformat()}: {media}, {rf}.",
+    ):
+      meridian.sample_posterior(n_chains=1, n_adapt=1, n_burnin=1, n_keep=1)
+
   def test_health_summary_attribute(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_only)
     self.assertIsNone(meridian.health_summary)

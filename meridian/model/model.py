@@ -1073,11 +1073,12 @@ class Meridian:
 
     Raises:
       ModelFittingError: If a national model has a changepoint on a knot, or
-        the model has critical EDA issues.
+        a changepoint date that two or more channels share, or the model has
+        critical EDA issues.
     """
-    knot_error = self._model_context._national_changepoint_knot_error()  # pylint: disable=protected-access
-    if knot_error is not None:
-      raise ModelFittingError(knot_error)
+    changepoint_error = self._model_context._national_changepoint_error()  # pylint: disable=protected-access
+    if changepoint_error is not None:
+      raise ModelFittingError(changepoint_error)
     error_findings_by_type: dict[eda_outcome.EDACheckType, list[str]] = (
         collections.defaultdict(list)
     )

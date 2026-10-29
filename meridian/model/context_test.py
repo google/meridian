@@ -4544,22 +4544,25 @@ class ChangepointsTest(
     )
     self.assertFalse(model_context._set_total_media_contribution_prior)
 
-  def _knot_warnings(
+  def _changepoint_warnings(
       self,
       changepoints_spec: Mapping[str, Sequence[int]],
+      about: str,
       data: input_data.InputData | None = None,
       **spec_kwargs,
   ) -> tuple[context.ModelContext, list[str]]:
-    """Builds a model and returns the knot warnings of its build.
+    """Builds a model and returns some of the warnings of its build.
 
     Args:
       changepoints_spec: Maps channels to the time periods of their
         changepoints.
+      about: Text that the returned warnings contain.
       data: The input data. Default: a geo model with media and RF channels.
       **spec_kwargs: Other arguments of the model spec, such as `knots`.
 
     Returns:
-      The model context, and the messages of the warnings about knots.
+      The model context, and the messages of the warnings that contain
+      `about`.
     """
     data = data if data is not None else self.input_data_with_media_and_rf
     dates = data.time_coordinates.all_dates
@@ -4575,12 +4578,23 @@ class ChangepointsTest(
           ),
           data=data,
       )
-    knot_warnings = [
+    messages = [
         str(warning.message)
         for warning in caught
-        if "knots" in str(warning.message)
+        if about in str(warning.message)
     ]
-    return model_context, knot_warnings
+    return model_context, messages
+
+  def _knot_warnings(
+      self,
+      changepoints_spec: Mapping[str, Sequence[int]],
+      data: input_data.InputData | None = None,
+      **spec_kwargs,
+  ) -> tuple[context.ModelContext, list[str]]:
+    """Builds a model and returns the knot warnings of its build."""
+    return self._changepoint_warnings(
+        changepoints_spec, "knots", data=data, **spec_kwargs
+    )
 
   @parameterized.named_parameters(
       ("list", [0, 10, 100], 10),
@@ -4753,6 +4767,165 @@ class ChangepointsTest(
         [warning for warning in caught if "knots" in str(warning.message)]
     )
     self.assertIsNone(model_context._national_changepoint_knot_error())
+    # Neither the build nor the check before posterior sampling computes the
+    # knots.
+    self.assertNotIn("knot_info", vars(model_context))
+
+  def _shared_changepoint_warnings(
+      self,
+      changepoints_spec: Mapping[str, Sequence[int]],
+      data: input_data.InputData | None = None,
+      **spec_kwargs,
+  ) -> tuple[context.ModelContext, list[str]]:
+    """Builds a model and returns its warnings about shared changepoints."""
+    return self._changepoint_warnings(
+        changepoints_spec, "overlapping changepoints", data=data, **spec_kwargs
+    )
+
+  def _national_channels(self) -> tuple[str, str]:
+    """The first media channel and RF channel of the national data."""
+    data = self.national_input_data_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    return str(data.media_channel.values[0]), str(data.rf_channel.values[0])
+
+  @parameterized.named_parameters(
+      ("media_channels", False), ("media_and_rf_channels", True)
+  )
+  def test_geo_shared_changepoint_warns(self, with_rf: bool):
+    other = self.rf[0] if with_rf else self.media[1]
+    model_context, shared_warnings = self._shared_changepoint_warnings(
+        {self.media[0]: [20], other: [20, 30]}
+    )
+    self.assertEqual(
+        shared_warnings,
+        [
+            "There are overlapping changepoints from two (or more) media"
+            " channels in a geo model. If convergence is an issue, consider"
+            " dropping either one of the overlapping changepoints.\n"
+            "Changepoints on the same date:"
+            f" {self.dates[20].isoformat()}: {self.media[0]}, {other}."
+        ],
+    )
+    self.assertIsNone(model_context._national_shared_changepoints_error())
+    self.assertIsNone(model_context._national_changepoint_error())
+
+  def test_shared_changepoint_warning_lists_each_date(self):
+    # The channels are listed in the order of the paid media and RF channels,
+    # and the dates in order.
+    _, shared_warnings = self._shared_changepoint_warnings({
+        self.rf[0]: [10, 40],
+        self.media[1]: [40],
+        self.media[0]: [10, 40],
+        self.rf[1]: [20],
+    })
+    self.assertLen(shared_warnings, 1)
+    self.assertEndsWith(
+        shared_warnings[0],
+        "Changepoints on the same date:"
+        f" {self.dates[10].isoformat()}: {self.media[0]}, {self.rf[0]};"
+        f" {self.dates[40].isoformat()}: {self.media[0]}, {self.media[1]},"
+        f" {self.rf[0]}.",
+    )
+
+  def test_geo_changepoints_on_different_dates_dont_warn(self):
+    model_context, shared_warnings = self._shared_changepoint_warnings(
+        {self.media[0]: [10, 20], self.media[1]: [30], self.rf[0]: [40]}
+    )
+    self.assertEmpty(shared_warnings)
+    self.assertEmpty(model_context._shared_changepoints())
+
+  def test_national_changepoints_on_different_dates_arent_an_error(self):
+    media, rf = self._national_channels()
+    model_context, shared_warnings = self._shared_changepoint_warnings(
+        {media: [20], rf: [30]}, data=self.national_input_data_media_and_rf
+    )
+    self.assertEmpty(shared_warnings)
+    self.assertIsNone(model_context._national_shared_changepoints_error())
+    self.assertIsNone(model_context._national_changepoint_error())
+
+  @parameterized.named_parameters(
+      ("media_channels", False), ("media_and_rf_channels", True)
+  )
+  def test_national_shared_changepoint_is_an_error(self, with_rf: bool):
+    data = self.national_input_data_media_and_rf
+    assert data.media_channel is not None and data.rf_channel is not None
+    media = str(data.media_channel.values[0])
+    other = str(
+        data.rf_channel.values[0] if with_rf else data.media_channel.values[1]
+    )
+    dates = data.time_coordinates.all_dates
+    model_context, shared_warnings = self._shared_changepoint_warnings(
+        {media: [20], other: [20]}, data=data
+    )
+    expected = (
+        "There are overlapping changepoints from two (or more) media channels"
+        " in a national model. The model is unidentifiable and hurts"
+        " convergence. Consider dropping either one of the overlapping"
+        " changepoints.\n"
+        f"Changepoints on the same date: {dates[20].isoformat()}:"
+        f" {media}, {other}."
+    )
+    self.assertEqual(
+        model_context._national_shared_changepoints_error(), expected
+    )
+    # The national model has one knot, so no changepoint is on a knot.
+    self.assertIsNone(model_context._national_changepoint_knot_error())
+    self.assertEqual(model_context._national_changepoint_error(), expected)
+    # The build already shows the error that posterior sampling raises.
+    self.assertEqual(
+        shared_warnings,
+        [
+            f"{expected}\n`sample_posterior` raises this as an error until no"
+            " two channels have a changepoint on the same date."
+        ],
+    )
+
+  def test_national_error_has_knot_and_shared_changepoint_messages(self):
+    media, rf = self._national_channels()
+    date = self.national_input_data_media_and_rf.time_coordinates.all_dates[50]
+    model_context, shared_warnings = self._shared_changepoint_warnings(
+        {media: [50], rf: [50]},
+        data=self.national_input_data_media_and_rf,
+        knots=[0, 50, 100],
+    )
+    self.assertEqual(
+        model_context._national_changepoint_error(),
+        "There are overlapping knots (for mu_t) and changepoints (for beta)"
+        " in a national model. The model is unidentifiable and hurts"
+        " convergence. Consider dropping either one of the overlapping knots"
+        " or changepoints, or replacing the knots with control variables.\n"
+        f"Changepoints on a knot: {media}: {date.isoformat()};"
+        f" {rf}: {date.isoformat()}.\n"
+        "\n"
+        "There are overlapping changepoints from two (or more) media channels"
+        " in a national model. The model is unidentifiable and hurts"
+        " convergence. Consider dropping either one of the overlapping"
+        " changepoints.\n"
+        f"Changepoints on the same date: {date.isoformat()}: {media}, {rf}.",
+    )
+    self.assertLen(shared_warnings, 1)
+
+  def test_model_without_changepoints_has_no_shared_changepoints(self):
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        mock.patch.object(
+            changepoints, "shared_changepoints", autospec=True
+        ) as shared_changepoints,
+    ):
+      warnings.simplefilter("always")
+      model_context = self._context(
+          spec.ModelSpec(), data=self.national_input_data_media_and_rf
+      )
+      self.assertEmpty(model_context._shared_changepoints())
+      self.assertIsNone(model_context._national_changepoint_error())
+    self.assertEmpty([
+        warning
+        for warning in caught
+        if "overlapping changepoints" in str(warning.message)
+    ])
+    # Neither the build nor the check before posterior sampling looks for
+    # shared changepoints.
+    shared_changepoints.assert_not_called()
     # Neither the build nor the check before posterior sampling computes the
     # knots.
     self.assertNotIn("knot_info", vars(model_context))

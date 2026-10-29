@@ -197,6 +197,27 @@ class ChangepointKnotOverlapsTest(parameterized.TestCase):
     )
 
 
+class SharedChangepointsTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('no_shared_point', {'TV': [5, 10], 'Search': [15]}, {}),
+      ('one_channel', {'TV': [5, 10]}, {}),
+      (
+          'two_channels',
+          {'TV': [10, 15], 'Search': [10]},
+          {10: ('TV', 'Search')},
+      ),
+      (
+          'channel_order_and_sorted_points',
+          {'YouTube': [20, 5], 'TV': [5], 'Search': [20, 5]},
+          {5: ('YouTube', 'TV', 'Search'), 20: ('YouTube', 'Search')},
+      ),
+      ('no_channels', {}, {}),
+  )
+  def test_shared_changepoints(self, points, expected):
+    self.assertEqual(changepoints.shared_changepoints(points), expected)
+
+
 class TimeVaryingMathTest(test_utils.MeridianTestCase, parameterized.TestCase):
 
   def setUp(self):
