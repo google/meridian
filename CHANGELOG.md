@@ -23,6 +23,14 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix the `ModelReviewer` convergence check passing models whose convergence
+    can't be assessed. When the posterior has fewer than 2 chains or fewer than
+    2 draws per chain, the check now returns the new
+    `ConvergenceCases.NOT_ASSESSED` case, so the review fails with a health
+    score of 0 and skips the other checks, as it does for `NOT_CONVERGED`.
+    `Meridian.sample_posterior()` warns when called with fewer than 2 chains or
+    with `n_keep` below 2, and `MeridianSerde` no longer records
+    `convergence = True` for such posteriors.
 *   `MarketingProcessor` now populates `Outcome.marginal_cost_per_contribution`
     (e.g. marginal CPA) from the `mcpik` media summary metric, using the
     median as the point estimate like `cost_per_contribution`. As with

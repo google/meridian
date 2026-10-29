@@ -608,6 +608,27 @@ class AnalyzerMediaOnlyTest(backend_test_utils.MeridianTestCase):
         np.isnan(np.asarray(rhat[constants.SLOPE_M])), [True, False, False]
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="two_chains_two_draws",
+          n_chains=2,
+          n_draws=2,
+          expected=True,
+      ),
+      dict(testcase_name="one_chain", n_chains=1, n_draws=10, expected=False),
+      dict(testcase_name="one_draw", n_chains=4, n_draws=1, expected=False),
+  )
+  def test_has_assessable_rhat_dims(
+      self, n_chains: int, n_draws: int, expected: bool
+  ):
+    posterior = xr.Dataset(
+        coords={
+            constants.CHAIN: np.arange(n_chains),
+            constants.DRAW: np.arange(n_draws),
+        }
+    )
+    self.assertEqual(analyzer.has_assessable_rhat_dims(posterior), expected)
+
   def test_rhat_summary_media_only_correct(self):
     rhat_summary = self.analyzer_media_only.rhat_summary()
     self.assertEqual(rhat_summary.shape, (13, 7))

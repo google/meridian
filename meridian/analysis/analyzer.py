@@ -94,6 +94,21 @@ def get_central_tendency_and_ci(
     return np.stack([mean, ci_lo, ci_hi], axis=-1)
 
 
+def has_assessable_rhat_dims(posterior: xr.Dataset) -> bool:
+  """Returns whether `posterior` has enough chains and draws to assess R-hat.
+
+  R-hat compares variance between chains with variance within chains, so
+  assessing convergence needs at least 2 chains and at least 2 draws per chain.
+
+  Args:
+    posterior: Posterior `xarray.Dataset` with `chain` and `draw` dimensions.
+  """
+  return (
+      posterior.sizes[constants.CHAIN] >= 2
+      and posterior.sizes[constants.DRAW] >= 2
+  )
+
+
 def _calc_rsquared(expected, actual):
   """Calculates r-squared between actual and expected outcome."""
   return 1 - backend.nanmean((expected - actual) ** 2) / backend.nanvar(actual)

@@ -540,6 +540,31 @@ class ReviewerTest(parameterized.TestCase):
     self._mock_gof_check_cls.assert_not_called()
     self._mock_pps_check_cls.assert_not_called()
 
+  def test_run_fail_not_assessed_skips_other_checks(self):
+    self._mock_convergence_result.case = results.ConvergenceCases.NOT_ASSESSED
+
+    review = reviewer.ModelReviewer(
+        model_context=self._model_context,
+        inference_data=self._inference_data,
+    )
+    summary = review.run()
+
+    self.assertEqual(summary.overall_status, results.Status.FAIL)
+    self.assertEqual(
+        summary.summary_message,
+        "Failed: Model convergence can't be assessed. Other checks were"
+        " skipped.",
+    )
+    self.assertEqual(summary.health_score, 0.0)
+    self.assertLen(summary.results, 1)
+    self.assertEqual(summary.results[0], self._mock_convergence_result)
+    self._mock_convergence_check_cls.assert_called_once()
+    self._mock_baseline_check_cls.assert_not_called()
+    self._mock_bayesian_ppp_check_cls.assert_not_called()
+    self._mock_roi_consistency_check_cls.assert_not_called()
+    self._mock_gof_check_cls.assert_not_called()
+    self._mock_pps_check_cls.assert_not_called()
+
   def test_run_fail_not_fully_converged(self):
     self._mock_convergence_result.case = (
         results.ConvergenceCases.NOT_FULLY_CONVERGED

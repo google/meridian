@@ -16,6 +16,7 @@ import dataclasses
 import os
 import pickle
 from unittest import mock
+import warnings
 
 from absl import flags
 from absl.testing import absltest
@@ -63,6 +64,16 @@ CONVERGENCE_CHECK_RESULT_CONVERGED = results.ConvergenceCheckResult(
     ),
     max_r_hat=1.01,
     max_parameter="beta",
+)
+CONVERGENCE_CHECK_RESULT_NOT_ASSESSED = results.ConvergenceCheckResult(
+    case=results.ConvergenceCases.NOT_ASSESSED,
+    config=mock.create_autospec(
+        results.configs.ConvergenceConfig, spec_set=True
+    ),
+    max_r_hat=np.nan,
+    max_parameter=None,
+    n_chains=1,
+    n_draws=10,
 )
 BASELINE_CHECK_RESULT_PASS = results.BaselineCheckResult(
     case=results.BaselineCases.PASS,
@@ -680,6 +691,12 @@ class ModelTest(
           health_score=0.0,
       ),
       dict(
+          testcase_name="with_not_assessed_convergence_only_set",
+          fake_results=(CONVERGENCE_CHECK_RESULT_NOT_ASSESSED,),
+          overall_status=results.Status.FAIL,
+          health_score=0.0,
+      ),
+      dict(
           testcase_name="with_model_level_set",
           fake_results=MODEL_LEVEL_SET_TEST,
           overall_status=results.Status.PASS,
@@ -917,6 +934,58 @@ class ModelTest(
     self.assertIs(
         mock_sampler.call_args.kwargs["progress_callback"], progress_callback
     )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="one_chain", n_chains=1, n_keep=10),
+      dict(testcase_name="one_chain_in_sequence", n_chains=[1], n_keep=10),
+      dict(testcase_name="one_kept_draw", n_chains=4, n_keep=1),
+  )
+  def test_sample_posterior_warns_when_convergence_cant_be_assessed(
+      self, n_chains: int | list[int], n_keep: int
+  ):
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "__call__",
+            autospec=True,
+            return_value=az.InferenceData(),
+        )
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    with self.assertWarnsRegex(
+        UserWarning, "R-hat needs at least 2 chains and 2 draws per chain"
+    ):
+      meridian.sample_posterior(
+          n_chains=n_chains, n_adapt=1, n_burnin=1, n_keep=n_keep
+      )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="two_chains", n_chains=2),
+      dict(testcase_name="two_chain_batches", n_chains=[1, 1]),
+  )
+  def test_sample_posterior_doesnt_warn_with_two_chains_and_draws(
+      self, n_chains: int | list[int]
+  ):
+    self.enter_context(
+        mock.patch.object(
+            posterior_sampler.PosteriorMCMCSampler,
+            "__call__",
+            autospec=True,
+            return_value=az.InferenceData(),
+        )
+    )
+    meridian = model.Meridian(input_data=self.input_data_with_media_only)
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+      warnings.simplefilter("always")
+      meridian.sample_posterior(
+          n_chains=n_chains, n_adapt=1, n_burnin=1, n_keep=2
+      )
+
+    self.assertEmpty([
+        w for w in caught_warnings if "R-hat needs at least" in str(w.message)
+    ])
 
   def test_sample_prior_passes_progress_callback_to_sampler(self):
     mock_sampler = self.enter_context(

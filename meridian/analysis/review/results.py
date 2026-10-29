@@ -182,6 +182,15 @@ class ConvergenceCases(ModelCheckCase, enum.Enum):
       ),
       constants.NOT_CONVERGED_RECOMMENDATION,
   )
+  NOT_ASSESSED = (
+      Status.FAIL,
+      (
+          "Convergence can't be assessed: R-hat needs at least 2 chains and 2"
+          " draws per chain, but the posterior has {n_chains} chain(s) with"
+          " {n_draws} draw(s) each."
+      ),
+      constants.CONVERGENCE_NOT_ASSESSED_RECOMMENDATION,
+  )
 
   def __init__(
       self,
@@ -195,12 +204,37 @@ class ConvergenceCases(ModelCheckCase, enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class ConvergenceCheckResult(CheckResult):
-  """The immutable result of the Convergence Check."""
+  """The immutable result of the Convergence Check.
+
+  Attributes:
+    case: The convergence case.
+    config: The configuration of the check.
+    max_r_hat: The highest R-hat value across all parameters, or `NaN` if no
+      R-hat value is available.
+    max_parameter: The name of the parameter with the highest R-hat value,
+      `None` if the case is `NOT_ASSESSED`, or `NaN` if every R-hat value is
+      `NaN`.
+    n_chains: The number of chains in the posterior. Required if the case is
+      `NOT_ASSESSED`.
+    n_draws: The number of draws per chain in the posterior. Required if the
+      case is `NOT_ASSESSED`.
+  """
 
   case: ConvergenceCases
   config: configs.ConvergenceConfig
   max_r_hat: float
-  max_parameter: str
+  max_parameter: str | None
+  n_chains: int | None = None
+  n_draws: int | None = None
+
+  def __post_init__(self):
+    if self.case is ConvergenceCases.NOT_ASSESSED and (
+        self.n_chains is None or self.n_draws is None
+    ):
+      raise ValueError(
+          "`n_chains` and `n_draws` are required when the convergence case is"
+          " `NOT_ASSESSED`."
+      )
 
   @property
   def max_rhat(self) -> float:
@@ -214,6 +248,8 @@ class ConvergenceCheckResult(CheckResult):
         constants.RHAT: self.max_r_hat,
         constants.PARAMETER: self.max_parameter,
         constants.CONVERGENCE_THRESHOLD: self.config.convergence_threshold,
+        constants.N_CHAINS: self.n_chains,
+        constants.N_DRAWS: self.n_draws,
     }
 
 

@@ -27,6 +27,7 @@ from meridian.analysis import analyzer as analyzer_module
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
+from meridian.common import errors
 from meridian.model import context
 from meridian.model import prior_distribution
 import numpy as np
@@ -199,6 +200,33 @@ class ConvergenceCheck(
   """Checks for model convergence."""
 
   def run(self) -> results.ConvergenceCheckResult:
+    """Runs the R-hat convergence check.
+
+    Returns:
+      The convergence check result. Its case is `NOT_ASSESSED` when the
+      posterior has fewer than 2 chains or fewer than 2 draws per chain,
+      because R-hat can't be computed for such a posterior.
+
+    Raises:
+      NotFittedModelError: If the model hasn't been fitted.
+    """
+    if not hasattr(self._inference_data, constants.POSTERIOR):
+      raise errors.NotFittedModelError(
+          "The model must be fitted before running the convergence check."
+      )
+    posterior = self._inference_data.posterior  # pyrefly: ignore[missing-attribute]
+    n_chains = posterior.sizes[constants.CHAIN]
+    n_draws = posterior.sizes[constants.DRAW]
+    if not analyzer_module.has_assessable_rhat_dims(posterior):
+      return results.ConvergenceCheckResult(
+          case=results.ConvergenceCases.NOT_ASSESSED,
+          config=self._config,
+          max_r_hat=np.nan,
+          max_parameter=None,
+          n_chains=n_chains,
+          n_draws=n_draws,
+      )
+
     rhats = self._analyzer.get_rhat()
     with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -213,6 +241,8 @@ class ConvergenceCheck(
           config=self._config,
           max_r_hat=np.nan,
           max_parameter=np.nan,  # pyrefly: ignore[bad-argument-type]
+          n_chains=n_chains,
+          n_draws=n_draws,
       )
 
     max_parameter, max_r_hat = max(max_r_hats.items(), key=lambda item: item[1])
@@ -238,6 +268,8 @@ class ConvergenceCheck(
         config=self._config,
         max_r_hat=max_r_hat,
         max_parameter=max_parameter,
+        n_chains=n_chains,
+        n_draws=n_draws,
     )
 
 

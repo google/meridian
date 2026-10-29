@@ -56,6 +56,18 @@ _POST_CONVERGENCE_CHECKS: ChecksBattery = immutabledict.immutabledict({
     checks.PotentialBiasCheck: configs.PotentialBiasConfig(),
 })
 
+# Convergence cases that skip the post-convergence checks, with the summary
+# message of the resulting review.
+_SKIPPED_CHECKS_SUMMARY_MESSAGES = immutabledict.immutabledict({
+    results.ConvergenceCases.NOT_CONVERGED: (
+        "Failed: Model did not converge. Other checks were skipped."
+    ),
+    results.ConvergenceCases.NOT_ASSESSED: (
+        "Failed: Model convergence can't be assessed. Other checks were"
+        " skipped."
+    ),
+})
+
 
 def _get_baseline_score(
     baseline_check_result: results.BaselineCheckResult,
@@ -214,8 +226,9 @@ _HEALTH_SCORE_COMPONENTS = (
 class ModelReviewer:
   """A tool for executing a series of quality checks on a Meridian model.
 
-  The reviewer first runs a convergence check. If the model has converged, it
-  proceeds to run a battery of post-convergence checks.
+  The reviewer first runs a convergence check. Unless the model didn't converge
+  or its convergence can't be assessed, it proceeds to run a battery of
+  post-convergence checks.
 
   The battery of post-convergence checks includes:
     - BaselineCheck
@@ -374,17 +387,12 @@ class ModelReviewer:
         checks.ConvergenceCheck, self._convergence_check_config
     )
 
-    # Stop if the model did not converge.
-    if (
-        self._results
-        and self._results[checks.ConvergenceCheck].case
-        is results.ConvergenceCases.NOT_CONVERGED
-    ):
+    # Stop if the model did not converge or its convergence can't be assessed.
+    convergence_case = self._results[checks.ConvergenceCheck].case
+    if convergence_case in _SKIPPED_CHECKS_SUMMARY_MESSAGES:
       return results.ReviewSummary(
           overall_status=results.Status.FAIL,
-          summary_message=(
-              "Failed: Model did not converge. Other checks were skipped."
-          ),
+          summary_message=_SKIPPED_CHECKS_SUMMARY_MESSAGES[convergence_case],
           results=list(self._results.values()),
           health_score=0.0,
       )
