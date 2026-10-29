@@ -301,6 +301,56 @@ def _get_sample_optimized_data(is_revenue_kpi: bool = True) -> xr.Dataset:
   )
 
 
+# Factor by which `_BoostedAnalyzer` multiplies the incremental outcome of the
+# first paid channel.
+_BOOST = 3.0
+
+
+class _BoostedAnalyzer(analyzer.Analyzer):
+  """Multiplies the incremental outcome of the first paid channel by `_BOOST`.
+
+  Stands in for an `Analyzer` subclass that changes how incremental outcome is
+  computed, such as one that adds indirect effects through a mediator.
+  """
+
+  def incremental_outcome(self, *args, **kwargs) -> backend.Tensor:
+    outcome = np.array(super().incremental_outcome(*args, **kwargs))
+    outcome[..., 0] *= _BOOST
+    return backend.to_tensor(outcome, dtype=backend.float_dtype)
+
+
+class _BoostedAnalyzerSubclass(_BoostedAnalyzer):
+  """Inherits the incremental outcome override of `_BoostedAnalyzer`."""
+
+
+class _AnalyzerWithUnrelatedOverride(analyzer.Analyzer):
+  """Doubles the expected outcome, which incremental outcome doesn't use."""
+
+  def expected_outcome(self, *args, **kwargs) -> backend.Tensor:
+    return 2 * super().expected_outcome(*args, **kwargs)
+
+
+def _create_coarse_optimization_grid(
+    analyzer_instance: analyzer.Analyzer,
+) -> optimizer.OptimizationGrid:
+  """Creates an optimization grid with few spend levels for an analyzer.
+
+  `_BoostedAnalyzer` makes `create_optimization_grid` call
+  `incremental_outcome` for each spend level, so a coarse `gtol` keeps the
+  tests fast.
+
+  Args:
+    analyzer_instance: The analyzer to optimize with.
+
+  Returns:
+    The optimization grid with historical frequency for reach and frequency
+    channels.
+  """
+  return optimizer.BudgetOptimizer(
+      analyzer=analyzer_instance
+  ).create_optimization_grid(gtol=0.01, use_optimal_frequency=False)
+
+
 class OptimizerAlgorithmTest(parameterized.TestCase):
   # TODO: Update the sample datasets to span over 1 year.
   def setUp(self):
@@ -3908,12 +3958,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [0.5, 0.8, 1.0, 1.0, 1.0],
         [1.0, 1.2, np.nan, 1.0, 1.0],
         [1.5, np.nan, np.nan, 1.0, 1.0],
+        [np.nan, np.nan, np.nan, 1.0, 1.0],
     ])
     filled_data = tensors.DataTensors().validate_and_fill_missing_data(
         required_tensors_names=c.PAID_DATA,
         model_context=budget_optimizer._analyzer.model_context,
     )
-    actual = budget_optimizer._compute_media_incremental_outcome_grid(
+    grid_kwargs = dict(
         multipliers_grid=multipliers_grid,
         filled_data=filled_data,
         selected_geos=selected_geos,
@@ -3921,6 +3972,14 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         use_posterior=use_posterior,
         use_kpi=use_kpi,
         batch_size=batch_size,
+    )
+    actual = budget_optimizer._compute_media_incremental_outcome_grid(
+        **grid_kwargs
+    )
+    actual_per_row = (
+        budget_optimizer._compute_media_incremental_outcome_grid_per_row(
+            **grid_kwargs
+        )
     )
 
     n_media_channels = budget_optimizer._analyzer.model_context.n_media_channels
@@ -3958,6 +4017,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     np.testing.assert_array_equal(actual[0], np.zeros(n_media_channels))
     np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-3)
+    np.testing.assert_allclose(actual_per_row, expected, rtol=1e-4, atol=1e-3)
 
 
 class OptimizerPlotsTest(parameterized.TestCase):
@@ -6200,6 +6260,254 @@ class BudgetOptimizerInitTest(parameterized.TestCase):
     )
 
     self.assertIsNone(results.meridian)
+
+
+class MediaGridPathTest(parameterized.TestCase):
+  """Tests which media grid method `BudgetOptimizer` uses for an analyzer."""
+
+  def setUp(self):
+    super().setUp()
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_controls=_N_CONTROLS,
+        seed=0,
+    )
+    self.model_context = model.Meridian(input_data=data).model_context
+    self.inference_data = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_only.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_only.nc')
+        ),
+    )
+
+    def fake_media_grid(unused_self, multipliers_grid, **unused_kwargs):
+      return np.where(
+          np.isnan(multipliers_grid[:, :_N_MEDIA_CHANNELS]), np.nan, 1.0
+      )
+
+    self.mock_media_grid = self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            '_compute_media_incremental_outcome_grid',
+            autospec=True,
+            side_effect=fake_media_grid,
+        )
+    )
+    self.mock_media_grid_per_row = self.enter_context(
+        mock.patch.object(
+            optimizer.BudgetOptimizer,
+            '_compute_media_incremental_outcome_grid_per_row',
+            autospec=True,
+            side_effect=fake_media_grid,
+        )
+    )
+
+  def test_incremental_outcome_members_are_defined_by_analyzer(self):
+    # `_overrides_incremental_outcome` matches members by name, so it would
+    # silently miss overrides of a member that is renamed in `Analyzer`.
+    self.assertContainsSubset(
+        optimizer._INCREMENTAL_OUTCOME_MEMBERS, vars(analyzer.Analyzer)
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name=member, member=member)
+      for member in (
+          'incremental_outcome',
+          '_incremental_outcome_impl',
+          'get_incremental_kpi',
+          '_get_transformed_media_and_beta',
+          '_model_equations',
+          'inverse_outcome',
+          'filter_and_aggregate_by_indices',
+      )
+  )
+  def test_overrides_incremental_outcome_true(self, member: str):
+    analyzer_class = type(
+        'AnalyzerSubclass', (analyzer.Analyzer,), {member: lambda self: None}
+    )
+    self.assertTrue(optimizer._overrides_incremental_outcome(analyzer_class))
+
+  @parameterized.named_parameters(
+      dict(testcase_name='analyzer', analyzer_class=analyzer.Analyzer),
+      dict(
+          testcase_name='unrelated_override',
+          analyzer_class=_AnalyzerWithUnrelatedOverride,
+      ),
+  )
+  def test_overrides_incremental_outcome_false(
+      self, analyzer_class: type[analyzer.Analyzer]
+  ):
+    self.assertFalse(optimizer._overrides_incremental_outcome(analyzer_class))
+
+  def test_overrides_incremental_outcome_false_for_autospec_mock(self):
+    mock_analyzer = mock.create_autospec(analyzer.Analyzer, instance=True)
+    self.assertFalse(
+        optimizer._overrides_incremental_outcome(type(mock_analyzer))
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name='analyzer', analyzer_class=analyzer.Analyzer),
+      dict(
+          testcase_name='unrelated_override',
+          analyzer_class=_AnalyzerWithUnrelatedOverride,
+      ),
+  )
+  def test_create_optimization_grid_uses_fast_media_grid(
+      self, analyzer_class: type[analyzer.Analyzer]
+  ):
+    budget_optimizer = optimizer.BudgetOptimizer(
+        analyzer=analyzer_class(
+            model_context=self.model_context,
+            inference_data=self.inference_data,
+        )
+    )
+
+    budget_optimizer.create_optimization_grid()
+
+    self.mock_media_grid.assert_called_once()
+    self.mock_media_grid_per_row.assert_not_called()
+
+  @parameterized.named_parameters(
+      dict(testcase_name='override', analyzer_class=_BoostedAnalyzer),
+      dict(
+          testcase_name='inherited_override',
+          analyzer_class=_BoostedAnalyzerSubclass,
+      ),
+  )
+  def test_create_optimization_grid_uses_per_row_media_grid(
+      self, analyzer_class: type[analyzer.Analyzer]
+  ):
+    budget_optimizer = optimizer.BudgetOptimizer(
+        analyzer=analyzer_class(
+            model_context=self.model_context,
+            inference_data=self.inference_data,
+        )
+    )
+
+    budget_optimizer.create_optimization_grid()
+
+    self.mock_media_grid.assert_not_called()
+    self.mock_media_grid_per_row.assert_called_once()
+
+
+class OptimizerAnalyzerSubclassTest(parameterized.TestCase):
+  """Tests optimization with an analyzer that overrides incremental outcome."""
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_controls=_N_CONTROLS,
+        seed=0,
+    )
+    model_context = model.Meridian(input_data=data).model_context
+    inference_data = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_only.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_only.nc')
+        ),
+    )
+    # The grids are shared across tests, because building them with
+    # `_BoostedAnalyzer` calls `incremental_outcome` for each spend level.
+    cls.grid = _create_coarse_optimization_grid(
+        analyzer.Analyzer(
+            model_context=model_context, inference_data=inference_data
+        )
+    )
+    cls.boosted_grid = _create_coarse_optimization_grid(
+        _BoostedAnalyzer(
+            model_context=model_context, inference_data=inference_data
+        )
+    )
+
+  def assert_only_first_channel_boosted(
+      self,
+      grid: optimizer.OptimizationGrid,
+      boosted_grid: optimizer.OptimizationGrid,
+  ):
+    """Asserts that `boosted_grid` boosts only the first channel of `grid`."""
+    np.testing.assert_array_equal(
+        boosted_grid.spend_grid.values, grid.spend_grid.values
+    )
+    outcome = grid.incremental_outcome_grid.values
+    boosted_outcome = boosted_grid.incremental_outcome_grid.values
+    np.testing.assert_allclose(
+        boosted_outcome[:, 0], _BOOST * outcome[:, 0], rtol=1e-4, atol=1e-3
+    )
+    np.testing.assert_allclose(
+        boosted_outcome[:, 1:], outcome[:, 1:], rtol=1e-4, atol=1e-3
+    )
+
+  def test_create_optimization_grid_includes_override(self):
+    self.assert_only_first_channel_boosted(self.grid, self.boosted_grid)
+
+  def test_create_optimization_grid_media_and_rf_includes_override(self):
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_controls=_N_CONTROLS,
+        seed=0,
+    )
+    model_context = model.Meridian(input_data=data).model_context
+    inference_data = az.InferenceData(
+        prior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_prior_media_and_rf.nc')
+        ),
+        posterior=xr.open_dataset(
+            os.path.join(_TEST_DATA_DIR, 'sample_posterior_media_and_rf.nc')
+        ),
+    )
+
+    grid = _create_coarse_optimization_grid(
+        analyzer.Analyzer(
+            model_context=model_context, inference_data=inference_data
+        )
+    )
+    boosted_grid = _create_coarse_optimization_grid(
+        _BoostedAnalyzer(
+            model_context=model_context, inference_data=inference_data
+        )
+    )
+
+    self.assert_only_first_channel_boosted(grid, boosted_grid)
+
+  def test_optimize_includes_override(self):
+    scenario = optimizer.FixedBudgetScenario()
+    expected_grid_dataset = self.grid.grid_dataset.copy(deep=True)
+    expected_grid_dataset[c.INCREMENTAL_OUTCOME_GRID][:, 0] = (
+        _BOOST * expected_grid_dataset[c.INCREMENTAL_OUTCOME_GRID][:, 0]
+    )
+    expected_grid = dataclasses.replace(
+        self.grid, _grid_dataset=expected_grid_dataset
+    )
+
+    spend = self.grid.optimize(scenario=scenario).optimized.values
+    boosted_spend = self.boosted_grid.optimize(
+        scenario=scenario
+    ).optimized.values
+    expected_spend = expected_grid.optimize(scenario=scenario).optimized.values
+
+    self.assertAlmostEqual(np.sum(boosted_spend), np.sum(spend))
+    self.assertGreater(boosted_spend[0], spend[0])
+    # Floating point differences between the grids can break near-ties either
+    # way, so the allocations can differ by one spend step.
+    np.testing.assert_allclose(
+        boosted_spend, expected_spend, atol=self.grid.spend_step_size
+    )
 
 
 if __name__ == '__main__':

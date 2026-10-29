@@ -121,7 +121,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     channels in a single pass, and scale incremental KPI outcomes directly by
     `kpi_transformer.population_scaled_stdev` and `population` in
     `BudgetOptimizer` and `Analyzer.inverse_outcome` to avoid `float32`
-    intercept cancellation.
+    intercept cancellation. If the `Analyzer` passed to `BudgetOptimizer` is a
+    subclass that overrides how incremental outcome is computed, the grid for
+    media channels still calls its `incremental_outcome` method, so the optimal
+    allocation includes the override.
 
 ## [2.1.0] - 2026-09-17
 
