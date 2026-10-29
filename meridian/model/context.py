@@ -482,16 +482,26 @@ def _draw_random_holdout(
     n_geos: int,
     n_times: int,
 ) -> np.ndarray:
-  """Draws a random holdout mask, stratified by geo.
+  """Draws a random holdout mask that is balanced across geos and times.
 
-  Each geo independently holds out exactly `round(ratio * n_times)` time
-  periods, sampled without replacement. Stratifying by geo -- rather than
-  drawing over the flattened `n_geos * n_times` cell space -- guarantees that
-  every geo contributes both training and test rows.
+  The draw is balanced in both dimensions:
 
-  Note that random samples are drawn sequentially in the order geos appear in
-  the input data coordinates; permuting geo order will produce different samples
-  for the same seed.
+  * Every geo holds out exactly `round(ratio * n_times)` time periods, so each
+    geo contributes both training and test rows.
+  * The number of held-out observations per time period differs by at most
+    one across time periods, so no period is over- or under-represented in
+    the test set. The counts can differ by one because the total number of
+    held-out cells, `n_geos * round(ratio * n_times)`, need not be a multiple
+    of `n_times`.
+
+  Geos are processed sequentially in the order they appear in the input data
+  coordinates. Each geo holds out the time periods that have been held out the
+  fewest times by the geos before it, breaking ties uniformly at random. This
+  keeps the per-time counts within one of each other at every step: if the
+  counts are all in `{m, m + 1}` before a geo is processed, the geo first
+  takes periods at `m` and only then periods at `m + 1`, so the counts are in
+  `{m, m + 1}` or `{m + 1, m + 2}` afterwards. Permuting geo order will produce
+  a different draw for the same seed.
 
   Args:
     random_spec: The random holdout specification.
@@ -514,8 +524,17 @@ def _draw_random_holdout(
     )
   rng = np.random.default_rng(random_spec.seed)
   mask = np.zeros((n_geos, n_times), dtype=bool)
+  counts_per_time = np.zeros(n_times, dtype=int)
   for geo_index in range(n_geos):
-    mask[geo_index, rng.choice(n_times, size=n_holdout, replace=False)] = True
+    # Visit the time periods in a random order and sort them stably by how
+    # often they have been held out so far, so that ties are broken uniformly
+    # at random. The first `n_holdout` are the least held-out periods.
+    order = rng.permutation(n_times)
+    least_held_out = order[
+        np.argsort(counts_per_time[order], kind="stable")[:n_holdout]
+    ]
+    mask[geo_index, least_held_out] = True
+    counts_per_time[least_held_out] += 1
   return mask
 
 

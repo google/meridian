@@ -226,6 +226,12 @@ class RandomHoldoutSpec:
   the model's state. All downstream computation reads that resolved holdout,
   never this specification.
 
+  The draw is balanced across both geos and time periods: every geo holds out
+  the same number of time periods, `round(ratio * n_times)`, and the number of
+  held-out observations per time period differs by at most one across time
+  periods. The per-time counts can differ by one because the total number of
+  held-out observations is not necessarily a multiple of `n_times`.
+
   Both this specification and the resolved draw are serialized: the former as
   provenance recording how the holdout was requested, the latter as the
   authoritative record of what was actually held out. The resolved draw is

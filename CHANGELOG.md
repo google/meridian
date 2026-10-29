@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Draw `RandomHoldoutSpec` holdouts balanced across both geos and time
+    periods: every geo still holds out the same number of time periods, and
+    the number of held-out observations per time period now differs by at most
+    one across time periods.
 *   Expose `posterior_sampler._compute_tau_g` publicly as
     `meridian.model.equations.compute_tau_g`, and fix its `TypeError` for
     batched inputs on the JAX backend.
