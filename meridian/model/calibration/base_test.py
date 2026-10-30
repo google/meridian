@@ -31,8 +31,12 @@ def _make_dummy_calibration_output(channel_name: str) -> base.CalibrationOutput:
   """Creates a dummy CalibrationOutput instance for testing."""
   return base.CalibrationOutput(
       channel_name=channel_name,
-      baseline_prior=backend.tfd.Normal(0.0, 1.0),
-      intermediary_prior=backend.tfd.Normal(0.0, 1.0),
+      baseline_prior=backend.tfd.Normal(
+          backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+      ),
+      intermediary_prior=backend.tfd.Normal(
+          backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+      ),
   )
 
 
@@ -104,7 +108,9 @@ class CalibrationOutputTest(absltest.TestCase):
         user_point_estimate_adjustment=0.2,
         user_standard_error_adjustment=0.1,
     )
-    base_prior = backend.tfd.Normal(0.0, 1.0)
+    base_prior = backend.tfd.Normal(
+        backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+    )
     output = base.CalibrationOutput(
         channel_name="search",
         experiments=[exp],
@@ -121,7 +127,9 @@ class CalibrationOutputTest(absltest.TestCase):
     self.assertEqual(output.experiments, [exp])
 
   def test_calibration_output_defaults(self) -> None:
-    base_prior = backend.tfd.Normal(0.0, 1.0)
+    base_prior = backend.tfd.Normal(
+        backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+    )
     output = base.CalibrationOutput(
         channel_name="search",
         intermediary_prior=base_prior,
@@ -132,7 +140,9 @@ class CalibrationOutputTest(absltest.TestCase):
     self.assertEqual(output.max_lag, 8)
 
   def test_calibration_output_custom_params(self) -> None:
-    base_prior = backend.tfd.Normal(0.0, 1.0)
+    base_prior = backend.tfd.Normal(
+        backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+    )
     output = base.CalibrationOutput(
         channel_name="search",
         intermediary_prior=base_prior,
@@ -651,8 +661,16 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
 
   def test_default_name(self):
     distributions = [
-        backend.tfd.Normal(0, 1, name="Normal1"),
-        backend.tfd.Normal([0, 0], [1, 1], name="Normal2"),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0),
+            backend.np_float_dtype(1),
+            name="Normal1",
+        ),
+        backend.tfd.Normal(
+            np.array([0, 0], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+            name="Normal2",
+        ),
     ]
     dist = base.CalibratedDistribution(
         distributions, is_calibrated=[False, False, False]
@@ -662,7 +680,9 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
     self.assertIn("Normal2", dist.name)
 
   def test_default_name_single_distribution(self):
-    dist_single = backend.tfd.Normal(0, 1, name="MyNormal")
+    dist_single = backend.tfd.Normal(
+        backend.np_float_dtype(0), backend.np_float_dtype(1), name="MyNormal"
+    )
     dist = base.CalibratedDistribution(
         dist_single, is_calibrated=[False, False, False]
     )
@@ -673,8 +693,13 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
 
   def test_initialization_default(self):
     distributions = [
-        backend.tfd.Normal(0, 1),
-        backend.tfd.Normal([0, 0], [1, 1]),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Normal(
+            np.array([0, 0], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+        ),
     ]
     dist = base.CalibratedDistribution(
         distributions, is_calibrated=[False, False, False]
@@ -687,8 +712,13 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
 
   def test_initialization_custom(self):
     distributions = [
-        backend.tfd.Normal(0, 1),
-        backend.tfd.Normal([0, 0], [1, 1]),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Normal(
+            np.array([0, 0], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+        ),
     ]
     is_calibrated = [True, False, True]
     outputs = [
@@ -707,7 +737,9 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
     self.assertIn("calibration_outputs", dist.parameters)
 
   def test_initialization_single_scalar_distribution(self):
-    distribution = backend.tfd.Normal(0, 1)
+    distribution = backend.tfd.Normal(
+        backend.np_float_dtype(0), backend.np_float_dtype(1)
+    )
     is_calibrated = [True, False, True]
     dist = base.CalibratedDistribution(
         distribution,
@@ -717,7 +749,10 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
     self.assertEqual(dist.batch_shape, (3,))
 
   def test_initialization_single_broadcasted_distribution(self):
-    distribution = backend.tfd.Normal([0, 0, 0], [1, 1, 1])
+    distribution = backend.tfd.Normal(
+        np.array([0, 0, 0], dtype=backend.np_float_dtype),
+        np.array([1, 1, 1], dtype=backend.np_float_dtype),
+    )
     is_calibrated = [True, False, True]
     dist = base.CalibratedDistribution(
         distribution,
@@ -771,8 +806,13 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
           for c in calibration_outputs
       ]
     distributions = [
-        backend.tfd.Normal(0, 1),
-        backend.tfd.Normal([0, 0], [1, 1]),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Normal(
+            np.array([0, 0], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+        ),
     ]
     with self.assertRaisesRegex(ValueError, expected_error_regex):
       _ = base.CalibratedDistribution(
@@ -783,19 +823,30 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
 
   def test_sampling_and_log_prob(self):
     distributions = [
-        backend.tfd.Normal(0, 1),
-        backend.tfd.Normal([0, 0], [1, 1]),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Normal(
+            np.array([0, 0], dtype=backend.np_float_dtype),
+            np.array([1, 1], dtype=backend.np_float_dtype),
+        ),
     ]
     dist = base.CalibratedDistribution(
         distributions, is_calibrated=[False, False, False]
     )
     sample = self.sample(dist)
     self.assertEqual(sample.shape, (3,))
-    log_prob = dist.log_prob([0.0, 0.0, 0.0])
+    log_prob = dist.log_prob(
+        np.array([0.0, 0.0, 0.0], dtype=backend.np_float_dtype)
+    )
     self.assertFalse(np.isnan(log_prob).any())
 
   def test_distributions_are_equal(self):
-    distributions1 = [backend.tfd.Normal(0.0, 1.0)]
+    distributions1 = [
+        backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        )
+    ]
     dist1 = base.CalibratedDistribution(
         distributions1,
         is_calibrated=[True],
@@ -831,7 +882,11 @@ class TestCalibratedDistribution(test_utils.MeridianTestCase):
     )
 
     dist_diff_math = base.CalibratedDistribution(
-        [backend.tfd.Normal(0, 2)],
+        [
+            backend.tfd.Normal(
+                backend.np_float_dtype(0), backend.np_float_dtype(2)
+            )
+        ],
         is_calibrated=[True],
     )
     self.assertFalse(

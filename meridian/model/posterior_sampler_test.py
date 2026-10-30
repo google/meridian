@@ -558,7 +558,9 @@ class PosteriorMCMCSamplerTest(
     coef_logprobs = {}
     for parname in coef_params:
       coef_logprobs[parname] = backend.reduce_sum(
-          backend.tfd.Normal(0, 1).log_prob(par[parname])
+          backend.tfd.Normal(
+              backend.np_float_dtype(0), backend.np_float_dtype(1)
+          ).log_prob(par[parname])
       )
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
@@ -708,7 +710,9 @@ class PosteriorMCMCSamplerTest(
     coef_logprobs = {}
     for parname in coef_params:
       coef_logprobs[parname] = backend.reduce_sum(
-          backend.tfd.Normal(0, 1).log_prob(par[parname])
+          backend.tfd.Normal(
+              backend.np_float_dtype(0), backend.np_float_dtype(1)
+          ).log_prob(par[parname])
       )
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]
@@ -871,7 +875,9 @@ class PosteriorMCMCSamplerTest(
     coef_logprobs = {}
     for parname in coef_params:
       coef_logprobs[parname] = backend.reduce_sum(
-          backend.tfd.Normal(0, 1).log_prob(par[parname])
+          backend.tfd.Normal(
+              backend.np_float_dtype(0), backend.np_float_dtype(1)
+          ).log_prob(par[parname])
       )
       test_utils.assert_allclose(
           coef_logprobs[parname], log_prob_parts["unpinned"][parname][0]

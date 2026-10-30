@@ -4317,7 +4317,8 @@ class ChangepointsTest(
       self, changepoint_media_effects_dist: str
   ):
     roi_m = backend.tfd.LogNormal(
-        np.zeros(len(self.media) - 1, dtype=backend.np_float_dtype), 1.0
+        np.zeros(len(self.media) - 1, dtype=backend.np_float_dtype),
+        backend.np_float_dtype(1.0),
     )
     model_context = self._context(
         _ModelSpecWithChangepoints(

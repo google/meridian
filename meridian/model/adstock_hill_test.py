@@ -264,7 +264,7 @@ class TestAdstock(test_utils.MeridianTestCase):
     self._initialize_rng()
 
     self._media = self.sample(
-        backend.tfd.HalfNormal(1.0),
+        backend.tfd.HalfNormal(backend.np_float_dtype(1.0)),
         sample_shape=[
             self._N_CHAINS,
             self._N_DRAWS,
@@ -274,7 +274,9 @@ class TestAdstock(test_utils.MeridianTestCase):
         ],
     )
     self._alpha = self.sample(
-        backend.tfd.Uniform(0.0, 1.0),
+        backend.tfd.Uniform(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
         sample_shape=[
             self._N_CHAINS,
             self._N_DRAWS,
@@ -507,7 +509,7 @@ class TestHill(test_utils.MeridianTestCase):
     self._initialize_rng()
 
     self._media = self.sample(
-        backend.tfd.HalfNormal(1.0),
+        backend.tfd.HalfNormal(backend.np_float_dtype(1.0)),
         [
             self._N_CHAINS,
             self._N_DRAWS,
@@ -517,11 +519,13 @@ class TestHill(test_utils.MeridianTestCase):
         ],
     )
     self._ec = self.sample(
-        backend.tfd.Uniform(0.0, 1.0),
+        backend.tfd.Uniform(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
         sample_shape=[self._N_CHAINS, self._N_DRAWS, self._N_MEDIA_CHANNELS],
     )
     self._slope = self.sample(
-        backend.tfd.HalfNormal(1.0),
+        backend.tfd.HalfNormal(backend.np_float_dtype(1.0)),
         sample_shape=[self._N_CHAINS, self._N_DRAWS, self._N_MEDIA_CHANNELS],
     )
 
@@ -630,11 +634,15 @@ class TestTransformNonNegativeRealsDistribution(test_utils.MeridianTestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="lognormal",
-          get_distribution=lambda: backend.tfd.LogNormal(0.2, 0.9),
+          get_distribution=lambda: backend.tfd.LogNormal(
+              backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+          ),
       ),
       dict(
           testcase_name="halfnormal 2d",
-          get_distribution=lambda: backend.tfd.HalfNormal([1.0, 2.0]),
+          get_distribution=lambda: backend.tfd.HalfNormal(
+              np.array([1.0, 2.0], dtype=backend.np_float_dtype)
+          ),
       ),
   )
   def test_support(self, get_distribution):
@@ -659,7 +667,7 @@ class TestTransformNonNegativeRealsDistribution(test_utils.MeridianTestCase):
       dict(testcase_name="inf", inp=np.inf, out=0.0),
   )
   def test_mapping(self, inp, out):
-    distribution = backend.tfd.Deterministic(inp)
+    distribution = backend.tfd.Deterministic(backend.np_float_dtype(inp))
     transformed_distribution = (
         adstock_hill.transform_non_negative_reals_distribution(distribution)
     )

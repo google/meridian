@@ -680,11 +680,12 @@ class SamplingEdaEngineTest(
       intermediary_prior: backend.tfd.Distribution | None = None,
       experiments: Sequence[calibration_base.CalibratedExperiment] = (),
   ) -> None:
-    effective_calibrated_prior = (
-        calibrated_prior
-        if calibrated_prior is not None
-        else backend.tfd.LogNormal(0.2, 0.9)
-    )
+    if calibrated_prior is not None:
+      effective_calibrated_prior = calibrated_prior
+    else:
+      effective_calibrated_prior = backend.tfd.LogNormal(
+          backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+      )
     raw_intermediary = (
         intermediary_prior
         if intermediary_prior is not None
@@ -1132,7 +1133,9 @@ class SamplingEdaEngineTest(
     pdf = np.where(np.isfinite(pdf), pdf, 0.0)
     mock_output = calibration_base.CalibrationOutput(
         channel_name='channel_0',
-        baseline_prior=backend.tfd.LogNormal(0.2, 0.9),
+        baseline_prior=backend.tfd.LogNormal(
+            backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+        ),
         intermediary_prior=roi.GridDistribution(grid=grid, pdf=pdf, dx=dx),
         experiments=[],
     )

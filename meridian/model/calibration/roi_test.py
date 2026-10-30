@@ -1156,7 +1156,10 @@ class RoiTest(parameterized.TestCase):
     self.assertIsInstance(best_dist, backend.tfd.Normal)
 
   def test_compute_grid_bounds_exp_scale(self) -> None:
-    prior = backend.tfd.Normal(loc=1.0, scale=1.0)
+    prior = backend.tfd.Normal(
+        loc=backend.cast(1.0, backend.float_dtype),
+        scale=backend.cast(1.0, backend.float_dtype),
+    )
     mock_exp = mock.create_autospec(roi.backend.exp)
     mock_exp.side_effect = lambda x: backend.to_tensor(  # pylint: disable=unnecessary-lambda
         np.power(2.718281828459045, np.asarray(x)), dtype=x.dtype
@@ -1169,7 +1172,10 @@ class RoiTest(parameterized.TestCase):
       )
 
   def test_evaluate_posterior_exp_scale(self) -> None:
-    prior = backend.tfd.Normal(loc=1.0, scale=1.0)
+    prior = backend.tfd.Normal(
+        loc=backend.cast(1.0, backend.float_dtype),
+        scale=backend.cast(1.0, backend.float_dtype),
+    )
     mock_exp = mock.create_autospec(roi.backend.exp)
     mock_exp.side_effect = lambda x: backend.to_tensor(  # pylint: disable=unnecessary-lambda
         np.power(2.718281828459045, np.asarray(x)), dtype=x.dtype
@@ -1232,12 +1238,18 @@ class RoiTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="normal",
-          prior=lambda: backend.tfd.Normal(1.0, 1.0),  # pylint: disable=unnecessary-lambda
+          prior=lambda: backend.tfd.Normal(  # pylint: disable=unnecessary-lambda
+              backend.cast(1.0, backend.float_dtype),
+              backend.cast(1.0, backend.float_dtype),
+          ),
           expected=True,
       ),
       dict(
           testcase_name="lognormal",
-          prior=lambda: backend.tfd.LogNormal(0.2, 0.9),  # pylint: disable=unnecessary-lambda
+          prior=lambda: backend.tfd.LogNormal(  # pylint: disable=unnecessary-lambda
+              backend.cast(0.2, backend.float_dtype),
+              backend.cast(0.9, backend.float_dtype),
+          ),
           expected=False,
       ),
       dict(
@@ -1690,7 +1702,10 @@ class RoiTest(parameterized.TestCase):
         )
 
   def test_compute_grid_bounds_non_tensor_coverage(self) -> None:
-    prior = backend.tfd.Normal(loc=1.0, scale=0.5)
+    prior = backend.tfd.Normal(
+        loc=backend.cast(1.0, backend.float_dtype),
+        scale=backend.cast(0.5, backend.float_dtype),
+    )
 
     mock_to_tensor = mock.create_autospec(roi.backend.to_tensor, spec_set=True)
     mock_to_tensor.return_value = np.linspace(-1.0, 3.0, 2000)

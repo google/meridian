@@ -1775,31 +1775,51 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='same',
-          get_a=lambda: backend.tfd.Deterministic(0, name='name_1'),
-          get_b=lambda: backend.tfd.Deterministic(0, name='name_1'),
+          get_a=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0), name='name_1'
+          ),
+          get_b=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(0), name='name_1'
+          ),
           expected_result=True,
       ),
       dict(
           testcase_name='same_type_different_name',
-          get_a=lambda: backend.tfd.Deterministic(1, name='name_1'),
-          get_b=lambda: backend.tfd.Deterministic(1, name='name_2'),
+          get_a=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1), name='name_1'
+          ),
+          get_b=lambda: backend.tfd.Deterministic(
+              backend.np_float_dtype(1), name='name_2'
+          ),
           expected_result=False,
       ),
       dict(
           testcase_name='same_type_different_params',
-          get_a=lambda: backend.tfd.LogNormal(0.7, 0.4, name='name_1'),
-          get_b=lambda: backend.tfd.LogNormal(0.7, 0.6, name='name_1'),
+          get_a=lambda: backend.tfd.LogNormal(
+              backend.np_float_dtype(0.7),
+              backend.np_float_dtype(0.4),
+              name='name_1',
+          ),
+          get_b=lambda: backend.tfd.LogNormal(
+              backend.np_float_dtype(0.7),
+              backend.np_float_dtype(0.6),
+              name='name_1',
+          ),
           expected_result=False,
       ),
       dict(
           testcase_name='same_complex_distributions',
           get_a=lambda: backend.tfd.TransformedDistribution(
-              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
               backend.bijectors.Shift(backend.np_float_dtype(0.1)),
               name='name_1',
           ),
           get_b=lambda: backend.tfd.TransformedDistribution(
-              backend.tfd.LogNormal(0.7, 0.4),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
               backend.bijectors.Shift(backend.np_float_dtype(0.1)),
               name='name_1',
           ),
@@ -1808,61 +1828,80 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
       dict(
           testcase_name='same_independent_multivariate_distributions',
           get_a=lambda: prior_distribution.IndependentMultivariateDistribution([
-              backend.tfd.LogNormal(0.7, 0.4),
-              backend.tfd.Normal(0.0, 1.0),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
+              backend.tfd.Normal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
           ]),
           get_b=lambda: prior_distribution.IndependentMultivariateDistribution([
-              backend.tfd.LogNormal(0.7, 0.4),
-              backend.tfd.Normal(0.0, 1.0),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
+              backend.tfd.Normal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
           ]),
           expected_result=True,
       ),
       dict(
           testcase_name='different_independent_multivariate_distributions',
           get_a=lambda: prior_distribution.IndependentMultivariateDistribution([
-              backend.tfd.LogNormal(0.7, 0.4),
-              backend.tfd.Normal(0.0, 1.0),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
+              backend.tfd.Normal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
           ]),
           get_b=lambda: prior_distribution.IndependentMultivariateDistribution([
-              backend.tfd.LogNormal(0.7, 0.4),
-              backend.tfd.Normal(0.0, 2.0),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.7), backend.np_float_dtype(0.4)
+              ),
+              backend.tfd.Normal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(2.0)
+              ),
           ]),
           expected_result=False,
       ),
       dict(
           testcase_name='different_outer_complex_distributions',
           get_a=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.HalfNormal(5.0), 3
+              backend.tfd.HalfNormal(backend.np_float_dtype(5.0)), 3
           ),
           get_b=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.HalfNormal(5.0), 7
+              backend.tfd.HalfNormal(backend.np_float_dtype(5.0)), 7
           ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_inner_complex_distributions',
           get_a=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.HalfNormal(5.0), 3
+              backend.tfd.HalfNormal(backend.np_float_dtype(5.0)), 3
           ),
           get_b=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.Uniform(0.0, 1.0), 3
+              backend.tfd.Uniform(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
+              3,
           ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_simple_and_complex_distributions',
-          get_a=lambda: backend.tfd.HalfNormal(5.0),
+          get_a=lambda: backend.tfd.HalfNormal(backend.np_float_dtype(5.0)),
           get_b=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.HalfNormal(5.0), 3
+              backend.tfd.HalfNormal(backend.np_float_dtype(5.0)), 3
           ),
           expected_result=False,
       ),
       dict(
           testcase_name='different_complex_and_simple_distributions',
           get_a=lambda: backend.tfd.BatchBroadcast(
-              backend.tfd.HalfNormal(5.0), 7
+              backend.tfd.HalfNormal(backend.np_float_dtype(5.0)), 7
           ),
-          get_b=lambda: backend.tfd.HalfNormal(5.0),
+          get_b=lambda: backend.tfd.HalfNormal(backend.np_float_dtype(5.0)),
           expected_result=False,
       ),
   )
@@ -2272,8 +2311,10 @@ class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
 
   def test_contains_deterministic_fail(self):
     distributions = [
-        backend.tfd.Normal(0, 1),
-        backend.tfd.Deterministic(3.0),
+        backend.tfd.Normal(
+            backend.np_float_dtype(0), backend.np_float_dtype(1)
+        ),
+        backend.tfd.Deterministic(backend.np_float_dtype(3.0)),
     ]
 
     with self.assertRaisesWithLiteralMatch(

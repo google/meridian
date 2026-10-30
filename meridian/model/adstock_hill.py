@@ -514,7 +514,9 @@ def transform_non_negative_reals_distribution(
 
   ```python
   from meridian import backend
-  alpha_star_prior = backend.tfd.LogNormal(0.2, 0.9)
+  alpha_star_prior = backend.tfd.LogNormal(
+      backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+  )
   alpha_prior = transform_non_negative_reals_distribution(alpha_star_prior)
   prior = prior_distribution.PriorDistribution(
       alpha_m=alpha_prior,
@@ -531,9 +533,10 @@ def transform_non_negative_reals_distribution(
     such that the resultant prior on `alpha_*` is the input distribution.
   """
 
-  bijector = backend.bijectors.Chain(
-      [backend.bijectors.Reciprocal(), backend.bijectors.Shift(1)]
-  )
+  bijector = backend.bijectors.Chain([
+      backend.bijectors.Reciprocal(),
+      backend.bijectors.Shift(backend.np_float_dtype(1)),
+  ])
 
   return backend.tfd.TransformedDistribution(
       distribution=distribution,

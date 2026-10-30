@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix a `float32`/`float64` dtype mismatch in
+    `adstock_hill.transform_non_negative_reals_distribution` on the 64-bit JAX
+    backend by typing the `Shift` bijector parameter with
+    `backend.np_float_dtype`.
 *   `time_coordinates.normalize_date(None)` now returns `None` instead of
     raising `ValueError`, with typing overloads so non-`None` inputs still
     typecheck as `datetime.date`.

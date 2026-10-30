@@ -35,14 +35,19 @@ class MediaTransformerTest(test_utils.MeridianTestCase):
     self.seed = 1
     self._initialize_rng()
     self._media1 = self.sample(
-        tfd.HalfNormal(1),
+        tfd.HalfNormal(backend.np_float_dtype(1)),
         [self._n_geos, self._n_media_times, self._n_media_channels],
     )
     self._media2 = self.sample(
-        tfd.HalfNormal(1),
+        tfd.HalfNormal(backend.np_float_dtype(1)),
         [self._n_geos, self._n_media_times, self._n_media_channels],
     )
-    self._population = self.sample(tfd.Uniform(100, 1000), [self._n_geos])
+    self._population = self.sample(
+        tfd.Uniform(
+            backend.np_float_dtype(100), backend.np_float_dtype(1000)
+        ),
+        [self._n_geos],
+    )
 
   def test_output_shape_and_range(self):
     transformer = transformers.MediaTransformer(
@@ -177,17 +182,24 @@ class CenteringAndScalingTransformerTest(test_utils.MeridianTestCase):
     self.seed = 1
     self._initialize_rng()
     self._controls1 = self.sample(
-        tfd.Normal(2, 1), [self._n_geos, self._n_times, self._n_controls]
+        tfd.Normal(backend.np_float_dtype(2), backend.np_float_dtype(1)),
+        [self._n_geos, self._n_times, self._n_controls],
     )
     self._controls2 = self.sample(
-        tfd.Normal(2, 1), [self._n_geos, self._n_times, self._n_controls]
+        tfd.Normal(backend.np_float_dtype(2), backend.np_float_dtype(1)),
+        [self._n_geos, self._n_times, self._n_controls],
     )
     self._controls3 = backend.to_tensor(
         np.ones((self._n_geos, 1, self._n_controls))
     )
 
     # Generate populations to test population scaling.
-    self._population = self.sample(tfd.Uniform(), [self._n_geos])
+    self._population = self.sample(
+        tfd.Uniform(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
+        [self._n_geos],
+    )
     self._population_scaling_id = backend.to_tensor(
         [False, True, False, True, True]
     )
@@ -298,9 +310,20 @@ class KpiTransformerTest(test_utils.MeridianTestCase):
     # Generate random data based on dimensions specified above.
     self.seed = 1
     self._initialize_rng()
-    self._kpi1 = self.sample(tfd.HalfNormal(10), [self._n_geos, self._n_times])
-    self._kpi2 = self.sample(tfd.HalfNormal(10), [self._n_geos, self._n_times])
-    self._population = self.sample(tfd.Uniform(100, 1000), [self._n_geos])
+    self._kpi1 = self.sample(
+        tfd.HalfNormal(backend.np_float_dtype(10)),
+        [self._n_geos, self._n_times],
+    )
+    self._kpi2 = self.sample(
+        tfd.HalfNormal(backend.np_float_dtype(10)),
+        [self._n_geos, self._n_times],
+    )
+    self._population = self.sample(
+        tfd.Uniform(
+            backend.np_float_dtype(100), backend.np_float_dtype(1000)
+        ),
+        [self._n_geos],
+    )
 
   def test_population_scaled_kpi(self):
     transformer = transformers.KpiTransformer(

@@ -808,19 +808,29 @@ class ModelSpecTest(parameterized.TestCase):
   ):
     cal_output = calibration_base.CalibrationOutput(
         channel_name="Search",
-        intermediary_prior=backend.tfd.Normal(0.0, 1.0),
+        intermediary_prior=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
         adstock_decay_spec=cal_adstock_decay_spec,
         max_lag=cal_max_lag,
     )
     if has_uncalibrated_channel:
       distributions = [
-          backend.tfd.Normal(0.1, 0.5),
-          backend.tfd.Normal(0.2, 0.9),
+          backend.tfd.Normal(
+              backend.np_float_dtype(0.1), backend.np_float_dtype(0.5)
+          ),
+          backend.tfd.Normal(
+              backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+          ),
       ]
       is_calibrated = [False, True]
       calibration_outputs = [None, cal_output]
     else:
-      distributions = [backend.tfd.Normal(0.2, 0.9)]
+      distributions = [
+          backend.tfd.Normal(
+              backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+          )
+      ]
       is_calibrated = [True]
       calibration_outputs = [cal_output]
 
@@ -948,12 +958,18 @@ class ModelSpecTest(parameterized.TestCase):
   ):
     cal_output = calibration_base.CalibrationOutput(
         channel_name=channel_name,
-        intermediary_prior=backend.tfd.Normal(0.0, 1.0),
+        intermediary_prior=backend.tfd.Normal(
+            backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+        ),
         adstock_decay_spec=cal_adstock_decay_spec,
         max_lag=cal_max_lag,
     )
     roi_dist = calibration_base.CalibratedDistribution(
-        distributions=[backend.tfd.Normal(0.2, 0.9)],
+        distributions=[
+            backend.tfd.Normal(
+                backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+            )
+        ],
         is_calibrated=[True],
         calibration_outputs=[cal_output],
     )
