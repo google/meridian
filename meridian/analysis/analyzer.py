@@ -15,6 +15,7 @@
 """Methods to compute analysis metrics of the model and the data."""
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
+import contextlib
 import dataclasses
 import functools
 import itertools
@@ -24,8 +25,10 @@ import warnings
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.analysis import changepoint_effects
 from meridian.analysis import tensors
 from meridian.common import errors
+from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
@@ -223,16 +226,20 @@ class Analyzer:
     # backend.function computation graphs: it should be frozen for no more
     # internal states mutation before those graphs execute.
     self._model_context = tensors.get_model_context(meridian, model_context)
-    # TODO: Use each time period's coefficient for the channels
-    # with changepoints. Only the private `spec._ModelSpecWithChangepoints` has
-    # `changepoints`, so it is read with `getattr`. The `Mapping` check is
-    # needed because tests here and downstream often pass mock models, whose
-    # attributes are always truthy.
+    # Only the private `spec._ModelSpecWithChangepoints` has `changepoints`, so
+    # it is read with `getattr`. The `Mapping` check is needed because tests
+    # here and downstream often pass mock models, whose attributes are always
+    # truthy.
     changepoints = getattr(self._model_context.model_spec, "changepoints", None)
-    if isinstance(changepoints, Mapping) and changepoints:
-      raise NotImplementedError(
-          "`Analyzer` doesn't support models with `changepoints` yet."
-      )
+    self._has_changepoints = isinstance(changepoints, Mapping) and bool(
+        changepoints
+    )
+    # The effect that channels with changepoints use, set by
+    # `_use_changepoint_effect`. `None` means each time period's own effect,
+    # matched by date.
+    self._changepoint_effect: changepoint_effects.ChangepointEffect | None = (
+        None
+    )
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data
@@ -264,8 +271,13 @@ class Analyzer:
       *,
       use_posterior: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
+      time_indices: np.ndarray | None = None,
   ) -> Iterator[DistributionTensors]:
     """Yields batched DistributionTensors for the given parameters.
+
+    If some channel of a type has changepoints, then `beta_gm` or `beta_grf`
+    has the coefficient of each time period, shape `(..., n_geos, n_times,
+    n_channels)`. Otherwise it keeps the shape `(..., n_geos, n_channels)`.
 
     Preconditions:
       The model must be fitted (i.e. posterior/prior groups must exist in the
@@ -275,6 +287,9 @@ class Analyzer:
       param_list: Sequence of parameter names to include in the batch.
       use_posterior: Whether to use posterior or prior parameters.
       batch_size: The batch size. Must be a positive integer.
+      time_indices: The positions of the model's time periods to give the
+        coefficients of, from `_changepoint_time_indices`. By default, all of
+        the model's time periods.
 
     Yields:
       DistributionTensors containing the sliced parameters for the
@@ -293,12 +308,44 @@ class Analyzer:
     n_draws = params.draw.size
     batch_starting_indices = np.arange(n_draws, step=batch_size)
 
+    def _batch(name: str, draws: slice) -> backend.Tensor:
+      return backend.to_tensor(params[name][:, draws, ...])
+
+    # pylint: disable=protected-access
+    changepoint_params = []
+    if self._has_changepoints:
+      changepoint_params = [
+          (beta, zeta, varphi, info)
+          for beta, zeta, varphi, info in (
+              (
+                  constants.BETA_GM,
+                  constants.ZETA_M,
+                  constants.VARPHI_M,
+                  self.model_context._media_changepoint_info,
+              ),
+              (
+                  constants.BETA_GRF,
+                  constants.ZETA_RF,
+                  constants.VARPHI_RF,
+                  self.model_context._rf_changepoint_info,
+              ),
+          )
+          if info is not None and beta in param_list
+      ]
     for start_index in batch_starting_indices:
-      stop_index = min(n_draws, start_index + batch_size)
-      yield DistributionTensors(**{
-          k: backend.to_tensor(params[k][:, start_index:stop_index, ...])
-          for k in param_list
-      })
+      draws = slice(start_index, min(n_draws, start_index + batch_size))
+      batch = {k: _batch(k, draws) for k in param_list}
+      for beta, zeta, varphi, info in changepoint_params:
+        batch[beta] = self._model_equations._coefficients_by_time(
+            changepoint_info=info,
+            beta_gx=batch[beta],
+            zeta_x=_batch(zeta, draws),
+            varphi_x=_batch(varphi, draws),
+        )
+        if time_indices is not None:
+          batch[beta] = backend.gather(batch[beta], time_indices, axis=-2)
+      yield DistributionTensors(**batch)
+    # pylint: enable=protected-access
 
   def yield_batched_distribution_tensors(
       self,
@@ -321,11 +368,97 @@ class Analyzer:
     Yields:
       DistributionTensors containing the sliced parameters for the batch.
     """
+    # For a model with changepoints, `beta_gm` and `beta_grf` have the
+    # coefficient of each time period, which `get_kpi_means` and
+    # `get_incremental_kpi` need.
     yield from self._yield_batched_distribution_tensors(
         param_list=param_list,
         use_posterior=use_posterior,
         batch_size=batch_size,
     )
+
+  @contextlib.contextmanager
+  def _use_changepoint_effect(
+      self, effect: changepoint_effects.ChangepointEffect
+  ) -> Iterator[None]:
+    """Uses `effect` for the channels with changepoints inside the `with` block.
+
+    Budget optimization uses this so that every outcome it computes, including
+    those of the public Analyzer methods it calls, uses the effect it was given.
+    The effect is set on this Analyzer, so other threads that use it while the
+    `with` block runs use the effect too.
+
+    Args:
+      effect: The effect that the channels with changepoints use.
+
+    Yields:
+      Nothing.
+    """
+    previous = self._changepoint_effect
+    self._changepoint_effect = effect
+    try:
+      yield
+    finally:
+      self._changepoint_effect = previous
+
+  def _changepoint_time_indices(
+      self, time: Sequence[str] | None
+  ) -> np.ndarray | None:
+    """Finds the model time periods whose coefficients the data uses.
+
+    Channels with changepoints have a separate coefficient in each time period
+    of the model. By default, the Analyzer matches the data's time periods to
+    the model's by date. Inside `_use_changepoint_effect`, the effect decides
+    which of the model's time periods each of the data's time periods uses.
+
+    Args:
+      time: The dates of the data's time periods, as in `DataTensors.time`.
+        `None` means the model's time periods.
+
+    Returns:
+      For each of the data's time periods, the position of the model time
+      period whose coefficient it uses. `None` if those are the model's own
+      time periods in order, or if no channel has changepoints.
+
+    Raises:
+      ValueError: If the data has time periods that the effect, or matching by
+        date, isn't defined for.
+    """
+    if not self._has_changepoints:
+      return None
+    effect = self._changepoint_effect
+    if effect is not None:
+      time_coordinates = self.model_context.input_data.time_coordinates
+      indices = changepoint_effects._time_indices(  # pylint: disable=protected-access
+          effect,
+          time_coordinates=time_coordinates,
+          dates=(
+              None if time is None else [tc.normalize_date(t) for t in time]
+          ),
+      )
+      if np.array_equal(indices, np.arange(len(time_coordinates.all_dates))):
+        return None
+      return indices
+    if time is None:
+      return None
+    model_times = self.model_context.input_data.time_coordinates.all_dates_str
+    if list(time) == model_times:
+      return None
+    positions = {date: i for i, date in enumerate(model_times)}
+    other_times = [date for date in time if date not in positions]
+    if other_times:
+      n_shown = 5
+      shown = ", ".join(other_times[:n_shown])
+      if len(other_times) > n_shown:
+        shown += f" and {len(other_times) - n_shown} more"
+      raise ValueError(
+          "Channels with changepoints have a separate effect in each time"
+          " period of the training data"
+          f" ({model_times[0]} to {model_times[-1]}), so `new_data` can only"
+          " have those time periods. These time periods of `new_data` aren't"
+          f" in the training data: {shown}."
+      )
+    return np.array([positions[date] for date in time])
 
   @backend.function(jit_compile=True)
   def _get_kpi_means(
@@ -361,8 +494,8 @@ class Analyzer:
         )
     )
 
-    result = tau_gt + backend.einsum(
-        "...gtm,...gm->...gt", combined_media_transformed, combined_beta
+    result = tau_gt + self._media_outcome(
+        combined_media_transformed, combined_beta, output="gt"
     )
     if self.model_context.controls is not None:
       result += backend.einsum(
@@ -578,6 +711,34 @@ class Analyzer:
         ])
     return params
 
+  def _media_outcome(
+      self,
+      media_transformed: backend.Tensor | None,
+      beta: backend.Tensor | None,
+      output: str,
+  ) -> backend.Tensor:
+    """Multiplies the transformed media by their coefficients.
+
+    Args:
+      media_transformed: The adstock and Hill output, shape `(..., n_geos,
+        n_times, n_channels)`.
+      beta: The coefficients, shape `(..., n_geos, n_channels)`. For a model
+        with changepoints, it can also be `(..., n_geos, n_times, n_channels)`,
+        from `_get_transformed_media_and_beta`.
+      output: The einsum axes of the output, such as `"gt"` or `"gtm"`.
+
+    Returns:
+      The product, summed over the axes that aren't in `output`.
+    """
+    assert media_transformed is not None and beta is not None
+    by_time = self._has_changepoints and len(beta.shape) == len(
+        media_transformed.shape
+    )
+    beta_axes = "gtm" if by_time else "gm"
+    return backend.einsum(
+        f"...gtm,...{beta_axes}->...{output}", media_transformed, beta
+    )
+
   def _get_transformed_media_and_beta(
       self,
       data_tensors: DataTensors,
@@ -603,6 +764,18 @@ class Analyzer:
     """
     combined_medias = []
     combined_betas = []
+    # Whether each channel type in `combined_betas` has changepoints.
+    has_changepoints = []
+    # pylint: disable=protected-access
+    media_has_changepoints = (
+        self._has_changepoints
+        and self.model_context._media_changepoint_info is not None
+    )
+    rf_has_changepoints = (
+        self._has_changepoints
+        and self.model_context._rf_changepoint_info is not None
+    )
+    # pylint: enable=protected-access
     if data_tensors.media is not None:
       combined_medias.append(
           self._model_equations.adstock_hill_media(
@@ -616,6 +789,7 @@ class Analyzer:
           )
       )
       combined_betas.append(dist_tensors.beta_gm)
+      has_changepoints.append(media_has_changepoints)
 
     if data_tensors.reach is not None:
       combined_medias.append(
@@ -631,6 +805,7 @@ class Analyzer:
           )
       )
       combined_betas.append(dist_tensors.beta_grf)
+      has_changepoints.append(rf_has_changepoints)
     if data_tensors.organic_media is not None:
       combined_medias.append(
           self._model_equations.adstock_hill_media(
@@ -644,6 +819,7 @@ class Analyzer:
           )
       )
       combined_betas.append(dist_tensors.beta_gom)
+      has_changepoints.append(False)
     if data_tensors.organic_reach is not None:
       combined_medias.append(
           self._model_equations.adstock_hill_rf(
@@ -658,10 +834,68 @@ class Analyzer:
           )
       )
       combined_betas.append(dist_tensors.beta_gorf)
+      has_changepoints.append(False)
 
     combined_media_transformed = backend.concatenate(combined_medias, axis=-1)
-    combined_beta = backend.concatenate(combined_betas, axis=-1)
+    if any(has_changepoints):
+      combined_betas = self._betas_by_time(
+          combined_media_transformed, combined_betas, has_changepoints
+      )
+    combined_beta = backend.concatenate(combined_betas, axis=-1)  # pyrefly: ignore[bad-argument-type]
     return combined_media_transformed, combined_beta
+
+  def _betas_by_time(
+      self,
+      combined_media_transformed: backend.Tensor,
+      combined_betas: Sequence[backend.Tensor],
+      has_changepoints: Sequence[bool],
+  ) -> list[backend.Tensor]:
+    """Gives every channel type a coefficient for each time period.
+
+    Args:
+      combined_media_transformed: The adstock and Hill output of all channels,
+        shape `(..., n_geos, n_times, n_channels)`.
+      combined_betas: The coefficients of each channel type. The types with
+        changepoints must have the coefficient of each time period, shape
+        `(..., n_geos, n_times, n_channels)`. The others have shape `(...,
+        n_geos, n_channels)`.
+      has_changepoints: Whether each channel type in `combined_betas` has
+        changepoints.
+
+    Returns:
+      The coefficients of each channel type, shape `(..., n_geos, n_times,
+      n_channels)`. The channel types without changepoints have the same
+      coefficient in every time period.
+
+    Raises:
+      ValueError: If the coefficients of a channel type with changepoints don't
+        have the data's time periods.
+    """
+    n_dims = len(combined_media_transformed.shape)
+    n_times = combined_media_transformed.shape[-2]
+    betas_by_time = []
+    for beta, type_has_changepoints in zip(combined_betas, has_changepoints):
+      if type_has_changepoints:
+        if len(beta.shape) != n_dims:
+          raise ValueError(
+              "The coefficients of channels with changepoints must have a"
+              " value for each time period, as from"
+              " `yield_batched_distribution_tensors`."
+          )
+        if beta.shape[-2] != n_times:
+          raise ValueError(
+              "The coefficients of channels with changepoints have"
+              f" {beta.shape[-2]} time periods, but the data has {n_times}."
+          )
+        betas_by_time.append(beta)
+      else:
+        betas_by_time.append(
+            backend.broadcast_to(
+                beta[..., :, backend.newaxis, :],
+                [*beta.shape[:-1], n_times, beta.shape[-1]],
+            )
+        )
+    return betas_by_time
 
   def filter_and_aggregate_by_indices(
       self,
@@ -979,6 +1213,7 @@ class Analyzer:
         param_list=param_list,
         use_posterior=use_posterior,
         batch_size=batch_size,
+        time_indices=self._changepoint_time_indices(data_tensors.time),
     ):
       outcome_means_temps.append(
           self._get_kpi_means(
@@ -1077,10 +1312,8 @@ class Analyzer:
             n_times_output=n_times_output,
         )
     )
-    combined_media_kpi = backend.einsum(
-        "...gtm,...gm->...gtm",
-        combined_media_transformed,
-        combined_beta,
+    combined_media_kpi = self._media_outcome(
+        combined_media_transformed, combined_beta, output="gtm"
     )
     if data_tensors.non_media_treatments is not None:
       non_media_kpi = backend.einsum(
@@ -1089,7 +1322,10 @@ class Analyzer:
           - non_media_treatments_baseline_normalized,
           dist_tensors.gamma_gn,
       )
-      return backend.concatenate([combined_media_kpi, non_media_kpi], axis=-1)
+      return backend.concatenate(
+          [combined_media_kpi, non_media_kpi],  # pyrefly: ignore[bad-argument-type]
+          axis=-1,
+      )
     else:
       return combined_media_kpi
 
@@ -1494,6 +1730,7 @@ class Analyzer:
         param_list=param_list,
         use_posterior=use_posterior,
         batch_size=batch_size,
+        time_indices=self._changepoint_time_indices(inputs1.tensors.time),
     ):
       batch_incremental_outcome = self._incremental_outcome_impl(
           data_tensors=data_tensors1,
@@ -2001,6 +2238,138 @@ class Analyzer:
             flexible_time_dim=True,
             has_media_dim=True,
         ),
+    )
+
+  def _roi_by_changepoint_interval(
+      self,
+      use_posterior: bool = True,
+      use_kpi: bool = False,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> xr.Dataset:
+    """Returns the ROI of each interval between changepoints.
+
+    The ROI of an interval is the incremental outcome over all geos in the
+    interval's time periods, divided by the spend over the same geos and time
+    periods, as in `roi(selected_times=...)`. An interval without spend has NaN
+    ROI, while `roi(selected_times=...)` gives inf if earlier media still adds
+    incremental outcome in it.
+
+    Args:
+      use_posterior: Whether to use the posterior rather than the prior.
+      use_kpi: As in `roi`.
+      confidence_level: The confidence level of the credible intervals.
+      batch_size: As in `roi`.
+
+    Returns:
+      A dataset with `roi` of dimensions `(channel, changepoint_interval,
+      metric)`, with the mean and credible interval, and `start_date` and
+      `end_date` coordinates of dimensions `(channel, changepoint_interval)`.
+      The channels are the paid media and RF channels with changepoints. A
+      channel with fewer intervals than the others has NaN ROI and empty dates
+      for the extra intervals.
+
+    Raises:
+      ValueError: If no channel has changepoints.
+    """
+    # pylint: disable=protected-access
+    m_context = self.model_context
+    groups = [
+        (info, offset)
+        for info, offset in (
+            (m_context._media_changepoint_info, 0),
+            (m_context._rf_changepoint_info, m_context.n_media_channels),
+        )
+        if info is not None
+    ]
+    # pylint: enable=protected-access
+    if not groups:
+      raise ValueError("No channel has changepoints.")
+    use_kpi = self._use_kpi(use_kpi)
+    incremental_outcome = np.asarray(
+        self.incremental_outcome(
+            use_posterior=use_posterior,
+            aggregate_geos=True,
+            aggregate_times=False,
+            inverse_transform_outcome=True,
+            include_non_paid_channels=False,
+            use_kpi=use_kpi,
+            batch_size=batch_size,
+        )
+    )
+    filled_data = (
+        tensors.DataTensorsBuilder(m_context)
+        .build_unscaled_inputs(
+            new_data=DataTensors(),
+            required_tensors_names=constants.PERFORMANCE_DATA,
+        )
+        .tensors
+    )
+    spend = np.asarray(
+        self.filter_and_aggregate_by_indices(
+            filled_data.total_spend(),  # pyrefly: ignore[bad-argument-type]
+            aggregate_geos=True,
+            aggregate_times=False,
+            flexible_time_dim=True,
+            has_media_dim=True,
+        )
+    )
+    columns = np.concatenate(
+        [offset + info.channel_indices for info, offset in groups]
+    )
+    max_intervals = max(info.max_intervals for info, _ in groups)
+    # The time periods of each interval, shape `(channel, interval, time)`.
+    weights = np.concatenate(
+        [
+            np.pad(
+                info.weights,
+                [(0, 0), (0, max_intervals - info.max_intervals), (0, 0)],
+            )
+            for info, _ in groups
+        ]
+    )
+    interval_outcome = np.einsum(
+        "cdtv,vkt->cdvk", incremental_outcome[..., columns], weights
+    )
+    interval_spend = np.einsum("tv,vkt->vk", spend[:, columns], weights)
+    roi = np.divide(
+        interval_outcome,
+        interval_spend,
+        out=np.full_like(interval_outcome, np.nan),
+        where=interval_spend > 0,
+    )
+
+    dates = m_context.input_data.time_coordinates.all_dates_str
+    start_date = np.full(weights.shape[:2], "", dtype=object)
+    end_date = np.full(weights.shape[:2], "", dtype=object)
+    for channel, interval in zip(*np.nonzero(weights.any(axis=-1))):
+      time_periods = np.flatnonzero(weights[channel, interval])
+      start_date[channel, interval] = dates[time_periods[0]]
+      end_date[channel, interval] = dates[time_periods[-1]]
+    dims = [constants.CHANNEL, constants.CHANGEPOINT_INTERVAL]
+    return xr.Dataset(
+        data_vars={
+            constants.ROI: (
+                [*dims, constants.METRIC],
+                get_central_tendency_and_ci(roi, confidence_level),
+            ),
+        },
+        coords={
+            constants.CHANNEL: list(
+                itertools.chain.from_iterable(
+                    info.channel_names for info, _ in groups
+                )
+            ),
+            constants.CHANGEPOINT_INTERVAL: np.arange(max_intervals),
+            constants.METRIC: [
+                constants.MEAN,
+                constants.CI_LO,
+                constants.CI_HI,
+            ],
+            constants.START_DATE: (dims, start_date.astype(str)),
+            constants.END_DATE: (dims, end_date.astype(str)),
+        },
+        attrs={constants.CONFIDENCE_LEVEL: confidence_level},
     )
 
   def cpik(

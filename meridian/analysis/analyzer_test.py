@@ -26,6 +26,7 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
+from meridian.analysis import changepoint_effects
 from meridian.analysis import tensors
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
@@ -6117,27 +6118,472 @@ class AnalyzerNotFittedTest(absltest.TestCase):
       not_fitted_analyzer.rhat_summary()
 
 
-class AnalyzerChangepointsTest(absltest.TestCase):
+class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
+  """Tests the `Analyzer` on a model with changepoints."""
 
-  def test_model_with_changepoints_raises(self):
-    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
-        n_geos=2, n_times=10, n_media_times=10, n_media_channels=2, seed=0
+  # pylint: disable=protected-access
+
+  _N_TIMES = 10
+  _N_MEDIA_TIMES = 12
+  # The first time period of each interval: media channel 0 has a changepoint
+  # at time period 5, and RF channel 0 at 3 and 7.
+  _MEDIA_STARTS = (0, 5)
+  _RF_STARTS = (0, 3, 7)
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=2,
+        n_times=cls._N_TIMES,
+        n_media_times=cls._N_MEDIA_TIMES,
+        n_media_channels=2,
+        n_rf_channels=1,
+        n_organic_media_channels=1,
+        seed=0,
     )
-    assert data.media_channel is not None
-    model_context = context.ModelContext(
+    cls.mmm = cls._sampled_model(cls.data)
+
+  @classmethod
+  def _sampled_model(cls, data: Any) -> model.Meridian:
+    """Returns a model with changepoints and prior draws."""
+    assert data.media_channel is not None and data.rf_channel is not None
+    dates = data.time_coordinates.all_dates
+    mmm = model.Meridian(
         input_data=data,
-        model_spec=spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+        model_spec=spec._ModelSpecWithChangepoints(
             changepoints={
                 str(data.media_channel.values[0]): [
-                    data.time_coordinates.all_dates[5]
-                ]
+                    dates[cls._MEDIA_STARTS[1]]
+                ],
+                str(data.rf_channel.values[0]): [
+                    dates[start] for start in cls._RF_STARTS[1:]
+                ],
             }
         ),
     )
-    with self.assertRaisesRegex(NotImplementedError, "changepoints"):
+    mmm.sample_prior(n_draws=4, seed=1)
+    return mmm
+
+  def setUp(self):
+    super().setUp()
+    self.analyzer = analyzer.Analyzer(
+        model_context=self.mmm.model_context,
+        inference_data=self.mmm.inference_data,
+    )
+    assert self.data.media_channel is not None
+    assert self.data.rf_channel is not None
+    self.media_channel = str(self.data.media_channel.values[0])
+    self.rf_channel = str(self.data.rf_channel.values[0])
+    self.times = [str(t) for t in self.data.time.values]
+
+  def _prior(self) -> Any:
+    """The prior draws of the model."""
+    return self.mmm.inference_data.prior  # pyrefly: ignore[missing-attribute]
+
+  def _expected_coefficients(
+      self, beta: str, zeta: str, varphi: str, starts: Sequence[int]
+  ) -> np.ndarray:
+    """The coefficients by time period, with channel 0's time effect."""
+    prior = self._prior()
+    interval = (
+        np.searchsorted(starts, np.arange(self._N_TIMES), side="right") - 1
+    )
+    # The time effect of each draw and time period, shape `(1, n_draws,
+    # n_times)`.
+    time_effect = (
+        np.asarray(prior[zeta])[..., 0, np.newaxis]
+        * np.asarray(prior[varphi])[..., 0, :][..., interval]
+    )
+    coefficients = np.repeat(
+        np.asarray(prior[beta])[..., np.newaxis, :], self._N_TIMES, axis=-2
+    )
+    # The channels with changepoints have log-normal effects by default.
+    coefficients[..., 0] *= np.exp(time_effect)[..., np.newaxis, :]
+    return coefficients
+
+  def test_coefficients_follow_changepoints(self):
+    (dist_tensors,) = self.analyzer.yield_batched_distribution_tensors(
+        [constants.BETA_GM, constants.BETA_GRF],
+        use_posterior=False,
+    )
+    backend_test_utils.assert_allclose(
+        dist_tensors.beta_gm,
+        self._expected_coefficients(
+            constants.BETA_GM,
+            constants.ZETA_M,
+            constants.VARPHI_M,
+            self._MEDIA_STARTS,
+        ),
+        rtol=1e-5,
+    )
+    backend_test_utils.assert_allclose(
+        dist_tensors.beta_grf,
+        self._expected_coefficients(
+            constants.BETA_GRF,
+            constants.ZETA_RF,
+            constants.VARPHI_RF,
+            self._RF_STARTS,
+        ),
+        rtol=1e-5,
+    )
+
+  def _expected_incremental_outcome(
+      self, time_indices: np.ndarray
+  ) -> np.ndarray:
+    """The incremental outcome by time period, using the given coefficients.
+
+    Args:
+      time_indices: For each time period, the time period whose coefficient it
+        uses.
+
+    Returns:
+      The incremental outcome of the paid channels, by draw, geo and time
+      period, on the KPI scale before the inverse transform.
+    """
+    prior = self._prior()
+    model_context = self.mmm.model_context
+    media_scaled = model_context.media_tensors.media_scaled
+    reach_scaled = model_context.rf_tensors.reach_scaled
+    frequency = model_context.rf_tensors.frequency
+    assert media_scaled is not None
+    assert reach_scaled is not None and frequency is not None
+    model_equations = self.analyzer._model_equations
+    media_transformed = model_equations.adstock_hill_media(
+        media=media_scaled,
+        alpha=backend.to_tensor(prior.alpha_m.values),
+        ec=backend.to_tensor(prior.ec_m.values),
+        slope=backend.to_tensor(prior.slope_m.values),
+        decay_functions=model_context.adstock_decay_spec.media,
+        saturation_spec=model_context.saturation_spec.media,
+    )
+    rf_transformed = model_equations.adstock_hill_rf(
+        reach=reach_scaled,
+        frequency=frequency,
+        alpha=backend.to_tensor(prior.alpha_rf.values),
+        ec=backend.to_tensor(prior.ec_rf.values),
+        slope=backend.to_tensor(prior.slope_rf.values),
+        decay_functions=model_context.adstock_decay_spec.rf,
+        saturation_spec=model_context.saturation_spec.rf,
+    )
+    return np.concatenate(
+        [
+            np.asarray(media_transformed)
+            * self._expected_coefficients(
+                constants.BETA_GM,
+                constants.ZETA_M,
+                constants.VARPHI_M,
+                self._MEDIA_STARTS,
+            )[..., time_indices, :],
+            np.asarray(rf_transformed)
+            * self._expected_coefficients(
+                constants.BETA_GRF,
+                constants.ZETA_RF,
+                constants.VARPHI_RF,
+                self._RF_STARTS,
+            )[..., time_indices, :],
+        ],
+        axis=-1,
+    )
+
+  def _incremental_outcome_by_time(self) -> backend.Tensor:
+    """The incremental outcome of the paid channels, by geo and time period."""
+    return self.analyzer.incremental_outcome(
+        use_posterior=False,
+        aggregate_geos=False,
+        aggregate_times=False,
+        inverse_transform_outcome=False,
+        use_kpi=True,
+        include_non_paid_channels=False,
+    )
+
+  def test_incremental_outcome_uses_each_time_periods_coefficient(self):
+    backend_test_utils.assert_allclose(
+        self._incremental_outcome_by_time(),
+        self._expected_incremental_outcome(np.arange(self._N_TIMES)),
+        rtol=1e-4,
+        atol=1e-6,
+    )
+
+  @parameterized.named_parameters(
+      ("latest", "latest"), ("history", "history"), ("interval", "interval")
+  )
+  def test_changepoint_effect_decides_the_coefficients(self, name: str):
+    last = self._N_TIMES - 1
+    effect, time_indices = {
+        "latest": (changepoint_effects.Latest(), np.full(self._N_TIMES, last)),
+        "history": (changepoint_effects.History(), np.arange(self._N_TIMES)),
+        "interval": (
+            changepoint_effects.Interval(date=self.times[2]),
+            np.full(self._N_TIMES, 2),
+        ),
+    }[name]
+    with self.analyzer._use_changepoint_effect(effect):
+      incremental_outcome = self._incremental_outcome_by_time()
+    backend_test_utils.assert_allclose(
+        incremental_outcome,
+        self._expected_incremental_outcome(time_indices),
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_changepoint_effect_is_restored_after_an_error(self):
+    with self.assertRaisesRegex(ValueError, "Error inside the block."):
+      with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+        raise ValueError("Error inside the block.")
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_nested_changepoint_effect_is_restored(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+      with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+        self.assertEqual(
+            self.analyzer._changepoint_effect, changepoint_effects.History()
+        )
+      self.assertEqual(
+          self.analyzer._changepoint_effect, changepoint_effects.Latest()
+      )
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_latest_effect_works_for_time_periods_after_the_training_data(self):
+    future = ["2100-01-04", "2100-01-11"]
+    with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+      np.testing.assert_array_equal(
+          self.analyzer._changepoint_time_indices(future),
+          [self._N_TIMES - 1] * 2,
+      )
+
+  def test_history_effect_of_other_time_periods_raises(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"`changepoint_effects.History\(\)` uses each time period's own"
+          " effect",
+      ):
+        self.analyzer._changepoint_time_indices(["2100-01-04"])
+
+  def test_history_effect_of_the_model_time_periods_needs_no_indices(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+      self.assertIsNone(self.analyzer._changepoint_time_indices(self.times))
+      self.assertIsNone(self.analyzer._changepoint_time_indices(None))
+
+  def test_model_time_periods_need_no_indices_without_an_effect(self):
+    self.assertIsNone(self.analyzer._changepoint_time_indices(None))
+
+  def test_expected_outcome_uses_each_time_periods_coefficient(self):
+    prior = self._prior()
+    controls_scaled = self.mmm.model_context.controls_scaled
+    assert controls_scaled is not None
+    baseline = (
+        np.asarray(prior.tau_g)[..., np.newaxis]
+        + np.asarray(prior.mu_t)[..., np.newaxis, :]
+        + np.einsum(
+            "gtc,...gc->...gt",
+            np.asarray(controls_scaled),
+            np.asarray(prior.gamma_gc),
+        )
+    )
+    incremental_outcome = self.analyzer.incremental_outcome(
+        use_posterior=False,
+        aggregate_geos=False,
+        aggregate_times=False,
+        inverse_transform_outcome=False,
+        use_kpi=True,
+    )
+    expected_outcome = self.analyzer.expected_outcome(
+        use_posterior=False,
+        aggregate_geos=False,
+        aggregate_times=False,
+        inverse_transform_outcome=False,
+        use_kpi=True,
+    )
+    backend_test_utils.assert_allclose(
+        expected_outcome,
+        baseline + np.sum(np.asarray(incremental_outcome), axis=-1),
+        rtol=1e-4,
+        atol=1e-5,
+    )
+
+  def test_roi_by_changepoint_interval_matches_roi(self):
+    result = self.analyzer._roi_by_changepoint_interval(use_posterior=False)
+    self.assertEqual(
+        list(result.channel.values), [self.media_channel, self.rf_channel]
+    )
+    # The RF channel comes after the 2 media channels.
+    for channel, column, starts in (
+        (self.media_channel, 0, self._MEDIA_STARTS),
+        (self.rf_channel, 2, self._RF_STARTS),
+    ):
+      bounds = [*starts, self._N_TIMES]
+      for interval in range(len(starts)):
+        with self.subTest(channel=channel, interval=interval):
+          selected_times = self.times[bounds[interval] : bounds[interval + 1]]
+          roi = self.analyzer.roi(
+              use_posterior=False, selected_times=selected_times
+          )
+          selection = dict(channel=channel, changepoint_interval=interval)
+          backend_test_utils.assert_allclose(
+              result.roi.sel(selection).values,
+              analyzer.get_central_tendency_and_ci(
+                  np.asarray(roi)[..., column]
+              ),
+              rtol=1e-5,
+          )
+          self.assertEqual(
+              result.start_date.sel(selection).item(), selected_times[0]
+          )
+          self.assertEqual(
+              result.end_date.sel(selection).item(), selected_times[-1]
+          )
+    # The media channel has fewer intervals than the RF channel.
+    selection = dict(channel=self.media_channel, changepoint_interval=2)
+    self.assertTrue(np.all(np.isnan(result.roi.sel(selection).values)))
+    self.assertEqual(result.start_date.sel(selection).item(), "")
+    self.assertEqual(result.end_date.sel(selection).item(), "")
+
+  def test_roi_of_interval_without_spend_is_nan(self):
+    data = self.data.copy(deep=True)
+    assert data.media_spend is not None
+    # No spend in the first interval of media channel 0, in the model's time
+    # periods.
+    first_interval = slice(
+        -self._N_TIMES, self._MEDIA_STARTS[1] - self._N_TIMES
+    )
+    data.media_spend.values[:, first_interval, 0] = 0.0
+    mmm = self._sampled_model(data)
+    result = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=mmm.inference_data
+    )._roi_by_changepoint_interval(use_posterior=False)
+    roi = result.roi.sel(channel=self.media_channel).values
+    self.assertTrue(np.all(np.isnan(roi[0])))
+    self.assertTrue(np.all(np.isfinite(roi[1])))
+
+  def test_roi_by_changepoint_interval_without_changepoints_raises(self):
+    model_context = context.ModelContext(
+        input_data=self.data, model_spec=spec.ModelSpec()
+    )
+    with self.assertRaisesRegex(ValueError, "No channel has changepoints."):
       analyzer.Analyzer(
           model_context=model_context, inference_data=az.InferenceData()
+      )._roi_by_changepoint_interval(use_posterior=False)
+
+  def _paid_data_tensors(self, n_times: int | None = None) -> Any:
+    """The scaled paid media data, of the last `n_times` media time periods."""
+    model_context = self.mmm.model_context
+    media_scaled = model_context.media_tensors.media_scaled
+    reach_scaled = model_context.rf_tensors.reach_scaled
+    frequency = model_context.rf_tensors.frequency
+    assert media_scaled is not None and reach_scaled is not None
+    assert frequency is not None
+    times = slice(-n_times if n_times else None, None)
+    return tensors.DataTensors(
+        media=media_scaled[..., times, :],
+        reach=reach_scaled[..., times, :],
+        frequency=frequency[..., times, :],
+    )
+
+  def _paid_dist_tensors(self) -> Any:
+    """The prior draws of the paid channels, from the public method."""
+    (dist_tensors,) = self.analyzer.yield_batched_distribution_tensors(
+        self.analyzer._get_causal_param_names(include_non_paid_channels=False),
+        use_posterior=False,
+    )
+    return dist_tensors
+
+  def test_coefficients_without_time_periods_raise(self):
+    dist_tensors = self._paid_dist_tensors()
+    # The coefficients of the first time period only.
+    dist_tensors = dataclasses.replace(
+        dist_tensors,
+        beta_gm=dist_tensors.beta_gm[..., 0, :],  # pyrefly: ignore[unsupported-operation]
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The coefficients of channels with changepoints must have a value for"
+        " each time period, as from `yield_batched_distribution_tensors`.",
+    ):
+      self.analyzer.get_incremental_kpi(
+          self._paid_data_tensors(), dist_tensors
       )
+
+  def test_coefficients_of_other_time_periods_raise(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The coefficients of channels with changepoints have 10 time periods,"
+        " but the data has 8.",
+    ):
+      self.analyzer.get_incremental_kpi(
+          self._paid_data_tensors(n_times=8), self._paid_dist_tensors()
+      )
+
+  def test_new_data_matches_time_periods_by_date(self):
+    n_times = 8
+    media_tensors = self.mmm.media_tensors
+    rf_tensors = self.mmm.rf_tensors
+    assert media_tensors.media is not None and rf_tensors.reach is not None
+    assert rf_tensors.frequency is not None
+    assert self.mmm.revenue_per_kpi is not None
+    organic_media = self.mmm.organic_media_tensors.organic_media
+    assert organic_media is not None
+    incremental_outcome = self.analyzer.incremental_outcome(
+        use_posterior=False,
+        new_data=tensors.DataTensors(
+            media=media_tensors.media[..., -n_times:, :],
+            reach=rf_tensors.reach[..., -n_times:, :],
+            frequency=rf_tensors.frequency[..., -n_times:, :],
+            organic_media=organic_media[..., -n_times:, :],
+            revenue_per_kpi=self.mmm.revenue_per_kpi[..., -n_times:],
+            time=self.times[-n_times:],
+        ),
+        aggregate_geos=False,
+        aggregate_times=False,
+        inverse_transform_outcome=False,
+        use_kpi=True,
+        include_non_paid_channels=False,
+    )
+    # The coefficients of the model's last time periods, which have the dates
+    # of `new_data`.
+    dist_tensors = self._paid_dist_tensors()
+    dist_tensors = dataclasses.replace(
+        dist_tensors,
+        beta_gm=dist_tensors.beta_gm[..., -n_times:, :],  # pyrefly: ignore[unsupported-operation]
+        beta_grf=dist_tensors.beta_grf[..., -n_times:, :],  # pyrefly: ignore[unsupported-operation]
+    )
+    expected = self.analyzer.get_incremental_kpi(
+        self._paid_data_tensors(n_times=n_times), dist_tensors
+    )
+    backend_test_utils.assert_allclose(
+        incremental_outcome, expected, rtol=1e-5, atol=1e-6
+    )
+
+  def test_new_data_with_other_time_periods_raises(self):
+    for n_weeks_later, other_times in (
+        (1, "{9}"),
+        (6, "{4}, {5}, {6}, {7}, {8} and 1 more"),
+    ):
+      # The model's time periods, some weeks later.
+      times = [
+          str(t)
+          for t in np.array(self.times, dtype="datetime64[D]")
+          + 7 * n_weeks_later
+      ]
+      new_data = tensors.DataTensors(
+          media=self.mmm.media_tensors.media, time=times
+      )
+      for method in (
+          self.analyzer.incremental_outcome,
+          self.analyzer.expected_outcome,
+      ):
+        with self.subTest(n_weeks_later=n_weeks_later, method=method.__name__):
+          with self.assertRaisesWithLiteralMatch(
+              ValueError,
+              "Channels with changepoints have a separate effect in each time"
+              f" period of the training data ({self.times[0]} to"
+              f" {self.times[-1]}), so `new_data` can only have those time"
+              " periods. These time periods of `new_data` aren't in the"
+              f" training data: {other_times.format(*times)}.",
+          ):
+            method(use_posterior=False, new_data=new_data)
 
 
 def helper_sample_joint_dist_unpinned_as_posterior(self, n_draws, seed=None):

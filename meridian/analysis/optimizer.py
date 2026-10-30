@@ -14,12 +14,13 @@
 
 """Module to output budget optimization scenarios based on the model."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+import contextlib
 import dataclasses
 import functools
 import math
 import os
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TypeVar
 import warnings
 
 import altair as alt
@@ -27,6 +28,7 @@ import jinja2
 from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer as analyzer_module
+from meridian.analysis import changepoint_effects
 from meridian.analysis import summary_text
 from meridian.analysis import tensors
 from meridian.common import currency as currency_module
@@ -141,6 +143,11 @@ class OptimizationGrid:
   selected_geos: Sequence[str] | None
   selected_times: Sequence[str] | None
   max_frequency: float | None = None
+  # The effect that the channels with changepoints use in this grid, or `None`
+  # for a model without changepoints.
+  # TODO: Make it public when time-varying media effects are
+  # released.
+  _changepoint_effect: changepoint_effects.ChangepointEffect | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -1071,16 +1078,22 @@ class OptimizationResults:
     spend_multiplier = np.arange(0, upper_limit, c.RESPONSE_CURVE_STEP_SIZE)
     # WARN: If `selected_times` is not None (i.e. a subset time range), this
     # response curve computation might take a significant amount of time.
-    return self.analyzer.response_curves(
-        new_data=self.new_data,
-        spend_multipliers=spend_multiplier,  # pyrefly: ignore[bad-argument-type]
-        use_posterior=self.optimization_grid.use_posterior,
-        selected_geos=self.optimization_grid.selected_geos,
-        selected_times=selected_times,
-        by_reach=True,
-        use_kpi=not self.nonoptimized_data.attrs[c.IS_REVENUE_KPI],
-        use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
-    )
+    changepoint_effect = self.optimization_grid._changepoint_effect  # pylint: disable=protected-access
+    with (
+        contextlib.nullcontext()
+        if changepoint_effect is None
+        else self.analyzer._use_changepoint_effect(changepoint_effect)  # pylint: disable=protected-access
+    ):
+      return self.analyzer.response_curves(
+          new_data=self.new_data,
+          spend_multipliers=spend_multiplier,  # pyrefly: ignore[bad-argument-type]
+          use_posterior=self.optimization_grid.use_posterior,
+          selected_geos=self.optimization_grid.selected_geos,
+          selected_times=selected_times,
+          by_reach=True,
+          use_kpi=not self.nonoptimized_data.attrs[c.IS_REVENUE_KPI],
+          use_optimal_frequency=self.optimization_grid.use_optimal_frequency,
+      )
 
   def _get_plottable_response_curves_df(
       self, n_top_channels: int | None = None
@@ -1448,6 +1461,37 @@ class OptimizationResults:
     )
 
 
+_Method = TypeVar('_Method', bound=Callable[..., Any])
+
+
+def _with_changepoint_effect(method: _Method) -> _Method:
+  """Runs a `BudgetOptimizer` method with a changepoint effect.
+
+  The method's `_changepoint_effect` argument is resolved by
+  `BudgetOptimizer._use_changepoint_effect`, and every outcome that the method
+  computes uses that effect for the channels with changepoints.
+
+  Args:
+    method: A `BudgetOptimizer` method with a keyword-only
+      `_changepoint_effect` argument.
+
+  Returns:
+    The method, with its `_changepoint_effect` resolved.
+  """
+
+  @functools.wraps(method)
+  def wrapper(
+      self: 'BudgetOptimizer',
+      *args: Any,
+      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
+      **kwargs: Any,
+  ) -> Any:
+    with self._use_changepoint_effect(_changepoint_effect) as effect:  # pylint: disable=protected-access
+      return method(self, *args, _changepoint_effect=effect, **kwargs)
+
+  return wrapper  # pyrefly: ignore[bad-return]
+
+
 class BudgetOptimizer:
   """Runs and outputs budget optimization scenarios on your model.
 
@@ -1482,6 +1526,44 @@ class BudgetOptimizer:
       self._meridian = meridian
     else:
       raise ValueError('Either `analyzer` or `meridian` must be provided.')
+
+  @contextlib.contextmanager
+  def _use_changepoint_effect(
+      self, effect: changepoint_effects.ChangepointEffect | None
+  ) -> Iterator[changepoint_effects.ChangepointEffect | None]:
+    """Uses `effect` for the channels with changepoints inside the `with` block.
+
+    Args:
+      effect: The effect that the channels with changepoints use. `None` means
+        `changepoint_effects.Latest()`.
+
+    Yields:
+      The effect used: `effect`, `changepoint_effects.Latest()` for `None`, or
+      `None` for a model without changepoints, where every effect gives the
+      same results.
+
+    Raises:
+      TypeError: If `effect` isn't a changepoint effect.
+      ValueError: If the date of an `Interval` isn't in the training data.
+    """
+    # pylint: disable=protected-access
+    if effect is not None:
+      changepoint_effects._check_effect(effect)
+    # Mock analyzers in tests may lack the attribute or have a truthy one.
+    has_changepoints = getattr(self._analyzer, '_has_changepoints', False)
+    if not (isinstance(has_changepoints, bool) and has_changepoints):
+      yield None
+      return
+    if effect is None:
+      effect = changepoint_effects.Latest()
+    if isinstance(effect, changepoint_effects.Interval):
+      # Fails early for a date outside the training data.
+      changepoint_effects._interval_time_index(
+          effect, self._analyzer.model_context.input_data.time_coordinates
+      )
+    with self._analyzer._use_changepoint_effect(effect):
+      yield effect
+    # pylint: enable=protected-access
 
   def _validate_model_fit(self, use_posterior: bool):
     """Validates that the model is fit."""
@@ -1527,6 +1609,7 @@ class BudgetOptimizer:
           ' for values greater than one.'
       )
 
+  @_with_changepoint_effect
   def optimize(
       self,
       new_data: tensors.DataTensors | None = None,
@@ -1552,6 +1635,10 @@ class BudgetOptimizer:
       confidence_level: float = c.DEFAULT_CONFIDENCE_LEVEL,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
       optimization_grid: OptimizationGrid | None = None,
+      *,
+      # TODO: Rename it to `changepoint_effect` and document it
+      # when time-varying media effects are released.
+      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
   ) -> OptimizationResults:
     """Finds the optimal budget allocation that maximizes outcome.
 
@@ -1743,6 +1830,7 @@ class BudgetOptimizer:
         max_frequency=max_frequency,
         use_kpi=use_kpi,
         optimization_grid=optimization_grid,
+        changepoint_effect=_changepoint_effect,
     )
     if optimization_grid is None or not use_grid_arg:
       optimization_grid = self.create_optimization_grid(
@@ -1760,6 +1848,7 @@ class BudgetOptimizer:
           use_optimal_frequency=use_optimal_frequency,
           max_frequency=max_frequency,
           batch_size=batch_size,
+          _changepoint_effect=_changepoint_effect,
       )
 
     if fixed_budget:
@@ -2023,6 +2112,7 @@ class BudgetOptimizer:
       max_frequency: float | None,
       use_kpi: bool,
       optimization_grid: OptimizationGrid,
+      changepoint_effect: changepoint_effects.ChangepointEffect | None,
   ) -> bool:
     """Checks if the grid is valid for the optimization scenario."""
 
@@ -2060,6 +2150,19 @@ class BudgetOptimizer:
           f' called with `max_frequency` = {max_frequency}. A'
           ' new grid will be created.'
       )
+      return False
+
+    grid_changepoint_effect = optimization_grid._changepoint_effect  # pylint: disable=protected-access
+    if changepoint_effect != grid_changepoint_effect:
+      # pylint: disable=protected-access
+      warnings.warn(
+          'Given optimization grid was created with `changepoint_effect` ='
+          f' {changepoint_effects._describe(grid_changepoint_effect)}, but'
+          ' optimization was called with `changepoint_effect` ='
+          f' {changepoint_effects._describe(changepoint_effect)}. A new grid'
+          ' will be created.'
+      )
+      # pylint: enable=protected-access
       return False
     if new_data is None:
       new_data = tensors.DataTensors()
@@ -2169,6 +2272,7 @@ class BudgetOptimizer:
 
     return True
 
+  @_with_changepoint_effect
   def create_optimization_grid(
       self,
       new_data: xr.Dataset | None = None,
@@ -2187,6 +2291,10 @@ class BudgetOptimizer:
       max_frequency: float | None = None,
       use_kpi: bool = False,
       batch_size: int = c.DEFAULT_BATCH_SIZE,
+      *,
+      # TODO: Rename it to `changepoint_effect` and document it
+      # when time-varying media effects are released.
+      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
   ) -> OptimizationGrid:
     """Creates an `OptimizationGrid` for optimization.
 
@@ -2380,6 +2488,7 @@ class BudgetOptimizer:
         optimal_frequency=optimal_frequency,  # pyrefly: ignore[bad-argument-type]
         selected_geos=selected_geos,
         selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
+        _changepoint_effect=_changepoint_effect,
     )
 
   def _create_grid_dataset(
@@ -2861,11 +2970,19 @@ class BudgetOptimizer:
       geo_indices: backend.Tensor | None = None,
       time_indices: backend.Tensor | None = None,
   ) -> tuple[backend.Tensor, backend.Tensor, backend.Tensor, backend.Tensor]:
-    """Precomputes batch-level base media, Hill powers, and geo-time weights."""
+    """Precomputes batch-level base media, Hill powers, and geo-time weights.
+
+    `beta_gm` has shape `(..., n_geos, n_media_channels)`, or `(..., n_geos,
+    n_times, n_media_channels)` with the coefficient of each time period when
+    some media channel has changepoints.
+    """
     m_context = self._analyzer.model_context
     model_equations = equations.ModelEquations(m_context)
+    by_time = len(beta_gm.shape) == len(alpha_m.shape) + 2
     if geo_indices is not None:
-      beta_gm = backend.gather(beta_gm, geo_indices, axis=-2)
+      beta_gm = backend.gather(beta_gm, geo_indices, axis=-3 if by_time else -2)
+    if by_time and time_indices is not None:
+      beta_gm = backend.gather(beta_gm, time_indices, axis=-2)
     media_base, base_t1, t2 = model_equations.prepare_adstock_hill_media(
         media=scaled_media,
         alpha=alpha_m,
@@ -2875,7 +2992,10 @@ class BudgetOptimizer:
         n_times_output=n_times_output,
         time_indices=time_indices,
     )
-    weight_gtm = beta_gm[..., :, backend.newaxis, :] * scale_gt
+    if by_time:
+      weight_gtm = beta_gm * scale_gt
+    else:
+      weight_gtm = beta_gm[..., :, backend.newaxis, :] * scale_gt
     return media_base, base_t1, t2, weight_gtm
 
   @backend.function(jit_compile=True, static_argnames=['n_times_output'])
@@ -2991,11 +3111,19 @@ class BudgetOptimizer:
         c.BETA_GM,
     ]
     total_samples = 0
-    for dist_tensors in self._analyzer.yield_batched_distribution_tensors(
+    # pylint: disable=protected-access
+    # For channels with changepoints, `beta_gm` has the coefficient of each time
+    # period of the data, from the changepoint effect.
+    batches = self._analyzer._yield_batched_distribution_tensors(
         param_list=param_list,
         use_posterior=use_posterior,
         batch_size=batch_size,
-    ):
+        time_indices=self._analyzer._changepoint_time_indices(
+            inputs1.tensors.time
+        ),
+    )
+    # pylint: enable=protected-access
+    for dist_tensors in batches:
       batch_samples = (
           dist_tensors.alpha_m.shape[0] * dist_tensors.alpha_m.shape[1]  # pyrefly: ignore[missing-attribute]
       )
