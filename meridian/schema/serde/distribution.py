@@ -53,6 +53,12 @@ _CUSTOM_DISTRIBUTIONS = {
     "CalibratedDistribution": calibration_base.CalibratedDistribution,
 }
 
+# The priors of time-varying media effects. Like in `constants`, they are kept
+# out of `ALL_PRIOR_DISTRIBUTION_PARAMETERS` until the feature is released.
+# TODO: Remove this when they move to
+# `ALL_PRIOR_DISTRIBUTION_PARAMETERS`.
+_TIME_VARYING_PRIOR_PARAMETERS = (constants.ZETA_M, constants.ZETA_RF)
+
 
 # TODO: Delete enumerated schema.
 class DistributionSerde(
@@ -78,9 +84,22 @@ class DistributionSerde(
   def serialize(  # pyrefly: ignore[bad-override]
       self, obj: pd.PriorDistribution
   ) -> meridian_pb.PriorTfpDistributions:
-    """Serializes the given Meridian priors container into a `MeridianPriorDistributions` proto."""
+    """Serializes Meridian priors into a `PriorTfpDistributions` proto.
+
+    The priors of time-varying media effects, `zeta_m` and `zeta_rf`, are
+    written only for a `prior_distribution._PriorDistributionWithChangepoints`.
+
+    Args:
+      obj: The Meridian priors container.
+
+    Returns:
+      A `PriorTfpDistributions` proto.
+    """
     proto = meridian_pb.PriorTfpDistributions()
-    for param in constants.ALL_PRIOR_DISTRIBUTION_PARAMETERS:
+    params = constants.ALL_PRIOR_DISTRIBUTION_PARAMETERS
+    if isinstance(obj, pd._PriorDistributionWithChangepoints):  # pylint: disable=protected-access
+      params += _TIME_VARYING_PRIOR_PARAMETERS
+    for param in params:
       if not hasattr(obj, param):
         continue
       getattr(proto, param).CopyFrom(
@@ -120,25 +139,15 @@ class DistributionSerde(
         serialize it with the new ones.
 
     Returns:
-      A deserialized `PriorDistribution` object.
-
-    Raises:
-      NotImplementedError: If `serialized` has priors for time-varying media
-        effects.
+      A deserialized `PriorDistribution` object. It is a
+      `prior_distribution._PriorDistributionWithChangepoints` if `serialized`
+      has priors for time-varying media effects.
     """
-    # TODO: Deserialize the time-varying priors once
-    # `PriorDistribution` supports them.
-    if isinstance(serialized, meridian_pb.PriorTfpDistributions) and any(
-        serialized.HasField(param)
-        for param in (constants.ZETA_M, constants.ZETA_RF)
-    ):
-      raise NotImplementedError(
-          "This model has priors for time-varying media effects (`zeta_m` or"
-          " `zeta_rf`), which this version of Meridian cannot load. Upgrade"
-          " Meridian to load it."
-      )
     kwargs = {}
-    for param in constants.ALL_PRIOR_DISTRIBUTION_PARAMETERS:
+    for param in (
+        constants.ALL_PRIOR_DISTRIBUTION_PARAMETERS
+        + _TIME_VARYING_PRIOR_PARAMETERS
+    ):
       if not hasattr(serialized, param):
         continue
       # A parameter may be unspecified in a serialized proto message because:
@@ -172,6 +181,8 @@ class DistributionSerde(
             ) from e
 
         kwargs[param] = self._from_distribution_proto(param_name)
+    if any(param in kwargs for param in _TIME_VARYING_PRIOR_PARAMETERS):
+      return pd._PriorDistributionWithChangepoints(**kwargs)  # pylint: disable=protected-access
     return pd.PriorDistribution(**kwargs)
 
   def _to_distribution_proto(

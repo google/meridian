@@ -16,7 +16,7 @@
 
 from collections.abc import Collection, Mapping, Sequence
 import datetime
-from typing import cast
+from typing import Any, cast
 import warnings
 
 import bidict
@@ -546,44 +546,73 @@ def _serialize_declarative_specs(
     )
 
 
-# TODO: Replace these checks with serialization of the
-# time-varying fields once `ModelSpec` supports them.
-_TIME_VARYING_OPTIONAL_FIELDS = (
-    "changepoint_media_prior_type",
-    "changepoint_rf_prior_type",
-    "changepoint_media_effects_dist",
-)
+def _serialize_changepoints(
+    obj: spec.ModelSpec, proto: meridian_pb.Hyperparameters
+) -> None:
+  """Writes the time-varying media effects fields of `obj` into `proto`.
 
-
-def _check_saveable(obj: spec.ModelSpec) -> None:
-  """Raises if `obj` uses time-varying media effects, not saveable yet."""
-  if getattr(obj, "changepoints", None):
-    raise NotImplementedError(
-        "Saving a model with `changepoints` is not supported yet."
-    )
-
-
-def _check_loadable(serialized: meridian_pb.Hyperparameters) -> None:
-  """Raises if `serialized` uses time-varying media effects.
-
-  This version of Meridian ignores the time-varying fields, so loading such a
-  model would silently give results that differ from the saved one.
+  They are written only when `obj` has changepoints, so a model without them
+  saves exactly as before. The three optional fields are always written for a
+  model with changepoints, so it loads with the same settings even if their
+  defaults change.
 
   Args:
-    serialized: The `Hyperparameters` proto to check.
-
-  Raises:
-    NotImplementedError: If any time-varying field is set.
+    obj: The model spec being serialized.
+    proto: The proto to write into.
   """
-  if serialized.changepoints or any(
-      serialized.HasField(field) for field in _TIME_VARYING_OPTIONAL_FIELDS
+  if not isinstance(obj, spec._ModelSpecWithChangepoints) or (  # pylint: disable=protected-access
+      not obj.changepoints
   ):
-    raise NotImplementedError(
-        "This model uses time-varying media effects (`changepoints`), which"
-        " this version of Meridian cannot load. Loading it without them would"
-        " give different results from the saved model. Upgrade Meridian to"
-        " load it."
+    return
+  for channel, dates in obj.changepoints.items():
+    # `_ModelSpecWithChangepoints` stores the dates as `datetime.date`.
+    proto.changepoints[channel].dates.extend(
+        time_record.to_date_proto(cast(datetime.date, date)) for date in dates
     )
+  proto.changepoint_media_prior_type = paid_media_prior_type_converter.to_proto(
+      obj.changepoint_media_prior_type
+  )
+  proto.changepoint_rf_prior_type = paid_media_prior_type_converter.to_proto(
+      obj.changepoint_rf_prior_type
+  )
+  proto.changepoint_media_effects_dist = media_effects_converter.to_proto(
+      obj.changepoint_media_effects_dist
+  )
+
+
+def _deserialize_changepoints(
+    serialized: meridian_pb.Hyperparameters,
+) -> dict[str, Any]:
+  """Reads the time-varying media effects fields of `serialized`.
+
+  Args:
+    serialized: The `Hyperparameters` proto to read.
+
+  Returns:
+    The arguments of `spec._ModelSpecWithChangepoints` that `serialized` sets.
+    Empty if it sets none, which means a model without time-varying effects.
+  """
+  kwargs = {}
+  if serialized.changepoints:
+    kwargs["changepoints"] = {
+        channel: [time_record.from_date_proto(date) for date in points.dates]
+        for channel, points in serialized.changepoints.items()
+    }
+  for field in ("changepoint_media_prior_type", "changepoint_rf_prior_type"):
+    if serialized.HasField(field):
+      prior_type = paid_media_prior_type_converter.from_proto(
+          getattr(serialized, field)
+      )
+      # An unspecified prior type means the default, ROI.
+      if prior_type is not None:
+        kwargs[field] = prior_type
+  if serialized.HasField("changepoint_media_effects_dist"):
+    kwargs["changepoint_media_effects_dist"] = (
+        media_effects_converter.from_proto(
+            serialized.changepoint_media_effects_dist
+        )
+    )
+  return kwargs
 
 
 class HyperparametersSerde(
@@ -631,10 +660,7 @@ class HyperparametersSerde(
       ValueError: If `obj` carries a declarative date-range specification but
         `model_context` is `None`, or if a date range bound is not one of the
         input data's time coordinates.
-      NotImplementedError: If `obj` sets `changepoints`.
     """
-    _check_saveable(obj)
-
     hyperparameters_proto = meridian_pb.Hyperparameters(
         media_effects_dist=media_effects_converter.to_proto(
             obj.media_effects_dist
@@ -729,6 +755,7 @@ class HyperparametersSerde(
         )
 
     _serialize_declarative_specs(obj, hyperparameters_proto, model_context)
+    _serialize_changepoints(obj, hyperparameters_proto)
 
     return hyperparameters_proto
 
@@ -755,15 +782,14 @@ class HyperparametersSerde(
         time coordinates.
 
     Returns:
-      A Meridian model spec container.
+      A Meridian model spec container. It is a
+      `spec._ModelSpecWithChangepoints` if `serialized` has changepoints or
+      sets one of their settings. An unspecified prior type counts as unset.
 
     Raises:
       ValueError: If `serialized` carries a declarative date-range
         configuration but `input_data` is `None`.
-      NotImplementedError: If `serialized` uses time-varying media effects.
     """
-    _check_loadable(serialized)
-
     baseline_geo = None
     baseline_geo_field = serialized.WhichOneof(sc.BASELINE_GEO_ONEOF)
     if baseline_geo_field == sc.BASELINE_GEO_INT:
@@ -897,7 +923,13 @@ class HyperparametersSerde(
     else:
       saturation_spec = sc.DEFAULT_SATURATION
 
-    return spec.ModelSpec(
+    changepoint_kwargs = _deserialize_changepoints(serialized)
+    model_spec_class = (
+        spec._ModelSpecWithChangepoints  # pylint: disable=protected-access
+        if changepoint_kwargs
+        else spec.ModelSpec
+    )
+    return model_spec_class(
         media_effects_dist=media_effects_converter.from_proto(
             serialized.media_effects_dist
         ),
@@ -943,4 +975,5 @@ class HyperparametersSerde(
         non_media_population_scaling_id=non_media_population_scaling_id,
         adstock_decay_spec=adstock_decay_spec,
         saturation_spec=saturation_spec,
+        **changepoint_kwargs,
     )

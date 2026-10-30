@@ -52,6 +52,8 @@ from meridian.analysis import analyzer
 from meridian.analysis import visualizer
 from meridian.common import errors
 from meridian.model import model
+from meridian.model import prior_distribution
+from meridian.model import spec
 from mmm.v1.model import mmm_kernel_pb2 as kernel_pb
 from mmm.v1.model.meridian import meridian_model_pb2 as meridian_pb
 from meridian.schema.serde import constants as serde_constants
@@ -73,6 +75,40 @@ __all__ = [
     'load_meridian',
     'save_meridian',
 ]
+
+
+def _prior_to_serialize(
+    model_spec: spec.ModelSpec,
+) -> prior_distribution.PriorDistribution:
+  """Returns the prior to save for a model with `model_spec`.
+
+  For a model with changepoints, it includes the priors of time-varying media
+  effects, even if they are the defaults, so that the model loads with the same
+  priors. For a model without changepoints, it never includes them: they don't
+  affect the model, and older versions of Meridian can't load them.
+
+  Args:
+    model_spec: The model spec of the model being saved.
+
+  Returns:
+    `model_spec.prior`, as a `_PriorDistributionWithChangepoints` if the model
+    has changepoints, and as a `PriorDistribution` otherwise.
+  """
+  # TODO: Remove this when `zeta_m` and `zeta_rf` move to
+  # `PriorDistribution`, so that every prior saves them.
+  with_changepoints = prior_distribution._PriorDistributionWithChangepoints  # pylint: disable=protected-access
+  prior = model_spec.prior
+  if (
+      isinstance(model_spec, spec._ModelSpecWithChangepoints)  # pylint: disable=protected-access
+      and model_spec.changepoints
+  ):
+    return with_changepoints.from_prior(prior)
+  if isinstance(prior, with_changepoints):
+    return prior_distribution.PriorDistribution(**{
+        field.name: getattr(prior, field.name)
+        for field in dataclasses.fields(prior_distribution.PriorDistribution)
+    })
+  return prior
 
 
 def _get_schema_version() -> str:
@@ -205,7 +241,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         ),
         prior_tfp_distributions=distribution.DistributionSerde(
             distribution_function_registry
-        ).serialize(mmm.model_spec.prior),
+        ).serialize(_prior_to_serialize(mmm.model_spec)),
         inference_data=inference_data.InferenceDataSerde().serialize(
             mmm.inference_data
         ),

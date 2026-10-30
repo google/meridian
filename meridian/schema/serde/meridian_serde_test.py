@@ -2029,5 +2029,108 @@ class HoldoutRoundTripTest(parameterized.TestCase):
     self.assertIsNone(loaded.model_context.compiled_holdout_id)
 
 
+class ChangepointsRoundTripTest(absltest.TestCase):
+  """Tests saving and loading the time-varying media effects of a model."""
+
+  # pylint: disable=protected-access
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    dates = _INPUT_DATA.time_coordinates.all_dates
+    cls.channel = str(_INPUT_DATA.media_channel.values[0])
+    cls.original = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=spec._ModelSpecWithChangepoints(
+            changepoints={cls.channel: [dates[20], dates[35]]},
+            changepoint_media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+            changepoint_media_effects_dist=constants.MEDIA_EFFECTS_NORMAL,
+            prior=prior_distribution._PriorDistributionWithChangepoints(
+                zeta_m=backend.tfd.HalfNormal(
+                    backend.np_float_dtype(0.3), name=constants.ZETA_M
+                )
+            ),
+        ),
+    )
+    cls.original.sample_prior(n_draws=2, seed=1)
+    meridian_serde = serde.MeridianSerde()
+    cls.loaded = meridian_serde.deserialize(
+        meridian_serde.serialize(cls.original)
+    )
+
+  def test_the_changepoint_settings_survive(self):
+    loaded_spec = self.loaded.model_spec
+    assert isinstance(loaded_spec, spec._ModelSpecWithChangepoints)
+    original_spec = self.original.model_spec
+    assert isinstance(original_spec, spec._ModelSpecWithChangepoints)
+    for field in (
+        'changepoints',
+        'changepoint_media_prior_type',
+        'changepoint_rf_prior_type',
+        'changepoint_media_effects_dist',
+    ):
+      with self.subTest(field=field):
+        self.assertEqual(
+            getattr(loaded_spec, field), getattr(original_spec, field)
+        )
+
+  def test_the_model_uses_the_same_changepoints(self):
+    self.assertEqual(
+        self.loaded.model_context._changepoints,
+        self.original.model_context._changepoints,
+    )
+
+  def test_the_time_varying_priors_survive(self):
+    prior = self.loaded.model_spec.prior
+    assert isinstance(
+        prior, prior_distribution._PriorDistributionWithChangepoints
+    )
+    self.assertAlmostEqual(float(prior.zeta_m.scale), 0.3)
+    self.assertAlmostEqual(float(prior.zeta_rf.scale), 0.5)
+
+  def test_the_prior_samples_survive(self):
+    self.assertIn(constants.VARPHI_M, self.loaded.inference_data.prior)
+    xrt.assert_equal(
+        self.loaded.inference_data.prior, self.original.inference_data.prior
+    )
+
+  def test_the_default_time_varying_priors_are_saved(self):
+    original = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=spec._ModelSpecWithChangepoints(
+            changepoints={
+                self.channel: [_INPUT_DATA.time_coordinates.all_dates[20]]
+            }
+        ),
+    )
+    meridian_serde = serde.MeridianSerde()
+
+    loaded = meridian_serde.deserialize(meridian_serde.serialize(original))
+
+    # A plain `PriorDistribution` would mean the defaults weren't saved.
+    prior = loaded.model_spec.prior
+    assert isinstance(
+        prior, prior_distribution._PriorDistributionWithChangepoints
+    )
+    self.assertAlmostEqual(float(prior.zeta_m.scale), 0.5)
+    self.assertAlmostEqual(float(prior.zeta_rf.scale), 0.5)
+
+  def test_a_model_without_changepoints_saves_no_time_varying_priors(self):
+    mmm = model.Meridian(
+        input_data=_INPUT_DATA,
+        model_spec=spec.ModelSpec(
+            prior=prior_distribution._PriorDistributionWithChangepoints()
+        ),
+    )
+    unpacked_model = meridian_pb.MeridianModel()
+
+    serde.MeridianSerde().serialize(mmm).model.Unpack(unpacked_model)
+
+    priors = unpacked_model.prior_tfp_distributions
+    self.assertTrue(priors.HasField(constants.BETA_M))
+    self.assertFalse(priors.HasField(constants.ZETA_M))
+    self.assertFalse(priors.HasField(constants.ZETA_RF))
+
+
 if __name__ == '__main__':
   absltest.main()
