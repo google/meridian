@@ -27,8 +27,8 @@ from meridian.model import spec
 import numpy as np
 
 _N_GEOS = 5
-_N_TIMES = 49
-_N_MEDIA_TIMES = 52
+_N_TIMES = 52
+_N_MEDIA_TIMES = 55
 _N_CONTROLS = 2
 _N_MEDIA_CHANNELS = 3
 _N_RF_CHANNELS = 2
@@ -245,7 +245,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        r"New `controls` is expected to have 49 time periods\. Found 10 time"
+        r"New `controls` is expected to have 52 time periods\. Found 10 time"
         r" periods\.",
     ):
       new_data.validate_and_fill_missing_data(
@@ -261,7 +261,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
     )
     with self.assertRaisesRegex(
         ValueError,
-        r"New `media` is expected to have 52 time periods\. Found 10 time"
+        r"New `media` is expected to have 55 time periods\. Found 10 time"
         r" periods\.",
     ):
       new_data.validate_and_fill_missing_data(
@@ -602,7 +602,7 @@ class DataTensorsTest(backend_test_utils.MeridianTestCase):
         ValueError,
         "If the time dimension of any variable in `new_data` is modified, then"
         " all variables must be provided with the same number of time periods."
-        " `media` has 52 time periods, which does not match the modified number"
+        " `media` has 55 time periods, which does not match the modified number"
         " of time periods, 10.",
     ):
       new_data.validate_and_fill_missing_data(

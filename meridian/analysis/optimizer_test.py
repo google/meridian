@@ -93,7 +93,7 @@ _NONOPTIMIZED_EFFECTIVENESS_WITH_CI = np.array([
 ])
 # Actual historical spend. The name "nonoptimized" refers to an attribute name
 # of the Optimizer class.
-_NONOPTIMIZED_SPEND = np.array([294.0, 279.0, 256.0, 272.0, 288.0])
+_NONOPTIMIZED_SPEND = np.array([312.0, 292.0, 271.0, 289.0, 307.0])
 # Correct incremental outcome for a fixed budget scenario, where the model
 # contains both R&F and non-R&F channels.
 _OPTIMIZED_INCREMENTAL_OUTCOME = np.array([528.7, 648.4, 427.4, 1178.6, 889.0])
@@ -113,23 +113,23 @@ _OPTIMIZED_EFFECTIVENESS_WITH_CI = np.array([
 ])
 # Correct optimal spend allocation for fixed budget scenario, where the model
 # contains both R&F and non-R&F channels.
-_OPTIMIZED_SPEND = np.array([233.0, 222.0, 206.0, 354.0, 374.0])
+_OPTIMIZED_SPEND = np.array([246.0, 232.0, 218.0, 376.0, 399.0])
 # Correct optimal spend allocation for fixed budget scenario, where the model
 # contains only non-R&F channels.
-_OPTIMIZED_MEDIA_ONLY_SPEND = np.array([289.0, 278.0, 262.0])
+_OPTIMIZED_MEDIA_ONLY_SPEND = np.array([306.0, 292.0, 277.0])
 # Correct optimal spend allocation for fixed budget scenario, where the model
 # contains only R&F channels.
-_OPTIMIZED_RF_ONLY_SPEND = np.array([354.0, 206.0])
+_OPTIMIZED_RF_ONLY_SPEND = np.array([376.0, 220.0])
 # Correct optimal spend allocation for a flexible budget optimization scenario
 # using a target mROI value.
-_TARGET_MROI_SPEND = np.array([0.0, 0.0, 0.0, 544.0, 576.0])
+_TARGET_MROI_SPEND = np.array([0.0, 0.0, 0.0, 578.0, 614.0])
 # Correct optimal spend allocation for a flexible budget optimization scenario
 # using a target ROI value.
-_TARGET_ROI_SPEND = np.array([588.0, 558.0, 512.0, 544.0, 576.0])
+_TARGET_ROI_SPEND = np.array([624.0, 584.0, 542.0, 578.0, 614.0])
 
 _N_GEOS = 5
-_N_TIMES = 49
-_N_MEDIA_TIMES = 52
+_N_TIMES = 52
+_N_MEDIA_TIMES = 55
 _N_MEDIA_CHANNELS = 3
 _N_RF_CHANNELS = 2
 _N_ORGANIC_MEDIA_CHANNELS = 4
@@ -202,7 +202,7 @@ def _create_budget_data(
 
   attributes = {
       c.START_DATE: '2021-01-25',
-      c.END_DATE: '2021-12-27',
+      c.END_DATE: '2022-01-17',
       c.BUDGET: np.sum(spend),
       c.PROFIT: np.sum(inc_outcome[:, 0]) - np.sum(spend),
       c.TOTAL_INCREMENTAL_OUTCOME: np.sum(inc_outcome[:, 0]),
@@ -757,7 +757,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'testcase_name': 'end_none',
           'selected_times_arg': ['2021-02-08', None],
           'expected_times': (
-              pd.date_range(start='2021-2-8', end='2021-12-27', freq='7D')
+              pd.date_range(start='2021-2-8', end='2022-01-17', freq='7D')
               .strftime('%Y-%m-%d')
               .tolist()
           ),
@@ -998,7 +998,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           ' `aggregate_times=False`.',
           warning_messages,
       )
-    expected_spend = [19.0, 24.0, 104.0, 94.0, 95.0]
+    expected_spend = [17.0, 18.0, 97.0, 80.0, 94.0]
     self.assertIsNotNone(meridian_media_and_rf.media_tensors.media_spend)
     assert meridian_media_and_rf.media_tensors.media_spend is not None
     self.assertEqual(meridian_media_and_rf.media_tensors.media_spend.ndim, 1)
@@ -1397,15 +1397,15 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         [np.inf, np.inf, np.nan, np.nan],
         [np.inf, np.inf, np.nan, np.nan],
         [np.inf, np.inf, np.nan, np.nan],
-        [2.16654396, 2.16654396, 2.16654396, 2.16654396],
-        [1.54340279, 1.54340279, 1.54340279, 1.54340279],
+        [2.03910035, 2.03910035, 2.03910035, 2.03910035],
+        [1.44788274, 1.44788274, 1.44788274, 1.44788274],
     ])
     expected_mroi = np.array([
         [np.inf, np.inf, np.nan, np.nan],
         [np.inf, np.inf, np.nan, np.nan],
         [np.inf, np.inf, np.nan, np.nan],
-        [216.65440369, 216.65440369, 216.65440369, 216.65440369],
-        [154.34028625, 154.34028625, 154.34028625, 154.34028625],
+        [203.91003460, 203.91003460, 203.91003460, 203.91003460],
+        [144.78827362, 144.78827362, 144.78827362, 144.78827362],
     ])
     expected_data = _create_budget_data(
         spend=_TARGET_MROI_SPEND,
@@ -1472,67 +1472,67 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       dict(
           testcase_name='optimal_frequency',
           use_optimal_frequency=True,
-          expected_spend=np.array([206.0, 276.0, 179.0, 354.0, 374.0]),
+          expected_spend=np.array([302.0, 204.0, 190.0, 376.0, 399.0]),
           expected_incremental_outcome=np.array([
-              [236.0762, 231.97923, 58.01262, 424.9303],
-              [410.90778, 402.0758, 163.52602, 672.65576],
-              [86.25695, 85.316986, 42.073544, 133.43192],
-              [1619.1354, 1625.3555, 567.3521, 2663.7307],
-              [2493.0112, 2461.1328, 645.39844, 4406.3643],
+              [1301.4969, 1284.8735, 727.74542, 1886.8098],
+              [229.59685, 227.92368, 31.420666, 433.0209],
+              [180.68182, 177.4299, 35.264351, 328.7504],
+              [4365.0225, 4289.7583, 279.0769, 8546.1328],
+              [1161.6307, 1162.4152, 107.69918, 2214.8357],
           ]),
           expected_effectiveness=np.array([
-              [2.3188981e-01, 2.2786555e-01, 5.6983873e-02, 4.1739488e-01],
-              [2.9522523e-01, 2.8879675e-01, 1.1438438e-01, 4.8648083e-01],
-              [9.6809819e-02, 9.5754884e-02, 4.7220930e-02, 1.4975630e-01],
-              [9.5688112e-05, 9.5764321e-05, 3.9768369e-05, 1.5140821e-04],
-              [1.3106108e-04, 1.2957303e-04, 4.6303954e-05, 2.1905398e-04],
+              [8.75864208e-01, 8.64677310e-01, 4.89748538e-01, 1.26976037e+00],
+              [2.26541966e-01, 2.24891037e-01, 3.10025997e-02, 4.27259386e-01],
+              [1.90662533e-01, 1.87230974e-01, 3.72123234e-02, 3.46910238e-01],
+              [9.49742622e-04, 9.33366653e-04, 6.07216207e-05, 1.85946969e-03],
+              [2.43316026e-04, 2.43480317e-04, 2.25587482e-05, 4.63921082e-04],
           ]),
           expected_mroi=np.array([
-              [1.0190495, 1.001245, 0.24795413, 1.8372412],
-              [1.1924459, 1.1633278, 0.32793596, 2.1029253],
-              [0.38008744, 0.3760929, 0.16844606, 0.60487074],
-              [4.5738173, 4.5914817, 1.6026927, 7.524566],
-              [6.6658034, 6.5806994, 1.7257135, 11.7819195],
+              [2.7664542, 2.732657, 2.0770395, 3.4840243],
+              [1.0141779, 1.0069689, 0.13158116, 1.9205101],
+              [0.83693916, 0.82193178, 0.16094992, 1.5251143],
+              [11.609113, 11.408944, 0.74222201, 22.72909],
+              [2.9113543, 2.9133043, 0.26992252, 5.5510268],
           ]),
           expected_cpik=np.array([
-              [2.014588, 2.0058842, 0.48478606, 3.5509517],
-              [1.0528584, 1.0574462, 0.41031447, 1.687805],
-              [2.8098052, 2.8149421, 1.3415098, 4.2544556],
-              [0.3714944, 0.36298645, 0.13289629, 0.6239512],
-              [0.33170277, 0.33070716, 0.08487724, 0.579487],
+              [0.28771502, 0.28902742, 0.16005869, 0.41498032],
+              [3.4756362, 3.4705768, 0.47111005, 6.4925442],
+              [2.9841344, 2.9877834, 0.57794607, 5.3878775],
+              [0.69350958, 0.69240928, 0.043996509, 1.3472989],
+              [1.9192431, 1.8625644, 0.18014881, 3.7047637],
           ]),
       ),
       dict(
           testcase_name='historical_frequency',
           use_optimal_frequency=False,
-          expected_spend=np.array([206.0, 307.0, 179.0, 323.0, 374.0]),
+          expected_spend=np.array([406.0, 284.0, 190.0, 376.0, 215.0]),
           expected_incremental_outcome=np.array([
-              [236.0762, 231.97923, 58.01262, 424.9303],
-              [446.08163, 436.3723, 172.97798, 734.9176],
-              [86.25695, 85.316986, 42.073544, 133.43192],
-              [372.6778, 372.97467, 154.88652, 589.69165],
-              [595.451, 588.6903, 210.37312, 995.23],
+              [1561.9248, 1542.1842, 934.45441, 2203.6169],
+              [307.87506, 305.65015, 41.410267, 581.43164],
+              [180.68182, 177.4299, 35.264351, 328.7504],
+              [1051.1012, 1033.2625, 86.875778, 2037.8876],
+              [168.72758, 168.84204, 30.672552, 306.48209],
           ]),
           expected_effectiveness=np.array([
-              [2.31889814e-01, 2.27865547e-01, 5.69838732e-02, 4.17394876e-01],
-              [3.01713377e-01, 2.95228422e-01, 1.20070666e-01, 4.93904650e-01],
-              [9.68098193e-02, 9.57548842e-02, 4.72209305e-02, 1.49756297e-01],
-              [3.80495272e-04, 3.81956954e-04, 1.33327194e-04, 6.25974324e-04],
-              [5.48721524e-04, 5.41704881e-04, 1.42054720e-04, 9.69857967e-04],
+              [7.81870067e-01, 7.71988392e-01, 4.67770308e-01, 1.10308921e+00],
+              [2.18207166e-01, 2.16630280e-01, 2.93496270e-02, 4.12091076e-01],
+              [1.90662533e-01, 1.87230974e-01, 3.72123234e-02, 3.46910238e-01],
+              [2.28698875e-04, 2.24817486e-04, 1.89024522e-05, 4.43404075e-04],
+              [6.55878102e-05, 6.56323100e-05, 1.19230390e-05, 1.19135766e-04],
           ]),
           expected_mroi=np.array([
-              [1.0190499, 1.0012858, 0.24795783, 1.837228],
-              [1.1488259, 1.120242, 0.30020398, 2.0423303],
-              [0.38008675, 0.37608653, 0.16845182, 0.6048635],
-              [1.1502323, 1.1511508, 0.47801477, 1.8200259],
-              [1.5921059, 1.5740317, 0.56248915, 2.6610544],
+              [2.2565181, 2.2301586, 1.8964428, 2.6395781],
+              [0.94213951, 0.93556255, 0.11815508, 1.788488],
+              [0.83693916, 0.82193178, 0.16094992, 1.5251143],
+              [2.7954752, 2.7480135, 0.23105256, 5.4198098],
+              [0.78477883, 0.78531361, 0.14266238, 1.4254932],
           ]),
           expected_cpik=np.array([
-              [2.014588, 2.0058842, 0.48478606, 3.5509517],
-              [1.0979072, 1.1025534, 0.41657582, 1.7717088],
-              [2.8098052, 2.8149421, 1.3415098, 4.2544556],
-              [1.3132117, 1.305907, 0.54943967, 2.0918553],
-              [1.0760998, 1.0721365, 0.3757926, 1.7777934],
+              [0.30967271, 0.31123558, 0.1842429, 0.43447813],
+              [3.6670041, 3.6617799, 0.48845062, 6.8582044],
+              [2.9841344, 2.9877834, 0.57794607, 5.3878775],
+              [2.2480495, 2.2456088, 0.18450478, 4.3280187],
+              [3.8166664, 3.7508926, 0.70150936, 7.0095243],
           ]),
       ),
   )
@@ -2345,9 +2345,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
-              ' grid 29.0.\nUpper bound 542 for channel rf_ch_0 is above the'
-              ' maximum spend of the grid 517.0.\nUpper bound 722 for channel'
-              ' rf_ch_1 is above the maximum spend of the grid 547.0.'
+              ' grid 31.0.\nUpper bound 573 for channel rf_ch_0 is above the'
+              ' maximum spend of the grid 549.0.\nUpper bound 766 for channel'
+              ' rf_ch_1 is above the maximum spend of the grid 583.0.'
           ),
       },
       {
@@ -2358,8 +2358,8 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': np.array([1.0, 0.9, 0.8, 0.7, 0.6]),
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
-              ' grid 29.0.\nUpper bound 588 for channel ch_0 is above the'
-              ' maximum spend of the grid 559.0.'
+              ' grid 31.0.\nUpper bound 624 for channel ch_0 is above the'
+              ' maximum spend of the grid 593.0.'
           ),
       },
       {
@@ -2369,13 +2369,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_lower': None,
           'spend_constraint_upper': None,
           'error_details': (
-              'Upper bound 27509 for channel ch_0 is above the maximum spend of'
-              ' the grid 559.0.\nUpper bound 26109 for channel ch_1 is above'
-              ' the maximum spend of the grid 530.0.\nUpper bound 23945 for'
+              'Upper bound 27544 for channel ch_0 is above the maximum spend of'
+              ' the grid 593.0.\nUpper bound 25822 for channel ch_1 is above'
+              ' the maximum spend of the grid 555.0.\nUpper bound 23967 for'
               ' channel ch_2 is above the maximum spend of the grid'
-              ' 486.0.\nUpper bound 25483 for channel rf_ch_0 is above the'
-              ' maximum spend of the grid 517.0.\nUpper bound 26954 for channel'
-              ' rf_ch_1 is above the maximum spend of the grid 547.0.'
+              ' 515.0.\nUpper bound 25502 for channel rf_ch_0 is above the'
+              ' maximum spend of the grid 549.0.\nUpper bound 27166 for channel'
+              ' rf_ch_1 is above the maximum spend of the grid 583.0.'
           ),
       },
       {
@@ -2386,12 +2386,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Lower bound 15 for channel ch_0 is below the mimimum spend of'
-              ' the grid 29.0.\nLower bound 14 for channel ch_1 is below the'
-              ' mimimum spend of the grid 28.0.\nLower bound 13 for channel'
-              ' ch_2 is below the mimimum spend of the grid 26.0.\nLower bound'
+              ' the grid 31.0.\nLower bound 14 for channel ch_1 is below the'
+              ' mimimum spend of the grid 29.0.\nLower bound 13 for channel'
+              ' ch_2 is below the mimimum spend of the grid 27.0.\nLower bound'
               ' 14 for channel rf_ch_0 is below the mimimum spend of the grid'
-              ' 27.0.\nLower bound 15 for channel rf_ch_1 is below the mimimum'
-              ' spend of the grid 29.0.'
+              ' 29.0.\nLower bound 15 for channel rf_ch_1 is below the mimimum'
+              ' spend of the grid 31.0.'
           ),
       },
       {
@@ -2406,19 +2406,19 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
-              ' grid 29.0.\nLower bound 0 for channel ch_1 is below the mimimum'
-              ' spend of the grid 28.0.\nLower bound 0 for channel ch_2 is'
-              ' below the mimimum spend of the grid 26.0.\nLower bound 0 for'
+              ' grid 31.0.\nLower bound 0 for channel ch_1 is below the mimimum'
+              ' spend of the grid 29.0.\nLower bound 0 for channel ch_2 is'
+              ' below the mimimum spend of the grid 27.0.\nLower bound 0 for'
               ' channel rf_ch_0 is below the mimimum spend of the grid'
-              ' 27.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
-              ' spend of the grid 29.0.\nUpper bound 588 for channel ch_0 is'
-              ' above the maximum spend of the grid 559.0.\nUpper bound 558 for'
+              ' 29.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
+              ' spend of the grid 31.0.\nUpper bound 624 for channel ch_0 is'
+              ' above the maximum spend of the grid 593.0.\nUpper bound 584 for'
               ' channel ch_1 is above the maximum spend of the grid'
-              ' 530.0.\nUpper bound 512 for channel ch_2 is above the maximum'
-              ' spend of the grid 486.0.\nUpper bound 544 for channel rf_ch_0'
-              ' is above the maximum spend of the grid 517.0.\nUpper bound 576'
+              ' 555.0.\nUpper bound 542 for channel ch_2 is above the maximum'
+              ' spend of the grid 515.0.\nUpper bound 578 for channel rf_ch_0'
+              ' is above the maximum spend of the grid 549.0.\nUpper bound 614'
               ' for channel rf_ch_1 is above the maximum spend of the grid'
-              ' 547.0.'
+              ' 583.0.'
           ),
       },
       {
@@ -2433,19 +2433,19 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
-              ' grid 29.0.\nLower bound 0 for channel ch_1 is below the mimimum'
-              ' spend of the grid 28.0.\nLower bound 0 for channel ch_2 is'
-              ' below the mimimum spend of the grid 26.0.\nLower bound 0 for'
+              ' grid 31.0.\nLower bound 0 for channel ch_1 is below the mimimum'
+              ' spend of the grid 29.0.\nLower bound 0 for channel ch_2 is'
+              ' below the mimimum spend of the grid 27.0.\nLower bound 0 for'
               ' channel rf_ch_0 is below the mimimum spend of the grid'
-              ' 27.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
-              ' spend of the grid 29.0.\nUpper bound 588 for channel ch_0 is'
-              ' above the maximum spend of the grid 559.0.\nUpper bound 558 for'
+              ' 29.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
+              ' spend of the grid 31.0.\nUpper bound 624 for channel ch_0 is'
+              ' above the maximum spend of the grid 593.0.\nUpper bound 584 for'
               ' channel ch_1 is above the maximum spend of the grid'
-              ' 530.0.\nUpper bound 512 for channel ch_2 is above the maximum'
-              ' spend of the grid 486.0.\nUpper bound 544 for channel rf_ch_0'
-              ' is above the maximum spend of the grid 517.0.\nUpper bound 576'
+              ' 555.0.\nUpper bound 542 for channel ch_2 is above the maximum'
+              ' spend of the grid 515.0.\nUpper bound 578 for channel rf_ch_0'
+              ' is above the maximum spend of the grid 549.0.\nUpper bound 614'
               ' for channel rf_ch_1 is above the maximum spend of the grid'
-              ' 547.0.'
+              ' 583.0.'
           ),
       },
   )
@@ -2673,9 +2673,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           optimize_args={'start_date': '2021-02-01'},
           warning_regex=(
               'Given optimization grid was created with `start_date` ='
-              ' 2021-01-25 and `end_date` = 2021-12-27, but optimization was'
+              ' 2021-01-25 and `end_date` = 2022-01-17, but optimization was'
               ' called with `start_date` = 2021-02-01 and `end_date` ='
-              ' 2021-12-27\\. A new grid will be created\\.'
+              ' 2022-01-17\\. A new grid will be created\\.'
           ),
       ),
       dict(
@@ -2684,7 +2684,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           optimize_args={'end_date': '2021-02-01'},
           warning_regex=(
               'Given optimization grid was created with `start_date` ='
-              ' 2021-01-25 and `end_date` = 2021-12-27, but optimization was'
+              ' 2021-01-25 and `end_date` = 2022-01-17, but optimization was'
               ' called with `start_date` = 2021-01-25 and `end_date` ='
               ' 2021-02-01\\. A new grid will be created\\.'
           ),
@@ -2964,12 +2964,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           grid_start_date=None,
           grid_end_date=None,
           optimize_start_date='2021-01-25',
-          optimize_end_date='2021-12-27',
+          optimize_end_date='2022-01-17',
       ),
       dict(
           testcase_name='grid_first_last_dates_optimize_none_dates',
           grid_start_date='2021-01-25',
-          grid_end_date='2021-12-27',
+          grid_end_date='2022-01-17',
           optimize_start_date=None,
           optimize_end_date=None,
       ),
@@ -2990,7 +2990,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
       dict(
           testcase_name='grid_last_date_optimize_none_end_date',
           grid_start_date='2021-05-17',
-          grid_end_date='2021-12-27',
+          grid_end_date='2022-01-17',
           optimize_start_date='2021-05-17',
           optimize_end_date=None,
       ),
@@ -2999,7 +2999,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           grid_start_date='2021-05-17',
           grid_end_date=None,
           optimize_start_date='2021-05-17',
-          optimize_end_date='2021-12-27',
+          optimize_end_date='2022-01-17',
       ),
   )
   def test_optimize_with_first_last_dates_or_none_reuses_grid(
@@ -3187,7 +3187,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             )
         )
     )
-    expected_optimal_spend = np.array([588, 558, 512, 544, 576])
+    expected_optimal_spend = np.array([624, 584, 542, 578, 614])
 
     np.testing.assert_array_equal(spend.optimized, expected_optimal_spend)
 
@@ -4939,7 +4939,7 @@ class OptimizerOutputTest(parameterized.TestCase):
     self.assertSequenceEqual(
         [chip.text.strip() for chip in chip_nodes if chip.text is not None],
         [
-            'Time period: Jan 25, 2021 - Jan 3, 2022',
+            'Time period: Jan 25, 2021 - Jan 24, 2022',
         ],
     )
 
@@ -4993,7 +4993,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
-            start_date='2021-01-25', end_date='2021-12-27'
+            start_date='2021-01-25', end_date='2022-01-17'
         ),
     )
 
@@ -5032,7 +5032,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         )
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_NEW_BUDGET.format(
-            start_date='2021-01-25', end_date='2021-12-27'
+            start_date='2021-01-25', end_date='2022-01-17'
         ),
     )
 
@@ -5059,7 +5059,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
             start_date='2021-01-25',
-            end_date='2021-12-27',
+            end_date='2022-01-17',
         ),
     )
 
@@ -5087,7 +5087,7 @@ class OptimizerOutputTest(parameterized.TestCase):
         + ' '
         + summary_text.SCENARIO_PLAN_INSIGHTS_HISTORICAL_BUDGET.format(
             start_date='2021-01-25',
-            end_date='2021-12-27',
+            end_date='2022-01-17',
         ),
     )
 
