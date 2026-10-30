@@ -59,6 +59,40 @@ _CUSTOM_DISTRIBUTIONS = {
 # `ALL_PRIOR_DISTRIBUTION_PARAMETERS`.
 _TIME_VARYING_PRIOR_PARAMETERS = (constants.ZETA_M, constants.ZETA_RF)
 
+# Boolean constructor parameters that can't be detected from the `__init__`
+# signature default: `validate_args` and `allow_nan_stats` are shared by all
+# TFP distributions and bijectors but some classes only accept them through
+# `**kwargs`, and `CalibratedDistribution.is_calibrated` is a required
+# `Sequence[bool]` without a default.
+_KNOWN_BOOL_PARAMETERS = frozenset({
+    "validate_args",
+    "allow_nan_stats",
+    constants.IS_CALIBRATED,
+})
+
+
+def _is_bool_parameter(
+    param_name: str,
+    dist_class: type[backend.tfd.Distribution | backend.bijectors.Bijector],
+) -> bool:
+  """Returns whether `param_name` is a boolean constructor parameter of `dist_class`.
+
+  A parameter is considered boolean if it is one of the well-known boolean
+  parameters in `_KNOWN_BOOL_PARAMETERS` or if its default value in the
+  `__init__` signature of `dist_class` is a `bool` (e.g.
+  `force_probs_to_zero_outside_support`). Integer parameters such as
+  `BatchBroadcast.with_shape` are not boolean.
+  """
+  if param_name in _KNOWN_BOOL_PARAMETERS:
+    return True
+  try:
+    parameter = inspect.signature(dist_class.__init__).parameters.get(
+        param_name
+    )
+  except (TypeError, ValueError):
+    return False
+  return parameter is not None and isinstance(parameter.default, bool)
+
 
 # TODO: Delete enumerated schema.
 class DistributionSerde(
@@ -239,7 +273,7 @@ class DistributionSerde(
     match value:
       case float() | np.floating():
         return meridian_pb.TfpParameterValue(scalar_value=float(value))
-      case bool() | np.bool():
+      case bool() | np.bool_():
         return meridian_pb.TfpParameterValue(bool_value=bool(value))
       case int() | np.integer():
         return meridian_pb.TfpParameterValue(int_value=int(value))
@@ -356,6 +390,11 @@ class DistributionSerde(
       case "scalar_value":
         return backend.np_float_dtype(param_value.scalar_value)
       case "int_value":
+        if _is_bool_parameter(param_name, dist_class):
+          # Legacy protos stored boolean parameters as `int_value: 0/1`
+          # (b/470407198). Normalize to `bool` here so downstream code (and
+          # re-serialization) always sees the canonical boolean type.
+          return bool(param_value.int_value)
         return param_value.int_value
       case "bool_value":
         return param_value.bool_value
