@@ -89,16 +89,8 @@ class DateRange:
   end_date: time_coordinates.Date | None = None
 
   def __post_init__(self) -> None:
-    start = (
-        time_coordinates.normalize_date(self.start_date)
-        if self.start_date is not None
-        else None
-    )
-    end = (
-        time_coordinates.normalize_date(self.end_date)
-        if self.end_date is not None
-        else None
-    )
+    start = time_coordinates.normalize_date(self.start_date)
+    end = time_coordinates.normalize_date(self.end_date)
     if start is not None and end is not None and start > end:
       raise ValueError(f"`start_date` ({start}) must be <= `end_date` ({end}).")
     object.__setattr__(self, "start_date", start)
@@ -1150,7 +1142,10 @@ class _ModelSpecWithChangepoints(ModelSpec):
       normalized_dates = []
       for date in dates:
         try:
-          normalized_dates.append(time_coordinates.normalize_date(date))
+          normalized_date = time_coordinates.normalize_date(date)
+          if normalized_date is None:
+            raise ValueError
+          normalized_dates.append(normalized_date)
         except ValueError as e:
           raise ValueError(
               f"The changepoint {date!r} of channel {channel!r} is not a date."

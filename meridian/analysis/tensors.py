@@ -106,7 +106,10 @@ def normalize_date_str(
     val = val.decode("utf-8")
   if isinstance(val, str):
     val = val[:10]
-  return tc.normalize_date(val).strftime(constants.DATE_FORMAT)  # pyrefly: ignore[bad-argument-type]
+  normalized = tc.normalize_date(val)  # pyrefly: ignore[no-matching-overload]
+  if normalized is None:
+    raise ValueError("`time_val` cannot be None.")
+  return normalized.strftime(constants.DATE_FORMAT)
 
 
 def normalize_times_set(times: Iterable[Any]) -> set[str]:

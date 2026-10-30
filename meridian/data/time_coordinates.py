@@ -18,7 +18,7 @@ from collections.abc import Mapping, Sequence
 import dataclasses
 import datetime
 import functools
-from typing import TypeAlias
+from typing import TypeAlias, overload
 
 from meridian import constants
 import numpy as np
@@ -34,8 +34,12 @@ __all__ = [
 ]
 
 
+_NonNoneDate: TypeAlias = (
+    str | datetime.datetime | datetime.date | np.datetime64
+)
+
 # A type alias for a polymorphic "date" type.
-Date: TypeAlias = str | datetime.datetime | datetime.date | np.datetime64 | None
+Date: TypeAlias = _NonNoneDate | None
 
 # A type alias for a polymorphic "date interval" type. In all variants it is
 # always a tuple of (start_date, end_date).
@@ -54,10 +58,26 @@ def _to_pandas_datetime_index(times: _TimeCoordinateValues) -> pd.DatetimeIndex:
   return pd.to_datetime(times)  # pyrefly: ignore[no-matching-overload]
 
 
-# TODO: Handle `None`.
-def normalize_date(date: Date) -> datetime.date:
-  """Normalizes the given date value into a `datetime.date`."""
-  if isinstance(date, str):
+@overload
+def normalize_date(date: _NonNoneDate) -> datetime.date:
+  ...
+
+
+@overload
+def normalize_date(date: None) -> None:
+  ...
+
+
+@overload
+def normalize_date(date: Date) -> datetime.date | None:
+  ...
+
+
+def normalize_date(date: Date) -> datetime.date | None:
+  """Normalizes the given date value into a `datetime.date` or `None`."""
+  if date is None:
+    return None
+  elif isinstance(date, str):
     return datetime.datetime.strptime(date, constants.DATE_FORMAT).date()
   elif isinstance(date, datetime.datetime):
     return date.date()
@@ -94,6 +114,10 @@ def normalize_date_interval(
     A `(start_date, end_date)` tuple of `date`s.
   """
   start, end = date_interval
+  if start is None or end is None:
+    raise ValueError(
+        f"Date interval bounds cannot be None, got: {date_interval}"
+    )
   start = normalize_date(start)
   end = normalize_date(end)
   return (start, end)
@@ -333,6 +357,8 @@ class TimeCoordinates:
 
   def period_end(self, start_date: Date) -> datetime.date:
     """Returns the exclusive end date for a period starting on `start_date`."""
+    if start_date is None:
+      raise ValueError("`start_date` cannot be None.")
     start_date = normalize_date(start_date)
     if start_date in self.period_ends:
       return self.period_ends[start_date]
@@ -340,6 +366,8 @@ class TimeCoordinates:
 
   def period_start(self, end_date: Date) -> datetime.date:
     """Returns the start date for a period ending on `end_date`."""
+    if end_date is None:
+      raise ValueError("`end_date` cannot be None.")
     end_date = normalize_date(end_date)
     period_starts_by_end = {v: k for k, v in self.period_ends.items()}
     if end_date in period_starts_by_end:

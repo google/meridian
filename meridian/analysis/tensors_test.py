@@ -1308,6 +1308,10 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
         tensors.normalize_date_str(np.datetime64("2021-01-25")), "2021-01-25"
     )
 
+  def test_normalize_date_str_none_raises(self):
+    with self.assertRaisesRegex(ValueError, "`time_val` cannot be None."):
+      tensors.normalize_date_str(None)
+
   def test_normalize_times_set(self):
     self.assertEqual(
         tensors.normalize_times_set(

@@ -1593,6 +1593,7 @@ class ModelSpecWithChangepointsTest(parameterized.TestCase):
       ("empty_list", {"TV": []}, "is empty"),
       ("empty_array", {"TV": np.array([])}, "is empty"),
       ("integer_position", {"TV": [52]}, "52 of channel 'TV' is not a date"),
+      ("none_element", {"TV": [None]}, "None of channel 'TV' is not a date"),
       ("wrong_format", {"TV": ["12/30/2024"]}, "is not a date"),
   )
   def test_invalid_changepoints_raise(self, changepoints, message):

@@ -108,14 +108,8 @@ class Summarizer:
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
     all_dates = self._meridian.input_data.time_coordinates.all_dates
-    start_date = (
-        tc.normalize_date(start_date)
-        if start_date is not None
-        else min(all_dates)
-    )
-    end_date = (
-        tc.normalize_date(end_date) if end_date is not None else max(all_dates)
-    )
+    start_date = tc.normalize_date(start_date) or min(all_dates)
+    end_date = tc.normalize_date(end_date) or max(all_dates)
 
     if start_date not in all_dates:
       raise ValueError(

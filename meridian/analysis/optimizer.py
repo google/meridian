@@ -1189,6 +1189,8 @@ class OptimizationResults:
   def _gen_optimization_summary(self, currency: str) -> str:
     """Generates HTML optimization summary output (as sanitized content str)."""
     start_date = tc.normalize_date(self.optimized_data.start_date)
+    if start_date is None:
+      raise ValueError('`start_date` cannot be None.')
     self.template_env.globals[c.START_DATE] = start_date.strftime(  # pyrefly: ignore[unsupported-operation]
         f'%b {start_date.day}, %Y'
     )
@@ -2071,21 +2073,13 @@ class BudgetOptimizer:
     first_date = tc.normalize_date(time_array[0])
     last_date = tc.normalize_date(time_array[-1])
 
-    normalized_start_date = (
-        tc.normalize_date(start_date) if start_date is not None else first_date
-    )
+    normalized_start_date = tc.normalize_date(start_date) or first_date
     normalized_start_date_grid = (
-        tc.normalize_date(optimization_grid.start_date)
-        if optimization_grid.start_date is not None
-        else first_date
+        tc.normalize_date(optimization_grid.start_date) or first_date
     )
-    normalized_end_date = (
-        tc.normalize_date(end_date) if end_date is not None else last_date
-    )
+    normalized_end_date = tc.normalize_date(end_date) or last_date
     normalized_end_date_grid = (
-        tc.normalize_date(optimization_grid.end_date)
-        if optimization_grid.end_date is not None
-        else last_date
+        tc.normalize_date(optimization_grid.end_date) or last_date
     )
     if (
         normalized_start_date != normalized_start_date_grid

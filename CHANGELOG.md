@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `time_coordinates.normalize_date(None)` now returns `None` instead of
+    raising `ValueError`, with typing overloads so non-`None` inputs still
+    typecheck as `datetime.date`.
 *   Remove the temporary top-level `schema.py` compatibility shim module. Use
     `meridian.schema` instead.
 *   Expose `posterior_sampler._compute_tau_g` publicly as

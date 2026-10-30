@@ -294,16 +294,8 @@ def _compile_date_range_mask(
     # `DateRange.__post_init__` already normalizes these, but the declared
     # attribute type stays polymorphic (`Date | None`), so normalize again to
     # compare `date` against `date` rather than against `str`.
-    start = (
-        tc.normalize_date(date_range.start_date)
-        if date_range.start_date is not None
-        else None
-    )
-    end = (
-        tc.normalize_date(date_range.end_date)
-        if date_range.end_date is not None
-        else None
-    )
+    start = tc.normalize_date(date_range.start_date)
+    end = tc.normalize_date(date_range.end_date)
     for bound_name, bound in (("start_date", start), ("end_date", end)):
       if bound is not None and bound not in known_dates:
         raise ValueError(

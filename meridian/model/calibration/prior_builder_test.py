@@ -841,28 +841,28 @@ class CalibrationBuilderTest(parameterized.TestCase):
           experiment_total_spends=[100.0, 200.0],
           experiment_start_dates=None,
           experiment_end_dates=["2026-01-10", "2026-01-11"],
-          expected_error="Unsupported date value type: .*NoneType.* for None",
+          expected_error="Dates cannot be None.",
       ),
       dict(
           testcase_name="none_experiment_end_dates",
           experiment_total_spends=[100.0, 200.0],
           experiment_start_dates=["2026-01-01", "2026-01-02"],
           experiment_end_dates=None,
-          expected_error="Unsupported date value type: .*NoneType.* for None",
+          expected_error="Dates cannot be None.",
       ),
       dict(
           testcase_name="none_element_in_experiment_start_dates",
           experiment_total_spends=[100.0, 200.0],
           experiment_start_dates=["2026-01-01", None],
           experiment_end_dates=["2026-01-10", "2026-01-11"],
-          expected_error="Unsupported date value type: .*NoneType.* for None",
+          expected_error="Dates cannot be None.",
       ),
       dict(
           testcase_name="none_element_in_experiment_end_dates",
           experiment_total_spends=[100.0, 200.0],
           experiment_start_dates=["2026-01-01", "2026-01-02"],
           experiment_end_dates=[None, "2026-01-11"],
-          expected_error="Unsupported date value type: .*NoneType.* for None",
+          expected_error="Dates cannot be None.",
       ),
   )
   def test_with_incrementality_experiment_result_none_args_raises_value_error(
@@ -1621,12 +1621,12 @@ class CalibrationBuilderTest(parameterized.TestCase):
       dict(
           testcase_name="none",
           dates=None,
-          error_msg="Unsupported date value type: .*NoneType.* for None",
+          error_msg="Dates cannot be None.",
       ),
       dict(
           testcase_name="sequence_with_none",
           dates=["2026-05-26", None],
-          error_msg="Unsupported date value type: .*NoneType.* for None",
+          error_msg="Dates cannot be None.",
       ),
       dict(
           testcase_name="invalid_type_int",

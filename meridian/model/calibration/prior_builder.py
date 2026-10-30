@@ -247,6 +247,8 @@ def _coerce_required_dates(
       if isinstance(dates, Sequence) and not isinstance(dates, (str, bytes))
       else [dates]
   )
+  if any(d is None for d in dates_seq):
+    raise ValueError("Dates cannot be None.")
   return [tc.normalize_date(d) for d in dates_seq]
 
 

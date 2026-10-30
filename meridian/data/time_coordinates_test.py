@@ -744,6 +744,10 @@ class TimeCoordinatesTest(parameterized.TestCase):
         month_end_coords.period_end("2024-11-30"), dt.date(2024, 12, 31)
     )
 
+  def test_period_end_none_raises(self):
+    with self.assertRaisesRegex(ValueError, "`start_date` cannot be None."):
+      self.coordinates.period_end(None)
+
   def test_period_start_in_sample_and_polymorphic(self):
     coords = time_coordinates.TimeCoordinates.from_dates(
         pd.DatetimeIndex([
@@ -780,6 +784,10 @@ class TimeCoordinatesTest(parameterized.TestCase):
         month_end_coords.period_start("2024-12-31"), dt.date(2024, 11, 30)
     )
 
+  def test_period_start_none_raises(self):
+    with self.assertRaisesRegex(ValueError, "`end_date` cannot be None."):
+      self.coordinates.period_start(None)
+
 
 class NormalizeDateTest(parameterized.TestCase):
 
@@ -802,6 +810,9 @@ class NormalizeDateTest(parameterized.TestCase):
     self.assertIs(type(normalized), dt.date)
     self.assertEqual(normalized, dt.date(2024, 1, 8))
 
+  def test_none_returns_none(self):
+    self.assertIsNone(time_coordinates.normalize_date(None))
+
   @parameterized.named_parameters(
       dict(testcase_name="integer", date=2),
       dict(testcase_name="wrong_format", date="01/08/2024"),
@@ -809,6 +820,22 @@ class NormalizeDateTest(parameterized.TestCase):
   def test_invalid_date_raises(self, date):
     with self.assertRaises(ValueError):
       time_coordinates.normalize_date(date)
+
+  def test_normalize_date_interval_returns_dates(self):
+    self.assertEqual(
+        time_coordinates.normalize_date_interval(("2024-01-01", "2024-01-08")),
+        (dt.date(2024, 1, 1), dt.date(2024, 1, 8)),
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="start_none", interval=(None, "2024-01-08")),
+      dict(testcase_name="end_none", interval=("2024-01-01", None)),
+  )
+  def test_normalize_date_interval_none_raises(self, interval):
+    with self.assertRaisesRegex(
+        ValueError, "Date interval bounds cannot be None"
+    ):
+      time_coordinates.normalize_date_interval(interval)
 
 
 if __name__ == "__main__":
