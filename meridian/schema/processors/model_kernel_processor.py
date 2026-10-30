@@ -29,7 +29,7 @@ analyzed across different environments or by other tools that understand the
 `MmmKernel` schema.
 
 The serialization logic is primarily handled by the `MeridianSerde` class from
-the `schema.serde` package.
+the `meridian.schema.serde` package.
 
 Key Classes:
 
@@ -42,7 +42,7 @@ Example Usage:
 import meridian
 from meridian.model import model
 from mmm.v1 import mmm_pb2
-from schema.processors import model_kernel_processor
+from meridian.schema.processors import model_kernel_processor
 import semver
 
 # Assuming 'mmm' is a `meridian.model.Meridian` object.

@@ -1434,7 +1434,7 @@ def save_mmm(mmm: Meridian, file_path: str):
   """
   warnings.warn(
       "save_mmm is deprecated and will be removed in a future release. Please"
-      " use `schema.serde.meridian_serde.save_meridian` instead. See"
+      " use `meridian.schema.serde.meridian_serde.save_meridian` instead. See"
       " https://developers.google.com/meridian/docs/user-guide/saving-model-object"
       " for details.",
       DeprecationWarning,
