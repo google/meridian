@@ -42,8 +42,13 @@ _FREQUENCY_BELOW_ONE_TOLERANCE = 1e-3
 
 
 __all__ = [
+    "DataValidationWarning",
     "InputData",
 ]
+
+
+class DataValidationWarning(UserWarning):
+  """Invalid data that will raise ValueError in a future release."""
 
 
 def _check_dim_collection(
@@ -706,7 +711,7 @@ class InputData:
           " least 1 wherever reach is positive; values below 1 usually mean a"
           " data error. This will raise an error in a future major version of"
           " Meridian.",
-          UserWarning,
+          DataValidationWarning,
       )
 
   def _warn_non_positive_population(self) -> None:
@@ -725,7 +730,7 @@ class InputData:
         " makes the results invalid for every channel, not only for these"
         " geos. Remove these geos or set their population. This will raise an"
         " error in a future major version of Meridian.",
-        UserWarning,
+        DataValidationWarning,
     )
 
   def _validate_names(self):

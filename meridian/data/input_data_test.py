@@ -516,7 +516,7 @@ class InputDataTest(parameterized.TestCase):
             "Revenue from the `kpi` data is used when `kpi_type`=`revenue`."
             " `revenue_per_kpi` is ignored."
         ),
-    ):
+    ) as cm:
       input_data.InputData(
           controls=self.not_lagged_controls,
           kpi=self.not_lagged_kpi,
@@ -526,6 +526,7 @@ class InputDataTest(parameterized.TestCase):
           media=self.not_lagged_media,
           media_spend=self.media_spend,
       )
+    self.assertNotIsInstance(cm.warning, input_data.DataValidationWarning)
 
   def test_scenarios_kpi_type_non_revenue_no_revenue_per_kpi_warning(self):
     with self.assertWarnsRegex(
@@ -537,7 +538,7 @@ class InputDataTest(parameterized.TestCase):
             " `p_sd=0.2`. Further documentation available at"
             " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi-custom#set-total-paid-media-contribution-prior"
         ),
-    ):
+    ) as cm:
       input_data.InputData(
           controls=self.not_lagged_controls,
           kpi=self.not_lagged_kpi,
@@ -547,6 +548,7 @@ class InputDataTest(parameterized.TestCase):
           media=self.not_lagged_media,
           media_spend=self.media_spend,
       )
+    self.assertNotIsInstance(cm.warning, input_data.DataValidationWarning)
 
   def test_construct_media_only_invalid_controls_time_values(self):
     with self.assertRaisesRegex(
@@ -2279,6 +2281,9 @@ class NonpaidInputDataTest(parameterized.TestCase):
         [str(w.message) for w in caught if re.search(regex, str(w.message))]
     )
 
+  def test_data_validation_warning_is_user_warning_subclass(self):
+    self.assertTrue(issubclass(input_data.DataValidationWarning, UserWarning))
+
   def test_valid_rf_and_population_no_warning(self):
     self._assert_no_warning_matching("below 1|Population must be positive")
 
@@ -2289,7 +2294,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
   )
   def test_frequency_below_one_with_positive_reach_warns(self, frequency):
     with self.assertWarnsRegex(
-        UserWarning,
+        input_data.DataValidationWarning,
         expected_regex=(
             r"^Frequency is below 1 where reach is positive\. Number of"
             r" affected \(geo, time\) cells by channel: \{'rf_ch_0': 1\}\."
@@ -2304,7 +2309,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
 
   def test_organic_frequency_below_one_with_positive_reach_warns(self):
     with self.assertWarnsRegex(
-        UserWarning,
+        input_data.DataValidationWarning,
         expected_regex=(
             r"^Organic Frequency is below 1 where reach is positive\. Number of"
             r" affected \(geo, time\) cells by channel:"
@@ -2347,7 +2352,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
     pop[1] = population
     geo = str(pop.coords[constants.GEO].values[1])
     with self.assertWarnsRegex(
-        UserWarning,
+        input_data.DataValidationWarning,
         expected_regex=(
             r"^Population must be positive, but these geos have a population"
             rf" of 0 or below: \['{geo}'\]\."
@@ -2405,7 +2410,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
       dict(testcase_name="unrecognized", currency_code="FOO"),
   )
   def test_currency_code_unrecognized_emits_warning(self, currency_code: str):
-    with self.assertWarns(UserWarning):
+    with self.assertWarns(UserWarning) as cm:
       input_data.InputData(
           kpi=self.kpi,
           kpi_type=constants.NON_REVENUE,
@@ -2414,6 +2419,7 @@ class NonpaidInputDataTest(parameterized.TestCase):
           media_spend=self.media_spend,
           currency_code=currency_code,
       )
+    self.assertNotIsInstance(cm.warning, input_data.DataValidationWarning)
 
 
 if __name__ == "__main__":
