@@ -4378,6 +4378,85 @@ class ChangepointsTest(
     )
     self.assertIsNone(model_context._rf_changepoint_info)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="some_channels_with_changepoints",
+          changepoint_channels=(1,),
+          expected={
+              "coefficient": [True, False, True],
+              "roi": [False, True, False],
+              "mroi": [False, False, False],
+          },
+      ),
+      dict(
+          testcase_name="all_channels_with_changepoints",
+          changepoint_channels=(0, 1, 2),
+          expected={
+              "coefficient": [False, False, False],
+              "roi": [True, True, True],
+          },
+      ),
+      dict(
+          testcase_name="no_changepoints",
+          changepoint_channels=(),
+          expected={
+              "coefficient": [True, True, True],
+              "roi": [False, False, False],
+          },
+      ),
+  )
+  def test_channels_using_prior_type(
+      self,
+      changepoint_channels: Sequence[int],
+      expected: Mapping[str, Sequence[bool]],
+  ):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={
+                self.media[channel]: [self.dates[10]]
+                for channel in changepoint_channels
+            },
+            media_prior_type="coefficient",
+            changepoint_media_prior_type="roi",
+        )
+    )
+    for prior_type, uses_prior_type in expected.items():
+      with self.subTest(prior_type):
+        np.testing.assert_array_equal(
+            model_context._channels_using_prior_type(False, prior_type),
+            uses_prior_type,
+        )
+    # The RF channels have no changepoints, so they use `rf_prior_type`.
+    np.testing.assert_array_equal(
+        model_context._channels_using_prior_type(True, "roi"), [True, True]
+    )
+
+  def test_channels_using_prior_type_with_matching_prior_types(self):
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={self.media[1]: [self.dates[10]]}
+        )
+    )
+    np.testing.assert_array_equal(
+        model_context._channels_using_prior_type(False, "roi"),
+        [True, True, True],
+    )
+
+  def test_channels_using_prior_type_without_channels_of_the_type(self):
+    data = self.input_data_with_media_only
+    assert data.media_channel is not None
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            changepoints={
+                str(data.media_channel.values[0]): [
+                    data.time_coordinates.all_dates[10]
+                ]
+            }
+        ),
+        data=data,
+    )
+    self.assertEmpty(model_context._channels_using_prior_type(True, "roi"))
+
   def test_prior_support_uses_changepoint_prior_type(self):
     with self.assertRaisesRegex(
         ValueError, "non-negative support when `changepoint_media_effects_dist`"

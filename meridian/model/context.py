@@ -2451,36 +2451,34 @@ class ModelContext:
       )
     return prior_types
 
-  def _check_changepoint_prior_types(self) -> None:
-    """Checks that the posterior can be sampled with these prior types.
+  def _channels_using_prior_type(
+      self, is_rf: bool, prior_type: str
+  ) -> np.ndarray:
+    """Whether each paid media or RF channel uses `prior_type`.
 
-    Raises:
-      NotImplementedError: If the paid media or RF channels with changepoints
-        use another prior type than `media_prior_type` or `rf_prior_type`.
+    Args:
+      is_rf: Whether to use the RF channels rather than the media channels.
+      prior_type: A paid prior type.
+
+    Returns:
+      A boolean array with one value per channel of the type.
     """
-    # TODO: Posterior sample models whose channels with
-    # changepoints use another prior type.
-    for is_rf, changepoint_info, prior_type in (
-        (
-            False,
-            self._media_changepoint_info,
-            self._model_spec.effective_media_prior_type,
-        ),
-        (
-            True,
-            self._rf_changepoint_info,
-            self._model_spec.effective_rf_prior_type,
-        ),
-    ):
-      changepoint_prior_type = self._changepoint_prior_type(is_rf)
-      if changepoint_info is not None and changepoint_prior_type != prior_type:
-        name = "rf" if is_rf else "media"
-        raise NotImplementedError(
-            "Posterior sampling is not supported yet when"
-            f" `changepoint_{name}_prior_type` ({changepoint_prior_type!r})"
-            f" differs from `{name}_prior_type` ({prior_type!r}). Prior"
-            " sampling is supported."
-        )
+    prior_types = self._paid_prior_types(is_rf)
+    changepoint_info = (
+        self._rf_changepoint_info if is_rf else self._media_changepoint_info
+    )
+    n_channels = self.n_rf_channels if is_rf else self.n_media_channels
+    if changepoint_info is None:
+      is_changepoint_channel = np.zeros(n_channels, dtype=bool)
+    else:
+      is_changepoint_channel = changepoint_info.is_changepoint_channel
+    name = "rf" if is_rf else "media"
+    uses_prior_type = np.zeros(n_channels, dtype=bool)
+    if prior_types.get(f"{name}_prior_type") == prior_type:
+      uses_prior_type |= ~is_changepoint_channel
+    if prior_types.get(f"changepoint_{name}_prior_type") == prior_type:
+      uses_prior_type |= is_changepoint_channel
+    return uses_prior_type
 
   @functools.cached_property
   def _changepoint_max_intervals(self) -> int:
