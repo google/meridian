@@ -258,6 +258,281 @@ def _tf_vectorized_map(fn: Any, elems: Any) -> Any:
   return tf.vectorized_map(fn, elems)
 
 
+def _jax_eye(n: int, dtype: Optional[Any] = None) -> "_jax.Array":
+  """Returns an `n` x `n` identity matrix.
+
+  Args:
+    n: Number of rows and columns in the output matrix.
+    dtype: Optional element dtype. Defaults to the active backend float dtype.
+
+  Returns:
+    A JAX array of shape `(n, n)` with ones on the diagonal and zeros elsewhere.
+  """
+  import jax.numpy as jnp
+
+  resolved_dtype = (
+      _DEFAULT_FLOAT if dtype is None else standardize_dtype(dtype)
+  )
+  return jnp.eye(n, dtype=resolved_dtype)
+
+
+def _tf_eye(n: int, dtype: Optional[Any] = None) -> "_tf.Tensor":
+  """Returns an `n` x `n` identity matrix.
+
+  Args:
+    n: Number of rows and columns in the output matrix.
+    dtype: Optional element dtype. Defaults to the active backend float dtype.
+
+  Returns:
+    A TensorFlow tensor of shape `(n, n)` with ones on the diagonal and zeros
+    elsewhere.
+  """
+  import tensorflow as tf
+
+  resolved_dtype = (
+      _DEFAULT_FLOAT if dtype is None else standardize_dtype(dtype)
+  )
+  return tf.eye(n, dtype=resolved_dtype)
+
+
+def _jax_cholesky_solve(chol: Any, rhs: Any) -> "_jax.Array":
+  """Solves `(chol @ chol.T) @ x = rhs` given a lower-triangular Cholesky factor.
+
+  Args:
+    chol: Lower-triangular Cholesky factor of shape `(..., n, n)`.
+    rhs: Right-hand side tensor. Treated as a vector (or batch of vectors) of
+      shape `(..., n)` when `len(rhs.shape) == len(chol.shape) - 1`, or as a
+      matrix (or batch of matrices) of shape `(..., n, k)` when `rhs` has the
+      same rank as `chol`.
+
+  Returns:
+    A JAX array with the same shape as `rhs` containing the solution `x`.
+  """
+  import jax.scipy.linalg as jsp_linalg
+
+  rhs_is_1d = len(rhs.shape) == len(chol.shape) - 1
+  rhs_2d = rhs[..., None] if rhs_is_1d else rhs
+  solved = jsp_linalg.cho_solve((chol, True), rhs_2d)
+  return solved[..., 0] if rhs_is_1d else solved
+
+
+def _tf_cholesky_solve(chol: Any, rhs: Any) -> "_tf.Tensor":
+  """Solves `(chol @ chol.T) @ x = rhs` given a lower-triangular Cholesky factor.
+
+  Args:
+    chol: Lower-triangular Cholesky factor of shape `(..., n, n)`.
+    rhs: Right-hand side tensor. Treated as a vector (or batch of vectors) of
+      shape `(..., n)` when `len(rhs.shape) == len(chol.shape) - 1`, or as a
+      matrix (or batch of matrices) of shape `(..., n, k)` when `rhs` has the
+      same rank as `chol`.
+
+  Returns:
+    A TensorFlow tensor with the same shape as `rhs` containing the solution
+    `x`.
+  """
+  import tensorflow as tf
+
+  rhs_is_1d = len(rhs.shape) == len(chol.shape) - 1
+  rhs_2d = rhs[..., None] if rhs_is_1d else rhs
+  solved = tf.linalg.cholesky_solve(chol, rhs_2d)
+  return solved[..., 0] if rhs_is_1d else solved
+
+
+def _jax_logdet_positive_definite(matrix: Any) -> "_jax.Array":
+  """Computes `log(det(matrix))` for a symmetric positive-definite matrix.
+
+  Args:
+    matrix: Symmetric positive-definite matrix (or batch of matrices) of shape
+      `(..., n, n)`.
+
+  Returns:
+    A JAX array of shape `(...)` containing the natural log-determinant.
+  """
+  import jax.numpy as jnp
+
+  return jnp.linalg.slogdet(matrix)[1]
+
+
+def _tf_logdet_positive_definite(matrix: Any) -> "_tf.Tensor":
+  """Computes `log(det(matrix))` for a symmetric positive-definite matrix.
+
+  Args:
+    matrix: Symmetric positive-definite matrix (or batch of matrices) of shape
+      `(..., n, n)`.
+
+  Returns:
+    A TensorFlow tensor of shape `(...)` containing the natural log-determinant.
+  """
+  import tensorflow as tf
+
+  return tf.linalg.logdet(matrix)
+
+
+def _check_scalar_output(value: Any, fn_name: str) -> None:
+  """Raises `ValueError` if `value` is not a scalar tensor."""
+  shape = getattr(value, "shape", None)
+  if shape is None:
+    raise ValueError(
+        f"`{fn_name}` requires `fn` to return a scalar tensor; got"
+        f" {type(value).__name__}."
+    )
+  if len(shape) != 0:
+    raise ValueError(
+        f"`{fn_name}` requires `fn` to return a scalar tensor; got shape"
+        f" {tuple(shape)}."
+    )
+
+
+def _jax_value_and_grad(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
+  """Returns a compiled callable computing `(fn(x), grad(fn)(x))`.
+
+  Args:
+    fn: Differentiable scalar-valued function of a single tensor argument `x`.
+
+  Returns:
+    A JIT-compiled callable mapping `x` to `(value, gradient)`, where `gradient`
+    has the same shape and dtype as `x` (zeros if `fn(x)` does not depend on
+    `x`).
+
+  Raises:
+    ValueError: If `fn(x)` is not a scalar tensor.
+  """
+  import jax  # pylint: disable=redefined-outer-name
+
+  def _scalar_fn(x):
+    val = fn(x)
+    _check_scalar_output(val, "value_and_grad")
+    return val
+
+  return jax.jit(jax.value_and_grad(_scalar_fn))
+
+
+def _tf_value_and_grad(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
+  """Returns a compiled callable computing `(fn(x), grad(fn)(x))`.
+
+  Args:
+    fn: Differentiable scalar-valued function of a single tensor argument `x`.
+
+  Returns:
+    A `tf.function`-compiled callable mapping `x` to `(value, gradient)`, where
+    `gradient` has the same shape and dtype as `x` (zeros if `fn(x)` does not
+    depend on `x`).
+
+  Raises:
+    ValueError: If `fn(x)` is not a scalar tensor.
+  """
+  import tensorflow as tf
+
+  @tf.function(autograph=False)
+  def _val_and_grad(x):
+    with tf.GradientTape() as tape:
+      tape.watch(x)
+      val = fn(x)
+      _check_scalar_output(val, "value_and_grad")
+    grad = tape.gradient(
+        val, x, unconnected_gradients=tf.UnconnectedGradients.ZERO
+    )
+    return val, grad
+
+  return _val_and_grad
+
+
+def _jax_hessian(fn: Callable[[Any], Any], x: Any) -> "_jax.Array":
+  """Computes the exact Hessian matrix of scalar-valued `fn` at 1-D `x`.
+
+  Args:
+    fn: Twice-differentiable scalar-valued function of a 1-D tensor.
+    x: 1-D point `(n,)` at which to evaluate the Hessian.
+
+  Returns:
+    A JAX array of shape `(n, n)` with `x.dtype` containing the Hessian matrix.
+
+  Raises:
+    ValueError: If `x` is not a 1-D tensor or `fn(x)` is not a scalar tensor.
+  """
+  import jax  # pylint: disable=redefined-outer-name
+  import jax.numpy as jnp
+
+  if len(x.shape) != 1:
+    raise ValueError(
+        f"`hessian` requires a 1-D tensor `x`; got shape {tuple(x.shape)}."
+    )
+  if int(x.shape[0]) == 0:
+    _check_scalar_output(fn(x), "hessian")
+    return jnp.zeros((0, 0), dtype=x.dtype)
+
+  def _scalar_fn(point):
+    value = fn(point)
+    _check_scalar_output(value, "hessian")
+    return value
+
+  return jax.jit(jax.hessian(_scalar_fn))(x)
+
+
+def _tf_hessian(fn: Callable[[Any], Any], x: Any) -> "_tf.Tensor":
+  """Computes the exact Hessian matrix of scalar-valued `fn` at 1-D `x`.
+
+  Args:
+    fn: Twice-differentiable scalar-valued function of a 1-D tensor.
+    x: 1-D point `(n,)` at which to evaluate the Hessian.
+
+  Returns:
+    A TensorFlow tensor of shape `(n, n)` with `x.dtype` containing the Hessian
+    matrix.
+
+  Raises:
+    ValueError: If `x` is not a 1-D tensor or `fn(x)` is not a scalar tensor.
+  """
+  import tensorflow as tf
+
+  if len(x.shape) != 1:
+    raise ValueError(
+        f"`hessian` requires a 1-D tensor `x`; got shape {tuple(x.shape)}."
+    )
+  if int(x.shape[0]) == 0:
+    _check_scalar_output(fn(x), "hessian")
+    return tf.zeros((0, 0), dtype=x.dtype)
+
+  reached_jacobian = False
+
+  def _make_hessian_fn(use_pfor: bool):
+    @tf.function(autograph=False)
+    def _hessian(point):
+      nonlocal reached_jacobian
+      with tf.GradientTape() as outer_tape:
+        outer_tape.watch(point)
+        with tf.GradientTape() as inner_tape:
+          inner_tape.watch(point)
+          value = fn(point)
+          _check_scalar_output(value, "hessian")
+        gradient = inner_tape.gradient(
+            value, point, unconnected_gradients=tf.UnconnectedGradients.ZERO
+        )
+      reached_jacobian = True
+      return outer_tape.jacobian(
+          gradient,
+          point,
+          unconnected_gradients=tf.UnconnectedGradients.ZERO,
+          experimental_use_pfor=use_pfor,
+      )
+
+    return _hessian
+
+  # TensorFlow's `pfor` converter rejects VJPs of repeated-label `einsum` ops
+  # (e.g., `ii->i` whose backward pass emits `i->ii`), so retry with sequential
+  # `while_loop` Jacobian evaluation when `pfor` conversion fails.
+  try:
+    return _make_hessian_fn(use_pfor=True)(x)
+  except (
+      tf.errors.InvalidArgumentError,
+      ValueError,
+      NotImplementedError,
+  ):
+    if not reached_jacobian:
+      raise
+    return _make_hessian_fn(use_pfor=False)(x)
+
+
 def _jax_divide_no_nan(x, y):
   """JAX implementation for divide_no_nan."""
   import jax.numpy as jnp
@@ -1133,6 +1408,8 @@ if _BACKEND == config.Backend.JAX:
   broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _jax_cast
+  cholesky = _ops.linalg.cholesky
+  cholesky_solve = _jax_cholesky_solve
   compile_temporary_function = _jax_compile_temporary_function
   concatenate = _ops.concatenate
   cumsum = _ops.cumsum
@@ -1143,15 +1420,18 @@ if _BACKEND == config.Backend.JAX:
   equal = _ops.equal
   exp = _ops.exp
   expand_dims = _ops.expand_dims
+  eye = _jax_eye
   fill = _jax_fill
   function = _jax_function_wrapper
   vectorized_map = _jax_vectorized_map
   gather = _jax_gather
   get_indices_where = _jax_get_indices_where
   get_seed_data = _jax_get_seed_data
+  hessian = _jax_hessian
   is_finite = _ops.isfinite
   is_nan = _ops.isnan
   log = _ops.log
+  logdet_positive_definite = _jax_logdet_positive_definite
   make_ndarray = _jax_make_ndarray
   make_tensor_proto = _jax_make_tensor_proto
   nanmean = jax_ops.nanmean
@@ -1177,11 +1457,13 @@ if _BACKEND == config.Backend.JAX:
   reshape = _ops.reshape
   roll = _jax_roll
   split = _jax_split
+  sqrt = _ops.sqrt
   stack = _ops.stack
   squeeze = _ops.squeeze
   tile = _jax_tile
   transpose = _jax_transpose
   unique_with_counts = _jax_unique_with_counts
+  value_and_grad = _jax_value_and_grad
   where = _ops.where
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like
@@ -1325,6 +1607,8 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   broadcast_dynamic_shape = _ops.broadcast_dynamic_shape
   broadcast_to = _ops.broadcast_to
   cast = _ops.cast
+  cholesky = _ops.linalg.cholesky
+  cholesky_solve = _tf_cholesky_solve
   compile_temporary_function = _tf_compile_temporary_function
   concatenate = _ops.concat
   cumsum = _ops.cumsum
@@ -1335,15 +1619,18 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   equal = _ops.equal
   exp = _ops.math.exp
   expand_dims = _ops.expand_dims
+  eye = _tf_eye
   fill = _tf_fill
   function = _tf_function_wrapper
   vectorized_map = _tf_vectorized_map
   gather = _tf_gather
   get_indices_where = _tf_get_indices_where
   get_seed_data = _tf_get_seed_data
+  hessian = _tf_hessian
   is_finite = _ops.math.is_finite
   is_nan = _ops.math.is_nan
   log = _ops.math.log
+  logdet_positive_definite = _tf_logdet_positive_definite
   make_ndarray = _ops.make_ndarray
   make_tensor_proto = _ops.make_tensor_proto
   nanmean = _tf_nanmean
@@ -1370,11 +1657,13 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   roll = _tf_roll
   set_random_seed = tf_backend.keras.utils.set_random_seed
   split = _ops.split
+  sqrt = _ops.math.sqrt
   stack = _ops.stack
   squeeze = _ops.squeeze
   tile = _ops.tile
   transpose = _ops.transpose
   unique_with_counts = _tf_unique_with_counts
+  value_and_grad = _tf_value_and_grad
   where = _ops.where
   zeros = _ops.zeros
   zeros_like = _ops.zeros_like

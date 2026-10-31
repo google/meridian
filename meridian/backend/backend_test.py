@@ -343,21 +343,29 @@ class BackendTest(parameterized.TestCase):
   def setUp(self):
     super().setUp()
     self._original_backend = config.get_backend()
+    self._original_jax_x64 = jax.config.jax_enable_x64
 
   def tearDown(self):
     super().tearDown()
     with warnings.catch_warnings():
       warnings.simplefilter("ignore", (UserWarning, FutureWarning))
       config.set_backend(self._original_backend)
+      jax.config.update("jax_enable_x64", self._original_jax_x64)
+      importlib.reload(backend)
 
-    importlib.reload(backend)
-
-  def _set_backend_for_test(self, backend_name: str):
-    with warnings.catch_warnings():
-      warnings.simplefilter("ignore", FutureWarning)
-      config.set_backend(backend_name)
-
-    importlib.reload(backend)
+  def _set_backend_for_test(
+      self, backend_name: str, *, jax_x64: bool | None = None
+  ):
+    env_overrides = (
+        {"MERIDIAN_ENABLE_JAX_X64": "true" if jax_x64 else "false"}
+        if jax_x64 is not None
+        else {}
+    )
+    with mock.patch.dict(os.environ, env_overrides):
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        config.set_backend(backend_name)
+      importlib.reload(backend)
 
   @parameterized.named_parameters(
       ("tensorflow_enum", _TF, _TF, True),
@@ -1699,6 +1707,274 @@ class BackendTest(parameterized.TestCase):
 
     tensor_module = backend.Tensor.__module__
     self.assertIn(expected_module_substring, tensor_module)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="tensorflow",
+          backend_name=_TF,
+          jax_x64=None,
+          expected_default_dtype="float32",
+          expected_f64_dtype="float64",
+      ),
+      dict(
+          testcase_name="jax_float64",
+          backend_name=_JAX,
+          jax_x64=True,
+          expected_default_dtype="float64",
+          expected_f64_dtype="float64",
+      ),
+      dict(
+          testcase_name="jax_float32",
+          backend_name=_JAX,
+          jax_x64=False,
+          expected_default_dtype="float32",
+          expected_f64_dtype="float32",
+      ),
+  )
+  def test_eye_and_sqrt(
+      self,
+      backend_name: str,
+      jax_x64: bool | None,
+      expected_default_dtype: str,
+      expected_f64_dtype: str,
+  ) -> None:
+    self._set_backend_for_test(backend_name, jax_x64=jax_x64)
+    ident_default = backend.eye(4)
+    self.assertIsInstance(ident_default, backend.Tensor)
+    self.assertEqual(ident_default.dtype, backend.float_dtype)
+    self.assertEqual(
+        backend.standardize_dtype(ident_default.dtype), expected_default_dtype
+    )
+    test_utils.assert_allclose(ident_default, np.eye(4))
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", UserWarning)
+      ident_f64 = backend.eye(3, dtype=np.float64)
+    self.assertEqual(
+        backend.standardize_dtype(ident_f64.dtype), expected_f64_dtype
+    )
+    test_utils.assert_allclose(ident_f64, np.eye(3, dtype=np.float64))
+
+    values = backend.to_tensor([0.0, 1.0, 4.0, 9.0], dtype=backend.float_dtype)
+    roots = backend.sqrt(values)
+    self.assertIsInstance(roots, backend.Tensor)
+    self.assertEqual(roots.dtype, backend.float_dtype)
+    test_utils.assert_allclose(roots, np.array([0.0, 1.0, 2.0, 3.0]))
+
+  @parameterized.named_parameters(
+      ("tensorflow", _TF, None),
+      ("jax_float64", _JAX, True),
+      ("jax_float32", _JAX, False),
+  )
+  def test_cholesky_solve_and_logdet(
+      self, backend_name: str, jax_x64: bool | None
+  ) -> None:
+    self._set_backend_for_test(backend_name, jax_x64=jax_x64)
+    rng = np.random.default_rng(7)
+    base = rng.normal(size=(2, 4, 4)).astype(np.float64)
+    spd_batch_np = np.einsum("bij,bkj->bik", base, base) + 2.0 * np.eye(4)
+    spd_single_np = spd_batch_np[0]
+    rhs_1d_np = rng.normal(size=(4,)).astype(np.float64)
+    rhs_2d_np = rng.normal(size=(4, 3)).astype(np.float64)
+    rhs_batch_1d_np = rng.normal(size=(2, 4)).astype(np.float64)
+    rhs_batch_2d_np = rng.normal(size=(2, 4, 3)).astype(np.float64)
+
+    spd_single = backend.to_tensor(spd_single_np, dtype=backend.float_dtype)
+    chol_single = backend.cholesky(spd_single)
+    self.assertEqual(chol_single.dtype, backend.float_dtype)
+    test_utils.assert_allclose(
+        chol_single, np.linalg.cholesky(spd_single_np), rtol=1e-5, atol=1e-5
+    )
+
+    sol_1d = backend.cholesky_solve(
+        chol_single, backend.to_tensor(rhs_1d_np, dtype=backend.float_dtype)
+    )
+    self.assertEqual(tuple(sol_1d.shape), (4,))
+    self.assertEqual(sol_1d.dtype, backend.float_dtype)
+    test_utils.assert_allclose(
+        sol_1d, np.linalg.solve(spd_single_np, rhs_1d_np), rtol=1e-5, atol=1e-5
+    )
+
+    sol_2d = backend.cholesky_solve(
+        chol_single, backend.to_tensor(rhs_2d_np, dtype=backend.float_dtype)
+    )
+    self.assertEqual(tuple(sol_2d.shape), (4, 3))
+    self.assertEqual(sol_2d.dtype, backend.float_dtype)
+    test_utils.assert_allclose(
+        sol_2d, np.linalg.solve(spd_single_np, rhs_2d_np), rtol=1e-5, atol=1e-5
+    )
+
+    spd_batch = backend.to_tensor(spd_batch_np, dtype=backend.float_dtype)
+    chol_batch = backend.cholesky(spd_batch)
+    sol_b1d = backend.cholesky_solve(
+        chol_batch,
+        backend.to_tensor(rhs_batch_1d_np, dtype=backend.float_dtype),
+    )
+    self.assertEqual(tuple(sol_b1d.shape), (2, 4))
+    self.assertEqual(sol_b1d.dtype, backend.float_dtype)
+    expected_b1d = np.stack(
+        [np.linalg.solve(spd_batch_np[i], rhs_batch_1d_np[i]) for i in range(2)]
+    )
+    test_utils.assert_allclose(sol_b1d, expected_b1d, rtol=1e-5, atol=1e-5)
+
+    sol_b2d = backend.cholesky_solve(
+        chol_batch,
+        backend.to_tensor(rhs_batch_2d_np, dtype=backend.float_dtype),
+    )
+    self.assertEqual(tuple(sol_b2d.shape), (2, 4, 3))
+    self.assertEqual(sol_b2d.dtype, backend.float_dtype)
+    expected_b2d = np.stack(
+        [np.linalg.solve(spd_batch_np[i], rhs_batch_2d_np[i]) for i in range(2)]
+    )
+    test_utils.assert_allclose(sol_b2d, expected_b2d, rtol=1e-5, atol=1e-5)
+
+    logdet_single = backend.logdet_positive_definite(spd_single)
+    self.assertEqual(logdet_single.dtype, backend.float_dtype)
+    test_utils.assert_allclose(
+        logdet_single,
+        np.linalg.slogdet(spd_single_np)[1],
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    logdet_batch = backend.logdet_positive_definite(spd_batch)
+    self.assertEqual(tuple(logdet_batch.shape), (2,))
+    self.assertEqual(logdet_batch.dtype, backend.float_dtype)
+    test_utils.assert_allclose(
+        logdet_batch,
+        np.linalg.slogdet(spd_batch_np)[1],
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+  @parameterized.named_parameters(
+      ("tensorflow", _TF, None),
+      ("jax_float64", _JAX, True),
+      ("jax_float32", _JAX, False),
+  )
+  def test_value_and_grad_and_hessian(
+      self, backend_name: str, jax_x64: bool | None
+  ) -> None:
+    self._set_backend_for_test(backend_name, jax_x64=jax_x64)
+    amat_np = np.array(
+        [
+            [4.0, 0.5, -0.3, 0.2, 0.1],
+            [0.5, 3.0, 0.4, -0.1, 0.0],
+            [-0.3, 0.4, 2.5, 0.3, -0.2],
+            [0.2, -0.1, 0.3, 5.0, 0.6],
+            [0.1, 0.0, -0.2, 0.6, 3.5],
+        ],
+        dtype=np.float64,
+    )
+    bvec_np = np.array([1.2, -0.7, 0.3, 2.1, -1.5], dtype=np.float64)
+    point_np = np.array([0.4, -0.3, 0.7, -0.2, 0.5], dtype=np.float64)
+
+    amat = backend.to_tensor(amat_np, dtype=backend.float_dtype)
+    bvec = backend.to_tensor(bvec_np, dtype=backend.float_dtype)
+    point = backend.to_tensor(point_np, dtype=backend.float_dtype)
+
+    def fn(x):
+      quad = 0.5 * backend.einsum("i,ij,j->", x, amat, x)
+      lin = backend.einsum("i,i->", bvec, x)
+      nonlin = backend.reduce_sum(backend.exp(0.2 * x))
+      return quad + lin + nonlin
+
+    vg_fn = backend.value_and_grad(fn)
+    val, grad = vg_fn(point)
+    expected_val = (
+        0.5 * point_np @ amat_np @ point_np
+        + bvec_np @ point_np
+        + np.sum(np.exp(0.2 * point_np))
+    )
+    expected_grad = (
+        amat_np @ point_np + bvec_np + 0.2 * np.exp(0.2 * point_np)
+    )
+    expected_hess = amat_np + np.diag(0.04 * np.exp(0.2 * point_np))
+
+    self.assertEqual(grad.dtype, backend.float_dtype)
+    test_utils.assert_allclose(val, expected_val, rtol=1e-5, atol=1e-5)
+    test_utils.assert_allclose(grad, expected_grad, rtol=1e-5, atol=1e-5)
+
+    const_vg_fn = backend.value_and_grad(
+        lambda x: backend.to_tensor(3.5, dtype=backend.float_dtype)
+    )
+    const_val, const_grad = const_vg_fn(point)
+    test_utils.assert_allclose(const_val, 3.5, rtol=1e-5, atol=1e-5)
+    self.assertEqual(tuple(const_grad.shape), (5,))
+    self.assertEqual(const_grad.dtype, backend.float_dtype)
+    test_utils.assert_allclose(const_grad, np.zeros(5))
+
+    hess = backend.hessian(fn, point)
+    self.assertEqual(hess.dtype, backend.float_dtype)
+    test_utils.assert_allclose(hess, expected_hess, rtol=1e-5, atol=1e-5)
+
+    empty = backend.zeros((0,), dtype=backend.float_dtype)
+    hess_empty = backend.hessian(backend.reduce_sum, empty)
+    self.assertEqual(tuple(hess_empty.shape), (0, 0))
+    self.assertEqual(hess_empty.dtype, backend.float_dtype)
+
+    with self.assertRaisesRegex(ValueError, "1-D"):
+      backend.hessian(
+          backend.reduce_sum, backend.zeros((), dtype=backend.float_dtype)
+      )
+    with self.assertRaisesRegex(ValueError, "1-D"):
+      backend.hessian(
+          backend.reduce_sum, backend.zeros((2, 2), dtype=backend.float_dtype)
+      )
+
+    # Non-scalar and non-tensor outputs fail fast uniformly across backends,
+    # and errors originating inside `fn` do not trigger a redundant TF retry.
+    for bad_fn in (
+        lambda z: z[:1],
+        lambda z: z,
+        lambda z: (z[0], z[1]),
+    ):
+      with self.assertRaisesRegex(ValueError, "scalar tensor"):
+        backend.value_and_grad(bad_fn)(point)
+      trace_calls = 0
+
+      def counted_bad_fn(z, target_fn=bad_fn):
+        nonlocal trace_calls
+        trace_calls += 1
+        return target_fn(z)
+
+      with self.assertRaisesRegex(ValueError, "scalar tensor"):
+        backend.hessian(counted_bad_fn, point)
+      self.assertEqual(trace_calls, 1)
+
+    with self.assertRaisesRegex(ValueError, "scalar tensor"):
+      backend.hessian(lambda z: z, empty)
+
+    fn_error_calls = 0
+
+    def raising_fn(z):
+      nonlocal fn_error_calls
+      fn_error_calls += 1
+      raise ValueError(f"bad input {z.shape}")
+
+    with self.assertRaisesRegex(ValueError, "bad input"):
+      backend.hessian(raising_fn, point)
+    self.assertEqual(fn_error_calls, 1)
+
+    # Verify ops whose VJP uses repeated output labels (e.g. `einsum('ii->i')`)
+    # also differentiate cleanly through `backend.hessian` on both backends.
+    diag_point = backend.to_tensor(
+        np.array([0.3, -0.4, 0.5], dtype=np.float64), dtype=backend.float_dtype
+    )
+
+    def diag_einsum_fn(z):
+      mat = backend.eye(3, dtype=z.dtype) + backend.einsum("i,j->ij", z, z)
+      return backend.reduce_sum(backend.einsum("ii->i", mat) ** 2)
+
+    # f(z) = sum_i (1 + z_i^2)^2 => d2f/dz_i^2 = 4 + 12 z_i^2 (off-diag 0).
+    expected_diag_hess = np.diag(
+        4.0 + 12.0 * np.array([0.3, -0.4, 0.5], dtype=np.float64) ** 2
+    )
+    test_utils.assert_allclose(
+        backend.hessian(diag_einsum_fn, diag_point),
+        expected_diag_hess,
+        rtol=1e-5,
+        atol=1e-5,
+    )
 
 
 class BackendFunctionWrappersTest(parameterized.TestCase):
