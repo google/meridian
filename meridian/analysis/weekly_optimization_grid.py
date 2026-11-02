@@ -148,6 +148,16 @@ class WeeklyOptimizationGrid:
       A `WeeklyOptimizationGrid` object containing the weekly grid dataset and
       scenario constraints.
     """
+    # TODO: Point users to `BudgetOptimizer.optimize`'s
+    # `changepoint_effect` argument once it exists.
+    # Mock analyzers in tests may lack the attribute or have a truthy one.
+    has_changepoints = getattr(analyzer, '_has_changepoints', False)
+    if isinstance(has_changepoints, bool) and has_changepoints:
+      raise NotImplementedError(
+          '`WeeklyOptimizationGrid` does not support models with'
+          ' `changepoints` yet: its results would not reflect the time-varying'
+          ' effects.'
+      )
     if not 0.0 <= max_budget_percent_decrease < 1.0:
       raise ValueError(
           '`max_budget_percent_decrease` must be in the range [0, 1).'

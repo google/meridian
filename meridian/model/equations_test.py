@@ -1115,6 +1115,52 @@ class SplitTimeVaryingOutcomeTest(
     expected_beta_gx_without[..., [0, 2]] = 0.0
     test_utils.assert_allequal(beta_gx_without, expected_beta_gx_without)
 
+  @parameterized.named_parameters(
+      ("log_normal", constants.MEDIA_EFFECTS_LOG_NORMAL),
+      ("normal", constants.MEDIA_EFFECTS_NORMAL),
+  )
+  def test_coefficients_by_time(self, media_effects_dist):
+    n_draws, n_geos, n_times = 2, 4, 6
+    # Channel "a" has changepoints at time periods 2 and 4; "b" has none.
+    info = changepoints.get_changepoint_info(
+        n_times=n_times, changepoints={"a": [2, 4]}, channel_names=["a", "b"]
+    )
+    assert info is not None
+    rng = np.random.default_rng(0)
+    beta_gx = rng.normal(size=(n_draws, n_geos, 2)).astype(
+        backend.np_float_dtype
+    )
+    zeta = np.abs(rng.normal(size=(n_draws, 1))).astype(backend.np_float_dtype)
+    varphi = rng.normal(size=(n_draws, 1, 3)).astype(backend.np_float_dtype)
+    model_context = mock.create_autospec(
+        context.ModelContext, instance=True, spec_set=True
+    )
+    model_context._changepoint_media_effects_dist = media_effects_dist
+
+    coefficients = equations.ModelEquations(
+        model_context
+    )._coefficients_by_time(
+        changepoint_info=info,
+        beta_gx=backend.to_tensor(beta_gx),
+        zeta_x=backend.to_tensor(zeta),
+        varphi_x=backend.to_tensor(varphi),
+    )
+
+    # The time effect of each draw and time period.
+    time_effect = zeta[:, 0, np.newaxis] * varphi[:, 0, [0, 0, 1, 1, 2, 2]]
+    time_effect = time_effect[:, np.newaxis, :]
+    expected = np.repeat(beta_gx[:, :, np.newaxis, :], n_times, axis=2)
+    if media_effects_dist == constants.MEDIA_EFFECTS_LOG_NORMAL:
+      expected[..., 0] *= np.exp(time_effect)
+    else:
+      expected[..., 0] += time_effect
+    test_utils.assert_allclose(coefficients, expected, rtol=1e-5)
+    # The channel without changepoints has the same coefficient in every time
+    # period.
+    test_utils.assert_allequal(
+        np.asarray(coefficients)[..., 1], expected[..., 1]
+    )
+
 
 class CoefficientsFromRandomEffectsTest(
     test_utils.MeridianTestCase, parameterized.TestCase

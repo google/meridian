@@ -28,7 +28,9 @@ from meridian.analysis import test_utils as analysis_test_utils
 from meridian.analysis import weekly_optimization_grid
 from meridian.common import errors as common_errors
 from meridian.data import test_utils as data_test_utils
+from meridian.model import context
 from meridian.model import model
+from meridian.model import spec
 import numpy as np
 import xarray as xr
 
@@ -159,6 +161,30 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
             autospec=True,
         )
     )
+
+  def test_create_with_changepoints_raises(self):
+    data = self.input_data_media_only
+    assert data.media_channel is not None
+    model_context = context.ModelContext(
+        input_data=data,
+        model_spec=spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+            changepoints={
+                str(data.media_channel.values[0]): [
+                    data.time_coordinates.all_dates[2]
+                ]
+            }
+        ),
+    )
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        '`WeeklyOptimizationGrid` does not support models with `changepoints`'
+        ' yet: its results would not reflect the time-varying effects.',
+    ):
+      weekly_optimization_grid.WeeklyOptimizationGrid.create(
+          analyzer.Analyzer(
+              model_context=model_context, inference_data=az.InferenceData()
+          )
+      )
 
   def test_create(self):
     weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(

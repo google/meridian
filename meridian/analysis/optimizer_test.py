@@ -6175,6 +6175,29 @@ class BudgetOptimizerInitTest(parameterized.TestCase):
     self.assertIs(opt._analyzer, custom_analyzer)
     self.assertIsNone(opt._meridian)
 
+  def test_init_with_changepoints_raises(self):
+    assert self.input_data.media_channel is not None
+    model_context = context.ModelContext(
+        input_data=self.input_data,
+        model_spec=spec._ModelSpecWithChangepoints(  # pylint: disable=protected-access
+            changepoints={
+                str(self.input_data.media_channel.values[0]): [
+                    self.input_data.time_coordinates.all_dates[2]
+                ]
+            }
+        ),
+    )
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        '`BudgetOptimizer` does not support models with `changepoints` yet:'
+        ' its results would not reflect the time-varying effects.',
+    ):
+      optimizer.BudgetOptimizer(
+          analyzer=analyzer.Analyzer(
+              model_context=model_context, inference_data=az.InferenceData()
+          )
+      )
+
   def test_init_with_neither_raises_value_error(self):
     with self.assertRaisesRegex(
         ValueError, 'Either `analyzer` or `meridian` must be provided.'
