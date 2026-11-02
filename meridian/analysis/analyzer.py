@@ -208,6 +208,30 @@ class RhatSummaryDataFrame(pd.DataFrame):
     return super().__getitem__(key)
 
 
+@dataclasses.dataclass(frozen=True)
+class _ChangepointIntervals:
+  """The incremental outcome and spend of each interval between changepoints.
+
+  The intervals are those of the paid media and RF channels with changepoints.
+  A channel with fewer intervals than the others has zero incremental outcome
+  and spend, and empty dates, for the extra intervals.
+
+  Attributes:
+    incremental_outcome: The incremental outcome over all geos in each
+      interval's time periods, of shape `(n_chains, n_draws, n_channels,
+      n_intervals)`.
+    spend: The spend over the same geos and time periods, of shape
+      `(n_channels, n_intervals)`.
+    coords: The `channel` and `changepoint_interval` coordinates, and the
+      `start_date` and `end_date` coordinates of dimensions `(channel,
+      changepoint_interval)`.
+  """
+
+  incremental_outcome: np.ndarray
+  spend: np.ndarray
+  coords: Mapping[str, Any]
+
+
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -2191,34 +2215,22 @@ class Analyzer:
         ),
     )
 
-  def _roi_by_changepoint_interval(
+  def _outcome_and_spend_by_changepoint_interval(
       self,
-      use_posterior: bool = True,
-      use_kpi: bool = False,
-      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
-      batch_size: int = constants.DEFAULT_BATCH_SIZE,
-  ) -> xr.Dataset:
-    """Returns the ROI of each interval between changepoints.
-
-    The ROI of an interval is the incremental outcome over all geos in the
-    interval's time periods, divided by the spend over the same geos and time
-    periods, as in `roi(selected_times=...)`. An interval without spend has NaN
-    ROI, while `roi(selected_times=...)` gives inf if earlier media still adds
-    incremental outcome in it.
+      use_posterior: bool,
+      use_kpi: bool,
+      batch_size: int,
+  ) -> _ChangepointIntervals:
+    """Returns the incremental outcome and spend of each changepoint interval.
 
     Args:
       use_posterior: Whether to use the posterior rather than the prior.
       use_kpi: As in `roi`.
-      confidence_level: The confidence level of the credible intervals.
       batch_size: As in `roi`.
 
     Returns:
-      A dataset with `roi` of dimensions `(channel, changepoint_interval,
-      metric)`, with the mean and credible interval, and `start_date` and
-      `end_date` coordinates of dimensions `(channel, changepoint_interval)`.
-      The channels are the paid media and RF channels with changepoints. A
-      channel with fewer intervals than the others has NaN ROI and empty dates
-      for the extra intervals.
+      The incremental outcome and spend of each interval between changepoints,
+      for the paid media and RF channels with changepoints.
 
     Raises:
       ValueError: If no channel has changepoints.
@@ -2281,12 +2293,6 @@ class Analyzer:
         "cdtv,vkt->cdvk", incremental_outcome[..., columns], weights
     )
     interval_spend = np.einsum("tv,vkt->vk", spend[:, columns], weights)
-    roi = np.divide(
-        interval_outcome,
-        interval_spend,
-        out=np.full_like(interval_outcome, np.nan),
-        where=interval_spend > 0,
-    )
 
     dates = m_context.input_data.time_coordinates.all_dates_str
     start_date = np.full(weights.shape[:2], "", dtype=object)
@@ -2296,13 +2302,9 @@ class Analyzer:
       start_date[channel, interval] = dates[time_periods[0]]
       end_date[channel, interval] = dates[time_periods[-1]]
     dims = [constants.CHANNEL, constants.CHANGEPOINT_INTERVAL]
-    return xr.Dataset(
-        data_vars={
-            constants.ROI: (
-                [*dims, constants.METRIC],
-                get_central_tendency_and_ci(roi, confidence_level),
-            ),
-        },
+    return _ChangepointIntervals(
+        incremental_outcome=interval_outcome,
+        spend=interval_spend,
         coords={
             constants.CHANNEL: list(
                 itertools.chain.from_iterable(
@@ -2310,13 +2312,145 @@ class Analyzer:
                 )
             ),
             constants.CHANGEPOINT_INTERVAL: np.arange(max_intervals),
+            constants.START_DATE: (dims, start_date.astype(str)),
+            constants.END_DATE: (dims, end_date.astype(str)),
+        },
+    )
+
+  def _roi_by_changepoint_interval(
+      self,
+      use_posterior: bool = True,
+      use_kpi: bool = False,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> xr.Dataset:
+    """Returns the ROI of each interval between changepoints.
+
+    The ROI of an interval is the incremental outcome over all geos in the
+    interval's time periods, divided by the spend over the same geos and time
+    periods, as in `roi(selected_times=...)`. An interval without spend has NaN
+    ROI, while `roi(selected_times=...)` gives inf if earlier media still adds
+    incremental outcome in it.
+
+    Args:
+      use_posterior: Whether to use the posterior rather than the prior.
+      use_kpi: As in `roi`.
+      confidence_level: The confidence level of the credible intervals.
+      batch_size: As in `roi`.
+
+    Returns:
+      A dataset with `roi` of dimensions `(channel, changepoint_interval,
+      metric)`, with the mean and credible interval, and `start_date` and
+      `end_date` coordinates of dimensions `(channel, changepoint_interval)`.
+      The channels are the paid media and RF channels with changepoints. A
+      channel with fewer intervals than the others has NaN ROI and empty dates
+      for the extra intervals.
+
+    Raises:
+      ValueError: If no channel has changepoints.
+    """
+    intervals = self._outcome_and_spend_by_changepoint_interval(
+        use_posterior=use_posterior, use_kpi=use_kpi, batch_size=batch_size
+    )
+    roi = np.divide(
+        intervals.incremental_outcome,
+        intervals.spend,
+        out=np.full_like(intervals.incremental_outcome, np.nan),
+        where=intervals.spend > 0,
+    )
+    return xr.Dataset(
+        data_vars={
+            constants.ROI: (
+                [
+                    constants.CHANNEL,
+                    constants.CHANGEPOINT_INTERVAL,
+                    constants.METRIC,
+                ],
+                get_central_tendency_and_ci(roi, confidence_level),
+            ),
+        },
+        coords={
+            **intervals.coords,
             constants.METRIC: [
                 constants.MEAN,
                 constants.CI_LO,
                 constants.CI_HI,
             ],
-            constants.START_DATE: (dims, start_date.astype(str)),
-            constants.END_DATE: (dims, end_date.astype(str)),
+        },
+        attrs={constants.CONFIDENCE_LEVEL: confidence_level},
+    )
+
+  def _cpik_by_changepoint_interval(
+      self,
+      use_posterior: bool = True,
+      confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> xr.Dataset:
+    """Returns the CPIK of each interval between changepoints.
+
+    The cost per incremental KPI (CPIK) of an interval is the spend over all
+    geos in the interval's time periods, divided by the incremental KPI over the
+    same geos and time periods, as in `cpik(selected_times=...)`. An interval
+    without spend has NaN CPIK, while `cpik(selected_times=...)` gives zero if
+    earlier media still adds incremental KPI in it. An interval with spend but
+    zero incremental KPI has infinite CPIK in every draw, as in
+    `cpik(selected_times=...)`, so its median is infinite and its credible
+    interval can be NaN.
+
+    The CPIK is summarized by its median rather than its mean, as in the media
+    summary. A draw with incremental KPI close to zero has a very large CPIK,
+    which can dominate the mean.
+
+    Args:
+      use_posterior: Whether to use the posterior rather than the prior.
+      confidence_level: The confidence level of the credible intervals.
+      batch_size: As in `cpik`.
+
+    Returns:
+      A dataset with `cpik` of dimensions `(channel, changepoint_interval,
+      metric)`, with the median and credible interval, and `start_date` and
+      `end_date` coordinates of dimensions `(channel, changepoint_interval)`.
+      The channels are the paid media and RF channels with changepoints. A
+      channel with fewer intervals than the others has NaN CPIK and empty dates
+      for the extra intervals.
+
+    Raises:
+      ValueError: If no channel has changepoints.
+    """
+    intervals = self._outcome_and_spend_by_changepoint_interval(
+        use_posterior=use_posterior, use_kpi=True, batch_size=batch_size
+    )
+    # An interval with zero incremental KPI gives infinite CPIK, and its
+    # credible interval can be NaN.
+    with np.errstate(divide="ignore", invalid="ignore"):
+      cpik = np.divide(
+          intervals.spend,
+          intervals.incremental_outcome,
+          out=np.full_like(intervals.incremental_outcome, np.nan),
+          where=intervals.spend > 0,
+      )
+      mean_median_and_ci = get_central_tendency_and_ci(
+          cpik, confidence_level, include_median=True
+      )
+    return xr.Dataset(
+        data_vars={
+            constants.CPIK: (
+                [
+                    constants.CHANNEL,
+                    constants.CHANGEPOINT_INTERVAL,
+                    constants.METRIC,
+                ],
+                # Drops the mean.
+                mean_median_and_ci[..., 1:],
+            ),
+        },
+        coords={
+            **intervals.coords,
+            constants.METRIC: [
+                constants.MEDIAN,
+                constants.CI_LO,
+                constants.CI_HI,
+            ],
         },
         attrs={constants.CONFIDENCE_LEVEL: confidence_level},
     )
