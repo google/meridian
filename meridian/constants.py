@@ -481,6 +481,11 @@ ZETA_RF = 'zeta_rf'
 # normal, so they have no prior distribution.
 VARPHI_M = 'varphi_m'
 VARPHI_RF = 'varphi_rf'
+# When only some paid media or RF channels use a coefficient prior, posterior
+# sampling draws their coefficients under these names, and `beta_m` or
+# `beta_rf` combines them with the coefficients of the other channels.
+BETA_M_FROM_PRIOR = 'beta_m_from_prior'
+BETA_RF_FROM_PRIOR = 'beta_rf_from_prior'
 
 ROTATED_KNOT_0 = 'rotated_knot_0'
 ROTATED_KNOT_REST = 'rotated_knot_rest'
@@ -494,6 +499,8 @@ UNSAVED_PARAMETERS = (
     ROTATED_KNOT_0,
     ROTATED_KNOT_REST,
     TAU_G_EXCL_BASELINE,  # Used to derive TAU_G.
+    BETA_M_FROM_PRIOR,  # Used to derive BETA_M.
+    BETA_RF_FROM_PRIOR,  # Used to derive BETA_RF.
     'y',
 )
 IGNORED_PRIORS_MEDIA = immutabledict.immutabledict({
@@ -547,6 +554,19 @@ IGNORED_PRIORS_ORGANIC_MEDIA = immutabledict.immutabledict({
 IGNORED_PRIORS_ORGANIC_RF = immutabledict.immutabledict({
     TREATMENT_PRIOR_TYPE_CONTRIBUTION: (BETA_ORF,),
     TREATMENT_PRIOR_TYPE_COEFFICIENT: (CONTRIBUTION_ORF,),
+})
+# The parameter whose prior each paid media or RF prior type uses.
+MEDIA_TREATMENT_PARAMETERS = immutabledict.immutabledict({
+    TREATMENT_PRIOR_TYPE_ROI: ROI_M,
+    TREATMENT_PRIOR_TYPE_MROI: MROI_M,
+    TREATMENT_PRIOR_TYPE_CONTRIBUTION: CONTRIBUTION_M,
+    TREATMENT_PRIOR_TYPE_COEFFICIENT: BETA_M,
+})
+RF_TREATMENT_PARAMETERS = immutabledict.immutabledict({
+    TREATMENT_PRIOR_TYPE_ROI: ROI_RF,
+    TREATMENT_PRIOR_TYPE_MROI: MROI_RF,
+    TREATMENT_PRIOR_TYPE_CONTRIBUTION: CONTRIBUTION_RF,
+    TREATMENT_PRIOR_TYPE_COEFFICIENT: BETA_RF,
 })
 IGNORED_PRIORS_NON_MEDIA_TREATMENTS = immutabledict.immutabledict({
     TREATMENT_PRIOR_TYPE_CONTRIBUTION: (GAMMA_N,),
