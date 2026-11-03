@@ -1467,7 +1467,12 @@ class BudgetOptimizer:
 
     Args:
       meridian: Media mix model with the raw data from the model fitting.
-      analyzer: The analyzer bound to the model.
+      analyzer: The analyzer bound to the model. If `analyzer` is an `Analyzer`
+        subclass that overrides how incremental outcome is computed, for example
+        to include indirect effects through a mediator, the optimization grid
+        for media channels is built by calling its `incremental_outcome` method
+        for each spend level. The optimal allocation then includes the override,
+        but creating the grid is slower.
     """
     # TODO: Throw a deprecation warning for meridian.
 
@@ -2788,8 +2793,17 @@ class BudgetOptimizer:
         model_context=model_context,
     )
     if model_context.n_media_channels > 0:
+      # The fast path computes the media grid from the model parameters, so it
+      # would ignore an `Analyzer` subclass that overrides incremental outcome
+      # (for example, to add indirect effects through a mediator).
+      analyzer_class = type(self._analyzer)
+      compute_media_grid = (
+          self._compute_media_incremental_outcome_grid_per_row
+          if analyzer_module.overrides_incremental_outcome(analyzer_class)
+          else self._compute_media_incremental_outcome_grid
+      )
       incremental_outcome_grid[:, : model_context.n_media_channels] = (
-          self._compute_media_incremental_outcome_grid(
+          compute_media_grid(
               multipliers_grid=multipliers_grid,
               filled_data=filled_data,
               selected_geos=selected_geos,
@@ -3039,6 +3053,75 @@ class BudgetOptimizer:
         np.isnan(multipliers_grid[:, :n_media_channels]),
         np.nan,
         accumulated_grid / total_samples,
+    )
+
+  def _compute_media_incremental_outcome_grid_per_row(
+      self,
+      multipliers_grid: np.ndarray,
+      filled_data: tensors.DataTensors,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
+      use_posterior: bool = True,
+      use_kpi: bool = False,
+      batch_size: int = c.DEFAULT_BATCH_SIZE,
+  ) -> np.ndarray:
+    """Computes the paid media incremental outcome grid one row at a time.
+
+    Calls `Analyzer.incremental_outcome` once per spend multiplier row. This is
+    slower than `_compute_media_incremental_outcome_grid`, but it includes any
+    override of incremental outcome in an `Analyzer` subclass.
+
+    Args:
+      multipliers_grid: 2D array of spend multipliers of shape `(n_grid_rows,
+        n_total_paid_channels)`.
+      filled_data: Validated `DataTensors` containing paid channel and
+        `revenue_per_kpi` data.
+      selected_geos: Optional subset of geos to include.
+      selected_times: Optional subset of time coordinates to include.
+      use_posterior: If `True`, uses posterior draws; otherwise prior draws.
+      use_kpi: If `True`, computes KPI outcome; otherwise revenue outcome.
+      batch_size: Maximum number of draws per chain in each batch.
+
+    Returns:
+      2D `np.ndarray` of shape `(n_grid_rows, n_media_channels)` containing mean
+      incremental outcome across chains and draws for each grid point.
+    """
+    n_media_channels = self._analyzer.model_context.n_media_channels
+    media = filled_data.media
+    assert media is not None
+    media_multipliers = multipliers_grid[:, :n_media_channels]
+    # `NaN` multipliers mark spend levels outside a channel's grid. They are
+    # evaluated at zero spend and masked afterwards, so that an `Analyzer`
+    # subclass that combines channels can't spread `NaN` to other channels.
+    filled_media_multipliers = backend.to_tensor(
+        np.nan_to_num(media_multipliers, nan=0.0), dtype=backend.float_dtype
+    )
+    incremental_outcome_grid = np.full(media_multipliers.shape, np.nan)
+    for i in range(media_multipliers.shape[0]):
+      if np.all(np.isnan(media_multipliers[i])):
+        continue
+      incremental_outcome = self._analyzer.incremental_outcome(
+          use_posterior=use_posterior,
+          new_data=tensors.DataTensors(
+              media=filled_media_multipliers[i] * media,
+              reach=filled_data.reach,
+              frequency=filled_data.frequency,
+              revenue_per_kpi=filled_data.revenue_per_kpi,
+              time=filled_data.time,
+          ),
+          selected_geos=selected_geos,
+          selected_times=selected_times,
+          use_kpi=use_kpi,
+          include_non_paid_channels=False,
+          batch_size=batch_size,
+      )
+      incremental_outcome_grid[i] = np.mean(
+          np.asarray(incremental_outcome)[..., :n_media_channels],
+          axis=(c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
+          dtype=np.float64,
+      )
+    return np.where(
+        np.isnan(media_multipliers), np.nan, incremental_outcome_grid
     )
 
   def _validate_optimization_tensors(

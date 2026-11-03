@@ -44,6 +44,21 @@ __all__ = [
     "get_central_tendency_and_ci",
 ]
 
+# Members of `Analyzer` that determine the incremental outcome of paid media
+# channels. `BudgetOptimizer` computes the incremental outcome grid of media
+# channels directly from the model parameters and assumes that
+# `inverse_outcome` is linear, so it would ignore an override of any of them in
+# an `Analyzer` subclass.
+_INCREMENTAL_OUTCOME_MEMBERS = (
+    "incremental_outcome",
+    "_incremental_outcome_impl",
+    "get_incremental_kpi",
+    "_get_transformed_media_and_beta",
+    "_model_equations",
+    "inverse_outcome",
+    "filter_and_aggregate_by_indices",
+)
+
 
 def get_central_tendency_and_ci(
     data: np.ndarray | backend.Tensor,
@@ -5142,3 +5157,29 @@ class Analyzer:
         batch_size=batch_size,
     )
     return np.mean(baseline_draws < 0)
+
+
+def overrides_incremental_outcome(analyzer_class: type[Analyzer]) -> bool:
+  """Checks whether an analyzer class overrides how incremental outcome works.
+
+  Walks the method resolution order of `analyzer_class` up to `Analyzer` and
+  looks for the `Analyzer` members that determine the incremental outcome of
+  paid media channels in each class `__dict__`. This doesn't invoke descriptors
+  such as `backend.function` or `functools.cached_property`. Members of
+  `Analyzer` itself and attributes set on an instance (for example, by
+  `mock.patch.object`) aren't considered.
+
+  Args:
+    analyzer_class: `Analyzer` or a subclass of it.
+
+  Returns:
+    `True` if a class before `Analyzer` in the method resolution order of
+    `analyzer_class` defines a member that determines the incremental outcome,
+    and `False` otherwise.
+  """
+  for cls in analyzer_class.__mro__:
+    if cls is Analyzer:
+      return False
+    if any(member in vars(cls) for member in _INCREMENTAL_OUTCOME_MEMBERS):
+      return True
+  return False

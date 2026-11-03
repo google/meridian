@@ -6541,6 +6541,68 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
             method(use_posterior=False, new_data=new_data)
 
 
+class _AnalyzerWithUnrelatedOverride(analyzer.Analyzer):
+  """Doubles the expected outcome, which incremental outcome doesn't use."""
+
+  def expected_outcome(self, *args, **kwargs) -> backend.Tensor:
+    return 2 * super().expected_outcome(*args, **kwargs)
+
+
+class OverridesIncrementalOutcomeTest(parameterized.TestCase):
+
+  def test_incremental_outcome_members_are_defined_by_analyzer(self):
+    # `overrides_incremental_outcome` matches members by name, so it would
+    # silently miss overrides of a member that is renamed in `Analyzer`.
+    self.assertContainsSubset(
+        analyzer._INCREMENTAL_OUTCOME_MEMBERS, vars(analyzer.Analyzer)
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name=member, member=member)
+      for member in (
+          "incremental_outcome",
+          "_incremental_outcome_impl",
+          "get_incremental_kpi",
+          "_get_transformed_media_and_beta",
+          "_model_equations",
+          "inverse_outcome",
+          "filter_and_aggregate_by_indices",
+      )
+  )
+  def test_overrides_incremental_outcome_true(self, member: str):
+    analyzer_class = type(
+        "AnalyzerSubclass", (analyzer.Analyzer,), {member: lambda self: None}
+    )
+    self.assertTrue(analyzer.overrides_incremental_outcome(analyzer_class))
+
+  def test_overrides_incremental_outcome_true_for_inherited_override(self):
+    analyzer_class = type(
+        "AnalyzerSubclass",
+        (analyzer.Analyzer,),
+        {"incremental_outcome": lambda self: None},
+    )
+    analyzer_subclass = type("AnalyzerSubSubclass", (analyzer_class,), {})
+    self.assertTrue(analyzer.overrides_incremental_outcome(analyzer_subclass))
+
+  @parameterized.named_parameters(
+      dict(testcase_name="analyzer", analyzer_class=analyzer.Analyzer),
+      dict(
+          testcase_name="unrelated_override",
+          analyzer_class=_AnalyzerWithUnrelatedOverride,
+      ),
+  )
+  def test_overrides_incremental_outcome_false(
+      self, analyzer_class: type[analyzer.Analyzer]
+  ):
+    self.assertFalse(analyzer.overrides_incremental_outcome(analyzer_class))
+
+  def test_overrides_incremental_outcome_false_for_autospec_mock(self):
+    mock_analyzer = mock.create_autospec(analyzer.Analyzer, instance=True)
+    self.assertFalse(
+        analyzer.overrides_incremental_outcome(type(mock_analyzer))
+    )
+
+
 def helper_sample_joint_dist_unpinned_as_posterior(self, n_draws, seed=None):
   """A helper function to sample joint distribution unpinned as posterior.
 
