@@ -824,10 +824,10 @@ Convergence Check:
     self.assertIn("Low ROI", repr_output)
     self.assertIn("Calibration Score", repr_output)
     expected_row = (
-        f"{'ch1':<20} | {'79.0':<18} | {review_constants.DRIVER:<15} |"
-        f" {review_constants.NON_DRIVER:<15} |"
-        f" {review_constants.NON_DRIVER:<17} |"
-        f" {review_constants.NON_DRIVER:<14}"
+        f"{'ch1':<20} | {'79.0':<18} | {review_constants.CONTRIBUTOR:<15} |"
+        f" {review_constants.NON_CONTRIBUTOR:<15} |"
+        f" {review_constants.NON_CONTRIBUTOR:<17} |"
+        f" {review_constants.NON_CONTRIBUTOR:<14}"
     )
     self.assertIn(expected_row, repr_output)
     expected_calibrated = (
@@ -866,8 +866,8 @@ Convergence Check:
         "uncalibrated_channel",
         "calibrated_channel",
         "Calibrated",
-        f'<chip class="driver">{review_constants.DRIVER}</chip>',
-        f'<chip class="non-driver">{review_constants.NON_DRIVER}</chip>',
+        f'<chip class="driver">{review_constants.CONTRIBUTOR}</chip>',
+        f'<chip class="non-driver">{review_constants.NON_CONTRIBUTOR}</chip>',
         "Score",
         "channel-score-chart",
         "channel-score-chart warning",
@@ -943,7 +943,7 @@ Convergence Check:
       self.assertIn(s, calib_summary_card)
     self.assertNotIn("calibration-score-chart warning", calib_summary_card)
 
-  def test_channel_recommendation_card_html_custom_driver_constants(self):
+  def test_channel_recommendation_card_html_custom_contributor_constants(self):
     summary = _create_test_summary(
         results_list=_mock_check_results(
             high_roi_channels=["uncalibrated_channel"]
@@ -954,11 +954,15 @@ Convergence Check:
         },
     )
     with mock.patch.object(
-        review_constants, "DRIVER", "CustomDriver"
-    ), mock.patch.object(review_constants, "NON_DRIVER", "CustomNonDriver"):
+        review_constants, "CONTRIBUTOR", "CustomContributor"
+    ), mock.patch.object(
+        review_constants, "NON_CONTRIBUTOR", "CustomNonContributor"
+    ):
       rec_card = summary._create_channel_recommendation_card_html()
-      self.assertIn('<chip class="driver">CustomDriver</chip>', rec_card)
-      self.assertIn('<chip class="non-driver">CustomNonDriver</chip>', rec_card)
+      self.assertIn('<chip class="driver">CustomContributor</chip>', rec_card)
+      self.assertIn(
+          '<chip class="non-driver">CustomNonContributor</chip>', rec_card
+      )
 
   def test_channel_recommendation_card_html_with_charts(self):
     summary = _create_test_summary(
@@ -2086,9 +2090,9 @@ class ReviewConstantsTest(parameterized.TestCase):
         19.0,
     )
 
-  def test_driver_constants(self):
-    self.assertEqual(review_constants.DRIVER, "Driver")
-    self.assertEqual(review_constants.NON_DRIVER, "Non-Driver")
+  def test_contributor_constants(self):
+    self.assertEqual(review_constants.CONTRIBUTOR, "Contributor")
+    self.assertEqual(review_constants.NON_CONTRIBUTOR, "Non-Contributor")
 
   def test_recommendation_constants(self):
     self.assertNotEmpty(review_constants.NOT_FULLY_CONVERGED_RECOMMENDATION)
