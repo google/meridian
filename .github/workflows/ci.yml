@@ -72,18 +72,29 @@ jobs:
           semver_prefix: proto-v
           current_version: ${{ steps.get_proto_version.outputs.value}}
 
-  pytest:
+  pytest-shard:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
-      max-parallel: 8
+      fail-fast: false
+      max-parallel: 12
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
         meridian-backend: ["tensorflow", "jax"]
+        test-group: ["model", "non-model"]
+        include:
+          - test-group: "model"
+            pytest-args: "meridian/model"
+          - test-group: "non-model"
+            pytest-args: "--ignore=meridian/model"
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{ matrix.meridian-backend }}
+      group: >-
+        ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{
+        matrix.meridian-backend }}-${{ matrix.test-group }}
       cancel-in-progress: true
-    name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
+    name: >-
+      pytest-shard (python-${{ matrix.python-version }},
+      backend-${{ matrix.meridian-backend }}, ${{ matrix.test-group }})
     steps:
       - uses: actions/checkout@v6
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
@@ -94,6 +105,24 @@ jobs:
       # Run tests (in parallel)
       - name: Run core tests
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        run: pytest -vv
+        run: pytest -vv -n 2 --dist loadfile ${{ matrix.pytest-args }}
         env:
           MERIDIAN_BACKEND: ${{ matrix.meridian-backend }}
+
+  # Aggregate shard status under the required per-matrix check names.
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [pytest-shard]
+    if: ${{ always() && !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+        meridian-backend: ["tensorflow", "jax"]
+    name: >-
+      pytest (python-${{ matrix.python-version }},
+      backend-${{ matrix.meridian-backend }})
+    steps:
+      - name: Check pytest shards
+        run: test "${{ needs.pytest-shard.result }}" = "success"

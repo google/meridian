@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import collections
-import os
 from typing import cast
 from unittest import mock
 import warnings
@@ -2778,21 +2777,6 @@ class TimeVaryingPosteriorTest(
         ),
     )
 
-  def _skip_tensorflow_in_github_ci(self):
-    """Skips the test on TensorFlow in GitHub CI, which is short of memory.
-
-    Google's presubmits still run the test on both TensorFlow and JAX.
-    """
-    # TODO: Remove this once the GitHub CI TensorFlow jobs have
-    # enough memory.
-    if (
-        os.environ.get("GITHUB_ACTIONS") == "true"
-        and backend.config.get_backend() == backend.config.Backend.TENSORFLOW
-    ):
-      self.skipTest(
-          "Skipped on TensorFlow in GitHub CI, which is short of memory."
-      )
-
   @parameterized.named_parameters(
       ("default_baseline", True), ("constrained_baseline", False)
   )
@@ -2937,7 +2921,6 @@ class TimeVaryingPosteriorTest(
   def test_outcome_with_other_changepoint_prior_type(
       self, prior_types: tuple[str, str], media_effects_dist: str, is_rf: bool
   ):
-    self._skip_tensorflow_in_github_ci()
     # The two channels also use different distributions, so the results that
     # each channel discards are computed with the other channel's distribution.
     self._assert_outcome_uses_each_time_periods_coefficient(
@@ -2953,7 +2936,6 @@ class TimeVaryingPosteriorTest(
     )
 
   def test_outcome_with_two_non_coefficient_prior_types(self):
-    self._skip_tensorflow_in_github_ci()
     # Each channel takes the coefficients of its own treatment parameter, so
     # the ROI draw matches the channel with changepoints.
     self._assert_outcome_uses_each_time_periods_coefficient(
@@ -3169,7 +3151,6 @@ class TimeVaryingPosteriorTest(
       ),
   )
   def test_joint_dist_samples_each_prior_type(self, *prior_types: str):
-    self._skip_tensorflow_in_github_ci()
     meridian = self._meridian(
         media_prior_type=prior_types[0],
         rf_prior_type=prior_types[0],
