@@ -72,18 +72,32 @@ jobs:
           semver_prefix: proto-v
           current_version: ${{ steps.get_proto_version.outputs.value}}
 
-  pytest:
+  # Each test group runs in its own job, on its own runner. TensorFlow memory
+  # builds up over a pytest run, so running the whole suite in one process ran
+  # out of memory or time on the TensorFlow jobs. There's no `max-parallel`, so
+  # all the jobs run at once.
+  pytest-group:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     strategy:
-      max-parallel: 8
+      # Let the other groups finish when one fails, to show which groups pass.
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
         meridian-backend: ["tensorflow", "jax"]
+        # `analysis` has the slowest tests, so it's a group of its own. The
+        # other tests together take about as long.
+        test-group:
+          - name: analysis
+            args: meridian/analysis
+          # Keep the `--ignore`s in sync with the groups above, so that every
+          # test runs exactly once.
+          - name: other
+            args: . --ignore=meridian/analysis
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{ matrix.meridian-backend }}
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.python-version }}-${{ matrix.meridian-backend }}-${{ matrix.test-group.name }}
       cancel-in-progress: true
-    name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
+    name: pytest group (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }}, ${{ matrix.test-group.name }})
     steps:
       - uses: actions/checkout@v6
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
@@ -91,9 +105,32 @@ jobs:
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
         with:
           python_version: ${{ matrix.python-version }}
-      # Run tests (in parallel)
       - name: Run core tests
         if: ${{ !contains(github.event.head_commit.message, '#skip-pytest') }}
-        run: pytest -vv
+        run: pytest -vv ${{ matrix.test-group.args }}
         env:
           MERIDIAN_BACKEND: ${{ matrix.meridian-backend }}
+
+  # One job for each Python version and backend, with the names that Copybara
+  # waits for (see `github_actions` in `copy.bara.sky`). Each runs after all the
+  # test groups, even if some failed. GitHub gives one result for the whole
+  # `pytest-group` matrix, so each passes only if every test group of every
+  # Python version and backend passed. With `#skip-pytest`, the group jobs still
+  # run and pass; only their steps are skipped.
+  pytest:
+    needs: pytest-group
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+        meridian-backend: ["tensorflow", "jax"]
+    name: pytest (python-${{ matrix.python-version }}, backend-${{ matrix.meridian-backend }})
+    steps:
+      - name: Check the test groups
+        run: |
+          if [ "${{ needs.pytest-group.result }}" != "success" ]; then
+            echo "Not every test group passed (${{ needs.pytest-group.result }}). See the pytest group jobs."
+            exit 1
+          fi
