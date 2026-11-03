@@ -15,6 +15,7 @@
 """Methods to compute analysis metrics of the model and the data."""
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
+import contextlib
 import dataclasses
 import functools
 import itertools
@@ -24,8 +25,10 @@ import warnings
 import arviz as az
 from meridian import backend
 from meridian import constants
+from meridian.analysis import changepoint_effects
 from meridian.analysis import tensors
 from meridian.common import errors
+from meridian.data import time_coordinates as tc
 from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import equations
@@ -248,6 +251,14 @@ class Analyzer:
     self._has_changepoints = isinstance(changepoints, Mapping) and bool(
         changepoints
     )
+    # The effect that channels with changepoints use. The Analyzer always uses
+    # each time period's own effect, matched by date, the same as
+    # `changepoint_effects.History()`. This is `None` then, and is only set
+    # while `_use_changepoint_effect` overrides it, for example when
+    # `BudgetOptimizer` calls the Analyzer.
+    self._changepoint_effect: changepoint_effects.ChangepointEffect | None = (
+        None
+    )
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data
@@ -385,27 +396,69 @@ class Analyzer:
         batch_size=batch_size,
     )
 
+  @contextlib.contextmanager
+  def _use_changepoint_effect(
+      self, effect: changepoint_effects.ChangepointEffect
+  ) -> Iterator[None]:
+    """Uses `effect` for the channels with changepoints inside the `with` block.
+
+    Budget optimization uses this so that every outcome it computes, including
+    those of the public Analyzer methods it calls, uses the effect it was given.
+    The effect is set on this Analyzer, so other threads that use it while the
+    `with` block runs use the effect too.
+
+    Args:
+      effect: The effect that the channels with changepoints use.
+
+    Yields:
+      Nothing.
+    """
+    previous = self._changepoint_effect
+    self._changepoint_effect = effect
+    try:
+      yield
+    finally:
+      self._changepoint_effect = previous
+
   def _changepoint_time_indices(
       self, time: Sequence[str] | None
   ) -> np.ndarray | None:
-    """Finds the data's time periods among the model's time periods.
+    """Finds the model time periods whose coefficients the data uses.
 
     Channels with changepoints have a separate coefficient in each time period
-    of the model, so the Analyzer matches the data's time periods to the
-    model's by date.
+    of the model. By default, the Analyzer matches the data's time periods to
+    the model's by date. Inside `_use_changepoint_effect`, the effect decides
+    which of the model's time periods each of the data's time periods uses.
 
     Args:
       time: The dates of the data's time periods, as in `DataTensors.time`.
+        `None` means the model's time periods.
 
     Returns:
-      The position of each date among the model's time periods. `None` if the
-      dates are the model's time periods, if `time` is `None`, or if no channel
-      has changepoints.
+      For each of the data's time periods, the position of the model time
+      period whose coefficient it uses. `None` if those are the model's own
+      time periods in order, or if no channel has changepoints.
 
     Raises:
-      ValueError: If some dates aren't time periods of the model.
+      ValueError: If the data has time periods that the effect, or matching by
+        date, isn't defined for.
     """
-    if not self._has_changepoints or time is None:
+    if not self._has_changepoints:
+      return None
+    effect = self._changepoint_effect
+    if effect is not None:
+      time_coordinates = self.model_context.input_data.time_coordinates
+      indices = changepoint_effects._time_indices(  # pylint: disable=protected-access
+          effect,
+          time_coordinates=time_coordinates,
+          dates=(
+              None if time is None else [tc.normalize_date(t) for t in time]
+          ),
+      )
+      if np.array_equal(indices, np.arange(len(time_coordinates.all_dates))):
+        return None
+      return indices
+    if time is None:
       return None
     model_times = self.model_context.input_data.time_coordinates.all_dates_str
     if list(time) == model_times:

@@ -26,6 +26,7 @@ import arviz as az
 from meridian import backend
 from meridian import constants
 from meridian.analysis import analyzer
+from meridian.analysis import changepoint_effects
 from meridian.analysis import tensors
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
@@ -6234,7 +6235,19 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
         rtol=1e-5,
     )
 
-  def test_incremental_outcome_uses_each_time_periods_coefficient(self):
+  def _expected_incremental_outcome(
+      self, time_indices: np.ndarray
+  ) -> np.ndarray:
+    """The incremental outcome by time period, using the given coefficients.
+
+    Args:
+      time_indices: For each time period, the time period whose coefficient it
+        uses.
+
+    Returns:
+      The incremental outcome of the paid channels, by draw, geo and time
+      period, on the KPI scale before the inverse transform.
+    """
     prior = self._prior()
     model_context = self.mmm.model_context
     media_scaled = model_context.media_tensors.media_scaled
@@ -6260,7 +6273,7 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
         decay_functions=model_context.adstock_decay_spec.rf,
         saturation_spec=model_context.saturation_spec.rf,
     )
-    expected = np.concatenate(
+    return np.concatenate(
         [
             np.asarray(media_transformed)
             * self._expected_coefficients(
@@ -6268,18 +6281,21 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
                 constants.ZETA_M,
                 constants.VARPHI_M,
                 self._MEDIA_STARTS,
-            ),
+            )[..., time_indices, :],
             np.asarray(rf_transformed)
             * self._expected_coefficients(
                 constants.BETA_GRF,
                 constants.ZETA_RF,
                 constants.VARPHI_RF,
                 self._RF_STARTS,
-            ),
+            )[..., time_indices, :],
         ],
         axis=-1,
     )
-    incremental_outcome = self.analyzer.incremental_outcome(
+
+  def _incremental_outcome_by_time(self) -> backend.Tensor:
+    """The incremental outcome of the paid channels, by geo and time period."""
+    return self.analyzer.incremental_outcome(
         use_posterior=False,
         aggregate_geos=False,
         aggregate_times=False,
@@ -6287,9 +6303,79 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
         use_kpi=True,
         include_non_paid_channels=False,
     )
+
+  def test_incremental_outcome_uses_each_time_periods_coefficient(self):
     backend_test_utils.assert_allclose(
-        incremental_outcome, expected, rtol=1e-4, atol=1e-6
+        self._incremental_outcome_by_time(),
+        self._expected_incremental_outcome(np.arange(self._N_TIMES)),
+        rtol=1e-4,
+        atol=1e-6,
     )
+
+  @parameterized.named_parameters(
+      ("latest", "latest"), ("history", "history"), ("interval", "interval")
+  )
+  def test_changepoint_effect_decides_the_coefficients(self, name: str):
+    last = self._N_TIMES - 1
+    effect, time_indices = {
+        "latest": (changepoint_effects.Latest(), np.full(self._N_TIMES, last)),
+        "history": (changepoint_effects.History(), np.arange(self._N_TIMES)),
+        "interval": (
+            changepoint_effects.Interval(date=self.times[2]),
+            np.full(self._N_TIMES, 2),
+        ),
+    }[name]
+    with self.analyzer._use_changepoint_effect(effect):
+      incremental_outcome = self._incremental_outcome_by_time()
+    backend_test_utils.assert_allclose(
+        incremental_outcome,
+        self._expected_incremental_outcome(time_indices),
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_changepoint_effect_is_restored_after_an_error(self):
+    with self.assertRaisesRegex(ValueError, "Error inside the block."):
+      with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+        raise ValueError("Error inside the block.")
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_nested_changepoint_effect_is_restored(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+      with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+        self.assertEqual(
+            self.analyzer._changepoint_effect, changepoint_effects.History()
+        )
+      self.assertEqual(
+          self.analyzer._changepoint_effect, changepoint_effects.Latest()
+      )
+    self.assertIsNone(self.analyzer._changepoint_effect)
+
+  def test_latest_effect_works_for_time_periods_after_the_training_data(self):
+    future = ["2100-01-04", "2100-01-11"]
+    with self.analyzer._use_changepoint_effect(changepoint_effects.Latest()):
+      np.testing.assert_array_equal(
+          self.analyzer._changepoint_time_indices(future),
+          [self._N_TIMES - 1] * 2,
+      )
+
+  def test_history_effect_of_other_time_periods_raises(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"`changepoint_effects.History\(\)` uses each time period's own"
+          " effect",
+      ):
+        self.analyzer._changepoint_time_indices(["2100-01-04"])
+
+  def test_history_effect_of_the_model_time_periods_needs_no_indices(self):
+    with self.analyzer._use_changepoint_effect(changepoint_effects.History()):
+      self.assertIsNone(self.analyzer._changepoint_time_indices(self.times))
+      self.assertIsNone(self.analyzer._changepoint_time_indices(None))
+
+  def test_model_time_periods_need_no_indices_without_an_effect(self):
+    self.assertIsNone(self.analyzer._changepoint_time_indices(None))
 
   def test_expected_outcome_uses_each_time_periods_coefficient(self):
     prior = self._prior()
