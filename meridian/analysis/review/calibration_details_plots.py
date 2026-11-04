@@ -16,7 +16,6 @@
 
 import altair as alt
 from meridian.analysis.review import constants
-from meridian.analysis.review import results
 from meridian.model.calibration import base as calibration_base
 from meridian.model.eda import calibration_plots
 from meridian.model.eda import constants as eda_constants
@@ -247,21 +246,33 @@ def _build_single_experiment_adjustment_chart(
 
 
 def build_calibration_details_chart(
-    ch_data: results.CalibrationOverviewChannelData | None,
+    channel_name: str,
+    calibrated_output: calibration_base.CalibrationOutput | None,
+    *,
+    limit_experiments: int | None = constants.MAX_EXPERIMENTS_FOR_DETAILS_CARD,
+    sort_experiments: bool = True,
 ) -> alt.Chart | None:
-  """Builds the experiment adjustments grid chart for a single channel."""
-  if (
-      ch_data is None
-      or ch_data.calibrated_output is None
-      or not ch_data.calibrated_output.experiments
-  ):
+  """Builds the experiment adjustments grid chart for a single channel.
+
+  Args:
+    channel_name: The channel name, used in the subplot titles.
+    calibrated_output: The calibration output for the channel.
+    limit_experiments: Optional maximum number of experiments to display. If
+      None, all experiments are displayed.
+    sort_experiments: If True, ranks experiments by adjusted standard error
+      (ascending) before applying `limit_experiments`.
+
+  Returns:
+    The chart, or None if the channel has no experiments to plot.
+  """
+  if calibrated_output is None or not calibrated_output.experiments:
     return None
 
   experiments_to_plot = calibration_plots.filter_and_sort_experiments(
-      ch_data.calibrated_output.experiments,
+      calibrated_output.experiments,
       lambda exp: exp.adjusted_experiment_result.standard_error,
-      limit_experiments=constants.MAX_EXPERIMENTS_FOR_DETAILS_CARD,
-      sort_experiments=True,
+      limit_experiments=limit_experiments,
+      sort_experiments=sort_experiments,
   )
   if not experiments_to_plot:
     return None
@@ -269,7 +280,7 @@ def build_calibration_details_chart(
   sub_charts = []
   for idx, (exp_idx, exp) in enumerate(experiments_to_plot):
     exp_name = _format_experiment_label(exp_idx, exp.source_type)
-    sub_title = f"Experiment Adjustments: {ch_data.channel_name} ({exp_name})"
+    sub_title = f"Experiment Adjustments: {channel_name} ({exp_name})"
     color_hex = eda_constants.EXPERIMENT_COLORS[
         idx % len(eda_constants.EXPERIMENT_COLORS)
     ]
