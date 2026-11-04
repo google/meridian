@@ -16,6 +16,7 @@ from collections.abc import Sequence
 import dataclasses
 import itertools
 import os
+import re
 from typing import Any
 from unittest import mock
 import warnings
@@ -6125,6 +6126,8 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
   # at time period 5, and RF channel 0 at 3 and 7.
   _MEDIA_STARTS = (0, 5)
   _RF_STARTS = (0, 3, 7)
+  # Built by `_analyzer_with_empty_first_intervals` when a test needs it.
+  _empty_first_intervals_analyzer: analyzer.Analyzer | None = None
 
   @classmethod
   def setUpClass(cls):
@@ -6444,19 +6447,34 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
     self.assertEqual(result.start_date.sel(selection).item(), "")
     self.assertEqual(result.end_date.sel(selection).item(), "")
 
+  @classmethod
+  def _analyzer_with_empty_first_intervals(cls) -> analyzer.Analyzer:
+    """Returns an analyzer whose model has empty first intervals.
+
+    Media channel 0 has no spend in its first interval, and RF channel 0 has no
+    reach until the end of its first interval, but has spend. The model is
+    built once and shared by the tests.
+    """
+    if cls._empty_first_intervals_analyzer is None:
+      data = cls.data.copy(deep=True)
+      assert data.media_spend is not None and data.reach is not None
+      # No spend in the first interval of media channel 0, in the model's time
+      # periods.
+      data.media_spend.values[
+          :, -cls._N_TIMES : cls._MEDIA_STARTS[1] - cls._N_TIMES, 0
+      ] = 0.0
+      # No reach for RF channel 0 until the end of its first interval,
+      # including the time periods before the model's time periods.
+      data.reach.values[:, : cls._RF_STARTS[1] - cls._N_TIMES, 0] = 0.0
+      mmm = cls._sampled_model(data)
+      cls._empty_first_intervals_analyzer = analyzer.Analyzer(
+          model_context=mmm.model_context, inference_data=mmm.inference_data
+      )
+    return cls._empty_first_intervals_analyzer
+
   def test_roi_of_interval_without_spend_is_nan(self):
-    data = self.data.copy(deep=True)
-    assert data.media_spend is not None
-    # No spend in the first interval of media channel 0, in the model's time
-    # periods.
-    first_interval = slice(
-        -self._N_TIMES, self._MEDIA_STARTS[1] - self._N_TIMES
-    )
-    data.media_spend.values[:, first_interval, 0] = 0.0
-    mmm = self._sampled_model(data)
-    result = analyzer.Analyzer(
-        model_context=mmm.model_context, inference_data=mmm.inference_data
-    )._roi_by_changepoint_interval(use_posterior=False)
+    empty_analyzer = self._analyzer_with_empty_first_intervals()
+    result = empty_analyzer._roi_by_changepoint_interval(use_posterior=False)
     roi = result.roi.sel(channel=self.media_channel).values
     self.assertTrue(np.all(np.isnan(roi[0])))
     self.assertTrue(np.all(np.isfinite(roi[1])))
@@ -6503,6 +6521,80 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
       analyzer.Analyzer(
           model_context=model_context, inference_data=az.InferenceData()
       )._roi_by_changepoint_interval(use_posterior=False)
+
+  def _median_and_ci(self, cpik: Any, column: int) -> np.ndarray:
+    """The median and credible interval of one column of `cpik`."""
+    return analyzer.get_central_tendency_and_ci(
+        np.asarray(cpik)[..., column], include_median=True
+    )[1:]
+
+  def test_cpik_by_changepoint_interval_matches_cpik(self):
+    result = self.analyzer._cpik_by_changepoint_interval(use_posterior=False)
+    self.assertEqual(
+        list(result.channel.values), [self.media_channel, self.rf_channel]
+    )
+    self.assertEqual(
+        list(result.metric.values),
+        [constants.MEDIAN, constants.CI_LO, constants.CI_HI],
+    )
+    # The RF channel comes after the 2 media channels.
+    for channel, column, starts in (
+        (self.media_channel, 0, self._MEDIA_STARTS),
+        (self.rf_channel, 2, self._RF_STARTS),
+    ):
+      bounds = [*starts, self._N_TIMES]
+      for interval in range(len(starts)):
+        with self.subTest(channel=channel, interval=interval):
+          selected_times = self.times[bounds[interval] : bounds[interval + 1]]
+          cpik = self.analyzer.cpik(
+              use_posterior=False, selected_times=selected_times
+          )
+          selection = dict(channel=channel, changepoint_interval=interval)
+          backend_test_utils.assert_allclose(
+              result.cpik.sel(selection).values,
+              self._median_and_ci(cpik, column),
+              rtol=1e-5,
+          )
+          self.assertEqual(
+              result.start_date.sel(selection).item(), selected_times[0]
+          )
+          self.assertEqual(
+              result.end_date.sel(selection).item(), selected_times[-1]
+          )
+    # The media channel has fewer intervals than the RF channel.
+    selection = dict(channel=self.media_channel, changepoint_interval=2)
+    self.assertTrue(np.all(np.isnan(result.cpik.sel(selection).values)))
+    self.assertEqual(result.start_date.sel(selection).item(), "")
+    self.assertEqual(result.end_date.sel(selection).item(), "")
+
+  def test_cpik_of_empty_intervals(self):
+    empty_analyzer = self._analyzer_with_empty_first_intervals()
+    result = empty_analyzer._cpik_by_changepoint_interval(use_posterior=False)
+    # An interval without spend has NaN CPIK.
+    media_cpik = result.cpik.sel(channel=self.media_channel).values
+    self.assertTrue(np.all(np.isnan(media_cpik[0])))
+    self.assertTrue(np.all(np.isfinite(media_cpik[1])))
+    # An interval with spend but no incremental KPI has infinite CPIK in every
+    # draw, as in `cpik`. The credible interval of infinite draws is NaN.
+    cpik = empty_analyzer.cpik(
+        use_posterior=False,
+        selected_times=self.times[: self._RF_STARTS[1]],
+    )
+    rf_cpik = result.cpik.sel(channel=self.rf_channel).values
+    np.testing.assert_array_equal(rf_cpik[0], [np.inf, np.nan, np.nan])
+    backend_test_utils.assert_allclose(rf_cpik[0], self._median_and_ci(cpik, 2))
+    self.assertTrue(np.all(np.isfinite(rf_cpik[1:])))
+
+  def test_cpik_by_changepoint_interval_without_changepoints_raises(self):
+    model_context = context.ModelContext(
+        input_data=self.data, model_spec=spec.ModelSpec()
+    )
+    with self.assertRaisesRegex(
+        ValueError, re.escape("No channel has changepoints.")
+    ):
+      analyzer.Analyzer(
+          model_context=model_context, inference_data=az.InferenceData()
+      )._cpik_by_changepoint_interval(use_posterior=False)
 
   def _paid_data_tensors(self, n_times: int | None = None) -> Any:
     """The scaled paid media data, of the last `n_times` media time periods."""
