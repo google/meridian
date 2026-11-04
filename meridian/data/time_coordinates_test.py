@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import datetime as dt
+from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -836,6 +837,146 @@ class NormalizeDateTest(parameterized.TestCase):
         ValueError, "Date interval bounds cannot be None"
     ):
       time_coordinates.normalize_date_interval(interval)
+
+
+class NormalizeDateStrTest(parameterized.TestCase):
+
+  def test_normalize_date_str_with_datetime64_and_strings(self):
+    self.assertEqual(
+        time_coordinates.normalize_date_str("2021-01-25T12:34:56"),
+        "2021-01-25",
+    )
+    self.assertEqual(
+        time_coordinates.normalize_date_str(np.datetime64("2021-01-25")),
+        "2021-01-25",
+    )
+
+  def test_normalize_date_str_none_raises(self):
+    with self.assertRaisesRegex(ValueError, "`time_val` cannot be None."):
+      time_coordinates.normalize_date_str(None)
+
+  def test_normalize_date_str_normalized_date_is_not_parsed(self):
+    with mock.patch.object(
+        time_coordinates, "normalize_date", autospec=True
+    ) as mock_normalize_date:
+      self.assertEqual(
+          time_coordinates.normalize_date_str("2021-01-25"), "2021-01-25"
+      )
+
+    mock_normalize_date.assert_not_called()
+
+  def test_normalize_date_str_pads_month_and_day(self):
+    self.assertEqual(
+        time_coordinates.normalize_date_str("2021-1-5"), "2021-01-05"
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="day_out_of_range", date="2021-02-30", regex="day"),
+      dict(
+          testcase_name="month_out_of_range",
+          date="2021-13-01",
+          regex="does not match format",
+      ),
+      dict(
+          testcase_name="week_date",
+          date="2021-W04-1",
+          regex="does not match format",
+      ),
+  )
+  def test_normalize_date_str_invalid_date_raises(self, date: str, regex: str):
+    with self.assertRaisesRegex(ValueError, regex):
+      time_coordinates.normalize_date_str(date)
+
+  def test_normalize_times_keeps_order(self):
+    self.assertEqual(
+        time_coordinates.normalize_times(
+            ["2021-02-01", "2021-01-25T12:34:56", np.datetime64("2021-01-18")]
+        ),
+        ["2021-02-01", "2021-01-25", "2021-01-18"],
+    )
+
+  def test_normalize_times_data_array(self):
+    times = xr.DataArray(
+        data=np.array(_ALL_DATES),
+        dims=[constants.TIME],
+        coords={constants.TIME: _ALL_DATES},
+    )
+    self.assertEqual(time_coordinates.normalize_times(times), _ALL_DATES)
+
+  def test_normalize_times_set(self):
+    self.assertEqual(
+        time_coordinates.normalize_times_set(
+            ["2021-01-25T12:34:56", np.datetime64("2021-01-25")]
+        ),
+        {"2021-01-25"},
+    )
+
+  def test_normalize_times_set_data_array(self):
+    times = xr.DataArray(
+        data=np.array(_ALL_DATES),
+        dims=[constants.TIME],
+        coords={constants.TIME: _ALL_DATES},
+    )
+    self.assertEqual(
+        time_coordinates.normalize_times_set(times), set(_ALL_DATES)
+    )
+
+
+class ValidateTimesTest(absltest.TestCase):
+
+  def test_validate_time_coordinates_invalid_label_raises(self):
+    with self.assertRaisesRegex(ValueError, "Invalid time label: '2031-W02'"):
+      time_coordinates.validate_time_coordinates(("2031-01-06", "2031-W02"))
+
+  def test_validate_time_coordinates_parses_same_times_once(self):
+    time_coordinates._validate_time_spacing.cache_clear()
+    time = ("2031-01-06", "2031-01-13", "2031-01-20")
+    from_dates = time_coordinates.TimeCoordinates.from_dates
+    with mock.patch.object(
+        time_coordinates.TimeCoordinates,
+        "from_dates",
+        autospec=True,
+        side_effect=from_dates,
+    ) as mock_from_dates:
+      time_coordinates.validate_time_coordinates(time)
+      time_coordinates.validate_time_coordinates(list(time))
+
+    mock_from_dates.assert_called_once()
+
+  def test_validate_time_coordinates_irregular_spacing_raises_each_time(self):
+    time = ("2031-01-06", "2031-01-08", "2031-01-20")
+    for _ in range(2):
+      with self.assertRaisesRegex(
+          ValueError, "Time coordinates must be regularly spaced"
+      ):
+        time_coordinates.validate_time_coordinates(time)
+
+  def test_validate_selected_times_normalized_subset_passes(self):
+    time_coordinates.validate_selected_times(
+        ["2024-01-08T00:00:00", "2024-01-15"],
+        _ALL_DATES,
+        arg_name="selected_times",
+    )
+
+  def test_validate_selected_times_non_string_raises(self):
+    with self.assertRaisesRegex(
+        ValueError, "`selected_times` must be a list of strings."
+    ):
+      time_coordinates.validate_selected_times(
+          [np.datetime64("2024-01-08")],  # pyrefly: ignore[bad-argument-type]
+          _ALL_DATES,
+          arg_name="selected_times",
+      )
+
+  def test_validate_selected_times_not_in_input_times_raises(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "`media_selected_times` must match the time dimension coordinates from"
+        " '2024-01-01' to '2024-02-19'.",
+    ):
+      time_coordinates.validate_selected_times(
+          ["2024-02-26"], _ALL_DATES, arg_name="media_selected_times"
+      )
 
 
 if __name__ == "__main__":

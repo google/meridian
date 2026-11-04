@@ -1897,11 +1897,9 @@ class Analyzer:
             else self.model_context.input_data.time.values
         )
         if selected_times is not None:
-          selected_set = tensors.normalize_times_set(selected_times)
+          selected_set = tc.normalize_times_set(selected_times)
           filtered_times = [
-              t
-              for t in all_times
-              if tensors.normalize_date_str(t) in selected_set
+              t for t in all_times if tc.normalize_date_str(t) in selected_set
           ]
           if len(filtered_times) == time_dim_size:
             time_coords[constants.TIME] = filtered_times
@@ -3006,11 +3004,9 @@ class Analyzer:
           else self.model_context.input_data.time.values
       )
       if selected_times is not None:
-        selected_set = tensors.normalize_times_set(selected_times)
+        selected_set = tc.normalize_times_set(selected_times)
         time_coords = [
-            t
-            for t in all_times
-            if tensors.normalize_date_str(t) in selected_set
+            t for t in all_times if tc.normalize_date_str(t) in selected_set
         ]
       else:
         time_coords = list(all_times)

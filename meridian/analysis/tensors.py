@@ -14,9 +14,8 @@
 
 """Data structures and tensor preparation utilities for Meridian."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 import dataclasses
-import datetime as dt
 import numbers
 from typing import Any, Optional, Union
 import warnings
@@ -40,6 +39,11 @@ __all__ = (
     "normalize_date_str",
     "normalize_times_set",
 )
+
+# `normalize_date_str` and `normalize_times_set` moved to `time_coordinates`.
+# They're re-exported here for backward compatibility.
+normalize_date_str = tc.normalize_date_str
+normalize_times_set = tc.normalize_times_set
 
 
 # TODO: Remove this method.
@@ -84,99 +88,6 @@ def _check_n_dims(tensor: backend.Tensor, name: str, n_dims: int) -> None:
         f"New `{name}` must have {n_dims} dimension(s). Found"
         f" {tensor.ndim} dimension(s)."
     )
-
-
-def normalize_date_str(
-    time_val: tc.Date | xr.DataArray | backend.Tensor,
-) -> str:
-  """Extracts the 'YYYY-MM-DD' prefix string from a date coordinate or string.
-
-  Args:
-    time_val: A polymorphic `Date` (`tc.Date`), a 0-D xarray `DataArray`
-      coordinate scalar (which may wrap a date string, datetime, or NumPy
-      timestamp), a `backend.Tensor` string scalar, or any other date coordinate
-      scalar (e.g. `pd.Timestamp`).
-
-  Returns:
-    The normalized 'YYYY-MM-DD' date string.
-  """
-  val = time_val.numpy() if hasattr(time_val, "numpy") else time_val
-  val = val.item() if hasattr(val, "item") else val
-  if isinstance(val, bytes):
-    val = val.decode("utf-8")
-  if isinstance(val, str):
-    val = val[:10]
-  normalized = tc.normalize_date(val)  # pyrefly: ignore[no-matching-overload]
-  if normalized is None:
-    raise ValueError("`time_val` cannot be None.")
-  return normalized.strftime(constants.DATE_FORMAT)
-
-
-def normalize_times_set(times: Iterable[Any]) -> set[str]:
-  """Returns a set of normalized 'YYYY-MM-DD' date strings from times."""
-  return {normalize_date_str(x) for x in times}
-
-
-def _is_normalized_subset(
-    subset: Sequence[Any],
-    superset: Sequence[Any],
-) -> bool:
-  """Returns True if normalized date strings in subset are in superset."""
-  try:
-    return normalize_times_set(subset) <= normalize_times_set(superset)
-  except (ValueError, TypeError):
-    return False
-
-
-def _validate_selected_times(
-    selected_times: Sequence[str] | None,
-    input_times: xr.DataArray | Sequence[str],
-    *,
-    arg_name: str,
-) -> None:
-  """Raises an error if selected_times is invalid.
-
-  Args:
-    selected_times: Optional sequence of time names to resolve.
-    input_times: Target time period coordinates.
-    arg_name: Name of the `selected_times` argument.
-
-  Raises:
-    ValueError: A `ValueError` is raised when coordinates in `selected_times` do
-      not match time coordinates in `input_times` or is not a list of strings.
-  """
-  if not selected_times:
-    return
-  if not all(isinstance(item, str) for item in selected_times):
-    raise ValueError(f"`{arg_name}` must be a list of strings.")
-  if not _is_normalized_subset(selected_times, input_times):  # pyrefly: ignore[bad-argument-type]
-    start_date = normalize_date_str(input_times[0])
-    end_date = normalize_date_str(input_times[-1])
-    raise ValueError(
-        f"`{arg_name}` must match the time dimension coordinates from"
-        f" '{start_date}' to '{end_date}'."
-    )
-
-
-def _validate_time_coordinates(time: Sequence[str] | None) -> None:
-  """Validates that time follows the same format and spacing rules as InputData.time."""
-  if time is None:
-    return
-  for t in time:
-    try:
-      dt.datetime.strptime(t, constants.DATE_FORMAT)
-    except (TypeError, ValueError) as exc:
-      raise ValueError(
-          f"Invalid time label: {t!r}. Expected format:"
-          f" '{constants.DATE_FORMAT}'"
-      ) from exc
-
-  if len(time) > 1:
-    time_coords = tc.TimeCoordinates.from_dates(time)
-    try:
-      _ = time_coords.interval_days
-    except ValueError as exc:
-      raise ValueError("Time coordinates must be regularly spaced.") from exc
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -311,7 +222,9 @@ class DataTensors(backend.ExtensionType):  # pyrefly: ignore[invalid-inheritance
         else None
     )
     self.time = (
-        tuple(normalize_date_str(t) for t in time) if time is not None else None
+        tuple(tc.normalize_date_str(t) for t in time)
+        if time is not None
+        else None
     )
     self._validate_n_dims()
 
@@ -774,7 +687,7 @@ class DataTensorsBuilder:
   ) -> None:
     """Validates the time dimension of the specified data variables."""
     if data.time is not None:
-      _validate_time_coordinates(data.time)
+      tc.validate_time_coordinates(data.time)
 
     for var_name in required_fields:
       new_tensor = getattr(data, var_name)
@@ -843,7 +756,7 @@ class DataTensorsBuilder:
           f"periods, {new_n_times}."
       )
 
-    _validate_time_coordinates(data.time)
+    tc.validate_time_coordinates(data.time)
 
     missing_params = []
     for var_name in required_fields:
@@ -897,7 +810,7 @@ class DataTensorsBuilder:
       output[constants.TIME] = data.time
     else:
       output[constants.TIME] = tuple(
-          normalize_date_str(t)
+          tc.normalize_date_str(t)
           for t in self.model_context.input_data.time.values
       )
     for field in dataclasses.fields(data):
@@ -1044,16 +957,16 @@ class DataTensorsBuilder:
     """
     if selected_times is None:
       return None
-    _validate_selected_times(
+    tc.validate_selected_times(
         selected_times=selected_times,
         input_times=input_times,
         arg_name="selected_times",
     )
-    selected_times_set = normalize_times_set(selected_times)
+    selected_times_set = tc.normalize_times_set(selected_times)
     time_indices = [
         i
-        for i, x in enumerate(input_times)
-        if normalize_date_str(x) in selected_times_set
+        for i, x in enumerate(tc.normalize_times(input_times))
+        if x in selected_times_set
     ]
     return backend.to_tensor(time_indices, dtype=backend.int32)
 
@@ -1293,12 +1206,12 @@ class DataTensorsBuilder:
       time_coords = self.model_context.input_data.time
       media_time_coords = self.model_context.input_data.media_time
 
-    _validate_selected_times(
+    tc.validate_selected_times(
         selected_times=selected_times,
         input_times=time_coords,
         arg_name="selected_times",
     )
-    _validate_selected_times(
+    tc.validate_selected_times(
         selected_times=media_selected_times,
         input_times=media_time_coords,
         arg_name="media_selected_times",
@@ -1362,9 +1275,9 @@ class DataTensorsBuilder:
     if media_selected_times is None:
       resolved_media_selected_times = [True] * new_n_media_times
     else:
-      media_selected_set = normalize_times_set(media_selected_times)
+      media_selected_set = tc.normalize_times_set(media_selected_times)
       resolved_media_selected_times = [
-          normalize_date_str(x) in media_selected_set for x in media_times
+          x in media_selected_set for x in tc.normalize_times(media_times)
       ]
 
     media_selected_times_mask = tuple(resolved_media_selected_times)

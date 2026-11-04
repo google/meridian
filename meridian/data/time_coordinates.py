@@ -14,11 +14,12 @@
 
 """Deals with coordinate values in the time dimensions of input data."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import dataclasses
 import datetime
 import functools
-from typing import TypeAlias, overload
+import re
+from typing import Any, TypeAlias, overload
 
 from meridian import constants
 import numpy as np
@@ -31,6 +32,11 @@ __all__ = [
     "TimeCoordinates",
     "normalize_date",
     "normalize_date_interval",
+    "normalize_date_str",
+    "normalize_times",
+    "normalize_times_set",
+    "validate_selected_times",
+    "validate_time_coordinates",
 ]
 
 
@@ -51,11 +57,8 @@ _TimeCoordinateValues: TypeAlias = (
     pd.DatetimeIndex | xr.DataArray | Sequence[Date]
 )
 
-
-def _to_pandas_datetime_index(times: _TimeCoordinateValues) -> pd.DatetimeIndex:
-  """Normalizes the given values into a pandas `DatetimeIndex`."""
-  # Coerce into pandas `DatetimeIndex` in all possible cases.
-  return pd.to_datetime(times)  # pyrefly: ignore[no-matching-overload]
+# Matches date strings in `constants.DATE_FORMAT`.
+_DATE_FORMAT_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 @overload
@@ -123,8 +126,98 @@ def normalize_date_interval(
   return (start, end)
 
 
-def _to_dates_list(times: pd.DatetimeIndex) -> list[datetime.date]:
-  return [dt.date() for dt in times]
+def normalize_date_str(time_val: Date | xr.DataArray | Any) -> str:
+  """Extracts the 'YYYY-MM-DD' prefix string from a date coordinate or string.
+
+  Args:
+    time_val: A polymorphic `Date`, a 0-D xarray `DataArray` coordinate scalar
+      (which may wrap a date string, datetime, or NumPy timestamp), a string
+      tensor scalar, or any other date coordinate scalar (e.g. `pd.Timestamp`).
+
+  Returns:
+    The normalized 'YYYY-MM-DD' date string.
+  """
+  val = time_val.numpy() if hasattr(time_val, "numpy") else time_val
+  val = val.item() if hasattr(val, "item") else val
+  if isinstance(val, bytes):
+    val = val.decode("utf-8")
+  if isinstance(val, str):
+    val = val[:10]
+    # Dates that are already normalized, such as `DataTensors.time`, are
+    # returned as is, because parsing them again is slow.
+    if _is_normalized_date_str(val):
+      return val
+  normalized = normalize_date(val)  # pyrefly: ignore[no-matching-overload]
+  if normalized is None:
+    raise ValueError("`time_val` cannot be None.")
+  return normalized.strftime(constants.DATE_FORMAT)
+
+
+def normalize_times(times: Iterable[Any]) -> list[str]:
+  """Returns a list of normalized 'YYYY-MM-DD' date strings from times."""
+  return [normalize_date_str(x) for x in _time_values(times)]
+
+
+def normalize_times_set(times: Iterable[Any]) -> set[str]:
+  """Returns a set of normalized 'YYYY-MM-DD' date strings from times."""
+  return set(normalize_times(times))
+
+
+def validate_selected_times(
+    selected_times: Sequence[str] | None,
+    input_times: xr.DataArray | Sequence[str],
+    *,
+    arg_name: str,
+) -> None:
+  """Raises an error if selected_times is invalid.
+
+  Args:
+    selected_times: Optional sequence of time names to resolve.
+    input_times: Target time period coordinates.
+    arg_name: Name of the `selected_times` argument.
+
+  Raises:
+    ValueError: A `ValueError` is raised when coordinates in `selected_times` do
+      not match time coordinates in `input_times` or is not a list of strings.
+  """
+  if not selected_times:
+    return
+  if not all(isinstance(item, str) for item in selected_times):
+    raise ValueError(f"`{arg_name}` must be a list of strings.")
+  if not _is_normalized_subset(selected_times, input_times):  # pyrefly: ignore[bad-argument-type]
+    start_date = normalize_date_str(input_times[0])
+    end_date = normalize_date_str(input_times[-1])
+    raise ValueError(
+        f"`{arg_name}` must match the time dimension coordinates from"
+        f" '{start_date}' to '{end_date}'."
+    )
+
+
+def validate_time_coordinates(time: Sequence[str] | None) -> None:
+  """Validates that time follows the same rules as `InputData.time`.
+
+  Args:
+    time: Optional time coordinates, such as `DataTensors.time`.
+
+  Raises:
+    ValueError: If `time` isn't in `constants.DATE_FORMAT` or isn't regularly
+      spaced.
+  """
+  if time is None:
+    return
+  for t in time:
+    if isinstance(t, str) and _is_normalized_date_str(t):
+      continue
+    try:
+      datetime.datetime.strptime(t, constants.DATE_FORMAT)
+    except (TypeError, ValueError) as exc:
+      raise ValueError(
+          f"Invalid time label: {t!r}. Expected format:"
+          f" '{constants.DATE_FORMAT}'"
+      ) from exc
+
+  if len(time) > 1:
+    _validate_time_spacing(tuple(time))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -432,3 +525,79 @@ class TimeCoordinates:
       return None
 
     return [date for date in self.all_dates if start_date <= date <= end_date]
+
+
+def _is_normalized_date_str(date: str) -> bool:
+  """Checks whether a string is a valid date in `constants.DATE_FORMAT`.
+
+  This is much faster than parsing the string with `datetime.strptime`, so
+  dates that are already normalized, such as `DataTensors.time`, can be checked
+  each time they are normalized or validated again.
+
+  Args:
+    date: The string to check.
+
+  Returns:
+    `True` if `date` is a valid 'YYYY-MM-DD' date string, and `False` otherwise.
+  """
+  if _DATE_FORMAT_PATTERN.fullmatch(date) is None:
+    return False
+  try:
+    datetime.date.fromisoformat(date)
+  except ValueError:
+    return False
+  return True
+
+
+def _time_values(times: Iterable[Any]) -> Iterable[Any]:
+  """Returns the values of a `DataArray` of times, or the times themselves.
+
+  Iterating over an `xr.DataArray` creates a `DataArray` for each element,
+  which is much slower than iterating over its values.
+
+  Args:
+    times: An iterable of date coordinates, such as `InputData.time`.
+
+  Returns:
+    `times.values` if `times` is an `xr.DataArray`, and `times` otherwise.
+  """
+  return times.values if isinstance(times, xr.DataArray) else times
+
+
+def _is_normalized_subset(
+    subset: Sequence[Any],
+    superset: Sequence[Any],
+) -> bool:
+  """Returns True if normalized date strings in subset are in superset."""
+  try:
+    return normalize_times_set(subset) <= normalize_times_set(superset)
+  except (ValueError, TypeError):
+    return False
+
+
+@functools.lru_cache(maxsize=16)
+def _validate_time_spacing(time: tuple[str, ...]) -> None:
+  """Raises an error if time coordinates aren't regularly spaced.
+
+  The result is cached, because `Analyzer` methods validate the same time
+  coordinates on every call, for example, for each row of an optimization grid,
+  and parsing them with pandas is slow.
+
+  Args:
+    time: Time coordinates in `constants.DATE_FORMAT`.
+  """
+  time_coords = TimeCoordinates.from_dates(time)
+  try:
+    _ = time_coords.interval_days
+  except ValueError as exc:
+    raise ValueError("Time coordinates must be regularly spaced.") from exc
+
+
+def _to_pandas_datetime_index(times: _TimeCoordinateValues) -> pd.DatetimeIndex:
+  """Normalizes the given values into a pandas `DatetimeIndex`."""
+  # Coerce into pandas `DatetimeIndex` in all possible cases.
+  return pd.to_datetime(times)  # pyrefly: ignore[no-matching-overload]
+
+
+def _to_dates_list(times: pd.DatetimeIndex) -> list[datetime.date]:
+  return [dt.date() for dt in times]

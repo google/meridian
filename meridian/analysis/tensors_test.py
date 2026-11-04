@@ -1300,26 +1300,6 @@ class DataTensorsBuilderCounterfactualTest(backend_test_utils.MeridianTestCase):
     with self.assertRaises(ValueError):
       builder.build_counterfactual_inputs(selected_times=["1999-01-01"])
 
-  def test_normalize_date_str_with_datetime64_and_strings(self):
-    self.assertEqual(
-        tensors.normalize_date_str("2021-01-25T12:34:56"), "2021-01-25"
-    )
-    self.assertEqual(
-        tensors.normalize_date_str(np.datetime64("2021-01-25")), "2021-01-25"
-    )
-
-  def test_normalize_date_str_none_raises(self):
-    with self.assertRaisesRegex(ValueError, "`time_val` cannot be None."):
-      tensors.normalize_date_str(None)
-
-  def test_normalize_times_set(self):
-    self.assertEqual(
-        tensors.normalize_times_set(
-            ["2021-01-25T12:34:56", np.datetime64("2021-01-25")]
-        ),
-        {"2021-01-25"},
-    )
-
   def test_resolve_time_indices_date_normalization(self):
     builder = tensors.DataTensorsBuilder(self.meridian.model_context)
     input_times = self.input_data.time
