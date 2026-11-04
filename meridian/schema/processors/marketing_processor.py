@@ -505,6 +505,7 @@ class MarketingProcessor(
         aggregate_times=media_summary_spec.aggregate_times,
         new_data=media_summary_spec.new_data,
         confidence_level=confidence_level,
+        include_prior=False,
     )
 
     media_summary_metrics = compute_media_summary_metrics(
