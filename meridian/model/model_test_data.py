@@ -73,7 +73,6 @@ class WithInputDataSamples:
   local variables to avoid re-loading the data samples multiple times.
   """
 
-  # TODO: Update the sample data to span over 1 or 2 year(s).
   _TEST_DIR = os.path.join(os.path.dirname(__file__), "test_data")
   _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH = os.path.join(
       _TEST_DIR,
@@ -121,9 +120,9 @@ class WithInputDataSamples:
   _N_GEOS = 5
   _N_GEOS_NATIONAL = 1
   _N_TIMES = 200
-  _N_TIMES_SHORT = 49
+  _N_TIMES_SHORT = 52
   _N_MEDIA_TIMES = 203
-  _N_MEDIA_TIMES_SHORT = 52
+  _N_MEDIA_TIMES_SHORT = 55
   _N_MEDIA_CHANNELS = 3
   _N_RF_CHANNELS = 2
   _N_CONTROLS = 2

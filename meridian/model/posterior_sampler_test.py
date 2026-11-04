@@ -1086,7 +1086,7 @@ class PosteriorMCMCSamplerTest(
     sigma_shape = (
         (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (self._N_CHAINS, self._N_KEEP, 1)
+        else (self._N_CHAINS, self._N_KEEP)
     )
     geo_shape = (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
     time_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
@@ -1219,7 +1219,7 @@ class PosteriorMCMCSamplerTest(
     sigma_shape = (
         (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (self._N_CHAINS, self._N_KEEP, 1)
+        else (self._N_CHAINS, self._N_KEEP)
     )
     geo_shape = (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
     time_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
@@ -1402,7 +1402,7 @@ class PosteriorMCMCSamplerTest(
     sigma_shape = (
         (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (self._N_CHAINS, self._N_KEEP, 1)
+        else (self._N_CHAINS, self._N_KEEP)
     )
     geo_shape = (self._N_CHAINS, self._N_KEEP, self._N_GEOS)
     time_shape = (self._N_CHAINS, self._N_KEEP, self._N_TIMES_SHORT)
@@ -1523,7 +1523,7 @@ class PosteriorMCMCSamplerTest(
     sigma_shape = (
         (n_total_chains, self._N_KEEP, self._N_GEOS)
         if meridian.unique_sigma_for_each_geo
-        else (n_total_chains, self._N_KEEP, 1)
+        else (n_total_chains, self._N_KEEP)
     )
     geo_shape = (n_total_chains, self._N_KEEP, self._N_GEOS)
     time_shape = (n_total_chains, self._N_KEEP, self._N_TIMES_SHORT)
