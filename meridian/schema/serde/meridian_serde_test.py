@@ -1853,6 +1853,24 @@ class HoldoutRoundTripTest(parameterized.TestCase):
         original.model_context.compiled_holdout_id,
     )
 
+  def test_a_balanced_random_draw_survives_the_round_trip(self):
+    """Both the `balanced` flag and the recorded draw round-trip."""
+    original, loaded = self._round_trip(
+        spec.ModelSpec(
+            holdout=spec.HoldoutSpec(
+                spec=spec.RandomHoldoutSpec(ratio=0.2, balanced=True)
+            )
+        )
+    )
+
+    holdout = loaded.model_spec.holdout
+    assert holdout is not None  # Narrows the type for the read below.
+    self.assertTrue(holdout.spec.balanced)
+    np.testing.assert_array_equal(
+        loaded.model_context.compiled_holdout_id,
+        original.model_context.compiled_holdout_id,
+    )
+
   def test_the_loaded_spec_records_the_draw_alongside_the_intent(self):
     _, loaded = self._round_trip(
         spec.ModelSpec(holdout=spec.HoldoutSpec(spec=self._RANDOM_HOLDOUT))

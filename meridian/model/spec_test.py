@@ -1436,6 +1436,19 @@ class RandomHoldoutSpecTest(parameterized.TestCase):
     self.assertEqual(rhs.ratio, 0.2)
     self.assertEqual(rhs.seed, 42)
 
+  def test_init_is_not_balanced_by_default(self):
+    self.assertFalse(spec.RandomHoldoutSpec(0.2).balanced)
+
+  def test_init_balanced(self):
+    self.assertTrue(spec.RandomHoldoutSpec(0.2, balanced=True).balanced)
+
+  def test_init_rejects_a_boolean_seed(self):
+    """`seed=True` is almost certainly a misplaced `balanced=True`."""
+    with self.assertRaisesRegex(
+        ValueError, r"`seed` must be an integer or `None`"
+    ):
+      spec.RandomHoldoutSpec(0.2, True)
+
   @parameterized.named_parameters(
       ("zero", 0.0),
       ("negative", -0.1),

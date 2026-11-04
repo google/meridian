@@ -476,10 +476,11 @@ def _draw_random_holdout(
 ) -> np.ndarray:
   """Draws a random holdout mask, stratified by geo.
 
-  Each geo independently holds out exactly `round(ratio * n_times)` time
-  periods, sampled without replacement. Stratifying by geo -- rather than
-  drawing over the flattened `n_geos * n_times` cell space -- guarantees that
-  every geo contributes both training and test rows.
+  Each geo holds out exactly `round(ratio * n_times)` time periods, so every
+  geo contributes both training and test rows. By default each geo's periods
+  are a simple random sample, drawn independently of the other geos. With
+  `random_spec.balanced` the draw is additionally balanced across time periods;
+  see `_draw_balanced_holdout`.
 
   Note that random samples are drawn sequentially in the order geos appear in
   the input data coordinates; permuting geo order will produce different samples
@@ -505,9 +506,94 @@ def _draw_random_holdout(
         " entirely if no holdout is intended."
     )
   rng = np.random.default_rng(random_spec.seed)
+  if random_spec.balanced:
+    return _draw_balanced_holdout(rng, n_geos, n_times, n_holdout)
   mask = np.zeros((n_geos, n_times), dtype=bool)
   for geo_index in range(n_geos):
     mask[geo_index, rng.choice(n_times, size=n_holdout, replace=False)] = True
+  return mask
+
+
+# Number of pairwise row trades per geo used to decorrelate a balanced draw.
+# Each trade is a cheap `O(n_times)` operation, and a handful per geo is enough
+# to break up the disjoint geo groups left behind by the initial fill.
+_BALANCED_HOLDOUT_TRADES_PER_GEO = 10
+
+
+def _draw_balanced_holdout(
+    rng: np.random.Generator,
+    n_geos: int,
+    n_times: int,
+    n_holdout: int,
+) -> np.ndarray:
+  """Draws a random holdout mask balanced across both geos and time periods.
+
+  The mask satisfies two margin constraints:
+
+  * Every geo holds out exactly `n_holdout` time periods.
+  * The number of held-out observations per time period differs by at most
+    one across time periods. The counts can differ by one because the total,
+    `n_geos * n_holdout`, need not be a multiple of `n_times`.
+
+  The draw proceeds in two stages:
+
+  1.  **Initial fill.** Geos are visited in a random order, and each holds out
+      the time periods that have been held out the fewest times so far,
+      breaking ties uniformly at random. If the per-time counts are all in
+      `{m, m + 1}` before a geo is filled, the geo takes periods at `m` before
+      any at `m + 1`, so the counts stay within one of each other at every
+      step. A side effect is that geos filled consecutively are forced into
+      disjoint holdout sets.
+  2.  **Pairwise trades.** To remove that structure, two geos are repeatedly
+      chosen at random and the time periods on which they differ are randomly
+      reassigned between them ("curveball" trades; Strona et al. 2014). The two
+      geos hold the same number of periods, so they contribute equally many
+      periods to the pool being traded, and the trade preserves every row sum
+      and every column sum exactly.
+
+  Neither stage makes the draw uniform over all balanced masks, but the trades
+  remove the systematic anti-correlation between geos that the fill alone
+  would leave.
+
+  Args:
+    rng: The random number generator to draw from.
+    n_geos: The number of geos.
+    n_times: The number of time periods.
+    n_holdout: The number of time periods to hold out per geo. Must be in `[1,
+      n_times]`.
+
+  Returns:
+    A boolean array of shape `(n_geos, n_times)`.
+  """
+  mask = np.zeros((n_geos, n_times), dtype=bool)
+  counts_per_time = np.zeros(n_times, dtype=int)
+  for geo_index in rng.permutation(n_geos):
+    # Visit the time periods in a random order and sort them stably by how
+    # often they have been held out so far, so that ties are broken uniformly
+    # at random. The first `n_holdout` are the least held-out periods.
+    order = rng.permutation(n_times)
+    least_held_out = order[
+        np.argsort(counts_per_time[order], kind="stable")[:n_holdout]
+    ]
+    mask[geo_index, least_held_out] = True
+    counts_per_time[least_held_out] += 1
+
+  if n_geos < 2:
+    return mask
+  for _ in range(_BALANCED_HOLDOUT_TRADES_PER_GEO * n_geos):
+    first, second = rng.choice(n_geos, size=2, replace=False)
+    # Periods held out by exactly one of the two geos. Both geos hold out
+    # `n_holdout` periods, so each contributes half of this pool.
+    tradeable = np.flatnonzero(mask[first] != mask[second])
+    if tradeable.size == 0:
+      continue
+    rng.shuffle(tradeable)
+    to_first = tradeable[: tradeable.size // 2]
+    to_second = tradeable[tradeable.size // 2 :]
+    mask[first, to_first] = True
+    mask[first, to_second] = False
+    mask[second, to_second] = True
+    mask[second, to_first] = False
   return mask
 
 

@@ -496,6 +496,14 @@ message HoldoutConfig {
     // version, and input data coordinate ordering (e.g. geo order in
     // `InputData.geo`). The authoritative record of a draw is `resolved`.
     int64 seed = 2 [features.field_presence = EXPLICIT];
+
+    // Whether the draw is balanced across time periods as well as geos. Every
+    // geo always holds out the same number of time periods; when this is true
+    // the number of held-out observations per time period additionally differs
+    // by at most one across time periods. When false (the default), each geo's
+    // held-out periods are a simple random sample, independent of the other
+    // geos.
+    bool balanced = 3;
   }
 
   // The declarative holdout intent.

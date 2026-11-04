@@ -3110,6 +3110,40 @@ class CompiledModelSpecTest(
     )
     self.assertEqual(compiled.sum(), expected_per_geo * len(data.geo))
 
+  def test_compiled_holdout_id_balanced_random_is_balanced_across_times(self):
+    """Per-time holdout counts differ by at most one across time periods."""
+    data = self.input_data_with_media_and_rf
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.2, seed=17, balanced=True)
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    per_time = compiled.sum(axis=0)
+    self.assertLessEqual(per_time.max() - per_time.min(), 1)
+    # 5 geos x round(0.2 * 200) = 200 cells over 200 periods: exactly one each.
+    np.testing.assert_array_equal(per_time, np.ones(len(data.time)))
+
+  def test_compiled_holdout_id_balanced_random_keeps_exact_ratio_per_geo(
+      self,
+  ):
+    """Balancing across times must not disturb the per-geo count."""
+    data = self.input_data_with_media_and_rf
+    n_times = len(data.time)
+    model_spec = spec.ModelSpec(
+        holdout=spec.HoldoutSpec(
+            spec=spec.RandomHoldoutSpec(ratio=0.2, seed=17, balanced=True)
+        )
+    )
+    compiled = self._context(data, model_spec).compiled_holdout_id
+
+    assert compiled is not None
+    np.testing.assert_array_equal(
+        compiled.sum(axis=1), np.full(len(data.geo), round(0.2 * n_times))
+    )
+
   def test_compiled_holdout_id_random_draws_differ_across_geos(self):
     """Stratification must not degenerate into the same draw for every geo."""
     data = self.input_data_with_media_and_rf
@@ -3745,6 +3779,102 @@ class HoldoutMaskInversionTest(parameterized.TestCase):
             ),
         ],
     )
+
+
+class DrawRandomHoldoutTest(parameterized.TestCase):
+  """Tests the guarantees of `_draw_random_holdout`."""
+
+  @parameterized.named_parameters(
+      # 3 x round(0.3 * 7) = 6 cells over 7 periods: counts in {0, 1}.
+      dict(testcase_name="fewer_cells_than_periods", n_geos=3, n_times=7),
+      # 7 x round(0.3 * 5) = 14 cells over 5 periods: counts in {2, 3}.
+      dict(testcase_name="more_cells_than_periods", n_geos=7, n_times=5),
+      # 5 x round(0.3 * 10) = 15 cells over 10 periods: counts in {1, 2}.
+      dict(testcase_name="cells_wrap_around_periods", n_geos=5, n_times=10),
+      dict(testcase_name="single_geo", n_geos=1, n_times=13),
+      # round(0.3 * 1) is zero, so the only period needs a larger ratio.
+      dict(testcase_name="single_period", n_geos=4, n_times=1, ratio=0.6),
+      dict(testcase_name="many_geos", n_geos=50, n_times=13),
+  )
+  def test_balanced_draw_is_balanced_across_geos_and_times(
+      self, n_geos, n_times, ratio=0.3
+  ):
+    n_holdout = min(round(ratio * n_times), n_times)
+    for seed in range(5):
+      mask = context._draw_random_holdout(
+          spec.RandomHoldoutSpec(ratio=ratio, seed=seed, balanced=True),
+          n_geos,
+          n_times,
+      )
+      with self.subTest(seed=seed):
+        self.assertEqual(mask.shape, (n_geos, n_times))
+        self.assertEqual(mask.dtype, bool)
+        np.testing.assert_array_equal(
+            mask.sum(axis=1), np.full(n_geos, n_holdout)
+        )
+        per_time = mask.sum(axis=0)
+        self.assertLessEqual(per_time.max() - per_time.min(), 1)
+        total = n_geos * n_holdout
+        self.assertEqual(per_time.min(), total // n_times)
+        self.assertEqual(per_time.max(), -(-total // n_times))
+
+  def test_balanced_draw_does_not_force_adjacent_geos_to_be_disjoint(self):
+    """Pairwise trades break up the disjoint geo groups left by the fill.
+
+    With 20 periods held out of 100, the initial fill partitions geos into
+    groups of five with pairwise-disjoint holdouts. Under a uniform balanced
+    draw any two geos would instead share about 20 * 20 / 100 = 4 periods on
+    average (slightly less, since the column sums are fixed). The trades should
+    bring adjacent geos in input order back near that figure.
+    """
+    n_geos, n_times = 50, 100
+    overlaps = []
+    for seed in range(5):
+      mask = context._draw_random_holdout(
+          spec.RandomHoldoutSpec(ratio=0.2, seed=seed, balanced=True),
+          n_geos,
+          n_times,
+      )
+      overlaps.append(
+          np.mean(
+              [np.sum(mask[geo] & mask[geo + 1]) for geo in range(n_geos - 1)]
+          )
+      )
+    self.assertGreater(min(overlaps), 2.0)
+    self.assertLess(max(overlaps), 6.0)
+
+  def test_unbalanced_draw_holds_out_exact_count_per_geo_only(self):
+    """The default draw is stratified by geo but not balanced across times."""
+    n_geos, n_times = 50, 100
+    mask = context._draw_random_holdout(
+        spec.RandomHoldoutSpec(ratio=0.2, seed=0), n_geos, n_times
+    )
+    np.testing.assert_array_equal(mask.sum(axis=1), np.full(n_geos, 20))
+    # Independent per-geo samples leave the per-time counts spread out well
+    # beyond the +/- 1 that a balanced draw guarantees.
+    per_time = mask.sum(axis=0)
+    self.assertGreater(per_time.max() - per_time.min(), 1)
+
+  def test_balanced_draw_is_reproducible_for_a_seed(self):
+    first = context._draw_random_holdout(
+        spec.RandomHoldoutSpec(ratio=0.2, seed=5, balanced=True), 12, 30
+    )
+    second = context._draw_random_holdout(
+        spec.RandomHoldoutSpec(ratio=0.2, seed=5, balanced=True), 12, 30
+    )
+    np.testing.assert_array_equal(first, second)
+
+  def test_balanced_draw_breaks_ties_at_random(self):
+    """Equally held-out periods are not always picked in index order."""
+    masks = {
+        context._draw_random_holdout(
+            spec.RandomHoldoutSpec(ratio=0.5, seed=seed, balanced=True),
+            n_geos=1,
+            n_times=20,
+        ).tobytes()
+        for seed in range(10)
+    }
+    self.assertGreater(len(masks), 1)
 
 
 class ResolvedRandomHoldoutTest(

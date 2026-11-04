@@ -304,6 +304,7 @@ def _serialize_holdout(
     config.random_holdout.ratio = entries.ratio
     if entries.seed is not None:
       config.random_holdout.seed = entries.seed
+    config.random_holdout.balanced = entries.balanced
   elif isinstance(entries[0], spec.DateRange):
     config.global_date_ranges.date_intervals.extend(
         _serialize_date_range(entry, period_ends, spec_name="holdout")
@@ -356,6 +357,9 @@ def _deserialize_holdout(
             if config.random_holdout.HasField(sc.SEED)
             else None
         ),
+        # Proto3 `bool` defaults to `False`, so models serialized before this
+        # field existed read back as the default unbalanced draw.
+        balanced=config.random_holdout.balanced,
     )
     if config.HasField(sc.RESOLVED):
       resolved = [

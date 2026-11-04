@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add the `balanced` field to `HoldoutConfig.RandomHoldout`, recording whether
+    a random holdout was drawn balanced across time periods as well as geos.
+
 ## [1.6.0] - 2026-10-22
 
 *   Add `schema_version` field to `MeridianModel` proto to record the

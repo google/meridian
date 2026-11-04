@@ -218,6 +218,13 @@ class RandomHoldoutSpec:
   the model's state. All downstream computation reads that resolved holdout,
   never this specification.
 
+  The draw is stratified by geo: every geo holds out the same number of time
+  periods, `round(ratio * n_times)`, sampled independently per geo by default.
+  With `balanced=True` the draw is additionally balanced across time periods,
+  so that the number of held-out observations per time period differs by at
+  most one. The per-time counts can differ by one because the total number of
+  held-out observations is not necessarily a multiple of `n_times`.
+
   Both this specification and the resolved draw are serialized: the former as
   provenance recording how the holdout was requested, the latter as the
   authoritative record of what was actually held out. The resolved draw is
@@ -238,10 +245,16 @@ class RandomHoldoutSpec:
     ratio: The fraction of observations to hold out. Must be strictly between
       0.0 and 1.0.
     seed: Optional random seed for deterministic holdout generation.
+    balanced: Whether to balance the draw across time periods as well as geos,
+      so that per-time holdout counts differ by at most one. When `False`, each
+      geo's held-out periods are a simple random sample, independent of the
+      other geos. Default: `False`.
   """
 
   ratio: float
   seed: int | None = None
+  _: dataclasses.KW_ONLY
+  balanced: bool = False
 
   def __post_init__(self) -> None:
     ratio = float(self.ratio)
@@ -251,7 +264,15 @@ class RandomHoldoutSpec:
       )
     object.__setattr__(self, "ratio", ratio)
     if self.seed is not None:
+      # `bool` is an `int` subclass, so `seed=True` would otherwise silently
+      # become `seed=1`; this most likely means `balanced` was intended.
+      if isinstance(self.seed, bool):
+        raise ValueError(
+            f"`seed` must be an integer or `None`, got: {self.seed!r}. Did"
+            " you mean `balanced=True`?"
+        )
       object.__setattr__(self, "seed", int(self.seed))
+    object.__setattr__(self, "balanced", bool(self.balanced))
 
 
 @dataclasses.dataclass(frozen=True)
